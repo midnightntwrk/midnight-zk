@@ -303,20 +303,19 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
         let domain = &pk.vk.domain;
         let x_next = domain.rotate_omega(x, Rotation::next());
 
+        // Compute all evaluations up front, then write to transcript.
         let multiplicities_eval = eval_polynomial(&self.multiplicities, x);
-        transcript.write(&multiplicities_eval)?;
-
         let helper_evals: Vec<F> = self
             .helper_polys
-            .iter()
-            .map(|h| {
-                let eval = eval_polynomial(h, x);
-                transcript.write(&eval).map(|_| eval)
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-
+            .par_iter()
+            .map(|h| eval_polynomial(h, x))
+            .collect();
         let accumulator_eval = eval_polynomial(&self.aggregator_poly, x);
         let accumulator_next_eval = eval_polynomial(&self.aggregator_poly, x_next);
+        transcript.write(&multiplicities_eval)?;
+        for eval in &helper_evals {
+            transcript.write(eval)?;
+        }
         transcript.write(&accumulator_eval)?;
         transcript.write(&accumulator_next_eval)?;
 

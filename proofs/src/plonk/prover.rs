@@ -33,7 +33,10 @@ use crate::{
         Rotation,
     },
     transcript::{Hashable, Sampleable, Transcript},
-    utils::{arithmetic::eval_polynomial, rational::Rational},
+    utils::{
+        arithmetic::{eval_polynomial, eval_polynomial_seq},
+        rational::Rational,
+    },
 };
 
 /// Computes the quotient polynomial `h(X) = nu(X) / (X^n - 1)` and commits to
@@ -855,13 +858,14 @@ pub(super) fn compute_nu_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommit
         y,
         ..
     } = &trace;
-    // Calculate the advice and instance cosets
+    // Calculate the advice and instance cosets using pruned DIF FFT
+    // (exploits zero-padded structure: n real coefficients in 4n array).
     let advice_cosets: Vec<Vec<Polynomial<F, ExtendedLagrangeCoeff>>> = advice_polys
         .iter()
         .map(|advice_polys| {
             advice_polys
                 .par_iter()
-                .map(|poly| pk.vk.get_domain().coeff_to_extended(poly.clone()))
+                .map(|poly| pk.vk.get_domain().coeff_to_extended_pruned(poly.clone()))
                 .collect()
         })
         .collect();
@@ -870,7 +874,7 @@ pub(super) fn compute_nu_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommit
         .map(|instance_polys| {
             instance_polys
                 .par_iter()
-                .map(|poly| pk.vk.get_domain().coeff_to_extended(poly.clone()))
+                .map(|poly| pk.vk.get_domain().coeff_to_extended_pruned(poly.clone()))
                 .collect()
         })
         .collect();
@@ -927,59 +931,66 @@ where
     let domain = &pk.vk.domain;
     let meta = &pk.vk.cs;
 
-    // Compute and hash evals for the polynomials of the committed instances of
-    // each circuit
+    // Batch-evaluate all polynomials with outer parallelism and sequential
+    // Horner per task, avoiding the per-call rayon::scope overhead of the
+    // internally-parallel eval_polynomial.
     let instance_evals: Vec<Vec<F>> = instance_polys
         .iter()
         .map(|instance| {
-            // Evaluate polynomials at omega^i x
             meta.instance_queries
-                .iter()
+                .par_iter()
                 .map(|&(column, at)| {
-                    let eval =
-                        eval_polynomial(&instance[column.index()], domain.rotate_omega(x, at));
-                    if column.index() < nb_committed_instances {
-                        transcript.write(&eval)?;
-                    }
-                    Ok(eval)
+                    eval_polynomial_seq(&instance[column.index()], domain.rotate_omega(x, at))
                 })
-                .collect::<Result<Vec<F>, Error>>()
+                .collect()
         })
-        .collect::<Result<Vec<_>, Error>>()?;
+        .collect();
 
-    // Compute and hash advice evals for each circuit instance
     let advice_evals: Vec<Vec<F>> = advice_polys
         .iter()
         .map(|advice| {
-            // Evaluate polynomials at omega^i x
             meta.advice_queries
-                .iter()
+                .par_iter()
                 .map(|&(column, at)| {
-                    let eval = eval_polynomial(&advice[column.index()], domain.rotate_omega(x, at));
-                    transcript.write(&eval).map(|_| Ok(eval))?
+                    eval_polynomial_seq(&advice[column.index()], domain.rotate_omega(x, at))
                 })
-                .collect::<Result<Vec<F>, Error>>()
+                .collect()
         })
-        .collect::<Result<Vec<_>, Error>>()?;
+        .collect();
 
-    // Compute evals of fixed columns (shared across all circuit instances),
-    // and write them to the transcript
-    //
-    // NB: Fixed columns corresponding to simple, multiplicative selectors don't
-    // need to be evaluated, nor written to the transcript
     let fixed_evals: Vec<F> = meta
         .fixed_queries
-        .iter()
+        .par_iter()
         .map(|&(column, at)| {
             let col_idx = column.index();
             if meta.has_simple_selector_col(col_idx) {
-                Ok(F::ONE)
+                F::ONE
             } else {
-                let eval = eval_polynomial(&pk.fixed_polys[col_idx], domain.rotate_omega(x, at));
-                transcript.write(&eval).map(|_| Ok(eval))?
+                eval_polynomial_seq(&pk.fixed_polys[col_idx], domain.rotate_omega(x, at))
             }
         })
-        .collect::<Result<Vec<F>, Error>>()?;
+        .collect();
+
+    // Write evaluations to transcript in the canonical order.
+    for circuit_evals in &instance_evals {
+        for (eval, &(column, _)) in circuit_evals.iter().zip(meta.instance_queries.iter()) {
+            if column.index() < nb_committed_instances {
+                transcript.write(eval)?;
+            }
+        }
+    }
+
+    for circuit_evals in &advice_evals {
+        for eval in circuit_evals {
+            transcript.write(eval)?;
+        }
+    }
+
+    for (eval, &(column, _)) in fixed_evals.iter().zip(meta.fixed_queries.iter()) {
+        if !meta.has_simple_selector_col(column.index()) {
+            transcript.write(eval)?;
+        }
+    }
 
     Ok(Evals {
         fixed_evals,

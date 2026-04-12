@@ -49,15 +49,23 @@ pub fn g_to_lagrange<C: PrimeCurve>(g_projective: &[C], k: u32) -> Vec<C> {
     g_lagrange.to_vec()
 }
 
-/// This evaluates a provided polynomial (in coefficient form) at `point`.
+/// Sequential Horner evaluation. Use inside `par_iter` batches where
+/// outer parallelism replaces the per-call parallelism of
+/// [`eval_polynomial`].
+pub fn eval_polynomial_seq<F: Field>(poly: &[F], point: F) -> F {
+    poly.iter()
+        .rev()
+        .fold(F::ZERO, |acc, coeff| acc * point + coeff)
+}
+
+/// Evaluates a polynomial (in coefficient form) at `point`.
+/// Internally parallel — for batched evaluations prefer
+/// [`eval_polynomial_seq`] inside a `par_iter`.
 pub fn eval_polynomial<F: Field>(poly: &[F], point: F) -> F {
-    fn evaluate<F: Field>(poly: &[F], point: F) -> F {
-        poly.iter().rev().fold(F::ZERO, |acc, coeff| acc * point + coeff)
-    }
     let n = poly.len();
     let num_threads = rayon::current_num_threads();
     if n * 2 < num_threads {
-        evaluate(poly, point)
+        eval_polynomial_seq(poly, point)
     } else {
         let chunk_size = n.div_ceil(num_threads);
         let mut parts = vec![F::ZERO; num_threads];
@@ -67,7 +75,8 @@ pub fn eval_polynomial<F: Field>(poly: &[F], point: F) -> F {
             {
                 scope.spawn(move |_| {
                     let start = chunk_idx * chunk_size;
-                    out[0] = evaluate(poly, point) * point.pow_vartime([start as u64, 0, 0, 0]);
+                    out[0] = eval_polynomial_seq(poly, point)
+                        * point.pow_vartime([start as u64, 0, 0, 0]);
                 });
             }
         });

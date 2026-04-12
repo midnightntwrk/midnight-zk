@@ -190,15 +190,21 @@ pub struct LookupGraphEvaluator<F: PrimeField> {
 }
 
 /// Evaluator
-#[derive(Clone, Default, Debug)]
+#[derive(Clone, Debug)]
 pub struct Evaluator<F: PrimeField> {
     ///  Custom gates evaluation
     pub custom_gates: GraphEvaluator<F>,
+    /// Flattened custom gates for fast evaluation.
+    pub custom_gates_flat: FlatGraphEvaluator<F>,
     ///  Lookups evaluation (one Vec per BatchedArgument, one entry per
     /// flattened arg)
     pub lookups: Vec<Vec<LookupGraphEvaluator<F>>>,
+    /// Flattened lookup evaluators (parallel to `lookups`).
+    pub lookups_flat: Vec<Vec<FlatGraphEvaluator<F>>>,
     ///  Trashcans evaluation
     pub trashcans: Vec<GraphEvaluator<F>>,
+    /// Flattened trash evaluators (parallel to `trashcans`).
+    pub trashcans_flat: Vec<FlatGraphEvaluator<F>>,
 }
 
 /// GraphEvaluator
@@ -242,10 +248,534 @@ pub struct CalculationInfo {
     pub target: usize,
 }
 
+// ---------------------------------------------------------------------------
+// Flattened graph evaluator — pre-resolves all ValueSource lookups into
+// unified buffer indices for a tighter evaluation loop.
+// ---------------------------------------------------------------------------
+
+/// Operation kind for the flattened evaluator.
+#[derive(Clone, Copy, Debug)]
+#[repr(u8)]
+pub enum FlatOpKind {
+    Add,
+    Sub,
+    Mul,
+    Square,
+    Double,
+    Negate,
+    /// Fused multiply-add: `dst = a * b + c`. Used for Horner steps.
+    MulAdd,
+}
+
+/// A single flattened operation. All operands are indices into the unified
+/// values buffer — no enum dispatch needed at evaluation time.
+#[derive(Clone, Copy, Debug)]
+pub struct FlatOp {
+    pub kind: FlatOpKind,
+    pub dst: u32,
+    /// Source operands (indices into the values buffer).
+    /// - Binary ops use `a` and `b`.
+    /// - Unary ops use `a` only.
+    /// - MulAdd uses `a`, `b`, and `c`.
+    pub a: u32,
+    pub b: u32,
+    pub c: u32,
+}
+
+/// Column read: load a value from a polynomial column at a rotated index.
+#[derive(Clone, Copy, Debug)]
+pub struct ColumnRead {
+    /// 0 = Fixed, 1 = Advice, 2 = Instance, 3 = Challenge.
+    pub col_type: u8,
+    /// Column index within its type.
+    pub col_idx: u16,
+    /// Index into the rotations array (for Fixed/Advice/Instance).
+    /// For Challenge: the challenge index.
+    pub rot_or_idx: u8,
+    /// Destination index in the values buffer.
+    pub dst: u32,
+}
+
+/// Pre-flattened graph for fast evaluation. Built from a [`GraphEvaluator`]
+/// at keygen time via [`GraphEvaluator::flatten`].
+///
+/// The values buffer layout:
+/// ```text
+/// [0 .. C)                   constants (static)
+/// [C .. C+5)                 beta, theta, trash_challenge, y, previous_value
+/// [C+5 .. C+5+R)             column read results (loaded per element)
+/// [C+5+R .. C+5+R+I)         intermediates (computed per element)
+/// ```
+#[derive(Clone, Debug)]
+pub struct FlatGraphEvaluator<F> {
+    /// Pre-loaded constants (copied into values buffer once per prove).
+    pub constants: Vec<F>,
+    /// Rotation values (same as GraphEvaluator::rotations).
+    pub rotations: Vec<i32>,
+    /// Column reads to perform at the start of each element.
+    pub column_reads: Vec<ColumnRead>,
+    /// Flattened operations.
+    pub ops: Vec<FlatOp>,
+    /// Total values buffer length.
+    pub values_len: usize,
+    /// Index offsets for named slots.
+    pub beta_idx: u32,
+    pub theta_idx: u32,
+    pub trash_challenge_idx: u32,
+    pub y_idx: u32,
+    pub previous_value_idx: u32,
+    /// Index of the final result.
+    pub result_idx: u32,
+}
+
+impl<F: PrimeField> GraphEvaluator<F> {
+    /// Convert this graph into a flattened evaluator for faster evaluation.
+    pub fn flatten(&self) -> FlatGraphEvaluator<F> {
+        let num_constants = self.constants.len();
+        let challenge_offset = num_constants;
+        let beta_idx = challenge_offset as u32;
+        let theta_idx = (challenge_offset + 1) as u32;
+        let trash_challenge_idx = (challenge_offset + 2) as u32;
+        let y_idx = (challenge_offset + 3) as u32;
+        let previous_value_idx = (challenge_offset + 4) as u32;
+
+        let column_read_offset = challenge_offset + 5;
+
+        // First pass: collect column reads and assign their buffer indices.
+        let mut column_reads = Vec::new();
+        let mut column_read_map: Vec<(ValueSource, u32)> = Vec::new();
+
+        fn find_column_reads(
+            calc: &Calculation,
+            reads: &mut Vec<(ValueSource, u32)>,
+            column_reads: &mut Vec<ColumnRead>,
+            base_offset: usize,
+        ) {
+            let mut check = |vs: &ValueSource| {
+                if matches!(
+                    vs,
+                    ValueSource::Fixed(..)
+                        | ValueSource::Advice(..)
+                        | ValueSource::Instance(..)
+                        | ValueSource::Challenge(..)
+                ) {
+                    if !reads.iter().any(|(v, _)| *v == *vs) {
+                        let dst = (base_offset + reads.len()) as u32;
+                        let cr = match *vs {
+                            ValueSource::Fixed(c, r) => ColumnRead {
+                                col_type: 0,
+                                col_idx: c as u16,
+                                rot_or_idx: r as u8,
+                                dst,
+                            },
+                            ValueSource::Advice(c, r) => ColumnRead {
+                                col_type: 1,
+                                col_idx: c as u16,
+                                rot_or_idx: r as u8,
+                                dst,
+                            },
+                            ValueSource::Instance(c, r) => ColumnRead {
+                                col_type: 2,
+                                col_idx: c as u16,
+                                rot_or_idx: r as u8,
+                                dst,
+                            },
+                            ValueSource::Challenge(i) => ColumnRead {
+                                col_type: 3,
+                                col_idx: i as u16,
+                                rot_or_idx: 0,
+                                dst,
+                            },
+                            _ => unreachable!(),
+                        };
+                        column_reads.push(cr);
+                        reads.push((*vs, dst));
+                    }
+                }
+            };
+
+            match calc {
+                Calculation::Add(a, b)
+                | Calculation::Sub(a, b)
+                | Calculation::Mul(a, b) => {
+                    check(a);
+                    check(b);
+                }
+                Calculation::Square(a)
+                | Calculation::Double(a)
+                | Calculation::Negate(a)
+                | Calculation::Store(a) => {
+                    check(a);
+                }
+                Calculation::Horner(s, parts, f) => {
+                    check(s);
+                    check(f);
+                    for p in parts {
+                        check(p);
+                    }
+                }
+            }
+        }
+
+        for calc_info in &self.calculations {
+            find_column_reads(
+                &calc_info.calculation,
+                &mut column_read_map,
+                &mut column_reads,
+                column_read_offset,
+            );
+        }
+
+        let num_column_reads = column_reads.len();
+        let intermediates_offset = column_read_offset + num_column_reads;
+
+        // Resolve a ValueSource to a values-buffer index.
+        let resolve = |vs: &ValueSource| -> u32 {
+            match *vs {
+                ValueSource::Constant(idx) => idx as u32,
+                ValueSource::Intermediate(idx) => (intermediates_offset + idx) as u32,
+                ValueSource::Beta() => beta_idx,
+                ValueSource::Theta() => theta_idx,
+                ValueSource::TrashChallenge() => trash_challenge_idx,
+                ValueSource::Y() => y_idx,
+                ValueSource::PreviousValue() => previous_value_idx,
+                ValueSource::Fixed(..)
+                | ValueSource::Advice(..)
+                | ValueSource::Instance(..)
+                | ValueSource::Challenge(..) => {
+                    column_read_map
+                        .iter()
+                        .find(|(v, _)| *v == *vs)
+                        .unwrap()
+                        .1
+                }
+            }
+        };
+
+        // Second pass: flatten calculations into FlatOps.
+        let mut ops = Vec::with_capacity(self.calculations.len() * 2);
+
+        for calc_info in &self.calculations {
+            let dst = (intermediates_offset + calc_info.target) as u32;
+            match &calc_info.calculation {
+                Calculation::Add(a, b) => ops.push(FlatOp {
+                    kind: FlatOpKind::Add,
+                    dst,
+                    a: resolve(a),
+                    b: resolve(b),
+                    c: 0,
+                }),
+                Calculation::Sub(a, b) => ops.push(FlatOp {
+                    kind: FlatOpKind::Sub,
+                    dst,
+                    a: resolve(a),
+                    b: resolve(b),
+                    c: 0,
+                }),
+                Calculation::Mul(a, b) => ops.push(FlatOp {
+                    kind: FlatOpKind::Mul,
+                    dst,
+                    a: resolve(a),
+                    b: resolve(b),
+                    c: 0,
+                }),
+                Calculation::Square(v) => ops.push(FlatOp {
+                    kind: FlatOpKind::Square,
+                    dst,
+                    a: resolve(v),
+                    b: 0,
+                    c: 0,
+                }),
+                Calculation::Double(v) => ops.push(FlatOp {
+                    kind: FlatOpKind::Double,
+                    dst,
+                    a: resolve(v),
+                    b: 0,
+                    c: 0,
+                }),
+                Calculation::Negate(v) => ops.push(FlatOp {
+                    kind: FlatOpKind::Negate,
+                    dst,
+                    a: resolve(v),
+                    b: 0,
+                    c: 0,
+                }),
+                Calculation::Store(v) => {
+                    // Store is a copy from a column/constant/etc into an intermediate.
+                    // In the flattened format, the column read is pre-loaded, so this
+                    // is just a copy: dst = src.
+                    let src = resolve(v);
+                    // Optimization: if dst == src, skip the copy. Otherwise emit Add with 0.
+                    if dst != src {
+                        ops.push(FlatOp {
+                            kind: FlatOpKind::Add,
+                            dst,
+                            a: src,
+                            b: 0, // Constant(0) = F::ZERO, add identity.
+                            c: 0,
+                        });
+                    }
+                }
+                Calculation::Horner(start, parts, factor) => {
+                    let start_idx = resolve(start);
+                    let factor_idx = resolve(factor);
+                    // First: dst = start_value.
+                    if dst != start_idx {
+                        ops.push(FlatOp {
+                            kind: FlatOpKind::Add,
+                            dst,
+                            a: start_idx,
+                            b: 0,
+                            c: 0,
+                        });
+                    }
+                    // Then: dst = dst * factor + part[i].
+                    for part in parts {
+                        ops.push(FlatOp {
+                            kind: FlatOpKind::MulAdd,
+                            dst,
+                            a: dst,
+                            b: factor_idx,
+                            c: resolve(part),
+                        });
+                    }
+                }
+            }
+        }
+
+        let values_len = intermediates_offset + self.num_intermediates;
+        let result_idx = ops.last().map_or(0, |op| op.dst);
+
+        FlatGraphEvaluator {
+            constants: self.constants.clone(),
+            rotations: self.rotations.clone(),
+            column_reads,
+            ops,
+            values_len,
+            beta_idx,
+            theta_idx,
+            trash_challenge_idx,
+            y_idx,
+            previous_value_idx,
+            result_idx,
+        }
+    }
+}
+
+impl<F: PrimeField> FlatGraphEvaluator<F> {
+    /// Resolve a `ValueSource::Intermediate` handle to a flat buffer index.
+    /// Used to read specific outputs (e.g., lookup's sum_partial_products)
+    /// from the values buffer after evaluation.
+    pub fn resolve_idx(&self, vs: ValueSource) -> usize {
+        match vs {
+            ValueSource::Intermediate(idx) => {
+                // intermediates_offset = constants.len() + 5 + column_reads.len()
+                let intermediates_offset =
+                    self.constants.len() + 5 + self.column_reads.len();
+                intermediates_offset + idx
+            }
+            _ => panic!("resolve_idx only supports Intermediate, got {vs:?}"),
+        }
+    }
+
+    /// Create a fresh values buffer, pre-filled with constants.
+    pub fn new_values_buffer(&self, beta: &F, theta: &F, trash_challenge: &F, y: &F) -> Vec<F> {
+        let mut values = vec![F::ZERO; self.values_len];
+        values[..self.constants.len()].copy_from_slice(&self.constants);
+        values[self.beta_idx as usize] = *beta;
+        values[self.theta_idx as usize] = *theta;
+        values[self.trash_challenge_idx as usize] = *trash_challenge;
+        values[self.y_idx as usize] = *y;
+        values
+    }
+
+    /// Evaluate the graph at one domain element. The `values` buffer is reused
+    /// across elements (only column reads and intermediates are overwritten).
+    #[inline]
+    pub fn evaluate<B: PolynomialRepresentation>(
+        &self,
+        values: &mut [F],
+        fixed: &[Polynomial<F, B>],
+        advice: &[Polynomial<F, B>],
+        instance: &[Polynomial<F, B>],
+        challenges: &[F],
+        rotations: &[usize],
+        previous_value: &F,
+    ) -> F {
+        values[self.previous_value_idx as usize] = *previous_value;
+
+        // Step 1: Load column values into the buffer.
+        for cr in &self.column_reads {
+            values[cr.dst as usize] = match cr.col_type {
+                0 => fixed[cr.col_idx as usize][rotations[cr.rot_or_idx as usize]],
+                1 => advice[cr.col_idx as usize][rotations[cr.rot_or_idx as usize]],
+                2 => instance[cr.col_idx as usize][rotations[cr.rot_or_idx as usize]],
+                3 => challenges[cr.col_idx as usize],
+                _ => unreachable!(),
+            };
+        }
+
+        // Step 2: Evaluate flattened operations.
+        for op in &self.ops {
+            let d = op.dst as usize;
+            values[d] = match op.kind {
+                FlatOpKind::Add => values[op.a as usize] + values[op.b as usize],
+                FlatOpKind::Sub => values[op.a as usize] - values[op.b as usize],
+                FlatOpKind::Mul => values[op.a as usize] * values[op.b as usize],
+                FlatOpKind::Square => values[op.a as usize].square(),
+                FlatOpKind::Double => values[op.a as usize].double(),
+                FlatOpKind::Negate => -values[op.a as usize],
+                FlatOpKind::MulAdd => {
+                    values[op.a as usize] * values[op.b as usize] + values[op.c as usize]
+                }
+            };
+        }
+
+        values[self.result_idx as usize]
+    }
+}
+
+impl<F: PrimeField> FlatGraphEvaluator<F> {
+    /// Evaluate the graph over a chunk of domain elements with compile-time
+    /// batch size `BATCH`. Processes BATCH elements per graph traversal,
+    /// amortizing op dispatch. LLVM fully unrolls the inner `for b in 0..BATCH`
+    /// loops into straight-line code.
+    ///
+    /// `template_buf` is a pre-filled values buffer (constants + challenges).
+    /// `output[i]` is both input (previous_value) and output (result).
+    #[allow(clippy::too_many_arguments)]
+    pub fn evaluate_chunk<const BATCH: usize, Repr: PolynomialRepresentation>(
+        &self,
+        template_buf: &[F],
+        output: &mut [F],
+        start: usize,
+        fixed: &[Polynomial<F, Repr>],
+        advice: &[Polynomial<F, Repr>],
+        instance: &[Polynomial<F, Repr>],
+        challenges: &[F],
+        log_scale: u32,
+        log_n: u32,
+    ) {
+        let chunk_len = output.len();
+        let pv_i = self.previous_value_idx as usize;
+        let result_i = self.result_idx as usize;
+        let mask = (1usize << log_n) - 1;
+        let num_rots = self.rotations.len();
+
+        // Pre-compute rotation strides for incremental index calculation.
+        let rot_strides: Vec<usize> = self
+            .rotations
+            .iter()
+            .map(|&rot| ((rot as isize) << log_scale) as usize)
+            .collect();
+
+        // BATCH values buffers, reused across batches.
+        let mut bufs: [Vec<F>; BATCH] = std::array::from_fn(|_| template_buf.to_vec());
+        let mut all_rots: [Vec<usize>; BATCH] =
+            std::array::from_fn(|_| vec![0usize; num_rots]);
+
+        let mut pos = 0;
+
+        // Main loop: full batches of BATCH elements.
+        while pos + BATCH <= chunk_len {
+            // Load column values for BATCH elements.
+            for b in 0..BATCH {
+                let idx = start + pos + b;
+                for (ri, stride) in rot_strides.iter().enumerate() {
+                    all_rots[b][ri] = idx.wrapping_add(*stride) & mask;
+                }
+                bufs[b][pv_i] = output[pos + b];
+                for cr in &self.column_reads {
+                    let rot = all_rots[b][cr.rot_or_idx as usize];
+                    bufs[b][cr.dst as usize] = match cr.col_type {
+                        0 => fixed[cr.col_idx as usize][rot],
+                        1 => advice[cr.col_idx as usize][rot],
+                        2 => instance[cr.col_idx as usize][rot],
+                        3 => challenges[cr.col_idx as usize],
+                        _ => unreachable!(),
+                    };
+                }
+            }
+
+            // Execute ops — one dispatch, BATCH unrolled field operations.
+            for op in &self.ops {
+                let d = op.dst as usize;
+                let a = op.a as usize;
+                let bi = op.b as usize;
+                let c = op.c as usize;
+                match op.kind {
+                    FlatOpKind::Add => {
+                        for b in 0..BATCH { bufs[b][d] = bufs[b][a] + bufs[b][bi]; }
+                    }
+                    FlatOpKind::Sub => {
+                        for b in 0..BATCH { bufs[b][d] = bufs[b][a] - bufs[b][bi]; }
+                    }
+                    FlatOpKind::Mul => {
+                        for b in 0..BATCH { bufs[b][d] = bufs[b][a] * bufs[b][bi]; }
+                    }
+                    FlatOpKind::Square => {
+                        for b in 0..BATCH { bufs[b][d] = bufs[b][a].square(); }
+                    }
+                    FlatOpKind::Double => {
+                        for b in 0..BATCH { bufs[b][d] = bufs[b][a].double(); }
+                    }
+                    FlatOpKind::Negate => {
+                        for b in 0..BATCH { bufs[b][d] = -bufs[b][a]; }
+                    }
+                    FlatOpKind::MulAdd => {
+                        for b in 0..BATCH { bufs[b][d] = bufs[b][a] * bufs[b][bi] + bufs[b][c]; }
+                    }
+                }
+            }
+
+            for b in 0..BATCH {
+                output[pos + b] = bufs[b][result_i];
+            }
+            pos += BATCH;
+        }
+
+        // Tail: remaining elements (< BATCH), processed one at a time.
+        if pos < chunk_len {
+            let mut buf = bufs.into_iter().next().unwrap();
+            let mut rot_indices = all_rots.into_iter().next().unwrap();
+            while pos < chunk_len {
+                let idx = start + pos;
+                for (ri, stride) in rot_strides.iter().enumerate() {
+                    rot_indices[ri] = idx.wrapping_add(*stride) & mask;
+                }
+                output[pos] = self.evaluate::<Repr>(
+                    &mut buf, fixed, advice, instance, challenges, &rot_indices, &output[pos],
+                );
+                pos += 1;
+            }
+        }
+    }
+}
+
 impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
     /// Creates a new evaluation structure
     pub fn new(cs: &ConstraintSystem<F>) -> Self {
-        let mut ev = Evaluator::default();
+        let dummy_flat = FlatGraphEvaluator {
+            constants: Vec::new(),
+            rotations: Vec::new(),
+            column_reads: Vec::new(),
+            ops: Vec::new(),
+            values_len: 0,
+            beta_idx: 0,
+            theta_idx: 0,
+            trash_challenge_idx: 0,
+            y_idx: 0,
+            previous_value_idx: 0,
+            result_idx: 0,
+        };
+        let mut ev = Evaluator {
+            custom_gates: GraphEvaluator::default(),
+            custom_gates_flat: dummy_flat.clone(),
+            lookups: Vec::new(),
+            lookups_flat: Vec::new(),
+            trashcans: Vec::new(),
+            trashcans_flat: Vec::new(),
+        };
 
         // Custom gates
         let mut parts = Vec::new();
@@ -364,6 +894,14 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
             ev.trashcans.push(graph);
         }
 
+        // Flatten all graphs for faster evaluation.
+        ev.custom_gates_flat = ev.custom_gates.flatten();
+        ev.lookups_flat = ev
+            .lookups
+            .iter()
+            .map(|batch| batch.iter().map(|le| le.graph.flatten()).collect())
+            .collect();
+        ev.trashcans_flat = ev.trashcans.iter().map(|g| g.flatten()).collect();
         ev
     }
 
@@ -410,34 +948,50 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
             .zip(trashcans.iter())
             .zip(permutations.iter())
         {
-            // Custom gates
-            rayon::scope(|scope| {
-                let chunk_size = size.div_ceil(num_threads);
-                for (thread_idx, values) in values.chunks_mut(chunk_size).enumerate() {
-                    let start = thread_idx * chunk_size;
-                    scope.spawn(move |_| {
-                        let mut eval_data = self.custom_gates.instance();
+            // Custom gates — flattened evaluator with const-generic batch size.
+            // FLAT_BATCH_SIZE env var selects B (default 1). Each value is a
+            // separate monomorphization with fully unrolled inner loops.
+            let flat = &self.custom_gates_flat;
+            let batch_size: usize = std::env::var("FLAT_BATCH_SIZE")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(1);
+
+            macro_rules! dispatch_batch {
+                ($b:expr) => {{
+                    let template = flat.new_values_buffer(&beta, &theta, &trash_challenge, &y);
+                    parallelize(&mut values, |values, start| {
+                        flat.evaluate_chunk::<$b, B>(
+                            &template, values, start, fixed, advice, instance,
+                            challenges, log_scale, log_n,
+                        );
+                    });
+                }};
+            }
+
+            match batch_size {
+                2 => dispatch_batch!(2),
+                4 => dispatch_batch!(4),
+                8 => dispatch_batch!(8),
+                _ => {
+                    // B=1: use the unbatched per-element path.
+                    parallelize(&mut values, |values, start| {
+                        let mut buf = flat.new_values_buffer(&beta, &theta, &trash_challenge, &y);
+                        let mut rot_indices = vec![0usize; flat.rotations.len()];
                         for (i, value) in values.iter_mut().enumerate() {
                             let idx = start + i;
-                            *value = self.custom_gates.evaluate::<B>(
-                                &mut eval_data,
-                                fixed,
-                                advice,
-                                instance,
-                                challenges,
-                                &beta,
-                                &theta,
-                                &trash_challenge,
-                                &y,
-                                value,
-                                idx,
-                                log_scale,
-                                log_n,
+                            for (ri, rot) in flat.rotations.iter().enumerate() {
+                                rot_indices[ri] =
+                                    get_rotation_idx(idx, *rot, log_scale, log_n);
+                            }
+                            *value = flat.evaluate::<B>(
+                                &mut buf, fixed, advice, instance, challenges,
+                                &rot_indices, value,
                             );
                         }
                     });
                 }
-            });
+            }
 
             // Permutations
             let sets = &permutation.sets;
@@ -542,63 +1096,111 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                 })
                 .collect();
 
-            // Lookups
-            for (n, (helper_cosets, aggregator_coset, multiplicities_coset)) in
-                all_lookup_cosets.iter().enumerate()
-            {
-                // Lookup constraints
-                parallelize(&mut values, |values, start| {
-                    let lookup_eval = &self.lookups[n];
-                    // Pre-allocate evaluation data outside the per-element loop
-                    // to avoid heap allocation on every domain element.
-                    let mut eval_datas: Vec<_> =
-                        lookup_eval.iter().map(|le| le.graph.instance()).collect();
-                    for (i, value) in values.iter_mut().enumerate() {
-                        let idx = start + i;
-                        let r_next = get_rotation_idx(idx, 1, log_scale, log_n);
+            // Pre-compute all trash cosets in parallel (lookup cosets
+            // are already pre-computed above).
+            let trash_cosets: Vec<_> = trashcans
+                .par_iter()
+                .map(|trash| B::coeff_to_self(domain, trash.trash_poly.clone()))
+                .collect();
 
-                        // (l_0(X) + l_last(X)) * Z(X) = 0
+            // Pre-resolve lookup output indices for the flat evaluator.
+            let lookup_output_indices: Vec<Vec<(usize, usize, usize, usize)>> = self
+                .lookups
+                .iter()
+                .zip(self.lookups_flat.iter())
+                .map(|(batch, flat_batch)| {
+                    batch
+                        .iter()
+                        .zip(flat_batch.iter())
+                        .map(|(le, flat)| {
+                            (
+                                flat.resolve_idx(le.sum_partial_products),
+                                flat.resolve_idx(le.product),
+                                flat.resolve_idx(le.table),
+                                flat.resolve_idx(le.selector),
+                            )
+                        })
+                        .collect()
+                })
+                .collect();
+
+            // Pre-resolve trash selector column indices.
+            let trash_selector_cols: Vec<usize> = cs
+                .trashcans
+                .iter()
+                .map(|arg| match arg.selector() {
+                    Expression::Fixed(query) => query.column_index(),
+                    _ => unreachable!(),
+                })
+                .collect();
+
+            // Fused lookup + trash constraint evaluation in a single pass
+            // over `values`, using flattened evaluators for reduced dispatch.
+            parallelize(&mut values, |values, start| {
+                // Per-thread flat values buffers for all lookups.
+                let mut all_lookup_bufs: Vec<Vec<Vec<F>>> = self
+                    .lookups_flat
+                    .iter()
+                    .map(|batch| {
+                        batch
+                            .iter()
+                            .map(|flat| flat.new_values_buffer(&beta, &theta, &trash_challenge, &y))
+                            .collect()
+                    })
+                    .collect();
+                // Per-thread flat values buffers for all trash arguments.
+                let mut trash_bufs: Vec<Vec<F>> = self
+                    .trashcans_flat
+                    .iter()
+                    .map(|flat| flat.new_values_buffer(&beta, &theta, &trash_challenge, &y))
+                    .collect();
+
+                let mut rot_indices = vec![0usize; self.custom_gates_flat.rotations.len().max(
+                    self.lookups_flat.iter().flat_map(|b| b.iter()).chain(self.trashcans_flat.iter())
+                        .map(|f| f.rotations.len()).max().unwrap_or(0)
+                )];
+
+                for (i, value) in values.iter_mut().enumerate() {
+                    let idx = start + i;
+                    let r_next = get_rotation_idx(idx, 1, log_scale, log_n);
+
+                    // --- Lookup constraints ---
+                    for (n, (helper_cosets, aggregator_coset, multiplicities_coset)) in
+                        all_lookup_cosets.iter().enumerate()
+                    {
                         *value = *value * y + aggregator_coset[idx] * (l0[idx] + l_last[idx]);
 
                         let mut sum_helpers = F::ZERO;
                         let mut table_value = F::ZERO;
                         let mut selector = F::ZERO;
-                        for (fi, lookup_eval) in lookup_eval.iter().enumerate() {
-                            lookup_eval.graph.evaluate(
-                                &mut eval_datas[fi],
-                                fixed,
-                                advice,
-                                instance,
-                                challenges,
-                                &beta,
-                                &theta,
-                                &trash_challenge,
-                                &y,
-                                &F::ZERO,
-                                idx,
-                                log_scale,
-                                log_n,
+                        let flat_batch = &self.lookups_flat[n];
+                        let output_batch = &lookup_output_indices[n];
+                        let bufs = &mut all_lookup_bufs[n];
+
+                        for (fi, flat) in flat_batch.iter().enumerate() {
+                            for (ri, rot) in flat.rotations.iter().enumerate() {
+                                rot_indices[ri] = get_rotation_idx(idx, *rot, log_scale, log_n);
+                            }
+                            flat.evaluate::<B>(
+                                &mut bufs[fi], fixed, advice, instance, challenges,
+                                &rot_indices, &F::ZERO,
                             );
 
-                            let sum_partial_products =
-                                eval_datas[fi].resolve(lookup_eval.sum_partial_products);
-                            let product = eval_datas[fi].resolve(lookup_eval.product);
+                            let (spp_idx, prod_idx, tbl_idx, sel_idx) = output_batch[fi];
+                            let sum_partial_products = bufs[fi][spp_idx];
+                            let product = bufs[fi][prod_idx];
 
-                            // We only resolve the table and selector in the first batch
                             if fi == 0 {
-                                table_value = eval_datas[fi].resolve(lookup_eval.table);
-                                selector = eval_datas[fi].resolve(lookup_eval.selector);
+                                table_value = bufs[fi][tbl_idx];
+                                selector = bufs[fi][sel_idx];
                             }
 
-                            // Helper constraint: h(X) · ∏ⱼ(fⱼ(X) + β) = Σⱼ ∏_{k≠j}(fₖ(X) + β)
                             *value = *value * y + helper_cosets[fi][idx] * product
                                 - sum_partial_products;
 
                             sum_helpers += helper_cosets[fi][idx];
                         }
 
-                        // Accumulator constraint:
-                        // (Z(ωX) - Z(X)- s·Σᵢhᵢ(X))·(t(X) + β) + m(X) = 0
                         *value = *value * y
                             + l_active_row[idx]
                                 * ((aggregator_coset[r_next]
@@ -607,51 +1209,23 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                                     * table_value
                                     + multiplicities_coset[idx]);
                     }
-                });
-            }
 
-            // Pre-compute all trash cosets in parallel.
-            let trash_cosets: Vec<_> = trashcans
-                .par_iter()
-                .map(|trash| B::coeff_to_self(domain, trash.trash_poly.clone()))
-                .collect();
-
-            // Trashcans
-            for (n, trash_poly) in trash_cosets.iter().enumerate() {
-                // Trash argument constraints.
-                parallelize(&mut values, |values, start| {
-                    let trash_evaluator = &self.trashcans[n];
-                    let argument = &cs.trashcans[n];
-                    let mut eval_data = trash_evaluator.instance();
-                    for (i, value) in values.iter_mut().enumerate() {
-                        let idx = start + i;
-
-                        let compressed_expression = trash_evaluator.evaluate(
-                            &mut eval_data,
-                            fixed,
-                            advice,
-                            instance,
-                            challenges,
-                            &beta,
-                            &theta,
-                            &trash_challenge,
-                            &y,
-                            &F::ZERO,
-                            idx,
-                            log_scale,
-                            log_n,
+                    // --- Trash constraints ---
+                    for (n, trash_poly) in trash_cosets.iter().enumerate() {
+                        let flat = &self.trashcans_flat[n];
+                        for (ri, rot) in flat.rotations.iter().enumerate() {
+                            rot_indices[ri] = get_rotation_idx(idx, *rot, log_scale, log_n);
+                        }
+                        let compressed_expression = flat.evaluate::<B>(
+                            &mut trash_bufs[n], fixed, advice, instance, challenges,
+                            &rot_indices, &F::ZERO,
                         );
 
-                        let q = match argument.selector() {
-                            Expression::Fixed(query) => fixed[query.column_index()][idx],
-                            _ => unreachable!(),
-                        };
-
-                        // compressed_expressions - (1 - q) * trash
+                        let q = fixed[trash_selector_cols[n]][idx];
                         *value = *value * y + (compressed_expression - (one - q) * trash_poly[idx]);
                     }
-                });
-            }
+                }
+            });
         }
         values
     }
