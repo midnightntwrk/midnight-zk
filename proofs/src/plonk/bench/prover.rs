@@ -559,7 +559,7 @@ where
     };
 
     // Compute linearization polynomial
-    let linearization_poly = {
+    let (lin_poly_non_constant_part, lin_poly_constant_term) = {
         group.bench_function("Compute linearization poly", |b| {
             b.iter(|| {
                 let _ = compute_linearization_poly(
@@ -576,9 +576,9 @@ where
     };
 
     debug_assert_eq!(
-        eval_polynomial(&linearization_poly, x),
-        F::ZERO,
-        "The linearization poly should evaluate to zero at the evaluation challenge x."
+        eval_polynomial(&lin_poly_non_constant_part, x),
+        -lin_poly_constant_term,
+        "L'(x) should equal -C, where C is the constant part of the linearization polynomial"
     );
 
     let queries = {
@@ -593,7 +593,7 @@ where
                     &lookups,
                     &trashcans,
                     x,
-                    &linearization_poly,
+                    &lin_poly_non_constant_part,
                 );
             })
         });
@@ -606,7 +606,7 @@ where
             &lookups,
             &trashcans,
             x,
-            &linearization_poly,
+            &lin_poly_non_constant_part,
         )
     };
 

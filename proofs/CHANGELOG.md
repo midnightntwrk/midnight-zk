@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 * Simplify `CommitmentReference` by removing unused `Chopped` variant [#314](https://github.com/midnightntwrk/midnight-zk/pull/314)
+* Split linearization polynomial into non-constant and constant parts, removing the generator point from the MSM [#313](https://github.com/midnightntwrk/midnight-zk/pull/313)
 * Remove unnecessary polynomial padding in KZG multi-open [#276](https://github.com/midnightntwrk/midnight-zk/pull/276)
 * Sort point sets deterministically in KZG multiopen for in-circuit verification [#256](https://github.com/midnightntwrk/midnight-zk/pull/256)
 * Move advice queries before instance queries in prover and verifier [#256](https://github.com/midnightntwrk/midnight-zk/pull/256)
