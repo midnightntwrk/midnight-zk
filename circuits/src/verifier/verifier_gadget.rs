@@ -411,8 +411,8 @@ impl<S: SelfEmulation> VerifierGadget<S> {
     ///        to the affine term `C` of the linearization polynomial),
     /// * `h_k` are commitments to the limbs of the quotient polynomial.
     ///
-    /// The linearization polynomial is split into its homogeneous and affine
-    /// parts: `L(X) = L'(X) + C`. Both parts are returned separately.
+    /// The linearization polynomial is split into its non-constant and constant
+    /// parts: `L(T) = L'(T) + C`. Both parts are returned separately.
     ///
     /// # Arguments
     ///
@@ -424,8 +424,8 @@ impl<S: SelfEmulation> VerifierGadget<S> {
     ///
     /// # Returns
     ///
-    /// A tuple `(L'(X), C)`, where `L'(X)` is an [AssignedMsm] and `C` is a
-    /// scalar. The verifier uses `-C` as the expected evaluation of `L'(X)` at
+    /// A tuple `(L'(T), C)`, where `L'(T)` is an [AssignedMsm] and `C` is a
+    /// scalar. The verifier uses `-C` as the expected evaluation of `L'(T)` at
     /// `x`.
     #[allow(clippy::too_many_arguments)]
     #[allow(clippy::type_complexity)]
@@ -473,7 +473,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         // Fully evaluated identities (None) are excluded from the MSM.
         // Their accumulated scalar C is returned so the caller can use -C as
         // the expected evaluation of L'(X) at x.
-        let mut lin_poly_affine_term = zero;
+        let mut lin_poly_constant_term = zero;
         for (col_idx, eval) in grouped_points {
             match col_idx.map(|column_index| vk.fixed_commitment_name(column_index)) {
                 Some(com) => {
@@ -487,13 +487,13 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                     )?;
                 }
                 None => {
-                    lin_poly_affine_term =
-                        scalar_chip.add(layouter, &lin_poly_affine_term, &eval)?;
+                    lin_poly_constant_term =
+                        scalar_chip.add(layouter, &lin_poly_constant_term, &eval)?;
                 }
             }
         }
 
-        Ok((acc_msm, lin_poly_affine_term))
+        Ok((acc_msm, lin_poly_constant_term))
     }
 
     /// Given a [super::traces::VerifierTrace], this function computes the
@@ -734,7 +734,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         let splitting_factor =
             ArithInstructions::pow(&self.scalar_chip, layouter, &x, (1 << k) - 1)?;
         let xn = self.scalar_chip.mul(layouter, &x, &splitting_factor, None)?;
-        let (linearization_com, lin_poly_affine_term) = Self::compute_linearization_commitment(
+        let (linearization_com, lin_poly_constant_term) = Self::compute_linearization_commitment(
             layouter,
             &self.scalar_chip,
             assigned_vk,
@@ -745,7 +745,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             &limb_commitments,
         )?;
         // The expected opening of L'(X) at x is -C (the negated affine term).
-        let expected_lin_eval = self.scalar_chip.neg(layouter, &lin_poly_affine_term)?;
+        let expected_lin_eval = self.scalar_chip.neg(layouter, &lin_poly_constant_term)?;
 
         let one = AssignedBoundedScalar::<S::F>::one(layouter, &self.scalar_chip)?;
         let omega = assigned_vk.domain.get_omega();
