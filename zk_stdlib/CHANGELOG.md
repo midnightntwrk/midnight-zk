@@ -16,6 +16,7 @@ verification keys break backwards compatibility.
 * Use `Blake2b256` transcript hash in the `bitcoin_signature` example [#322](https://github.com/midnightntwrk/midnight-zk/pull/322)
 
 ### Added
+* Expose P-256 (secp256r1) chip via `ZkStdLib::p256_curve` and `ZkStdLib::p256_scalar` [#317](https://github.com/midnightntwrk/midnight-zk/pull/317)
 * Added an example verifying an ethereum signature [#177](https://github.com/midnightntwrk/midnight-zk/pull/177)
 * `setup_vk_with_k` for generating a verifying key with an explicit circuit size parameter [#227](https://github.com/midnightntwrk/midnight-zk/pull/227)
 * Expose `verifier_gadget` and `bls12_381_scalar` (native gadget) from `ZkStdLib` [#227](https://github.com/midnightntwrk/midnight-zk/pull/227)

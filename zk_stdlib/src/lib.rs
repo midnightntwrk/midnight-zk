@@ -80,6 +80,7 @@ use midnight_circuits::{
 };
 use midnight_curves::{
     k256::{self as k256_mod, K256},
+    p256::{self as p256_mod, P256},
     Fq, G1Affine, G1Projective,
 };
 use midnight_proofs::{
@@ -114,6 +115,9 @@ type NG = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
 type Secp256k1BaseChip = FieldChip<F, k256_mod::Fp, MEP, NG>;
 type Secp256k1ScalarChip = FieldChip<F, k256_mod::Fq, MEP, NG>;
 type Secp256k1Chip = ForeignWeierstrassEccChip<F, K256, MEP, Secp256k1ScalarChip, NG>;
+type P256BaseChip = FieldChip<F, p256_mod::Fp, MEP, NG>;
+type P256ScalarChip = FieldChip<F, p256_mod::Fq, MEP, NG>;
+type P256Chip = ForeignWeierstrassEccChip<F, P256, MEP, P256ScalarChip, NG>;
 type Bls12381BaseChip = FieldChip<F, midnight_curves::Fp, MEP, NG>;
 type Bls12381Chip = ForeignWeierstrassEccChip<
     F,
@@ -167,6 +171,9 @@ pub struct ZkStdLibArch {
     /// Enable the Secp256k1 chip?
     pub secp256k1: bool,
 
+    /// Enable the P256 chip?
+    pub p256: bool,
+
     /// Enable BLS12-381 chip?
     pub bls12_381: bool,
 
@@ -191,6 +198,7 @@ impl Default for ZkStdLibArch {
             keccak_256: false,
             blake2b: false,
             secp256k1: false,
+            p256: false,
             bls12_381: false,
             base64: false,
             automaton: false,
@@ -244,6 +252,8 @@ pub struct ZkStdLibConfig {
     poseidon_config: Option<PoseidonConfig<midnight_curves::Fq>>,
     secp256k1_scalar_config: Option<FieldChipConfig>,
     secp256k1_config: Option<ForeignWeierstrassEccConfig<K256>>,
+    p256_scalar_config: Option<FieldChipConfig>,
+    p256_config: Option<ForeignWeierstrassEccConfig<P256>>,
     bls12_381_config: Option<ForeignWeierstrassEccConfig<midnight_curves::G1Projective>>,
     base64_config: Option<Base64Config>,
     scanner_config: Option<ScannerConfig>,
@@ -269,6 +279,8 @@ pub struct ZkStdLib {
     biguint_gadget: BigUintGadget<F, NG>,
     secp256k1_scalar_chip: Option<Secp256k1ScalarChip>,
     secp256k1_curve_chip: Option<Secp256k1Chip>,
+    p256_scalar_chip: Option<P256ScalarChip>,
+    p256_curve_chip: Option<P256Chip>,
     bls12_381_curve_chip: Option<Bls12381Chip>,
     base64_chip: Option<Base64Chip<F>>,
     parser_gadget: ParserGadget<F, NG>,
@@ -287,6 +299,8 @@ pub struct ZkStdLib {
     used_sha2_512: Rc<RefCell<bool>>,
     used_secp256k1_scalar: Rc<RefCell<bool>>,
     used_secp256k1_curve: Rc<RefCell<bool>>,
+    used_p256_scalar: Rc<RefCell<bool>>,
+    used_p256_curve: Rc<RefCell<bool>>,
     used_bls12_381_curve: Rc<RefCell<bool>>,
     used_base64: Rc<RefCell<bool>>,
     used_scanner: Rc<RefCell<bool>>,
@@ -323,6 +337,13 @@ impl ZkStdLib {
             .map(|(curve_config, scalar_chip)| {
                 ForeignWeierstrassEccChip::new(curve_config, &native_gadget, scalar_chip)
             });
+        let p256_scalar_chip = (config.p256_scalar_config.as_ref())
+            .map(|scalar_config| FieldChip::new(scalar_config, &native_gadget));
+        let p256_curve_chip = (config.p256_config.as_ref()).zip(p256_scalar_chip.as_ref()).map(
+            |(curve_config, scalar_chip)| {
+                ForeignWeierstrassEccChip::new(curve_config, &native_gadget, scalar_chip)
+            },
+        );
         let bls12_381_curve_chip = (config.bls12_381_config.as_ref()).map(|curve_config| {
             ForeignWeierstrassEccChip::new(curve_config, &native_gadget, &native_gadget)
         });
@@ -362,6 +383,8 @@ impl ZkStdLib {
             biguint_gadget,
             secp256k1_scalar_chip,
             secp256k1_curve_chip,
+            p256_scalar_chip,
+            p256_curve_chip,
             bls12_381_curve_chip,
             base64_chip,
             parser_gadget,
@@ -374,6 +397,8 @@ impl ZkStdLib {
             used_sha2_512: Rc::new(RefCell::new(false)),
             used_secp256k1_scalar: Rc::new(RefCell::new(false)),
             used_secp256k1_curve: Rc::new(RefCell::new(false)),
+            used_p256_scalar: Rc::new(RefCell::new(false)),
+            used_p256_curve: Rc::new(RefCell::new(false)),
             used_bls12_381_curve: Rc::new(RefCell::new(false)),
             used_base64: Rc::new(RefCell::new(false)),
             used_scanner: Rc::new(RefCell::new(false)),
@@ -398,6 +423,11 @@ impl ZkStdLib {
                 * max(
                     nb_field_chip_columns::<F, k256_mod::Fq, MEP>(),
                     nb_foreign_ecc_chip_columns::<F, K256, MEP, k256_mod::Fq>(),
+                ),
+            arch.p256 as usize
+                * max(
+                    nb_field_chip_columns::<F, p256_mod::Fq, MEP>(),
+                    nb_foreign_ecc_chip_columns::<F, P256, MEP, p256_mod::Fq>(),
                 ),
             arch.bls12_381 as usize
                 * max(
@@ -512,6 +542,26 @@ impl ZkStdLib {
             )
         });
 
+        let p256_scalar_config = arch.p256.then(|| {
+            P256ScalarChip::configure(meta, &advice_columns, nb_parallel_range_checks, max_bit_len)
+        });
+
+        let p256_config = arch.p256.then(|| {
+            let base_config = P256BaseChip::configure(
+                meta,
+                &advice_columns,
+                nb_parallel_range_checks,
+                max_bit_len,
+            );
+            P256Chip::configure(
+                meta,
+                &base_config,
+                &advice_columns,
+                nb_parallel_range_checks,
+                max_bit_len,
+            )
+        });
+
         let bls12_381_config = arch.bls12_381.then(|| {
             let base_config = Bls12381BaseChip::configure(
                 meta,
@@ -576,6 +626,8 @@ impl ZkStdLib {
             poseidon_config,
             secp256k1_scalar_config,
             secp256k1_config,
+            p256_scalar_config,
+            p256_config,
             bls12_381_config,
             base64_config,
             scanner_config,
@@ -618,6 +670,22 @@ impl ZkStdLib {
         self.secp256k1_curve_chip
             .as_ref()
             .unwrap_or_else(|| panic!("ZkStdLibArch must enable secp256k1"))
+    }
+
+    /// Chip for performing in-circuit operations over the P256 scalar field.
+    pub fn p256_scalar(&self) -> &P256ScalarChip {
+        *self.used_p256_scalar.borrow_mut() = true;
+        self.p256_scalar_chip
+            .as_ref()
+            .unwrap_or_else(|| panic!("ZkStdLibArch must enable p256"))
+    }
+
+    /// Chip for performing in-circuit operations over the P256 curve.
+    pub fn p256_curve(&self) -> &P256Chip {
+        *self.used_p256_curve.borrow_mut() = true;
+        self.p256_curve_chip
+            .as_ref()
+            .unwrap_or_else(|| panic!("ZkStdLibArch must enable p256"))
     }
 
     /// Chip for performing in-circuit operations over the BLS12-381 scalar
