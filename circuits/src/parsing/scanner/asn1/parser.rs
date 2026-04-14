@@ -451,6 +451,185 @@ where
         Ok(assigned)
     }
 }
+    /// Processes the blocks of an [`Asn1Spec`], updating `state`.
+    ///
+    /// `remaining` is the off-circuit byte count of the enclosing TLV's
+    /// value region, or `None` if this is a top-level call. It is required
+    /// for `Varlen` (trail) blocks to compute the trail length.
+    fn process_blocks<
+        Index: Eq + Hash + Debug + Clone,
+        const TAG_M: usize,
+        const LEN_M: usize,
+        const VAL_M: usize,
+        const VAL_A: usize,
+    >(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        input: &mut &[u8],
+        spec: Asn1Spec<Index>,
+        remaining: Option<usize>,
+        state: &mut ParserState<F, Index, TAG_M, LEN_M, VAL_M, VAL_A>,
+    ) -> Result<(), Error> {
+        let cursor_at_start = state.real_position;
+        let mut blocks = spec.1;
+        blocks.reverse();
+        while let Some(block) = blocks.pop() {
+            match block {
+                Asn1Block::Const(v, index) => {
+                    self.read_const(input, &v, state)?;
+                    let n = v.len();
+                    state.record(index, Asn1ParsedUnit::Const(v), true);
+                    state.position.advance_exact(n);
+                }
+                Asn1Block::Fixlen(n, index) => {
+                    let bytes = self.assign_witness_fixlen(layouter, input, n, state)?;
+                    state.record(index, Asn1ParsedUnit::Fixlen(bytes), false);
+                    state.position.advance_exact(n);
+                }
+                Asn1Block::Tlv(tlv, tlv_marker) => {
+                    self.process_tlv(layouter, input, tlv, tlv_marker, state)?;
+                }
+                Asn1Block::OptionalTlv {
+                    expected_tag,
+                    len,
+                    val,
+                } => {
+                    self.process_optional_tlv(layouter, input, &expected_tag, len, val, state)?;
+                }
+                Asn1Block::Varlen(index) => {
+                    let remaining = remaining.expect(
+                        "Varlen (trail) block at top level: trail blocks can only \
+                         appear inside a TLV value",
+                    );
+                    assert!(
+                        VAL_M != 0,
+                        "trailing blocks in TLVs require a non-zero max-length parameter VAL_M."
+                    );
+                    state.varlen = true;
+                    let bytes_consumed = state.real_position - cursor_at_start;
+                    let trail_len = remaining - bytes_consumed;
+
+                    if let Some(trail_idx) = index {
+                        // Indexed trail: assign bytes, create ScannerVec, substring check.
+                        let trail_raw = input[..trail_len].to_vec();
+                        self.assign_witness_varlen(layouter, input, trail_len, VAL_M, state)?;
+
+                        let sv: ScannerVec<F, VAL_M, VAL_A> =
+                            self.assign_scanner_vec(layouter, Value::known(trail_raw))?;
+                        state.substring_checks.push((
+                            state.position.clone(),
+                            Asn1ParsedUnit::VarlenVal(sv.clone()),
+                        ));
+                        state.position.advance_variable(sv.len().clone());
+                        state.extracted.insert(trail_idx, Asn1ParsedUnit::VarlenVal(sv));
+                    } else {
+                        // Non-indexed trail: assign bytes, advance position.
+                        self.assign_witness_varlen(layouter, input, trail_len, VAL_M, state)?;
+                        let trail_len_assigned = self.native_gadget.assign_lower_than_fixed(
+                            layouter,
+                            Value::known(F::from(trail_len as u64)),
+                            &VAL_M.into(),
+                        )?;
+                        state.position.advance_variable(trail_len_assigned);
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Parses an `Asn1RawData` block. For Const/Fixlen, delegates to
+    /// [`assign_const`](`Self::assign_const`)/
+    /// [`assign_witness`](`Self::assign_witness`). For Varlen, assigns both as
+    /// individual bytes and as a `ScannerVec`, using `role` to select
+    /// the correct `Asn1ParsedUnit` variant.
+    ///
+    /// When `role` is `Tag` or `Len`, runs automaton validation and (for `Len`)
+    /// verifies the consistency of the DER length encoding. Returns the
+    /// circuit-decoded length value for `Len`, `None` otherwise.
+    fn process_raw<
+        Index: Eq + Hash + Debug + Clone,
+        const TAG_M: usize,
+        const LEN_M: usize,
+        const VAL_M: usize,
+        const VAL_A: usize,
+    >(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        input: &mut &[u8],
+        n: usize,
+        data: Asn1RawData<Index>,
+        role: RawDataRole,
+        state: &mut ParserState<F, Index, TAG_M, LEN_M, VAL_M, VAL_A>,
+    ) -> Result<Option<AssignedNative<F>>, Error> {
+        match data.0 {
+            Asn1RawDataInternal::Const(v, index) => {
+                assert_eq!(n, v.len(), "ill-formed raw data in witness");
+                self.read_const(input, &v, state)?;
+                let decoded_len = match role {
+                    RawDataRole::Len => {
+                        let (_, len_value) =
+                            decode_length(&v).expect("ill-formed const Length in witness");
+                        Some(self.native_gadget.assign_fixed(layouter, F::from(len_value as u64))?)
+                    }
+                    RawDataRole::Tag => {
+                        decode_tag(&v).expect("ill-formed const Tag in witness");
+                        None
+                    }
+                };
+                state.record(index, Asn1ParsedUnit::Const(v), true);
+                state.position.advance_exact(n);
+                Ok(decoded_len)
+            }
+            Asn1RawDataInternal::Fixlen(m, index) => {
+                assert_eq!(n, m, "ill-formed raw data in witness");
+                let bytes = self.assign_witness_fixlen(layouter, input, n, state)?;
+                let decoded_len = self.automaton_validate_fixlen(layouter, &bytes, &role)?;
+                state.record(index, Asn1ParsedUnit::Fixlen(bytes), false);
+                state.position.advance_exact(n);
+                Ok(decoded_len)
+            }
+            Asn1RawDataInternal::Varlen(index) => {
+                state.varlen = true;
+                // Constraining the assigned witness depending on the role. Computes the
+                // effective (assigned) length of the block, the length encoded in the block in
+                // the `RawDataRole::Len` case, and the `Asn1ParsedUnit` corresponding to the
+                // block.
+                let raw_bytes = input[..n].to_vec();
+                let (assigned_len, decoded_len, parsed_unit) = match role {
+                    RawDataRole::Tag => {
+                        assert!(
+                            TAG_M != 0,
+                            "Variable-length tags require a non-zero max-length parameter TAG_M."
+                        );
+                        self.assign_witness_varlen(layouter, input, n, TAG_M, state)?;
+                        // Tag role: automaton parsing.
+                        let sv: ScannerVec<F, TAG_M, 1> =
+                            self.assign_scanner_vec(layouter, Value::known(raw_bytes))?;
+                        self.automaton_validate_varlen_tag(layouter, &sv)?;
+                        let parsed_unit = Asn1ParsedUnit::VarlenTag(sv.clone());
+                        (sv.len().clone(), None, parsed_unit)
+                    }
+                    RawDataRole::Len => {
+                        assert!(
+                            LEN_M != 0,
+                            "Variable-length lengths require a non-zero max-length parameter LEN_M."
+                        );
+                        self.assign_witness_varlen(layouter, input, n, LEN_M, state)?;
+                        // Len role: automaton parsing + length decoding.
+                        let sv: ScannerVec<F, LEN_M, 1> =
+                            self.assign_scanner_vec(layouter, Value::known(raw_bytes))?;
+                        let decoded = self.automaton_validate_varlen_len(layouter, &sv)?;
+                        let parsed_unit = Asn1ParsedUnit::VarlenLen(sv.clone());
+                        (sv.len().clone(), Some(decoded), parsed_unit)
+                    }
+                };
+                state.record(index, parsed_unit, false);
+                state.position.advance_variable(assigned_len);
+                Ok(decoded_len)
+            }
+        }
+    }
 
     /// Validates and interprets a fixed-size raw data block based on its
     /// `role`. For `Tag`, validates the encoding and discards the result.
@@ -532,6 +711,79 @@ where
         Ok(())
     }
 
+    /// Processes a complete TLV: parses tag, length, and value, then
+    /// validates the tag/length encodings via automata and asserts that
+    /// the decoded length equals the value byte count.
+    ///
+    /// `tlv_marker`: if set, extracts the full T+L+V bytes under this
+    /// index. The value spec's `full_marker` (if any) additionally
+    /// extracts V-only bytes.
+    fn process_tlv<
+        Index: Eq + Hash + Debug + Clone,
+        const TAG_M: usize,
+        const LEN_M: usize,
+        const VAL_M: usize,
+        const VAL_A: usize,
+    >(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        input: &mut &[u8],
+        tlv: Asn1Tlv<Index>,
+        tlv_marker: Option<Index>,
+        state: &mut ParserState<F, Index, TAG_M, LEN_M, VAL_M, VAL_A>,
+    ) -> Result<(), Error> {
+        // Peek at tag and length off-circuit before consuming.
+        let (n_tag, _) = decode_tag(input).expect("failed to decode tag from witness");
+        let (n_len, len_value) =
+            decode_length(&input[n_tag..]).expect("failed to decode length from witness");
+        // Whether the value (resp. the full TLV) has witness-dependent size.
+        // val_is_varlen is true when the value spec has unknown size (implies
+        // the length field is varlen too, enforced by check_tlv_spec_consistency).
+        // tlv_is_varlen additionally accounts for varlen tags.
+        let val_is_varlen = tlv.val.size().is_none();
+        let tlv_is_varlen = tlv.tag.len().is_none() || val_is_varlen;
+
+        // Snapshot raw bytes for extractions (before consuming).
+        let tlv_total = n_tag + n_len + len_value;
+        let full_marker = tlv.val.2.clone();
+        let tlv_raw = tlv_marker.as_ref().map(|_| input[..tlv_total].to_vec());
+        let val_raw = full_marker.as_ref().map(|_| input[n_tag + n_len..tlv_total].to_vec());
+
+        // Position snapshot for tlv_marker substring check.
+        let pos_before_tlv = state.position.clone();
+
+        // Process T, L. Automaton validation happens inside process_raw.
+        self.process_raw(layouter, input, n_tag, tlv.tag, RawDataRole::Tag, state)?;
+        let decoded_len = self
+            .process_raw(layouter, input, n_len, tlv.len, RawDataRole::Len, state)?
+            .expect("process_raw with RawDataRole::Len must return a decoded length");
+        let expected_len = ParsingPosition::from(decoded_len);
+
+        let pos_before_val = state.position.clone();
+
+        // Process V blocks.
+        self.process_blocks(layouter, input, tlv.val, Some(len_value), state)?;
+
+        let effective_len = state.position.diff(&pos_before_val);
+
+        // Assert decoded length equals effective value length.
+        self.assert_equal_positions(layouter, &effective_len, &expected_len)?;
+
+        // Handle full_marker (V-only extraction).
+        if let Some(idx) = full_marker {
+            let raw = val_raw.unwrap();
+            self.extract_and_record(layouter, &raw, val_is_varlen, idx, &pos_before_val, state)?;
+        }
+
+        // Handle tlv_marker (full T+L+V extraction).
+        if let Some(idx) = tlv_marker {
+            let raw = tlv_raw.unwrap();
+            self.extract_and_record(layouter, &raw, tlv_is_varlen, idx, &pos_before_tlv, state)?;
+        }
+
+        Ok(())
+    }
+
     /// Computes the off-circuit tag identity value that the `Asn1DerTag`
     /// automaton would produce for `tag_bytes`:
     /// - Short form: the full first byte (class + constructed + number).
@@ -542,6 +794,113 @@ where
             tag_bytes[0] as u64
         } else {
             tag.number as u64
+        }
+    }
+
+    /// Processes an optional TLV. If the witness starts with `expected_tag`,
+    /// the full T+L+V is consumed; otherwise nothing is consumed and all
+    /// three ScannerVecs are empty (len=0). Conditional constraints ensure
+    /// tag identity and length consistency when present, and are trivially
+    /// satisfied when absent.
+    fn process_optional_tlv<
+        Index: Eq + Hash + Debug + Clone,
+        const TAG_M: usize,
+        const LEN_M: usize,
+        const VAL_M: usize,
+        const VAL_A: usize,
+    >(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        input: &mut &[u8],
+        expected_tag: &[u8],
+        len: Asn1RawData<Index>,
+        val: Asn1Spec<Index>,
+        state: &mut ParserState<F, Index, TAG_M, LEN_M, VAL_M, VAL_A>,
+    ) -> Result<(), Error> {
+        assert!(
+            TAG_M != 0 && LEN_M != 0 && VAL_M != 0,
+            "optional TLVs require non-zero max-length parameters TAG_M, LEN_M, and VAL_M."
+        );
+        state.varlen = true;
+
+        // Off-circuit: peeks at the input starts and computes the indexes at which each
+        // of the tag, len, and val end (all zeroes if the field is not present).
+        let (tag_end, len_end, val_end) = if input.starts_with(expected_tag) {
+            let (n_len, len_value) = decode_length(&input[expected_tag.len()..])
+                .expect("process_optional_tlv: failed to decode length");
+            let tag_end = expected_tag.len();
+            let len_end = tag_end + n_len;
+            let val_end = len_end + len_value;
+            (tag_end, len_end, val_end)
+        } else {
+            (0, 0, 0)
+        };
+        let max_end = expected_tag.len() + LEN_M + VAL_M;
+
+        // Snapshot raw bytes before consumption.
+        let tag_raw = input[..tag_end].to_vec();
+        let len_raw = input[tag_end..len_end].to_vec();
+        let val_raw = input[len_end..val_end].to_vec();
+
+        // Assign raw bytes to assigned_input.
+        self.assign_witness_varlen(layouter, input, val_end, max_end, state)?;
+
+        // Assign 3 ScannerVecs (empty vecs produce valid ScannerVecs with len=0).
+        let tag_sv: ScannerVec<F, TAG_M, 1> =
+            self.assign_scanner_vec(layouter, Value::known(tag_raw))?;
+        let len_sv: ScannerVec<F, LEN_M, 1> =
+            self.assign_scanner_vec(layouter, Value::known(len_raw))?;
+        let val_sv: ScannerVec<F, VAL_M, VAL_A> =
+            self.assign_scanner_vec(layouter, Value::known(val_raw))?;
+
+        // Deferred substring checks + position advance.
+        state.substring_checks.push((
+            state.position.clone(),
+            Asn1ParsedUnit::VarlenTag(tag_sv.clone()),
+        ));
+        state.position.advance_variable(tag_sv.len().clone());
+
+        state.substring_checks.push((
+            state.position.clone(),
+            Asn1ParsedUnit::VarlenLen(len_sv.clone()),
+        ));
+        state.position.advance_variable(len_sv.len().clone());
+
+        state.substring_checks.push((
+            state.position.clone(),
+            Asn1ParsedUnit::VarlenVal(val_sv.clone()),
+        ));
+        state.position.advance_variable(val_sv.len().clone());
+
+        // Automaton validation (accepts empty via epsilon).
+        let decoded_tag = self.parse_asn1_tag_varlen(layouter, &tag_sv)?;
+        let decoded_len = self.parse_asn1_len_varlen(layouter, &len_sv)?;
+
+        // Conditional constraints.
+        let ng = &self.native_gadget;
+        let is_present = ng.is_not_equal_to_fixed(layouter, tag_sv.len(), F::ZERO)?;
+
+        // Tag match: is_present => decoded_tag == expected_tag_identity.
+        let expected_tag_id = Self::compute_tag_identity(expected_tag);
+        let expected_assigned = ng.assign_fixed(layouter, F::from(expected_tag_id))?;
+        let selected_tag = ng.select(layouter, &is_present, &decoded_tag, &expected_assigned)?;
+        ng.assert_equal(layouter, &selected_tag, &expected_assigned)?;
+
+        // Length consistency: is_present => decoded_len == val_sv.len().
+        let selected_len = ng.select(layouter, &is_present, &decoded_len, val_sv.len())?;
+        ng.assert_equal(layouter, &selected_len, val_sv.len())?;
+
+        // Extract markers from len and val.
+        if let Some(idx) = len.into_marker() {
+            state.extracted.insert(idx, Asn1ParsedUnit::VarlenLen(len_sv));
+        }
+        if let Some(idx) = val.into_single_block_marker() {
+            state.extracted.insert(idx, Asn1ParsedUnit::VarlenVal(val_sv));
+        }
+
+        Ok(())
+    }
+
     /// Performs deferred substring checks for a fixed-length input.
     fn do_fixlen_substring_checks<
         const TAG_M: usize,
