@@ -1010,4 +1010,133 @@ mod test {
             true,
         );
     }
+
+    // ---- parse_varlen tests ----
+
+    #[derive(Clone, Debug)]
+    struct VarlenParseCircuit<F: CircuitField> {
+        input: Value<Vec<u8>>,
+        /// Full M-element expected output buffer (0 for fillers, markers for
+        /// payload).
+        expected_buffer: [Value<F>; 32],
+        regex: Regex,
+    }
+
+    impl<F: CircuitField> VarlenParseCircuit<F> {
+        fn new(input: &[u8], payload_output: &[usize], regex: Regex) -> Self {
+            use crate::vec::get_lims;
+
+            // Compute where the payload lands in the M=32, A=1 buffer.
+            let range = get_lims::<32, 1>(input.len());
+            assert_eq!(
+                payload_output.len(),
+                range.len(),
+                "payload_output length must match input length"
+            );
+            let mut buffer = [Value::known(F::ZERO); 32];
+            for (pos, &marker) in range.zip(payload_output.iter()) {
+                buffer[pos] = Value::known(F::from(marker as u64));
+            }
+
+            Self {
+                input: Value::known(input.to_vec()),
+                expected_buffer: buffer,
+                regex,
+            }
+        }
+    }
+
+    impl<F> Circuit<F> for VarlenParseCircuit<F>
+    where
+        F: CircuitField + Ord,
+    {
+        type Config = <ScannerChip<F> as FromScratch<F>>::Config;
+        type FloorPlanner = SimpleFloorPlanner;
+        type Params = ();
+
+        fn without_witnesses(&self) -> Self {
+            unreachable!()
+        }
+
+        fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+            let instance_columns = [meta.instance_column(), meta.instance_column()];
+            ScannerChip::configure_from_scratch(meta, &mut vec![], &mut vec![], &instance_columns)
+        }
+
+        fn synthesize(
+            &self,
+            config: Self::Config,
+            mut layouter: impl Layouter<F>,
+        ) -> Result<(), Error> {
+            let scanner = ScannerChip::<F>::new_from_scratch(&config);
+            let ng = &scanner.native_gadget;
+
+            let input = scanner.assign_scanner_vec::<32, 1>(&mut layouter, self.input.clone())?;
+            let expected: Vec<AssignedNative<F>> =
+                ng.assign_many(&mut layouter, &self.expected_buffer)?;
+
+            let parsed = scanner.parse_varlen(
+                &mut layouter,
+                AutomatonParser::Dynamic(self.regex.clone()),
+                &input,
+            )?;
+
+            // Pointwise equality on the full buffer.
+            for (out_cell, exp_cell) in parsed.buffer.iter().zip(expected.iter()) {
+                ng.assert_equal(&mut layouter, out_cell, exp_cell)?;
+            }
+
+            scanner.load_from_scratch(&mut layouter)
+        }
+    }
+
+    fn varlen_parse_test(input: &[u8], output: &[usize], regex: Regex, must_pass: bool) {
+        type F = midnight_curves::Fq;
+        let circuit = VarlenParseCircuit::<F>::new(input, output, regex);
+        println!(
+            ">> [varlen_parse] [must{} pass] input len={}",
+            if must_pass { "" } else { " not" },
+            input.len(),
+        );
+        let result = MockProver::run(&circuit, vec![vec![], vec![]]);
+        match result {
+            Ok(p) => {
+                let verified = p.verify();
+                if must_pass {
+                    verified.expect("should have passed")
+                } else {
+                    assert!(verified.is_err(), "should have failed");
+                }
+            }
+            Err(e) => assert!(!must_pass, "Prover failed unexpectedly: {:?}", e),
+        }
+        println!("... ok!");
+    }
+
+    #[test]
+    fn parse_varlen_test() {
+        let regex1 = Regex::hard_coded_example1();
+
+        // Same test data as the fixed-length parsing_test, but via varlen.
+        varlen_parse_test(
+            b"holy hell !!!",
+            &[0, 1, 2, 1, 0, 0, 1, 2, 2, 0, 1, 1, 1],
+            regex1.clone(),
+            true,
+        );
+
+        // Wrong output markers.
+        varlen_parse_test(b"holy hell !!!", &[0; 13], regex1.clone(), false);
+
+        // Invalid input (missing space).
+        varlen_parse_test(b"holy hell!!!", &[0; 12], regex1.clone(), false);
+
+        // Short input (single-chunk payload to exercise the padding_flag fix).
+        varlen_parse_test(
+            b"holyyyy hell !!!",
+            &[0, 1, 2, 1, 1, 1, 1, 0, 0, 1, 2, 2, 0, 1, 1, 1],
+            regex1,
+            true,
+        );
+    }
 }
