@@ -24,6 +24,7 @@
 //!   dynamic lookup argument. Calls are deferred and batched at the end of
 //!   circuit synthesis for efficiency. See the `substring` module for details.
 
+pub mod asn1;
 pub(crate) mod automaton;
 mod automaton_chip;
 /// A module to specify languages as regular expressions and convert them into
