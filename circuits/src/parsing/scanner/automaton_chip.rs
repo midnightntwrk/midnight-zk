@@ -308,6 +308,11 @@ where
     ///
     ///  - The dummy transition `(0,0,0,0)` is added since the empty lookup rows
     ///    will be filled by it.
+    ///  - Self-loop transitions `(s, 256, s, 0)` for initial and final states
+    ///    are part of every [`NativeAutomaton`] (added during conversion from
+    ///    [`Automaton`]). These allow
+    ///    [`parse_varlen`](`ScannerChip::parse_varlen`) to skip
+    ///    [`ScannerVec`](super::varlen::ScannerVec) filler elements.
     ///  - Dummy transitions `(s, 256, 0, 0)` are added for all final states `s`
     ///    to emulate final-state checking.
     pub(crate) fn load_automata_table(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
@@ -349,7 +354,11 @@ where
                 // Dummy transition for empty rows.
                 add_entry(F::ZERO, F::ZERO, F::ZERO, F::ZERO)?;
 
+                let filler = F::from(ALPHABET_MAX_SIZE as u64);
                 // Transitions and final-state checks for every used automaton.
+                // Self-loop transitions on the filler letter for initial/final
+                // states are already part of the NativeAutomaton (added during
+                // conversion from Automaton).
                 for automaton in cache.values() {
                     for (source, inner) in automaton.transitions.iter() {
                         for (letter, (target, output_extr)) in inner.iter() {
@@ -363,7 +372,9 @@ where
                         }
                     }
                     for state in automaton.final_states.iter() {
-                        add_entry(*state, F::from(ALPHABET_MAX_SIZE as u64), F::ZERO, F::ZERO)?
+                        // Dummy transition to the stuck state 0 to represent
+                        // final-state checks.
+                        add_entry(*state, filler, F::ZERO, F::ZERO)?
                     }
                 }
                 Ok(())
@@ -376,7 +387,7 @@ impl<F> ScannerChip<F>
 where
     F: CircuitField + Ord,
 {
-    /// Resolves an `AutomatonParser` to a `NativeAutomaton<F>`, caching the
+    /// Resolves an [`AutomatonParser`] to a [`NativeAutomaton`], caching the
     /// result. On first use the raw automaton (from the static library or from
     /// a regex) is offset so that its states don't collide with any previously
     /// resolved automaton.
@@ -417,6 +428,31 @@ where
         self.parse_automaton(layouter, &automaton, &native_input)
     }
 
+    /// Parses the variable-length `input` in-circuit w.r.t. a regular
+    /// expression / transducer and returns the sequence of markers it produces.
+    ///
+    /// The returned vector has the same length as `input`'s buffer (`M`
+    /// elements). It inherits the same
+    /// [`get_limits`](`ScannerVec::get_limits`), and
+    /// [`padding_flags`](`ScannerVec::padding_flags`) as `input`. Filler
+    /// positions in the output are constrained to 0 (the self-loop transitions
+    /// on initial/final states output marker 0).
+    pub fn parse_varlen<const M: usize, const A: usize>(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        parser: AutomatonParser,
+        input: &ScannerVec<F, M, A>,
+    ) -> Result<AssignedVector<F, AssignedNative<F>, M, A>, Error> {
+        let automaton = self.resolve_automaton(&parser);
+
+        // Parse the buffer directly. Filler positions read `ALPHABET_MAX_SIZE`
+        // and hit the self-loop transitions (added during NativeAutomaton
+        // construction), outputting marker 0.
+        let buffer = self.parse_automaton(layouter, &automaton, &*input.buffer)?;
+        Ok(AssignedVector {
+            buffer: Box::new(buffer.try_into().unwrap()),
+            len: input.len().clone(),
+        })
     }
 }
 

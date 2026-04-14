@@ -65,8 +65,12 @@ use {
 };
 
 use crate::{
-    field::{decomposition::chip::P2RDecompositionChip, AssignedNative, NativeChip, NativeGadget},
+    field::{
+        decomposition::chip::P2RDecompositionChip, native::AssignedBit, AssignedNative, NativeChip,
+        NativeGadget,
+    },
     utils::ComposableChip,
+    vec::vector_gadget::VectorGadget,
     CircuitField,
 };
 
@@ -143,12 +147,28 @@ where
                 .collect();
             transitions.insert(F::from(source as u64), native_inner);
         }
+
+        let initial_state = F::from(value.initial_state as u64);
+        let final_states: BTreeSet<F> =
+            (value.final_states.iter()).map(|s| F::from(*s as u64)).collect();
+
+        // Self-loop transitions on the filler letter (ALPHABET_MAX_SIZE) for
+        // the initial and final states. These allow `parse_varlen` to skip
+        // filler elements in [`ScannerVec`] buffers, and are also loaded into
+        // the fixed lookup table unconditionally.
+        let filler = F::from(ALPHABET_MAX_SIZE as u64);
+        transitions
+            .entry(initial_state)
+            .or_default()
+            .insert(filler, (initial_state, F::ZERO));
+        for &state in &final_states {
+            transitions.entry(state).or_default().insert(filler, (state, F::ZERO));
+        }
+
         NativeAutomaton {
             nb_states: value.nb_states,
-            initial_state: F::from(value.initial_state as u64),
-            final_states: (value.final_states.iter())
-                .map(|s| F::from(*s as u64))
-                .collect::<BTreeSet<_>>(),
+            initial_state,
+            final_states,
             transitions,
         }
     }
