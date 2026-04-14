@@ -40,8 +40,8 @@ use crate::{
 /// to guarantee that the buffer decomposes into exactly `M / A` full chunks
 /// and that a full-capacity vector (`len == M`) can always be placed without
 /// overflow. This is enforced by the entry points
-/// [`assign_with_filler`](`VectorInstructions::assign_with_filler`) and
-/// [`assign`](`AssignmentInstructions::assign`).
+/// [`assign_with_filler`](crate::instructions::VectorInstructions::assign_with_filler) and
+/// [`assign`](crate::instructions::AssignmentInstructions::assign).
 #[derive(Clone, Debug)]
 pub struct AssignedVector<F: CircuitField, T: Vectorizable, const M: usize, const A: usize> {
     /// Padded payload of the vector. Boxed to keep large buffers

@@ -16,6 +16,7 @@ verification keys break backwards compatibility.
 * Adapt `FromScratch` impls to new `configure_from_scratch` signature with shared column pools [#306](https://github.com/midnightntwrk/midnight-zk/pull/306)
 * Use `Blake2b256` transcript hash in the `bitcoin_signature` example [#322](https://github.com/midnightntwrk/midnight-zk/pull/322)
 * Removed outdated identity examples and restructured identity example crate [#330](https://github.com/midnightntwrk/midnight-zk/pull/330)
+* Exposing varlen hashes, and minor additional function exposure [#331](https://github.com/midnightntwrk/midnight-zk/pull/331)
 
 ### Added
 * Expose P-256 (secp256r1) chip via `ZkStdLib::p256_curve` and `ZkStdLib::p256_scalar` [#317](https://github.com/midnightntwrk/midnight-zk/pull/317)

@@ -136,8 +136,8 @@ pub struct Sha256Chip<F: CircuitField> {
 }
 
 impl<F: CircuitField> Sha256Chip<F> {
-    /// Returns a [`VarLenSha256Gadget`] wrapping this chip for variable-length
-    /// hashing.
+    /// Returns a [`VarLenSha256Gadget`](super::VarLenSha256Gadget) wrapping
+    /// this chip for variable-length hashing.
     pub fn varlen_gadget(&self) -> super::VarLenSha256Gadget<F> {
         super::VarLenSha256Gadget {
             sha256chip: self.clone(),

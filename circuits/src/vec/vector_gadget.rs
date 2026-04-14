@@ -25,9 +25,9 @@ use crate::{
     instructions::{
         division::DivisionInstructions,
         vector::{VectorBounds, VectorInstructions},
-        ArithInstructions,
-        AssertionInstructions, AssignmentInstructions, BinaryInstructions, ComparisonInstructions,
-        ControlFlowInstructions, EqualityInstructions, RangeCheckInstructions,
+        ArithInstructions, AssertionInstructions, AssignmentInstructions, BinaryInstructions,
+        ComparisonInstructions, ControlFlowInstructions, EqualityInstructions,
+        RangeCheckInstructions,
     },
     types::{AssignedBit, AssignedVector, InnerValue, Vectorizable},
     vec::get_lims,
