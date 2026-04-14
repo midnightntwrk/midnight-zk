@@ -1,6 +1,7 @@
 //! Example of proving knowledge of a Cardano (Ed25519) signature for a
-//! given public message and public key. The test vectors were generated using
-//! the `ed25519-dalek` library
+//! given public message and public key.
+//!
+//! The test vectors were generated using the `ed25519-dalek` library
 //! https://github.com/dalek-cryptography/curve25519-dalek/tree/main/ed25519-dalek.
 //!
 //! Notation according to https://eprint.iacr.org/2020/1244.pdf.
@@ -17,27 +18,28 @@
 //!   * σ = (R,s) is the signature, with:
 //!     - R the nonce commitment (in C),
 //!     - s the signature scalar (in F_L).
-//!   * h = SHA-512(R_bytes || A_bytes || M_bytes) mod L is the challenge (in
-//!     F_L), with:
+//!   * h = SHA-512(R_bytes || A_bytes || M) mod L is the challenge (in F_L),
+//!     with:
 //!     - R_bytes are the LE bytes of the compressed R,
 //!     - A_bytes are the LE bytes of the compressed A,
-//!     - M_bytes are the LE bytes for message M.
+//!     - M are the message bytes.
 //!   * L is the scalar field modulus.
+//!   * s_bytes are the LE bytes of s.
 //!
 //! The relation to prove is (x, w), where:
-//!   * x is the instance (A, M),
-//!   * w is the witness (R, s).
+//!   * x is the instance (A_bytes, M),
+//!   * w is the witness (R_bytes, s_bytes),
 //!
 //! [libsodium](https://github.com/jedisct1/libsodium) uses the following verification criteria in
 //! `crypto_sign/ed25519/ref10/open.c`:
 //!   * cofactorless verification equation R = s * B - h * A,
-//!   * canonicity checks on s, A,
-//!   * small-order checks on R, A.
+//!   * canonicity checks for bytes of s, A,
+//!   * subgroup-checks for R, A.
 //!
 //! This example uses the following verification criteria:
 //!   * cofactorless verification R = s * B - h * A,
-//!   * canonicity checks on s, A, R,
-//!   * small-order checks on R, A.
+//!   * in-circuit canonicity checks for bytes of s, R, A,
+//!   * in-circuit subgroup-check for R, A.
 
 use ff::Field;
 use group::Group;
@@ -46,12 +48,12 @@ use midnight_circuits::{
     field::foreign::params::MultiEmulationParams,
     instructions::{
         ArithInstructions, AssertionInstructions, AssignmentInstructions, CanonicityInstructions,
-        ConversionInstructions, DecompositionInstructions, EccInstructions,
+        ConversionInstructions, DecompositionInstructions, EccInstructions, FieldInstructions,
         PublicInputInstructions,
     },
-    types::{AssignedByte, AssignedNative, Instantiable},
+    types::{AssignedBit, AssignedByte, AssignedNative, Instantiable},
 };
-use midnight_curves::curve25519::{CompressedEdwardsY, Curve25519, Curve25519Subgroup, Scalar};
+use midnight_curves::curve25519::{Curve25519, Curve25519Subgroup};
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
@@ -63,8 +65,8 @@ type F = midnight_curves::Fq;
 
 const MSG_LEN: usize = 86;
 type Message = [u8; MSG_LEN];
-type PublicKey = Curve25519Subgroup;
-type Signature = (Curve25519Subgroup, Scalar);
+type PublicKey = [u8; 32]; // A_bytes
+type Signature = ([u8; 32], [u8; 32]); // (R_bytes, s_bytes)
 
 #[derive(Clone, Default)]
 pub struct CardanoSigExample;
@@ -74,11 +76,9 @@ impl Relation for CardanoSigExample {
     type Witness = Signature;
     type Error = Error;
 
-    fn format_instance((public_key, msg): &Self::Instance) -> Result<Vec<F>, Error> {
+    fn format_instance((pk_bytes, msg): &Self::Instance) -> Result<Vec<F>, Error> {
         Ok([
-            AssignedForeignEdwardsPoint::<F, Curve25519, MultiEmulationParams>::as_public_input(
-                public_key,
-            ),
+            pk_bytes.iter().flat_map(AssignedByte::<F>::as_public_input).collect::<Vec<_>>(),
             msg.iter().flat_map(AssignedByte::<F>::as_public_input).collect::<Vec<_>>(),
         ]
         .concat())
@@ -91,49 +91,67 @@ impl Relation for CardanoSigExample {
         instance: Value<Self::Instance>,
         witness: Value<Self::Witness>,
     ) -> Result<(), Error> {
-        let curve25519_curve = std_lib.curve25519_curve();
-        let curve25519_scalar = std_lib.curve25519_scalar();
+        let curve25519 = std_lib.curve25519();
+        let curve25519_scalar = std_lib.curve25519().scalar_field_chip();
 
-        // Assign the public key A as public input.
-        let a = curve25519_curve.assign_as_public_input(layouter, instance.map(|(a, _)| a))?;
+        // Assign compressed bytes of A as public inputs.
+        let a_bytes: [AssignedByte<F>; 32] = instance
+            .map(|(a_bytes, _)| a_bytes)
+            .transpose_array()
+            .into_iter()
+            .map(|b| std_lib.assign_as_public_input(layouter, b))
+            .collect::<Result<Vec<_>, _>>()?
+            .try_into()
+            .expect("exactly 32 bytes");
+        let a = from_canonical_compressed_bytes(
+            std_lib,
+            layouter,
+            &a_bytes,
+            instance.map(|(a_bytes, _)| decompress_bytes(&a_bytes)),
+        )?;
 
-        // Assign the message bytes M and constrain them as public input.
+        // Assign message bytes M as public inputs.
         let m_bytes: Vec<AssignedByte<F>> =
             std_lib.assign_many(layouter, &instance.map(|(_, msg)| msg).transpose_array())?;
         m_bytes
             .iter()
             .try_for_each(|byte| std_lib.constrain_as_public_input(layouter, byte))?;
 
-        // Decompose witness w = (R, s) and assign (R, s) as curve point and scalar.
-        let r = curve25519_curve.assign(layouter, witness.map(|(r, _)| r))?;
-        let s = curve25519_scalar.assign(layouter, witness.map(|(_, s)| s))?;
+        // Witness bytes of s and enforce canonicity in-circuit.
+        let s_bytes: Vec<AssignedByte<F>> =
+            std_lib.assign_many(layouter, &witness.map(|(_, s)| s).transpose_array())?;
+        let s_bits: Vec<AssignedBit<F>> = assigned_bytes_to_bits(std_lib, layouter, &s_bytes)?;
+        let s_is_canonical =
+            curve25519_scalar.le_bits_lower_than(layouter, &s_bits, curve25519_scalar.order())?;
+        curve25519_scalar.assert_equal_to_fixed(layouter, &s_is_canonical, true)?;
+        let s = curve25519_scalar.assigned_from_le_bits(layouter, &s_bits)?;
 
-        // Canonicity check for s.
-        let s_bits = curve25519_scalar.assigned_to_le_bits(layouter, &s, None, false)?;
-        let canonical = curve25519_scalar.is_canonical(layouter, &s_bits)?;
-        curve25519_scalar.assert_equal_to_fixed(layouter, &canonical, true)?;
-
-        // Compress R and A.
-        let r_compressed_bytes = to_compressed_bytes(std_lib, layouter, &r)?;
-        let a_compressed_bytes = to_compressed_bytes(std_lib, layouter, &a)?;
+        // Witness compressed bytes of R and decompress them in-circuit.
+        let r_bytes: [AssignedByte<F>; 32] = std_lib
+            .assign_many(layouter, &witness.map(|(r, _)| r).transpose_array())?
+            .try_into()
+            .expect("exactly 32 bytes");
+        let r = from_canonical_compressed_bytes(
+            std_lib,
+            layouter,
+            &r_bytes,
+            witness.map(|(r, _)| decompress_bytes(&r)),
+        )?;
 
         // Compute h = SHA512(R_bytes || A_bytes || M).
-        let sha_input = (r_compressed_bytes.into_iter())
-            .chain(a_compressed_bytes)
-            .chain(m_bytes)
-            .collect::<Vec<_>>();
+        let sha_input = (r_bytes.into_iter()).chain(a_bytes).chain(m_bytes).collect::<Vec<_>>();
         let h_bytes = std_lib.sha2_512(layouter, &sha_input)?;
         let h = curve25519_scalar.assigned_from_le_bytes(layouter, &h_bytes)?;
 
-        // Assign (fixed) generator B.
-        let b = curve25519_curve.assign_fixed(layouter, Curve25519Subgroup::generator())?;
+        // Assign generator B as fixed point.
+        let b = curve25519.assign_fixed(layouter, Curve25519Subgroup::generator())?;
 
-        // Compute rhs = s * B - h * A.
+        // Compute s * B - h * A.
         let neg_h = curve25519_scalar.neg(layouter, &h)?;
-        let rhs = curve25519_curve.msm(layouter, &[s, neg_h], &[b, a])?;
+        let rhs = curve25519.msm(layouter, &[s, neg_h], &[b, a])?;
 
         // Assert R = s * B - h * A.
-        curve25519_curve.assert_equal(layouter, &r, &rhs)
+        curve25519.assert_equal(layouter, &r, &rhs)
     }
 
     fn used_chips(&self) -> ZkStdLibArch {
@@ -154,63 +172,97 @@ impl Relation for CardanoSigExample {
     }
 }
 
-// Off-circuit decompression of `CompressedEdwardsY` into
-// `Curve25519Subgroup` point.
-fn decompress_point(bytes: &[u8; 32]) -> Curve25519Subgroup {
-    let compressed = CompressedEdwardsY(*bytes);
+/// Off-circuit decompression of little-endian compressed bytes.
+///
+/// # Returns
+/// A [Curve25519Subgroup] point guaranteed to lie in the subgroup.
+fn decompress_bytes(bytes: &[u8; 32]) -> Curve25519Subgroup {
+    let compressed = midnight_curves::curve25519::CompressedEdwardsY(*bytes);
     let edwards = compressed.decompress().expect("y coordinate of curve25519 point");
-
-    // The result is guaranteed to lie in the prime-order subgroup.
     Curve25519Subgroup::from_edwards(edwards).expect("curve25519 subgroup point")
 }
 
-// In-circuit compression of `AssignedForeignEdwardsPoint` into
-// `[AssignedByte<F>; 32]`. Little-endian.
-//
-// Note: Enforces canonicity.
-fn to_compressed_bytes(
+/// In-circuit conversion of [Vec<AssignedByte<F>>] to [Vec<AssignedBit<F>>].
+fn assigned_bytes_to_bits(
+    std_lib: &ZkStdLib,
+    layouter: &mut impl Layouter<F>,
+    bytes: &[AssignedByte<F>],
+) -> Result<Vec<AssignedBit<F>>, Error> {
+    let bits = bytes
+        .iter()
+        .map(|byte| std_lib.assigned_to_le_bits(layouter, &byte.clone().into(), Some(8), false))
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .flatten()
+        .collect();
+    Ok(bits)
+}
+
+/// In-circuit decompression of little-endian canonical compressed bytes.
+/// Non-canonical bytes do not satisfy the underlying constraints.
+///
+/// # Returns
+/// An [AssignedForeignEdwardsPoint] constrained to lie in the subgroup.
+fn from_canonical_compressed_bytes(
+    std_lib: &ZkStdLib,
+    layouter: &mut impl Layouter<F>,
+    compressed_bytes: &[AssignedByte<F>; 32],
+    value: Value<Curve25519Subgroup>,
+) -> Result<AssignedForeignEdwardsPoint<F, Curve25519, MultiEmulationParams>, Error> {
+    let point = std_lib.curve25519().assign(layouter, value)?;
+    let canonical_bytes = to_canonical_compressed_bytes(std_lib, layouter, &point)?;
+    compressed_bytes
+        .iter()
+        .zip(canonical_bytes.iter())
+        .try_for_each(|(com_byte, can_byte)| std_lib.assert_equal(layouter, com_byte, can_byte))?;
+
+    Ok(point)
+}
+
+/// In-circuit compression into canonical little-endian bytes.
+///
+/// # Returns
+/// An array [AssignedByte<F>; 32] constrained to represent a canonical
+/// encoding.
+fn to_canonical_compressed_bytes(
     std_lib: &ZkStdLib,
     layouter: &mut impl Layouter<F>,
     point: &AssignedForeignEdwardsPoint<F, Curve25519, MultiEmulationParams>,
 ) -> Result<[AssignedByte<F>; 32], Error> {
-    let curve25519_curve = std_lib.curve25519_curve();
-    let base_chip = curve25519_curve.base_field_chip();
+    let curve25519 = std_lib.curve25519();
 
-    // 1. Decompose assigned y-coordinate into little-endian bytes.
-    // Note: Canonicity is enforced by `assigned_to_le_bytes`.
-    let y_bytes =
-        base_chip.assigned_to_le_bytes(layouter, &curve25519_curve.y_coordinate(point), None)?;
-
-    // 2. Decompose assigned x-coordinate into little-endian bits.
-    // Note: We enforce canonicity.
-    let x_bits = base_chip.assigned_to_le_bits(
+    let y_bytes = curve25519.base_field_chip().assigned_to_le_bytes(
         layouter,
-        &curve25519_curve.x_coordinate(point),
+        &curve25519.y_coordinate(point),
+        None,
+    )?;
+
+    let x_bits = curve25519.base_field_chip().assigned_to_le_bits(
+        layouter,
+        &curve25519.x_coordinate(point),
         Some(255),
         true,
     )?;
 
-    // 3. Encoding the sign bit of x-coordinate (= x mod 2, i.e., the least
-    //    significant bit) into the most significant byte of the y-coordinate:
-    //    compressed_point[31] = y_bytes[31] + x_sign_bit * 128.
+    // Encode the sign bit of x (= x mod 2, i.e., the least significant bit of x)
+    // into the most significant byte of y: MSB = MSB of y + LSBit of x * 128.
     //
-    // (This is safe: y <= p = 2^255 - 19 - 1, which means y_bytes[31] <= 127;
-    // hence, adding 128 to the most significant byte causes _no_ overflow.)
-    let last_byte_with_sign: AssignedNative<F> = std_lib.linear_combination(
+    // (This is safe: y <= p - 1 = 2^255 - 19 - 1, which means MSB of y <= 127;
+    // hence, adding 128 causes _no_ overflow.)
+    let last_byte: AssignedNative<F> = std_lib.linear_combination(
         layouter,
         &[
-            (F::ONE, y_bytes[31].clone().into()),
+            (F::ONE, y_bytes[y_bytes.len() - 1].clone().into()),
             (F::from(128), x_bits[0].clone().into()),
         ],
         F::ZERO,
     )?;
 
-    // 4. Assemble 32 bytes of compressed point.
-    let last_byte: AssignedByte<F> = std_lib.convert(layouter, &last_byte_with_sign)?;
-    let mut compressed_point: Vec<AssignedByte<F>> = y_bytes[..31].to_vec();
-    compressed_point.push(last_byte);
+    let last_byte: AssignedByte<F> = std_lib.convert(layouter, &last_byte)?;
+    let mut compressed_bytes: Vec<AssignedByte<F>> = y_bytes[..y_bytes.len() - 1].to_vec();
+    compressed_bytes.push(last_byte);
 
-    Ok(compressed_point.try_into().expect("compressed point with 32 bytes"))
+    Ok(compressed_bytes.try_into().expect("exactly 32 bytes"))
 }
 
 fn main() {
@@ -243,14 +295,8 @@ fn main() {
 
     let relation = CardanoSigExample;
 
-    // Decompress (and deserialize) curve points and deserialize scalars;
-    // a weak public key A (of small order) is ruled out by the type system.
-    let a = decompress_point(&a_bytes);
-    let r = decompress_point(&r_bytes);
-    let s = Scalar::from_canonical_bytes(s_bytes).expect("curve25519 scalar");
-
-    let instance = (a, m);
-    let witness = (r, s);
+    let instance = (a_bytes, m);
+    let witness = (r_bytes, s_bytes);
 
     let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
     let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
