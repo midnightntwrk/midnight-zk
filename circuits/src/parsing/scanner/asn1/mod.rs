@@ -244,6 +244,13 @@ where
         self.0
     }
 
+    /// Requires that the spec does not have a marker at toplevel. Such a marker
+    /// would incur additional circuit work while the whole witness is already
+    /// accessible for free by other means.
+    fn no_full_marker(&self) {
+        assert!(self.2.is_none(), "Marker detected for the full spec. The API already provides the associated function `witness()` that extracts for free the full witness from the result of `parse_asn1_fixlen` and `parse_asn1_varlen`. This marker would incur wasted circuit costs.")
+    }
+
     /// Generates minimal valid DER bytes matching a spec, for use as a dummy
     /// witness during keygen. The parser's circuit structure will only depend
     /// on `self`, which is why having an explicit `self` in all cases does not
@@ -302,6 +309,30 @@ where
         }
         raw
     }
+
+    /// Extracts a marker from a simple (single-block or full-marker) spec.
+    /// Used by [`OptionalTlv`](`Asn1Block::OptionalTlv`) to retrieve the
+    /// value extraction index.
+    fn into_single_block_marker(self) -> Option<Index> {
+        if self.2.is_some() {
+            return self.2;
+        }
+        if self.1.len() == 1 {
+            match self.1.into_iter().next().unwrap() {
+                Asn1Block::Const(_, idx) | Asn1Block::Fixlen(_, idx) | Asn1Block::Varlen(idx) => {
+                    idx
+                }
+                _ => None,
+            }
+        } else {
+            None
+        }
+    }
+
+    /// Returns `true` if the last block is a `Varlen`.
+    fn ends_with_varlen(&self) -> bool {
+        matches!(self.1.last(), Some(Asn1Block::Varlen(_)))
+    }
 }
 
 impl<Index> Asn1Spec<Index>
@@ -324,6 +355,42 @@ where
     /// Adds 1 block to the spec.
     fn add_block(self, block: Asn1Block<Index>) -> Self {
         self.add_many_block(vec![block])
+    }
+
+    /// Validates that the `len` and `val` parts of a TLV spec are consistent:
+    /// - If `len` is constant, its decoded value must match `val`'s known size.
+    /// - If `val` has a known size, `len` should be constant for efficiency.
+    ///
+    /// `caller` is used in panic messages for diagnostics.
+    fn check_tlv_spec_consistency(caller: &str, len: &Asn1RawData<Index>, val: &Asn1Spec<Index>) {
+        let val_known = val.size();
+        match &len.0 {
+            Asn1RawDataInternal::Const(len_bytes, _) => {
+                let (_, decoded) = der_encoding::decode_length(len_bytes)
+                    .unwrap_or_else(|| panic!("{caller}: constant length bytes are not valid DER"));
+                match val_known {
+                    None => panic!(
+                        "{caller}: length is constant ({decoded} bytes) but value \
+                         has unknown size. The spec is likely inconsistent."
+                    ),
+                    Some(n) if n != decoded => panic!(
+                        "{caller}: constant length says {decoded} bytes but value \
+                         has known size {n}. The spec is inconsistent."
+                    ),
+                    _ => {}
+                }
+            }
+            Asn1RawDataInternal::Fixlen(..) | Asn1RawDataInternal::Varlen(_) => {
+                if let Some(n) = val_known {
+                    panic!(
+                        "{caller}: value has known size ({n} bytes) but length is \
+                         not specified as constant. Use a fixed length for better \
+                         efficiency (you may compute it automatically via \
+                         `Asn1Spec::size()`)."
+                    );
+                }
+            }
+        }
     }
 
     /// Appends a constant byte sequence. The bytes are baked into the
