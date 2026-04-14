@@ -384,4 +384,215 @@ where
     pub fn cat(items: Vec<Self>) -> Self {
         items.into_iter().fold(Self::new(), |acc, spec| acc.then(spec))
     }
+
+    // -------------------------------------------------------------------
+    // Common ASN.1 structure helpers
+    //
+    // All take `self` and append to the current spec via `read_tlv` or
+    // `read_bytes_const`, for uniform chaining.
+    // -------------------------------------------------------------------
+
+    /// Returns the appropriate length field for a value: a fixed
+    /// `usize` if the value's byte count is known, or `Asn1RawData::any(None)`
+    /// (varlen) otherwise.
+    fn auto_len(val: &Asn1Spec<Index>) -> Asn1RawData<Index> {
+        match val.size() {
+            Some(n) => n.into(),
+            None => Asn1RawData::any(None),
+        }
+    }
+
+    /// Appends a SEQUENCE TLV. The length is automatically derived
+    /// from `val`: when `val.size()` is known, the tag and length are
+    /// encoded as constants (cheap T+L); otherwise the length is
+    /// parsed at variable-length cost.
+    pub fn read_sequence(self, val: Asn1Spec<Index>) -> Self {
+        let len = Self::auto_len(&val);
+        self.read_tlv(&[der_encoding::tag::SEQUENCE], len, val)
+    }
+
+    /// Appends a SET TLV. The length is automatically derived from
+    /// `val`: when `val.size()` is known, the tag and length are
+    /// encoded as constants (cheap T+L); otherwise the length is
+    /// parsed at variable-length cost.
+    pub fn read_set(self, val: Asn1Spec<Index>) -> Self {
+        let len = Self::auto_len(&val);
+        self.read_tlv(&[der_encoding::tag::SET], len, val)
+    }
+
+    /// Appends an OCTET STRING TLV. The length is automatically derived
+    /// from `val`: when `val.size()` is known, the tag and length are
+    /// encoded as constants (cheap T+L); otherwise the length is
+    /// parsed at variable-length cost.
+    pub fn read_octet_string(self, val: Asn1Spec<Index>) -> Self {
+        let len = Self::auto_len(&val);
+        self.read_tlv(&[der_encoding::tag::OCTET_STRING], len, val)
+    }
+
+    /// Appends a BIT STRING TLV. The length is automatically derived
+    /// from `val`: when `val.size()` is known, the tag and length are
+    /// encoded as constants (cheap T+L); otherwise the length is
+    /// parsed at variable-length cost.
+    pub fn read_bit_string(self, val: Asn1Spec<Index>) -> Self {
+        let len = Self::auto_len(&val);
+        self.read_tlv(&[der_encoding::tag::BIT_STRING], len, val)
+    }
+
+    /// Appends an INTEGER TLV with unknown value. The length is
+    /// automatically derived from `val`: when `val.size()` is known,
+    /// the tag and length are encoded as constants (cheap T+L);
+    /// otherwise the length is parsed at variable-length cost.
+    ///
+    /// For an INTEGER with a known value, use
+    /// [`read_integer_const`](`Self::read_integer_const`).
+    pub fn read_integer(self, val: Asn1Spec<Index>) -> Self {
+        let len = Self::auto_len(&val);
+        self.read_tlv(&[der_encoding::tag::INTEGER], len, val)
+    }
+
+    /// Appends a context-specific constructed TLV (`[number] CONSTRUCTED`).
+    /// The length is automatically derived from `val`: when
+    /// `val.size()` is known, the tag and length are encoded as
+    /// constants (cheap T+L); otherwise the length is parsed at
+    /// variable cost.
+    pub fn read_ctx(self, number: u32, val: Asn1Spec<Index>) -> Self {
+        let len = Self::auto_len(&val);
+        let ctx_tag = der_encoding::Tag {
+            class: der_encoding::class::CONTEXT_SPECIFIC,
+            constructed: true,
+            number,
+        };
+        self.read_tlv(ctx_tag, len, val)
+    }
+
+    /// Appends a complete DER-encoded OID as a constant block. The
+    /// encoding is computed via [`der_encoding::oid`].
+    pub fn read_oid(self, components: &[u32]) -> Self {
+        self.read_bytes_const(&der_encoding::oid(components))
+    }
+
+    /// Appends a DER-encoded INTEGER with a known value as a constant
+    /// block. The encoding is computed via [`der_encoding::integer`].
+    ///
+    /// For an INTEGER with unknown value, use
+    /// [`read_integer`](`Self::read_integer`).
+    pub fn read_integer_const(self, n: i64) -> Self {
+        self.read_bytes_const(&der_encoding::integer(n))
+    }
+
+    /// Appends an AlgorithmIdentifier SEQUENCE with explicit NULL
+    /// parameters: `SEQUENCE { OID, NULL }`. The entire TLV is
+    /// encoded as a single constant block. The encoding is built from
+    /// [`der_encoding`] helpers (`sequence`, `oid`, `null`).
+    ///
+    /// Used for algorithms whose ASN.1 definition requires a NULL
+    /// parameter field, such as SHA-256 (`2.16.840.1.101.3.4.2.1`) or
+    /// RSA (`1.2.840.113549.1.1.1`).
+    ///
+    /// For algorithms with absent parameters (e.g., ECDSA), use
+    /// [`read_algid`](`Self::read_algid`) instead.
+    pub fn read_algid_null(self, oid_components: &[u32]) -> Self {
+        self.read_bytes_const(&der_encoding::sequence(&[
+            der_encoding::oid(oid_components),
+            der_encoding::null(),
+        ]))
+    }
+
+    /// Appends an AlgorithmIdentifier SEQUENCE with no parameters:
+    /// `SEQUENCE { OID }`. The entire TLV is encoded as a single
+    /// constant block. The encoding is built from [`der_encoding`]
+    /// helpers (`sequence`, `oid`).
+    ///
+    /// Used for algorithms whose ASN.1 definition specifies absent
+    /// (omitted) parameters, such as ECDSA-SHA256
+    /// (`1.2.840.10045.4.3.2`).
+    ///
+    /// For algorithms that require an explicit NULL parameter (e.g.,
+    /// SHA-256, RSA), use [`read_algid_null`](`Self::read_algid_null`)
+    /// instead.
+    pub fn read_algid(self, oid_components: &[u32]) -> Self {
+        self.read_bytes_const(&der_encoding::sequence(&[der_encoding::oid(
+            oid_components,
+        )]))
+    }
+
+    /// Marks the last block of this spec for extraction as `m`.
+    ///
+    /// For `Const` and `Fixlen` blocks, the block's bytes are extracted.
+    /// For `Tlv` blocks, the full T+L+V bytes are extracted.
+    /// For `Varlen` (trail) blocks, the trail bytes are extracted.
+    ///
+    /// # Cost
+    ///
+    /// Extraction is free for constant blocks. For fixed-length witness
+    /// blocks it adds a moderate cost (proof of the validity of the
+    /// extract). For variable-length or Tlv blocks, this extra cost is
+    /// higher due to the management of variable-length extractions.
+    ///
+    /// # Panics
+    ///
+    /// - If the spec has no blocks.
+    /// - If the last block is `OptionalTlv` (mark components individually
+    ///   instead).
+    /// - If the last block already has a marker.
+    ///
+    /// The parsing code will also panic if the full Spec has been marked. The
+    /// interface already provides functions for extracting the full spec
+    /// without additional cost in-circuit.
+    pub fn mark_last(mut self, m: Index) -> Self {
+        let last_block =
+            (self.1.last_mut()).unwrap_or_else(|| panic!("no block to mark with index {:?}", m));
+        let slot = match last_block {
+            Asn1Block::Const(_, idx) => idx,
+            Asn1Block::Fixlen(_, idx) => idx,
+            Asn1Block::Tlv(_, idx) => idx,
+            Asn1Block::OptionalTlv { .. } => panic!(
+                "extraction of full optional TLVs is not supported. \
+                 Mark the length or value components individually."
+            ),
+            Asn1Block::Varlen(idx) => idx,
+        };
+        match slot.take() {
+            None => *slot = Some(m),
+            Some(m2) => double_mark(m, m2),
+        }
+        self
+    }
+
+    /// Marks the entire spec for full extraction as `m`. All bytes
+    /// produced by this spec's blocks will be extracted under this index.
+    ///
+    /// Primarily used for V-only extraction when the spec serves as a
+    /// TLV's value.
+    ///
+    /// # Cost
+    ///
+    /// Adds a moderate cost for fixed-length specs (proof of the
+    /// validity of the extract). For specs containing variable-length
+    /// blocks, this extra cost is higher due to the management of
+    /// variable-length extractions.
+    ///
+    /// # Panics
+    ///
+    /// If a full marker is already set. The parsing code will also panic if the
+    /// full Spec has been marked. The interface already provides functions for
+    /// extracting the full spec without additional cost in-circuit.
+    pub fn mark_full(mut self, m: Index) -> Self {
+        match self.2.take() {
+            None => self.2 = Some(m),
+            Some(m2) => double_mark(m, m2),
+        }
+        self
+    }
+
+    /// Appends a trail block: consumes all remaining bytes in the
+    /// enclosing TLV value without extraction. Variable-length.
+    ///
+    /// Can only appear as the last block (panics if further blocks are
+    /// added after it). At parse time, panics if no enclosing TLV
+    /// provides a byte count. Use `.read_trail().mark_last(m)` to
+    /// extract the trail bytes.
+    pub fn read_trail(self) -> Self {
+        self.add_block(Asn1Block::Varlen(None))
+    }
 }
