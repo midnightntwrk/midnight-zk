@@ -27,9 +27,12 @@ use exposing_types::{
     ecc_ops::EccExample,
     ethereum_signature::EthereumSigExample,
     hybrid_mt::HybridMtExample,
-    identity::jwt::{
-        enrollment::CredentialEnrollment, full_credential::FullCredential,
-        property_check::CredentialProperty,
+    identity::{
+        jwt::{
+            enrollment::CredentialEnrollment, full_credential::FullCredential,
+            property_check::CredentialProperty,
+        },
+        passport::circuit::PassportVerification,
     },
     membership::MembershipExample,
     native_gadget::NativeGadgetExample,
@@ -70,5 +73,6 @@ generate_tests!(
     check_vk_cred_property: CredentialProperty,
     check_vk_hybrid_mt: HybridMtExample,
     check_vk_sha: ShaPreImageCircuit,
-    check_vk_schnorr: SchnorrExample
+    check_vk_schnorr: SchnorrExample,
+    check_vk_passport: PassportVerification
 );
