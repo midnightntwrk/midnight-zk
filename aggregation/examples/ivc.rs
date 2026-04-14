@@ -86,7 +86,7 @@ impl<const N: usize> IvcIO for PoseidonChain<N> {
         layouter: &mut impl Layouter<F>,
         value: Value<State>,
     ) -> Result<AssignedState, Error> {
-        let scalar_chip = self.std_lib.bls12_381_scalar();
+        let scalar_chip = self.std_lib.bls12_381().scalar_field_chip();
         Ok(AssignedState {
             cnt: scalar_chip.assign(layouter, value.as_ref().map(|s| s.cnt))?,
             val: scalar_chip.assign(layouter, value.as_ref().map(|s| s.val))?,
@@ -98,7 +98,7 @@ impl<const N: usize> IvcIO for PoseidonChain<N> {
         layouter: &mut impl Layouter<F>,
         state: &AssignedState,
     ) -> Result<(), Error> {
-        let scalar_chip = self.std_lib.bls12_381_scalar();
+        let scalar_chip = self.std_lib.bls12_381().scalar_field_chip();
         scalar_chip.constrain_as_public_input(layouter, &state.cnt)?;
         scalar_chip.constrain_as_public_input(layouter, &state.val)
     }
@@ -145,7 +145,7 @@ impl<const N: usize> IvcTransition for PoseidonChain<N> {
         state: &Self::AssignedState,
         _witness: Value<Self::Witness>,
     ) -> Result<Self::AssignedState, Error> {
-        let scalar_chip = self.std_lib.bls12_381_scalar();
+        let scalar_chip = self.std_lib.bls12_381().scalar_field_chip();
 
         let mut val = state.val.clone();
         for _ in 0..N {

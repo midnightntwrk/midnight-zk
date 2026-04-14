@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 ### Added
 * Add `assign_without_subgroup_check` to `SelfEmulation` trait [#284](https://github.com/midnightntwrk/midnight-zk/pull/284)
 ### Changed
+* Adapt to new `ZkStdLib` curve accessors [#335](https://github.com/midnightntwrk/midnight-zk/pull/335)
 * `IvcVerifier` is now generic over `T: Ivc` and stores the context internally; `verify` no longer takes a `ctx` parameter [#302](https://github.com/midnightntwrk/midnight-zk/pull/302)
 * Introduce `IvcIO` trait and `Ivc` convenience trait [#264](https://github.com/midnightntwrk/midnight-zk/pull/264)
 * Proof aggregation example [#258](https://github.com/midnightntwrk/midnight-zk/pull/258)

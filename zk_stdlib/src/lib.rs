@@ -277,11 +277,9 @@ pub struct ZkStdLib {
     htc_gadget: Option<HashToCurveGadget<F, C, AssignedNative<F>, PoseidonChip<F>, EccChip<C>>>,
     map_gadget: Option<MapGadget<F, NG, PoseidonChip<F>>>,
     biguint_gadget: BigUintGadget<F, NG>,
-    secp256k1_scalar_chip: Option<Secp256k1ScalarChip>,
-    secp256k1_curve_chip: Option<Secp256k1Chip>,
-    p256_scalar_chip: Option<P256ScalarChip>,
-    p256_curve_chip: Option<P256Chip>,
-    bls12_381_curve_chip: Option<Bls12381Chip>,
+    secp256k1_chip: Option<Secp256k1Chip>,
+    p256_chip: Option<P256Chip>,
+    bls12_381_chip: Option<Bls12381Chip>,
     base64_chip: Option<Base64Chip<F>>,
     parser_gadget: ParserGadget<F, NG>,
     scanner_chip: Option<ScannerChip<F>>,
@@ -297,11 +295,9 @@ pub struct ZkStdLib {
     // Such a usage flag has to be added and updated correctly for each new chip using tables.
     used_sha2_256: Rc<RefCell<bool>>,
     used_sha2_512: Rc<RefCell<bool>>,
-    used_secp256k1_scalar: Rc<RefCell<bool>>,
-    used_secp256k1_curve: Rc<RefCell<bool>>,
-    used_p256_scalar: Rc<RefCell<bool>>,
-    used_p256_curve: Rc<RefCell<bool>>,
-    used_bls12_381_curve: Rc<RefCell<bool>>,
+    used_secp256k1: Rc<RefCell<bool>>,
+    used_p256: Rc<RefCell<bool>>,
+    used_bls12_381: Rc<RefCell<bool>>,
     used_base64: Rc<RefCell<bool>>,
     used_scanner: Rc<RefCell<bool>>,
     used_keccak_or_sha3: Rc<RefCell<bool>>,
@@ -332,19 +328,19 @@ impl ZkStdLib {
             .map(|poseidon_gadget| MapGadget::new(&native_gadget, poseidon_gadget));
         let secp256k1_scalar_chip = (config.secp256k1_scalar_config.as_ref())
             .map(|scalar_config| FieldChip::new(scalar_config, &native_gadget));
-        let secp256k1_curve_chip = (config.secp256k1_config.as_ref())
+        let secp256k1_chip = (config.secp256k1_config.as_ref())
             .zip(secp256k1_scalar_chip.as_ref())
             .map(|(curve_config, scalar_chip)| {
                 ForeignWeierstrassEccChip::new(curve_config, &native_gadget, scalar_chip)
             });
         let p256_scalar_chip = (config.p256_scalar_config.as_ref())
             .map(|scalar_config| FieldChip::new(scalar_config, &native_gadget));
-        let p256_curve_chip = (config.p256_config.as_ref()).zip(p256_scalar_chip.as_ref()).map(
+        let p256_chip = (config.p256_config.as_ref()).zip(p256_scalar_chip.as_ref()).map(
             |(curve_config, scalar_chip)| {
                 ForeignWeierstrassEccChip::new(curve_config, &native_gadget, scalar_chip)
             },
         );
-        let bls12_381_curve_chip = (config.bls12_381_config.as_ref()).map(|curve_config| {
+        let bls12_381_chip = (config.bls12_381_config.as_ref()).map(|curve_config| {
             ForeignWeierstrassEccChip::new(curve_config, &native_gadget, &native_gadget)
         });
 
@@ -356,7 +352,7 @@ impl ZkStdLib {
             config.scanner_config.as_ref().map(|c| ScannerChip::new(c, &native_gadget));
         let vector_gadget = VectorGadget::new(&native_gadget);
 
-        let verifier_gadget = bls12_381_curve_chip.as_ref().zip(poseidon_gadget.as_ref()).map(
+        let verifier_gadget = bls12_381_chip.as_ref().zip(poseidon_gadget.as_ref()).map(
             |(curve_chip, sponge_chip)| {
                 VerifierGadget::<BlstrsEmulation>::new(curve_chip, &native_gadget, sponge_chip)
             },
@@ -381,11 +377,9 @@ impl ZkStdLib {
             map_gadget,
             htc_gadget,
             biguint_gadget,
-            secp256k1_scalar_chip,
-            secp256k1_curve_chip,
-            p256_scalar_chip,
-            p256_curve_chip,
-            bls12_381_curve_chip,
+            secp256k1_chip,
+            p256_chip,
+            bls12_381_chip,
             base64_chip,
             parser_gadget,
             scanner_chip,
@@ -395,11 +389,9 @@ impl ZkStdLib {
             blake2b_chip,
             used_sha2_256: Rc::new(RefCell::new(false)),
             used_sha2_512: Rc::new(RefCell::new(false)),
-            used_secp256k1_scalar: Rc::new(RefCell::new(false)),
-            used_secp256k1_curve: Rc::new(RefCell::new(false)),
-            used_p256_scalar: Rc::new(RefCell::new(false)),
-            used_p256_curve: Rc::new(RefCell::new(false)),
-            used_bls12_381_curve: Rc::new(RefCell::new(false)),
+            used_secp256k1: Rc::new(RefCell::new(false)),
+            used_p256: Rc::new(RefCell::new(false)),
+            used_bls12_381: Rc::new(RefCell::new(false)),
             used_base64: Rc::new(RefCell::new(false)),
             used_scanner: Rc::new(RefCell::new(false)),
             used_keccak_or_sha3: Rc::new(RefCell::new(false)),
@@ -655,56 +647,29 @@ impl ZkStdLib {
             .unwrap_or_else(|| panic!("ZkStdLibArch must enable poseidon"))
     }
 
-    /// Chip for performing in-circuit operations over the Secp256k1 scalar
-    /// field.
-    pub fn secp256k1_scalar(&self) -> &Secp256k1ScalarChip {
-        *self.used_secp256k1_scalar.borrow_mut() = true;
-        self.secp256k1_scalar_chip
+    /// Chip for performing in-circuit operations over the Secp256k1 curve, its
+    /// scalar field or its base field.
+    pub fn secp256k1(&self) -> &Secp256k1Chip {
+        *self.used_secp256k1.borrow_mut() = true;
+        self.secp256k1_chip
             .as_ref()
             .unwrap_or_else(|| panic!("ZkStdLibArch must enable secp256k1"))
     }
 
-    /// Chip for performing in-circuit operations over the Secp256k1 curve.
-    pub fn secp256k1_curve(&self) -> &Secp256k1Chip {
-        *self.used_secp256k1_curve.borrow_mut() = true;
-        self.secp256k1_curve_chip
-            .as_ref()
-            .unwrap_or_else(|| panic!("ZkStdLibArch must enable secp256k1"))
-    }
-
-    /// Chip for performing in-circuit operations over the P256 scalar field.
-    pub fn p256_scalar(&self) -> &P256ScalarChip {
-        *self.used_p256_scalar.borrow_mut() = true;
-        self.p256_scalar_chip
+    /// Chip for performing in-circuit operations over the P256 curve, its
+    /// scalar field or its base field.
+    pub fn p256(&self) -> &P256Chip {
+        *self.used_p256.borrow_mut() = true;
+        self.p256_chip
             .as_ref()
             .unwrap_or_else(|| panic!("ZkStdLibArch must enable p256"))
     }
 
-    /// Chip for performing in-circuit operations over the P256 curve.
-    pub fn p256_curve(&self) -> &P256Chip {
-        *self.used_p256_curve.borrow_mut() = true;
-        self.p256_curve_chip
-            .as_ref()
-            .unwrap_or_else(|| panic!("ZkStdLibArch must enable p256"))
-    }
-
-    /// Chip for performing in-circuit operations over the BLS12-381 scalar
-    /// field.
-    pub fn bls12_381_scalar(&self) -> &NG {
-        assert!(
-            self.bls12_381_curve_chip.is_some(),
-            "ZkStdLibArch must enable bls12_381"
-        );
-
-        &self.native_gadget
-    }
-
-    /// Chip for performing in-circuit operations over the BLS12-381 curve.
-    /// Note that this is the whole BLS curve (whose order is a 381-bits
-    /// integer).
-    pub fn bls12_381_curve(&self) -> &Bls12381Chip {
-        *self.used_bls12_381_curve.borrow_mut() = true;
-        self.bls12_381_curve_chip
+    /// Chip for performing in-circuit operations over the BLS12-381 curve, its
+    /// scalar field or its base field.
+    pub fn bls12_381(&self) -> &Bls12381Chip {
+        *self.used_bls12_381.borrow_mut() = true;
+        self.bls12_381_chip
             .as_ref()
             .unwrap_or_else(|| panic!("ZkStdLibArch must enable bls12_381"))
     }
@@ -738,7 +703,7 @@ impl ZkStdLib {
     /// Chip for performing in-circuit verification of proofs
     /// (generated with Poseidon as the Fiat-Shamir transcript hash).
     pub fn verifier(&self) -> &VerifierGadget<BlstrsEmulation> {
-        *self.used_bls12_381_curve.borrow_mut() = true;
+        *self.used_bls12_381.borrow_mut() = true;
         self.verifier_gadget
             .as_ref()
             .unwrap_or_else(|| panic!("ZkStdLibArch must enable bls12_381 & poseidon"))
