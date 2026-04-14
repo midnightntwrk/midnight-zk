@@ -299,7 +299,7 @@ impl IvcTransition for ProofAggregation {
         )?;
 
         // Verify the inner proof in-circuit.
-        let id_point = self.std_lib.bls12_381_curve().assign_fixed(layouter, C::identity())?;
+        let id_point = self.std_lib.bls12_381().assign_fixed(layouter, C::identity())?;
 
         let inner_proof_acc = self.std_lib.verifier().prepare(
             layouter,
@@ -318,8 +318,8 @@ impl IvcTransition for ProofAggregation {
 
             acc.collapse(
                 layouter,
-                self.std_lib.bls12_381_curve(),
-                self.std_lib.bls12_381_scalar(),
+                self.std_lib.bls12_381(),
+                self.std_lib.bls12_381().scalar_field_chip(),
             )?;
             acc
         };

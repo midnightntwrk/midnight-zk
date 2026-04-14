@@ -176,7 +176,7 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
         ]
         .concat();
 
-        let id_point = std_lib.bls12_381_curve().assign_fixed(layouter, C::identity())?;
+        let id_point = std_lib.bls12_381().assign_fixed(layouter, C::identity())?;
 
         // Verify a witnessed proof that ensures the validity of `prev_state`.
         // The proof is valid iff `prev_proof_acc` satisfies the invariant.
@@ -197,7 +197,7 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
         };
         AssignedAccumulator::scale_by_bit(
             layouter,
-            std_lib.bls12_381_scalar(),
+            std_lib.bls12_381().scalar_field_chip(),
             &is_not_genesis,
             &mut prev_proof_acc,
         )?;
@@ -206,8 +206,8 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
 
         next_acc.collapse(
             layouter,
-            std_lib.bls12_381_curve(),
-            std_lib.bls12_381_scalar(),
+            std_lib.bls12_381(),
+            std_lib.bls12_381().scalar_field_chip(),
         )?;
 
         verifier_gadget.constrain_as_public_input(layouter, &next_acc)
