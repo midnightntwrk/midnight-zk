@@ -31,8 +31,7 @@ use ff::{Field, PrimeField};
 use group::Group;
 use midnight_proofs::{
     circuit::{Chip, Layouter, Value},
-    plonk::{Advice, Column, ConstraintSystem, Error, Expression, Fixed, Selector},
-    poly::Rotation,
+    plonk::{Advice, Column, ConstraintSystem, Error, Fixed, Selector},
 };
 use num_bigint::BigUint;
 use num_traits::One;

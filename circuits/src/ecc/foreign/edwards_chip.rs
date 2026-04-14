@@ -113,14 +113,17 @@ where
         meta: &mut ConstraintSystem<F>,
         base_field_config: &FieldChipConfig,
         advice_columns: &[Column<Advice>],
+        fixed_columns: &[Column<Fixed>],
         nb_parallel_range_checks: usize,
         max_bit_len: u32,
     ) -> ForeignEdwardsEccConfig<C> {
         assert!(C::A.legendre() == 1);
         assert!(C::D.legendre() == -1);
+
         let addition_config = AdditionConfig::<C>::configure::<F, B>(
             meta,
             base_field_config,
+            fixed_columns[0],
             nb_parallel_range_checks,
             max_bit_len,
         );
@@ -660,7 +663,6 @@ where
         let py_qx = base_chip.mul(layouter, &p.y, &q.x, None)?;
         let neg_a_px_qx = base_chip.mul_by_constant(layouter, &px_qx, -C::A)?;
         let d_px_py_qx_qy = base_chip.mul(layouter, &px_qx, &py_qy, Some(C::D))?;
-        let neg_d_px_py_qx_qy = base_chip.neg(layouter, &d_px_py_qx_qy)?;
 
         // Constraint for Rx coordinate
         // Rx * (1 + d * Px * Py * Qx * Qy) = (Px * Qy + Py * Qx)
@@ -670,6 +672,7 @@ where
             &px_qy,
             &py_qx,
             &d_px_py_qx_qy,
+            false,
             base_chip,
             &self.config.addition_config,
         )?;
@@ -681,7 +684,8 @@ where
             &r.y,
             &py_qy,
             &neg_a_px_qx,
-            &neg_d_px_py_qx_qy,
+            &d_px_py_qx_qy,
+            true,
             base_chip,
             &self.config.addition_config,
         )?;
@@ -732,7 +736,6 @@ where
             &[(C::A, px_sq), (C::Base::ONE, py_sq.clone())],
             -C::Base::ONE,
         )?;
-        let neg_w = base_chip.neg(layouter, &w)?;
 
         // Rx * (1 + w) = 2 * Px * Py
         addition::assert_addition_coordinate(
@@ -741,6 +744,7 @@ where
             &px_py,
             &px_py,
             &w,
+            false,
             base_chip,
             &self.config.addition_config,
         )?;
@@ -751,7 +755,8 @@ where
             &r.y,
             &py_sq,
             &neg_a_px_sq,
-            &neg_w,
+            &w,
+            true,
             base_chip,
             &self.config.addition_config,
         )?;
@@ -1157,6 +1162,7 @@ where
             meta,
             &base_field_config,
             advice_columns,
+            fixed_columns,
             nb_parallel_range_checks,
             max_bit_len,
         );
