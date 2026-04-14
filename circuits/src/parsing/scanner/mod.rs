@@ -296,6 +296,7 @@ where
     fn new(config: &ScannerConfig, deps: &Self::InstructionDeps) -> Self {
         Self {
             config: config.clone(),
+            vector_gadget: VectorGadget::new(deps),
             native_gadget: deps.clone(),
             automaton_cache: Rc::new(RefCell::new(FxHashMap::default())),
             max_state: Rc::new(RefCell::new(1)),
