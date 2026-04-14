@@ -101,11 +101,12 @@ use midnight_proofs::{
 };
 
 use super::{
-    NativeAutomaton, ScannerChip, ALPHABET_MAX_SIZE, AUTOMATON_PARALLELISM, NB_AUTOMATON_COLS,
+    varlen::ScannerVec, NativeAutomaton, ScannerChip, ALPHABET_MAX_SIZE, AUTOMATON_PARALLELISM,
+    NB_AUTOMATON_COLS,
 };
 use crate::{
     field::AssignedNative, instructions::AssignmentInstructions, parsing::scanner::AutomatonParser,
-    types::AssignedByte, CircuitField,
+    types::AssignedByte, vec::AssignedVector, CircuitField,
 };
 
 impl<F> NativeAutomaton<F>
@@ -117,11 +118,9 @@ where
     fn next_transition(
         &self,
         state: &AssignedNative<F>,
-        letter: &AssignedByte<F>,
+        letter: &AssignedNative<F>,
     ) -> Result<(Value<F>, Value<F>), Error> {
-        let letter_native: AssignedNative<F> = letter.into();
-        let target_opt =
-            state.value().zip(letter_native.value()).map(|(s, l)| self.get_transition(s, l));
+        let target_opt = state.value().zip(letter.value()).map(|(s, l)| self.get_transition(s, l));
         target_opt.error_if_known_and(|o| o.is_none())?;
         let target = target_opt.map(|o| o.unwrap());
         Ok((target.map(|t| t.0), target.map(|t| t.1)))
@@ -148,7 +147,7 @@ where
         &self,
         layouter: &mut impl Layouter<F>,
         automaton: &NativeAutomaton<F>,
-        input: &[AssignedByte<F>],
+        input: &[AssignedNative<F>],
     ) -> Result<Vec<AssignedNative<F>>, Error> {
         let init_state: AssignedNative<F> =
             self.native_gadget.assign_fixed(layouter, automaton.initial_state)?;
@@ -214,7 +213,7 @@ where
         region: &mut Region<'_, F>,
         automaton: &NativeAutomaton<F>,
         state: &mut AssignedNative<F>,
-        letter: &AssignedByte<F>,
+        letter: &AssignedNative<F>,
         batch: usize,
         outputs: &mut Vec<AssignedNative<F>>,
         offset: &mut usize,
@@ -222,8 +221,7 @@ where
         self.config.q_automaton.enable(region, *offset)?;
 
         let base = NB_AUTOMATON_COLS * batch;
-        let letter_native: AssignedNative<F> = letter.into();
-        letter_native.copy_advice(
+        letter.copy_advice(
             || format!("letter batch {batch}"),
             region,
             self.config.advice_cols[base + 1],
@@ -415,7 +413,10 @@ where
         input: &[AssignedByte<F>],
     ) -> Result<Vec<AssignedNative<F>>, Error> {
         let automaton = self.resolve_automaton(&parser);
-        self.parse_automaton(layouter, &automaton, input)
+        let native_input: Vec<AssignedNative<F>> = input.iter().map(AssignedNative::from).collect();
+        self.parse_automaton(layouter, &automaton, &native_input)
+    }
+
     }
 }
 

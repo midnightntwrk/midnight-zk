@@ -267,6 +267,22 @@ where
     sequence_cache: Rc<RefCell<SequenceCache<F>>>,
 }
 
+impl<F> ScannerChip<F>
+where
+    F: CircuitField,
+{
+    /// Gets the regex associated to a `StdLibParser`, as stored in the static
+    /// library of `self`.
+    pub fn specs_regex(&self, parser: &StdLibParser) -> &Regex {
+        let (regex, _) = self
+            .config
+            .static_library
+            .get(parser)
+            .unwrap_or_else(|| panic!("parser {:?} not found", parser));
+        regex
+    }
+}
+
 impl<F> Chip<F> for ScannerChip<F>
 where
     F: CircuitField,
