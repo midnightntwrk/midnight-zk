@@ -67,8 +67,8 @@ impl Relation for BitcoinSigExample {
         instance: Value<Self::Instance>,
         witness: Value<Self::Witness>,
     ) -> Result<(), Error> {
-        let secp256k1_curve = std_lib.secp256k1_curve();
-        let secp256k1_scalar = std_lib.secp256k1_scalar();
+        let secp256k1_curve = std_lib.secp256k1();
+        let secp256k1_scalar = secp256k1_curve.scalar_field_chip();
         let secp256k1_base = secp256k1_curve.base_field_chip();
 
         // Assign the PK as public input.
