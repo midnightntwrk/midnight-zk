@@ -18,9 +18,8 @@
 //!
 //!  - **Payload elements are range-checked** to `[0, 255]` (they originate from
 //!    [`AssignedByte`]s).
-//!  - **Filler elements are constrained to 256**
-//!    ([`ALPHABET_MAX_SIZE`](super::ALPHABET_MAX_SIZE)), making them
-//!    unmatchable in substring lookup arguments.
+//!  - **Filler elements are constrained to 256** ([`ALPHABET_MAX_SIZE`]),
+//!    making them unmatchable in substring lookup arguments.
 //!  - **Length is anchored**: constrained to equal the number of non-filler
 //!    elements in the buffer.
 //!  - **Padding flags and limits are cached** and available at no extra cost
@@ -51,7 +50,7 @@ use crate::{
 };
 
 /// A variable-length vector with filler elements constrained to
-/// [`ALPHABET_MAX_SIZE`](super::ALPHABET_MAX_SIZE).
+/// [`ALPHABET_MAX_SIZE`].
 ///
 /// Stores a promoted buffer where filler positions are constrained to 256,
 /// along with the effective payload length. The chunk size `A` of the

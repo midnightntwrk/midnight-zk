@@ -310,9 +310,9 @@ where
     ///    will be filled by it.
     ///  - Self-loop transitions `(s, 256, s, 0)` for initial and final states
     ///    are part of every [`NativeAutomaton`] (added during conversion from
-    ///    [`Automaton`]). These allow
-    ///    [`parse_varlen`](`ScannerChip::parse_varlen`) to skip
-    ///    [`ScannerVec`](super::varlen::ScannerVec) filler elements.
+    ///    [`Automaton`](super::automaton::Automaton)). These allow
+    ///    [`parse_varlen`](`ScannerChip::parse_varlen`) to skip [`ScannerVec`]
+    ///    filler elements.
     ///  - Dummy transitions `(s, 256, 0, 0)` are added for all final states `s`
     ///    to emulate final-state checking.
     pub(crate) fn load_automata_table(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
