@@ -21,6 +21,7 @@
 
 use std::{
     cell::RefCell,
+    collections::HashMap,
     fmt::Debug,
     hash::{Hash, Hasher},
     rc::Rc,
@@ -46,7 +47,7 @@ use super::common::{
 };
 use crate::{
     ecc::{
-        curves::EdwardsCurve,
+        curves::{CircuitCurve, EdwardsCurve},
         foreign::gates::edwards::addition::{self, AdditionConfig},
     },
     field::{
@@ -79,6 +80,11 @@ where
     tag_col_multi_select: Column<Fixed>,
 }
 
+/// Cache of assigned constant points to their known group element values.
+type ConstantPointCache<F, C, B> = Rc<
+    RefCell<HashMap<AssignedForeignEdwardsPoint<F, C, B>, <C as CircuitCurve>::CryptographicGroup>>,
+>;
+
 /// ECC chip to perform foreign Edwards EC operations.
 #[derive(Clone, Debug)]
 pub struct ForeignEdwardsEccChip<F, C, B, S, N>
@@ -96,6 +102,8 @@ where
     scalar_field_chip: S,
     /// Per-chip tag counter for dynamic lookup tables (tag 0 is reserved).
     tag_cnt: Rc<RefCell<u64>>,
+    /// Cache mapping assigned constant points to their known values.
+    constant_cache: ConstantPointCache<F, C, B>,
 }
 
 impl<F, C, B, S, N> ForeignEdwardsEccChip<F, C, B, S, N>
@@ -163,12 +171,22 @@ where
             base_field_chip,
             scalar_field_chip: scalar_field_chip.clone(),
             tag_cnt: Rc::new(RefCell::new(1)),
+            constant_cache: Rc::new(RefCell::new(HashMap::new())),
         }
     }
 
     /// The emulated base field chip of this foreign Edwards ECC chip.
     pub fn base_field_chip(&self) -> &FieldChip<F, C::Base, B, N> {
         &self.base_field_chip
+    }
+
+    /// Returns the constant value of `point` if it was created via
+    /// `assign_fixed`, or `None` otherwise.
+    pub fn as_known_constant(
+        &self,
+        point: &AssignedForeignEdwardsPoint<F, C, B>,
+    ) -> Option<C::CryptographicGroup> {
+        self.constant_cache.borrow().get(point).copied()
     }
 
     /// A chip with instructions for the scalar field of this ECC chip.
@@ -347,6 +365,65 @@ where
         // Assert a*x^2 + y^2 - 1 = d*x^2*y^2
         base_chip.assert_equal(layouter, &lhs, &d_xy_sq)
     }
+
+    /// Adds an assigned point `p` to a constant point `q_val`. Cheaper than
+    /// general `add` because the constant coordinates turn emulated `mul`
+    /// calls into `mul_by_constant` calls.
+    fn add_constant(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        p: &AssignedForeignEdwardsPoint<F, C, B>,
+        q_val: C::CryptographicGroup,
+    ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
+        // If both operands are known constants, compute off-circuit.
+        if let Some(pv) = self.as_known_constant(p) {
+            return self.assign_fixed(layouter, pv + q_val);
+        }
+
+        let (qx, qy) = q_val.into().coordinates().expect("Edwards coordinates cannot fail");
+
+        let base_chip = self.base_field_chip();
+
+        let r_value = p.value().map(|pv| pv + q_val);
+        let r = self.assign_point_unchecked(layouter, r_value)?;
+
+        let px_qx = base_chip.mul_by_constant(layouter, &p.x, qx)?;
+        let py_qy = base_chip.mul_by_constant(layouter, &p.y, qy)?;
+        let px_qy = base_chip.mul_by_constant(layouter, &p.x, qy)?;
+        let py_qx = base_chip.mul_by_constant(layouter, &p.y, qx)?;
+        let neg_a_px_qx = base_chip.mul_by_constant(layouter, &px_qx, -C::A)?;
+        let d_px_py_qx_qy = base_chip.mul(layouter, &px_qx, &py_qy, Some(C::D))?;
+
+        // Rx * (1 + d * Px * Py * Qx * Qy) = (Px * Qy + Py * Qx)
+        addition::assert_addition_coordinate(
+            layouter,
+            &r.x,
+            &px_qy,
+            &py_qx,
+            &d_px_py_qx_qy,
+            false,
+            base_chip,
+            &self.config.addition_config,
+        )?;
+
+        // Ry * (1 - d * Px * Py * Qx * Qy) = (Py * Qy - a * Px * Qx)
+        addition::assert_addition_coordinate(
+            layouter,
+            &r.y,
+            &py_qy,
+            &neg_a_px_qx,
+            &d_px_py_qx_qy,
+            true,
+            base_chip,
+            &self.config.addition_config,
+        )?;
+
+        Ok(AssignedForeignEdwardsPoint {
+            point: r_value,
+            x: r.x,
+            y: r.y,
+        })
+    }
 }
 
 impl<F, C, B, S, N> AssignmentInstructions<F, AssignedForeignEdwardsPoint<F, C, B>>
@@ -385,11 +462,13 @@ where
         let x = self.base_field_chip().assign_fixed(layouter, x)?;
         let y = self.base_field_chip().assign_fixed(layouter, y)?;
 
-        Ok(AssignedForeignEdwardsPoint::<F, C, B> {
+        let p = AssignedForeignEdwardsPoint::<F, C, B> {
             point: Value::known(constant),
             x,
             y,
-        })
+        };
+        self.constant_cache.borrow_mut().insert(p.clone(), constant);
+        Ok(p)
     }
 }
 
@@ -639,6 +718,14 @@ where
             return self.double(layouter, p);
         }
 
+        // If one operand is constant, use the cheaper `add_constant` path.
+        if let Some(qv) = self.as_known_constant(q) {
+            return self.add_constant(layouter, p, qv);
+        }
+        if let Some(pv) = self.as_known_constant(p) {
+            return self.add_constant(layouter, q, pv);
+        }
+
         // Complete addition law on twisted Edwards curve:
         // (see https://eprint.iacr.org/2008/013.pdf)
         //
@@ -702,6 +789,10 @@ where
         layouter: &mut impl Layouter<F>,
         p: &AssignedForeignEdwardsPoint<F, C, B>,
     ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
+        if let Some(pv) = self.as_known_constant(p) {
+            return self.assign_fixed(layouter, pv + pv);
+        }
+
         // Complete doubling on twisted Edwards curve.
         // (see https://eprint.iacr.org/2008/013.pdf)
         //
@@ -773,6 +864,10 @@ where
         layouter: &mut impl Layouter<F>,
         p: &Self::Point,
     ) -> Result<Self::Point, Error> {
+        if let Some(pv) = self.as_known_constant(p) {
+            return self.assign_fixed(layouter, -pv);
+        }
+
         // The negation of `P = (x, y)` on a twisted Edwards curve is `-P = (-x, y)`
         let neg_x = self.base_field_chip().neg(layouter, &p.x)?;
         let neg_x = self.base_field_chip().normalize(layouter, &neg_x)?;
@@ -838,6 +933,11 @@ where
             return self.assign_fixed(layouter, C::CryptographicGroup::identity());
         } else if scalar == C::ScalarField::ONE {
             return Ok(base.clone());
+        }
+
+        // If the base is a known constant, compute off-circuit.
+        if let Some(base_val) = self.as_known_constant(base) {
+            return self.assign_fixed(layouter, base_val * scalar);
         }
 
         let scalar_bits = scalar.to_bits_le(None);
