@@ -244,6 +244,64 @@ where
         self.0
     }
 
+    /// Generates minimal valid DER bytes matching a spec, for use as a dummy
+    /// witness during keygen. The parser's circuit structure will only depend
+    /// on `self`, which is why having an explicit `self` in all cases does not
+    /// fail the proving process. It makes the context-dependent parsing much
+    /// easier to manage as well.
+    fn dummy_input(&self) -> Vec<u8> {
+        let mut out = Vec::new();
+        for block in &self.1 {
+            match block {
+                Asn1Block::Const(v, _) => out.extend_from_slice(v),
+                Asn1Block::Fixlen(n, _) => out.extend(std::iter::repeat_n(0u8, *n)),
+                Asn1Block::Tlv(tlv, _) => {
+                    match &tlv.tag.0 {
+                        Asn1RawDataInternal::Const(v, _) => out.extend_from_slice(v),
+                        Asn1RawDataInternal::Fixlen(n, _) => {
+                            out.extend(std::iter::repeat_n(0u8, *n))
+                        }
+                        Asn1RawDataInternal::Varlen(_) => out.push(0x00),
+                    }
+                    let val_bytes = tlv.val.dummy_input();
+                    match &tlv.len.0 {
+                        Asn1RawDataInternal::Const(v, _) => out.extend_from_slice(v),
+                        _ => out.extend(encode_length(val_bytes.len())),
+                    }
+                    out.extend(val_bytes);
+                }
+                Asn1Block::OptionalTlv { .. } => {}
+                Asn1Block::Varlen(_) => {}
+            }
+        }
+        out
+    }
+
+    /// Recovers an explicit input from a witness, i.e., a `Value` gated vector
+    /// of bytes. If the value is known, the input is simply the content.
+    /// Otherwise, it is generated with [`Self::dummy_input`]. This allows to
+    /// have an explicit slice at all time, making context-dependent parsing
+    /// manageable.
+    ///
+    /// # Note
+    ///
+    /// The parser circuit is responsible for generating the same circuit
+    /// structure regardless of the (variable-size regions) of the input. If
+    /// failing to do so, unless the real credential has the same structure as
+    /// the dummy input (very unlikely in practice), a `ConstraintSystemError`
+    /// will be triggered during proof generation.
+    fn get_explicit_input(&self, input: Value<Vec<u8>>) -> Vec<u8> {
+        let mut raw = Vec::new();
+        let mut mutated = false;
+        input.map(|v| {
+            mutated = true;
+            raw = v;
+        });
+        if !mutated {
+            raw = self.dummy_input()
+        }
+        raw
+    }
 }
 
 impl<Index> Asn1Spec<Index>
