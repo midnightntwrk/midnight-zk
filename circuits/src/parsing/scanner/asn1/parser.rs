@@ -542,5 +542,86 @@ where
             tag_bytes[0] as u64
         } else {
             tag.number as u64
+    /// Performs deferred substring checks for a fixed-length input.
+    fn do_fixlen_substring_checks<
+        const TAG_M: usize,
+        const LEN_M: usize,
+        const VAL_M: usize,
+        const VAL_A: usize,
+    >(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        assigned_input: &[AssignedByte<F>],
+        checks: Vec<(
+            ParsingPosition<F>,
+            Asn1ParsedUnit<F, TAG_M, LEN_M, VAL_M, VAL_A>,
+        )>,
+    ) -> Result<(), Error> {
+        for (pos, unit) in checks {
+            match (unit, pos) {
+                (Asn1ParsedUnit::Const(bytes), pos) if pos.vars.is_empty() => {
+                    let start = pos.offset;
+                    assert!(
+                        start + bytes.len() <= assigned_input.len(),
+                        "parse_asn1_fixlen did not enforce lengths constraints properly"
+                    );
+                    for (x, c) in assigned_input[start..].iter().zip(bytes.iter()) {
+                        self.native_gadget.assert_equal_to_fixed(layouter, x, *c)?
+                    }
+                }
+                (Asn1ParsedUnit::Fixlen(bytes), pos) if pos.vars.is_empty() => {
+                    let start = pos.offset;
+                    let end = pos.offset + bytes.len();
+                    assert!(
+                        end <= assigned_input.len(),
+                        "parse_asn1_fixlen did not enforce lengths constraints properly"
+                    );
+                    self.assert_equal_fixlen(layouter, &bytes, &assigned_input[start..end])?;
+                }
+                _ => unreachable!("unexpected varlen unit in fixed-length input"),
+            }
         }
+        Ok(())
     }
+
+    /// Performs deferred substring checks for a variable-length input.
+    fn do_varlen_substring_checks<
+        const TAG_M: usize,
+        const LEN_M: usize,
+        const VAL_M: usize,
+        const VAL_A: usize,
+        const M: usize,
+        const A: usize,
+    >(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        input_vec: &ScannerVec<F, M, A>,
+        checks: Vec<(
+            ParsingPosition<F>,
+            Asn1ParsedUnit<F, TAG_M, LEN_M, VAL_M, VAL_A>,
+        )>,
+    ) -> Result<(), Error> {
+        for (pos, unit) in checks {
+            let idx = self.position_to_assigned(layouter, &pos)?;
+            match unit {
+                Asn1ParsedUnit::Const(bytes) => {
+                    let assigned = self.native_gadget.assign_many_fixed(layouter, &bytes)?;
+                    self.check_bytes_varlen_partial(layouter, input_vec, &idx, &assigned)?
+                }
+                Asn1ParsedUnit::Fixlen(bytes) => {
+                    self.check_bytes_varlen_partial(layouter, input_vec, &idx, &bytes)?
+                }
+                Asn1ParsedUnit::VarlenTag(sv) => {
+                    self.check_bytes_varlen(layouter, input_vec, &idx, &sv)?
+                }
+                Asn1ParsedUnit::VarlenLen(sv) => {
+                    self.check_bytes_varlen(layouter, input_vec, &idx, &sv)?
+                }
+                Asn1ParsedUnit::VarlenVal(sv) => {
+                    self.check_bytes_varlen(layouter, input_vec, &idx, &sv)?
+                }
+            }
+        }
+        Ok(())
+    }
+}
