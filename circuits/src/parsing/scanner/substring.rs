@@ -175,7 +175,10 @@ use num_bigint::BigUint;
 use super::{ScannerChip, NB_SUBSTRING_COLS, PARSING_MAX_LEN_BITS, SUBSTRING_PARALLELISM};
 use crate::{
     field::AssignedNative,
-    instructions::{ArithInstructions, AssignmentInstructions, RangeCheckInstructions},
+    instructions::{
+        ArithInstructions, AssertionInstructions, AssignmentInstructions, ControlFlowInstructions,
+        RangeCheckInstructions,
+    },
     parsing::scanner::{Sequence, ALPHABET_MAX_SIZE},
     types::AssignedByte,
     CircuitField,
@@ -188,6 +191,44 @@ impl<F> ScannerChip<F>
 where
     F: CircuitField + Ord,
 {
+    /// Generic version of `check_bytes`. Cannot be exposed publicly because
+    /// it is unsound without range-checks on the elements of `sequence` and
+    /// `sub` (they are packed with indexes, so values outside `[0, 255]`
+    /// would break injectivity).
+    fn check_subsequence(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        sequence: &[AssignedNative<F>],
+        idx: &AssignedNative<F>,
+        sub: &[AssignedNative<F>],
+    ) -> Result<(), Error> {
+        if sub.is_empty() {
+            // The circuit logic will assume `sub` is not empty for padding purposes, hence
+            // handling it separately.
+            return Ok(());
+        }
+        // Range-check idx to ensure packing injectivity.
+        self.native_gadget.assert_lower_than_fixed(
+            layouter,
+            idx,
+            &(BigUint::from(1u8) << PARSING_MAX_LEN_BITS),
+        )?;
+
+        self.sequence_cache
+            .borrow_mut()
+            .entry(sequence.to_vec())
+            .and_modify(|(calls, len)| {
+                *len += sub.len();
+                calls.push((idx.clone(), vec![], sub.to_vec(), None))
+            })
+            .or_insert_with(|| {
+                let sub_entry = (idx.clone(), vec![], sub.to_vec(), None);
+                (vec![sub_entry], sub.len())
+            });
+
+        Ok(())
+    }
+
     /// Asserts that `sub` is a contiguous subsequence of `sequence` starting at
     /// index `idx` (0-indexed). This function defers the actual circuit work:
     /// it records the call in the `SequenceCache`,
@@ -218,38 +259,40 @@ where
         self.check_subsequence(layouter, &sequence, idx, &sub)
     }
 
-    /// Generic version of `check_bytes`. Cannot be exposed publicly because
-    /// it is unsound without range-checks on the elements of `sequence` and
-    /// `sub` (they are packed with indexes, so values outside `[0, 255]`
-    /// would break injectivity).
-    fn check_subsequence(
+    /// More permissive version of [`Self::check_bytes`] that allows both
+    /// `sequence` and `sub` to include the value 256. This function
+    /// range-checks all of their cells by 257 to enable that.
+    ///
+    /// Less resilient, and slightly less efficient than [`Self::check_bytes`],
+    /// but permits to encode more complex tests on bytes by using 256 as
+    /// separator arbitrarily. E.g., the positions at which `sub` may start may
+    /// be restricted by putting 256 blockers in `sequence`, and at the
+    /// beginning and the end of `sub`.
+    pub fn check_bytes_ext(
         &self,
         layouter: &mut impl Layouter<F>,
         sequence: &[AssignedNative<F>],
         idx: &AssignedNative<F>,
         sub: &[AssignedNative<F>],
     ) -> Result<(), Error> {
-        if sub.is_empty() {
-            // The circuit logic will assume `sub` is not empty for padding purposes, hence
-            // handling it separately.
-            return Ok(());
+        for x in sequence.iter().chain(sub) {
+            self.native_gadget.assert_lower_than_fixed(layouter, x, &257u16.into())?;
         }
-        // Range-check idx to ensure packing injectivity.
-        self.native_gadget.assert_lower_than_fixed(
-            layouter,
-            idx,
-            &(BigUint::from(1u8) << PARSING_MAX_LEN_BITS),
-        )?;
+        self.check_subsequence(layouter, sequence, idx, sub)
+    }
 
-        self.sequence_cache
-            .borrow_mut()
-            .entry(sequence.to_vec())
-            .and_modify(|(calls, len)| {
-                *len += sub.len();
-                calls.push((idx.clone(), sub.to_vec()))
-            })
-            .or_insert_with(|| (vec![(idx.clone(), sub.to_vec())], sub.len()));
-
+    /// Asserts that two byte slices of fixed length are element-wise equal.
+    /// Proceeds by iterating and asserting equality over cells.
+    pub fn assert_equal_fixlen(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        v1: &[AssignedByte<F>],
+        v2: &[AssignedByte<F>],
+    ) -> Result<(), Error> {
+        assert_eq!(v1.len(), v2.len(), "byte slices must have equal length");
+        for (x, y) in v1.iter().zip(v2.iter()) {
+            self.native_gadget.assert_equal(layouter, x, y)?;
+        }
         Ok(())
     }
 }
@@ -616,9 +659,9 @@ mod test {
         );
         check_bytes_test(false, ("hello", "ell", 1), ("world", "orl", 1), true);
 
-        // Performance test for the golden files, using a sub of 50 bytes.
-        let full = "abcdefghij abcdefghij abcdefghij abcdefghij abcdefghij abcdefghij";
-        let sub = &full[5..55]; // 50 bytes
-        check_bytes_test(true, (full, sub, 5), ("world", "orl", 1), true);
+        // Performance test for the golden files (full=16, sub=5 to match varlen tests).
+        let full = "abcdefghij abcde";
+        let sub = &full[6..11]; // 5 bytes
+        check_bytes_test(true, (full, sub, 6), ("world", "orl", 1), true);
     }
 }
