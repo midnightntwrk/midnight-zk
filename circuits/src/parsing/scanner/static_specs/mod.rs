@@ -191,9 +191,11 @@ pub enum StdLibParser {
     Icao9309Td3Dg1,
 
     /// **Note**: This is an auxiliary automaton performing partial operations.
-    /// In most cases, rather than calling [`AutomatonChip::parse`] with this
-    /// automaton, you likely need the wrappers [`ScannerChip::parse_asn1_tag`]
-    /// or [`ScannerChip::parse_asn1_tag_varlen`] instead.
+    /// In most cases, rather than calling
+    /// [`ScannerChip::parse`](super::ScannerChip::parse) with this
+    /// automaton, you likely need the wrappers
+    /// [`ScannerChip::parse_asn1_tag`](super::ScannerChip::parse_asn1_tag)
+    /// or [`ScannerChip::parse_asn1_tag_varlen`](super::ScannerChip::parse_asn1_tag_varlen) instead.
     ///
     /// # Description and sources
     ///
@@ -235,8 +237,9 @@ pub enum StdLibParser {
     ///     can thus be reconstructed by reading the sequence of outputs as a
     ///     big-endian number in base 128.
     ///
-    /// Recall that [`ScannerChip::parse_asn1_tag`] and
-    /// [`ScannerChip::parse_asn1_tag_varlen`] typically parse a tag with this
+    /// Recall that
+    /// [`ScannerChip::parse_asn1_tag`](super::ScannerChip::parse_asn1_tag) and
+    /// [`ScannerChip::parse_asn1_tag_varlen`](super::ScannerChip::parse_asn1_tag_varlen) typically parse a tag with this
     /// automaton, and interpret the result in base 128 in-circuit to return the
     /// actual assigned value of the tag.
     ///
@@ -247,9 +250,11 @@ pub enum StdLibParser {
     Asn1DerTag,
 
     /// **Note**: This is an auxiliary automaton performing partial operations.
-    /// In most cases, rather than calling [`AutomatonChip::parse`] with this
-    /// automaton, you likely need the wrappers [`ScannerChip::parse_asn1_len`]
-    /// or [`ScannerChip::parse_asn1_len_varlen`] instead.
+    /// In most cases, rather than calling
+    /// [`ScannerChip::parse`](super::ScannerChip::parse) with this
+    /// automaton, you likely need the wrappers
+    /// [`ScannerChip::parse_asn1_len`](super::ScannerChip::parse_asn1_len)
+    /// or [`ScannerChip::parse_asn1_len_varlen`](super::ScannerChip::parse_asn1_len_varlen) instead.
     ///
     /// # Description and sources
     ///
@@ -276,8 +281,9 @@ pub enum StdLibParser {
     /// This is however, the *theoretical* behaviour. As an automaton cannot
     /// check that exactly `N` bytes are read, trails of arbitrary sizes are
     /// accepted. A circuit using this automaton then has to enforce this length
-    /// constraint separately (see [`ScannerChip::parse_asn1_len`] and
-    /// [`ScannerChip::parse_asn1_len_varlen`]).
+    /// constraint separately (see
+    /// [`ScannerChip::parse_asn1_len`](super::ScannerChip::parse_asn1_len) and
+    /// [`ScannerChip::parse_asn1_len_varlen`](super::ScannerChip::parse_asn1_len_varlen)).
     ///
     /// Note: the indefinite form (byte 0 = 0x80) is forbidden by DER.
     ///
@@ -291,8 +297,8 @@ pub enum StdLibParser {
     ///     byte value `B`. The length can be reconstructed by reading the
     ///     outputs of bytes 1..=N as a big-endian number in base 256.
     ///
-    /// See also [`ScannerChip::parse_asn1_len`] and
-    /// [`ScannerChip::parse_asn1_len_varlen`] for circuit-level
+    /// See also [`ScannerChip::parse_asn1_len`](super::ScannerChip::parse_asn1_len) and
+    /// [`ScannerChip::parse_asn1_len_varlen`](super::ScannerChip::parse_asn1_len_varlen) for circuit-level
     /// interpretation.
     ///
     /// # Unconventional behaviour
@@ -302,9 +308,11 @@ pub enum StdLibParser {
     Asn1DerLength,
 
     /// **Note**: This is an auxiliary automaton performing partial operations.
-    /// In most cases, rather than calling [`AutomatonChip::parse`] with this
-    /// automaton, you likely need the wrappers [`ScannerChip::parse_asn1_len`]
-    /// or [`ScannerChip::parse_asn1_len_varlen`] instead.
+    /// In most cases, rather than calling
+    /// [`ScannerChip::parse`](super::ScannerChip::parse) with this
+    /// automaton, you likely need the wrappers
+    /// [`ScannerChip::parse_asn1_len`](super::ScannerChip::parse_asn1_len)
+    /// or [`ScannerChip::parse_asn1_len_varlen`](super::ScannerChip::parse_asn1_len_varlen) instead.
     ///
     /// Restricted variant of `Asn1DerLength` that only outputs the total
     /// encoding byte count: 1 for short form, N+1 for long form where `N` is
@@ -319,9 +327,11 @@ pub enum StdLibParser {
     Asn1DerLengthTotalBytes,
 
     /// **Note**: This is an auxiliary automaton performing partial operations.
-    /// In most cases, rather than calling [`AutomatonChip::parse`] with this
-    /// automaton, you likely need the wrappers [`ScannerChip::parse_asn1_len`]
-    /// or [`ScannerChip::parse_asn1_len_varlen`] instead.
+    /// In most cases, rather than calling
+    /// [`ScannerChip::parse`](super::ScannerChip::parse) with this
+    /// automaton, you likely need the wrappers
+    /// [`ScannerChip::parse_asn1_len`](super::ScannerChip::parse_asn1_len)
+    /// or [`ScannerChip::parse_asn1_len_varlen`](super::ScannerChip::parse_asn1_len_varlen) instead.
     ///
     /// Restricted variant of `Asn1DerLength` that only outputs the length
     /// value bytes: byte value for short form and for subsequent long-form

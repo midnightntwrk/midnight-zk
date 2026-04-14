@@ -433,8 +433,8 @@ where
     ///      [`encode_tag`](der_encoding::encode_tag)) or `&[u8]` (pre-encoded
     ///      raw tag bytes).
     ///
-    ///   - `len`: `usize` (encoded via [`encode_length`](encode_length), e.g.,
-    ///     `88usize` -> `[0x58]`) or `&[u8]` (pre-encoded raw length bytes).
+    ///   - `len`: `usize` (encoded via [`encode_length`], e.g., `88usize` ->
+    ///     `[0x58]`) or `&[u8]` (pre-encoded raw length bytes).
     pub fn read_tlv(
         self,
         tag: impl Into<Asn1RawData<Index>>,

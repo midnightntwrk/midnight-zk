@@ -200,9 +200,10 @@ impl<F: CircuitField + Ord> ScannerChip<F> {
 
     /// Variable-length variant of [`parse_asn1_len`](`Self::parse_asn1_len`).
     ///
-    /// Parses the input via [`Asn1DerLengthTotalBytes`] and
-    /// [`Asn1DerLengthValue`], asserts that the total encoding byte count
-    /// matches `input.len()`, and returns the decoded length value.
+    /// Parses the input via [`StdLibParser::Asn1DerLengthTotalBytes`] and
+    /// [`StdLibParser::Asn1DerLengthValue`], asserts that the total encoding
+    /// byte count matches `input.len()`, and returns the decoded length
+    /// value.
     ///
     /// Requires vector alignment `A = 1` so that data is right-aligned in the
     /// buffer, allowing direct big-endian interpretation of the marker buffer.

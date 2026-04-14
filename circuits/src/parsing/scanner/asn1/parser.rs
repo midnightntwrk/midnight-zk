@@ -705,10 +705,10 @@ where
     }
 
     /// Parses an `Asn1RawData` block. For Const/Fixlen, delegates to
-    /// [`assign_const`](`Self::assign_const`)/
-    /// [`assign_witness`](`Self::assign_witness`). For Varlen, assigns both as
-    /// individual bytes and as a `ScannerVec`, using `role` to select
-    /// the correct `Asn1ParsedUnit` variant.
+    /// [`read_const`](`Self::read_const`)/
+    /// [`assign_witness_fixlen`](`Self::assign_witness_fixlen`). For Varlen,
+    /// assigns both as individual bytes and as a `ScannerVec`, using `role`
+    /// to select the correct `Asn1ParsedUnit` variant.
     ///
     /// When `role` is `Tag` or `Len`, runs automaton validation and (for `Len`)
     /// verifies the consistency of the DER length encoding. Returns the
