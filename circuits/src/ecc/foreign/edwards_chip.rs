@@ -633,10 +633,10 @@ where
         q: &Self::Point,
     ) -> Result<Self::Point, Error> {
         if p == q {
-            return self.double(layouter, &p);
+            return self.double(layouter, p);
         }
 
-        // Complete addition law on twisted edwards curve:
+        // Complete addition law on twisted Edwards curve:
         // (see https://eprint.iacr.org/2008/013.pdf)
         //
         // P + Q = R
@@ -698,7 +698,7 @@ where
         layouter: &mut impl Layouter<F>,
         p: &AssignedForeignEdwardsPoint<F, C, B>,
     ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
-        // Complete doubling on twisted edwards curve.
+        // Complete doubling on twisted Edwards curve.
         // (see https://eprint.iacr.org/2008/013.pdf)
         //
         // P + P = R
@@ -710,6 +710,10 @@ where
         // <=> (denominators are non-zero)
         // Rx * (1 + d * Px^2 * Py^2) = 2 * Px * Py
         // Ry * (1 - d * Px^2 * Py^2) = Py^2 - a * Px^2
+        //
+        // Since P is on the curve: a * Px^2 + Py^2 = 1 + d * Px^2 * Py^2,
+        // we substitute w = a * Px^2 + Py^2 - 1 for d * Px^2 * Py^2,
+        // saving one emulated multiplication.
 
         let base_chip = self.base_field_chip();
 
@@ -721,29 +725,33 @@ where
         let px_py = base_chip.mul(layouter, &p.x, &p.y, None)?;
 
         let neg_a_px_sq = base_chip.mul_by_constant(layouter, &px_sq, -C::A)?;
-        let d_pxpy_sq = base_chip.mul(layouter, &px_sq, &py_sq, Some(C::D))?;
-        let neg_d_pxpy_sq = base_chip.neg(layouter, &d_pxpy_sq)?;
 
-        // Constraint for Rx coordinate
-        // Rx * (1 + d * Px^2 * Py^2) = 2 * Px * Py
+        // w = d * Px^2 * Py^2 = a * Px^2 + Py^2 - 1  (on-curve relation)
+        let w = base_chip.linear_combination(
+            layouter,
+            &[(C::A, px_sq), (C::Base::ONE, py_sq.clone())],
+            -C::Base::ONE,
+        )?;
+        let neg_w = base_chip.neg(layouter, &w)?;
+
+        // Rx * (1 + w) = 2 * Px * Py
         addition::assert_addition_coordinate(
             layouter,
             &r.x,
             &px_py,
             &px_py,
-            &d_pxpy_sq,
+            &w,
             base_chip,
             &self.config.addition_config,
         )?;
 
-        // Constraint for Ry coordinate
-        // Ry * (1 - d * Px^2 * Py^2) = Py^2 - a * Px^2
+        // Ry * (1 - w) = Py^2 - a * Px^2
         addition::assert_addition_coordinate(
             layouter,
             &r.y,
             &py_sq,
             &neg_a_px_sq,
-            &neg_d_pxpy_sq,
+            &neg_w,
             base_chip,
             &self.config.addition_config,
         )?;
