@@ -162,3 +162,159 @@ impl<
     }
 }
 
+/// A position in an ASN.1 parsed input, represented as a sum of
+/// variable-length assigned values plus a constant offset:
+/// `position = sum(vars) + offset`.
+#[derive(Debug, Clone)]
+struct ParsingPosition<F: CircuitField> {
+    vars: Vec<AssignedNative<F>>,
+    offset: usize,
+}
+
+impl<F: CircuitField> From<usize> for ParsingPosition<F> {
+    fn from(offset: usize) -> Self {
+        Self {
+            vars: Vec::new(),
+            offset,
+        }
+    }
+}
+
+impl<F: CircuitField> From<AssignedNative<F>> for ParsingPosition<F> {
+    fn from(value: AssignedNative<F>) -> Self {
+        Self {
+            vars: vec![value],
+            offset: 0,
+        }
+    }
+}
+
+impl<F: CircuitField> ParsingPosition<F> {
+    /// Advances the position by exactly `n` bytes.
+    fn advance_exact(&mut self, n: usize) {
+        self.offset += n;
+    }
+
+    /// Advances the position by a variable (circuit-assigned) length.
+    fn advance_variable(&mut self, assigned_len: AssignedNative<F>) {
+        self.vars.push(assigned_len);
+    }
+
+    /// Computes how much `self` has advanced compared to `prev`. Assumes
+    /// that `prev.vars` is a prefix of `self.vars` (i.e., all variable
+    /// advances since `prev` were pushed to `self`).
+    fn diff(&self, prev: &Self) -> ParsingPosition<F> {
+        assert!(self.vars.len() >= prev.vars.len(), "unexpected diff call");
+        ParsingPosition {
+            vars: self.vars[prev.vars.len()..].to_vec(),
+            offset: self.offset - prev.offset,
+        }
+    }
+}
+
+// -----------------------------------------------------------------------
+// Internal state
+// -----------------------------------------------------------------------
+
+/// Which TLV component a variable-length raw data block belongs to.
+/// Determines which `Asn1ParsedUnit` variant to produce.
+enum RawDataRole {
+    Tag,
+    Len,
+}
+
+/// Mutable state threaded through the ASN.1 parsing functions.
+struct ParserState<
+    F: CircuitField,
+    Index: Eq + Hash,
+    const TAG_M: usize,
+    const LEN_M: usize,
+    const VAL_M: usize,
+    const VAL_A: usize,
+> {
+    /// Current parsing position (may be exact or variable).
+    position: ParsingPosition<F>,
+    /// Number of input bytes consumed so far (off-circuit position).
+    real_position: usize,
+    /// Extracted regions keyed by user-supplied index.
+    extracted: HashMap<Index, Asn1ParsedUnit<F, TAG_M, LEN_M, VAL_M, VAL_A>>,
+    /// Deferred substring checks: (position, content) pairs to verify at the
+    /// end against the full input.
+    substring_checks: Vec<(
+        ParsingPosition<F>,
+        Asn1ParsedUnit<F, TAG_M, LEN_M, VAL_M, VAL_A>,
+    )>,
+    /// Set to true when any variable-length block is encountered.
+    varlen: bool,
+}
+
+impl<
+        F: CircuitField,
+        Index: Eq + Hash,
+        const TAG_M: usize,
+        const LEN_M: usize,
+        const VAL_M: usize,
+        const VAL_A: usize,
+    > ParserState<F, Index, TAG_M, LEN_M, VAL_M, VAL_A>
+{
+    fn new() -> Self {
+        Self {
+            position: ParsingPosition::from(0),
+            real_position: 0,
+            extracted: HashMap::new(),
+            substring_checks: Vec::new(),
+            varlen: false,
+        }
+    }
+
+    /// Records an extraction and a substring check (possibly forced).
+    /// Uses `self.position` as the substring check position.
+    fn record(
+        &mut self,
+        index: Option<Index>,
+        unit: Asn1ParsedUnit<F, TAG_M, LEN_M, VAL_M, VAL_A>,
+        force_substring_check: bool,
+    ) {
+        self.record_at(index, unit, force_substring_check, &self.position.clone());
+    }
+
+    /// Record an extraction with an explicit substring check position. The
+    /// substring check is performed if `force_substring_check` is true, or if
+    /// `index` is not None.
+    ///
+    /// This function is used instead of `record` when the current
+    /// `self.position` has already advanced past the extraction.
+    fn record_at(
+        &mut self,
+        index: Option<Index>,
+        unit: Asn1ParsedUnit<F, TAG_M, LEN_M, VAL_M, VAL_A>,
+        force_substring_check: bool,
+        position: &ParsingPosition<F>,
+    ) {
+        match index {
+            None => {
+                if force_substring_check {
+                    self.substring_checks.push((position.clone(), unit.clone()))
+                }
+            }
+            Some(idx) => {
+                self.substring_checks.push((position.clone(), unit.clone()));
+                self.extracted.insert(idx, unit);
+            }
+        }
+    }
+}
+
+/// Consume `n` bytes from the front of `input`.
+fn consume(input: &mut &[u8], n: usize) -> Vec<u8> {
+    assert!(
+        input.len() >= n,
+        "ASN.1 parse: input too short (need {n}, have {})",
+        input.len()
+    );
+    let (head, tail) = input.split_at(n);
+    let bytes = head.to_vec();
+    *input = tail;
+    bytes
+}
+
