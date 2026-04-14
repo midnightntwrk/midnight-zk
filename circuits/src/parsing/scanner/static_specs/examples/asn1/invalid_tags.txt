@@ -1,0 +1,6 @@
+# Long-form sentinel with no following byte (0x1F = Universal+Primitive+sentinel)
+1F
+# Truncated: Application+Constructed sentinel (0x7F) with no final byte
+7F
+# Truncated continuation: sentinel + continuation byte (bit 7=1) but no final byte
+5F80

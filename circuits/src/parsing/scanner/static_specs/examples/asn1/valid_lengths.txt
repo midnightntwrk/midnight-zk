@@ -1,0 +1,7 @@
+# Short form (0x00–0x7F)
+00
+58
+7F
+# Long form (first byte 0x81+ followed by length bytes)
+8158
+820100
