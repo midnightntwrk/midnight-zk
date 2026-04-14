@@ -451,6 +451,172 @@ where
         Ok(assigned)
     }
 }
+
+impl<F> ScannerChip<F>
+where
+    F: CircuitField + Ord + Hash,
+{
+    /// Parses a fully fixed-length witness according to a spec. The assigned
+    /// and constrained data can be recovered using `Asn1FixlenResult`
+    /// associated functions. Since the entire structure is made of fixed-length
+    /// chunks, no generic substring checks are needed to perform these
+    /// extractions (cheaper equality assertions are made instead).
+    ///
+    /// When `input` is `Value::unknown()` (e.g., during keygen), a dummy
+    /// byte sequence derived from the spec is used so the circuit
+    /// structure is built correctly without a real witness.
+    ///
+    /// # Panics
+    ///
+    /// If the spec contains any variable-length blocks (use
+    /// [`parse_asn1_varlen`](`Self::parse_asn1_varlen`) instead).
+    pub fn parse_asn1_fixlen<Index: Eq + Hash + Debug + Clone>(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        input: Value<Vec<u8>>,
+        spec: Asn1Spec<Index>,
+    ) -> Result<Asn1FixlenResult<F, Index>, Error> {
+        // Getting an explicit input as it greatly simplifies the handling of
+        // context-dependent parsing. Since `spec` only contains fixed-length blocks,
+        // the generated circuit will always have the same structure.
+        let mut input: &[u8] = &spec.get_explicit_input(input);
+        let input_len = input.len();
+        let assigned_input: Vec<AssignedByte<F>> = self.native_gadget.assign_many(
+            layouter,
+            &input.iter().copied().map(Value::known).collect::<Vec<_>>(),
+        )?;
+
+        // Main call to generate the parsing circuit.
+        let mut state = ParserState::<F, Index, 0, 0, 0, 0>::new();
+        spec.no_full_marker();
+        self.process_blocks(layouter, &mut input, spec, None, &mut state)?;
+        assert!(
+            !state.varlen,
+            "parse_asn1_fixlen: spec cannot contain variable-length blocks. You must call \
+            parse_asn1_varlen instead."
+        );
+
+        // Since all positions are fixed, testing the equality of positions and
+        // performing substring checks only amount to off-circuit assertions and
+        // equality constraints.
+        self.assert_equal_positions(layouter, &state.position, &ParsingPosition::from(input_len))?;
+        self.do_fixlen_substring_checks::<0, 0, 0, 0>(
+            layouter,
+            &assigned_input,
+            state.substring_checks,
+        )?;
+        Ok(Asn1FixlenResult {
+            full_witness: assigned_input,
+            extracted: state.extracted,
+        })
+    }
+
+    /// Same as `parse_asn1_fixlen`, but processes assigned bytes. Performs
+    /// `input.len()` additional equality checks in-circuit compared to
+    /// [`self.parse_asn1_fixlen`], to constrain equality between the result and
+    /// the initial input.
+    pub fn parse_asn1_fixlen_assigned<Index: Eq + Hash + Debug + Clone>(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        input: &[AssignedByte<F>],
+        spec: Asn1Spec<Index>,
+    ) -> Result<Asn1FixlenResult<F, Index>, Error> {
+        let input_reassigned = input.iter().map(InnerValue::value).collect::<Value<Vec<_>>>();
+        let res = self.parse_asn1_fixlen(layouter, input_reassigned, spec)?;
+        // Assert equality between the initial input and the one assigned by
+        // `parse_asn1_fixlen`. Zipping is sufficient since `parse_asn1_fixlen`
+        // guarantees that `res.full_witness` has the same length as `input_reassigned`.
+        for (x, y) in input.iter().zip(res.full_witness.iter()) {
+            self.native_gadget.assert_equal(layouter, x, y)?
+        }
+        Ok(res)
+    }
+
+    /// Parses a witness that may contain variable-length blocks. The assigned
+    /// and constrained data can be recovered using `Asn1VarlenResult`
+    /// associated functions. The different const parameters stand for (put
+    /// an arbitrary value if not applicable):
+    ///
+    /// - `TAG_M`: maximal length of a variable-length Tag unit in TLV blocks.
+    /// - `LEN_M`: maximal length of a variable-length Length unit in TLV
+    ///   blocks.
+    /// - `VAL_M`: maximal length of a variable-length Value unit in TLV blocks.
+    /// - `VAL_A`: `AssignedVector` alignment for variable-length Value units in
+    ///   TLV blocks.
+    /// - `M`: maximal length of `input`.
+    /// - `A`: `AssignedVector` alignment for `input`.
+    ///
+    /// # Panics
+    ///
+    /// If the spec contains no variable-length blocks (use
+    /// [`parse_asn1_fixlen`](`Self::parse_asn1_fixlen`) instead).
+    /// Parses a witness that may contain variable-length blocks. The assigned
+    /// and constrained data can be recovered using `Asn1VarlenResult`
+    /// associated functions. The different const parameters stand for (put
+    /// an arbitrary value if not applicable):
+    ///
+    /// - `TAG_M`: maximal length of a variable-length Tag unit in TLV blocks.
+    /// - `LEN_M`: maximal length of a variable-length Length unit in TLV
+    ///   blocks.
+    /// - `VAL_M`: maximal length of a variable-length Value unit in TLV blocks.
+    /// - `VAL_A`: `AssignedVector` alignment for variable-length Value units in
+    ///   TLV blocks.
+    /// - `M`: maximal length of `input`.
+    /// - `A`: `AssignedVector` alignment for `input`.
+    ///
+    /// When `input` is `Value::unknown()` (e.g., during keygen), a dummy
+    /// byte sequence derived from the spec is used so the circuit
+    /// structure is built correctly without a real witness.
+    ///
+    /// # Panics
+    ///
+    /// If the spec contains no variable-length blocks (use
+    /// [`parse_asn1_fixlen`](`Self::parse_asn1_fixlen`) instead).
+    pub fn parse_asn1_varlen<
+        Index: Eq + Hash + Debug + Clone,
+        const TAG_M: usize,
+        const LEN_M: usize,
+        const VAL_M: usize,
+        const VAL_A: usize,
+        const M: usize,
+        const A: usize,
+    >(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        input: Value<Vec<u8>>,
+        spec: Asn1Spec<Index>,
+    ) -> Result<Asn1VarlenResult<F, Index, TAG_M, LEN_M, VAL_M, VAL_A, M, A>, Error> {
+        // Getting an explicit input as it greatly simplifies the handling of
+        // context-dependent parsing. The code below ensures that the same circuit
+        // structure is produced regardless of the variable-length parts of `spec`.
+        let mut input: &[u8] = &spec.get_explicit_input(input);
+        let input_vec: ScannerVec<F, M, A> =
+            self.assign_scanner_vec(layouter, Value::known(input.to_vec()))?;
+
+        let mut state = ParserState::<F, Index, TAG_M, LEN_M, VAL_M, VAL_A>::new();
+        spec.no_full_marker();
+        self.process_blocks(layouter, &mut input, spec, None, &mut state)?;
+        assert!(
+            state.varlen,
+            "parse_asn1_varlen: spec contains no variable-length blocks. Call the cheaper \
+            parse_asn1_fixlen instead."
+        );
+        self.assert_equal_positions(
+            layouter,
+            &state.position,
+            &ParsingPosition::from(input_vec.len().clone()),
+        )?;
+        self.do_varlen_substring_checks::<TAG_M, LEN_M, VAL_M, VAL_A, M, A>(
+            layouter,
+            &input_vec,
+            state.substring_checks,
+        )?;
+        Ok(Asn1VarlenResult {
+            full_witness: input_vec,
+            extracted: state.extracted,
+        })
+    }
+
     /// Processes the blocks of an [`Asn1Spec`], updating `state`.
     ///
     /// `remaining` is the off-circuit byte count of the enclosing TLV's
