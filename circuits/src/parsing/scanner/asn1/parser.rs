@@ -318,3 +318,229 @@ fn consume(input: &mut &[u8], n: usize) -> Vec<u8> {
     bytes
 }
 
+// -----------------------------------------------------------------------
+// Circuit phase
+// -----------------------------------------------------------------------
+
+impl<F> ScannerChip<F>
+where
+    F: CircuitField + Ord + Hash,
+{
+    /// Convert a [`ParsingPosition`] to an [`AssignedNative`] for use as a
+    /// substring check index.
+    fn position_to_assigned(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        pos: &ParsingPosition<F>,
+    ) -> Result<AssignedNative<F>, Error> {
+        let terms: Vec<_> = pos.vars.iter().map(|v| (F::ONE, v.clone())).collect();
+        self.native_gadget
+            .linear_combination(layouter, &terms, F::from(pos.offset as u64))
+    }
+
+    /// Asserts that two parsing positions are equal in circuit. Optimised
+    /// for the common cases where one or both sides have no variable
+    /// components.
+    fn assert_equal_positions(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        p1: &ParsingPosition<F>,
+        p2: &ParsingPosition<F>,
+    ) -> Result<(), Error> {
+        let terms1 = p1.vars.iter().map(|x| (F::ONE, x.clone()));
+        let terms2 = p2.vars.iter().map(|x| (-F::ONE, x.clone()));
+        let terms: Vec<_> = terms1.chain(terms2).collect();
+        if terms.is_empty() {
+            // Both fixed: compile-time check (free in-circuit).
+            assert_eq!(p1.offset, p2.offset, "fixed positions are not equal");
+            Ok(())
+        } else if terms.len() == 1 {
+            // Single variable: use assert_equal_to_fixed (1 row).
+            let (coeff, var) = &terms[0];
+            let fixed = if *coeff == F::ONE {
+                F::from(p2.offset as u64) - F::from(p1.offset as u64)
+            } else {
+                F::from(p1.offset as u64) - F::from(p2.offset as u64)
+            };
+            self.native_gadget.assert_equal_to_fixed(layouter, var, fixed)
+        } else {
+            // General case: linear_combination + assert_zero (2 rows).
+            let z = self.native_gadget.linear_combination(
+                layouter,
+                &terms,
+                F::from(p1.offset as u64) - F::from(p2.offset as u64),
+            )?;
+            self.native_gadget.assert_zero(layouter, &z)
+        }
+    }
+
+    /// Reads `v.len()` bytes as fixed constants. Asserts (off-circuit) that
+    /// the witness matches `v`. Advances `state.real_position`. The caller is
+    /// responsible for advancing `state.position`.
+    fn read_const<
+        Index: Eq + Hash + Debug + Clone,
+        const TAG_M: usize,
+        const LEN_M: usize,
+        const VAL_M: usize,
+        const VAL_A: usize,
+    >(
+        &self,
+        input: &mut &[u8],
+        v: &[u8],
+        state: &mut ParserState<F, Index, TAG_M, LEN_M, VAL_M, VAL_A>,
+    ) -> Result<(), Error> {
+        let input_block = consume(input, v.len());
+        assert_eq!(
+            v, &input_block,
+            "ASN.1 parsing error: expected {:?}, got {:?}",
+            v, input_block
+        );
+        state.real_position += v.len();
+        Ok(())
+    }
+
+    /// Assigns `n` bytes as unconstrained witness values. Advances
+    /// `state.real_position`. The caller is responsible for advancing
+    /// `state.position`.
+    ///
+    /// For soundness, these values however need to be subjected to a substring
+    /// check, to constrain them to appear in the original credential. The
+    /// caller is responsible that.
+    fn assign_witness_fixlen<
+        Index: Eq + Hash + Debug + Clone,
+        const TAG_M: usize,
+        const LEN_M: usize,
+        const VAL_M: usize,
+        const VAL_A: usize,
+    >(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        input: &mut &[u8],
+        n: usize,
+        state: &mut ParserState<F, Index, TAG_M, LEN_M, VAL_M, VAL_A>,
+    ) -> Result<Vec<AssignedByte<F>>, Error> {
+        let input_block: Vec<_> = consume(input, n).into_iter().map(Value::known).collect();
+        let assigned = self.native_gadget.assign_many(layouter, &input_block)?;
+        state.real_position += n;
+        Ok(assigned)
+    }
+
+    /// Similar to `assign_witness_fixlen`, but also performs dummy assignments
+    /// so that it produces the same structure as a call with `n` = `max_n`.
+    /// Returns the assigned values, including the dummies.
+    fn assign_witness_varlen<
+        Index: Eq + Hash + Debug + Clone,
+        const TAG_M: usize,
+        const LEN_M: usize,
+        const VAL_M: usize,
+        const VAL_A: usize,
+    >(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        input: &mut &[u8],
+        n: usize,
+        max_n: usize,
+        state: &mut ParserState<F, Index, TAG_M, LEN_M, VAL_M, VAL_A>,
+    ) -> Result<Vec<AssignedByte<F>>, Error> {
+        assert!(n <= max_n, "variable length exceeding max capacity");
+        let input_block: Vec<_> = (consume(input, n).into_iter().chain(repeat_n(0u8, max_n - n)))
+            .map(Value::known)
+            .collect();
+        let assigned = self.native_gadget.assign_many(layouter, &input_block)?;
+        state.real_position += n;
+        Ok(assigned)
+    }
+}
+
+    /// Validates and interprets a fixed-size raw data block based on its
+    /// `role`. For `Tag`, validates the encoding and discards the result.
+    /// For `Len`, validates and returns the decoded length value.
+    fn automaton_validate_fixlen(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        bytes: &[AssignedByte<F>],
+        role: &RawDataRole,
+    ) -> Result<Option<AssignedNative<F>>, Error> {
+        match role {
+            RawDataRole::Tag => {
+                self.parse(
+                    layouter,
+                    AutomatonParser::Static(StdLibParser::Asn1DerTag),
+                    bytes,
+                )?;
+                Ok(None)
+            }
+            RawDataRole::Len => {
+                let length_value = self.parse_asn1_len(layouter, bytes)?;
+                Ok(Some(length_value))
+            }
+        }
+    }
+
+    /// Validates a variable-length tag [`ScannerVec`] via the
+    /// [`Asn1DerTag`](`StdLibParser::Asn1DerTag`) automaton.
+    fn automaton_validate_varlen_tag<const M: usize>(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        sv: &ScannerVec<F, M, 1>,
+    ) -> Result<(), Error> {
+        self.parse_varlen(
+            layouter,
+            AutomatonParser::Static(StdLibParser::Asn1DerTag),
+            sv,
+        )?;
+        Ok(())
+    }
+
+    /// Validates and interprets a variable-length length [`ScannerVec`].
+    /// Returns the circuit-decoded length value.
+    fn automaton_validate_varlen_len<const M: usize>(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        sv: &ScannerVec<F, M, 1>,
+    ) -> Result<AssignedNative<F>, Error> {
+        self.parse_asn1_len_varlen(layouter, sv)
+    }
+
+    /// Assigns raw bytes and records an extraction at the given position.
+    /// If `is_varlen`, the extraction produces a `VarlenVal` (ScannerVec);
+    /// otherwise it produces a `Fixlen` (assigned bytes).
+    fn extract_and_record<
+        Index: Eq + Hash + Debug + Clone,
+        const TAG_M: usize,
+        const LEN_M: usize,
+        const VAL_M: usize,
+        const VAL_A: usize,
+    >(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        raw: &[u8],
+        is_varlen: bool,
+        index: Index,
+        position: &ParsingPosition<F>,
+        state: &mut ParserState<F, Index, TAG_M, LEN_M, VAL_M, VAL_A>,
+    ) -> Result<(), Error> {
+        if is_varlen {
+            let sv: ScannerVec<F, VAL_M, VAL_A> =
+                self.assign_scanner_vec(layouter, Value::known(raw.to_vec()))?;
+            state.record_at(Some(index), Asn1ParsedUnit::VarlenVal(sv), false, position);
+        } else {
+            let values: Vec<_> = raw.iter().map(|&b| Value::known(b)).collect();
+            let bytes = self.native_gadget.assign_many(layouter, &values)?;
+            state.record_at(Some(index), Asn1ParsedUnit::Fixlen(bytes), false, position);
+        }
+        Ok(())
+    }
+
+    /// Computes the off-circuit tag identity value that the `Asn1DerTag`
+    /// automaton would produce for `tag_bytes`:
+    /// - Short form: the full first byte (class + constructed + number).
+    /// - Long form: `decode_tag().number` (base-128 of continuation bytes).
+    fn compute_tag_identity(tag_bytes: &[u8]) -> u64 {
+        let (_, tag) = decode_tag(tag_bytes).expect("compute_tag_identity: invalid DER tag");
+        if tag_bytes[0] & 0x1F != 0x1F {
+            tag_bytes[0] as u64
+        } else {
+            tag.number as u64
+        }
+    }
