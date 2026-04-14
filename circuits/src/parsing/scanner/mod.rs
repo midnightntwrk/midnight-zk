@@ -32,6 +32,8 @@ pub mod regex;
 mod serialization;
 pub mod static_specs;
 mod substring;
+mod substring_varlen;
+pub(crate) mod varlen;
 
 use std::{
     cell::RefCell,
@@ -230,14 +232,37 @@ impl From<Regex> for AutomatonParser {
 /// A static library of serialised automata for parsing common regexes. The
 /// automaton states start from 0 and may overlap one with each other.
 type ParsingLibrary = FxHashMap<StdLibParser, (Regex, Automaton)>;
-/// Set of automata (with offset states) called by `parse`.
+/// Set of automata (with offset states) called by [`ScannerChip::parse`] or
+/// [`ScannerChip::parse_varlen`].
 type AutomatonCache<F> = FxHashMap<AutomatonParser, NativeAutomaton<F>>;
 /// A sequence of assigned elements.
 type Sequence<F> = Vec<AssignedNative<F>>;
-/// Cache of assigned sequences passed as arguments to `check_subsequence`. Each
-/// sequence is mapped to the list of `(idx, sub)` pairs it was called with.
-/// Also stores the cumulative length of all `sub` associated to this key.
-type SequenceCache<F> = FxHashMap<Sequence<F>, (Vec<(AssignedNative<F>, Sequence<F>)>, usize)>;
+
+/// Optional per-element padding flags for variable-length subs. When present,
+/// filler positions (flag = true) are masked to zero during packing.
+type PaddingFlags<F> = Option<Vec<AssignedBit<F>>>;
+
+/// A cached sub entry: (idx, index offsets, sub content, padding flags).
+/// Index offsets are additional `(coefficient, value)` terms folded into the
+/// packing linear combination alongside `idx`, saving a dedicated row per sub.
+type CachedSub<F> = (
+    AssignedNative<F>,
+    Vec<(F, AssignedNative<F>)>,
+    Sequence<F>,
+    PaddingFlags<F>,
+);
+
+/// Cache of assigned sequences passed as arguments to `check_subsequence` or
+/// `check_subsequence_varlen`. Each sequence (keyed by its cells) is mapped to
+/// the list of sub entries and the cumulative sub length.
+///
+/// **Cell-identity assumption**: the cache key is based on
+/// [`AssignedCell`](`midnight_proofs::circuit::AssignedCell`) identity (column
+/// and row), not on the cell's value. This means two sequences holding the same
+/// byte values but assigned at different circuit positions are distinct cache
+/// entries. Callers that introduce new ways to build sequences must ensure
+/// fresh cells are produced if a distinct cache entry is intended.
+type SequenceCache<F> = FxHashMap<Sequence<F>, (Vec<CachedSub<F>>, usize)>;
 
 /// Scanner gate configuration.
 #[derive(Clone, Debug)]
@@ -270,6 +295,7 @@ where
 {
     config: ScannerConfig,
     native_gadget: NG<F>,
+    vector_gadget: VectorGadget<F>,
 
     /// Unified cache of all resolved automata (both static library and dynamic
     /// regexes), with their states already offset. Populated on demand by
