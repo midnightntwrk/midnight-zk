@@ -667,6 +667,7 @@ where
 
             // Synthesize the circuit to obtain the witness and other information.
             // Use cached region starts from keygen to skip the shape pass.
+            let synthesize_start = std::time::Instant::now();
             ConcreteCircuit::FloorPlanner::synthesize_with_cached_regions(
                 &mut witness,
                 circuit,
@@ -674,6 +675,10 @@ where
                 meta.constants.clone(),
                 pk.region_starts.clone(),
             )?;
+            eprintln!(
+                "[parse_advices] synthesize: {:>10.3?}",
+                synthesize_start.elapsed(),
+            );
 
             let mut advice_values = batch_invert_rational::<F>(
                 witness

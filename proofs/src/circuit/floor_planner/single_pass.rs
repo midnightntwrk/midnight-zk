@@ -77,6 +77,10 @@ pub struct SingleChipLayouter<'a, F: Field, CS: Assignment<F> + 'a> {
     table_columns: Vec<TableColumn>,
     /// When Some, skip the shape pass and use these pre-computed region starts.
     cached_region_starts: Option<Vec<RegionStart>>,
+    /// Cumulative time spent in shape passes.
+    total_shape_time: std::time::Duration,
+    /// Cumulative time spent in assignment passes.
+    total_assign_time: std::time::Duration,
     _marker: PhantomData<F>,
 }
 
@@ -99,6 +103,8 @@ impl<'a, F: Field, CS: Assignment<F>> SingleChipLayouter<'a, F, CS> {
             columns: HashMap::default(),
             table_columns: vec![],
             cached_region_starts: None,
+            total_shape_time: std::time::Duration::ZERO,
+            total_assign_time: std::time::Duration::ZERO,
             _marker: PhantomData,
         };
         Ok(ret)
@@ -118,6 +124,8 @@ impl<'a, F: Field, CS: Assignment<F>> SingleChipLayouter<'a, F, CS> {
             columns: HashMap::default(),
             table_columns: vec![],
             cached_region_starts: Some(cached_regions),
+            total_shape_time: std::time::Duration::ZERO,
+            total_assign_time: std::time::Duration::ZERO,
             _marker: PhantomData,
         };
         Ok(ret)
@@ -144,10 +152,12 @@ impl<'a, F: Field, CS: Assignment<F> + 'a + SyncDeps> SingleChipLayouter<'a, F, 
         } else {
             // Get shape of the region.
             let mut shape = RegionShape::new(region_index.into());
+            let shape_start = std::time::Instant::now();
             {
                 let region: &mut dyn RegionLayouter<F> = &mut shape;
                 assignment(region.into())?;
             }
+            self.total_shape_time += shape_start.elapsed();
 
             // Lay out this region. We implement the simplest approach here: position the
             // region starting at the earliest row for which none of the columns are in use.
@@ -167,12 +177,15 @@ impl<'a, F: Field, CS: Assignment<F> + 'a + SyncDeps> SingleChipLayouter<'a, F, 
         // Assign region cells.
         self.cs.enter_region(name);
         let mut region = SingleChipLayouterRegion::new(self, region_index.into());
+        let assign_start = std::time::Instant::now();
         let result = {
             let region: &mut dyn RegionLayouter<F> = &mut region;
             assignment(region.into())
         }?;
+        let assign_elapsed = assign_start.elapsed();
         let constants_to_assign = region.constants;
         self.cs.exit_region();
+        self.total_assign_time += assign_elapsed;
 
         // Assign constants. For the simple floor planner, we assign constants in order
         // in the first `constants` column.
@@ -343,6 +356,19 @@ impl<'a, 'b, F: Field, CS: Assignment<F> + 'a + SyncDeps> Layouter<F>
 
     fn pop_namespace(&mut self, gadget_name: Option<String>) {
         (**self).pop_namespace(gadget_name)
+    }
+}
+
+impl<'a, F: Field, CS: Assignment<F> + 'a> Drop for SingleChipLayouter<'a, F, CS> {
+    fn drop(&mut self) {
+        let cached = self.cached_region_starts.is_some();
+        eprintln!(
+            "[SingleChipLayouter] {} regions | shape: {:>10.3?} | assign: {:>10.3?} | cached: {}",
+            self.regions.len(),
+            self.total_shape_time,
+            self.total_assign_time,
+            cached,
+        );
     }
 }
 
