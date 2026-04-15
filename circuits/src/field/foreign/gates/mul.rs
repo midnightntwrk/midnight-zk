@@ -25,8 +25,8 @@ use crate::{
     field::foreign::{
         params::FieldEmulationParams,
         util::{
-            compute_u, compute_vj, get_advice_vec, get_identity_auxiliary_bounds, pair_wise_prod,
-            sum_bigints, sum_exprs, urem,
+            compute_u, compute_vj, get_advice_vec, get_identity_auxiliary_bounds,
+            karatsuba_bilinear_sum, pair_wise_prod, sum_bigints, sum_exprs, urem,
         },
     },
     instructions::RangeCheckInstructions,
@@ -152,10 +152,8 @@ impl MulConfig {
             let u = meta.query_advice(z_cols[0], Rotation::next());
             let vs = get_advice_vec(meta, &z_cols[1..=vs_bounds.len()], Rotation::next());
 
-            let xys = pair_wise_prod(&xs, &ys);
-
             //  sum_xy + sum_x + sum_y - sum_z - (u + k_min) * m = 0
-            let native_id = sum_exprs::<F>(&double_base_powers, &xys)
+            let native_id = karatsuba_bilinear_sum::<F>(&double_base_powers, &xs, &ys)
                 + sum_exprs::<F>(&base_powers, &xs)
                 + sum_exprs::<F>(&base_powers, &ys)
                 - sum_exprs::<F>(&base_powers, &zs)
@@ -172,7 +170,7 @@ impl MulConfig {
                     let bi_powers_mj = base_powers.iter().map(|b| b.rem(mj)).collect::<Vec<_>>();
                     //  sum_xy_mj + sum_x_mj + sum_y_mj - sum_z_mj - u * (m % mj) - (k_min * m) % mj
                     //    - (vj + lj_min) * mj = 0
-                    sum_exprs::<F>(&bij_powers_mj, &xys)
+                    karatsuba_bilinear_sum::<F>(&bij_powers_mj, &xs, &ys)
                         + sum_exprs::<F>(&bi_powers_mj, &xs)
                         + sum_exprs::<F>(&bi_powers_mj, &ys)
                         - sum_exprs::<F>(&bi_powers_mj, &zs)

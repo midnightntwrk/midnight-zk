@@ -27,8 +27,8 @@ use crate::{
         field_chip::FieldChipConfig,
         params::FieldEmulationParams,
         util::{
-            compute_u, compute_vj, get_advice_vec, get_identity_auxiliary_bounds, pair_wise_prod,
-            sum_bigints, sum_exprs, urem,
+            compute_u, compute_vj, get_advice_vec, get_identity_auxiliary_bounds,
+            karatsuba_bilinear_sum, pair_wise_prod, sum_bigints, sum_exprs, urem,
         },
         FieldChip,
     },
@@ -191,9 +191,6 @@ impl<C: CircuitCurve> SlopeConfig<C> {
             let u = meta.query_advice(field_chip_config.u_col, Rotation::next());
             let vs = get_advice_vec(meta, &field_chip_config.v_cols, Rotation::next());
 
-            let lpxs = pair_wise_prod(&lambdas, &pxs);
-            let lqxs = pair_wise_prod(&lambdas, &qxs);
-
             // sign - 1 + sign * sum_qy - sum_py - sum_qx + sum_px - sum_lqx + sum_lpx
             //  = (u + k_min) * m
 
@@ -202,8 +199,8 @@ impl<C: CircuitCurve> SlopeConfig<C> {
                     - sum_exprs::<F>(&bs, &pys)
                     - sum_exprs::<F>(&bs, &qxs)
                     + sum_exprs::<F>(&bs, &pxs)
-                    - sum_exprs::<F>(&bs2, &lqxs)
-                    + sum_exprs::<F>(&bs2, &lpxs)
+                    - karatsuba_bilinear_sum::<F>(&bs2, &lambdas, &qxs)
+                    + karatsuba_bilinear_sum::<F>(&bs2, &lambdas, &pxs)
                     - (&u + Expression::Constant(bigint_to_fe::<F>(&k_min)))
                         * Expression::Constant(bigint_to_fe::<F>(m)));
             let mut moduli_ids = moduli
@@ -222,8 +219,8 @@ impl<C: CircuitCurve> SlopeConfig<C> {
                             - sum_exprs::<F>(&bs_mj, &pys)
                             - sum_exprs::<F>(&bs_mj, &qxs)
                             + sum_exprs::<F>(&bs_mj, &pxs)
-                            - sum_exprs::<F>(&bs2_mj, &lqxs)
-                            + sum_exprs::<F>(&bs2_mj, &lpxs)
+                            - karatsuba_bilinear_sum::<F>(&bs2_mj, &lambdas, &qxs)
+                            + karatsuba_bilinear_sum::<F>(&bs2_mj, &lambdas, &pxs)
                             - &u * Expression::Constant(bigint_to_fe::<F>(&urem(m, mj)))
                             - Expression::Constant(bigint_to_fe::<F>(&urem(&(&k_min * m), mj)))
                             - (vj + Expression::Constant(bigint_to_fe::<F>(lj_min)))
