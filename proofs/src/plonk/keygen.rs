@@ -318,13 +318,14 @@ where
         _marker: std::marker::PhantomData,
     };
 
-    // Synthesize the circuit to obtain URS
-    ConcreteCircuit::FloorPlanner::synthesize(
-        &mut assembly,
-        circuit,
-        config,
-        cs.constants.clone(),
-    )?;
+    // Synthesize the circuit to obtain URS, capturing region starts for later reuse.
+    let region_starts =
+        ConcreteCircuit::FloorPlanner::synthesize_capturing_regions(
+            &mut assembly,
+            circuit,
+            config,
+            cs.constants.clone(),
+        )?;
 
     let mut fixed = batch_invert_rational(assembly.fixed);
     let (cs, selector_polys) = cs.directly_convert_selectors_to_fixed(assembly.selectors);
@@ -353,6 +354,7 @@ where
         fixed_cosets,
         permutation: permutation_pk,
         ev,
+        region_starts,
     })
 }
 

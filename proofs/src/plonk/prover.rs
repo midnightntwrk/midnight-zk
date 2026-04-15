@@ -666,11 +666,13 @@ where
             };
 
             // Synthesize the circuit to obtain the witness and other information.
-            ConcreteCircuit::FloorPlanner::synthesize(
+            // Use cached region starts from keygen to skip the shape pass.
+            ConcreteCircuit::FloorPlanner::synthesize_with_cached_regions(
                 &mut witness,
                 circuit,
                 config.clone(),
                 meta.constants.clone(),
+                pk.region_starts.clone(),
             )?;
 
             let mut advice_values = batch_invert_rational::<F>(

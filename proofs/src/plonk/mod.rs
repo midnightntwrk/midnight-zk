@@ -342,6 +342,8 @@ pub struct ProvingKey<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
     pub(crate) fixed_cosets: Vec<Polynomial<F, ExtendedLagrangeCoeff>>,
     pub(crate) permutation: permutation::ProvingKey<F>,
     pub(crate) ev: Evaluator<F>,
+    /// Cached region starts from keygen, used to skip the shape pass during proving.
+    pub(crate) region_starts: Vec<crate::circuit::RegionStart>,
 }
 
 impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> ProvingKey<F, CS>
@@ -433,6 +435,8 @@ where
             fixed_cosets,
             permutation,
             ev,
+            // Not serialized; will fall back to normal shape pass if empty.
+            region_starts: vec![],
         })
     }
 

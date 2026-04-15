@@ -13,6 +13,8 @@ use std::{
 use ff::Field;
 use sealed::SealedPhase;
 
+use crate::circuit::RegionStart;
+
 use super::{logup, permutation, trash, Error};
 use crate::{
     circuit::{layouter::SyncDeps, Layouter, Region, Value},
@@ -768,6 +770,30 @@ pub trait FloorPlanner {
         config: C::Config,
         constants: Vec<Column<Fixed>>,
     ) -> Result<(), Error>;
+
+    /// Synthesize the circuit and return the computed region starts.
+    /// Used during keygen to capture the layout for later reuse.
+    fn synthesize_capturing_regions<F: Field, CS: Assignment<F> + SyncDeps, C: Circuit<F>>(
+        cs: &mut CS,
+        circuit: &C,
+        config: C::Config,
+        constants: Vec<Column<Fixed>>,
+    ) -> Result<Vec<RegionStart>, Error> {
+        Self::synthesize(cs, circuit, config, constants)?;
+        Ok(vec![])
+    }
+
+    /// Synthesize the circuit using pre-computed region starts, skipping the
+    /// shape pass. Used during proving when the layout is already known.
+    fn synthesize_with_cached_regions<F: Field, CS: Assignment<F> + SyncDeps, C: Circuit<F>>(
+        cs: &mut CS,
+        circuit: &C,
+        config: C::Config,
+        constants: Vec<Column<Fixed>>,
+        _cached_regions: Vec<RegionStart>,
+    ) -> Result<(), Error> {
+        Self::synthesize(cs, circuit, config, constants)
+    }
 }
 
 /// This is a trait that circuits provide implementations for so that the
