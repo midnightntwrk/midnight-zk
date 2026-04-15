@@ -26,8 +26,8 @@ use crate::{
     field::foreign::{
         params::FieldEmulationParams,
         util::{
-            compute_u, compute_vj, get_advice_vec, get_identity_auxiliary_bounds, pair_wise_prod,
-            sum_bigints, sum_exprs, urem,
+            compute_u, compute_vj, get_advice_vec, get_identity_auxiliary_bounds,
+            karatsuba_bilinear_sum, pair_wise_prod, sum_bigints, sum_exprs, urem,
         },
         FieldChip, FieldChipConfig,
     },
@@ -170,8 +170,6 @@ impl<C: CircuitCurve> LambdaSquaredConfig<C> {
             let u = meta.query_advice(field_chip_config.u_col, Rotation::next());
             let vs = get_advice_vec(meta, &field_chip_config.v_cols, Rotation::next());
 
-            let lambdas2 = pair_wise_prod(&lambdas, &lambdas);
-
             // 2 + sum_px + sum_qx + sum_rx - (2 sum_lambda + sum_lambda2)
             //   = (u + k_min) * m
 
@@ -182,7 +180,7 @@ impl<C: CircuitCurve> LambdaSquaredConfig<C> {
                     + sum_exprs::<F>(&bs, &qxs)
                     + sum_exprs::<F>(&bs, &rxs)
                     - &two * sum_exprs::<F>(&bs, &lambdas)
-                    - sum_exprs::<F>(&bs2, &lambdas2)
+                    - karatsuba_bilinear_sum::<F>(&bs2, &lambdas, &lambdas)
                     - (&u + Expression::Constant(bigint_to_fe::<F>(&k_min)))
                         * Expression::Constant(bigint_to_fe::<F>(m)));
             let mut moduli_ids = moduli
@@ -201,7 +199,7 @@ impl<C: CircuitCurve> LambdaSquaredConfig<C> {
                             + sum_exprs::<F>(&bs_mj, &qxs)
                             + sum_exprs::<F>(&bs_mj, &rxs)
                             - &two * sum_exprs::<F>(&bs_mj, &lambdas)
-                            - sum_exprs::<F>(&bs2_mj, &lambdas2)
+                            - karatsuba_bilinear_sum::<F>(&bs2_mj, &lambdas, &lambdas)
                             - &u * Expression::Constant(bigint_to_fe::<F>(&urem(m, mj)))
                             - Expression::Constant(bigint_to_fe::<F>(&urem(&(&k_min * m), mj)))
                             - (vj + Expression::Constant(bigint_to_fe::<F>(lj_min)))

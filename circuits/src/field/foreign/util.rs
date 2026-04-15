@@ -147,6 +147,59 @@ pub fn sum_exprs<F: CircuitField>(coeffs: &[BI], exprs: &[Expression<F>]) -> Exp
         .fold(Expression::from(0), |acc, e| acc + e)
 }
 
+/// Computes `sum_{i,j} coeffs[i*n+j] * xs[i] * ys[j]` using the Karatsuba
+/// trick, which reduces the number of multiplications from `2*n^2` to `n*(n+1)`.
+///
+/// The coefficient matrix must be symmetric: `coeffs[i*n+j] == coeffs[j*n+i]`.
+/// This holds for `double_base_powers` since `base^(i+j) = base^(j+i)`.
+///
+/// The identity used is:
+///   `sum_{i,j} C[i,j] * x_i * y_j`
+///     `= sum_{i<j} C[i,j] * (x_i + x_j)(y_i + y_j)`
+///     `+ sum_i alpha_i * x_i * y_i`
+/// where `alpha_i = C[i,i] - sum_{j!=i} C[i,j]`.
+pub fn karatsuba_bilinear_sum<F: CircuitField>(
+    coeffs: &[BI],
+    xs: &[Expression<F>],
+    ys: &[Expression<F>],
+) -> Expression<F> {
+    let n = xs.len();
+    debug_assert_eq!(ys.len(), n);
+    debug_assert_eq!(coeffs.len(), n * n);
+    debug_assert!((0..n).all(|i| (0..n).all(|j| coeffs[i * n + j] == coeffs[j * n + i])));
+
+    let mut result = Expression::from(0);
+
+    // Pair terms: C[i,j] * (x_i + x_j) * (y_i + y_j) for i < j
+    for i in 0..n {
+        for j in (i + 1)..n {
+            if !coeffs[i * n + j].is_zero() {
+                result = result
+                    + Expression::Constant(bigint_to_fe::<F>(&coeffs[i * n + j]))
+                        * (xs[i].clone() + xs[j].clone())
+                        * (ys[i].clone() + ys[j].clone());
+            }
+        }
+    }
+
+    // Diagonal terms: alpha_i * x_i * y_i
+    // where alpha_i = C[i,i] - sum_{j!=i} C[i,j]
+    for i in 0..n {
+        let alpha_i = &coeffs[i * n + i]
+            - (0..n)
+                .filter(|&j| j != i)
+                .fold(BI::zero(), |acc, j| acc + &coeffs[i * n + j]);
+        if !alpha_i.is_zero() {
+            result = result
+                + Expression::Constant(bigint_to_fe::<F>(&alpha_i))
+                    * xs[i].clone()
+                    * ys[i].clone();
+        }
+    }
+
+    result
+}
+
 /// On input `v`, `w`, returns `z : Vec<T>` with `z_i = v_i * w_i` for all `i`.
 pub fn pair_wise_prod<T: Mul<Output = T> + Clone>(v: &[T], w: &[T]) -> Vec<T> {
     v.iter()
