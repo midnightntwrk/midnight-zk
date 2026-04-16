@@ -36,6 +36,7 @@ harness = false
 ff = { workspace = true }
 group = { workspace = true }
 midnight-curves = "0.2.0"
+libc = { version = "0.2", optional = true }
 rand_core = { workspace = true, features = ["getrandom"] }
 tracing = { workspace = true }
 blake2b_simd = { workspace = true }
@@ -89,6 +90,10 @@ committed-instances = []
 
 # Feature to expose internal prover types and benchmarking utilities.
 bench-internal = ["criterion"]
+
+# Enables per-phase CPU and memory profiling of the prover. Output via
+# `midnight_proofs::profiling::to_json()`. Adds a `libc` dependency.
+profiling = ["libc"]
 
 # Feature to commit to the quotient polynomial H as a single polynomial
 # commitment instead of splitting it into degree-(n-1) limbs. Requires the

@@ -15,3 +15,7 @@ pub mod transcript;
 
 pub mod dev;
 pub mod utils;
+
+#[cfg(feature = "profiling")]
+#[allow(unsafe_code)]
+pub mod profiling;
