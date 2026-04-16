@@ -254,12 +254,16 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
         assert_eq!(a.values.len(), 1 << self.k);
 
         // Perform inverse FFT using cached twiddle factors.
+        #[cfg(feature = "profiling")]
+        crate::profiling::start("fft::lagrange_to_coeff");
         Self::ifft(
             &mut a.values,
             &self.twiddles.omega_inv,
             self.k,
             self.ifft_divisor,
         );
+        #[cfg(feature = "profiling")]
+        crate::profiling::end();
 
         Polynomial {
             values: a.values,
@@ -272,7 +276,11 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
     pub fn coeff_to_lagrange(&self, mut a: Polynomial<F, Coeff>) -> Polynomial<F, LagrangeCoeff> {
         assert_eq!(a.values.len(), 1 << self.k);
 
+        #[cfg(feature = "profiling")]
+        crate::profiling::start("fft::coeff_to_lagrange");
         best_fft_with_twiddles(&mut a.values, &self.twiddles.omega, self.k);
+        #[cfg(feature = "profiling")]
+        crate::profiling::end();
 
         Polynomial {
             values: a.values,
@@ -288,6 +296,8 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
     ) -> Polynomial<F, ExtendedLagrangeCoeff> {
         assert_eq!(a.values.len(), 1 << self.k);
 
+        #[cfg(feature = "profiling")]
+        crate::profiling::start("fft::coeff_to_extended");
         self.distribute_powers_zeta(&mut a.values, true);
         a.values.resize(self.extended_len(), F::ZERO);
         best_fft_with_twiddles(
@@ -295,7 +305,9 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
             &self.twiddles.extended_omega,
             self.extended_k,
         );
-
+        #[cfg(feature = "profiling")]
+        crate::profiling::end();
+        
         Polynomial {
             values: a.values,
             _marker: PhantomData,
@@ -310,6 +322,8 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
     pub fn extended_to_coeff(&self, mut a: Polynomial<F, ExtendedLagrangeCoeff>) -> Vec<F> {
         assert_eq!(a.values.len(), self.extended_len());
 
+        #[cfg(feature = "profiling")]
+        crate::profiling::start("fft::extended_to_coeff");
         // Inverse FFT using cached twiddle factors.
         Self::ifft(
             &mut a.values,
@@ -321,6 +335,8 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
         // Distribute powers to move from coset; opposite from the
         // transformation we performed earlier.
         self.distribute_powers_zeta(&mut a.values, false);
+        #[cfg(feature = "profiling")]
+        crate::profiling::end();
 
         a.values
     }

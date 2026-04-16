@@ -87,7 +87,12 @@ where
     ) -> Self::Commitment {
         let size = polynomial.values.len();
         assert!(params.g.len() >= size);
-        msm_specific::<E::G1Affine>(&polynomial.values, &params.g[..size])
+        #[cfg(feature = "profiling")]
+        crate::profiling::start("msm::commit");
+        let result = msm_specific::<E::G1Affine>(&polynomial.values, &params.g[..size]);
+        #[cfg(feature = "profiling")]
+        crate::profiling::end();
+        result
     }
 
     fn commit_lagrange(
@@ -95,10 +100,13 @@ where
         poly: &Polynomial<E::Fr, LagrangeCoeff>,
     ) -> E::G1 {
         let size = poly.values.len();
-
         assert!(params.g_lagrange.len() >= size);
-
-        msm_specific::<E::G1Affine>(&poly.values, &params.g_lagrange[0..size])
+        #[cfg(feature = "profiling")]
+        crate::profiling::start("msm::commit_lagrange");
+        let result = msm_specific::<E::G1Affine>(&poly.values, &params.g_lagrange[0..size]);
+        #[cfg(feature = "profiling")]
+        crate::profiling::end();
+        result
     }
 
     fn multi_open<T: Transcript>(

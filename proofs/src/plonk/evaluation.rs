@@ -411,6 +411,8 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
             .zip(permutations.iter())
         {
             // Custom gates
+            #[cfg(feature = "profiling")]
+            crate::profiling::start("nu_poly::custom_gates");
             rayon::scope(|scope| {
                 let chunk_size = size.div_ceil(num_threads);
                 for (thread_idx, values) in values.chunks_mut(chunk_size).enumerate() {
@@ -438,6 +440,8 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                     });
                 }
             });
+            #[cfg(feature = "profiling")]
+            crate::profiling::end();
 
             // Permutations
             let sets = &permutation.sets;
@@ -447,16 +451,22 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                 let chunk_len = cs.degree() - 2;
                 let delta_start = beta * &B::g_coset(domain);
 
+                #[cfg(feature = "profiling")]
+                crate::profiling::start("nu_poly::permutation_cosets");
                 let permutation_product_cosets: Vec<Polynomial<F, B>> = sets
                     .par_iter()
                     .map(|set| B::coeff_to_self(domain, set.permutation_product_poly.clone()))
                     .collect();
+                #[cfg(feature = "profiling")]
+                crate::profiling::end();
 
                 let first_set_permutation_product_coset =
                     permutation_product_cosets.first().unwrap();
                 let last_set_permutation_product_coset = permutation_product_cosets.last().unwrap();
 
                 // Permutation constraints
+                #[cfg(feature = "profiling")]
+                crate::profiling::start("nu_poly::permutation_constraints");
                 parallelize(&mut values, |values, start| {
                     let mut beta_term = omega.pow_vartime([start as u64, 0, 0, 0]);
                     for (i, value) in values.iter_mut().enumerate() {
@@ -523,10 +533,14 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                         beta_term *= &omega;
                     }
                 });
+                #[cfg(feature = "profiling")]
+                crate::profiling::end();
             }
 
             // Pre-compute all lookup cosets in parallel. This trades peak memory
             // for parallelism: the FFTs for different lookups can now overlap.
+            #[cfg(feature = "profiling")]
+            crate::profiling::start("nu_poly::lookup_cosets");
             let all_lookup_cosets: Vec<_> = lookups
                 .par_iter()
                 .map(|lookup| {
@@ -541,12 +555,16 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                     (helper_cosets, aggregator_coset, multiplicities_coset)
                 })
                 .collect();
+            #[cfg(feature = "profiling")]
+            crate::profiling::end();
 
             // Lookups
             for (n, (helper_cosets, aggregator_coset, multiplicities_coset)) in
                 all_lookup_cosets.iter().enumerate()
             {
                 // Lookup constraints
+                #[cfg(feature = "profiling")]
+                crate::profiling::start("nu_poly::lookup_constraints");
                 parallelize(&mut values, |values, start| {
                     let lookup_eval = &self.lookups[n];
                     // Pre-allocate evaluation data outside the per-element loop
@@ -608,17 +626,25 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                                     + multiplicities_coset[idx]);
                     }
                 });
+                #[cfg(feature = "profiling")]
+                crate::profiling::end();
             }
 
             // Pre-compute all trash cosets in parallel.
+            #[cfg(feature = "profiling")]
+            crate::profiling::start("nu_poly::trash_cosets");
             let trash_cosets: Vec<_> = trashcans
                 .par_iter()
                 .map(|trash| B::coeff_to_self(domain, trash.trash_poly.clone()))
                 .collect();
+            #[cfg(feature = "profiling")]
+            crate::profiling::end();
 
             // Trashcans
             for (n, trash_poly) in trash_cosets.iter().enumerate() {
                 // Trash argument constraints.
+                #[cfg(feature = "profiling")]
+                crate::profiling::start("nu_poly::trash_constraints");
                 parallelize(&mut values, |values, start| {
                     let trash_evaluator = &self.trashcans[n];
                     let argument = &cs.trashcans[n];
@@ -651,6 +677,8 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                         *value = *value * y + (compressed_expression - (one - q) * trash_poly[idx]);
                     }
                 });
+                #[cfg(feature = "profiling")]
+                crate::profiling::end();
             }
         }
         values

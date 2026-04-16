@@ -53,6 +53,9 @@ default = []
 # Feature that exposes some testing functionality, such as load from scratch or instantiable
 testing = ["num-bigint/rand"]
 heap_profiling = []
+# Enables per-phase CPU / memory profiling. Results written to JSON by examples
+# via `midnight_proofs::profiling::to_full_json()`.
+profiling = ["midnight-proofs/profiling"]
 # Enable truncated challenges. This makes recursive proofs more efficient
 truncated-challenges = [
     "midnight-proofs/truncated-challenges",

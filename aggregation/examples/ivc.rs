@@ -192,6 +192,15 @@ fn main() {
     println!("IVC setup completed in {:.2?}", start.elapsed());
 
     for i in 0..STEPS {
+        // Reset the profiler and start per-core CPU sampler (50 ms interval)
+        // at the start of each step so that per-step JSON files contain only
+        // the data for that step.
+        #[cfg(feature = "profiling")]
+        {
+            midnight_proofs::profiling::reset();
+            midnight_proofs::profiling::start_cpu_sampler(50);
+        }
+
         let start = Instant::now();
         let proof = prover.prove_step(()).unwrap();
         let prove_time = start.elapsed();
@@ -203,6 +212,17 @@ fn main() {
         let verify_time = start.elapsed();
 
         println!("Step {i}: prove {prove_time:.2?}, verify {verify_time:.2?}");
+
+        // Stop sampler and write per-step profiling data (records + cpu_samples)
+        // to a JSON file.
+        #[cfg(feature = "profiling")]
+        {
+            midnight_proofs::profiling::stop_cpu_sampler();
+            let json = midnight_proofs::profiling::to_full_json();
+            let path = format!("ivc_step_{i}_profile.json");
+            std::fs::write(&path, &json).expect("failed to write profiling JSON");
+            println!("  → profiling data written to {path}");
+        }
     }
 
     println!(

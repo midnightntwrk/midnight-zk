@@ -202,14 +202,26 @@ where
     }
 
     // Hash verification key into transcript
+    #[cfg(feature = "profiling")]
+    crate::profiling::start("trace::hash_vk");
     pk.vk.hash_into(transcript)?;
+    #[cfg(feature = "profiling")]
+    crate::profiling::end();
 
     let domain = &pk.vk.domain;
 
+    #[cfg(feature = "profiling")]
+    crate::profiling::start("trace::compute_instances");
     let instance = compute_instances(params, pk, instances, nb_committed_instances, transcript)?;
+    #[cfg(feature = "profiling")]
+    crate::profiling::end();
 
+    #[cfg(feature = "profiling")]
+    crate::profiling::start("trace::parse_advices");
     let (advice, challenges) =
         parse_advices(params, pk, circuits, instances, transcript, &mut rng)?;
+    #[cfg(feature = "profiling")]
+    crate::profiling::end();
 
     // Sample theta challenge for keeping lookup columns linearly independent
     let theta: F = transcript.squeeze_challenge();
@@ -228,6 +240,8 @@ where
 
     // Commit to the multiplicities columns.
     // Parallel compute phase, then sequential transcript writes.
+    #[cfg(feature = "profiling")]
+    crate::profiling::start("trace::commit_multiplicities");
     let lookups: Vec<Vec<logup::prover::ComputedMultiplicities<F>>> = instance
         .iter()
         .zip(advice.iter())
@@ -264,6 +278,8 @@ where
             },
         )
         .collect::<Result<Vec<_>, Error>>()?;
+    #[cfg(feature = "profiling")]
+    crate::profiling::end();
 
     // Sample beta challenge
     let beta: F = transcript.squeeze_challenge();
@@ -297,6 +313,8 @@ where
     // The compute phases run in parallel per circuit.
     // Transcript writes preserve the original ordering:
     // all permutation commitments first, then all logup commitments.
+    #[cfg(feature = "profiling")]
+    crate::profiling::start("trace::commit_permutation");
     let (all_perm_computed, all_logup_computed): (Vec<_>, Vec<Result<_, Error>>) = instance
         .iter()
         .zip(advice.iter())
@@ -351,8 +369,12 @@ where
         .into_iter()
         .map(|computed| computed.write_and_convert(domain, transcript))
         .collect::<Result<Vec<_>, _>>()?;
+    #[cfg(feature = "profiling")]
+    crate::profiling::end();
 
     // Then write all logup commitments and convert to coefficient form.
+    #[cfg(feature = "profiling")]
+    crate::profiling::start("trace::commit_logderivative");
     let lookups: Vec<Vec<logup::prover::Committed<F>>> = all_logup_computed
         .into_iter()
         .map(|result| -> Result<Vec<_>, _> {
@@ -385,6 +407,8 @@ where
     // Trash argument
     let trash_challenge: F = transcript.squeeze_challenge();
 
+    #[cfg(feature = "profiling")]
+    crate::profiling::start("trace::commit_trash");
     let trashcans: Vec<Vec<trash::prover::Committed<F>>> = instance
         .iter()
         .zip(advice.iter())
@@ -408,6 +432,8 @@ where
                 .collect()
         })
         .collect::<Result<Vec<_>, _>>()?;
+    #[cfg(feature = "profiling")]
+    crate::profiling::end();
 
     // Obtain challenge for keeping all separate gates linearly independent
     let y: F = transcript.squeeze_challenge();
@@ -415,6 +441,10 @@ where
     let (instance_polys, instance_values) =
         instance.into_iter().map(|i| (i.instance_polys, i.instance_values)).unzip();
 
+    // Convert all advice polynomials from Lagrange to coefficient form
+    // (one lagrange_to_coeff FFT per advice column, all recorded individually)
+    #[cfg(feature = "profiling")]
+    crate::profiling::start("trace::advice_lagrange_to_coeff");
     let advice_polys = advice
         .into_iter()
         .map(|a| {
@@ -424,6 +454,8 @@ where
                 .collect::<Vec<_>>()
         })
         .collect::<Vec<_>>();
+    #[cfg(feature = "profiling")]
+    crate::profiling::end();
 
     Ok(ProverTrace {
         advice_polys,
@@ -468,12 +500,20 @@ where
     #[cfg(not(feature = "committed-instances"))]
     let nb_committed_instances: usize = 0;
 
+    #[cfg(feature = "profiling")]
+    crate::profiling::start("proof::compute_nu_poly");
     let nu_poly = compute_nu_poly(pk, &trace);
+    #[cfg(feature = "profiling")]
+    crate::profiling::end();
 
     // Construct the quotient polynomial h(X) = nu(X)/(X^n-1), split it into limbs,
     // and commit to each limb separately
+    #[cfg(feature = "profiling")]
+    crate::profiling::start("proof::compute_h_poly");
     let quotient_limbs =
         compute_h_poly::<F, CS, T>(params, pk.get_vk().get_domain(), nu_poly, transcript)?;
+    #[cfg(feature = "profiling")]
+    crate::profiling::end();
 
     let ProverTrace {
         advice_polys,
@@ -492,6 +532,8 @@ where
 
     let x: F = transcript.squeeze_challenge();
 
+    #[cfg(feature = "profiling")]
+    crate::profiling::start("proof::write_evals");
     let Evals {
         fixed_evals,
         instance_evals,
@@ -505,17 +547,25 @@ where
         x,
         transcript,
     )?;
+    #[cfg(feature = "profiling")]
+    crate::profiling::end();
 
-    // Evaluate common permutation data
+    // Evaluate common permutation data (fixed permutation columns at x)
+    #[cfg(feature = "profiling")]
+    crate::profiling::start("proof::evaluate_permutation_data");
     let permutations_common = pk.permutation.evaluate(x, transcript)?;
+    #[cfg(feature = "profiling")]
+    crate::profiling::end();
 
-    // Evaluate the permutations, if any, at omega^i x.
+    // Evaluate the argument polynomials (permutation products, lookup products,
+    // trash arguments) at the rotated challenge points.
+    #[cfg(feature = "profiling")]
+    crate::profiling::start("proof::evaluate_args");
     let permutations: Vec<permutation::prover::Evaluated<F>> = permutations
         .into_iter()
         .map(|permutation| -> Result<_, _> { permutation.evaluate(pk, x, transcript) })
         .collect::<Result<Vec<_>, _>>()?;
 
-    // Evaluate the lookups, if any, at omega^i x.
     let lookups: Vec<Vec<logup::prover::Evaluated<F>>> = lookups
         .into_iter()
         .map(|lookups| -> Result<Vec<_>, _> {
@@ -526,7 +576,6 @@ where
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    // Evaluate the trashcans, if any, at x.
     let trashcans: Vec<Vec<trash::prover::Evaluated<F>>> = trashcans
         .into_iter()
         .map(|trash| -> Result<Vec<_>, _> {
@@ -536,11 +585,14 @@ where
                 .collect::<Result<Vec<_>, _>>()
         })
         .collect::<Result<Vec<_>, _>>()?;
+    #[cfg(feature = "profiling")]
+    crate::profiling::end();
 
-    // Partially evaluate batched identities (without fixed columns
-    // corresponding to simple, multiplicative selectors)
     let splitting_factor = x.pow_vartime([pk.vk.n() - 1]);
     let xn = splitting_factor * x;
+
+    #[cfg(feature = "profiling")]
+    crate::profiling::start("proof::partially_evaluate_identities");
     let expressions = partially_evaluate_identities(
         &pk.vk,
         &fixed_evals,
@@ -558,10 +610,15 @@ where
         trash_challenge,
         &challenges,
     );
+    #[cfg(feature = "profiling")]
+    crate::profiling::end();
 
-    // Compute linearization polynomial
+    #[cfg(feature = "profiling")]
+    crate::profiling::start("proof::compute_linearization_poly");
     let linearization_poly =
         compute_linearization_poly(expressions, pk, y, xn, splitting_factor, quotient_limbs);
+    #[cfg(feature = "profiling")]
+    crate::profiling::end();
 
     debug_assert_eq!(
         eval_polynomial(&linearization_poly, x),
@@ -569,6 +626,8 @@ where
         "The linearization poly should evaluate to zero at the evaluation challenge x."
     );
 
+    #[cfg(feature = "profiling")]
+    crate::profiling::start("proof::compute_queries");
     let queries = compute_queries(
         pk,
         nb_committed_instances,
@@ -580,8 +639,15 @@ where
         x,
         &linearization_poly,
     );
+    #[cfg(feature = "profiling")]
+    crate::profiling::end();
 
-    CS::multi_open(params, &queries, transcript).map_err(|_| Error::ConstraintSystemFailure)
+    #[cfg(feature = "profiling")]
+    crate::profiling::start("proof::multi_open");
+    let result = CS::multi_open(params, &queries, transcript).map_err(|_| Error::ConstraintSystemFailure);
+    #[cfg(feature = "profiling")]
+    crate::profiling::end();
+    result
 }
 
 /// This creates a proof for the provided `circuit` when given the public
@@ -775,6 +841,8 @@ where
             };
 
             // Synthesize the circuit to obtain the witness and other information.
+            #[cfg(feature = "profiling")]
+            crate::profiling::start("parse_advices::synthesize");
             ConcreteCircuit::FloorPlanner::synthesize(
                 &mut witness,
                 circuit,
@@ -810,12 +878,18 @@ where
                 }
             }
 
+            #[cfg(feature = "profiling")]
+            crate::profiling::end();
+            #[cfg(feature = "profiling")]
+            crate::profiling::start("parse_advices::commit");
             let advice_commitments: Vec<_> =
                 advice_values.par_iter().map(|poly| CS::commit_lagrange(params, poly)).collect();
 
             for commitment in &advice_commitments {
                 transcript.write(commitment)?;
             }
+            #[cfg(feature = "profiling")]
+            crate::profiling::end();
             for (column_index, advice_values) in column_indices.iter().zip(advice_values) {
                 advice.advice_polys[*column_index] = advice_values;
             }
@@ -855,7 +929,9 @@ pub(super) fn compute_nu_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommit
         y,
         ..
     } = &trace;
-    // Calculate the advice and instance cosets
+    // Calculate the advice cosets: one coeff_to_extended FFT per advice polynomial
+    #[cfg(feature = "profiling")]
+    crate::profiling::start("nu_poly::advice_cosets");
     let advice_cosets: Vec<Vec<Polynomial<F, ExtendedLagrangeCoeff>>> = advice_polys
         .iter()
         .map(|advice_polys| {
@@ -865,6 +941,12 @@ pub(super) fn compute_nu_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommit
                 .collect()
         })
         .collect();
+    #[cfg(feature = "profiling")]
+    crate::profiling::end();
+
+    // Calculate the instance cosets: one coeff_to_extended FFT per instance polynomial
+    #[cfg(feature = "profiling")]
+    crate::profiling::start("nu_poly::instance_cosets");
     let instance_cosets: Vec<Vec<Polynomial<F, ExtendedLagrangeCoeff>>> = instance_polys
         .iter()
         .map(|instance_polys| {
@@ -874,11 +956,15 @@ pub(super) fn compute_nu_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommit
                 .collect()
         })
         .collect();
+    #[cfg(feature = "profiling")]
+    crate::profiling::end();
 
     // Evaluate the numerator polynomial nu(X) of the quotient polynomial
     // h(X) = nu(X) / (X^n-1): nu(X) is a random linear combination of all
-    // independent identities
-    pk.ev.evaluate_numerator::<ExtendedLagrangeCoeff>(
+    // independent identities, evaluated at every point in the extended domain
+    #[cfg(feature = "profiling")]
+    crate::profiling::start("nu_poly::evaluate_numerator");
+    let result = pk.ev.evaluate_numerator::<ExtendedLagrangeCoeff>(
         &pk.vk.domain,
         &pk.vk.cs,
         &advice_cosets.iter().map(|a| a.as_slice()).collect::<Vec<_>>(),
@@ -897,7 +983,10 @@ pub(super) fn compute_nu_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommit
         &pk.l_last,
         &pk.l_active_row,
         &pk.permutation.cosets,
-    )
+    );
+    #[cfg(feature = "profiling")]
+    crate::profiling::end();
+    result
 }
 
 // Structure for holding evaluations of fixed, instance, and advice columns.
