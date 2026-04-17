@@ -1,5 +1,6 @@
 on:
   pull_request:
+    branches: [main, next]
     paths:
       - 'zk_stdlib/**'
 
