@@ -5,7 +5,7 @@ use std::marker::PhantomData;
 
 use ff::WithSmallOrderMulGroup;
 use group::ff::{BatchInvert, Field};
-use midnight_curves::fft::{best_fft_with_twiddles, compute_twiddles};
+use midnight_curves::fft::{best_fft_with_twiddles, compute_twiddles, fft_coeff_to_extended};
 
 use super::{Coeff, ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial, Rotation};
 use crate::utils::{arithmetic::parallelize, rational::Rational};
@@ -278,18 +278,24 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
 
     /// This takes us from an n-length coefficient vector into a coset of the
     /// extended evaluation domain.
+    ///
+    /// Uses a pruned DIF FFT that exploits the zero-padded structure
+    /// (`n_real = 2^k` coefficients padded to `2^extended_k`) to skip work on
+    /// all-zero subtrees. Falls back to standard DIT for non-Fq fields.
     pub fn coeff_to_extended(
         &self,
         mut a: Polynomial<F, Coeff>,
     ) -> Polynomial<F, ExtendedLagrangeCoeff> {
-        assert_eq!(a.values.len(), 1 << self.k);
+        let n_real = a.values.len();
+        assert_eq!(n_real, 1 << self.k);
 
         self.distribute_powers_zeta(&mut a.values, true);
         a.values.resize(self.extended_len(), F::ZERO);
-        best_fft_with_twiddles(
+        fft_coeff_to_extended(
             &mut a.values,
             &self.twiddles.extended_omega,
             self.extended_k,
+            n_real,
         );
 
         Polynomial {

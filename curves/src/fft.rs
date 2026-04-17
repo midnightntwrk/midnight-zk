@@ -1,6 +1,9 @@
+use std::any::TypeId;
+
 use ff::Field;
 use group::{GroupOpsOwned, ScalarMulOwned};
 
+use crate::bls12_381::Fq;
 pub use crate::{CurveAffine, CurveExt};
 
 /// This represents an element of a group with basic operations that can be
@@ -99,6 +102,103 @@ pub fn best_fft_with_twiddles<Scalar: Field, G: FftGroup<Scalar>>(
         }
     } else {
         recursive_butterfly_arithmetic(a, n, 1, twiddles)
+    }
+}
+
+/// FFT for the `coeff_to_extended` pattern: the first `n_real` entries of `a`
+/// hold coefficients and the rest are zero-padded out to `2^log_n`. Exploits
+/// the zero-padded structure to skip butterfly work on all-zero subtrees.
+///
+/// Uses pruned DIF (Gentleman-Sande) when `G` is the BLS12-381 scalar field
+/// [`Fq`]; falls back to standard DIT for other fields. The TypeId check is
+/// monomorphized to a constant — zero runtime cost.
+pub fn fft_coeff_to_extended<Scalar: Field, G: FftGroup<Scalar>>(
+    a: &mut [G],
+    twiddles: &[Scalar],
+    log_n: u32,
+    n_real: usize,
+) {
+    if TypeId::of::<G>() == TypeId::of::<Fq>() {
+        // SAFETY: G == Fq verified by TypeId. Fq is #[repr(transparent)].
+        let a = unsafe { &mut *(a as *mut [G] as *mut [Fq]) };
+        let tw = unsafe { &*(twiddles as *const [Scalar] as *const [Fq]) };
+        fft_dif_pruned_fq(a, tw, log_n, n_real);
+    } else {
+        best_fft_with_twiddles(a, twiddles, log_n);
+    }
+}
+
+/// Pruned DIF (Gentleman-Sande) FFT for zero-padded input. `a[0..n_real]` are
+/// data, `a[n_real..n]` are zero.
+///
+/// DIF does large-stride butterflies first (on cold data) and small-stride
+/// last (leaving data warm for the final bit-reversal). The pruning skips
+/// butterflies whose operands are both zero and replaces `(data, 0)` butterflies
+/// with a single multiply.
+fn fft_dif_pruned_fq(a: &mut [Fq], twiddles: &[Fq], log_n: u32, n_real: usize) {
+    let n = a.len();
+    assert_eq!(n, 1 << log_n);
+    recursive_dif_pruned(a, n, 1, twiddles, n_real);
+    for k in 0..n {
+        let rk = bitreverse(k, log_n);
+        if k < rk {
+            a.swap(rk, k);
+        }
+    }
+}
+
+/// Recursive DIF butterflies assuming the first `nz` entries of `a` are
+/// potentially non-zero and the remaining `n - nz` are zero. Maintains this
+/// "data-at-front" invariant across recursive calls.
+fn recursive_dif_pruned(a: &mut [Fq], n: usize, tc: usize, tw: &[Fq], nz: usize) {
+    if nz == 0 {
+        return;
+    }
+    if n == 2 {
+        // Base case. GS butterfly on (a[0], a[1]). Correct whether a[1] is
+        // zero (nz == 1) or not, since (a, 0; tw) → (a, a·tw).
+        gs(a, 0, 1, &tw[0]);
+        return;
+    }
+
+    let h = n / 2;
+
+    if nz <= h {
+        // Right half is entirely zero. The GS butterfly (a, 0; tw) simplifies
+        // to (a, a·tw): the low half keeps a[i], the high half becomes a[i]·tw.
+        // The tail of the left half stays zero.
+        for i in 0..nz {
+            a[i + h] = a[i];
+            a[i + h] *= &tw[i * tc];
+        }
+    } else {
+        // Both halves carry data. Full butterflies across the split. Pairs
+        // with i >= nz - h have a[i+h] == 0, which the butterfly still
+        // handles correctly (one extra mul each; not worth a special case).
+        for i in 0..h {
+            gs(a, i, i + h, &tw[i * tc]);
+        }
+    }
+
+    // After the split, each half holds exactly `min(nz, h)` potentially
+    // non-zero entries, placed at the front.
+    let child_nz = nz.min(h);
+    let (left, right) = a.split_at_mut(h);
+    rayon::join(
+        || recursive_dif_pruned(left, h, tc * 2, tw, child_nz),
+        || recursive_dif_pruned(right, h, tc * 2, tw, child_nz),
+    );
+}
+
+/// In-place Gentleman-Sande butterfly on `a[i]` and `a[j]` with twiddle `t`:
+/// (a[i], a[j]) ← (a[i] + a[j], (a[i] - a[j])·t).
+#[inline(always)]
+fn gs(a: &mut [Fq], i: usize, j: usize, t: &Fq) {
+    // SAFETY: i != j and both in bounds — callers always supply i = k, j = k + h
+    // with k < h <= a.len()/2.
+    unsafe {
+        let p = a.as_mut_ptr();
+        Fq::gs_butterfly(&mut *p.add(i), &mut *p.add(j), t);
     }
 }
 
