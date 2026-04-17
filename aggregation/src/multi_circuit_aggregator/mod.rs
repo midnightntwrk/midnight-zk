@@ -38,8 +38,7 @@
 //!    every claim has a valid inner proof, but says nothing about *what* was
 //!    proved. It is up to the verifier to decide whether the claims are
 //!    meaningful by checking that each VK belongs to a trusted circuit, whose
-//!    setup was run by the verifier and whose architecture meets the
-//!    domain-specific requirements.
+//!    setup was run by the verifier and whose architecture is the expected one.
 
 use midnight_zk_stdlib::Relation;
 

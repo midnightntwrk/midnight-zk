@@ -5,8 +5,8 @@
 //! collects one claim per IVC step.
 //!
 //! Because different inner circuits have different statement types, statements
-//! are stored as `Box<dyn Statement>` for type-erased access. The
-//! [`AggregableRelation`] trait marks a
+//! are stored as `Box<dyn Statement>` so they can be handled uniformly.
+//! The [`AggregableRelation`] trait marks a
 //! [`Relation`](midnight_zk_stdlib::Relation) as aggregation-compatible
 //! and [`TypedStatement`] bridges it to the [`Statement`] trait object.
 
@@ -17,8 +17,8 @@ use midnight_zk_stdlib::MidnightVK;
 use super::AggregableRelation;
 use crate::ivc::F;
 
-/// A claim: an inner-circuit verifying key paired with a corresponding
-/// statement (public inputs).
+/// An inner-circuit verifying key paired with a corresponding statement (public
+/// inputs).
 #[derive(Clone, Debug)]
 pub struct Claim {
     /// Verifying key identifying the inner circuit this claim refers to.
