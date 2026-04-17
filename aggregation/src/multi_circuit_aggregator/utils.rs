@@ -60,7 +60,7 @@ pub fn assign_and_hash_vk(
     cs: &ConstraintSystem<F>,
     vk: Value<&MidnightVK>,
 ) -> Result<VkHashAndBases, Error> {
-    let curve_chip = std_lib.bls12_381_curve();
+    let curve_chip = std_lib.bls12_381();
 
     let nb_fixed = cs.num_fixed_columns() + cs.num_selectors();
     let nb_perm = cs.permutation().columns.len();

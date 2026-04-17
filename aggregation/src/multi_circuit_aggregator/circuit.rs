@@ -352,8 +352,8 @@ impl IvcTransition for ProofAggregation {
 
             acc.collapse(
                 layouter,
-                self.std_lib.bls12_381_curve(),
-                self.std_lib.bls12_381_scalar(),
+                self.std_lib.bls12_381(),
+                self.std_lib.bls12_381().scalar_field_chip(),
             )?;
             acc
         };
