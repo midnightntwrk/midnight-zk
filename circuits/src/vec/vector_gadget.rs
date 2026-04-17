@@ -138,7 +138,7 @@ where
         let (start, end) = &limits;
         let mut is_data: AssignedBit<F> = ng.assign_fixed(layouter, true)?;
 
-        let result = (0..M - A + 1)
+        let result = (0..=M - A)
             .map(|i| {
                 let is_start = ng.is_equal_to_fixed(layouter, start, F::from(i as u64))?;
                 is_data = ng.xor(layouter, &[is_data.clone(), is_start])?;
