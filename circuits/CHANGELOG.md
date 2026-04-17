@@ -30,6 +30,13 @@ verification keys break backwards compatibility.
 ### Removed
 
 ## [7.0.0]
+* `FromScratch::configure_from_scratch` now takes shared `advice_columns` and `fixed_columns` pools [#306](https://github.com/midnightntwrk/midnight-zk/pull/306)
+* Optimize foreign Edwards MSM: windowed scalar multiplication and improved point addition [#305](https://github.com/midnightntwrk/midnight-zk/pull/305)
+* Refactoring static specs to handle more identity-related examples [#330](https://github.com/midnightntwrk/midnight-zk/pull/330)
+* Boxing assigned vectors to assign overflows [#331](https://github.com/midnightntwrk/midnight-zk/pull/331)
+* Variable length automata and substring checks [#332](https://github.com/midnightntwrk/midnight-zk/pull/332)
+* Generic ASN.1 parsing support [#333](https://github.com/midnightntwrk/midnight-zk/pull/333)
+* Patching broken doc comments [#334](https://github.com/midnightntwrk/midnight-zk/pull/334)
 
 ### Added
 * Add functions to mark the region of a circuit to be measured for cost modelling [#296](https://github.com/midnightntwrk/midnight-zk/pull/296)

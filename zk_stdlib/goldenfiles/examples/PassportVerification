@@ -1,0 +1,14 @@
+CircuitModel {
+    k: 18,
+    rows: 201154,
+    table_rows: 257503,
+    nb_unusable_rows: 7,
+    max_deg: 5,
+    advice_columns: 8,
+    fixed_columns: 50,
+    lookups: 11,
+    permutations: 9,
+    column_queries: 91,
+    point_sets: 5,
+    size: 7024,
+}
