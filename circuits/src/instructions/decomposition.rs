@@ -45,7 +45,8 @@ where
     /// element in little-endian.
     ///
     /// The number of bits (the length of the resulting vector) can be
-    /// specified. If unspecified, the resulting vector will contain exactly
+    /// specified, but will be capped at `Self::Assigned::Element::NUM_BITS`. If
+    /// unspecified, the resulting vector will contain exactly
     /// `Self::Assigned::Element::NUM_BITS` bits (the minimum number of bits
     /// necessary to represent any element).
     ///
@@ -111,7 +112,9 @@ where
     /// constraints.
     ///
     /// The number of bytes (the length of the resulting vector) can be
-    /// specified. If unspecified, the resulting vector will contain exactly
+    /// specified, but will be capped at
+    /// `ceil(Self::Assigned::Element::NUM_BITS / 8)`. If unspecified, the
+    /// resulting vector will contain exactly
     /// `ceil(Self::Assigned::Element::NUM_BITS / 8)` bytes (the minimum number
     /// of bytes necessary to represent any element).
     ///
@@ -315,7 +318,10 @@ pub(crate) mod tests {
         instructions::{AssertionInstructions, AssignmentInstructions},
         testing_utils::FromScratch,
         types::InnerValue,
-        utils::{circuit_modeling::circuit_to_json, util::big_to_fe},
+        utils::{
+            circuit_modeling::{circuit_to_json, cost_measure_end, cost_measure_start},
+            util::big_to_fe,
+        },
     };
 
     #[derive(Clone, Debug)]
@@ -373,9 +379,21 @@ pub(crate) mod tests {
             let committed_instance_column = meta.instance_column();
             let instance_column = meta.instance_column();
             let instance_columns = [committed_instance_column, instance_column];
+            let mut advice_columns = vec![];
+            let mut fixed_columns = vec![];
             (
-                DecompChip::configure_from_scratch(meta, &instance_columns),
-                AuxChip::configure_from_scratch(meta, &instance_columns),
+                DecompChip::configure_from_scratch(
+                    meta,
+                    &mut advice_columns,
+                    &mut fixed_columns,
+                    &instance_columns,
+                ),
+                AuxChip::configure_from_scratch(
+                    meta,
+                    &mut advice_columns,
+                    &mut fixed_columns,
+                    &instance_columns,
+                ),
             )
         }
 
@@ -388,6 +406,7 @@ pub(crate) mod tests {
             let aux_chip = AuxChip::new_from_scratch(&config.1);
 
             use Endianess::*;
+            cost_measure_start(&mut layouter);
             match self.operation {
                 Operation::ToBits => {
                     let x: Assigned = chip.assign_fixed(&mut layouter, self.x)?;
@@ -452,6 +471,7 @@ pub(crate) mod tests {
                     aux_chip.assert_equal_to_fixed(&mut layouter, &sign, lsb == 1u8)
                 }
             }?;
+            cost_measure_end(&mut layouter);
 
             chip.load_from_scratch(&mut layouter)?;
             aux_chip.load_from_scratch(&mut layouter)
@@ -488,9 +508,8 @@ pub(crate) mod tests {
             operation,
             _marker: PhantomData,
         };
-        let log2_nb_rows = 10;
         let public_inputs = vec![vec![], vec![]];
-        match MockProver::run(log2_nb_rows, &circuit, public_inputs) {
+        match MockProver::run(&circuit, public_inputs) {
             Ok(prover) => match prover.verify() {
                 Ok(()) => assert!(must_pass),
                 Err(e) => assert!(!must_pass, "Failed verifier with error {e:?}"),

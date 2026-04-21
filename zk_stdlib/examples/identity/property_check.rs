@@ -34,7 +34,7 @@ use midnight_proofs::{
     plonk::{commit_to_instances, Error},
     poly::kzg::KZGCommitmentScheme,
 };
-use midnight_zk_stdlib::{utils::plonk_api::srs_for_test, Relation, ZkStdLib, ZkStdLibArch};
+use midnight_zk_stdlib::{utils::plonk_api::filecoin_srs, Relation, ZkStdLib, ZkStdLibArch};
 use num_bigint::BigUint;
 use rand::rngs::OsRng;
 use utils::{read_credential, split_blob, verify_credential_sig};
@@ -84,6 +84,7 @@ const COORD_LEN: usize = 43;
 impl Relation for CredentialProperty {
     type Instance = ();
     type Witness = (Payload, SK);
+    type Error = Error;
 
     fn format_instance(_instance: &Self::Instance) -> Result<Vec<F>, Error> {
         Ok(vec![])
@@ -103,9 +104,10 @@ impl Relation for CredentialProperty {
         _instance: Value<Self::Instance>,
         witness: Value<Self::Witness>,
     ) -> Result<(), Error> {
-        let secp256k1_curve = std_lib.secp256k1_curve();
+        let secp256k1_curve = std_lib.secp256k1();
+        let secp256k1_scalar = secp256k1_curve.scalar_field_chip();
         let b64_chip = std_lib.base64();
-        let automaton_chip = std_lib.scanner(true);
+        let scanner_chip = std_lib.scanner();
 
         let (json, sk) = witness.unzip();
 
@@ -127,7 +129,7 @@ impl Relation for CredentialProperty {
             std_lib.constrain_as_committed_public_input(layouter, &byte_as_f)?;
         }
 
-        let parsed_json = automaton_chip.parse(layouter, &StdLibParser::Jwt, &json)?;
+        let parsed_json = scanner_chip.parse(layouter, StdLibParser::Jwt.into(), &json)?;
 
         // Check Name.
         let name = Self::get_property(std_lib, layouter, &json, &parsed_json, 3, NAME_LEN)?;
@@ -154,7 +156,7 @@ impl Relation for CredentialProperty {
 
         let holder_pk = secp256k1_curve.point_from_coordinates(layouter, &x_coord, &y_coord)?;
         let holder_sk: AssignedField<_, K256Scalar, MultiEmulationParams> =
-            std_lib.secp256k1_scalar().assign(layouter, sk)?;
+            secp256k1_scalar.assign(layouter, sk)?;
 
         let gen: AssignedForeignPoint<_, K256, MultiEmulationParams> =
             secp256k1_curve.assign_fixed(layouter, K256::generator())?;
@@ -197,24 +199,24 @@ impl From<Date> for BigUint {
 }
 
 impl CredentialProperty {
-    /// Searches for the first position in `parsed_body` marked with `marker`,
+    /// Searches for the first position in `parsed_body` tagged with `output`,
     /// and returns the following `val_len` bytes from `body`.
     fn get_property(
         std_lib: &ZkStdLib,
         layouter: &mut impl Layouter<F>,
         body: &[AssignedByte<F>],
         parsed_body: &[AssignedNative<F>],
-        marker: usize,
+        output: usize,
         val_len: usize,
     ) -> Result<Vec<AssignedByte<F>>, Error> {
-        let marker_f = F::from(marker as u64);
+        let output_f = F::from(output as u64);
 
-        // In-circuit scan: find the first position of `marker` in `parsed_body`.
+        // In-circuit scan: find the first position of `output` in `parsed_body`.
         // Iterating in reverse so that the final overwrite is the first occurrence of
-        // the marker.
+        // the output.
         let mut idx: AssignedNative<F> = std_lib.assign_fixed(layouter, F::from(0u64))?;
         for (i, m) in parsed_body.iter().enumerate().rev() {
-            let is_match = std_lib.is_equal_to_fixed(layouter, m, marker_f)?;
+            let is_match = std_lib.is_equal_to_fixed(layouter, m, output_f)?;
             let i_val: AssignedNative<F> = std_lib.assign_fixed(layouter, F::from(i as u64))?;
             idx = std_lib.select(layouter, &is_match, &i_val, &idx)?;
         }
@@ -268,10 +270,10 @@ impl CredentialProperty {
 
 fn main() {
     const K: u32 = 16;
+    let srs = filecoin_srs(K);
     let credential_blob = read_credential::<4096>(CRED_PATH).expect("Path to credential file.");
 
     let relation = CredentialProperty;
-    let srs = srs_for_test(&relation, Some(K));
 
     let start = |msg: &str| -> Instant {
         println!("{msg}");

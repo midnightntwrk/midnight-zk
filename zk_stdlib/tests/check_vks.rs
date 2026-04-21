@@ -14,7 +14,8 @@
 //! Integration tests for identifying breaking changes in circuits
 
 use midnight_zk_stdlib::{
-    utils::plonk_api::{check_vk, srs_for_test, update_circuit_goldenfiles},
+    optimal_k,
+    utils::plonk_api::{check_vk, filecoin_srs, update_circuit_goldenfiles},
     MidnightCircuit,
 };
 
@@ -29,7 +30,7 @@ use exposing_types::{
     hybrid_mt::HybridMtExample,
     identity::{
         enrollment::CredentialEnrollment, full_credential::FullCredential,
-        property_check::CredentialProperty,
+        property_check::CredentialProperty, property_check_opt::CredentialPropertyOpt,
     },
     membership::MembershipExample,
     native_gadget::NativeGadgetExample,
@@ -48,7 +49,9 @@ macro_rules! generate_tests {
 
                 update_circuit_goldenfiles(&relation);
 
-                let srs = srs_for_test(&relation, None);
+                let k = optimal_k(&relation);
+                let srs = filecoin_srs(k);
+
                 let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
                 check_vk::<MidnightCircuit<$circuit>>(&vk);
             }
@@ -68,6 +71,7 @@ generate_tests!(
     check_vk_cred_full: FullCredential,
     check_vk_cred_enrollment: CredentialEnrollment,
     check_vk_cred_property: CredentialProperty,
+    check_vk_cred_property_opt: CredentialPropertyOpt,
     check_vk_hybrid_mt: HybridMtExample,
     check_vk_sha: ShaPreImageCircuit,
     check_vk_schnorr: SchnorrExample

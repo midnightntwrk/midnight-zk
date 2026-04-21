@@ -22,7 +22,7 @@ use num_traits::{One, Signed, Zero};
 #[cfg(any(test, feature = "testing"))]
 use {
     midnight_proofs::circuit::Layouter,
-    midnight_proofs::plonk::{Column, ConstraintSystem, Instance},
+    midnight_proofs::plonk::{Advice, Column, ConstraintSystem, Fixed, Instance},
 };
 
 use crate::CircuitField;
@@ -198,8 +198,15 @@ pub trait FromScratch<F: CircuitField> {
 
     fn new_from_scratch(config: &Self::Config) -> Self;
 
+    /// Configure the chip/gadget from scratch.
+    ///
+    /// `advice_columns` and `fixed_columns` are shared column pools.
+    /// Implementations should use the columns already present and only grow the
+    /// vectors when they need more columns than currently available.
     fn configure_from_scratch(
         meta: &mut ConstraintSystem<F>,
+        advice_columns: &mut Vec<Column<Advice>>,
+        fixed_columns: &mut Vec<Column<Fixed>>,
         instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config;
 

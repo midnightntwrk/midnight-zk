@@ -79,7 +79,7 @@ pub(crate) mod tests {
     use crate::{
         instructions::{AssertionInstructions, AssignmentInstructions},
         testing_utils::{FromScratch, Sampleable},
-        utils::circuit_modeling::circuit_to_json,
+        utils::circuit_modeling::{circuit_to_json, cost_measure_end, cost_measure_start},
     };
 
     #[derive(Clone, Debug, Default)]
@@ -118,9 +118,21 @@ pub(crate) mod tests {
             let committed_instance_column = meta.instance_column();
             let instance_column = meta.instance_column();
             let instance_columns = [committed_instance_column, instance_column];
+            let mut advice_columns = vec![];
+            let mut fixed_columns = vec![];
             (
-                HashChip::configure_from_scratch(meta, &instance_columns),
-                AssignChip::configure_from_scratch(meta, &instance_columns),
+                HashChip::configure_from_scratch(
+                    meta,
+                    &mut advice_columns,
+                    &mut fixed_columns,
+                    &instance_columns,
+                ),
+                AssignChip::configure_from_scratch(
+                    meta,
+                    &mut advice_columns,
+                    &mut fixed_columns,
+                    &instance_columns,
+                ),
             )
         }
 
@@ -134,7 +146,9 @@ pub(crate) mod tests {
 
             let inputs = assign_chip.assign_many(&mut layouter, &self.input)?;
 
+            cost_measure_start(&mut layouter);
             let output = chip.hash(&mut layouter, &inputs)?;
+            cost_measure_end(&mut layouter);
             assign_chip.assert_equal_to_fixed(
                 &mut layouter,
                 &output,
@@ -158,7 +172,6 @@ pub(crate) mod tests {
         cost_model: bool,
         chip_name: &str,
         size: usize,
-        k: u32,
     ) where
         F: CircuitField + ff::FromUniformBytes<64> + Ord,
         Input: InnerValue + Sampleable,
@@ -183,7 +196,7 @@ pub(crate) mod tests {
             _marker: PhantomData,
         };
 
-        MockProver::run(k, &circuit, vec![vec![], vec![]]).unwrap().assert_satisfied();
+        MockProver::run(&circuit, vec![vec![], vec![]]).unwrap().assert_satisfied();
         println!("\n... succeeded!\n");
 
         if cost_model {
@@ -232,9 +245,21 @@ pub(crate) mod tests {
             let committed_instance_column = meta.instance_column();
             let instance_column = meta.instance_column();
             let instance_columns = [committed_instance_column, instance_column];
+            let mut advice_columns = vec![];
+            let mut fixed_columns = vec![];
             (
-                VarHashChip::configure_from_scratch(meta, &instance_columns),
-                VectorGadget::configure_from_scratch(meta, &instance_columns),
+                VarHashChip::configure_from_scratch(
+                    meta,
+                    &mut advice_columns,
+                    &mut fixed_columns,
+                    &instance_columns,
+                ),
+                VectorGadget::configure_from_scratch(
+                    meta,
+                    &mut advice_columns,
+                    &mut fixed_columns,
+                    &instance_columns,
+                ),
             )
         }
 
@@ -251,7 +276,9 @@ pub(crate) mod tests {
             let assigned_input: AssignedVector<_, _, M, A> =
                 vg.assign(&mut layouter, self.input.clone())?;
 
+            cost_measure_start(&mut layouter);
             let output = chip.varhash(&mut layouter, &assigned_input)?;
+            cost_measure_end(&mut layouter);
             ng.assert_equal_to_fixed(&mut layouter, &output, self.expected_output.clone())?;
 
             chip.load_from_scratch(&mut layouter)?;
@@ -264,7 +291,6 @@ pub(crate) mod tests {
         cost_model: bool,
         chip_name: &str,
         size: usize,
-        k: u32,
     ) where
         F: CircuitField + ff::FromUniformBytes<64> + Ord,
         Input: Vectorizable + Sampleable,
@@ -285,7 +311,7 @@ pub(crate) mod tests {
             _marker: PhantomData,
         };
 
-        MockProver::run(k, &circuit, vec![vec![], vec![]]).unwrap().assert_satisfied();
+        MockProver::run(&circuit, vec![vec![], vec![]]).unwrap().assert_satisfied();
 
         if cost_model {
             circuit_to_json(chip_name, "hash", circuit);

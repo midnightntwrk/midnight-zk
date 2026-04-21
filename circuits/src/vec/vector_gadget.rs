@@ -404,7 +404,7 @@ where
 }
 
 #[cfg(any(test, feature = "testing"))]
-use midnight_proofs::plonk::{Column, ConstraintSystem, Instance};
+use midnight_proofs::plonk::{Advice, Column, ConstraintSystem, Fixed, Instance};
 
 #[cfg(any(test, feature = "testing"))]
 use crate::testing_utils::FromScratch;
@@ -421,9 +421,11 @@ impl<F: CircuitField> FromScratch<F> for VectorGadget<F> {
 
     fn configure_from_scratch(
         meta: &mut ConstraintSystem<F>,
+        advice_columns: &mut Vec<Column<Advice>>,
+        fixed_columns: &mut Vec<Column<Fixed>>,
         instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
-        <NG<F>>::configure_from_scratch(meta, instance_columns)
+        <NG<F>>::configure_from_scratch(meta, advice_columns, fixed_columns, instance_columns)
     }
 
     fn load_from_scratch(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
@@ -448,7 +450,7 @@ mod tests {
             AssignedNative, NativeChip, NativeGadget,
         },
         testing_utils::FromScratch,
-        utils::circuit_modeling::circuit_to_json,
+        utils::circuit_modeling::{circuit_to_json, cost_measure_end, cost_measure_start},
     };
 
     struct TestCircuit<F: CircuitField, const M: usize, const A: usize> {
@@ -484,7 +486,12 @@ mod tests {
         fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
             let comm_ic = meta.instance_column();
             let instance_column = meta.instance_column();
-            NativeGadget::configure_from_scratch(meta, &[comm_ic, instance_column])
+            NativeGadget::configure_from_scratch(
+                meta,
+                &mut vec![],
+                &mut vec![],
+                &[comm_ic, instance_column],
+            )
         }
 
         fn synthesize(
@@ -495,6 +502,7 @@ mod tests {
             let ng = NG::<F>::new_from_scratch(&config);
             let vg = VectorGadget::new(&ng);
 
+            cost_measure_start(&mut layouter);
             match self.opts {
                 TestOpts::Eq {
                     mutate_padding,
@@ -578,6 +586,7 @@ mod tests {
                     vg.assert_equal_to_fixed(&mut layouter, &result, self.input_2.clone())?;
                 }
             }
+            cost_measure_end(&mut layouter);
 
             ng.load_from_scratch(&mut layouter)
         }
@@ -601,9 +610,7 @@ mod tests {
             },
         };
 
-        let k = 14;
-
-        MockProver::run(k, &circuit, vec![vec![], vec![]]).unwrap().assert_satisfied();
+        MockProver::run(&circuit, vec![vec![], vec![]]).unwrap().assert_satisfied();
 
         if cost_model {
             circuit_to_json(
@@ -624,9 +631,7 @@ mod tests {
             opts: TestOpts::Limits,
         };
 
-        let k = 14;
-
-        MockProver::run(k, &circuit, vec![vec![], vec![]]).unwrap().assert_satisfied();
+        MockProver::run(&circuit, vec![vec![], vec![]]).unwrap().assert_satisfied();
 
         if cost_model {
             circuit_to_json(
@@ -647,9 +652,7 @@ mod tests {
             opts: TestOpts::Padding,
         };
 
-        let k = 14;
-
-        MockProver::run(k, &circuit, vec![vec![], vec![]]).unwrap().assert_satisfied();
+        MockProver::run(&circuit, vec![vec![], vec![]]).unwrap().assert_satisfied();
 
         if cost_model {
             circuit_to_json(
@@ -675,9 +678,7 @@ mod tests {
             opts: TestOpts::Trim { trim_size },
         };
 
-        let k = 14;
-
-        MockProver::run(k, &circuit, vec![vec![], vec![]]).unwrap().assert_satisfied();
+        MockProver::run(&circuit, vec![vec![], vec![]]).unwrap().assert_satisfied();
 
         if cost_model {
             circuit_to_json(

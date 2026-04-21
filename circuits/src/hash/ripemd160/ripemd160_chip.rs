@@ -177,7 +177,7 @@ impl<F: CircuitField> ComposableChip<F> for RipeMD160Chip<F> {
         let q_mod_add = meta.selector();
 
         (0..2).for_each(|idx| {
-            meta.lookup("plain-spreaded lookup", None, |meta| {
+            meta.lookup("plain-spreaded lookup", |meta| {
                 let q_lookup = meta.query_selector(q_lookup);
 
                 let nbits = meta.query_fixed(fixed_cols[idx], Rotation(0));
@@ -1221,21 +1221,39 @@ impl<F: CircuitField> FromScratch<F> for RipeMD160Chip<F> {
 
     fn configure_from_scratch(
         meta: &mut ConstraintSystem<F>,
+        advice_columns: &mut Vec<Column<Advice>>,
+        fixed_columns: &mut Vec<Column<Fixed>>,
         instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
-        let core_decomposition_config =
-            NativeGadget::configure_from_scratch(meta, instance_columns);
+        use std::cmp::max;
 
-        let native_config = &core_decomposition_config.native_config;
-        let mut advice_columns = native_config.advice_columns().to_vec();
-        let mut fixed_columns = native_config.fixed_columns();
+        use crate::field::{
+            decomposition::pow2range::Pow2RangeChip,
+            native::{NB_ARITH_COLS, NB_ARITH_FIXED_COLS},
+        };
 
-        while advice_columns.len() < NB_RIPEMD160_ADVICE_COLS {
+        let nb_advice_needed = max(NB_ARITH_COLS, NB_RIPEMD160_ADVICE_COLS);
+        let nb_fixed_needed = max(NB_ARITH_FIXED_COLS, NB_RIPEMD160_FIXED_COLS);
+
+        while advice_columns.len() < nb_advice_needed {
             advice_columns.push(meta.advice_column());
         }
-        while fixed_columns.len() < NB_RIPEMD160_FIXED_COLS {
+        while fixed_columns.len() < nb_fixed_needed {
             fixed_columns.push(meta.fixed_column());
         }
+
+        let native_config = NativeChip::configure(
+            meta,
+            &(
+                advice_columns[..NB_ARITH_COLS].try_into().unwrap(),
+                fixed_columns[..NB_ARITH_FIXED_COLS].try_into().unwrap(),
+                *instance_columns,
+            ),
+        );
+
+        let pow2range_config = Pow2RangeChip::configure(meta, &advice_columns[1..=4]);
+        let core_decomposition_config =
+            P2RDecompositionChip::configure(meta, &(native_config, pow2range_config));
 
         let ripemd160_config = RipeMD160Chip::configure(
             meta,

@@ -32,7 +32,7 @@ use num_traits::{One, Signed, Zero};
 #[cfg(any(test, feature = "testing"))]
 use {
     crate::testing_utils::{FromScratch, Sampleable},
-    midnight_proofs::plonk::Instance,
+    midnight_proofs::plonk::{Fixed, Instance},
     rand::RngCore,
 };
 
@@ -1028,6 +1028,10 @@ where
             return Ok(x.clone());
         }
 
+        if k == -K::ONE {
+            return self.neg(layouter, x);
+        }
+
         // If the constant is too big, we should multiply normally instead.
         // This threshold is just a heuristic, it will allow us to perform about 1000
         // sums after this multiplication without normalization.
@@ -1145,14 +1149,21 @@ where
             .into_iter()
             .for_each(|new_bits| bits.extend(new_bits));
 
+        let nb_bits = min(
+            K::NUM_BITS as usize,
+            nb_bits.unwrap_or(K::NUM_BITS as usize),
+        );
+
         // Drop the most significant bits up to the desired length, but make sure
         // they encode 0.
-        let nb_bits = nb_bits.unwrap_or(K::NUM_BITS as usize);
         bits[nb_bits..]
             .iter()
             .try_for_each(|byte| self.native_gadget.assert_equal_to_fixed(layouter, byte, false))?;
-        let bits = bits[0..nb_bits].to_vec();
-        if enforce_canonical && nb_bits >= K::NUM_BITS as usize {
+        bits = bits[0..nb_bits].to_vec();
+
+        // The case nb_bits > K::NUM_BITS cannot happen since by above definition
+        // nb_bits = min(K::NUM_BITS,...), and thus nb_bits <= K::NUM_BITS.
+        if enforce_canonical && nb_bits == K::NUM_BITS as usize {
             let canonical = self.is_canonical(layouter, &bits)?;
             self.assert_equal_to_fixed(layouter, &canonical, true)?;
         }
@@ -1696,20 +1707,27 @@ where
 
     fn configure_from_scratch(
         meta: &mut ConstraintSystem<F>,
+        advice_columns: &mut Vec<Column<Advice>>,
+        fixed_columns: &mut Vec<Column<Fixed>>,
         instance_columns: &[Column<Instance>; 2],
     ) -> FieldChipConfigForTests<F, N> {
-        let native_gadget_config =
-            <N as FromScratch<F>>::configure_from_scratch(meta, instance_columns);
+        let native_gadget_config = <N as FromScratch<F>>::configure_from_scratch(
+            meta,
+            advice_columns,
+            fixed_columns,
+            instance_columns,
+        );
         // Use hard-coded pow2range values matching NativeGadget::configure_from_scratch
         let nb_parallel_range_checks = 4;
         let max_bit_len = 8;
         let field_chip_config = {
-            let advice_cols = (0..nb_field_chip_columns::<F, K, P>())
-                .map(|_| meta.advice_column())
-                .collect::<Vec<_>>();
+            let nb_fc_cols = nb_field_chip_columns::<F, K, P>();
+            while advice_columns.len() < nb_fc_cols {
+                advice_columns.push(meta.advice_column());
+            }
             FieldChip::<F, K, P, N>::configure(
                 meta,
-                &advice_cols,
+                &advice_columns[..nb_fc_cols],
                 nb_parallel_range_checks,
                 max_bit_len,
             )

@@ -112,7 +112,7 @@ pub(crate) mod tests {
         instructions::AssignmentInstructions,
         testing_utils::{FromScratch, Sampleable},
         types::{InnerConstants, InnerValue},
-        utils::circuit_modeling::circuit_to_json,
+        utils::circuit_modeling::{circuit_to_json, cost_measure_end, cost_measure_start},
     };
 
     #[derive(Clone, Debug)]
@@ -151,7 +151,12 @@ pub(crate) mod tests {
         fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
             let committed_instance_column = meta.instance_column();
             let instance_column = meta.instance_column();
-            Chip::configure_from_scratch(meta, &[committed_instance_column, instance_column])
+            Chip::configure_from_scratch(
+                meta,
+                &mut vec![],
+                &mut vec![],
+                &[committed_instance_column, instance_column],
+            )
         }
 
         fn synthesize(
@@ -167,6 +172,7 @@ pub(crate) mod tests {
                 Assigned::sample_inner(OsRng)
             };
 
+            cost_measure_start(&mut layouter);
             let x = match self.operation {
                 Operation::Constrain => {
                     let x = chip.assign(&mut layouter, Value::known(x_val.clone()))?;
@@ -178,6 +184,7 @@ pub(crate) mod tests {
                     chip.assign_as_public_input(&mut layouter, Value::known(x_val.clone()))?
                 }
             };
+            cost_measure_end(&mut layouter);
 
             if self.must_pass {
                 chip.as_public_input(&mut layouter, &x)?
@@ -212,10 +219,9 @@ pub(crate) mod tests {
             _marker: PhantomData,
         };
 
-        let log2_nb_rows = 10;
         let pi = Assigned::as_public_input(x);
 
-        match MockProver::run(log2_nb_rows, &circuit, vec![vec![], pi.clone()]) {
+        match MockProver::run(&circuit, vec![vec![], pi.clone()]) {
             Ok(prover) => match prover.verify() {
                 Ok(()) => assert!(must_pass),
                 Err(e) => assert!(!must_pass, "Failed verifier with error {e:?}"),

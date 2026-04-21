@@ -18,8 +18,8 @@ midnight-proofs = { version = "0.7.0", default-features = false, features = [
     "committed-instances",
 ] }
 
-keccak_sha3 = { package = "sha3-circuit", git = "https://github.com/alexandroszacharakis8/sha3-circuit", rev = "1a3ef7d2"}
-blake2b = { package = "blake2b_halo2", git = "https://github.com/eryxcoop/blake2b_halo2", rev = "5f979f"}
+keccak_sha3 = { package = "sha3-circuit", version = "0.1.0" }
+blake2b = { package = "blake2b_halo2", git = "https://github.com/eryxcoop/blake2b_halo2", rev = "2296aa2" }
 
 serde = { workspace = true, optional = true }
 sha2 = { workspace = true }
@@ -42,7 +42,7 @@ itertools = "0.14"
 dhat = "0.3"
 bellman = "0.14.0"
 serial_test = "3.2.0"
-sha3 = "0.10.0"
+sha3 = "0.11.0"
 blake2 = "0.10.6"
 
 [target.'cfg(ci_build)'.dependencies]
@@ -58,25 +58,12 @@ truncated-challenges = [
     "midnight-proofs/truncated-challenges",
     "midnight-circuits/truncated-challenges",
 ]
-# Commit to the quotient polynomial H as a single commitment (see midnight-proofs)
-single-h-commitment = [
-    "midnight-proofs/single-h-commitment",
-    "midnight-circuits/single-h-commitment",
-]
 
 [lib]
 bench = false
 
 [[bench]]
 name = "verify"
-harness = false
-
-[[bench]]
-name = "prove"
-harness = false
-
-[[bench]]
-name = "prove_cred"
 harness = false
 
 [[example]]

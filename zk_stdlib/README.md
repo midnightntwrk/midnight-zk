@@ -1,9 +1,8 @@
 # Midnight ZK Standard Library
 
-The Midnight ZK Standard Library (`midnight-zk-stdlib`) provides a 
-high-level abstraction for building zero-knowledge circuits using the 
-[Midnight Circuits](../circuits) library and the [Midnight Proofs](../proofs)
-proving system.
+[![Crates.io Version](https://img.shields.io/crates/v/midnight-zk-stdlib?label=midnight-zk-stdlib)](https://crates.io/crates/midnight-zk-stdlib)
+
+The *Midnight ZK Standard Library* (`midnight-zk-stdlib`) provides a high-level abstraction for building zero-knowledge circuits using the [midnight-circuits](https://crates.io/crates/midnight-circuits) and [midnight-proofs](https://crates.io/crates/midnight-proofs) crates.
 
 > **WARNING**: This library has not been audited. Use it at your own risk.
 
@@ -42,10 +41,7 @@ use midnight_circuits::{
     instructions::{AssignmentInstructions, PublicInputInstructions},
     types::{AssignedByte, Instantiable},
 };
-use midnight_zk_stdlib::{
-    utils::plonk_api::{load_srs, SrsSource},
-    Relation, ZkStdLib, ZkStdLibArch,
-};
+use midnight_zk_stdlib::{utils::plonk_api::filecoin_srs, Relation, ZkStdLib, ZkStdLibArch};
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
@@ -64,6 +60,7 @@ impl Relation for ShaPreImageCircuit {
     // of the underlying NP-relation.
     type Instance = [u8; 32]; // x ∈ {0, 1}^256
     type Witness = [u8; 24];  // w ∈ {0, 1}^192  (192 = 24 * 8)
+    type Error = Error;
 
     // We must specify how the instance, which can be any Rust type, is converted
     // into raw field elements to be processed by the prover/verifier. The order 
@@ -107,19 +104,20 @@ impl Relation for ShaPreImageCircuit {
     }
 }
 
+// The SRS (Structured Reference String) must match the circuit size exactly.
+// `k` is the log2 of the circuit size (i.e. the circuit has 2^k rows).
+// We can load an SRS that is larger than needed and downsize it automatically.
+const K: u32 = 14;
+let mut srs = filecoin_srs(K);
+
 let relation = ShaPreImageCircuit;
 
-// The SRS (Structured Reference String) must match the circuit size.
-// `k` is the log2 of the number of rows (i.e. the circuit has 2^k rows).
-// `optimal_k` derives the smallest `k` that fits the circuit.
+// Compute the optimal k for the circuit and downsize the SRS to match.
 let k = midnight_zk_stdlib::optimal_k(&relation);
+srs.downsize(k);
 
-// `cs_degree` is the maximum constraint degree of the circuit, needed only if
-// the `single-h-commitment` feature is enabled, for an extended monomial basis.
-let cs_degree = midnight_zk_stdlib::cost_model(&relation, Some(k)).max_deg;
-
-// Load an SRS for the given circuit size.
-let srs = load_srs(SrsSource::Filecoin, k, cs_degree);
+// If you already know the exact k for your circuit, you can skip the above
+// and load an SRS of the right size directly.
 let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
 let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
 

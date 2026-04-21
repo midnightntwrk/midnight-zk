@@ -398,7 +398,7 @@ pub(crate) mod tests {
     use super::*;
     use crate::{
         testing_utils::{FromScratch, Invertible},
-        utils::circuit_modeling::circuit_to_json,
+        utils::circuit_modeling::{circuit_to_json, cost_measure_end, cost_measure_start},
     };
 
     #[derive(Clone, Debug)]
@@ -449,7 +449,12 @@ pub(crate) mod tests {
         fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
             let committed_instance_column = meta.instance_column();
             let instance_column = meta.instance_column();
-            ArithChip::configure_from_scratch(meta, &[committed_instance_column, instance_column])
+            ArithChip::configure_from_scratch(
+                meta,
+                &mut vec![],
+                &mut vec![],
+                &[committed_instance_column, instance_column],
+            )
         }
 
         fn synthesize(
@@ -465,6 +470,7 @@ pub(crate) mod tests {
             let y = chip.assign_fixed(&mut layouter, self.inputs[y_idx].clone())?;
             let k = self.inputs[y_idx].clone();
 
+            cost_measure_start(&mut layouter);
             let res = match self.operation {
                 Operation::Add => chip.add(&mut layouter, &x, &y),
                 Operation::Sub => chip.sub(&mut layouter, &x, &y),
@@ -495,6 +501,7 @@ pub(crate) mod tests {
                     Assigned::Element::from(1),
                 ),
             }?;
+            cost_measure_end(&mut layouter);
 
             let expected = chip.assign_fixed(&mut layouter, self.expected.clone())?;
             chip.assert_equal(&mut layouter, &expected, &res)?;
@@ -527,9 +534,8 @@ pub(crate) mod tests {
             operation: operation.clone(),
             _marker: PhantomData,
         };
-        let log2_nb_rows = 10;
         let public_inputs = vec![vec![], vec![]];
-        match MockProver::run(log2_nb_rows, &circuit, public_inputs) {
+        match MockProver::run(&circuit, public_inputs) {
             Ok(prover) => match prover.verify() {
                 Ok(()) => assert!(must_pass),
                 Err(e) => assert!(!must_pass, "Failed verifier with error {e:?}"),

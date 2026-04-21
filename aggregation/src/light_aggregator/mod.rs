@@ -511,6 +511,8 @@ mod tests {
 
         type Witness = [F; 2];
 
+        type Error = Error;
+
         fn format_instance(instance: &Self::Instance) -> Result<Vec<F>, Error> {
             Ok(instance.to_vec())
         }

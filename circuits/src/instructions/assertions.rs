@@ -125,7 +125,7 @@ pub(crate) mod tests {
         instructions::{AssertionInstructions, AssignmentInstructions},
         testing_utils::{FromScratch, Sampleable},
         types::InnerConstants,
-        utils::circuit_modeling::circuit_to_json,
+        utils::circuit_modeling::{circuit_to_json, cost_measure_end, cost_measure_start},
     };
 
     #[derive(Clone, Debug)]
@@ -169,6 +169,8 @@ pub(crate) mod tests {
             let instance_column = meta.instance_column();
             AssertionChip::configure_from_scratch(
                 meta,
+                &mut vec![],
+                &mut vec![],
                 &[committed_instance_column, instance_column],
             )
         }
@@ -183,6 +185,7 @@ pub(crate) mod tests {
             let x = chip.assign(&mut layouter, Value::known(self.x.clone()))?;
             let y = chip.assign_fixed(&mut layouter, self.y.clone())?;
 
+            cost_measure_start(&mut layouter);
             match self.operation {
                 Operation::Eq => chip.assert_equal(&mut layouter, &x, &y),
                 Operation::Neq => chip.assert_not_equal(&mut layouter, &x, &y),
@@ -191,6 +194,7 @@ pub(crate) mod tests {
                     chip.assert_not_equal_to_fixed(&mut layouter, &x, self.y.clone())
                 }
             }?;
+            cost_measure_end(&mut layouter);
 
             chip.load_from_scratch(&mut layouter)
         }
@@ -219,9 +223,8 @@ pub(crate) mod tests {
             _marker: PhantomData,
         };
 
-        let log2_nb_rows = 10;
         let public_inputs = vec![vec![], vec![]];
-        match MockProver::run(log2_nb_rows, &circuit, public_inputs) {
+        match MockProver::run(&circuit, public_inputs) {
             Ok(prover) => match prover.verify() {
                 Ok(()) => assert!(must_pass),
                 Err(e) => assert!(!must_pass, "Failed verifier with error {e:?}"),

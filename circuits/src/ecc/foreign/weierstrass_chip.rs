@@ -43,7 +43,7 @@ use {
     midnight_proofs::plonk::Instance, rand::RngCore,
 };
 
-use super::gates::{
+use super::gates::weierstrass::{
     lambda_squared,
     lambda_squared::LambdaSquaredConfig,
     on_curve,
@@ -53,7 +53,10 @@ use super::gates::{
     tangent::TangentConfig,
 };
 use crate::{
-    ecc::curves::WeierstrassCurve,
+    ecc::{
+        curves::WeierstrassCurve,
+        foreign::common::{add_1bit_scalar_bases, msm_preprocess},
+    },
     field::foreign::{
         field_chip::{FieldChip, FieldChipConfig},
         params::FieldEmulationParams,
@@ -118,6 +121,25 @@ where
 /// completeness, but only by a polynomial factor: we still get statistical
 /// completeness (i.e. completeness with overwhelming probability over the
 /// choice of `r`).
+<<<<<<<< HEAD:circuits/src/ecc/foreign/ecc_chip.rs
+#[derive(Clone, Debug)]
+struct MsmRandomness<F, C, B>
+where
+    F: CircuitField,
+    C: WeierstrassCurve,
+    B: FieldEmulationParams<F, C::Base>,
+{
+    r: AssignedForeignPoint<F, C, B>,
+    neg_alpha: AssignedForeignPoint<F, C, B>,
+}
+
+/// Map from window size to the corresponding [`MsmRandomness`], lazily
+/// populated on first MSM call for each window size.
+type MsmRandomnessMap<F, C, B> = HashMap<usize, MsmRandomness<F, C, B>>;
+
+/// ['ECChip'] to perform foreign EC operations.
+========
+>>>>>>>> next:circuits/src/ecc/foreign/weierstrass_chip.rs
 #[derive(Clone, Debug)]
 struct MsmRandomness<F, C, B>
 where
@@ -655,20 +677,10 @@ where
         p: &AssignedForeignPoint<F, C, B>,
         q: &AssignedForeignPoint<F, C, B>,
     ) -> Result<AssignedForeignPoint<F, C, B>, Error> {
+        let point = p.point.zip(q.point).zip(cond.value()).map(|((p, q), b)| if b { p } else { q });
         let is_id = self.native_gadget.select(layouter, cond, &p.is_id, &q.is_id)?;
         let x = self.base_field_chip().select(layouter, cond, &p.x, &q.x)?;
         let y = self.base_field_chip().select(layouter, cond, &p.y, &q.y)?;
-
-        // point = p if cond is 1, q if cond is 0, Value::unknown() if cond is unknown.
-        // When cond is unknown we return Value::unknown().
-        let point = if cond.value().error_if_known_and(|&v| !v).is_err() {
-            q.point
-        } else if cond.value().error_if_known_and(|&v| v).is_err() {
-            p.point
-        } else {
-            Value::unknown()
-        };
-
         Ok(AssignedForeignPoint::<F, C, B> { point, is_id, x, y })
     }
 }
@@ -792,7 +804,9 @@ where
         bases: &[AssignedForeignPoint<F, C, B>],
     ) -> Result<AssignedForeignPoint<F, C, B>, Error> {
         const WS: usize = 4;
+        let scalar_chip = self.scalar_field_chip();
 
+<<<<<<<< HEAD:circuits/src/ecc/foreign/ecc_chip.rs
         // Filter out bases that are known to be the identity at compile time.
         // These contribute nothing to the MSM result.
         let id_point = self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
@@ -860,13 +874,16 @@ where
             .map(|s| cache_scalars.get(s).unwrap().clone())
             .collect::<Vec<_>>();
         let scalars = unique_scalars;
+========
+        let (scalars, bases, bases_with_1bit_scalar) =
+            msm_preprocess(self, scalar_chip, layouter, scalars, bases)?;
+>>>>>>>> next:circuits/src/ecc/foreign/weierstrass_chip.rs
 
         // In order to support the identity point for some bases, we select in-circuit
         // based on the value of is_id and put a 0 scalar and an arbitrary non-id point
         // (e.g. the generator) for the base when is_id equals 1.
         let mut non_id_bases = vec![];
         let mut scalars_of_non_id_bases = vec![];
-        let scalar_chip = self.scalar_field_chip();
         let zero: S::Scalar = scalar_chip.assign_fixed(layouter, C::ScalarField::ZERO)?;
         let g = self.assign_fixed(layouter, C::CryptographicGroup::generator())?;
         for (s, b) in scalars.iter().zip(bases.iter()) {
@@ -915,6 +932,7 @@ where
         }
         let res = self.windowed_msm::<WS>(layouter, &decomposed_scalars, &bases)?;
 
+<<<<<<<< HEAD:circuits/src/ecc/foreign/ecc_chip.rs
         let id_point = self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
         bases_with_1bit_scalar.iter().try_fold(res, |acc, (b, s)| {
             let s_times_b = if s == &one {
@@ -925,6 +943,9 @@ where
             };
             self.add(layouter, &acc, &s_times_b)
         })
+========
+        add_1bit_scalar_bases(layouter, self, scalar_chip, &bases_with_1bit_scalar, res)
+>>>>>>>> next:circuits/src/ecc/foreign/weierstrass_chip.rs
     }
 
     fn mul_by_constant(
@@ -1072,7 +1093,11 @@ where
         advice_columns: &[Column<Advice>],
         nb_parallel_range_checks: usize,
         max_bit_len: u32,
+<<<<<<<< HEAD:circuits/src/ecc/foreign/ecc_chip.rs
+    ) -> ForeignEccConfig<C> {
+========
     ) -> ForeignWeierstrassEccConfig<C> {
+>>>>>>>> next:circuits/src/ecc/foreign/weierstrass_chip.rs
         // Assert that there is room for the cond_col in the existing columns of the
         // field_chip configurations.
         let cond_col_idx = base_field_config.x_cols.len() + base_field_config.v_cols.len() + 1;
@@ -1141,7 +1166,7 @@ where
         // separator instead.
         let tag_col_multi_select = meta.fixed_column();
 
-        meta.lookup_any("multi_select lookup", |meta| {
+        meta.lookup_any("multi_select lookup", None, |meta| {
             let sel = meta.query_selector(q_multi_select);
             let not_sel = Expression::from(1) - sel.clone();
 
@@ -1874,12 +1899,17 @@ where
             return Ok(cached.clone());
         }
 
+<<<<<<<< HEAD:circuits/src/ecc/foreign/ecc_chip.rs
+        let r: AssignedForeignPoint<F, C, B> =
+            self.assign(layouter, Value::known(C::CryptographicGroup::random(OsRng)))?;
+========
         let r: AssignedForeignPoint<F, C, B> = self.assign_without_subgroup_check(
             layouter,
             Value::known(C::CryptographicGroup::random(OsRng)),
         )?;
 
         Self::completeness_error_if(&r.point, |p| C::CryptographicGroup::is_identity(p).into())?;
+>>>>>>>> next:circuits/src/ecc/foreign/weierstrass_chip.rs
 
         // Assert the chosen r is not the identity point.
         self.base_field_chip
@@ -2213,27 +2243,54 @@ where
 
     fn configure_from_scratch(
         meta: &mut ConstraintSystem<F>,
+        advice_columns: &mut Vec<Column<Advice>>,
+        fixed_columns: &mut Vec<Column<Fixed>>,
         instance_columns: &[Column<Instance>; 2],
     ) -> ForeignEccTestConfig<F, C, S, N> {
-        let native_gadget_config =
-            <N as FromScratch<F>>::configure_from_scratch(meta, instance_columns);
-        let scalar_field_config =
-            <S as FromScratch<F>>::configure_from_scratch(meta, instance_columns);
+        let native_gadget_config = <N as FromScratch<F>>::configure_from_scratch(
+            meta,
+            advice_columns,
+            fixed_columns,
+            instance_columns,
+        );
+        let scalar_field_config = <S as FromScratch<F>>::configure_from_scratch(
+            meta,
+            advice_columns,
+            fixed_columns,
+            instance_columns,
+        );
         let nb_advice_cols = nb_foreign_ecc_chip_columns::<F, C, B, S>();
+<<<<<<<< HEAD:circuits/src/ecc/foreign/ecc_chip.rs
         let advice_columns = (0..nb_advice_cols).map(|_| meta.advice_column()).collect::<Vec<_>>();
+========
+        while advice_columns.len() < nb_advice_cols {
+            advice_columns.push(meta.advice_column());
+        }
+>>>>>>>> next:circuits/src/ecc/foreign/weierstrass_chip.rs
         // Use hard-coded pow2range values matching NativeGadget::configure_from_scratch
         let nb_parallel_range_checks = 4;
         let max_bit_len = 8;
         let base_field_config = FieldChip::<F, C::Base, B, N>::configure(
             meta,
+<<<<<<<< HEAD:circuits/src/ecc/foreign/ecc_chip.rs
             &advice_columns,
+            nb_parallel_range_checks,
+            max_bit_len,
+        );
+        let ff_ecc_config = ForeignEccChip::<F, C, B, S, N>::configure(
+            meta,
+            &base_field_config,
+            &advice_columns,
+========
+            &advice_columns[..nb_advice_cols],
             nb_parallel_range_checks,
             max_bit_len,
         );
         let ff_ecc_config = ForeignWeierstrassEccChip::<F, C, B, S, N>::configure(
             meta,
             &base_field_config,
-            &advice_columns,
+            &advice_columns[..nb_advice_cols],
+>>>>>>>> next:circuits/src/ecc/foreign/weierstrass_chip.rs
             nb_parallel_range_checks,
             max_bit_len,
         );
