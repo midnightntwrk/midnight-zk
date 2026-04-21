@@ -1,4 +1,4 @@
-use std::{cmp, collections::HashMap, fmt, marker::PhantomData};
+use std::{cell::RefCell, cmp, collections::HashMap, fmt, marker::PhantomData, rc::Rc};
 
 use ff::Field;
 
@@ -34,6 +34,45 @@ impl FloorPlanner for SimpleFloorPlanner {
         let layouter = SingleChipLayouter::new(cs, constants)?;
         circuit.synthesize(config, layouter)
     }
+
+    fn synthesize_capturing_regions<F: Field, CS: Assignment<F> + SyncDeps, C: Circuit<F>>(
+        cs: &mut CS,
+        circuit: &C,
+        config: C::Config,
+        constants: Vec<Column<Fixed>>,
+    ) -> Result<Option<Vec<RegionStart>>, Error> {
+        // The layouter mirrors each computed RegionStart into `sink` as
+        // synthesis runs. After `circuit.synthesize` consumes the layouter,
+        // we are the sole owner of `sink` and can extract the layout.
+        let sink = Rc::new(RefCell::new(Vec::new()));
+        let layouter = SingleChipLayouter::new_capturing(cs, constants, Rc::clone(&sink))?;
+        circuit.synthesize(config, layouter)?;
+        Ok(Some(
+            Rc::try_unwrap(sink)
+                .expect("layouter dropped after synthesize; sink must be sole owner")
+                .into_inner(),
+        ))
+    }
+
+    fn synthesize_with_cached_regions<F: Field, CS: Assignment<F> + SyncDeps, C: Circuit<F>>(
+        cs: &mut CS,
+        circuit: &C,
+        config: C::Config,
+        constants: Vec<Column<Fixed>>,
+        cached_regions: Option<&[RegionStart]>,
+    ) -> Result<(), Error> {
+        match cached_regions {
+            Some(cached) => {
+                let layouter =
+                    SingleChipLayouter::new_with_cached_regions(cs, constants, cached.to_vec())?;
+                circuit.synthesize(config, layouter)
+            }
+            None => {
+                let layouter = SingleChipLayouter::new(cs, constants)?;
+                circuit.synthesize(config, layouter)
+            }
+        }
+    }
 }
 
 /// A [`Layouter`] for a single-chip circuit.
@@ -46,6 +85,13 @@ pub struct SingleChipLayouter<'a, F: Field, CS: Assignment<F> + 'a> {
     columns: HashMap<RegionColumn, usize>,
     /// Stores the table fixed columns.
     table_columns: Vec<TableColumn>,
+    /// When `Some`, the shape pass is skipped and these pre-computed region
+    /// starts are consulted instead. Indexed by the region's synthesis order.
+    cached_region_starts: Option<Vec<RegionStart>>,
+    /// When `Some`, each newly determined `RegionStart` is also written here
+    /// so the caller can read the layout back after `circuit.synthesize`
+    /// has consumed the layouter. Used by `synthesize_capturing_regions`.
+    region_sink: Option<Rc<RefCell<Vec<RegionStart>>>>,
     _marker: PhantomData<F>,
 }
 
@@ -61,24 +107,65 @@ impl<'a, F: Field, CS: Assignment<F> + 'a> fmt::Debug for SingleChipLayouter<'a,
 impl<'a, F: Field, CS: Assignment<F>> SingleChipLayouter<'a, F, CS> {
     /// Creates a new single-chip layouter.
     pub fn new(cs: &'a mut CS, constants: Vec<Column<Fixed>>) -> Result<Self, Error> {
-        let ret = SingleChipLayouter {
+        Ok(SingleChipLayouter {
             cs,
             constants,
             regions: vec![],
             columns: HashMap::default(),
             table_columns: vec![],
+            cached_region_starts: None,
+            region_sink: None,
             _marker: PhantomData,
-        };
-        Ok(ret)
+        })
+    }
+
+    /// Creates a layouter that skips the shape pass and reuses pre-computed
+    /// region starts (typically captured during keygen).
+    pub fn new_with_cached_regions(
+        cs: &'a mut CS,
+        constants: Vec<Column<Fixed>>,
+        cached_regions: Vec<RegionStart>,
+    ) -> Result<Self, Error> {
+        Ok(SingleChipLayouter {
+            cs,
+            constants,
+            regions: vec![],
+            columns: HashMap::default(),
+            table_columns: vec![],
+            cached_region_starts: Some(cached_regions),
+            region_sink: None,
+            _marker: PhantomData,
+        })
+    }
+
+    /// Creates a layouter that runs the shape pass normally but mirrors each
+    /// determined `RegionStart` into `sink`. After `circuit.synthesize`
+    /// consumes the layouter, the caller can read the captured layout from
+    /// `sink`.
+    pub fn new_capturing(
+        cs: &'a mut CS,
+        constants: Vec<Column<Fixed>>,
+        sink: Rc<RefCell<Vec<RegionStart>>>,
+    ) -> Result<Self, Error> {
+        Ok(SingleChipLayouter {
+            cs,
+            constants,
+            regions: vec![],
+            columns: HashMap::default(),
+            table_columns: vec![],
+            cached_region_starts: None,
+            region_sink: Some(sink),
+            _marker: PhantomData,
+        })
     }
 }
 
-impl<'a, F: Field, CS: Assignment<F> + 'a + SyncDeps> Layouter<F>
-    for SingleChipLayouter<'a, F, CS>
-{
-    type Root = Self;
-
-    fn assign_region<A, AR, N, NR>(&mut self, name: N, mut assignment: A) -> Result<AR, Error>
+impl<'a, F: Field, CS: Assignment<F> + 'a + SyncDeps> SingleChipLayouter<'a, F, CS> {
+    fn assign_region_impl<A, AR, N, NR>(
+        &mut self,
+        name: N,
+        mut assignment: A,
+    ) -> Result<AR, Error>
     where
         A: FnMut(Region<'_, F>) -> Result<AR, Error>,
         N: Fn() -> NR,
@@ -86,24 +173,35 @@ impl<'a, F: Field, CS: Assignment<F> + 'a + SyncDeps> Layouter<F>
     {
         let region_index = self.regions.len();
 
-        // Get shape of the region.
-        let mut shape = RegionShape::new(region_index.into());
-        {
-            let region: &mut dyn RegionLayouter<F> = &mut shape;
-            assignment(region.into())?;
+        if let Some(ref cached) = self.cached_region_starts {
+            // Reuse the layout computed by an earlier synthesis. The caller is
+            // responsible for ensuring the circuit produces the same sequence
+            // of `assign_region` calls as when the cache was captured; see
+            // `FloorPlanner::synthesize_with_cached_regions`.
+            self.regions.push(cached[region_index]);
+        } else {
+            // Shape pass: position this region at the earliest row for which
+            // none of its columns are in use.
+            let mut shape = RegionShape::new(region_index.into());
+            {
+                let region: &mut dyn RegionLayouter<F> = &mut shape;
+                assignment(region.into())?;
+            }
+
+            let mut region_start = 0;
+            for column in &shape.columns {
+                region_start =
+                    cmp::max(region_start, self.columns.get(column).cloned().unwrap_or(0));
+            }
+            self.regions.push(region_start.into());
+
+            for column in shape.columns {
+                self.columns.insert(column, region_start + shape.row_count);
+            }
         }
 
-        // Lay out this region. We implement the simplest approach here: position the
-        // region starting at the earliest row for which none of the columns are in use.
-        let mut region_start = 0;
-        for column in &shape.columns {
-            region_start = cmp::max(region_start, self.columns.get(column).cloned().unwrap_or(0));
-        }
-        self.regions.push(region_start.into());
-
-        // Update column usage information.
-        for column in shape.columns {
-            self.columns.insert(column, region_start + shape.row_count);
+        if let Some(ref sink) = self.region_sink {
+            sink.borrow_mut().push(*self.regions.last().unwrap());
         }
 
         // Assign region cells.
@@ -144,6 +242,21 @@ impl<'a, F: Field, CS: Assignment<F> + 'a + SyncDeps> Layouter<F>
         }
 
         Ok(result)
+    }
+}
+
+impl<'a, F: Field, CS: Assignment<F> + 'a + SyncDeps> Layouter<F>
+    for SingleChipLayouter<'a, F, CS>
+{
+    type Root = Self;
+
+    fn assign_region<A, AR, N, NR>(&mut self, name: N, assignment: A) -> Result<AR, Error>
+    where
+        A: FnMut(Region<'_, F>) -> Result<AR, Error>,
+        N: Fn() -> NR,
+        NR: Into<String>,
+    {
+        self.assign_region_impl(name, assignment)
     }
 
     fn assign_table<A, N, NR>(&mut self, name: N, mut assignment: A) -> Result<(), Error>
