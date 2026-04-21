@@ -46,8 +46,6 @@ use {
 use super::gates::{
     lambda_squared,
     lambda_squared::LambdaSquaredConfig,
-    on_curve,
-    on_curve::OnCurveConfig,
     slope::{self, SlopeConfig},
     tangent,
     tangent::TangentConfig,
@@ -75,7 +73,6 @@ where
     C: WeierstrassCurve,
 {
     base_field_config: FieldChipConfig,
-    on_curve_config: on_curve::OnCurveConfig<C>,
     slope_config: slope::SlopeConfig<C>,
     tangent_config: tangent::TangentConfig<C>,
     lambda_squared_config: lambda_squared::LambdaSquaredConfig<C>,
@@ -317,15 +314,7 @@ where
         value: Value<C::CryptographicGroup>,
     ) -> Result<AssignedForeignPoint<F, C, B>, Error> {
         let p = self.assign_point_unchecked(layouter, value)?;
-        let is_not_id = self.native_gadget.not(layouter, &p.is_id)?;
-        on_curve::assert_is_on_curve::<F, C, B, N>(
-            layouter,
-            &is_not_id,
-            &p.x,
-            &p.y,
-            self.base_field_chip(),
-            &self.config.on_curve_config,
-        )?;
+        self.assert_on_curve(layouter, &p)?;
         Ok(p)
     }
 
@@ -960,15 +949,6 @@ where
         y: &AssignedField<F, C::Base, B>,
     ) -> Result<Self::Point, Error> {
         let is_id = self.native_gadget.assign_fixed(layouter, false)?;
-        let cond = self.native_gadget.assign_fixed(layouter, true)?;
-        on_curve::assert_is_on_curve::<F, C, B, N>(
-            layouter,
-            &cond,
-            x,
-            y,
-            self.base_field_chip(),
-            &self.config.on_curve_config,
-        )?;
         // If from_xy fails, we give the identity as a default value, but note that
         // the above constraints will make the circuit unsatisfiable.
         // This is intentional.
@@ -976,12 +956,14 @@ where
             .value()
             .zip(y.value())
             .map(|(x, y)| C::from_xy(x, y).unwrap_or(C::identity()).into_subgroup());
-        Ok(AssignedForeignPoint::<F, C, B> {
+        let p = AssignedForeignPoint::<F, C, B> {
             point,
             is_id,
             x: x.clone(),
             y: y.clone(),
-        })
+        };
+        self.assert_on_curve(layouter, &p)?;
+        Ok(p)
     }
 
     fn x_coordinate(&self, point: &Self::Point) -> Self::Coordinate {
@@ -1043,14 +1025,6 @@ where
         assert!(advice_columns.len() > cond_col_idx);
         let cond_col = advice_columns[cond_col_idx];
         meta.enable_equality(cond_col);
-
-        let on_curve_config = OnCurveConfig::<C>::configure::<F, B>(
-            meta,
-            base_field_config,
-            &cond_col,
-            nb_parallel_range_checks,
-            max_bit_len,
-        );
 
         let slope_config = SlopeConfig::<C>::configure::<F, B>(
             meta,
@@ -1139,7 +1113,6 @@ where
 
         ForeignEccConfig {
             base_field_config: base_field_config.clone(),
-            on_curve_config,
             slope_config,
             tangent_config,
             lambda_squared_config,
@@ -1177,6 +1150,26 @@ where
             y,
         };
         Ok(p)
+    }
+
+    /// Asserts that the given point satisfies the Weierstrass curve equation
+    /// y^2 = x^3 + ax + b.
+    fn assert_on_curve(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        p: &AssignedForeignPoint<F, C, B>,
+    ) -> Result<(), Error> {
+        // We compare y^2 (lhs) to x^3 + ax + b (rhs) if the point is not the identity.
+        let lhs = self.base_field_chip.mul(layouter, &p.y, &p.y, None)?;
+        let rhs = {
+            let x2 = self.base_field_chip.mul(layouter, &p.x, &p.x, None)?;
+            let x2_plus_a = self.base_field_chip.add_constant(layouter, &x2, C::A)?;
+            let x3_plus_ax = self.base_field_chip.mul(layouter, &x2_plus_a, &p.x, None)?;
+            self.base_field_chip.add_constant(layouter, &x3_plus_ax, C::B)?
+        };
+
+        let is_not_id = self.native_gadget.not(layouter, &p.is_id)?;
+        self.base_field_chip.cond_assert_equal(layouter, &is_not_id, &lhs, &rhs)
     }
 
     /// Given `p` and `q`, returns `p + q`.
@@ -1841,9 +1834,7 @@ where
             self.assign(layouter, Value::known(C::CryptographicGroup::random(OsRng)))?;
 
         // Assert the chosen r is not the identity point.
-        self.base_field_chip
-            .native_gadget
-            .assert_equal_to_fixed(layouter, &r.is_id, false)?;
+        self.native_gadget.assert_equal_to_fixed(layouter, &r.is_id, false)?;
 
         let alpha = self.mul_by_u128(layouter, (1u128 << WS) - 1, &r)?;
         let neg_alpha = self.negate(layouter, &alpha)?;
