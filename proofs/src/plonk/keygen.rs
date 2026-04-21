@@ -318,8 +318,9 @@ where
         _marker: std::marker::PhantomData,
     };
 
-    // Synthesize the circuit to obtain URS
-    ConcreteCircuit::FloorPlanner::synthesize(
+    // Synthesize the circuit to obtain the URS, capturing the region layout
+    // so that the prover can skip the shape pass on this same circuit.
+    let region_starts = ConcreteCircuit::FloorPlanner::synthesize_capturing_regions(
         &mut assembly,
         circuit,
         config,
@@ -353,6 +354,7 @@ where
         fixed_cosets,
         permutation: permutation_pk,
         ev,
+        region_starts,
     })
 }
 
