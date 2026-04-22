@@ -57,9 +57,7 @@ pub fn g_to_lagrange<C: CurveAffine>(g_affine: &[C], k: u32) -> Vec<C> {
 /// outer parallelism replaces the per-call parallelism of
 /// [`eval_polynomial`].
 pub fn eval_polynomial_seq<F: Field>(poly: &[F], point: F) -> F {
-    poly.iter()
-        .rev()
-        .fold(F::ZERO, |acc, coeff| acc * point + coeff)
+    poly.iter().rev().fold(F::ZERO, |acc, coeff| acc * point + coeff)
 }
 
 /// Evaluates a polynomial (in coefficient form) at `point`.

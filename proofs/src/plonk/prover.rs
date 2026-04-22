@@ -214,19 +214,22 @@ where
     let (advice, challenges) =
         parse_advices(params, pk, circuits, instances, transcript, &mut rng)?;
 
+    // Helper: sample `num_sets` blinding vectors, each of length `inner_len`.
+    // Used to pre-generate every blinding the parallel compute sections below
+    // consume, since `&mut rng` cannot cross rayon thread boundaries.
+    let mut sample_blindings = |num_sets: usize, inner_len: usize| -> Vec<Vec<F>> {
+        (0..num_sets)
+            .map(|_| (0..inner_len).map(|_| F::random(&mut rng)).collect())
+            .collect()
+    };
+
     // Sample theta challenge for keeping lookup columns linearly independent
     let theta: F = transcript.squeeze_challenge();
 
-    // Pre-generate multiplicities blinding values so that the parallel
-    // compute section below does not need `&mut rng`.
     let num_lookups = pk.vk.cs.lookups.len();
     let mult_blinding_count = pk.vk.cs.blinding_factors() + 1;
     let mult_all_blindings: Vec<Vec<Vec<F>>> = (0..instance.len())
-        .map(|_| {
-            (0..num_lookups)
-                .map(|_| (0..mult_blinding_count).map(|_| F::random(&mut rng)).collect())
-                .collect()
-        })
+        .map(|_| sample_blindings(num_lookups, mult_blinding_count))
         .collect();
 
     // Commit to the multiplicities columns.
@@ -235,35 +238,37 @@ where
         .iter()
         .zip(advice.iter())
         .zip(mult_all_blindings)
-        .map(|((instance, advice), mult_blinds)| -> Result<Vec<_>, Error> {
-            let logup_args: Vec<_> =
-                pk.vk.cs.lookups.iter().map(|l| l.chunk_by_degree(pk.vk.cs.degree())).collect();
-            // Compute all lookups in parallel (no transcript access, no rng).
-            let results: Vec<_> = logup_args
-                .par_iter()
-                .zip(mult_blinds.par_iter())
-                .map(|(logup, blinds)| {
-                    logup.compute_multiplicities_parallel(
-                        pk,
-                        params,
-                        theta,
-                        &advice.advice_polys,
-                        &pk.fixed_values,
-                        &instance.instance_values,
-                        &challenges,
-                        blinds,
-                    )
-                })
-                .collect::<Result<Vec<_>, Error>>()?;
-            // Sequential transcript writes to preserve Fiat-Shamir ordering.
-            results
-                .into_iter()
-                .map(|(computed, commitment)| {
-                    transcript.write(&commitment)?;
-                    Ok(computed)
-                })
-                .collect::<Result<Vec<_>, Error>>()
-        })
+        .map(
+            |((instance, advice), mult_blinds)| -> Result<Vec<_>, Error> {
+                let logup_args: Vec<_> =
+                    pk.vk.cs.lookups.iter().map(|l| l.chunk_by_degree(pk.vk.cs.degree())).collect();
+                // Compute all lookups in parallel (no transcript access, no rng).
+                let results: Vec<_> = logup_args
+                    .par_iter()
+                    .zip(mult_blinds.par_iter())
+                    .map(|(logup, blinds)| {
+                        logup.compute_multiplicities_parallel(
+                            pk,
+                            params,
+                            theta,
+                            &advice.advice_polys,
+                            &pk.fixed_values,
+                            &instance.instance_values,
+                            &challenges,
+                            blinds,
+                        )
+                    })
+                    .collect::<Result<Vec<_>, Error>>()?;
+                // Sequential transcript writes to preserve Fiat-Shamir ordering.
+                results
+                    .into_iter()
+                    .map(|(computed, commitment)| {
+                        transcript.write(&commitment)?;
+                        Ok(computed)
+                    })
+                    .collect::<Result<Vec<_>, Error>>()
+            },
+        )
         .collect::<Result<Vec<_>, Error>>()?;
 
     // Sample beta challenge
@@ -272,25 +277,15 @@ where
     // Sample gamma challenge
     let gamma: F = transcript.squeeze_challenge();
 
-    // Pre-generate all blinding values for permutation and logup before the
-    // parallel compute section.
     let blinding_factors = pk.vk.cs.blinding_factors();
     let chunk_len = pk.vk.cs_degree - 2;
     let num_perm_sets = pk.vk.cs.permutation.columns.chunks(chunk_len).len();
     let perm_all_blindings: Vec<Vec<Vec<F>>> = (0..instance.len())
-        .map(|_| {
-            (0..num_perm_sets)
-                .map(|_| (0..blinding_factors).map(|_| F::random(&mut rng)).collect())
-                .collect()
-        })
+        .map(|_| sample_blindings(num_perm_sets, blinding_factors))
         .collect();
     let logup_all_blindings: Vec<Vec<Vec<F>>> = lookups
         .iter()
-        .map(|circuit_lookups| {
-            (0..circuit_lookups.len())
-                .map(|_| (0..blinding_factors).map(|_| F::random(&mut rng)).collect())
-                .collect()
-        })
+        .map(|circuit_lookups| sample_blindings(circuit_lookups.len(), blinding_factors))
         .collect();
 
     // Overlap permutation and logup computation.
@@ -301,7 +296,7 @@ where
     let (all_perm_computed, all_logup_computed): (Vec<_>, Vec<Result<_, Error>>) = instance
         .iter()
         .zip(advice.iter())
-        .zip(lookups.into_iter())
+        .zip(lookups)
         .zip(perm_all_blindings)
         .zip(logup_all_blindings)
         .map(

@@ -48,46 +48,6 @@ impl Default for ValueSource {
     }
 }
 
-impl ValueSource {
-    /// Get the value for this source
-    #[allow(clippy::too_many_arguments)]
-    pub fn get<F: Field, B: PolynomialRepresentation>(
-        &self,
-        rotations: &[usize],
-        constants: &[F],
-        intermediates: &[F],
-        fixed_values: &[Polynomial<F, B>],
-        advice_values: &[Polynomial<F, B>],
-        instance_values: &[Polynomial<F, B>],
-        challenges: &[F],
-        beta: &F,
-        theta: &F,
-        trash_challenge: &F,
-        y: &F,
-        previous_value: &F,
-    ) -> F {
-        match self {
-            ValueSource::Constant(idx) => constants[*idx],
-            ValueSource::Intermediate(idx) => intermediates[*idx],
-            ValueSource::Fixed(column_index, rotation) => {
-                fixed_values[*column_index][rotations[*rotation]]
-            }
-            ValueSource::Advice(column_index, rotation) => {
-                advice_values[*column_index][rotations[*rotation]]
-            }
-            ValueSource::Instance(column_index, rotation) => {
-                instance_values[*column_index][rotations[*rotation]]
-            }
-            ValueSource::Challenge(index) => challenges[*index],
-            ValueSource::Beta() => *beta,
-            ValueSource::Theta() => *theta,
-            ValueSource::TrashChallenge() => *trash_challenge,
-            ValueSource::Y() => *y,
-            ValueSource::PreviousValue() => *previous_value,
-        }
-    }
-}
-
 /// Calculation
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Calculation {
@@ -107,60 +67,6 @@ pub enum Calculation {
     Horner(ValueSource, Vec<ValueSource>, ValueSource),
     /// This is a simple assignment
     Store(ValueSource),
-}
-
-impl Calculation {
-    /// Get the resulting value of this calculation
-    #[allow(clippy::too_many_arguments)]
-    pub fn evaluate<F: Field, B: PolynomialRepresentation>(
-        &self,
-        rotations: &[usize],
-        constants: &[F],
-        intermediates: &[F],
-        fixed_values: &[Polynomial<F, B>],
-        advice_values: &[Polynomial<F, B>],
-        instance_values: &[Polynomial<F, B>],
-        challenges: &[F],
-        beta: &F,
-        theta: &F,
-        trash_challenge: &F,
-        y: &F,
-        previous_value: &F,
-    ) -> F {
-        let get_value = |value: &ValueSource| {
-            value.get(
-                rotations,
-                constants,
-                intermediates,
-                fixed_values,
-                advice_values,
-                instance_values,
-                challenges,
-                beta,
-                theta,
-                trash_challenge,
-                y,
-                previous_value,
-            )
-        };
-        match self {
-            Calculation::Add(a, b) => get_value(a) + get_value(b),
-            Calculation::Sub(a, b) => get_value(a) - get_value(b),
-            Calculation::Mul(a, b) => get_value(a) * get_value(b),
-            Calculation::Square(v) => get_value(v).square(),
-            Calculation::Double(v) => get_value(v).double(),
-            Calculation::Negate(v) => -get_value(v),
-            Calculation::Horner(start_value, parts, factor) => {
-                let factor = get_value(factor);
-                let mut value = get_value(start_value);
-                for part in parts.iter() {
-                    value = value * factor + get_value(part);
-                }
-                value
-            }
-            Calculation::Store(v) => get_value(v),
-        }
-    }
 }
 
 /// Wraps a `GraphEvaluator` for lookups with named handles to the evaluator
@@ -208,25 +114,6 @@ pub struct GraphEvaluator<F: PrimeField> {
     pub calculations: Vec<CalculationInfo>,
     /// Number of intermediates
     pub num_intermediates: usize,
-}
-
-/// EvaluationData
-#[derive(Default, Debug)]
-pub struct EvaluationData<F: PrimeField> {
-    /// Intermediates
-    pub intermediates: Vec<F>,
-    /// Rotations
-    pub rotations: Vec<usize>,
-}
-
-impl<F: PrimeField> EvaluationData<F> {
-    /// Resolve a `ValueSource::Intermediate` handle to its computed value.
-    pub fn resolve(&self, vs: ValueSource) -> F {
-        match vs {
-            ValueSource::Intermediate(idx) => self.intermediates[idx],
-            _ => unreachable!("expected Intermediate, got {vs:?}"),
-        }
-    }
 }
 
 /// CalculationInfo
@@ -978,7 +865,6 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
         l_active_row: &Polynomial<F, B>,
         permutation_pk_cosets: &[Polynomial<F, B>],
     ) -> Polynomial<F, B> {
-        let size = B::len(domain);
         let log_scale = B::k(domain) - domain.k();
         let omega = B::omega(domain);
         let log_n = B::k(domain);
@@ -988,8 +874,6 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
 
         let mut values = B::empty(domain);
 
-        // Core expression evaluations
-        let num_threads = rayon::current_num_threads();
         for ((((advice, instance), lookups), trashcans), permutation) in advice
             .iter()
             .zip(instance.iter())
@@ -1429,62 +1313,6 @@ impl<F: PrimeField> GraphEvaluator<F> {
                     self.add_calculation(Calculation::Mul(result_a, cst))
                 }
             }
-        }
-    }
-
-    /// Creates a new evaluation structure
-    pub fn instance(&self) -> EvaluationData<F> {
-        EvaluationData {
-            intermediates: vec![F::ZERO; self.num_intermediates],
-            rotations: vec![0usize; self.rotations.len()],
-        }
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub fn evaluate<B: PolynomialRepresentation>(
-        &self,
-        data: &mut EvaluationData<F>,
-        fixed: &[Polynomial<F, B>],
-        advice: &[Polynomial<F, B>],
-        instance: &[Polynomial<F, B>],
-        challenges: &[F],
-        beta: &F,
-        theta: &F,
-        trash_challenge: &F,
-        y: &F,
-        previous_value: &F,
-        idx: usize,
-        log_scale: u32,
-        log_n: u32,
-    ) -> F {
-        // All rotation index values
-        for (rot_idx, rot) in self.rotations.iter().enumerate() {
-            data.rotations[rot_idx] = get_rotation_idx(idx, *rot, log_scale, log_n);
-        }
-
-        // All calculations, with cached intermediate results
-        for calc in self.calculations.iter() {
-            data.intermediates[calc.target] = calc.calculation.evaluate(
-                &data.rotations,
-                &self.constants,
-                &data.intermediates,
-                fixed,
-                advice,
-                instance,
-                challenges,
-                beta,
-                theta,
-                trash_challenge,
-                y,
-                previous_value,
-            );
-        }
-
-        // Return the result of the last calculation (if any)
-        if let Some(calc) = self.calculations.last() {
-            data.intermediates[calc.target]
-        } else {
-            F::ZERO
         }
     }
 }

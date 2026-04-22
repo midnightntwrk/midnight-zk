@@ -48,9 +48,9 @@ use crate::{
     transcript::{Hashable, Sampleable, Transcript},
     utils::{
         arithmetic::{
-            eval_polynomial, evals_inner_product, inner_product,
-            kate_division, lagrange_interpolate, msm_inner_product, parallelize, powers,
-            CurveAffine, CurveExt, MSM,
+            eval_polynomial, evals_inner_product, inner_product, kate_division,
+            lagrange_interpolate, msm_inner_product, parallelize, powers, CurveAffine, CurveExt,
+            MSM,
         },
         helpers::ProcessedSerdeObject,
     },
@@ -131,9 +131,7 @@ where
                     let pv: &[F] = poly;
                     let end = (start + chunk.len()).min(pv.len());
                     if start < pv.len() {
-                        for (out, coeff) in
-                            chunk[..end - start].iter_mut().zip(&pv[start..end])
-                        {
+                        for (out, coeff) in chunk[..end - start].iter_mut().zip(&pv[start..end]) {
                             *out += *coeff * scalar;
                         }
                     }
@@ -207,9 +205,9 @@ where
                 .into_par_iter()
                 .zip(q_polys.clone().into_par_iter())
                 .map(|(points, q_poly)| {
-                    let poly = points.iter().fold(q_poly.values, |poly, point| {
-                        kate_division(&poly, *point)
-                    });
+                    let poly = points
+                        .iter()
+                        .fold(q_poly.values, |poly, point| kate_division(&poly, *point));
                     Polynomial {
                         values: poly,
                         _marker: PhantomData,
@@ -227,14 +225,10 @@ where
         let x3 = truncate(x3);
 
         // Evaluate all q_polys at x3 in parallel, then write sequentially.
-        let q_evals: Vec<E::Fr> = q_polys
-            .par_iter()
-            .map(|q_poly| eval_polynomial(&q_poly.values, x3))
-            .collect();
+        let q_evals: Vec<E::Fr> =
+            q_polys.par_iter().map(|q_poly| eval_polynomial(&q_poly.values, x3)).collect();
         for eval in &q_evals {
-            transcript
-                .write(eval)
-                .map_err(|_| Error::OpeningError)?;
+            transcript.write(eval).map_err(|_| Error::OpeningError)?;
         }
 
         let x4: E::Fr = transcript.squeeze_challenge();

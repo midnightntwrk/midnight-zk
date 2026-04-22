@@ -23,7 +23,6 @@
 use std::{hash::Hash, iter};
 
 use ff::{BatchInvert, FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
-use rand_core::{CryptoRng, RngCore};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::{
@@ -104,6 +103,7 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ChunkedArgument<F> {
     where
         F: WithSmallOrderMulGroup<3> + FromUniformBytes<64>,
     {
+        assert_eq!(blinding_values.len(), pk.vk.cs.blinding_factors() + 1);
         let domain = pk.vk.get_domain();
         let n = domain.n as usize;
         let eval_expressions =
@@ -190,7 +190,7 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ComputedMultiplicities<F> {
         F: WithSmallOrderMulGroup<3> + FromUniformBytes<64>,
     {
         let blinding_factors = pk.vk.cs.blinding_factors();
-        debug_assert_eq!(blinding_values.len(), blinding_factors);
+        assert_eq!(blinding_values.len(), blinding_factors);
         let domain = pk.vk.get_domain();
         let n = domain.n as usize;
 
@@ -306,11 +306,8 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
 
         // Compute all evaluations up front, then write to transcript.
         let multiplicities_eval = eval_polynomial(&self.multiplicities, x);
-        let helper_evals: Vec<F> = self
-            .helper_polys
-            .par_iter()
-            .map(|h| eval_polynomial(h, x))
-            .collect();
+        let helper_evals: Vec<F> =
+            self.helper_polys.par_iter().map(|h| eval_polynomial(h, x)).collect();
         let accumulator_eval = eval_polynomial(&self.aggregator_poly, x);
         let accumulator_next_eval = eval_polynomial(&self.aggregator_poly, x_next);
         transcript.write(&multiplicities_eval)?;
@@ -455,10 +452,8 @@ where
 mod tests {
     use std::marker::PhantomData;
 
-    use super::*;
     use ff::Field;
     use midnight_curves::Fq;
-    use rand_core::{CryptoRng, OsRng};
 
     use super::*;
 

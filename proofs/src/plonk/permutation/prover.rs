@@ -115,6 +115,11 @@ impl Argument {
             .collect();
         let num_sets = column_chunks.len();
 
+        assert_eq!(all_blindings.len(), num_sets);
+        for blindings in &all_blindings {
+            assert_eq!(blindings.len(), blinding_factors);
+        }
+
         // --- Phase 1: Compute modified_values for all sets in parallel. ---
         // Each set computes the product of fractions
         //   (p_j(ω^i) + δ^j ω^i β + γ) / (p_j(ω^i) + β s_j(ω^i) + γ)
@@ -253,11 +258,8 @@ impl<F: PrimeField> super::ProvingKey<F> {
         F: Hashable<T::Hash>,
     {
         // Compute all permutation polynomial evaluations up front.
-        let permutation_evals: Vec<F> = self
-            .polys
-            .par_iter()
-            .map(|poly| eval_polynomial_seq(poly, x))
-            .collect();
+        let permutation_evals: Vec<F> =
+            self.polys.par_iter().map(|poly| eval_polynomial_seq(poly, x)).collect();
 
         // Write to transcript in order.
         for eval in &permutation_evals {
@@ -292,10 +294,7 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
             .par_iter()
             .enumerate()
             .map(|(i, set)| permutation::Evaluated {
-                permutation_product_eval: eval_polynomial(
-                    &set.permutation_product_poly,
-                    x,
-                ),
+                permutation_product_eval: eval_polynomial(&set.permutation_product_poly, x),
                 permutation_product_next_eval: eval_polynomial(
                     &set.permutation_product_poly,
                     x_next,
