@@ -330,6 +330,7 @@ where
         for batch in 0..AUTOMATON_PARALLELISM {
             meta.lookup(
                 format!("automaton transition check (batch {batch})"),
+                None,
                 |meta| {
                     let q = meta.query_selector(q_automaton);
                     let base = NB_AUTOMATON_COLS * batch;
@@ -396,7 +397,7 @@ where
         // unrelated rows: a query tagged T can only match table entries with the
         // same tag T, and rows with tag 0 never participate in any lookup.
         for batch in 0..SUBSTRING_PARALLELISM {
-            meta.lookup_any(format!("substring lookup (batch {batch})"), |meta| {
+            meta.lookup_any(format!("substring lookup (batch {batch})"), None, |meta| {
                 let sel = meta.query_selector(q_substring);
                 let not_sel = Expression::Constant(F::ONE) - sel.clone();
                 let index = meta.query_fixed(*index_col, Rotation::cur());

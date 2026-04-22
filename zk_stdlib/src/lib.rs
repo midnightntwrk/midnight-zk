@@ -2005,7 +2005,7 @@ where
 /// computed automatically.
 pub fn cost_model<R: Relation>(relation: &R, k: Option<u32>) -> CircuitModel {
     let circuit = MidnightCircuit::from_relation(relation, k);
-    circuit_model::<_, COMMITMENT_BYTE_SIZE, SCALAR_BYTE_SIZE>(&circuit)
+    circuit_model::<_, COMMITMENT_BYTE_SIZE, SCALAR_BYTE_SIZE>(&circuit, 0)
 }
 
 /// Finds the optimal `k` (log2 of the circuit size) for the given relation.

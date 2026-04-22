@@ -121,25 +121,6 @@ where
 /// completeness, but only by a polynomial factor: we still get statistical
 /// completeness (i.e. completeness with overwhelming probability over the
 /// choice of `r`).
-<<<<<<<< HEAD:circuits/src/ecc/foreign/ecc_chip.rs
-#[derive(Clone, Debug)]
-struct MsmRandomness<F, C, B>
-where
-    F: CircuitField,
-    C: WeierstrassCurve,
-    B: FieldEmulationParams<F, C::Base>,
-{
-    r: AssignedForeignPoint<F, C, B>,
-    neg_alpha: AssignedForeignPoint<F, C, B>,
-}
-
-/// Map from window size to the corresponding [`MsmRandomness`], lazily
-/// populated on first MSM call for each window size.
-type MsmRandomnessMap<F, C, B> = HashMap<usize, MsmRandomness<F, C, B>>;
-
-/// ['ECChip'] to perform foreign EC operations.
-========
->>>>>>>> next:circuits/src/ecc/foreign/weierstrass_chip.rs
 #[derive(Clone, Debug)]
 struct MsmRandomness<F, C, B>
 where
@@ -806,78 +787,8 @@ where
         const WS: usize = 4;
         let scalar_chip = self.scalar_field_chip();
 
-<<<<<<<< HEAD:circuits/src/ecc/foreign/ecc_chip.rs
-        // Filter out bases that are known to be the identity at compile time.
-        // These contribute nothing to the MSM result.
-        let id_point = self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
-        let (scalars, bases): (Vec<_>, Vec<_>) = scalars
-            .iter()
-            .zip(bases.iter())
-            .filter(|(_, base)| *base != &id_point)
-            .map(|(s, b)| (s.clone(), b.clone()))
-            .unzip();
-
-        // If any of the scalars is known to be 1, or has a bound of 1 (i.e. it is known
-        // to be either 0 or 1) remove it (with its base) from the list and simply add
-        // it at the end.
-        let one: S::Scalar = self.scalar_field_chip.assign_fixed(layouter, C::ScalarField::ONE)?;
-        let mut bases_with_1bit_scalar = vec![];
-        let mut filtered_scalars = vec![];
-        let mut filtered_bases = vec![];
-        for (scalar, base) in scalars.iter().zip(bases.iter()) {
-            if scalar.0 == one || scalar.1 == 1 {
-                bases_with_1bit_scalar.push((base.clone(), scalar.0.clone()));
-            } else {
-                filtered_scalars.push(scalar.clone());
-                filtered_bases.push(base.clone());
-            }
-        }
-
-        let scalars = filtered_scalars;
-        let bases = filtered_bases;
-
-        // If two bases are exactly the same (as symbolic PLONK variables), we
-        // deduplicate them by adding their scalars.
-        let mut cache_bases: HashMap<AssignedForeignPoint<F, C, B>, (S::Scalar, usize)> =
-            HashMap::new();
-        let mut unique_bases: Vec<AssignedForeignPoint<F, C, B>> = vec![];
-        for (base, scalar) in bases.iter().zip(scalars.iter()) {
-            if let Some(acc) = cache_bases.insert(base.clone(), scalar.clone()) {
-                let new_scalar = self.scalar_field_chip.add(layouter, &acc.0, &scalar.0)?;
-                let new_bound = max(acc.1, scalar.1) + 1;
-                cache_bases.insert(base.clone(), (new_scalar, new_bound));
-            } else {
-                unique_bases.push(base.clone());
-            }
-        }
-        let scalars = unique_bases
-            .iter()
-            .map(|b| cache_bases.get(b).unwrap().clone())
-            .collect::<Vec<_>>();
-        let bases = unique_bases;
-
-        // If two scalars are exactly the same (as symbolic PLONK variables), we
-        // deduplicate them by adding their bases.
-        let mut cache_scalars: HashMap<(S::Scalar, usize), AssignedForeignPoint<F, C, B>> =
-            HashMap::new();
-        let mut unique_scalars: Vec<(S::Scalar, usize)> = vec![];
-        for (scalar, base) in scalars.iter().zip(bases.iter()) {
-            if let Some(acc) = cache_scalars.insert(scalar.clone(), base.clone()) {
-                let new_acc = self.add(layouter, &acc, base)?;
-                cache_scalars.insert(scalar.clone(), new_acc);
-            } else {
-                unique_scalars.push(scalar.clone());
-            }
-        }
-        let bases = unique_scalars
-            .iter()
-            .map(|s| cache_scalars.get(s).unwrap().clone())
-            .collect::<Vec<_>>();
-        let scalars = unique_scalars;
-========
         let (scalars, bases, bases_with_1bit_scalar) =
             msm_preprocess(self, scalar_chip, layouter, scalars, bases)?;
->>>>>>>> next:circuits/src/ecc/foreign/weierstrass_chip.rs
 
         // In order to support the identity point for some bases, we select in-circuit
         // based on the value of is_id and put a 0 scalar and an arbitrary non-id point
@@ -932,20 +843,7 @@ where
         }
         let res = self.windowed_msm::<WS>(layouter, &decomposed_scalars, &bases)?;
 
-<<<<<<<< HEAD:circuits/src/ecc/foreign/ecc_chip.rs
-        let id_point = self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
-        bases_with_1bit_scalar.iter().try_fold(res, |acc, (b, s)| {
-            let s_times_b = if s == &one {
-                b.clone()
-            } else {
-                let s_is_zero = self.scalar_field_chip().is_zero(layouter, s)?;
-                self.select(layouter, &s_is_zero, &id_point, b)?
-            };
-            self.add(layouter, &acc, &s_times_b)
-        })
-========
         add_1bit_scalar_bases(layouter, self, scalar_chip, &bases_with_1bit_scalar, res)
->>>>>>>> next:circuits/src/ecc/foreign/weierstrass_chip.rs
     }
 
     fn mul_by_constant(
@@ -1093,11 +991,7 @@ where
         advice_columns: &[Column<Advice>],
         nb_parallel_range_checks: usize,
         max_bit_len: u32,
-<<<<<<<< HEAD:circuits/src/ecc/foreign/ecc_chip.rs
-    ) -> ForeignEccConfig<C> {
-========
     ) -> ForeignWeierstrassEccConfig<C> {
->>>>>>>> next:circuits/src/ecc/foreign/weierstrass_chip.rs
         // Assert that there is room for the cond_col in the existing columns of the
         // field_chip configurations.
         let cond_col_idx = base_field_config.x_cols.len() + base_field_config.v_cols.len() + 1;
@@ -1899,17 +1793,12 @@ where
             return Ok(cached.clone());
         }
 
-<<<<<<<< HEAD:circuits/src/ecc/foreign/ecc_chip.rs
-        let r: AssignedForeignPoint<F, C, B> =
-            self.assign(layouter, Value::known(C::CryptographicGroup::random(OsRng)))?;
-========
         let r: AssignedForeignPoint<F, C, B> = self.assign_without_subgroup_check(
             layouter,
             Value::known(C::CryptographicGroup::random(OsRng)),
         )?;
 
         Self::completeness_error_if(&r.point, |p| C::CryptographicGroup::is_identity(p).into())?;
->>>>>>>> next:circuits/src/ecc/foreign/weierstrass_chip.rs
 
         // Assert the chosen r is not the identity point.
         self.base_field_chip
@@ -2260,28 +2149,14 @@ where
             instance_columns,
         );
         let nb_advice_cols = nb_foreign_ecc_chip_columns::<F, C, B, S>();
-<<<<<<<< HEAD:circuits/src/ecc/foreign/ecc_chip.rs
-        let advice_columns = (0..nb_advice_cols).map(|_| meta.advice_column()).collect::<Vec<_>>();
-========
         while advice_columns.len() < nb_advice_cols {
             advice_columns.push(meta.advice_column());
         }
->>>>>>>> next:circuits/src/ecc/foreign/weierstrass_chip.rs
         // Use hard-coded pow2range values matching NativeGadget::configure_from_scratch
         let nb_parallel_range_checks = 4;
         let max_bit_len = 8;
         let base_field_config = FieldChip::<F, C::Base, B, N>::configure(
             meta,
-<<<<<<<< HEAD:circuits/src/ecc/foreign/ecc_chip.rs
-            &advice_columns,
-            nb_parallel_range_checks,
-            max_bit_len,
-        );
-        let ff_ecc_config = ForeignEccChip::<F, C, B, S, N>::configure(
-            meta,
-            &base_field_config,
-            &advice_columns,
-========
             &advice_columns[..nb_advice_cols],
             nb_parallel_range_checks,
             max_bit_len,
@@ -2290,7 +2165,6 @@ where
             meta,
             &base_field_config,
             &advice_columns[..nb_advice_cols],
->>>>>>>> next:circuits/src/ecc/foreign/weierstrass_chip.rs
             nb_parallel_range_checks,
             max_bit_len,
         );

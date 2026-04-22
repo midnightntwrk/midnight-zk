@@ -1178,7 +1178,7 @@ pub(crate) mod tests {
         };
 
         let prover =
-            MockProver::run(K, &circuit, vec![vec![], public_inputs]).expect("MockProver failed");
+            MockProver::run_with_k(K, &circuit, vec![vec![], public_inputs]).expect("MockProver failed");
         prover.assert_satisfied();
     }
 }

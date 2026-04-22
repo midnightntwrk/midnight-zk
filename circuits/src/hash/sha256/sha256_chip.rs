@@ -201,7 +201,7 @@ impl<F: CircuitField> ComposableChip<F> for Sha256Chip<F> {
         let q_add_mod_2_32 = meta.selector();
 
         (0..2).for_each(|idx| {
-            meta.lookup("plain-spreaded lookup", |meta| {
+            meta.lookup("plain-spreaded lookup", None, |meta| {
                 let q_lookup = meta.query_selector(q_lookup);
 
                 let nbits = meta.query_fixed(fixed_cols[idx], Rotation(0));

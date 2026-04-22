@@ -60,6 +60,8 @@ struct Region {
     /// The cells assigned in this region. We store this as a `Vec` so that if
     /// any cells are double-assigned, they will be visibly darker.
     cells: HashMap<(Column<Any>, usize), usize>,
+    /// Whether this region is marked as a measured region for cost modelling.
+    is_measured: bool,
 }
 
 impl Region {
@@ -352,6 +354,7 @@ impl<F: Field> Assignment<F> for MockProver<F> {
             annotations: HashMap::default(),
             enabled_selectors: HashMap::default(),
             cells: HashMap::default(),
+            is_measured: false,
         });
     }
 
@@ -597,7 +600,27 @@ impl<F: Field> Assignment<F> for MockProver<F> {
 impl<F: FromUniformBytes<64> + Ord> MockProver<F> {
     /// Runs a synthetic keygen-and-prove operation on the given circuit,
     /// collecting data about the constraints and their assignments.
+    /// Runs the mock prover, automatically determining the minimum circuit size.
     pub fn run<ConcreteCircuit: Circuit<F>>(
+        circuit: &ConcreteCircuit,
+        instance: Vec<Vec<F>>,
+    ) -> Result<Self, Error> {
+        let mut cs = ConstraintSystem::default();
+        #[cfg(feature = "circuit-params")]
+        ConcreteCircuit::configure_with_params(&mut cs, circuit.params());
+        #[cfg(not(feature = "circuit-params"))]
+        ConcreteCircuit::configure(&mut cs);
+        let max_instance_len = instance.iter().map(|v| v.len()).max().unwrap_or(0);
+        let min_n = cs
+            .minimum_rows()
+            .max(max_instance_len + cs.blinding_factors() + 1)
+            .next_power_of_two();
+        let k = (min_n as f64).log2() as u32;
+        Self::run_with_k(k, circuit, instance)
+    }
+
+    /// Runs the mock prover with an explicit circuit size `k` (i.e. `2^k` rows).
+    pub fn run_with_k<ConcreteCircuit: Circuit<F>>(
         k: u32,
         circuit: &ConcreteCircuit,
         instance: Vec<Vec<F>>,
@@ -1360,7 +1383,7 @@ mod tests {
             }
         }
 
-        let prover = MockProver::run(K, &FaultyCircuit {}, vec![]).unwrap();
+        let prover = MockProver::run_with_k(K, &FaultyCircuit {}, vec![]).unwrap();
         assert_eq!(
             prover.verify(),
             Err(vec![VerifyFailure::CellNotAssigned {
@@ -1525,7 +1548,7 @@ mod tests {
             }
         }
 
-        let prover = MockProver::run(
+        let prover = MockProver::run_with_k(
             K,
             &FaultyCircuit {},
             // This is our "lookup table".
@@ -1671,7 +1694,7 @@ mod tests {
             }
         }
 
-        let prover = MockProver::run(K, &FaultyCircuit {}, vec![]).unwrap();
+        let prover = MockProver::run_with_k(K, &FaultyCircuit {}, vec![]).unwrap();
         assert_eq!(
             prover.verify(),
             Err(vec![VerifyFailure::Lookup {
@@ -1811,7 +1834,7 @@ mod tests {
             }
         }
 
-        let prover = MockProver::run(K, &FaultyCircuit {}, vec![]).unwrap();
+        let prover = MockProver::run_with_k(K, &FaultyCircuit {}, vec![]).unwrap();
         assert_eq!(
             prover.verify(),
             Err(vec![VerifyFailure::ConstraintNotSatisfied {
