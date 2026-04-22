@@ -1373,16 +1373,10 @@ where
         point_table: &[AssignedForeignPoint<F, C, B>],
         table_tag: F,
     ) -> Result<(), Error> {
-        // assign indices up to point_table.len(), this may not introduce new rows,
-        // as we use a cache for assigned constants
-        let indices: Vec<AssignedNative<F>> = (0..point_table.len())
-            .map(|i| self.native_gadget.assign_fixed(layouter, F::from(i as u64)))
-            .collect::<Result<_, Error>>()?;
-
         for (i, point) in point_table.iter().enumerate() {
-            self.fill_dynamic_lookup_row(layouter, point, &indices[i], table_tag, false)?;
+            let index = self.native_gadget.assign_fixed(layouter, F::from(i as u64))?;
+            self.fill_dynamic_lookup_row(layouter, point, &index, table_tag, false)?;
         }
-
         Ok(())
     }
 

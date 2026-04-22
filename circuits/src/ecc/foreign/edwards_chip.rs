@@ -1080,12 +1080,9 @@ where
         point_table: &[AssignedForeignEdwardsPoint<F, C, B>],
         table_tag: F,
     ) -> Result<(), Error> {
-        let indices: Vec<AssignedNative<F>> = (0..point_table.len())
-            .map(|i| self.native_gadget.assign_fixed(layouter, F::from(i as u64)))
-            .collect::<Result<_, Error>>()?;
-
         for (i, point) in point_table.iter().enumerate() {
-            self.fill_dynamic_lookup_row(layouter, point, &indices[i], table_tag, false)?;
+            let index = self.native_gadget.assign_fixed(layouter, F::from(i as u64))?;
+            self.fill_dynamic_lookup_row(layouter, point, &index, table_tag, false)?;
         }
         Ok(())
     }
@@ -1148,6 +1145,7 @@ where
         // Precompute tables for each base and load them into the dynamic lookup.
         let tag_cnt = *self.tag_cnt.borrow();
         self.tag_cnt.replace(tag_cnt + bases.len() as u64);
+        debug_assert!(F::NUM_BITS > 64);
 
         let mut tables = vec![];
         for (i, base) in bases.iter().enumerate() {

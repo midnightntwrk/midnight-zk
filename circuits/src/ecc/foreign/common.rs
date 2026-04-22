@@ -205,17 +205,37 @@ pub(crate) fn configure_multi_select_lookup<F: CircuitField>(
         let sel = meta.query_selector(q_multi_select);
         let not_sel = Expression::from(1) - sel.clone();
 
-        // This is a lookup of a column on itself!
+        // This is a lookup of a column (set) on itself!
         //
         // All identities are of the form: `(value, (1 - sel) * value)`.
-        // That means, every value in the column (it is actually 2 columns including the
-        // tag) is requested to be in the table! Most values, where the selector is
-        // disabled are trivially in the table (at least at their own position).
-        // Those values that we really wanna lookup have a `sel` value of 1, thus
-        // `(1 - sel) * value` is zero and they themselves are not part of the lookup
-        // meaning they must be somewhere else (in the column positions that are part of
-        // the table). An exception is when value = 0 and tag = 0, but we actually use
-        // tag = 0 as a default case that we never want to lookup.
+        // Here, `value` is actually a tuple, but it is helpful to ignore this detail
+        // initially, for the sake of simplicity, we will come back to it later.
+        //
+        // The above should be interpreted as a set inclusion:
+        // {value(ω) | ω ∈ Ω}  ⊆  {(1 - sel(ω)) * value(ω) | ω ∈ Ω}.
+        //
+        // Note that this lookup is requiring that every `value` be in the table!
+        //
+        // - Values where the selector is disabled (those we do not want to lookup) are
+        //   trivially in the table (they appear at least at their own ω).
+        //
+        // - Values that we do want to lookup have `sel = 1` thus `(1 - sel) * value` is
+        //   0 at their offset, forcing them to be somewhere else in the table.
+        //
+        // Observe that the table is then defined by all the entries where `sel = 0`,
+        // and there is no distinction between the intended lookup table and the values
+        // from other circuit regions where we simply want to skip this lookup check.
+        // This is not a problem (for soundness) because `value`, as we anticipated, is
+        // indeed a tuple `(value', tag)` where, in turn, `value'` may be a tuple
+        // itself. Importantly, `tag` is a fixed column which allows us to use it as a
+        // domain separator to solve the above ambiguity:
+        //
+        //  - The case `tag = 0` is reserved for disabled checks that are not supposed
+        //    to be part of the payload table,
+        //  - Any other value of `tag` is dedicated to table positions.
+        //
+        // Note that different values of `tag` can be used to encode independent tables
+        // with the same lookup argument.
         let mut identities = [idx_col_multi_select]
             .iter()
             .chain(base_field_config.x_cols.iter())
