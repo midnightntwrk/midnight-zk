@@ -617,7 +617,14 @@ impl ZkStdLib {
                 nb_parallel_range_checks,
                 max_bit_len,
             );
-            Curve25519Chip::configure(meta, &base_config, nb_parallel_range_checks, max_bit_len)
+            Curve25519Chip::configure(
+                meta,
+                &base_config,
+                &advice_columns,
+                &fixed_columns,
+                nb_parallel_range_checks,
+                max_bit_len,
+            )
         });
 
         let base64_config = arch.base64.then(|| {

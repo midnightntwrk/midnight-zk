@@ -74,8 +74,10 @@ where
     B: FieldEmulationParams<F, C::Base>,
 {
     // Here we only account for the columns that this chip requires for its own
-    // custom gates
-    B::NB_LIMBS as usize + std::cmp::max(B::NB_LIMBS as usize, 1 + B::moduli().len())
+    // custom gates.
+    // The outer `+ 1` corresponds to the advice column for the index of
+    // `multi_select`.
+    B::NB_LIMBS as usize + std::cmp::max(B::NB_LIMBS as usize, 1 + B::moduli().len()) + 1
 }
 
 /// Foreign Edwards ECC configuration.
@@ -1256,8 +1258,7 @@ where
             instance_columns,
         );
         let nb_advice_cols = nb_field_chip_columns::<F, C::Base, B>();
-        // +1 for the multi_select index column.
-        while advice_columns.len() < nb_advice_cols + 1 {
+        while advice_columns.len() < nb_advice_cols {
             advice_columns.push(meta.advice_column());
         }
         let nb_parallel_range_checks = 4;
