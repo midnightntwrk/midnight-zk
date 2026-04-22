@@ -19,6 +19,7 @@ verification keys break backwards compatibility.
 * Add functions to mark the region of a circuit to be measured for cost modelling [#296](https://github.com/midnightntwrk/midnight-zk/pull/296)
 * Add `resolve_fixed_bases` to `Msm`, `AssignedMsm`, `Accumulator` and `AssignedAccumulator` [#302](https://github.com/midnightntwrk/midnight-zk/pull/302)
 * Expose `fixed_base_names`, `fixed_commitment_name` and `perm_commitment_name` helper functions [#302](https://github.com/midnightntwrk/midnight-zk/pull/302)
+* Fix redundant explicit intra-doc links in `parsing::scanner::substring` [#311](https://github.com/midnightntwrk/midnight-zk/pull/311)
 * Add `assign_without_subgroup_check` to `EccInstructions` and `SelfEmulation` traits [#284](https://github.com/midnightntwrk/midnight-zk/pull/284)
 * Add Curve25519 [#181](https://github.com/midnightntwrk/midnight-zk/pull/181)
 * Expose helper functions directly in `verifier_gadget` [#227](https://github.com/midnightntwrk/midnight-zk/pull/227)
@@ -42,6 +43,7 @@ verification keys break backwards compatibility.
 * Scanner chip: ICAO 9303 TD3 DG1 passport parser [#233](https://github.com/midnightntwrk/midnight-zk/pull/233)
 * Add implementation of `p256` as foreign Weierstrass chip [#291](https://github.com/midnightntwrk/midnight-zk/pull/291)
 * Scanner chip: parallel lookups [#234](https://github.com/midnightntwrk/midnight-zk/pull/234)
+* Example for in-circuit verification of Ed25519 signatures [#310](https://github.com/midnightntwrk/midnight-zk/pull/310)
 
 ### Changed
 * Reorganize foreign ECC gates into `weierstrass/` and `edwards/` subdirectories [#298](https://github.com/midnightntwrk/midnight-zk/pull/298)

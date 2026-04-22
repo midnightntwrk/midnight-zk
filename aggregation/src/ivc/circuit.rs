@@ -17,12 +17,12 @@ use midnight_circuits::{
 };
 use midnight_proofs::{
     circuit::{Layouter, Value},
-    plonk::{ConstraintSystem, Error},
+    plonk::ConstraintSystem,
     poly::EvaluationDomain,
 };
 use midnight_zk_stdlib::{Relation, ZkStdLib, ZkStdLibArch};
 
-use super::{Ivc, C, F, S};
+use super::{Ivc, IvcError, C, F, S};
 
 /// The public instance (statement) of an IVC proof.
 ///
@@ -113,13 +113,13 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
 
     type Witness = IvcWitness<T>;
 
-    type Error = Error;
+    type Error = IvcError;
 
     fn used_chips(&self) -> ZkStdLibArch {
         Self::arch()
     }
 
-    fn format_instance(instance: &Self::Instance) -> Result<Vec<F>, Error> {
+    fn format_instance(instance: &Self::Instance) -> Result<Vec<F>, IvcError> {
         Ok([
             vec![instance.vk_repr],
             T::format_public_input(&instance.state),
@@ -134,7 +134,7 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
         layouter: &mut impl Layouter<F>,
         instance: Value<Self::Instance>,
         witness: Value<Self::Witness>,
-    ) -> Result<(), Error> {
+    ) -> Result<(), IvcError> {
         let verifier_gadget = std_lib.verifier();
         let ivc_gadget = T::new(std_lib.clone(), &self.ctx);
 
@@ -176,7 +176,7 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
         ]
         .concat();
 
-        let id_point = std_lib.bls12_381_curve().assign_fixed(layouter, C::identity())?;
+        let id_point = std_lib.bls12_381().assign_fixed(layouter, C::identity())?;
 
         // Verify a witnessed proof that ensures the validity of `prev_state`.
         // The proof is valid iff `prev_proof_acc` satisfies the invariant.
@@ -197,7 +197,7 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
         };
         AssignedAccumulator::scale_by_bit(
             layouter,
-            std_lib.bls12_381_scalar(),
+            std_lib.bls12_381().scalar_field_chip(),
             &is_not_genesis,
             &mut prev_proof_acc,
         )?;
@@ -206,11 +206,12 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
 
         next_acc.collapse(
             layouter,
-            std_lib.bls12_381_curve(),
-            std_lib.bls12_381_scalar(),
+            std_lib.bls12_381(),
+            std_lib.bls12_381().scalar_field_chip(),
         )?;
 
-        verifier_gadget.constrain_as_public_input(layouter, &next_acc)
+        verifier_gadget.constrain_as_public_input(layouter, &next_acc)?;
+        Ok(())
     }
 
     fn write_relation<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {

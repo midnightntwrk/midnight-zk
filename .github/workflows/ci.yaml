@@ -17,7 +17,7 @@ jobs:
 
       - name: Restore SRS from cache
         id: restore-srs
-        uses: actions/cache@9255dc7a253b0ccc959486e2bca901246202afeb
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
         with:
           path: zk_stdlib/examples/assets/bls_filecoin_2p19
           key: fixed-srs-cache
@@ -71,7 +71,7 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
       - name: Restore SRS from cache
-        uses: actions/cache@9255dc7a253b0ccc959486e2bca901246202afeb
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
         with:
           path: zk_stdlib/examples/assets/bls_filecoin_2p19
           key: fixed-srs-cache
@@ -94,7 +94,7 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
       - name: Restore SRS from cache
-        uses: actions/cache@9255dc7a253b0ccc959486e2bca901246202afeb
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae
         with:
           path: zk_stdlib/examples/assets/bls_filecoin_2p19
           key: fixed-srs-cache
@@ -138,17 +138,6 @@ jobs:
       - uses: ./.github/actions/cargo-test
         with:
           package: midnight-aggregation
-          args: --release --all-features
-
-  test-zkir:
-    if: github.event.pull_request.draft == false
-    name: Test ZKIR
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-      - uses: ./.github/actions/cargo-test
-        with:
-          package: midnight-zkir
           args: --release --all-features
 
   doc-links:

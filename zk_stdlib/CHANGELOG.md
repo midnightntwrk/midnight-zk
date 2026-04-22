@@ -12,9 +12,12 @@ verification keys break backwards compatibility.
 
 ## [Unreleased]
 ### Changed
+* Do not expose scalar chips separately from `ZkStdLib`; use `secp256k1()`, `p256()`, `bls12_381()` instead [#335](https://github.com/midnightntwrk/midnight-zk/pull/335)
 * Adapt `FromScratch` impls to new `configure_from_scratch` signature with shared column pools [#306](https://github.com/midnightntwrk/midnight-zk/pull/306)
+* Use `Blake2b256` transcript hash in the `bitcoin_signature` example [#322](https://github.com/midnightntwrk/midnight-zk/pull/322)
 
 ### Added
+* Expose P-256 (secp256r1) chip via `ZkStdLib::p256_curve` and `ZkStdLib::p256_scalar` [#317](https://github.com/midnightntwrk/midnight-zk/pull/317)
 * Added an example verifying an ethereum signature [#177](https://github.com/midnightntwrk/midnight-zk/pull/177)
 * `setup_vk_with_k` for generating a verifying key with an explicit circuit size parameter [#227](https://github.com/midnightntwrk/midnight-zk/pull/227)
 * Expose `verifier_gadget` and `bls12_381_scalar` (native gadget) from `ZkStdLib` [#227](https://github.com/midnightntwrk/midnight-zk/pull/227)
@@ -22,6 +25,7 @@ verification keys break backwards compatibility.
 * Add `PartialEq` impl for `AssignedBigUint` [#259](https://github.com/midnightntwrk/midnight-zk/pull/259)
 * Update READMEs and add badges [#261](https://github.com/midnightntwrk/midnight-zk/pull/261)
 * Adds identity related examples to evaluate the impact of substring checks [#229](https://github.com/midnightntwrk/midnight-zk/pull/229)
+* Example for in-circuit verification of Ed25519 signatures [#310](https://github.com/midnightntwrk/midnight-zk/pull/310)
 
 ### Changed
 * Add associated type `Error` to `Relation` trait for typed domain errors [#252](https://github.com/midnightntwrk/midnight-zk/pull/252)

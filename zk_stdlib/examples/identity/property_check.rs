@@ -104,7 +104,8 @@ impl Relation for CredentialProperty {
         _instance: Value<Self::Instance>,
         witness: Value<Self::Witness>,
     ) -> Result<(), Error> {
-        let secp256k1_curve = std_lib.secp256k1_curve();
+        let secp256k1_curve = std_lib.secp256k1();
+        let secp256k1_scalar = secp256k1_curve.scalar_field_chip();
         let b64_chip = std_lib.base64();
         let scanner_chip = std_lib.scanner();
 
@@ -155,7 +156,7 @@ impl Relation for CredentialProperty {
 
         let holder_pk = secp256k1_curve.point_from_coordinates(layouter, &x_coord, &y_coord)?;
         let holder_sk: AssignedField<_, K256Scalar, MultiEmulationParams> =
-            std_lib.secp256k1_scalar().assign(layouter, sk)?;
+            secp256k1_scalar.assign(layouter, sk)?;
 
         let gen: AssignedForeignPoint<_, K256, MultiEmulationParams> =
             secp256k1_curve.assign_fixed(layouter, K256::generator())?;
