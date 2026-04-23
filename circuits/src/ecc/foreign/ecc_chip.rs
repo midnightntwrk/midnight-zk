@@ -43,13 +43,8 @@ use {
     midnight_proofs::plonk::Instance, rand::RngCore,
 };
 
-use super::gates::{
-    lambda_squared,
-    lambda_squared::LambdaSquaredConfig,
-    slope::{self, SlopeConfig},
-    tangent,
-    tangent::TangentConfig,
-};
+use super::gates::{assert_add, assert_double, unified};
+use super::gates::unified::{CoeffBounds, UnifiedConfig};
 use crate::{
     ecc::curves::WeierstrassCurve,
     field::foreign::{
@@ -73,9 +68,7 @@ where
     C: WeierstrassCurve,
 {
     base_field_config: FieldChipConfig,
-    slope_config: slope::SlopeConfig<C>,
-    tangent_config: tangent::TangentConfig<C>,
-    lambda_squared_config: lambda_squared::LambdaSquaredConfig<C>,
+    unified_config: unified::UnifiedConfig<C>,
     // columns for the dynamic lookup
     q_multi_select: Selector,
     idx_col_multi_select: Column<Advice>,
@@ -1026,26 +1019,29 @@ where
         let cond_col = advice_columns[cond_col_idx];
         meta.enable_equality(cond_col);
 
-        let slope_config = SlopeConfig::<C>::configure::<F, B>(
+        // Coefficient ranges covering the three instantiations served by the
+        // unified gate:
+        //   slope:          a = 0, b ∈ {−1, +1}, d = 0,  e = 1,  ca = 1, cd = −1
+        //   lambda-squared: a = 1, b = −1,       d = −1, e = −1, ca = 0, cd =  0
+        //   tangent:        a = 3, b = 0,        d = 0,  e = 0,  ca = 0, cd = −2
+        // Coefficient ranges covering all gate instantiations:
+        //   slope:           a=0, b∈{−1,+1}, d=0,  e=1,  ca=1, cd=−1
+        //   lambda-sq (add): a=1, b=−1,      d=−1, e=−1, ca=0, cd=0
+        //   lambda-sq (dbl): a=1, b=−2,      d=−1, e=0,  ca=0, cd=0
+        //   tangent:         a=3, b=0,        d=0,  e=0,  ca=0, cd=−2
+        let unified_coeff_bounds = CoeffBounds {
+            a:  (num_bigint::BigInt::from(0),  num_bigint::BigInt::from(3)),
+            b:  (num_bigint::BigInt::from(-2), num_bigint::BigInt::from(1)),
+            d:  (num_bigint::BigInt::from(-1), num_bigint::BigInt::from(0)),
+            e:  (num_bigint::BigInt::from(-1), num_bigint::BigInt::from(1)),
+            ca: (num_bigint::BigInt::from(0),  num_bigint::BigInt::from(1)),
+            cd: (num_bigint::BigInt::from(-2), num_bigint::BigInt::from(0)),
+        };
+        let unified_config = UnifiedConfig::<C>::configure::<F, B>(
             meta,
             base_field_config,
             &cond_col,
-            nb_parallel_range_checks,
-            max_bit_len,
-        );
-
-        let tangent_config = TangentConfig::<C>::configure::<F, B>(
-            meta,
-            base_field_config,
-            &cond_col,
-            nb_parallel_range_checks,
-            max_bit_len,
-        );
-
-        let lambda_squared_config = LambdaSquaredConfig::<C>::configure::<F, B>(
-            meta,
-            base_field_config,
-            &cond_col,
+            &unified_coeff_bounds,
             nb_parallel_range_checks,
             max_bit_len,
         );
@@ -1113,9 +1109,7 @@ where
 
         ForeignEccConfig {
             base_field_config: base_field_config.clone(),
-            slope_config,
-            tangent_config,
-            lambda_squared_config,
+            unified_config,
             q_multi_select,
             idx_col_multi_select,
             tag_col_multi_select,
@@ -1248,37 +1242,16 @@ where
             self.base_field_chip().assign(layouter, lambda_value)?
         };
 
-        // Assert that λ is the correct slope of the tangent at p.
-        tangent::assert_tangent::<F, C, B, N>(
+        // Assert tangent, λ² = 2px+rx, and slope(p,r,negate) in a single fused region.
+        assert_double::assert_double::<F, C, B, N>(
             layouter,
             cond,
             (&p.x, &p.y),
+            (&r.x, &r.y),
             &lambda,
             self.base_field_chip(),
-            &self.config.tangent_config,
+            &self.config.unified_config,
         )?;
-
-        // Assert that the value of r.x is correct.
-        lambda_squared::assert_lambda_squared(
-            layouter,
-            cond,
-            (&p.x, &p.x, &r.x),
-            &lambda,
-            self.base_field_chip(),
-            &self.config.lambda_squared_config,
-        )?;
-
-        // Assert that the slope between p and r is λ (thus r.y is correct).
-        //
-        // The preconditions of [assert_double] guarantee that the following call
-        // satisfies the two first preconditions of [assert_slope].
-        // The third precondition of [assert_slope], i.e. p.x != r.x, is also
-        // guaranteed because r.x has been constrained to be correct with
-        // [assert_lambda_squared], based on a λ that has been constrained to be correct
-        // with [assert_tangent]. Given our assumption that there do not exist order-3
-        // points (and our precondition that p != id) we have that 2p != ±p, thus
-        // r.x != p.x, as desired.
-        self.assert_slope(layouter, cond, p, r, true, &lambda)?;
 
         Ok(())
     }
@@ -1336,87 +1309,20 @@ where
             self.base_field_chip().assign(layouter, lambda_value)?
         };
 
-        // Assert that λ is the correct slope between p and q.
-        // The preconditions of [assert_add] guarantee that the following call
-        // satisfies all the preconditions of [assert_slope]. Indeed, we have:
-        //  - `p != id` or `cond = 0`
-        //  - `q != id` or `cond = 0`
-        //  - `p != q` or `cond = 0`, so precondition (3) of [assert_slope] may be
-        //    violated, but only with `cond = 1` and `p = -q`, in which case the call to
-        //    [assert_slope] will make the circuit unsatisfiable. This is exactly the
-        //    expected behavior of [assert_add].
-        self.assert_slope(layouter, cond, p, q, false, &lambda)?;
-
-        // Assert that the value of r.x is correct.
-        lambda_squared::assert_lambda_squared(
-            layouter,
-            cond,
-            (&p.x, &q.x, &r.x),
-            &lambda,
-            self.base_field_chip(),
-            &self.config.lambda_squared_config,
-        )?;
-
-        // Assert that the slope between p and -r is λ (thus r.y is correct).
-        //
-        // The preconditions of [assert_add] guarantee that the following call
-        // satisfies the two first preconditions of [assert_slope].
-        // In general, we will additionally have p.x != r.x, so the third
-        // precondition would also be satisfied.
-        //
-        // Let us carefully analyze the case p.x = r.x.
-        // Since r.x has been constrained to be correct with [assert_lambda_squared],
-        // based on a λ that has been constrained to be correct with [assert_slope]
-        // (between p and q), r.x can be trusted to be the correct value of `(p + q).x`.
-        // If p.x = r.x we must thus have p + q = ±p, but the + case is not possible
-        // because q != id. Thus we must have p + q = -p (i.e. r = -p).
-        // The following call to [assert_slope] would violate the third precondition,
-        // which means that -r (mind the minus, since argument negate_q is enabled)
-        // will be constrained to equal p, but this is exactly what we needed.
-        self.assert_slope(layouter, cond, p, r, true, &lambda)?;
-
-        Ok(())
-    }
-
-    /// If `cond = 1`, it asserts that `lambda` is the slope between `p` & `q`:
-    ///   `lambda = (qy - py) / (qx - px)`.
-    ///
-    /// If `cond = 0`, it asserts nothing.
-    ///
-    /// If `negate_q` is set to `true`, the check is on the slope between
-    /// `p` and `-q` instead.
-    ///
-    /// # Preconditions
-    ///
-    ///   (1) `p != id` or `cond = 0`
-    ///   (2) `q != id` or `cond = 0`
-    ///   (3) `p.x != q.x` or `cond = 0`  (non-strict)
-    ///
-    /// It is the responsibility of the caller to guarantee that preconditions
-    /// (1) and (2) are met, this function *does not* become unsatisfiable if
-    /// they are violated.
-    ///
-    /// On the other hand, if precondition (3) is violated, the circuit will
-    /// become unsatisfiable unless `p = q` (respectively `p = -q` in case
-    /// `negate_q` is enabled).
-    fn assert_slope(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        cond: &AssignedBit<F>,
-        p: &AssignedForeignPoint<F, C, B>,
-        q: &AssignedForeignPoint<F, C, B>,
-        negate_q: bool,
-        lambda: &AssignedField<F, C::Base, B>,
-    ) -> Result<(), Error> {
-        slope::assert_slope::<F, C, B, N>(
+        // Assert slope(p,q), λ² = px+qx+rx, and slope(p,r,negate) in a single
+        // fused region that shares one row between the two slope gates.
+        assert_add::assert_add::<F, C, B, N>(
             layouter,
             cond,
             (&p.x, &p.y),
-            (&q.x, &q.y, negate_q),
-            lambda,
+            (&q.x, &q.y),
+            (&r.x, &r.y),
+            &lambda,
             self.base_field_chip(),
-            &self.config.slope_config,
-        )
+            &self.config.unified_config,
+        )?;
+
+        Ok(())
     }
 
     /// Assigns a region with only 1 row with the limbs of point.x, point.y the
