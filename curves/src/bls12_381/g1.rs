@@ -419,6 +419,34 @@ impl G1Affine {
     }
 }
 
+impl G1Affine {
+    /// Perform a multi-exponentiation on affine points.
+    ///
+    /// # Panics
+    ///
+    /// If |points| != |scalars|.
+    /// If |scalars| == 0 due to internal blst `mult` call.
+    pub fn multi_exp_affine(points: &[Self], scalars: &[Fq]) -> G1Projective {
+        use blst::MultiPoint;
+
+        let n = points.len();
+        assert_eq!(n, scalars.len());
+
+        // G1Affine is #[repr(transparent)] over blst_p1_affine.
+        let affine_slice =
+            unsafe { std::slice::from_raw_parts(points.as_ptr() as *const blst_p1_affine, n) };
+
+        let mut scalar_bytes: Vec<u8> = Vec::with_capacity(n * 32);
+        for a in scalars.iter().map(|s| s.to_bytes_le()) {
+            scalar_bytes.extend_from_slice(&a);
+        }
+
+        // Blst Pippenger MSM over affine points.
+        let res = affine_slice.mult(scalar_bytes.as_slice(), 255);
+        G1Projective(res)
+    }
+}
+
 impl SerdeObject for G1Affine {
     fn from_raw_bytes_unchecked(bytes: &[u8]) -> Self {
         debug_assert_eq!(bytes.len(), UNCOMPRESSED_SIZE);
@@ -625,11 +653,8 @@ impl G1Projective {
     /// using `blst`'s implementation of Pippenger's algorithm.
     /// Note: `scalars` is cloned in this method.
     pub fn multi_exp(points: &[Self], scalars: &[Fq]) -> Self {
-        let n = if points.len() < scalars.len() {
-            points.len()
-        } else {
-            scalars.len()
-        };
+        let n = points.len();
+        assert_eq!(n, scalars.len());
         let points =
             unsafe { std::slice::from_raw_parts(points.as_ptr() as *const blst_p1, points.len()) };
 
