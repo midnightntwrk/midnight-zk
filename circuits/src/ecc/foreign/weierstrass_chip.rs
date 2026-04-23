@@ -31,8 +31,7 @@ use ff::{Field, PrimeField};
 use group::Group;
 use midnight_proofs::{
     circuit::{Chip, Layouter, Value},
-    plonk::{Advice, Column, ConstraintSystem, Error, Expression, Fixed, Selector},
-    poly::Rotation,
+    plonk::{Advice, Column, ConstraintSystem, Error, Fixed, Selector},
 };
 use num_bigint::BigUint;
 use num_traits::One;
@@ -55,7 +54,10 @@ use super::gates::weierstrass::{
 use crate::{
     ecc::{
         curves::WeierstrassCurve,
-        foreign::common::{add_1bit_scalar_bases, msm_preprocess},
+        foreign::common::{
+            add_1bit_scalar_bases, configure_multi_select_lookup, fill_dynamic_lookup_row,
+            msm_preprocess,
+        },
     },
     field::foreign::{
         field_chip::{FieldChip, FieldChipConfig},
@@ -784,6 +786,8 @@ where
         scalars: &[(S::Scalar, usize)],
         bases: &[AssignedForeignPoint<F, C, B>],
     ) -> Result<AssignedForeignPoint<F, C, B>, Error> {
+        assert_eq!(scalars.len(), bases.len(), "`|scalars| != |bases|`");
+
         const WS: usize = 4;
         let scalar_chip = self.scalar_field_chip();
 
@@ -1031,66 +1035,8 @@ where
             max_bit_len,
         );
 
-        // We prepare a dynamic lookup of points for an efficient multi_select.
-        // It counts with a selector, an index column (the selected item) and a table
-        // tag (a label to enforce different tables are independent), as well as
-        // columns for the limbs of the point coordinates (x,y).
-        //
-        // Given a list of points `p1, ..., pn` (the table), and a table `tag`, we'll
-        // prepare the following set of rows:
-        //
-        //   | p1.x limbs | p1.y limbs |  0  | tag |
-        //   | p2.x limbs | p2.y limbs |  1  | tag |
-        //   |     ...    |     ...    | ... | tag |
-        //   | pn.x limbs | pn.y limbs | n-1 | tag |
-        //
-        // This will allow us to then select the `i`-th table point, by witnessing a
-        // fresh point `q` and enforcing that:
-        //
-        //   | q.x limbs | q.y limbs |  i  | tag |
-        //
-        // is in the lookup table.
-        let q_multi_select = meta.complex_selector();
-        assert!(advice_columns.len() > 2 * base_field_config.x_cols.len());
-        let idx_col_multi_select = *advice_columns.last().unwrap();
-        meta.enable_equality(idx_col_multi_select);
-
-        // The tag column should not be shared with other fixed columns since it is used
-        // as a separator. It could be done if an extra selector were used as a
-        // separator instead.
-        let tag_col_multi_select = meta.fixed_column();
-
-        meta.lookup_any("multi_select lookup", |meta| {
-            let sel = meta.query_selector(q_multi_select);
-            let not_sel = Expression::from(1) - sel.clone();
-
-            // This is a lookup of a column on itself!
-            //
-            // All identities are of the form: `(value, (1 - sel) * value)`.
-            // That means, every value in the column (it is actually 2 columns including the
-            // tag) is requested to be in the table! Most values, where the selector is
-            // disabled are trivially in the table (at least at their own position).
-            // Those values that we really wanna lookup have a `sel` value of 1, thus
-            // `(1 - sel) * value` is zero and they themselves are not part of the lookup
-            // meaning they must be somewhere else (in the column positions that are part of
-            // the table). An exception is when value = 0 and tag = 0, but we actually use
-            // tag = 0 as a default case that we never want to lookup.
-            let mut identities = [idx_col_multi_select]
-                .iter()
-                .chain(base_field_config.x_cols.iter())
-                .chain(base_field_config.z_cols.iter())
-                .map(|col| {
-                    let val = meta.query_advice(*col, Rotation::cur());
-                    (val.clone(), not_sel.clone() * val)
-                })
-                .collect::<Vec<_>>();
-
-            // Handle tag indpendently, since it is a fixed column
-            let tag = meta.query_fixed(tag_col_multi_select, Rotation::cur());
-            identities.push((tag.clone(), not_sel * tag));
-
-            identities
-        });
+        let (q_multi_select, idx_col_multi_select, tag_col_multi_select) =
+            configure_multi_select_lookup(meta, advice_columns, base_field_config);
 
         ForeignWeierstrassEccConfig {
             base_field_config: base_field_config.clone(),
@@ -1385,15 +1331,7 @@ where
     /// Assigns a region with only 1 row with the limbs of point.x, point.y the
     /// given assigned index and the given table_tag.
     ///
-    /// Returns a pair of vectors corresponding to the assigned limbs of the
-    /// x coordinate and the y coordinate respectively.
-    /// (The assigned index and table_tag are not returned.)
-    ///
-    /// If `enable_lookup` is set, the selector `q_multi_select` is enabled at
-    /// this row and the values of the coordinate limbs ARE NOT copied, but
-    /// witnessed freely. It is the responsibility of the caller (with
-    /// `enable_lookup = true`) to further restrict these cells, which are an
-    /// output of this function.
+    /// Delegates to [`fill_dynamic_lookup_row`] with this chip's columns.
     #[allow(clippy::type_complexity)]
     fn fill_dynamic_lookup_row(
         &self,
@@ -1403,47 +1341,18 @@ where
         table_tag: F,
         enable_lookup: bool,
     ) -> Result<(Vec<AssignedNative<F>>, Vec<AssignedNative<F>>), Error> {
-        layouter.assign_region(
-            || "multi_select table",
-            |mut region| {
-                if enable_lookup {
-                    self.config.q_multi_select.enable(&mut region, 0)?;
-                };
-
-                let x_limbs = point.x.limb_values();
-                let x_cols = self.config.base_field_config.x_cols.clone();
-
-                // we use z_cols for y_limbs (because y_cols := x_cols)
-                let y_limbs = point.y.limb_values();
-                let y_cols = self.config.base_field_config.z_cols.clone();
-
-                let idx_col = self.config.idx_col_multi_select;
-                let tag_col = self.config.tag_col_multi_select;
-
-                let mut xs = vec![];
-                let mut ys = vec![];
-                for i in 0..x_limbs.len() {
-                    // If the lookup is enabled, we do not copy the limbs into the current row,
-                    // because copying imposes restrictions at compile-time (through the permutation
-                    // argument). Instead, we want to give freedom to witness any value (from the
-                    // table) and we will enforce that it is correct through the lookup check.
-                    if enable_lookup {
-                        let x_val = x_limbs[i].value().copied();
-                        let y_val = y_limbs[i].value().copied();
-                        xs.push(region.assign_advice(|| "x", x_cols[i], 0, || x_val)?);
-                        ys.push(region.assign_advice(|| "y", y_cols[i], 0, || y_val)?);
-                    }
-                    // If the lookup is disabled we copy the limbs into the current row.
-                    else {
-                        xs.push(x_limbs[i].copy_advice(|| "x", &mut region, x_cols[i], 0)?);
-                        ys.push(y_limbs[i].copy_advice(|| "y", &mut region, y_cols[i], 0)?);
-                    }
-                }
-                index.copy_advice(|| "x", &mut region, idx_col, 0)?;
-                region.assign_fixed(|| "assign tag", tag_col, 0, || Value::known(table_tag))?;
-
-                Ok((xs, ys))
-            },
+        fill_dynamic_lookup_row(
+            layouter,
+            &point.x.limb_values(),
+            &point.y.limb_values(),
+            index,
+            &self.config.base_field_config.x_cols,
+            &self.config.base_field_config.z_cols, // z_cols used for y (y_cols == x_cols)
+            self.config.idx_col_multi_select,
+            self.config.tag_col_multi_select,
+            self.config.q_multi_select,
+            table_tag,
+            enable_lookup,
         )
     }
 
@@ -1464,16 +1373,10 @@ where
         point_table: &[AssignedForeignPoint<F, C, B>],
         table_tag: F,
     ) -> Result<(), Error> {
-        // assign indices up to point_table.len(), this may not introduce new rows,
-        // as we use a cache for assigned constants
-        let indices: Vec<AssignedNative<F>> = (0..point_table.len())
-            .map(|i| self.native_gadget.assign_fixed(layouter, F::from(i as u64)))
-            .collect::<Result<_, Error>>()?;
-
         for (i, point) in point_table.iter().enumerate() {
-            self.fill_dynamic_lookup_row(layouter, point, &indices[i], table_tag, false)?;
+            let index = self.native_gadget.assign_fixed(layouter, F::from(i as u64))?;
+            self.fill_dynamic_lookup_row(layouter, point, &index, table_tag, false)?;
         }
-
         Ok(())
     }
 
@@ -1839,9 +1742,7 @@ where
         scalars: &[Vec<AssignedNative<F>>],
         bases: &[AssignedForeignPoint<F, C, B>],
     ) -> Result<AssignedForeignPoint<F, C, B>, Error> {
-        if scalars.len() != bases.len() {
-            panic!("msm: `scalars` and `bases` should have the same length")
-        };
+        assert_eq!(scalars.len(), bases.len(), "`|scalars| != |bases|`");
 
         if scalars.is_empty() {
             return self.assign_fixed(layouter, C::CryptographicGroup::identity());

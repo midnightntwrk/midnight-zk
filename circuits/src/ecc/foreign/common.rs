@@ -11,16 +11,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Shared preprocessing for foreign EC multi-scalar multiplication.
+//! Shared utilities for foreign EC chips.
 
 use std::{cmp::max, collections::HashMap, hash::Hash};
 
 use ff::Field;
 use group::Group;
-use midnight_proofs::{circuit::Layouter, plonk::Error};
+use midnight_proofs::{
+    circuit::{Layouter, Value},
+    plonk::{Advice, Column, ConstraintSystem, Error, Expression, Fixed, Selector},
+    poly::Rotation,
+};
 
 use crate::{
     ecc::curves::CircuitCurve,
+    field::{foreign::field_chip::FieldChipConfig, AssignedNative},
     instructions::{
         AssignmentInstructions, ControlFlowInstructions, EccInstructions, ScalarFieldInstructions,
     },
@@ -174,4 +179,138 @@ where
         };
         ec_chip.add(layouter, &acc, &s_times_b)
     })
+}
+
+/// Configures the self-referential dynamic lookup used by `multi_select`.
+///
+/// Returns `(q_multi_select, idx_col_multi_select, tag_col_multi_select)`.
+/// The caller must store these in its config and pass them to
+/// [`fill_dynamic_lookup_row`].
+pub(crate) fn configure_multi_select_lookup<F: CircuitField>(
+    meta: &mut ConstraintSystem<F>,
+    advice_columns: &[Column<Advice>],
+    base_field_config: &FieldChipConfig,
+) -> (Selector, Column<Advice>, Column<Fixed>) {
+    let q_multi_select = meta.complex_selector();
+    assert!(advice_columns.len() > 2 * base_field_config.x_cols.len());
+    let idx_col_multi_select = *advice_columns.last().unwrap();
+    meta.enable_equality(idx_col_multi_select);
+
+    // The tag column should not be shared with other fixed columns since it is used
+    // as a separator. It could be done if an extra selector were used as a
+    // separator instead.
+    let tag_col_multi_select = meta.fixed_column();
+
+    meta.lookup_any("multi_select lookup", |meta| {
+        let sel = meta.query_selector(q_multi_select);
+        let not_sel = Expression::from(1) - sel.clone();
+
+        // This is a lookup of a column (set) on itself!
+        //
+        // All identities are of the form: `(value, (1 - sel) * value)`.
+        // Here, `value` is actually a tuple, but it is helpful to ignore this detail
+        // initially, for the sake of simplicity, we will come back to it later.
+        //
+        // The above should be interpreted as a set inclusion:
+        // {value(ω) | ω ∈ Ω}  ⊆  {(1 - sel(ω)) * value(ω) | ω ∈ Ω}.
+        //
+        // Note that this lookup is requiring that every `value` be in the table!
+        //
+        // - Values where the selector is disabled (those we do not want to lookup) are
+        //   trivially in the table (they appear at least at their own ω).
+        //
+        // - Values that we do want to lookup have `sel = 1` thus `(1 - sel) * value` is
+        //   0 at their offset, forcing them to be somewhere else in the table.
+        //
+        // Observe that the table is then defined by all the entries where `sel = 0`,
+        // and there is no distinction between the intended lookup table and the values
+        // from other circuit regions where we simply want to skip this lookup check.
+        // This is not a problem (for soundness) because `value`, as we anticipated, is
+        // indeed a tuple `(value', tag)` where, in turn, `value'` may be a tuple
+        // itself. Importantly, `tag` is a fixed column which allows us to use it as a
+        // domain separator to solve the above ambiguity:
+        //
+        //  - The case `tag = 0` is reserved for disabled checks that are not supposed
+        //    to be part of the payload table,
+        //  - Any other value of `tag` is dedicated to table positions.
+        //
+        // Note that different values of `tag` can be used to encode independent tables
+        // with the same lookup argument.
+        let mut identities = [idx_col_multi_select]
+            .iter()
+            .chain(base_field_config.x_cols.iter())
+            .chain(base_field_config.z_cols.iter())
+            .map(|col| {
+                let val = meta.query_advice(*col, Rotation::cur());
+                (val.clone(), not_sel.clone() * val)
+            })
+            .collect::<Vec<_>>();
+
+        // Handle tag independently, since it is a fixed column
+        let tag = meta.query_fixed(tag_col_multi_select, Rotation::cur());
+        identities.push((tag.clone(), not_sel * tag));
+
+        identities
+    });
+
+    (q_multi_select, idx_col_multi_select, tag_col_multi_select)
+}
+
+/// Fills a single row in the dynamic-lookup region for `multi_select`.
+///
+/// Returns a pair of vectors corresponding to the assigned limbs of the
+/// x coordinate and the y coordinate respectively.
+/// (The assigned index and table_tag are not returned.)
+///
+/// If `enable_lookup` is set, the selector `q_multi_select` is enabled at
+/// this row and the values of the coordinate limbs ARE NOT copied, but
+/// witnessed freely. It is the responsibility of the caller (with
+/// `enable_lookup = true`) to further restrict these cells, which are an
+/// output of this function.
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
+pub(crate) fn fill_dynamic_lookup_row<F: CircuitField>(
+    layouter: &mut impl Layouter<F>,
+    x_limbs: &[AssignedNative<F>],
+    y_limbs: &[AssignedNative<F>],
+    index: &AssignedNative<F>,
+    x_cols: &[Column<Advice>],
+    y_cols: &[Column<Advice>],
+    idx_col: Column<Advice>,
+    tag_col: Column<Fixed>,
+    q_multi_select: Selector,
+    table_tag: F,
+    enable_lookup: bool,
+) -> Result<(Vec<AssignedNative<F>>, Vec<AssignedNative<F>>), Error> {
+    layouter.assign_region(
+        || "multi_select table",
+        |mut region| {
+            if enable_lookup {
+                q_multi_select.enable(&mut region, 0)?;
+            };
+
+            let mut xs = vec![];
+            let mut ys = vec![];
+            for i in 0..x_limbs.len() {
+                // If the lookup is enabled, we do not copy the limbs into the current row,
+                // because copying imposes restrictions at compile-time (through the permutation
+                // argument). Instead, we want to give freedom to witness any value (from the
+                // table) and we will enforce that it is correct through the lookup check.
+                if enable_lookup {
+                    let x_val = x_limbs[i].value().copied();
+                    let y_val = y_limbs[i].value().copied();
+                    xs.push(region.assign_advice(|| "x", x_cols[i], 0, || x_val)?);
+                    ys.push(region.assign_advice(|| "y", y_cols[i], 0, || y_val)?);
+                }
+                // If the lookup is disabled we copy the limbs into the current row.
+                else {
+                    xs.push(x_limbs[i].copy_advice(|| "x", &mut region, x_cols[i], 0)?);
+                    ys.push(y_limbs[i].copy_advice(|| "y", &mut region, y_cols[i], 0)?);
+                }
+            }
+            index.copy_advice(|| "x", &mut region, idx_col, 0)?;
+            region.assign_fixed(|| "assign tag", tag_col, 0, || Value::known(table_tag))?;
+
+            Ok((xs, ys))
+        },
+    )
 }
