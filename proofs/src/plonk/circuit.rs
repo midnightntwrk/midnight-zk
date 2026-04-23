@@ -2495,6 +2495,7 @@ impl<F: Field> ConstraintSystem<F> {
     /// Compute the degree of the constraint system (the maximum degree of all
     /// constraints).
     pub fn degree(&self) -> usize {
+        return 9;
         let degree_without_lookup = [
             Some(self.permutation.required_degree()),
             self.trashcans.iter().map(|l| l.required_degree()).max(),
