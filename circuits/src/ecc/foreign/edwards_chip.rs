@@ -29,7 +29,10 @@ use std::{
 
 use ff::{Field, PrimeField};
 use group::Group;
-use midnight_curves::ff_ext::Legendre;
+use midnight_curves::{
+    curve25519::{Curve25519, Curve25519Subgroup},
+    ff_ext::Legendre,
+};
 #[cfg(any(test, feature = "testing"))]
 use midnight_proofs::plonk::Instance;
 use midnight_proofs::{
@@ -62,7 +65,7 @@ use crate::{
         DecompositionInstructions, EccInstructions, EqualityInstructions, NativeInstructions,
         PublicInputInstructions, ScalarFieldInstructions, ZeroInstructions,
     },
-    types::{AssignedBit, AssignedField, InnerConstants, InnerValue, Instantiable},
+    types::{AssignedBit, AssignedByte, AssignedField, InnerConstants, InnerValue, Instantiable},
     CircuitField,
 };
 
@@ -206,6 +209,84 @@ where
     /// A chip with instructions for the scalar field of this ECC chip.
     pub fn scalar_field_chip(&self) -> &S {
         &self.scalar_field_chip
+    }
+}
+
+impl<F, B, S, N> ForeignEdwardsEccChip<F, Curve25519, B, S, N>
+where
+    F: CircuitField,
+    B: FieldEmulationParams<F, <Curve25519 as CircuitCurve>::Base>,
+    S: ScalarFieldInstructions<F>,
+    S::Scalar: InnerValue<Element = <Curve25519 as CircuitCurve>::ScalarField>,
+    N: NativeInstructions<F>,
+{
+    /// In-circuit compression of a given subgroup point into canonical
+    /// little-endian bytes.
+    ///
+    /// # Returns
+    /// An array [AssignedByte<F>; 32] constrained to represent a canonical
+    /// encoding.
+    pub fn to_canonical_compressed_bytes(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        point: &AssignedForeignEdwardsPoint<F, Curve25519, B>,
+    ) -> Result<[AssignedByte<F>; 32], Error> {
+        // Decomposition into (LE) bytes enforces canonicity.
+        let y_bytes = self.base_field_chip().assigned_to_le_bytes(
+            layouter,
+            &self.y_coordinate(point),
+            None,
+        )?;
+
+        let x_bits = self.base_field_chip().assigned_to_le_bits(
+            layouter,
+            &self.x_coordinate(point),
+            Some(255),
+            true,
+        )?;
+
+        // Encode the sign bit of x (= x mod 2, i.e., the least significant bit of x)
+        // into the most significant byte of y: MSB = MSB of y + LSBit of x * 128.
+        //
+        // (This is safe: y <= p - 1 = 2^255 - 19 - 1, which means MSB of y <= 127;
+        // hence, adding 128 causes _no_ overflow.)
+        let last_byte: AssignedNative<F> = self.native_gadget.linear_combination(
+            layouter,
+            &[
+                (F::ONE, y_bytes[y_bytes.len() - 1].clone().into()),
+                (F::from(128), x_bits[0].clone().into()),
+            ],
+            F::ZERO,
+        )?;
+
+        let last_byte: AssignedByte<F> = self.native_gadget.convert(layouter, &last_byte)?;
+        let mut compressed_bytes: Vec<AssignedByte<F>> = y_bytes[..y_bytes.len() - 1].to_vec();
+        compressed_bytes.push(last_byte);
+
+        Ok(compressed_bytes.try_into().expect("exactly 32 bytes"))
+    }
+
+    /// In-circuit decompression of little-endian canonical compressed bytes.
+    ///
+    /// # Returns
+    /// An [AssignedForeignEdwardsPoint] constrained to lie in the subgroup.
+    ///
+    /// # Unsatisfiable Circuit
+    /// If the given array of [AssignedByte] represents a non-canonical
+    /// encoding of the point provided by [Value<Curve25519Subgroup>].
+    pub fn from_canonical_compressed_bytes(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        compressed_bytes: &[AssignedByte<F>; 32],
+        value: Value<Curve25519Subgroup>,
+    ) -> Result<AssignedForeignEdwardsPoint<F, Curve25519, B>, Error> {
+        let point = self.assign(layouter, value)?;
+        let canonical_bytes = self.to_canonical_compressed_bytes(layouter, &point)?;
+        compressed_bytes.iter().zip(canonical_bytes.iter()).try_for_each(
+            |(com_byte, can_byte)| self.native_gadget.assert_equal(layouter, com_byte, can_byte),
+        )?;
+
+        Ok(point)
     }
 }
 
