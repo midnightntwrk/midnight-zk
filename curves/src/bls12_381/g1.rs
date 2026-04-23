@@ -422,8 +422,11 @@ impl G1Affine {
 impl G1Affine {
     /// Perform a multi-exponentiation on affine points.
     ///
-    /// `nbits` is the maximum number of significant bits across all scalars.
-    pub fn multi_exp_affine(points: &[Self], scalars: &[Fq], nbits: usize) -> G1Projective {
+    /// # Panics
+    ///
+    /// If |points| != |scalars|.
+    /// If |scalars| == 0 due to internal blst `mult` call.
+    pub fn multi_exp_affine(points: &[Self], scalars: &[Fq]) -> G1Projective {
         use blst::MultiPoint;
 
         let n = points.len();
@@ -439,7 +442,7 @@ impl G1Affine {
         }
 
         // Blst Pippenger MSM over affine points.
-        let res = affine_slice.mult(scalar_bytes.as_slice(), nbits);
+        let res = affine_slice.mult(scalar_bytes.as_slice(), 255);
         G1Projective(res)
     }
 }
@@ -650,11 +653,8 @@ impl G1Projective {
     /// using `blst`'s implementation of Pippenger's algorithm.
     /// Note: `scalars` is cloned in this method.
     pub fn multi_exp(points: &[Self], scalars: &[Fq]) -> Self {
-        let n = if points.len() < scalars.len() {
-            points.len()
-        } else {
-            scalars.len()
-        };
+        let n = points.len();
+        assert_eq!(n, scalars.len());
         let points =
             unsafe { std::slice::from_raw_parts(points.as_ptr() as *const blst_p1, points.len()) };
 

@@ -185,7 +185,7 @@ pub fn msm_specific<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Cur
         let bases = unsafe { &*(bases.as_slice() as *const _ as *const [G1Affine]) };
         // TODO: 255 is fine because type is checked. Another option is propagating
         // nbits as an input of msm_specific.
-        let res = G1Affine::multi_exp_affine(bases, coeffs, 255);
+        let res = G1Affine::multi_exp_affine(bases, coeffs);
         unsafe { std::mem::transmute_copy(&res) }
     } else {
         msm_best(&coeffs, &bases)
