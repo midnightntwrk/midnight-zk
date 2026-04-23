@@ -20,19 +20,21 @@
 //! order.
 
 use std::{
+    cell::RefCell,
+    collections::HashMap,
     fmt::Debug,
     hash::{Hash, Hasher},
-    marker::PhantomData,
+    rc::Rc,
 };
 
 use ff::{Field, PrimeField};
 use group::Group;
 use midnight_curves::ff_ext::Legendre;
 #[cfg(any(test, feature = "testing"))]
-use midnight_proofs::plonk::{Advice, Column, Fixed, Instance};
+use midnight_proofs::plonk::Instance;
 use midnight_proofs::{
     circuit::{Chip, Layouter, Value},
-    plonk::{ConstraintSystem, Error},
+    plonk::{Advice, Column, ConstraintSystem, Error, Fixed, Selector},
 };
 #[cfg(any(test, feature = "testing"))]
 use {
@@ -40,10 +42,12 @@ use {
     rand::RngCore,
 };
 
-use super::common::{add_1bit_scalar_bases, msm_preprocess};
+use super::common::{
+    add_1bit_scalar_bases, configure_multi_select_lookup, fill_dynamic_lookup_row, msm_preprocess,
+};
 use crate::{
     ecc::{
-        curves::EdwardsCurve,
+        curves::{CircuitCurve, EdwardsCurve},
         foreign::gates::edwards::addition::{self, AdditionConfig},
     },
     field::{
@@ -70,8 +74,10 @@ where
     B: FieldEmulationParams<F, C::Base>,
 {
     // Here we only account for the columns that this chip requires for its own
-    // custom gates
-    B::NB_LIMBS as usize + std::cmp::max(B::NB_LIMBS as usize, 1 + B::moduli().len())
+    // custom gates.
+    // The outer `+ 1` corresponds to the advice column for the index of
+    // `multi_select`.
+    B::NB_LIMBS as usize + std::cmp::max(B::NB_LIMBS as usize, 1 + B::moduli().len()) + 1
 }
 
 /// Foreign Edwards ECC configuration.
@@ -82,8 +88,16 @@ where
 {
     base_field_config: FieldChipConfig,
     addition_config: AdditionConfig<C>,
-    _marker: PhantomData<C>,
+    // Dynamic lookup columns for windowed MSM table selection.
+    q_multi_select: Selector,
+    idx_col_multi_select: Column<Advice>,
+    tag_col_multi_select: Column<Fixed>,
 }
+
+/// Cache of assigned constant points to their known group element values.
+type ConstantPointCache<F, C, B> = Rc<
+    RefCell<HashMap<AssignedForeignEdwardsPoint<F, C, B>, <C as CircuitCurve>::CryptographicGroup>>,
+>;
 
 /// ECC chip to perform foreign Edwards EC operations.
 #[derive(Clone, Debug)]
@@ -100,6 +114,10 @@ where
     native_gadget: N,
     base_field_chip: FieldChip<F, C::Base, B, N>,
     scalar_field_chip: S,
+    /// Per-chip tag counter for dynamic lookup tables (tag 0 is reserved).
+    tag_cnt: Rc<RefCell<u64>>,
+    /// Cache mapping assigned constant points to their known values.
+    constant_cache: ConstantPointCache<F, C, B>,
 }
 
 impl<F, C, B, S, N> ForeignEdwardsEccChip<F, C, B, S, N>
@@ -116,22 +134,31 @@ where
     pub fn configure(
         meta: &mut ConstraintSystem<F>,
         base_field_config: &FieldChipConfig,
+        advice_columns: &[Column<Advice>],
+        fixed_columns: &[Column<Fixed>],
         nb_parallel_range_checks: usize,
         max_bit_len: u32,
     ) -> ForeignEdwardsEccConfig<C> {
         assert!(C::A.legendre() == 1);
         assert!(C::D.legendre() == -1);
+
         let addition_config = AdditionConfig::<C>::configure::<F, B>(
             meta,
             base_field_config,
+            fixed_columns[0],
             nb_parallel_range_checks,
             max_bit_len,
         );
 
+        let (q_multi_select, idx_col_multi_select, tag_col_multi_select) =
+            configure_multi_select_lookup(meta, advice_columns, base_field_config);
+
         ForeignEdwardsEccConfig {
             base_field_config: base_field_config.clone(),
             addition_config,
-            _marker: PhantomData,
+            q_multi_select,
+            idx_col_multi_select,
+            tag_col_multi_select,
         }
     }
 }
@@ -157,12 +184,23 @@ where
             native_gadget: native_gadget.clone(),
             base_field_chip,
             scalar_field_chip: scalar_field_chip.clone(),
+            tag_cnt: Rc::new(RefCell::new(1)),
+            constant_cache: Rc::new(RefCell::new(HashMap::new())),
         }
     }
 
     /// The emulated base field chip of this foreign Edwards ECC chip.
     pub fn base_field_chip(&self) -> &FieldChip<F, C::Base, B, N> {
         &self.base_field_chip
+    }
+
+    /// Returns the constant value of `point` if it was created via
+    /// `assign_fixed`, or `None` otherwise.
+    pub fn as_known_constant(
+        &self,
+        point: &AssignedForeignEdwardsPoint<F, C, B>,
+    ) -> Option<C::CryptographicGroup> {
+        self.constant_cache.borrow().get(point).copied()
     }
 
     /// A chip with instructions for the scalar field of this ECC chip.
@@ -341,6 +379,65 @@ where
         // Assert a*x^2 + y^2 - 1 = d*x^2*y^2
         base_chip.assert_equal(layouter, &lhs, &d_xy_sq)
     }
+
+    /// Adds an assigned point `p` to a constant point `q_val`. Cheaper than
+    /// general `add` because the constant coordinates turn emulated `mul`
+    /// calls into `mul_by_constant` calls.
+    fn add_constant(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        p: &AssignedForeignEdwardsPoint<F, C, B>,
+        q_val: C::CryptographicGroup,
+    ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
+        // If both operands are known constants, compute off-circuit.
+        if let Some(pv) = self.as_known_constant(p) {
+            return self.assign_fixed(layouter, pv + q_val);
+        }
+
+        let (qx, qy) = q_val.into().coordinates().expect("Edwards coordinates cannot fail");
+
+        let base_chip = self.base_field_chip();
+
+        let r_value = p.value().map(|pv| pv + q_val);
+        let r = self.assign_point_unchecked(layouter, r_value)?;
+
+        let px_qx = base_chip.mul_by_constant(layouter, &p.x, qx)?;
+        let py_qy = base_chip.mul_by_constant(layouter, &p.y, qy)?;
+        let px_qy = base_chip.mul_by_constant(layouter, &p.x, qy)?;
+        let py_qx = base_chip.mul_by_constant(layouter, &p.y, qx)?;
+        let neg_a_px_qx = base_chip.mul_by_constant(layouter, &px_qx, -C::A)?;
+        let d_px_py_qx_qy = base_chip.mul(layouter, &px_qx, &py_qy, Some(C::D))?;
+
+        // Rx * (1 + d * Px * Py * Qx * Qy) = (Px * Qy + Py * Qx)
+        addition::assert_addition_coordinate(
+            layouter,
+            &r.x,
+            &px_qy,
+            &py_qx,
+            &d_px_py_qx_qy,
+            false,
+            base_chip,
+            &self.config.addition_config,
+        )?;
+
+        // Ry * (1 - d * Px * Py * Qx * Qy) = (Py * Qy - a * Px * Qx)
+        addition::assert_addition_coordinate(
+            layouter,
+            &r.y,
+            &py_qy,
+            &neg_a_px_qx,
+            &d_px_py_qx_qy,
+            true,
+            base_chip,
+            &self.config.addition_config,
+        )?;
+
+        Ok(AssignedForeignEdwardsPoint {
+            point: r_value,
+            x: r.x,
+            y: r.y,
+        })
+    }
 }
 
 impl<F, C, B, S, N> AssignmentInstructions<F, AssignedForeignEdwardsPoint<F, C, B>>
@@ -379,11 +476,13 @@ where
         let x = self.base_field_chip().assign_fixed(layouter, x)?;
         let y = self.base_field_chip().assign_fixed(layouter, y)?;
 
-        Ok(AssignedForeignEdwardsPoint::<F, C, B> {
+        let p = AssignedForeignEdwardsPoint::<F, C, B> {
             point: Value::known(constant),
             x,
             y,
-        })
+        };
+        self.constant_cache.borrow_mut().insert(p.clone(), constant);
+        Ok(p)
     }
 }
 
@@ -629,7 +728,19 @@ where
         p: &Self::Point,
         q: &Self::Point,
     ) -> Result<Self::Point, Error> {
-        // Complete addition law on twisted edwards curve:
+        if p == q {
+            return self.double(layouter, p);
+        }
+
+        // If one operand is constant, use the cheaper `add_constant` path.
+        if let Some(qv) = self.as_known_constant(q) {
+            return self.add_constant(layouter, p, qv);
+        }
+        if let Some(pv) = self.as_known_constant(p) {
+            return self.add_constant(layouter, q, pv);
+        }
+
+        // Complete addition law on twisted Edwards curve:
         // (see https://eprint.iacr.org/2008/013.pdf)
         //
         // P + Q = R
@@ -650,14 +761,9 @@ where
         let px_qx = base_chip.mul(layouter, &p.x, &q.x, None)?;
         let py_qy = base_chip.mul(layouter, &p.y, &q.y, None)?;
         let px_qy = base_chip.mul(layouter, &p.x, &q.y, None)?;
-        let py_qx = if p == q {
-            px_qy.clone()
-        } else {
-            base_chip.mul(layouter, &p.y, &q.x, None)?
-        };
+        let py_qx = base_chip.mul(layouter, &p.y, &q.x, None)?;
         let neg_a_px_qx = base_chip.mul_by_constant(layouter, &px_qx, -C::A)?;
         let d_px_py_qx_qy = base_chip.mul(layouter, &px_qx, &py_qy, Some(C::D))?;
-        let neg_d_px_py_qx_qy = base_chip.neg(layouter, &d_px_py_qx_qy)?;
 
         // Constraint for Rx coordinate
         // Rx * (1 + d * Px * Py * Qx * Qy) = (Px * Qy + Py * Qx)
@@ -667,6 +773,7 @@ where
             &px_qy,
             &py_qx,
             &d_px_py_qx_qy,
+            false,
             base_chip,
             &self.config.addition_config,
         )?;
@@ -678,7 +785,8 @@ where
             &r.y,
             &py_qy,
             &neg_a_px_qx,
-            &neg_d_px_py_qx_qy,
+            &d_px_py_qx_qy,
+            true,
             base_chip,
             &self.config.addition_config,
         )?;
@@ -695,7 +803,74 @@ where
         layouter: &mut impl Layouter<F>,
         p: &AssignedForeignEdwardsPoint<F, C, B>,
     ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
-        self.add(layouter, p, p)
+        if let Some(pv) = self.as_known_constant(p) {
+            return self.assign_fixed(layouter, pv + pv);
+        }
+
+        // Complete doubling on twisted Edwards curve.
+        // (see https://eprint.iacr.org/2008/013.pdf)
+        //
+        // P + P = R
+        // <=>
+        // (Px, Py) + (Px, Py) = (Rx, Ry)
+        // <=>
+        // Rx = (Px * Py +     Py * Px) / (1 + d * Px * Py * Px * Py)
+        // Ry = (Py * Py - a * Px * Px) / (1 - d * Px * Py * Px * Py)
+        // <=> (denominators are non-zero)
+        // Rx * (1 + d * Px^2 * Py^2) = 2 * Px * Py
+        // Ry * (1 - d * Px^2 * Py^2) = Py^2 - a * Px^2
+        //
+        // Since P is on the curve: a * Px^2 + Py^2 = 1 + d * Px^2 * Py^2,
+        // we substitute w = a * Px^2 + Py^2 - 1 for d * Px^2 * Py^2,
+        // saving one emulated multiplication.
+
+        let base_chip = self.base_field_chip();
+
+        let r_value = p.value().map(|p| p + p);
+        let r = self.assign_point_unchecked(layouter, r_value)?;
+
+        let px_sq = base_chip.mul(layouter, &p.x, &p.x, None)?;
+        let py_sq = base_chip.mul(layouter, &p.y, &p.y, None)?;
+        let px_py = base_chip.mul(layouter, &p.x, &p.y, None)?;
+
+        let neg_a_px_sq = base_chip.mul_by_constant(layouter, &px_sq, -C::A)?;
+
+        // w = d * Px^2 * Py^2 = a * Px^2 + Py^2 - 1  (on-curve relation)
+        let w = base_chip.linear_combination(
+            layouter,
+            &[(C::A, px_sq), (C::Base::ONE, py_sq.clone())],
+            -C::Base::ONE,
+        )?;
+
+        // Rx * (1 + w) = 2 * Px * Py
+        addition::assert_addition_coordinate(
+            layouter,
+            &r.x,
+            &px_py,
+            &px_py,
+            &w,
+            false,
+            base_chip,
+            &self.config.addition_config,
+        )?;
+
+        // Ry * (1 - w) = Py^2 - a * Px^2
+        addition::assert_addition_coordinate(
+            layouter,
+            &r.y,
+            &py_sq,
+            &neg_a_px_sq,
+            &w,
+            true,
+            base_chip,
+            &self.config.addition_config,
+        )?;
+
+        Ok(AssignedForeignEdwardsPoint {
+            point: r_value,
+            x: r.x,
+            y: r.y,
+        })
     }
 
     fn negate(
@@ -703,6 +878,10 @@ where
         layouter: &mut impl Layouter<F>,
         p: &Self::Point,
     ) -> Result<Self::Point, Error> {
+        if let Some(pv) = self.as_known_constant(p) {
+            return self.assign_fixed(layouter, -pv);
+        }
+
         // The negation of `P = (x, y)` on a twisted Edwards curve is `-P = (-x, y)`
         let neg_x = self.base_field_chip().neg(layouter, &p.x)?;
         let neg_x = self.base_field_chip().normalize(layouter, &neg_x)?;
@@ -719,31 +898,13 @@ where
         scalars: &[Self::Scalar],
         bases: &[Self::Point],
     ) -> Result<Self::Point, Error> {
-        if scalars.len() != bases.len() {
-            panic!("Number of scalars and points should be the same.")
-        }
-        let scalar_chip = self.scalar_field_chip();
-
-        // Add max bound to scalars + preprocess.
-        let scalars: Vec<_> =
-            scalars.iter().map(|s| (s.clone(), C::ScalarField::NUM_BITS as usize)).collect();
-        let (scalars, bases, bases_with_1bit_scalar) =
-            msm_preprocess(self, scalar_chip, layouter, &scalars, bases)?;
-        let scalar_bits = scalars
+        let scalars = scalars
             .iter()
-            .map(|s| scalar_chip.assigned_to_le_bits(layouter, &s.0, None, true))
-            .collect::<Result<Vec<_>, Error>>()?;
-
-        // Windowed msm with shared doubling.
-        let res = self.windowed_msm::<3>(layouter, &scalar_bits, &bases)?;
-
-        // Add 1-bit scalar bases.
-        add_1bit_scalar_bases(layouter, self, scalar_chip, &bases_with_1bit_scalar, res)
+            .map(|s| (s.clone(), C::ScalarField::NUM_BITS as usize))
+            .collect::<Vec<_>>();
+        self.msm_by_bounded_scalars(layouter, &scalars, bases)
     }
 
-    // Per-base windowed MSM with adaptive window size. Unlike `msm`, this does
-    // not share doublings across bases, avoiding padding waste when scalar
-    // bounds differ significantly.
     fn msm_by_bounded_scalars(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -754,26 +915,23 @@ where
             panic!("Number of scalars and points should be the same.")
         }
         let scalar_chip = self.scalar_field_chip();
-        let identity = self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
 
         let (scalars, bases, bases_with_1bit_scalar) =
             msm_preprocess(self, scalar_chip, layouter, scalars, bases)?;
 
-        // We do not share doublings because we assume the difference in
-        // scalar upper bounds negate the benefits, since we will double
-        // until the max of the bounds.
-        let mut res = identity.clone();
-        for ((s, num_bits), b) in scalars.iter().zip(bases.iter()) {
-            let bits = scalar_chip.assigned_to_le_bits(layouter, s, Some(*num_bits), true)?;
-            let term = if *num_bits <= 3 {
-                self.windowed_scalar_mul::<1>(layouter, &bits, b)?
-            } else if *num_bits <= 32 {
-                self.windowed_scalar_mul::<2>(layouter, &bits, b)?
-            } else {
-                self.windowed_scalar_mul::<3>(layouter, &bits, b)?
-            };
-            res = self.add(layouter, &res, &term)?;
-        }
+        // Decompose scalars to bits with tight bound, then chunk into windows.
+        const WS: usize = 4;
+        let scalar_windows: Vec<Vec<AssignedNative<F>>> = scalars
+            .iter()
+            .map(|(s, num_bits)| {
+                let bits = scalar_chip.assigned_to_le_bits(layouter, s, Some(*num_bits), true)?;
+                bits.chunks(WS)
+                    .map(|chunk| self.native_gadget.assigned_from_le_bits(layouter, chunk))
+                    .collect::<Result<Vec<_>, _>>()
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let res = self.windowed_msm::<WS>(layouter, &scalar_windows, &bases)?;
 
         // Add 1-bit scalar bases.
         add_1bit_scalar_bases(layouter, self, scalar_chip, &bases_with_1bit_scalar, res)
@@ -791,14 +949,22 @@ where
             return Ok(base.clone());
         }
 
+        // If the base is a known constant, compute off-circuit.
+        if let Some(base_val) = self.as_known_constant(base) {
+            return self.assign_fixed(layouter, base_val * scalar);
+        }
+
         let scalar_bits = scalar.to_bits_le(None);
         let mut p = base.clone();
-        let mut res = self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
+        let mut res = None;
 
         // Simple double-and-add
         for (i, b) in scalar_bits.iter().enumerate() {
             if *b {
-                res = self.add(layouter, &res, &p)?;
+                res = match res {
+                    None => Some(p.clone()),
+                    Some(acc) => Some(self.add(layouter, &acc, &p)?),
+                }
             }
             // The doubling in the last iteration is not needed
             if i + 1 < scalar_bits.len() {
@@ -806,7 +972,7 @@ where
             }
         }
 
-        Ok(res)
+        Ok(res.unwrap_or(self.assign_fixed(layouter, C::CryptographicGroup::identity())?))
     }
 
     fn point_from_coordinates(
@@ -873,8 +1039,10 @@ where
     S::Scalar: InnerValue<Element = C::ScalarField>,
     N: NativeInstructions<F>,
 {
-    /// Builds table `[0*base, 1*base, ..., (2^WS-1)*base]`. Cost: 2^WS - 2
-    /// adds.
+    /// Builds table `[0*base, 1*base, ..., (2^WS-1)*base]`.
+    /// Uses doubling for even indices (`table[2k] = double(table[k])`) and
+    /// addition for odd indices (`table[2k+1] = add(table[2k], base)`),
+    /// which is cheaper than a linear chain of additions.
     fn precompute<const WS: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -882,42 +1050,100 @@ where
     ) -> Result<PrecomputedTable<F, C, B, WS>, Error> {
         let identity = self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
         let mut table = vec![identity, base.clone()];
-        let mut acc = base.clone();
-        for _ in 2..1 << WS {
-            acc = self.add(layouter, &acc, base)?;
-            table.push(acc.clone());
+        for i in 2..1 << WS {
+            let entry = if i % 2 == 0 {
+                self.double(layouter, &table[i / 2])?
+            } else {
+                self.add(layouter, &table[i - 1], base)?
+            };
+            table.push(entry);
         }
         Ok(PrecomputedTable { table })
     }
 
-    /// Selects `table[w]` where `w` is the LE value of `bits`, using a binary
-    /// mux tree. Cost: 2^WS - 1 point selects.
-    fn multi_select<const WS: usize>(
+    /// Delegates to [`fill_dynamic_lookup_row`] with this chip's columns.
+    #[allow(clippy::type_complexity)]
+    fn fill_dynamic_lookup_row(
         &self,
         layouter: &mut impl Layouter<F>,
-        bits: &[AssignedBit<F>; WS],
-        table: &PrecomputedTable<F, C, B, WS>,
-    ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
-        assert_eq!(table.table.len(), 1 << WS);
-        let mut res = table.table.clone();
-
-        let mut len = 1 << WS;
-        for b in bits.iter().rev() {
-            let half_len = len / 2;
-            for i in 0..half_len {
-                res[i] = self.select(layouter, b, &res[i + half_len], &res[i])?;
-            }
-            len = half_len;
-        }
-        Ok(res[0].clone())
+        point: &AssignedForeignEdwardsPoint<F, C, B>,
+        index: &AssignedNative<F>,
+        table_tag: F,
+        enable_lookup: bool,
+    ) -> Result<(Vec<AssignedNative<F>>, Vec<AssignedNative<F>>), Error> {
+        fill_dynamic_lookup_row(
+            layouter,
+            &point.x.limb_values(),
+            &point.y.limb_values(),
+            index,
+            &self.config.base_field_config.x_cols,
+            &self.config.base_field_config.z_cols, // z_cols used for y (y_cols == x_cols)
+            self.config.idx_col_multi_select,
+            self.config.tag_col_multi_select,
+            self.config.q_multi_select,
+            table_tag,
+            enable_lookup,
+        )
     }
 
-    /// Windowed interleaved MSM over LE bit-decomposed scalars. Shares the
-    /// doubling chain across all bases. Horner evaluation.
+    /// Loads a precomputed point table into the dynamic lookup.  Entry `i` is
+    /// paired with index `i` and the given `table_tag`.
+    fn load_multi_select_table(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        point_table: &[AssignedForeignEdwardsPoint<F, C, B>],
+        table_tag: F,
+    ) -> Result<(), Error> {
+        for (i, point) in point_table.iter().enumerate() {
+            let index = self.native_gadget.assign_fixed(layouter, F::from(i as u64))?;
+            self.fill_dynamic_lookup_row(layouter, point, &index, table_tag, false)?;
+        }
+        Ok(())
+    }
+
+    /// Returns `point_table[selector]` using the dynamic lookup.
+    ///
+    /// The table must have been loaded via [`Self::load_multi_select_table`]
+    /// with the same `table_tag`.
+    fn multi_select(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        selector: &AssignedNative<F>,
+        point_table: &[AssignedForeignEdwardsPoint<F, C, B>],
+        table_tag: F,
+    ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
+        let mut selector_idx = 0usize;
+        selector.value().map(|v| {
+            let digits = v.to_biguint().to_u32_digits();
+            let digit = if digits.is_empty() { 0 } else { digits[0] };
+            debug_assert!(digits.len() <= 1);
+            debug_assert!((digit as usize) < point_table.len());
+            selector_idx = digit as usize;
+        });
+
+        let selected = point_table[selector_idx].clone();
+
+        let (xs, ys) =
+            self.fill_dynamic_lookup_row(layouter, &selected, selector, table_tag, true)?;
+        let x = AssignedField::<F, C::Base, B>::from_limbs_unsafe(xs);
+        let y = AssignedField::<F, C::Base, B>::from_limbs_unsafe(ys);
+
+        Ok(AssignedForeignEdwardsPoint::<F, C, B> {
+            point: selected.point,
+            x,
+            y,
+        })
+    }
+
+    /// Windowed interleaved MSM over pre-chunked scalars. Each scalar is a
+    /// sequence of WS-bit window values (native field elements). Shares the
+    /// doubling chain across all bases. Horner evaluation. Scalars may have
+    /// different numbers of windows; short scalars are skipped in high windows.
+    /// Point selection uses a dynamic-lookup table.
     fn windowed_msm<const WS: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
-        scalars: &[Vec<AssignedBit<F>>],
+        scalars: &[Vec<AssignedNative<F>>],
         bases: &[AssignedForeignEdwardsPoint<F, C, B>],
     ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
         assert_eq!(scalars.len(), bases.len());
@@ -926,54 +1152,46 @@ where
             return self.assign_fixed(layouter, C::CryptographicGroup::identity());
         }
 
-        // Pad all bit vectors to a common length that is a multiple of WS.
-        let max_bits = scalars.iter().map(|s| s.len()).max().unwrap_or(0);
-        let padded_len = max_bits.div_ceil(WS) * WS;
-        let zero_bit: AssignedBit<F> = self.native_gadget.assign_fixed(layouter, false)?;
-        let scalars: Vec<Vec<AssignedBit<F>>> = scalars
-            .iter()
-            .map(|bits| {
-                let mut padded = bits.clone();
-                padded.resize(padded_len, zero_bit.clone());
-                padded
-            })
-            .collect();
-        let num_windows = padded_len / WS;
+        // Number of windows per scalar.
+        let num_windows: Vec<usize> = scalars.iter().map(|s| s.len()).collect();
+        let max_num_windows = *num_windows.iter().max().unwrap();
 
-        // Precompute tables for each base.
-        let tables: Vec<PrecomputedTable<F, C, B, WS>> = bases
-            .iter()
-            .map(|b| self.precompute::<WS>(layouter, b))
-            .collect::<Result<Vec<_>, _>>()?;
+        // Precompute tables for each base and load them into the dynamic lookup.
+        let tag_cnt = *self.tag_cnt.borrow();
+        self.tag_cnt.replace(tag_cnt + bases.len() as u64);
+        debug_assert!(F::NUM_BITS > 64);
+
+        let mut tables = vec![];
+        for (i, base) in bases.iter().enumerate() {
+            let table = self.precompute::<WS>(layouter, base)?;
+            self.load_multi_select_table(layouter, &table.table, F::from(tag_cnt + i as u64))?;
+            tables.push(table);
+        }
 
         let mut res = self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
-        for w in (0..num_windows).rev() {
-            // Skip doubling in least-significant window.
-            if w < num_windows - 1 {
+        for w in (0..max_num_windows).rev() {
+            // Skip doubling in the most-significant window.
+            if w < max_num_windows - 1 {
                 for _ in 0..WS {
                     res = self.double(layouter, &res)?;
                 }
             }
-            for (bits, table) in scalars.iter().zip(tables.iter()) {
-                let window_bits: &[AssignedBit<F>; WS] = bits[w * WS..(w + 1) * WS]
-                    .try_into()
-                    .expect("window slice length must equal WS");
-                let addend = self.multi_select::<WS>(layouter, window_bits, table)?;
+            for (i, (windows, nw)) in scalars.iter().zip(&num_windows).enumerate() {
+                // Skip scalars that have no windows in this position.
+                if w >= *nw {
+                    continue;
+                }
+                let addend = self.multi_select(
+                    layouter,
+                    &windows[w],
+                    &tables[i].table,
+                    F::from(tag_cnt + i as u64),
+                )?;
                 res = self.add(layouter, &res, &addend)?;
             }
         }
 
         Ok(res)
-    }
-
-    /// Single-base windowed scalar multiplication.
-    fn windowed_scalar_mul<const WS: usize>(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        scalar: &[AssignedBit<F>],
-        base: &AssignedForeignEdwardsPoint<F, C, B>,
-    ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
-        self.windowed_msm::<WS>(layouter, &[scalar.to_vec()], std::slice::from_ref(base))
     }
 }
 
@@ -1054,6 +1272,8 @@ where
         let ff_ecc_config = ForeignEdwardsEccChip::<F, C, B, S, N>::configure(
             meta,
             &base_field_config,
+            advice_columns,
+            fixed_columns,
             nb_parallel_range_checks,
             max_bit_len,
         );

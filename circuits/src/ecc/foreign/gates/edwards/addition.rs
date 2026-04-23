@@ -15,7 +15,7 @@ use std::{marker::PhantomData, ops::Rem};
 
 use midnight_proofs::{
     circuit::{Chip, Layouter, Value},
-    plonk::{ConstraintSystem, Constraints, Error, Expression, Selector},
+    plonk::{Column, ConstraintSystem, Constraints, Error, Expression, Fixed, Selector},
     poly::Rotation,
 };
 use num_bigint::{BigInt as BI, ToBigInt};
@@ -39,13 +39,14 @@ use crate::{
 
 /// Foreign-field custom gate for point addition on twisted Edwards curves.
 ///
-/// The gate enforces a single identity, `x * (1 + w) = y + z mod m`, that is
-/// reused for computing both coordinates of the result point.
+/// The gate enforces the identity `x * (1 ± w) = y + z mod m`, where the
+/// sign is controlled by a fixed column (`+1` or `-1`) called `sign_col`.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AdditionConfig<C: CircuitCurve> {
     q: Selector,
     u_bounds: (BI, BI),
     vs_bounds: Vec<(BI, BI)>,
+    sign_col: Column<Fixed>,
     _marker: PhantomData<C>,
 }
 
@@ -69,8 +70,8 @@ impl<C: CircuitCurve> AdditionConfig<C> {
         let bs = P::base_powers();
         let bs_sqrd = P::double_base_powers();
 
-        // The equation of this custom gate is:
-        // x * (1 + w) = y + z
+        // The equation of this custom gate is (with sign s = ±1):
+        // x * (1 + s * w) = y + z    (mod m)
         //
         // It models the coordinates of the complete addition formula
         // on twisted Edwards curves:
@@ -78,6 +79,7 @@ impl<C: CircuitCurve> AdditionConfig<C> {
         // <=>
         // Rx * (1 + d * Px * Py * Qx * Qy) = Px * Qy +     Py * Qx
         // Ry * (1 - d * Px * Py * Qx * Qy) = Py * Qy - a * Px * Qx
+        //
         //
         // Let x := 1 + sum_i B^i * x_i
         //     y := 1 + sum_i B^i * y_i
@@ -91,21 +93,18 @@ impl<C: CircuitCurve> AdditionConfig<C> {
         //      sum_w := sum_i (B^i % m) * w_i
         //      sum_xw := sum_i sum_j (B^{i+j} % m) * x_i * w_j
         //
-        // This custom gate enforces the constraint:
+        // Equation x * (1 + s * w) = y + z (mod m), after expanding and rearranging can
+        // be expressed as:
         //
-        // x * (1 + w) = y + z    (mod m)
-        // <=>
-        // (1 + sum_x) * (2 + sum_w) = 2 + sum_y + sum_z    (mod m)
-        // <=>
-        // 2 * sum_x + sum_w + sum_xw - sum_y - sum_z  = k * m    (over the integers)
+        // (1 + s) * sum_x + s * (sum_w + sum_xw) - sum_y - sum_z + (s-1) = k * m
         // <=>
         // LHS = k * m   (over the integers)
         //
         // This equation over the integers can be enforced modulo the native modulus p
         // with the following constraints:
         //
-        // LHS  = (u + k_min) * m   (mod p),
-        // LHS  = u * (m % mj) + (k_min * m) % mj + (vj + lj_min) * mj   (mod p), ∀.mj
+        // LHS = (u + k_min) * m   (mod p),
+        // LHS = u * (m % mj) + (k_min * m) % mj + (vj + lj_min) * mj   (mod p), ∀.mj
 
         let limbs_max = vec![&base - BI::one(); nb_limbs as usize];
         let limbs_max_sqrd_val = (&base - BI::one()).pow(2);
@@ -114,9 +113,15 @@ impl<C: CircuitCurve> AdditionConfig<C> {
         let max_sum = sum_bigints(&bs, &limbs_max);
         let max_sum_sqrd = sum_bigints(&bs_sqrd, &limbs_max_sqrd);
 
-        // 2 * sum_x + sum_w + sum_xw - sum_y - sum_z
-        let expr_min = -(BI::from(2) * max_sum.clone());
-        let expr_max = BI::from(3) * max_sum + max_sum_sqrd;
+        // Abuse notation and let S := max_sum and S² := max_sum_sqrd:
+        //
+        // We can bound the LHS as follows:
+        // If s = +1, LHS is in the range [-(2 * S),           3 * S + S²]
+        // If s = -1, LHS is in the range [-(2 * S + S² + 2),         - 2]
+        //
+        // Union range:                   [-(2 * S + S² + 2),  3 * S + S²]
+        let expr_min = -(BI::from(2) * &max_sum + &max_sum_sqrd + BI::from(2));
+        let expr_max = BI::from(3) * &max_sum + &max_sum_sqrd;
         let expr_bounds = (expr_min, expr_max);
 
         let expr_mj_bounds: Vec<_> = moduli
@@ -128,8 +133,8 @@ impl<C: CircuitCurve> AdditionConfig<C> {
                 let max_sum_mj = sum_bigints(&bs_mj, &limbs_max);
                 let max_sum_sqrd_mj = sum_bigints(&bs_sqrd_mj, &limbs_max_sqrd);
 
-                let expr_min_mj = -(BI::from(2) * max_sum_mj.clone());
-                let expr_max_mj = BI::from(3) * max_sum_mj + max_sum_sqrd_mj;
+                let expr_min_mj = -(BI::from(2) * &max_sum_mj + &max_sum_sqrd_mj + BI::from(2));
+                let expr_max_mj = BI::from(3) * &max_sum_mj + &max_sum_sqrd_mj;
                 (expr_min_mj, expr_max_mj)
             })
             .collect();
@@ -148,6 +153,7 @@ impl<C: CircuitCurve> AdditionConfig<C> {
     pub fn configure<F, P>(
         meta: &mut ConstraintSystem<F>,
         field_chip_config: &FieldChipConfig,
+        sign_col: Column<Fixed>,
         nb_parallel_range_checks: usize,
         max_bit_len: u32,
     ) -> AdditionConfig<C>
@@ -167,7 +173,7 @@ impl<C: CircuitCurve> AdditionConfig<C> {
 
         // The layout is in three rows:
         // | x_0 ... x_k | w_0    ... w_k |
-        // | y_0 ... y_k |                |  <-- selector enabled here
+        // | y_0 ... y_k |                |  <-- selector enabled here (`sign` too)
         // | z_0 ... z_k | u v_0  ... v_l |
 
         meta.create_gate("Foreign-Edwards addition", |meta| {
@@ -177,15 +183,18 @@ impl<C: CircuitCurve> AdditionConfig<C> {
             let w_limbs = get_advice_vec(meta, &field_chip_config.z_cols, Rotation::prev());
             let u = meta.query_advice(field_chip_config.u_col, Rotation::next());
             let vs = get_advice_vec(meta, &field_chip_config.v_cols, Rotation::next());
+            let s = meta.query_fixed(sign_col, Rotation::cur());
 
             let xw_limbs = pair_wise_prod(&x_limbs, &w_limbs);
 
-            // 2 * sum_x + sum_w + sum_xw - sum_y - sum_z  = (u + k_min) * m
-            let native_id = Expression::from(2) * sum_exprs::<F>(&bs, &x_limbs)
-                + sum_exprs::<F>(&bs, &w_limbs)
-                + sum_exprs::<F>(&bs_sqrd, &xw_limbs)
+            // (1 + s) * sum_x + s * (sum_w + sum_xw) - sum_y - sum_z + (s-1)
+            //  = (u + k_min) * m
+            let native_id = (Expression::from(1) + s.clone()) * sum_exprs::<F>(&bs, &x_limbs)
+                + s.clone() * (sum_exprs::<F>(&bs, &w_limbs) + sum_exprs::<F>(&bs_sqrd, &xw_limbs))
                 - sum_exprs::<F>(&bs, &y_limbs)
                 - sum_exprs::<F>(&bs, &z_limbs)
+                + s.clone()
+                - Expression::from(1)
                 - (&u + Expression::Constant(bigint_to_fe::<F>(&k_min)))
                     * Expression::Constant(bigint_to_fe::<F>(m));
 
@@ -198,13 +207,16 @@ impl<C: CircuitCurve> AdditionConfig<C> {
                     let bs_sqrd_mj = bs_sqrd.iter().map(|b| b.rem(mj)).collect::<Vec<_>>();
                     let (lj_min, _) = vj_bounds;
 
-                    // 2 * sum_x_mj + sum_w_mj + sum_xw_mj - sum_y_mj - sum_z_mj
-                    // - u * (m % mj) - (k_min * m) % mj - (vj + lj_min) * mj = 0
-                    Expression::from(2) * sum_exprs::<F>(&bs_mj, &x_limbs)
-                        + sum_exprs::<F>(&bs_mj, &w_limbs)
-                        + sum_exprs::<F>(&bs_sqrd_mj, &xw_limbs)
+                    let xw_limbs_mj = pair_wise_prod(&x_limbs, &w_limbs);
+
+                    (Expression::from(1) + s.clone()) * sum_exprs::<F>(&bs_mj, &x_limbs)
+                        + s.clone()
+                            * (sum_exprs::<F>(&bs_mj, &w_limbs)
+                                + sum_exprs::<F>(&bs_sqrd_mj, &xw_limbs_mj))
                         - sum_exprs::<F>(&bs_mj, &y_limbs)
                         - sum_exprs::<F>(&bs_mj, &z_limbs)
+                        + s.clone()
+                        - Expression::from(1)
                         - &u * Expression::Constant(bigint_to_fe::<F>(&urem(m, mj)))
                         - Expression::Constant(bigint_to_fe::<F>(&urem(&(&k_min * m), mj)))
                         - (vj + Expression::Constant(bigint_to_fe::<F>(lj_min)))
@@ -219,6 +231,7 @@ impl<C: CircuitCurve> AdditionConfig<C> {
 
         AdditionConfig {
             q,
+            sign_col,
             u_bounds: (k_min, u_max),
             vs_bounds,
             _marker: PhantomData,
@@ -226,28 +239,30 @@ impl<C: CircuitCurve> AdditionConfig<C> {
     }
 }
 
-/// Asserts the addition identity `x * (1 + w) = y + z (mod m)`.
+/// Asserts the addition identity `x * (1 ± w) = y + z (mod m)`.
 ///
-/// This is a gate for Edwards point addition. The same identity is invoked
-/// twice per addition: once for the x-coordinate and once for the
-/// y-coordinate of the result, with different assignments to `x, y, z, w`.
-///
-/// This identity models both coordinates of the complete addition formula on
-/// twisted Edwards curves:  
-/// `(Rx,Ry) = (Px,Py) + (Qx,Qy)`  
-/// `<=>`  
-/// `Rx * (1 + d * Px * Py * Qx * Qy) = Px * Qy + Py * Qx`  
-/// and  
-/// `Ry * (1 - d * Px * Py * Qx * Qy) = Py * Qy - a * Px * Qx`.
-///
-/// Note that both equations have the shape `x * (1 + w) = y + z`.
-#[allow(clippy::type_complexity)]
+/// When `negate_w` is `false`, asserts `x * (1 + w) = y + z`.
+/// When `negate_w` is `true`,  asserts `x * (1 - w) = y + z`.
+//
+// This is a gate for Edwards point addition. The same identity is invoked
+// twice per addition: once for the x-coordinate and once for the
+// y-coordinate of the result, with different assignments to `x, y, z, w`.
+//
+// This identity models both coordinates of the complete addition formula on
+// twisted Edwards curves:
+// `(Rx,Ry) = (Px,Py) + (Qx,Qy)`
+// `<=>`
+// `Rx * (1 + d * Px * Py * Qx * Qy) = Px * Qy + Py * Qx`
+// and
+// `Ry * (1 - d * Px * Py * Qx * Qy) = Py * Qy - a * Px * Qx`.
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub fn assert_addition_coordinate<F, C, P, N>(
     layouter: &mut impl Layouter<F>,
     x: &AssignedField<F, C::Base, P>,
     y: &AssignedField<F, C::Base, P>,
     z: &AssignedField<F, C::Base, P>,
     w: &AssignedField<F, C::Base, P>,
+    negate_w: bool,
     base_chip: &FieldChip<F, C::Base, P, N>,
     addition_config: &AdditionConfig<C>,
 ) -> Result<(), Error>
@@ -268,6 +283,10 @@ where
     let z_norm = &base_chip.normalize(layouter, z)?;
     let w_norm = &base_chip.normalize(layouter, w)?;
 
+    let sign: BI = if negate_w { -BI::one() } else { BI::one() };
+    let sx_coeff = BI::one() + &sign; // 2 or 0
+    let const_offset = &sign - BI::one(); // 0 or -2
+
     let range_checks = layouter.assign_region(
         || "Foreign-Edwards addition",
         |mut region| {
@@ -279,12 +298,15 @@ where
 
             let (k_min, u_max) = addition_config.u_bounds.clone();
 
-            // 2 * sum_x + sum_w + sum_xw - sum_y - sum_z  = (u + k_min) * m
-            let expr = xs_val.clone().map(|v| BI::from(2) * sum_bigints(&bs, &v))
-                + ws_val.clone().map(|v| sum_bigints(&bs, &v))
-                + xw_val.clone().map(|v| sum_bigints(&bs_sqrd, &v))
+            // (1 + s) * sum_x + s * (sum_w + sum_xw) - sum_y - sum_z + (s-1)
+            //   = (u + k_min) * m
+            let w_term = ws_val.clone().map(|v| sum_bigints(&bs, &v))
+                + xw_val.clone().map(|v| sum_bigints(&bs_sqrd, &v));
+            let expr = xs_val.clone().map(|v| &sx_coeff * sum_bigints(&bs, &v))
+                + w_term.map(|v| &sign * v)
                 - ys_val.clone().map(|v| sum_bigints(&bs, &v))
-                - zs_val.clone().map(|v| sum_bigints(&bs, &v));
+                - zs_val.clone().map(|v| sum_bigints(&bs, &v))
+                + Value::known(const_offset.clone());
 
             let u = expr.map(|e| compute_u(m, &e, (&k_min, &u_max), Value::unknown()));
 
@@ -294,13 +316,13 @@ where
                     let bs_sqrd_mj = bs_sqrd.iter().map(|b| b.rem(mj)).collect::<Vec<_>>();
                     let (lj_min, vj_max) = vj_bounds.clone();
 
-                    // 2 * sum_x_mj + sum_w_mj + sum_xw_mj - sum_y_mj - sum_z_mj
-                    // - u * (m % mj) - (k_min * m) % mj - (vj + lj_min) * mj = 0
-                    let expr_mj = xs_val.clone().map(|v| BI::from(2) * sum_bigints(&bs_mj, &v))
-                        + ws_val.clone().map(|v| sum_bigints(&bs_mj, &v))
-                        + xw_val.clone().map(|v| sum_bigints(&bs_sqrd_mj, &v))
+                    let w_term_mj = ws_val.clone().map(|v| sum_bigints(&bs_mj, &v))
+                        + xw_val.clone().map(|v| sum_bigints(&bs_sqrd_mj, &v));
+                    let expr_mj = xs_val.clone().map(|v| &sx_coeff * sum_bigints(&bs_mj, &v))
+                        + w_term_mj.map(|v| &sign * v)
                         - ys_val.clone().map(|v| sum_bigints(&bs_mj, &v))
-                        - zs_val.clone().map(|v| sum_bigints(&bs_mj, &v));
+                        - zs_val.clone().map(|v| sum_bigints(&bs_mj, &v))
+                        + Value::known(const_offset.clone());
 
                     expr_mj.zip(u.clone()).map(|(e, u)| {
                         compute_vj(m, mj, &e, &u, &k_min, (&lj_min, &vj_max), Value::unknown())
@@ -314,7 +336,7 @@ where
 
             // The layout is in three rows:
             // | x_0 ... x_k | w_0    ... w_k |
-            // | y_0 ... y_k |                |  <-- selector enabled here
+            // | y_0 ... y_k |                |  <-- selector enabled here (`sign` too)
             // | z_0 ... z_k | u v_0  ... v_l |
 
             let mut offset = 0;
@@ -339,8 +361,14 @@ where
             offset += 1;
 
             // 2nd row
-            // Activate selector on middle row of this region
             addition_config.q.enable(&mut region, offset)?;
+            let sign_fe = if negate_w { -F::ONE } else { F::ONE };
+            region.assign_fixed(
+                || "Edwards.addition sign",
+                addition_config.sign_col,
+                offset,
+                || Value::known(sign_fe),
+            )?;
 
             y_limbs
                 .iter()

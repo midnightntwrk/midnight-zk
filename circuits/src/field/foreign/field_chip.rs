@@ -736,7 +736,19 @@ where
         terms: &[(K, AssignedField<F, K, P>)],
         constant: K,
     ) -> Result<AssignedField<F, K, P>, Error> {
-        // We fold over mul_by_constant and add and only normalize at the end.
+        if terms.is_empty() {
+            return self.assign_fixed(layouter, constant);
+        }
+
+        // Fast path: when all coefficients are +1 or -1, delegate to sum.
+        if terms.iter().all(|(c, _)| *c == K::ONE || *c == -K::ONE) {
+            let (pos, neg): (Vec<_>, Vec<_>) = terms.iter().partition(|(c, _)| *c == K::ONE);
+            let pos: Vec<_> = pos.into_iter().map(|(_, x)| x.clone()).collect();
+            let neg: Vec<_> = neg.into_iter().map(|(_, x)| x.clone()).collect();
+            return self.sum(layouter, &pos, &neg, constant);
+        }
+
+        // General path: fold over mul_by_constant and add.
         let init: AssignedField<F, K, P> = self.assign_fixed(layouter, constant)?;
         let res = terms.iter().try_fold(init, |acc, (c, x)| {
             let prod = self.mul_by_constant(layouter, x, *c)?;
@@ -1444,6 +1456,86 @@ where
     P: FieldEmulationParams<F, K>,
     N: NativeInstructions<F>,
 {
+    /// Computes `sum(positives) - sum(negatives) + constant` in the emulated
+    /// field. Each result limb is produced in a single native
+    /// `linear_combination` call, avoiding the per-term overhead of the
+    /// generic `linear_combination` path.
+    pub fn sum(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        positives: &[AssignedField<F, K, P>],
+        negatives: &[AssignedField<F, K, P>],
+        constant: K,
+    ) -> Result<AssignedField<F, K, P>, Error> {
+        if positives.is_empty() && negatives.is_empty() {
+            return self.assign_fixed(layouter, constant);
+        }
+
+        let base = BI::from(2).pow(P::LOG2_BASE);
+        let p = positives.len();
+        let n = negatives.len();
+
+        // In the +1 representation, each term is stored as 1 + sum_i B^i * t_i.
+        // sum(pos) - sum(neg) + c
+        //   = (P - N + c) + sum_i B^i * (sum_j pos_{j,i} - sum_k neg_{k,i})
+        // In +1 form (1 + sum_i B^i * z_i):
+        //   z_i = sum_j pos_{j,i} - sum_k neg_{k,i} + offset_i
+        // where sum_i B^i * offset_i = P - N - 1 + c.
+        //
+        // Since (c - 1) has base-B limbs c_i with sum B^i c_i = c - 1,
+        // we get P - N - 1 + c = (P - N) + (c - 1) = (P - N) + sum B^i c_i.
+        // So offset_0 = c_0 + (P - N), offset_i = c_i for i > 0.
+        // Note: offset_0 may be negative — bounds tracking handles this.
+        let constant_repr: BI = (constant - K::ONE).to_biguint().into();
+        let constant_limbs = bi_to_limbs(P::NB_LIMBS, &base, &constant_repr);
+        let mut offsets = constant_limbs;
+        offsets[0] += BI::from(p) - BI::from(n);
+
+        let z_limb_values = (0..P::NB_LIMBS as usize)
+            .map(|i| {
+                let pos_terms: Vec<(F, AssignedNative<F>)> =
+                    positives.iter().map(|x| (F::ONE, x.limb_values[i].clone())).collect();
+                let neg_terms: Vec<(F, AssignedNative<F>)> =
+                    negatives.iter().map(|x| (-F::ONE, x.limb_values[i].clone())).collect();
+                let native_terms: Vec<_> = pos_terms.into_iter().chain(neg_terms).collect();
+                self.native_gadget.linear_combination(
+                    layouter,
+                    &native_terms,
+                    bigint_to_fe::<F>(&offsets[i]),
+                )
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // Bounds: positive terms contribute (lo, hi), negated terms contribute
+        // (-hi, -lo).
+        let all_terms = positives
+            .iter()
+            .zip(std::iter::repeat(false))
+            .chain(negatives.iter().zip(std::iter::repeat(true)));
+        let init_bounds: Vec<(BI, BI)> = (0..P::NB_LIMBS as usize)
+            .map(|i| (offsets[i].clone(), offsets[i].clone()))
+            .collect();
+        let z_bounds = all_terms.fold(init_bounds, |acc, (x, negated)| {
+            acc.into_iter()
+                .zip(x.limb_bounds.iter())
+                .map(|((lo, hi), b)| {
+                    if negated {
+                        (lo - &b.1, hi - &b.0)
+                    } else {
+                        (lo + &b.0, hi + &b.1)
+                    }
+                })
+                .collect()
+        });
+
+        let z = AssignedField::<F, K, P> {
+            limb_values: z_limb_values,
+            limb_bounds: z_bounds,
+            _marker: PhantomData,
+        };
+        self.normalize_if_approaching_limit(layouter, &z)
+    }
+
     /// Normalizes the given assigned field element, but only if its bounds
     /// exceed the limits of the well-formed bounds.
     pub(crate) fn normalize(
