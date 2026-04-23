@@ -1,5 +1,6 @@
 use std::any::TypeId;
 
+use curve25519_dalek::Scalar;
 use ff::Field;
 use group::{GroupOpsOwned, ScalarMulOwned};
 
@@ -21,27 +22,22 @@ where
 {
 }
 
-/// Reverse the low `log_n` bits of `n`.
-fn bitreverse(mut n: usize, log_n: u32) -> usize {
-    let mut r = 0;
-    for _ in 0..log_n {
-        r = (r << 1) | (n & 1);
-        n >>= 1;
-    }
-    r
+/// Reverse the low `log_n` bits of `n`. Requires `log_n > 0`.
+fn bitreverse(n: usize, log_n: u32) -> usize {
+    n.reverse_bits() >> (usize::BITS - log_n)
 }
 
 /// Precompute twiddle factors `[1, ω, ω², …, ω^(n/2 - 1)]` for an FFT of size
 /// `2^log_n`.
 pub fn compute_twiddles<Scalar: Field>(omega: &Scalar, log_n: u32) -> Vec<Scalar> {
     let half_n = 1usize << (log_n - 1);
-    (0..half_n)
-        .scan(Scalar::ONE, |w, _| {
-            let tw = *w;
-            *w *= omega;
-            Some(tw)
-        })
-        .collect()
+    let mut twiddles = Vec::with_capacity(half_n);
+    let mut w = Scalar::ONE;
+    for _ in 0..half_n {
+        twiddles.push(w);
+        w *= omega;
+    }
+    twiddles
 }
 
 /// Performs a radix-2 Fast-Fourier Transformation (FFT) on a vector of size
@@ -118,8 +114,8 @@ pub fn fft_coeff_to_extended<Scalar: Field, G: FftGroup<Scalar>>(
     log_n: u32,
     n_real: usize,
 ) {
-    if TypeId::of::<G>() == TypeId::of::<Fq>() {
-        // SAFETY: G == Fq verified by TypeId. Fq is #[repr(transparent)].
+    if TypeId::of::<G>() == TypeId::of::<Fq>() && TypeId::of::<Scalar>() == TypeId::of::<Fq>() {
+        // SAFETY: G == Fq == Scalar verified by TypeId. Fq is #[repr(transparent)].
         let a = unsafe { &mut *(a as *mut [G] as *mut [Fq]) };
         let tw = unsafe { &*(twiddles as *const [Scalar] as *const [Fq]) };
         fft_dif_pruned_fq(a, tw, log_n, n_real);
@@ -133,8 +129,8 @@ pub fn fft_coeff_to_extended<Scalar: Field, G: FftGroup<Scalar>>(
 ///
 /// DIF does large-stride butterflies first (on cold data) and small-stride
 /// last (leaving data warm for the final bit-reversal). The pruning skips
-/// butterflies whose operands are both zero and replaces `(data, 0)` butterflies
-/// with a single multiply.
+/// butterflies whose operands are both zero and replaces `(data, 0)`
+/// butterflies with a single multiply.
 fn fft_dif_pruned_fq(a: &mut [Fq], twiddles: &[Fq], log_n: u32, n_real: usize) {
     let n = a.len();
     assert_eq!(n, 1 << log_n);
