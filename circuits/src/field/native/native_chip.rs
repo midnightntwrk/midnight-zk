@@ -77,13 +77,21 @@ use crate::{
     CircuitField,
 };
 
-/// Number of columns used by the identity of the native chip.
+/// Minimum number of columns used by the identity of the native chip.
 /// This number should NOT be smaller than 5.
 /// This limit is imposed by functions like [NativeChip::select].
-pub const NB_ARITH_COLS: usize = 5;
+pub const MIN_NB_ARITH_COLS: usize = 5;
 
-/// Number of fixed columns used by the identity of the native chip.
-pub const NB_ARITH_FIXED_COLS: usize = NB_ARITH_COLS + 4;
+/// Backward-compatible alias for [`MIN_NB_ARITH_COLS`].
+pub const NB_ARITH_COLS: usize = MIN_NB_ARITH_COLS;
+
+/// Number of extra fixed columns (beyond one per advice column) used by the
+/// identity of the native chip: q_next, mul_ab, mul_ac, constant.
+pub const NB_EXTRA_ARITH_FIXED_COLS: usize = 4;
+
+/// Total number of fixed columns when exactly [`NB_ARITH_COLS`] advice columns
+/// are used. Kept for backward compatibility.
+pub const NB_ARITH_FIXED_COLS: usize = NB_ARITH_COLS + NB_EXTRA_ARITH_FIXED_COLS;
 
 /// Number of additions (by constant) that can be performed in
 /// parallel in 1 row. This number should not exceed [NB_ARITH_COLS].
@@ -99,8 +107,8 @@ pub struct NativeConfig {
     q_arith: Selector,
     q_12_minus_34: Selector,
     q_par_add: Selector,
-    pub(crate) value_cols: [Column<Advice>; NB_ARITH_COLS],
-    coeff_cols: [Column<Fixed>; NB_ARITH_COLS],
+    pub(crate) value_cols: Vec<Column<Advice>>,
+    coeff_cols: Vec<Column<Fixed>>,
     q_next_col: Column<Fixed>,
     mul_ab_col: Column<Fixed>,
     mul_ac_col: Column<Fixed>,
@@ -108,6 +116,13 @@ pub struct NativeConfig {
     fixed_values_col: Column<Fixed>,
     committed_instance_col: Column<Instance>,
     instance_col: Column<Instance>,
+}
+
+impl NativeConfig {
+    /// Returns the advice (value) columns used by this config.
+    pub fn advice_columns(&self) -> &[Column<Advice>] {
+        &self.value_cols
+    }
 }
 
 /// Chip for Native operations
@@ -134,8 +149,8 @@ impl<F: CircuitField> Chip<F> for NativeChip<F> {
 
 impl<F: CircuitField> ComposableChip<F> for NativeChip<F> {
     type SharedResources = (
-        [Column<Advice>; NB_ARITH_COLS],
-        [Column<Fixed>; NB_ARITH_FIXED_COLS],
+        Vec<Column<Advice>>,
+        Vec<Column<Fixed>>,
         [Column<Instance>; 2], // [committed, normal]
     );
 
@@ -167,7 +182,7 @@ impl<F: CircuitField> ComposableChip<F> for NativeChip<F> {
         let q_arith = meta.selector();
         let q_12_minus_34 = meta.selector();
         let q_par_add = meta.selector();
-        let coeff_cols: [Column<Fixed>; NB_ARITH_COLS] = fixed_columns[4..].try_into().unwrap();
+        let coeff_cols: Vec<Column<Fixed>> = fixed_columns[4..].to_vec();
         let q_next_col = fixed_columns[0];
         let mul_ab_col = fixed_columns[1];
         let mul_ac_col = fixed_columns[2];
@@ -238,7 +253,7 @@ impl<F: CircuitField> ComposableChip<F> for NativeChip<F> {
             q_arith,
             q_12_minus_34,
             q_par_add,
-            value_cols: *value_columns,
+            value_cols: value_columns.clone(),
             coeff_cols,
             q_next_col,
             mul_ab_col,
@@ -262,7 +277,7 @@ impl<F: CircuitField> NativeChip<F> {
     fn custom(
         &self,
         region: &mut Region<'_, F>,
-        coeffs: &[F; NB_ARITH_COLS],
+        coeffs: &[F],
         q_next_coeff: F,
         mul_coeffs: (F, F),
         constant: F,
@@ -348,7 +363,7 @@ impl<F: CircuitField> NativeChip<F> {
                 self.copy_in_row(&mut region, z, &self.config.value_cols[2], 0)?;
                 let res =
                     region.assign_advice(|| "res", self.config.value_cols[4], 0, || res_value)?;
-                let mut coeffs = [F::ZERO; NB_ARITH_COLS];
+                let mut coeffs = vec![F::ZERO; self.config.value_cols.len()];
                 coeffs[0] = a; // coeff of x
                 coeffs[1] = b; // coeff of y
                 coeffs[2] = c; // coeff of z
@@ -377,7 +392,7 @@ impl<F: CircuitField> NativeChip<F> {
                 let r_value = value.map(|x| (x - shift).invert().unwrap_or(F::ZERO));
                 let x = region.assign_advice(|| "x", self.config.value_cols[0], 0, || value)?;
                 let r = region.assign_advice(|| "r", self.config.value_cols[1], 0, || r_value)?;
-                let mut coeffs = [F::ZERO; NB_ARITH_COLS];
+                let mut coeffs = vec![F::ZERO; self.config.value_cols.len()];
                 coeffs[1] = -shift; // coeff of r
                 self.custom(&mut region, &coeffs, F::ZERO, (F::ONE, F::ZERO), -F::ONE, 0)?;
                 Ok((x, r))
@@ -421,8 +436,8 @@ impl<F: CircuitField> NativeChip<F> {
         cols_used: usize,
         offset: &mut usize,
     ) -> Result<(Vec<AssignedNative<F>>, AssignedNative<F>), Error> {
-        // cols_used should be less than NB_ARITH_COLS
-        assert!(cols_used < NB_ARITH_COLS);
+        // cols_used should be less than the number of value columns
+        assert!(cols_used < self.config.value_cols.len());
 
         // If |terms| <= cols_used, we assert the relation in one row.
         // Otherwise we consume up to `cols_used` terms to reduce to a linear
@@ -430,7 +445,7 @@ impl<F: CircuitField> NativeChip<F> {
         let chunk_len = min(terms.len(), cols_used);
 
         // Initialize the coefficients vector
-        let mut coeffs = [F::ZERO; NB_ARITH_COLS];
+        let mut coeffs = vec![F::ZERO; self.config.value_cols.len()];
 
         // assign the lc result in the first advice column
         let assigned_result = region.assign_advice(
@@ -530,10 +545,10 @@ impl<F: CircuitField> NativeChip<F> {
         self.config.q_par_add.enable(region, *offset)?;
 
         (variables.iter())
-            .zip(self.config.value_cols)
+            .zip(self.config.value_cols.iter().copied())
             .try_for_each(|(x, col)| self.copy_in_row(region, x, &col, *offset))?;
 
-        constants.iter().zip(self.config.coeff_cols).try_for_each(|(c, col)| {
+        constants.iter().zip(self.config.coeff_cols.iter().copied()).try_for_each(|(c, col)| {
             region.assign_fixed(|| "add_consts", col, *offset, || Value::known(*c))?;
             Ok::<(), Error>(())
         })?;
@@ -543,7 +558,7 @@ impl<F: CircuitField> NativeChip<F> {
         let res_values = variables.iter().zip(constants).map(|(x, c)| x.value().map(|x| *x + *c));
 
         res_values
-            .zip(self.config.value_cols)
+            .zip(self.config.value_cols.iter().copied())
             .map(|(val, col)| region.assign_advice(|| "add_consts", col, *offset, || val))
             .collect::<Result<Vec<_>, Error>>()
     }
@@ -608,7 +623,7 @@ where
             || "assign_many (native)",
             |mut region| {
                 let mut assigned = vec![];
-                for (i, chunk_values) in values.chunks(NB_ARITH_COLS).enumerate() {
+                for (i, chunk_values) in values.chunks(self.config.value_cols.len()).enumerate() {
                     for (value, col) in chunk_values.iter().zip(self.config.value_cols.iter()) {
                         let cell = region.assign_advice(|| "assign", *col, i, || *value)?;
                         assigned.push(cell);
@@ -691,7 +706,7 @@ where
                 let b_value = value.map(|b| if b { F::ONE } else { F::ZERO });
                 let b = region.assign_advice(|| "b", self.config.value_cols[0], 0, || b_value)?;
                 self.copy_in_row(&mut region, &b, &self.config.value_cols[1], 0)?;
-                let mut coeffs = [F::ZERO; NB_ARITH_COLS];
+                let mut coeffs = vec![F::ZERO; self.config.value_cols.len()];
                 coeffs[0] = -F::ONE; // coeff of x
                 self.custom(&mut region, &coeffs, F::ZERO, (F::ONE, F::ZERO), F::ZERO, 0)?;
                 Ok(AssignedBit(b))
@@ -776,7 +791,7 @@ where
                 region.assign_advice(|| "r", self.config.value_cols[0], 0, || r_value)?;
                 self.copy_in_row(&mut region, x, &self.config.value_cols[1], 0)?;
                 self.copy_in_row(&mut region, y, &self.config.value_cols[2], 0)?;
-                let coeffs = [F::ZERO; NB_ARITH_COLS];
+                let coeffs = vec![F::ZERO; self.config.value_cols.len()];
                 self.custom(&mut region, &coeffs, F::ZERO, (F::ONE, -F::ONE), -F::ONE, 0)?;
                 Ok(())
             },
@@ -900,7 +915,7 @@ where
                     term_values.as_slice(),
                     constant,
                     &result,
-                    NB_ARITH_COLS - 1,
+                    self.config.value_cols.len() - 1,
                     &mut offset,
                 )?;
 
@@ -1252,7 +1267,7 @@ where
                 self.copy_in_row(&mut region, x, &value_cols[1], 0)?;
                 self.copy_in_row(&mut region, y, &value_cols[2], 0)?;
                 let res = region.assign_advice(|| "res", value_cols[4], 0, || res_val)?;
-                let mut coeffs = [F::ZERO; NB_ARITH_COLS];
+                let mut coeffs = vec![F::ZERO; self.config.value_cols.len()];
                 coeffs[4] = F::ONE; // coeff of res
                 self.custom(&mut region, &coeffs, F::ZERO, (F::ONE, -F::ONE), -F::ONE, 0)?;
                 Ok(res)
@@ -1297,7 +1312,7 @@ where
                 self.copy_in_row(&mut region, x, &value_cols[1], 0)?;
                 self.copy_in_row(&mut region, y, &value_cols[2], 0)?;
                 let res = region.assign_advice(|| "res", value_cols[4], 0, || res_val)?;
-                let mut coeffs = [F::ZERO; NB_ARITH_COLS];
+                let mut coeffs = vec![F::ZERO; self.config.value_cols.len()];
                 coeffs[4] = -F::ONE; // coeff of res
                 self.custom(&mut region, &coeffs, F::ZERO, (F::ONE, -F::ONE), F::ZERO, 0)?;
                 Ok(res)
@@ -1341,7 +1356,7 @@ where
                 region.assign_advice(|| "aux", value_cols[0], 0, || aux_val)?;
                 self.copy_in_row(&mut region, x, &value_cols[1], 0)?;
                 let res = region.assign_advice(|| "res", value_cols[4], 0, || res_val)?;
-                let mut coeffs = [F::ZERO; NB_ARITH_COLS];
+                let mut coeffs = vec![F::ZERO; self.config.value_cols.len()];
                 coeffs[0] = -c; // coeff of aux
                 coeffs[4] = F::ONE; // coeff of res
                 self.custom(&mut region, &coeffs, F::ZERO, (F::ONE, F::ZERO), -F::ONE, 0)?;
@@ -1386,7 +1401,7 @@ where
                 region.assign_advice(|| "aux", value_cols[0], 0, || aux_val)?;
                 self.copy_in_row(&mut region, x, &value_cols[1], 0)?;
                 let res = region.assign_advice(|| "res", value_cols[4], 0, || res_val)?;
-                let mut coeffs = [F::ZERO; NB_ARITH_COLS];
+                let mut coeffs = vec![F::ZERO; self.config.value_cols.len()];
                 coeffs[0] = -c; // coeff of aux
                 coeffs[4] = -F::ONE; // coeff of res
                 self.custom(&mut region, &coeffs, F::ZERO, (F::ONE, F::ZERO), F::ZERO, 0)?;
@@ -1517,7 +1532,7 @@ where
                 self.copy_in_row(&mut region, y, &self.config.value_cols[2], 0)?;
                 let fst = region.assign_advice(|| "fst", self.config.value_cols[3], 0, || val1)?;
                 let snd = region.assign_advice(|| "snd", self.config.value_cols[4], 0, || val2)?;
-                let mut coeffs = [F::ZERO; NB_ARITH_COLS];
+                let mut coeffs = vec![F::ZERO; self.config.value_cols.len()];
                 coeffs[2] = F::ONE; // coeff of y
                 coeffs[4] = -F::ONE; // coeff of snd
                 self.custom(&mut region, &coeffs, F::ZERO, (F::ONE, -F::ONE), F::ZERO, 0)?;
@@ -1631,15 +1646,15 @@ impl<F: CircuitField> FromScratch<F> for NativeChip<F> {
         fixed_columns: &mut Vec<Column<Fixed>>,
         instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
-        while advice_columns.len() < NB_ARITH_COLS {
+        while advice_columns.len() < MIN_NB_ARITH_COLS {
             advice_columns.push(meta.advice_column());
         }
-        while fixed_columns.len() < NB_ARITH_FIXED_COLS {
+        let nb_fixed_needed = advice_columns.len() + NB_EXTRA_ARITH_FIXED_COLS;
+        while fixed_columns.len() < nb_fixed_needed {
             fixed_columns.push(meta.fixed_column());
         }
-        let advice_cols: [_; NB_ARITH_COLS] = advice_columns[..NB_ARITH_COLS].try_into().unwrap();
-        let fixed_cols: [_; NB_ARITH_FIXED_COLS] =
-            fixed_columns[..NB_ARITH_FIXED_COLS].try_into().unwrap();
+        let advice_cols = advice_columns[..advice_columns.len()].to_vec();
+        let fixed_cols = fixed_columns[..nb_fixed_needed].to_vec();
         NativeChip::configure(meta, &(advice_cols, fixed_cols, *instance_columns))
     }
 

@@ -61,7 +61,7 @@ use midnight_circuits::{
         foreign::{
             nb_field_chip_columns, params::MultiEmulationParams as MEP, FieldChip, FieldChipConfig,
         },
-        native::{NB_ARITH_COLS, NB_ARITH_FIXED_COLS},
+        native::{NB_ARITH_COLS, NB_EXTRA_ARITH_FIXED_COLS},
         NativeChip, NativeConfig, NativeGadget,
     },
     hash::{
@@ -195,6 +195,12 @@ pub struct ZkStdLibArch {
     /// Enable scanner chip (automaton-based parsing and substring checks)?
     pub automaton: bool,
 
+    /// Number of arithmetic columns used by the native chip.
+    ///
+    /// Must equal [`NB_ARITH_COLS`] (currently 5); the field exists for API
+    /// and serialization compatibility.
+    pub nb_arith_cols: u8,
+
     /// Number of parallel lookups for range checks.
     pub nr_pow2range_cols: u8,
 }
@@ -215,6 +221,7 @@ impl Default for ZkStdLibArch {
             curve25519: false,
             base64: false,
             automaton: false,
+            nb_arith_cols: NB_ARITH_COLS as u8,
             nr_pow2range_cols: 1,
         }
     }
@@ -431,7 +438,7 @@ impl ZkStdLib {
         (arch, max_bit_len): (ZkStdLibArch, u8),
     ) -> ZkStdLibConfig {
         let nb_advice_cols = [
-            NB_ARITH_COLS,
+            arch.nb_arith_cols as usize,
             arch.nr_pow2range_cols as usize,
             arch.jubjub as usize * NB_EDWARDS_COLS,
             arch.poseidon as usize * NB_POSEIDON_ADVICE_COLS,
@@ -472,7 +479,7 @@ impl ZkStdLib {
         .unwrap_or(0);
 
         let nb_fixed_cols = [
-            NB_ARITH_FIXED_COLS,
+            arch.nb_arith_cols as usize + NB_EXTRA_ARITH_FIXED_COLS,
             arch.poseidon as usize * NB_POSEIDON_FIXED_COLS,
             arch.sha2_256 as usize * NB_SHA256_FIXED_COLS,
             arch.sha2_512 as usize * NB_SHA512_FIXED_COLS,
@@ -491,8 +498,8 @@ impl ZkStdLib {
         let native_config = NativeChip::configure(
             meta,
             &(
-                advice_columns[..NB_ARITH_COLS].try_into().unwrap(),
-                fixed_columns[..NB_ARITH_FIXED_COLS].try_into().unwrap(),
+                advice_columns[..arch.nb_arith_cols as usize].to_vec(),
+                fixed_columns[..arch.nb_arith_cols as usize + NB_EXTRA_ARITH_FIXED_COLS].to_vec(),
                 [committed_instance_column, instance_column],
             ),
         );

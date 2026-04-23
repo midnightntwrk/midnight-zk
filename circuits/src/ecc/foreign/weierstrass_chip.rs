@@ -1711,7 +1711,7 @@ where
     /// It is the responsibility of the caller to meet the precondition.
     /// This function neither panics nor makes the circuit unsatisfiable if the
     /// precondition is violated.
-    fn mul_by_u128(
+    pub fn mul_by_u128(
         &self,
         layouter: &mut impl Layouter<F>,
         n: u128,
