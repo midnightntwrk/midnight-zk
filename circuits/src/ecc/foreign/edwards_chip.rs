@@ -1369,7 +1369,7 @@ where
 #[cfg(test)]
 mod tests {
     use ff::Field;
-    use group::Group;
+    use group::{Group, GroupEncoding};
     use midnight_curves::{curve25519::Curve25519, BlsScalar};
     use midnight_proofs::{circuit::SimpleFloorPlanner, dev::MockProver, plonk::Circuit};
     use rand::SeedableRng;
@@ -1558,5 +1558,100 @@ mod tests {
             chip.assert_on_curve(&mut layouter, &x, &y)?;
             chip.load_from_scratch(&mut layouter)
         }
+    }
+
+    /// Test circuit that calls `from_canonical_compressed_bytes` on a
+    /// given byte array together with the claimed subgroup point.
+    ///
+    /// The proof succeeds if and only if the byte array is the canonical
+    /// encoding of the subgroup point.
+    #[derive(Clone, Debug)]
+    struct FromCompressedBytesCheckCircuit {
+        point: Curve25519Subgroup,
+        bytes: [u8; 32],
+    }
+
+    impl Circuit<F> for FromCompressedBytesCheckCircuit {
+        type Config = <EdwardsChip<Curve25519> as FromScratch<F>>::Config;
+        type FloorPlanner = SimpleFloorPlanner;
+        type Params = ();
+
+        fn without_witnesses(&self) -> Self {
+            unreachable!()
+        }
+
+        fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+            let committed = meta.instance_column();
+            let instance = meta.instance_column();
+            EdwardsChip::<Curve25519>::configure_from_scratch(
+                meta,
+                &mut vec![],
+                &mut vec![],
+                &[committed, instance],
+            )
+        }
+
+        fn synthesize(
+            &self,
+            config: Self::Config,
+            mut layouter: impl Layouter<F>,
+        ) -> Result<(), Error> {
+            let chip = EdwardsChip::<Curve25519>::new_from_scratch(&config);
+
+            let byte_cells: [AssignedByte<F>; 32] = self
+                .bytes
+                .iter()
+                .map(|b| chip.native_gadget.assign(&mut layouter, Value::known(*b)))
+                .collect::<Result<Vec<_>, _>>()?
+                .try_into()
+                .expect("exactly 32 bytes");
+
+            let _ = chip.from_canonical_compressed_bytes(
+                &mut layouter,
+                &byte_cells,
+                Value::known(self.point),
+            )?;
+
+            chip.load_from_scratch(&mut layouter)
+        }
+    }
+
+    fn run_test_compressed_bytes(point: Curve25519Subgroup, bytes: [u8; 32], should_accept: bool) {
+        let circuit = FromCompressedBytesCheckCircuit { point, bytes };
+        let prover = MockProver::run(&circuit, vec![vec![], vec![]])
+            .expect("proof generation should not fail");
+        assert_eq!(prover.verify().is_ok(), should_accept);
+    }
+
+    #[test]
+    fn test_compressed_bytes() {
+        // Canonical LE encoding of the identity with y = 1 and sign_x = 0.
+        let mut canonical = [0; 32];
+        canonical[0] = 1;
+        run_test_compressed_bytes(Curve25519Subgroup::identity(), canonical, true);
+
+        // Non-canonical LE encoding of the identity with y = 2^255 - 18 and sign_x = 0.
+        let mut non_canonical = [0xff_u8; 32];
+        non_canonical[0] = 0xee;
+        non_canonical[31] = 0x7f;
+        run_test_compressed_bytes(Curve25519Subgroup::identity(), non_canonical, false);
+
+        // Non-canonical LE encoding of the identity with y = 1 and sign_x = 1.
+        let mut non_canonical_with_sign = canonical;
+        non_canonical_with_sign[31] = 0x80;
+        run_test_compressed_bytes(
+            Curve25519Subgroup::identity(),
+            non_canonical_with_sign,
+            false,
+        );
+
+        // Canonical LE encoding of the subgroup generator.
+        let g = Curve25519Subgroup::generator();
+        run_test_compressed_bytes(g, Curve25519::from(g).to_bytes(), true);
+
+        // Canonical LE encoding of a random subgroup point.
+        let mut rng = ChaCha8Rng::seed_from_u64(0x7374727564656C);
+        let p = Curve25519Subgroup::random(&mut rng);
+        run_test_compressed_bytes(p, Curve25519::from(p).to_bytes(), true);
     }
 }
