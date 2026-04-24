@@ -223,6 +223,15 @@ where
     /// In-circuit compression of a given subgroup point into canonical
     /// little-endian bytes.
     ///
+    /// Let p = 2^255 -19 be the base field modulus.
+    ///
+    /// A curve point (x,y), with coordinates in the range 0 <= x,y < p, is
+    /// encoded as follows. First, encode the y-coordinate as a little-endian
+    /// array of 32 bytes. The most significant bit of the final byte (i.e., the
+    /// most significant byte) is always zero. To form the encoding of the
+    /// point, copy the least significant bit of the x-coordinate to the
+    /// most significant bit of the final byte of the y-coordinate.
+    ///
     /// # Returns
     /// An array [AssignedByte<F>; 32] constrained to represent a canonical
     /// encoding.
@@ -268,12 +277,18 @@ where
 
     /// In-circuit decompression of little-endian canonical compressed bytes.
     ///
+    /// Decoding a point, given as an array of 32 bytes, works as follows: The
+    /// caller of this function provides the claimed decoded point as a
+    /// witness. The function loads this point into the circuit,
+    /// calls [Self::to_canonical_compressed_bytes] and checks if the
+    /// resulting byte encoding matches the provided byte encoding.
+    ///
     /// # Returns
     /// An [AssignedForeignEdwardsPoint] constrained to lie in the subgroup.
     ///
     /// # Unsatisfiable Circuit
-    /// If the given array of [AssignedByte] represents a non-canonical
-    /// encoding of the point provided by [Value<Curve25519Subgroup>].
+    /// If the given array of [AssignedByte] is a non-canonical encoding of the
+    /// point provided by [Value<Curve25519Subgroup>].
     pub fn from_canonical_compressed_bytes(
         &self,
         layouter: &mut impl Layouter<F>,
