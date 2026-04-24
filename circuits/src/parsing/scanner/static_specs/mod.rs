@@ -439,7 +439,7 @@ mod tests {
     /// Tests a spec whose automaton outputs values directly (one per input
     /// byte). The raw output sequence is compared against the expected
     /// sequence.
-    pub(super) fn specs_one_test_with_outputs(
+    pub(super) fn _specs_one_test_with_outputs(
         spec_library: &FxHashMap<StdLibParser, (Regex, Automaton)>,
         spec: StdLibParser,
         accepted: &[super::super::OutputTestVector<'_>],

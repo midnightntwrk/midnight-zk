@@ -55,6 +55,7 @@ pub(crate) type MarkerTestVector<'a> = (&'a [u8], &'a [(usize, &'a [u8])]);
 
 /// A test vector pairing an input with the expected raw output sequence.
 #[cfg(test)]
+#[allow(dead_code)]
 pub(crate) type OutputTestVector<'a> = (&'a [u8], &'a [usize]);
 #[cfg(test)]
 use {
