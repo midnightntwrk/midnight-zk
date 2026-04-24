@@ -17,7 +17,7 @@ use crate::CircuitField;
 pub(crate) const WIDTH: usize = 3;
 
 /// Hash rate of Poseidon.
-pub(crate) const RATE: usize = 2;
+pub const RATE: usize = 2;
 
 /// Number of full rounds of the Poseidon permutation.
 pub(crate) const NB_FULL_ROUNDS: usize = 8;

@@ -66,10 +66,13 @@ use midnight_circuits::{
     },
     hash::{
         poseidon::{
-            PoseidonChip, PoseidonConfig, VarLenPoseidonGadget, NB_POSEIDON_ADVICE_COLS,
-            NB_POSEIDON_FIXED_COLS,
+            constants::RATE, PoseidonChip, PoseidonConfig, VarLenPoseidonGadget,
+            NB_POSEIDON_ADVICE_COLS, NB_POSEIDON_FIXED_COLS,
         },
-        sha256::{Sha256Chip, Sha256Config, NB_SHA256_ADVICE_COLS, NB_SHA256_FIXED_COLS},
+        sha256::{
+            Sha256Chip, Sha256Config, VarLenSha256Gadget, NB_SHA256_ADVICE_COLS,
+            NB_SHA256_FIXED_COLS,
+        },
         sha512::{Sha512Chip, Sha512Config, NB_SHA512_ADVICE_COLS, NB_SHA512_FIXED_COLS},
     },
     instructions::{
@@ -293,8 +296,10 @@ pub struct ZkStdLib {
     core_decomposition_chip: P2RDecompositionChip<F>,
     jubjub_chip: Option<EccChip<C>>,
     sha2_256_chip: Option<Sha256Chip<F>>,
+    varlen_sha2_256_chip: Option<VarLenSha256Gadget<F>>,
     sha2_512_chip: Option<Sha512Chip<F>>,
     poseidon_gadget: Option<PoseidonChip<F>>,
+    varlen_poseidon_gadget: Option<VarLenPoseidonGadget<F>>,
     htc_gadget: Option<HashToCurveGadget<F, C, AssignedNative<F>, PoseidonChip<F>, EccChip<C>>>,
     map_gadget: Option<MapGadget<F, NG, PoseidonChip<F>>>,
     biguint_gadget: BigUintGadget<F, NG>,
@@ -338,10 +343,13 @@ impl ZkStdLib {
             .map(|jubjub_config| EccChip::new(jubjub_config, &native_gadget));
         let sha2_256_chip = (config.sha2_256_config.as_ref())
             .map(|sha256_config| Sha256Chip::new(sha256_config, &native_gadget));
+        let varlen_sha2_256_chip = sha2_256_chip.as_ref().map(|sha256| sha256.varlen_gadget());
         let sha2_512_chip = (config.sha2_512_config.as_ref())
             .map(|sha512_config| Sha512Chip::new(sha512_config, &native_gadget));
         let poseidon_gadget = (config.poseidon_config.as_ref())
             .map(|poseidon_config| PoseidonChip::new(poseidon_config, &native_chip));
+        let varlen_poseidon_gadget = (poseidon_gadget.as_ref())
+            .map(|poseidon| VarLenPoseidonGadget::new(poseidon, &native_gadget));
         let htc_gadget = (jubjub_chip.as_ref())
             .zip(poseidon_gadget.as_ref())
             .map(|(ecc_chip, poseidon_gadget)| HashToCurveGadget::new(poseidon_gadget, ecc_chip));
@@ -402,8 +410,10 @@ impl ZkStdLib {
             core_decomposition_chip,
             jubjub_chip,
             sha2_256_chip,
+            varlen_sha2_256_chip,
             sha2_512_chip,
             poseidon_gadget,
+            varlen_poseidon_gadget,
             map_gadget,
             htc_gadget,
             biguint_gadget,
@@ -867,19 +877,21 @@ impl ZkStdLib {
     }
 
     /// Variable-length Poseidon hash. Takes an [`AssignedVector`] of native
-    /// field elements with chunk alignment 2 (Poseidon rate) and maximum
-    /// length `M`. `M` must be a multiple of 2.
+    /// field elements with chunk alignment RATE and maximum length `M`.
+    /// `M` must be a multiple of RATE.
     pub fn poseidon_varlen<const M: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
-        input: &AssignedVector<F, AssignedNative<F>, M, 2>,
+        input: &AssignedVector<F, AssignedNative<F>, M, RATE>,
     ) -> Result<AssignedNative<F>, Error> {
-        let poseidon_chip = self
-            .poseidon_gadget
+        assert!(
+            M.is_multiple_of(RATE),
+            "poseidon_varlen only supports assigned vector whose maxlen M is a multiple of {RATE} (here M = {M})"
+        );
+        self.varlen_poseidon_gadget
             .as_ref()
-            .unwrap_or_else(|| panic!("ZkStdLibArch must enable poseidon"));
-        let gadget = VarLenPoseidonGadget::new(poseidon_chip, &self.native_gadget);
-        gadget.poseidon_varlen(layouter, input)
+            .unwrap_or_else(|| panic!("ZkStdLibArch must enable poseidon"))
+            .poseidon_varlen(layouter, input)
     }
 
     /// Hashes a slice of assigned values into `(x, y)` coordinates which are
@@ -934,10 +946,9 @@ impl ZkStdLib {
         input: &AssignedVector<F, AssignedByte<F>, M, 64>,
     ) -> Result<[AssignedByte<F>; 32], Error> {
         *self.used_sha2_256.borrow_mut() = true;
-        self.sha2_256_chip
+        self.varlen_sha2_256_chip
             .as_ref()
             .expect("ZkStdLibArch must enable sha256")
-            .varlen_gadget()
             .varhash(layouter, input)
     }
 

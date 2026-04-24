@@ -590,8 +590,7 @@ where
     }
 
     /// Returns a vector of assigned bits representing the given assigned big
-    /// unsigned integer in big-endian order. Delegates to
-    /// [`to_le_bits`](Self::to_le_bits) and reverses the result.
+    /// unsigned integer in big-endian order.
     pub fn to_be_bits(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -599,7 +598,6 @@ where
     ) -> Result<Vec<AssignedBit<F>>, Error> {
         let mut bits = self.to_le_bits(layouter, x)?;
         bits.reverse();
-
         Ok(bits)
     }
 
@@ -630,8 +628,7 @@ where
     }
 
     /// Returns a vector of assigned bytes representing the given assigned big
-    /// unsigned integer in big-endian order. Delegates to
-    /// [`to_le_bytes`](Self::to_le_bytes) and reverses the result.
+    /// unsigned integer in big-endian order.
     #[allow(clippy::assertions_on_constants)]
     pub fn to_be_bytes(
         &self,
@@ -668,8 +665,6 @@ where
 
     /// Returns the assigned big unsigned integer represented by the given
     /// vector of assigned bits, by interpreting it in big-endian order.
-    /// Delegates to [`from_le_bits`](Self::from_le_bits) with the input
-    /// reversed.
     pub fn from_be_bits(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -709,8 +704,6 @@ where
 
     /// Returns the assigned big unsigned integer represented by the given
     /// vector of assigned bytes, by interpreting it in big-endian order.
-    /// Delegates to [`from_le_bytes`](Self::from_le_bytes) with the input
-    /// reversed.
     #[allow(clippy::assertions_on_constants)]
     pub fn from_be_bytes(
         &self,
