@@ -40,6 +40,15 @@ pub struct VarLenSha256Gadget<F: CircuitField> {
 }
 
 impl<F: CircuitField> VarLenSha256Gadget<F> {
+    /// Create a new variable-length SHA256 gadget from its dependencies.
+    pub fn new(sha256chip: &Sha256Chip<F>) -> Self {
+        Self {
+            sha256chip: sha256chip.clone(),
+        }
+    }
+}
+
+impl<F: CircuitField> VarLenSha256Gadget<F> {
     fn ng(&self) -> &NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>> {
         &self.sha256chip.native_gadget
     }

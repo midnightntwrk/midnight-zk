@@ -296,7 +296,7 @@ pub struct ZkStdLib {
     core_decomposition_chip: P2RDecompositionChip<F>,
     jubjub_chip: Option<EccChip<C>>,
     sha2_256_chip: Option<Sha256Chip<F>>,
-    varlen_sha2_256_chip: Option<VarLenSha256Gadget<F>>,
+    varlen_sha2_256_gadget: Option<VarLenSha256Gadget<F>>,
     sha2_512_chip: Option<Sha512Chip<F>>,
     poseidon_gadget: Option<PoseidonChip<F>>,
     varlen_poseidon_gadget: Option<VarLenPoseidonGadget<F>>,
@@ -343,7 +343,8 @@ impl ZkStdLib {
             .map(|jubjub_config| EccChip::new(jubjub_config, &native_gadget));
         let sha2_256_chip = (config.sha2_256_config.as_ref())
             .map(|sha256_config| Sha256Chip::new(sha256_config, &native_gadget));
-        let varlen_sha2_256_chip = sha2_256_chip.as_ref().map(|sha256| sha256.varlen_gadget());
+        let varlen_sha2_256_gadget =
+            sha2_256_chip.as_ref().map(|sha256_chip| VarLenSha256Gadget::new(sha256_chip));
         let sha2_512_chip = (config.sha2_512_config.as_ref())
             .map(|sha512_config| Sha512Chip::new(sha512_config, &native_gadget));
         let poseidon_gadget = (config.poseidon_config.as_ref())
@@ -410,7 +411,7 @@ impl ZkStdLib {
             core_decomposition_chip,
             jubjub_chip,
             sha2_256_chip,
-            varlen_sha2_256_chip,
+            varlen_sha2_256_gadget,
             sha2_512_chip,
             poseidon_gadget,
             varlen_poseidon_gadget,
@@ -876,9 +877,16 @@ impl ZkStdLib {
             .hash(layouter, input)
     }
 
-    /// Variable-length Poseidon hash. Takes an [`AssignedVector`] of native
-    /// field elements with chunk alignment RATE and maximum length `M`.
-    /// `M` must be a multiple of RATE.
+    /// Poseidon hash over a payload whose element count can vary between
+    /// proofs.
+    ///
+    /// Unlike [`poseidon`](Self::poseidon), which takes a plain slice whose
+    /// length is structurally fixed in the circuit (the same for every proof),
+    /// this variant takes an [`AssignedVector`]: a specialized structure for
+    /// carrying data of varying length, up to a maximum capacity of `M`
+    /// elements.
+    ///
+    /// `M` must be a multiple of 2 (the Poseidon absorption rate).
     pub fn poseidon_varlen<const M: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -907,7 +915,7 @@ impl ZkStdLib {
             .hash_to_curve(layouter, inputs)
     }
 
-    /// Sha2_256.
+    /// SHA2-256.
     /// Takes as input a slice of assigned bytes and returns the assigned
     /// input/output in bytes.
     /// We assume the field uses little endian encoding.
@@ -938,21 +946,31 @@ impl ZkStdLib {
             .hash(layouter, input)
     }
 
-    /// Variable-length SHA-256 hash. Takes an [`AssignedVector`] of bytes
-    /// with chunk alignment 64 (SHA-256 block size) and maximum length `M`.
+    /// SHA-256 hash over a payload whose byte count can vary between proofs.
+    ///
+    /// Unlike [`sha2_256`](Self::sha2_256), which takes a plain slice whose
+    /// length is structurally fixed in the circuit (the same for every proof),
+    /// this variant takes an [`AssignedVector`]: a specialized structure for
+    /// carrying data of varying length, up to a maximum capacity of `M` bytes.
+    ///
+    /// `M` must be a multiple of 64 (the SHA-256 block size).
     pub fn sha2_256_varlen<const M: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
         input: &AssignedVector<F, AssignedByte<F>, M, 64>,
     ) -> Result<[AssignedByte<F>; 32], Error> {
         *self.used_sha2_256.borrow_mut() = true;
-        self.varlen_sha2_256_chip
+        assert!(
+            M.is_multiple_of(64),
+            "sha2_256_varlen only supports assigned vector whose maxlen M is a multiple of 64 (here M = {M})"
+        );
+        self.varlen_sha2_256_gadget
             .as_ref()
             .expect("ZkStdLibArch must enable sha256")
             .varhash(layouter, input)
     }
 
-    /// Sha2_512 hash.
+    /// SHA2-512 hash.
     pub fn sha2_512(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -965,7 +983,7 @@ impl ZkStdLib {
             .hash(layouter, input)
     }
 
-    /// Sha3_256 hash (third-party implementation).
+    /// SHA3-256 hash (third-party implementation).
     pub fn sha3_256(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -979,7 +997,7 @@ impl ZkStdLib {
         chip.sha3_256_digest(layouter, input)
     }
 
-    /// keccak_256 hash (third-party implementation).
+    /// Keccak-256 hash (third-party implementation).
     pub fn keccak_256(
         &self,
         layouter: &mut impl Layouter<F>,
