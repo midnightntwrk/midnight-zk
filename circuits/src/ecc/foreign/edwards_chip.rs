@@ -268,7 +268,7 @@ where
             F::ZERO,
         )?;
 
-        let last_byte: AssignedByte<F> = self.native_gadget.convert(layouter, &last_byte)?;
+        let last_byte: AssignedByte<F> = self.native_gadget.convert_unsafe(layouter, &last_byte)?;
         let mut compressed_bytes: Vec<AssignedByte<F>> = y_bytes[..y_bytes.len() - 1].to_vec();
         compressed_bytes.push(last_byte);
 
