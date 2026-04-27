@@ -41,19 +41,15 @@
 //!   * in-circuit canonicity checks for bytes of s, R, A,
 //!   * in-circuit subgroup-check for R, A.
 
-use ff::Field;
 use group::Group;
 use midnight_circuits::{
-    ecc::foreign::edwards_chip::AssignedForeignEdwardsPoint,
-    field::foreign::params::MultiEmulationParams,
     instructions::{
         ArithInstructions, AssertionInstructions, AssignmentInstructions, CanonicityInstructions,
-        ConversionInstructions, DecompositionInstructions, EccInstructions, FieldInstructions,
-        PublicInputInstructions,
+        DecompositionInstructions, EccInstructions, FieldInstructions, PublicInputInstructions,
     },
-    types::{AssignedBit, AssignedByte, AssignedNative, Instantiable},
+    types::{AssignedBit, AssignedByte, Instantiable},
 };
-use midnight_curves::curve25519::{Curve25519, Curve25519Subgroup};
+use midnight_curves::curve25519::Curve25519Subgroup;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
@@ -103,8 +99,7 @@ impl Relation for CardanoSigExample {
             .collect::<Result<Vec<_>, _>>()?
             .try_into()
             .expect("exactly 32 bytes");
-        let a = from_canonical_compressed_bytes(
-            std_lib,
+        let a = curve25519.from_canonical_compressed_bytes(
             layouter,
             &a_bytes,
             instance.map(|(a_bytes, _)| decompress_bytes(&a_bytes)),
@@ -131,8 +126,7 @@ impl Relation for CardanoSigExample {
             .assign_many(layouter, &witness.map(|(r, _)| r).transpose_array())?
             .try_into()
             .expect("exactly 32 bytes");
-        let r = from_canonical_compressed_bytes(
-            std_lib,
+        let r = curve25519.from_canonical_compressed_bytes(
             layouter,
             &r_bytes,
             witness.map(|(r, _)| decompress_bytes(&r)),
@@ -196,73 +190,6 @@ fn assigned_bytes_to_bits(
         .flatten()
         .collect();
     Ok(bits)
-}
-
-/// In-circuit decompression of little-endian canonical compressed bytes.
-/// Non-canonical bytes do not satisfy the underlying constraints.
-///
-/// # Returns
-/// An [AssignedForeignEdwardsPoint] constrained to lie in the subgroup.
-fn from_canonical_compressed_bytes(
-    std_lib: &ZkStdLib,
-    layouter: &mut impl Layouter<F>,
-    compressed_bytes: &[AssignedByte<F>; 32],
-    value: Value<Curve25519Subgroup>,
-) -> Result<AssignedForeignEdwardsPoint<F, Curve25519, MultiEmulationParams>, Error> {
-    let point = std_lib.curve25519().assign(layouter, value)?;
-    let canonical_bytes = to_canonical_compressed_bytes(std_lib, layouter, &point)?;
-    compressed_bytes
-        .iter()
-        .zip(canonical_bytes.iter())
-        .try_for_each(|(com_byte, can_byte)| std_lib.assert_equal(layouter, com_byte, can_byte))?;
-
-    Ok(point)
-}
-
-/// In-circuit compression into canonical little-endian bytes.
-///
-/// # Returns
-/// An array [AssignedByte<F>; 32] constrained to represent a canonical
-/// encoding.
-fn to_canonical_compressed_bytes(
-    std_lib: &ZkStdLib,
-    layouter: &mut impl Layouter<F>,
-    point: &AssignedForeignEdwardsPoint<F, Curve25519, MultiEmulationParams>,
-) -> Result<[AssignedByte<F>; 32], Error> {
-    let curve25519 = std_lib.curve25519();
-
-    let y_bytes = curve25519.base_field_chip().assigned_to_le_bytes(
-        layouter,
-        &curve25519.y_coordinate(point),
-        None,
-    )?;
-
-    let x_bits = curve25519.base_field_chip().assigned_to_le_bits(
-        layouter,
-        &curve25519.x_coordinate(point),
-        Some(255),
-        true,
-    )?;
-
-    // Encode the sign bit of x (= x mod 2, i.e., the least significant bit of x)
-    // into the most significant byte of y: MSB = MSB of y + LSBit of x * 128.
-    //
-    // (This is safe: y <= p - 1 = 2^255 - 19 - 1, which means MSB of y <= 127;
-    // hence, adding 128 causes _no_ overflow.)
-    let last_byte: AssignedNative<F> = std_lib.linear_combination(
-        layouter,
-        &[
-            (F::ONE, y_bytes[y_bytes.len() - 1].clone().into()),
-            (F::from(128), x_bits[0].clone().into()),
-        ],
-        F::ZERO,
-    )?;
-
-    let last_byte: AssignedByte<F> = std_lib.convert(layouter, &last_byte)?;
-    let mut compressed_bytes: Vec<AssignedByte<F>> = y_bytes[..y_bytes.len() - 1].to_vec();
-    compressed_bytes.push(last_byte);
-
-    Ok(compressed_bytes.try_into().expect("exactly 32 bytes"))
 }
 
 fn main() {
