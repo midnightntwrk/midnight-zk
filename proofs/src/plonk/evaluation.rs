@@ -270,16 +270,27 @@ pub struct FlatOp {
     pub c: u32,
 }
 
+/// Number of named global slots in the values buffer
+/// (beta, theta, trash_challenge, y, previous_value).
+const NUM_CHALLENGE_SLOTS: usize = 5;
+
+/// Tag values for [`ColumnRead::col_type`].
+const COL_TYPE_FIXED: u8 = 0;
+const COL_TYPE_ADVICE: u8 = 1;
+const COL_TYPE_INSTANCE: u8 = 2;
+const COL_TYPE_CHALLENGE: u8 = 3;
+
 /// Column read: load a value from a polynomial column at a rotated index.
 #[derive(Clone, Copy, Debug)]
 pub struct ColumnRead {
-    /// 0 = Fixed, 1 = Advice, 2 = Instance, 3 = Challenge.
+    /// One of [`COL_TYPE_FIXED`], [`COL_TYPE_ADVICE`], [`COL_TYPE_INSTANCE`],
+    /// [`COL_TYPE_CHALLENGE`].
     pub col_type: u8,
     /// Column index within its type.
     pub col_idx: u16,
     /// Index into the rotations array (for Fixed/Advice/Instance).
     /// For Challenge: the challenge index.
-    pub rot_or_idx: u8,
+    pub rot_idx: u8,
     /// Destination index in the values buffer.
     pub dst: u32,
 }
@@ -287,12 +298,12 @@ pub struct ColumnRead {
 /// Pre-flattened graph for fast evaluation. Built from a [`GraphEvaluator`]
 /// at keygen time via [`GraphEvaluator::flatten`].
 ///
-/// The values buffer layout:
+/// The values buffer layout (with `S = NUM_CHALLENGE_SLOTS`):
 /// ```text
 /// [0 .. C)                   constants (static)
-/// [C .. C+5)                 beta, theta, trash_challenge, y, previous_value
-/// [C+5 .. C+5+R)             column read results (loaded per element)
-/// [C+5+R .. C+5+R+I)         intermediates (computed per element)
+/// [C .. C+S)                 beta, theta, trash_challenge, y, previous_value
+/// [C+S .. C+S+R)             column read results (loaded per element)
+/// [C+S+R .. C+S+R+I)         intermediates (computed per element)
 /// ```
 #[derive(Clone, Debug)]
 pub struct FlatGraphEvaluator<F> {
@@ -327,12 +338,28 @@ impl<F: PrimeField> GraphEvaluator<F> {
         let y_idx = (challenge_offset + 3) as u32;
         let previous_value_idx = (challenge_offset + 4) as u32;
 
-        let column_read_offset = challenge_offset + 5;
+        let column_read_offset = challenge_offset + NUM_CHALLENGE_SLOTS;
 
         // First pass: collect column reads and assign their buffer indices.
         let mut column_reads = Vec::new();
         let mut column_read_map: Vec<(ValueSource, u32)> = Vec::new();
 
+        /// Walk a single [`Calculation`] and collect every column-style
+        /// [`ValueSource`] it reads (Fixed, Advice, Instance, Challenge) into
+        /// the shared dedup map and descriptor list.
+        ///
+        /// For each such source seen for the first time, a [`ColumnRead`]
+        /// descriptor is appended to `column_reads` and the `(source, dst)`
+        /// pair is recorded in `reads`, where `dst` is the source's slot in
+        /// the unified values buffer (`base_offset + reads.len()` at the time
+        /// of insertion). Subsequent occurrences of the same source are
+        /// deduplicated so each distinct column access maps to a single slot.
+        ///
+        /// `reads` and `column_reads` are threaded across all calculations of
+        /// the graph so indices stay consistent after flattening. Non-column
+        /// sources (constants, intermediates, challenges-like globals such as
+        /// beta/theta/y) are ignored here — those are resolved later by
+        /// `resolve`.
         fn find_column_reads(
             calc: &Calculation,
             reads: &mut Vec<(ValueSource, u32)>,
@@ -346,46 +373,43 @@ impl<F: PrimeField> GraphEvaluator<F> {
                         | ValueSource::Advice(..)
                         | ValueSource::Instance(..)
                         | ValueSource::Challenge(..)
-                ) {
-                    if !reads.iter().any(|(v, _)| *v == *vs) {
-                        let dst = (base_offset + reads.len()) as u32;
-                        let cr = match *vs {
-                            ValueSource::Fixed(c, r) => ColumnRead {
-                                col_type: 0,
-                                col_idx: c as u16,
-                                rot_or_idx: r as u8,
-                                dst,
-                            },
-                            ValueSource::Advice(c, r) => ColumnRead {
-                                col_type: 1,
-                                col_idx: c as u16,
-                                rot_or_idx: r as u8,
-                                dst,
-                            },
-                            ValueSource::Instance(c, r) => ColumnRead {
-                                col_type: 2,
-                                col_idx: c as u16,
-                                rot_or_idx: r as u8,
-                                dst,
-                            },
-                            ValueSource::Challenge(i) => ColumnRead {
-                                col_type: 3,
-                                col_idx: i as u16,
-                                rot_or_idx: 0,
-                                dst,
-                            },
-                            _ => unreachable!(),
-                        };
-                        column_reads.push(cr);
-                        reads.push((*vs, dst));
-                    }
+                ) && !reads.iter().any(|(v, _)| *v == *vs)
+                {
+                    let dst = (base_offset + reads.len()) as u32;
+                    let cr = match *vs {
+                        ValueSource::Fixed(c, r) => ColumnRead {
+                            col_type: COL_TYPE_FIXED,
+                            col_idx: c as u16,
+                            rot_idx: r as u8,
+                            dst,
+                        },
+                        ValueSource::Advice(c, r) => ColumnRead {
+                            col_type: COL_TYPE_ADVICE,
+                            col_idx: c as u16,
+                            rot_idx: r as u8,
+                            dst,
+                        },
+                        ValueSource::Instance(c, r) => ColumnRead {
+                            col_type: COL_TYPE_INSTANCE,
+                            col_idx: c as u16,
+                            rot_idx: r as u8,
+                            dst,
+                        },
+                        ValueSource::Challenge(i) => ColumnRead {
+                            col_type: COL_TYPE_CHALLENGE,
+                            col_idx: i as u16,
+                            rot_idx: 0,
+                            dst,
+                        },
+                        _ => unreachable!(),
+                    };
+                    column_reads.push(cr);
+                    reads.push((*vs, dst));
                 }
             };
 
             match calc {
-                Calculation::Add(a, b)
-                | Calculation::Sub(a, b)
-                | Calculation::Mul(a, b) => {
+                Calculation::Add(a, b) | Calculation::Sub(a, b) | Calculation::Mul(a, b) => {
                     check(a);
                     check(b);
                 }
@@ -431,11 +455,7 @@ impl<F: PrimeField> GraphEvaluator<F> {
                 | ValueSource::Advice(..)
                 | ValueSource::Instance(..)
                 | ValueSource::Challenge(..) => {
-                    column_read_map
-                        .iter()
-                        .find(|(v, _)| *v == *vs)
-                        .unwrap()
-                        .1
+                    column_read_map.iter().find(|(v, _)| *v == *vs).unwrap().1
                 }
             }
         };
@@ -494,6 +514,7 @@ impl<F: PrimeField> GraphEvaluator<F> {
                     // is just a copy: dst = src.
                     let src = resolve(v);
                     // Optimization: if dst == src, skip the copy. Otherwise emit Add with 0.
+                    // NOTE: This is relying in the first constant being  0, should be reviewed.
                     if dst != src {
                         ops.push(FlatOp {
                             kind: FlatOpKind::Add,
@@ -557,9 +578,8 @@ impl<F: PrimeField> FlatGraphEvaluator<F> {
     pub fn resolve_idx(&self, vs: ValueSource) -> usize {
         match vs {
             ValueSource::Intermediate(idx) => {
-                // intermediates_offset = constants.len() + 5 + column_reads.len()
                 let intermediates_offset =
-                    self.constants.len() + 5 + self.column_reads.len();
+                    self.constants.len() + NUM_CHALLENGE_SLOTS + self.column_reads.len();
                 intermediates_offset + idx
             }
             _ => panic!("resolve_idx only supports Intermediate, got {vs:?}"),
@@ -580,6 +600,7 @@ impl<F: PrimeField> FlatGraphEvaluator<F> {
     /// Evaluate the graph at one domain element. The `values` buffer is reused
     /// across elements (only column reads and intermediates are overwritten).
     #[inline]
+    #[allow(clippy::too_many_arguments)]
     pub fn evaluate<B: PolynomialRepresentation>(
         &self,
         values: &mut [F],
@@ -595,10 +616,10 @@ impl<F: PrimeField> FlatGraphEvaluator<F> {
         // Step 1: Load column values into the buffer.
         for cr in &self.column_reads {
             values[cr.dst as usize] = match cr.col_type {
-                0 => fixed[cr.col_idx as usize][rotations[cr.rot_or_idx as usize]],
-                1 => advice[cr.col_idx as usize][rotations[cr.rot_or_idx as usize]],
-                2 => instance[cr.col_idx as usize][rotations[cr.rot_or_idx as usize]],
-                3 => challenges[cr.col_idx as usize],
+                COL_TYPE_FIXED => fixed[cr.col_idx as usize][rotations[cr.rot_idx as usize]],
+                COL_TYPE_ADVICE => advice[cr.col_idx as usize][rotations[cr.rot_idx as usize]],
+                COL_TYPE_INSTANCE => instance[cr.col_idx as usize][rotations[cr.rot_idx as usize]],
+                COL_TYPE_CHALLENGE => challenges[cr.col_idx as usize],
                 _ => unreachable!(),
             };
         }
@@ -632,6 +653,9 @@ impl<F: PrimeField> FlatGraphEvaluator<F> {
     /// `template_buf` is a pre-filled values buffer (constants + challenges).
     /// `output[i]` is both input (previous_value) and output (result).
     #[allow(clippy::too_many_arguments)]
+    // The `for b in 0..BATCH` loops below index BATCH parallel buffers; rewriting
+    // them as iterators would obscure the const-generic unroll. `b` is the index.
+    #[allow(clippy::needless_range_loop)]
     pub fn evaluate_chunk<const BATCH: usize, Repr: PolynomialRepresentation>(
         &self,
         template_buf: &[F],
@@ -659,8 +683,7 @@ impl<F: PrimeField> FlatGraphEvaluator<F> {
 
         // BATCH values buffers, reused across batches.
         let mut bufs: [Vec<F>; BATCH] = std::array::from_fn(|_| template_buf.to_vec());
-        let mut all_rots: [Vec<usize>; BATCH] =
-            std::array::from_fn(|_| vec![0usize; num_rots]);
+        let mut all_rots: [Vec<usize>; BATCH] = std::array::from_fn(|_| vec![0usize; num_rots]);
 
         let mut pos = 0;
 
@@ -674,12 +697,12 @@ impl<F: PrimeField> FlatGraphEvaluator<F> {
                 }
                 bufs[b][pv_i] = output[pos + b];
                 for cr in &self.column_reads {
-                    let rot = all_rots[b][cr.rot_or_idx as usize];
+                    let rot = all_rots[b][cr.rot_idx as usize];
                     bufs[b][cr.dst as usize] = match cr.col_type {
-                        0 => fixed[cr.col_idx as usize][rot],
-                        1 => advice[cr.col_idx as usize][rot],
-                        2 => instance[cr.col_idx as usize][rot],
-                        3 => challenges[cr.col_idx as usize],
+                        COL_TYPE_FIXED => fixed[cr.col_idx as usize][rot],
+                        COL_TYPE_ADVICE => advice[cr.col_idx as usize][rot],
+                        COL_TYPE_INSTANCE => instance[cr.col_idx as usize][rot],
+                        COL_TYPE_CHALLENGE => challenges[cr.col_idx as usize],
                         _ => unreachable!(),
                     };
                 }
@@ -693,25 +716,39 @@ impl<F: PrimeField> FlatGraphEvaluator<F> {
                 let c = op.c as usize;
                 match op.kind {
                     FlatOpKind::Add => {
-                        for b in 0..BATCH { bufs[b][d] = bufs[b][a] + bufs[b][bi]; }
+                        for b in 0..BATCH {
+                            bufs[b][d] = bufs[b][a] + bufs[b][bi];
+                        }
                     }
                     FlatOpKind::Sub => {
-                        for b in 0..BATCH { bufs[b][d] = bufs[b][a] - bufs[b][bi]; }
+                        for b in 0..BATCH {
+                            bufs[b][d] = bufs[b][a] - bufs[b][bi];
+                        }
                     }
                     FlatOpKind::Mul => {
-                        for b in 0..BATCH { bufs[b][d] = bufs[b][a] * bufs[b][bi]; }
+                        for b in 0..BATCH {
+                            bufs[b][d] = bufs[b][a] * bufs[b][bi];
+                        }
                     }
                     FlatOpKind::Square => {
-                        for b in 0..BATCH { bufs[b][d] = bufs[b][a].square(); }
+                        for b in 0..BATCH {
+                            bufs[b][d] = bufs[b][a].square();
+                        }
                     }
                     FlatOpKind::Double => {
-                        for b in 0..BATCH { bufs[b][d] = bufs[b][a].double(); }
+                        for b in 0..BATCH {
+                            bufs[b][d] = bufs[b][a].double();
+                        }
                     }
                     FlatOpKind::Negate => {
-                        for b in 0..BATCH { bufs[b][d] = -bufs[b][a]; }
+                        for b in 0..BATCH {
+                            bufs[b][d] = -bufs[b][a];
+                        }
                     }
                     FlatOpKind::MulAdd => {
-                        for b in 0..BATCH { bufs[b][d] = bufs[b][a] * bufs[b][bi] + bufs[b][c]; }
+                        for b in 0..BATCH {
+                            bufs[b][d] = bufs[b][a] * bufs[b][bi] + bufs[b][c];
+                        }
                     }
                 }
             }
@@ -732,7 +769,13 @@ impl<F: PrimeField> FlatGraphEvaluator<F> {
                     rot_indices[ri] = idx.wrapping_add(*stride) & mask;
                 }
                 output[pos] = self.evaluate::<Repr>(
-                    &mut buf, fixed, advice, instance, challenges, &rot_indices, &output[pos],
+                    &mut buf,
+                    fixed,
+                    advice,
+                    instance,
+                    challenges,
+                    &rot_indices,
+                    &output[pos],
                 );
                 pos += 1;
             }
@@ -894,7 +937,23 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
     }
 
     /// Evaluate numerator polynomial `nu(X)` of the quotient polynomial
-    /// `h(X) = nu(X) / (X^n-1)`
+    /// `h(X) = nu(X) / (X^n-1)`.
+    ///
+    /// Iterates over the batched `(advice, instance, lookups, trashcans,
+    /// permutation)` proofs and folds each into a single shared `values`
+    /// accumulator via the verifier challenge `y`. The custom-gates flat
+    /// evaluator threads this accumulator through its outermost `Horner` step
+    /// using `ValueSource::PreviousValue` (loaded into `previous_value_idx`
+    /// in the values buffer at evaluation time).
+    ///
+    /// TODO: drop the `previous_value` plumbing — the parameter on
+    /// `FlatGraphEvaluator::evaluate` / `Calculation::evaluate`, the
+    /// `ValueSource::PreviousValue` variant, the `previous_value_idx` slot,
+    /// and the `Horner(PreviousValue, parts, Y)` start — once this function no
+    /// longer processes batched proofs in a single call. Without batching,
+    /// `previous_value` is always `F::ZERO`, the leading `Add(prev, 0)` flat
+    /// op is dead, and the inter-proof y-fold can be lifted to the caller as
+    /// a single `total = total * y^M + per_proof` pass per proof.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn evaluate_numerator<B: PolynomialRepresentation>(
         &self,
@@ -1121,10 +1180,18 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                     .map(|flat| flat.new_values_buffer(&beta, &theta, &trash_challenge, &y))
                     .collect();
 
-                let mut rot_indices = vec![0usize; self.custom_gates_flat.rotations.len().max(
-                    self.lookups_flat.iter().flat_map(|b| b.iter()).chain(self.trashcans_flat.iter())
-                        .map(|f| f.rotations.len()).max().unwrap_or(0)
-                )];
+                let mut rot_indices = vec![
+                    0usize;
+                    self.custom_gates_flat.rotations.len().max(
+                        self.lookups_flat
+                            .iter()
+                            .flat_map(|b| b.iter())
+                            .chain(self.trashcans_flat.iter())
+                            .map(|f| f.rotations.len())
+                            .max()
+                            .unwrap_or(0)
+                    )
+                ];
 
                 for (i, value) in values.iter_mut().enumerate() {
                     let idx = start + i;
@@ -1148,8 +1215,13 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                                 rot_indices[ri] = get_rotation_idx(idx, *rot, rot_scale, isize);
                             }
                             flat.evaluate::<B>(
-                                &mut bufs[fi], fixed, advice, instance, challenges,
-                                &rot_indices, &F::ZERO,
+                                &mut bufs[fi],
+                                fixed,
+                                advice,
+                                instance,
+                                challenges,
+                                &rot_indices,
+                                &F::ZERO,
                             );
 
                             let (spp_idx, prod_idx, tbl_idx, sel_idx) = output_batch[fi];
@@ -1187,8 +1259,13 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                             rot_indices[ri] = get_rotation_idx(idx, *rot, rot_scale, isize);
                         }
                         let compressed_expression = flat.evaluate::<B>(
-                            &mut trash_bufs[n], fixed, advice, instance, challenges,
-                            &rot_indices, &F::ZERO,
+                            &mut trash_bufs[n],
+                            fixed,
+                            advice,
+                            instance,
+                            challenges,
+                            &rot_indices,
+                            &F::ZERO,
                         );
 
                         let q = fixed[trash_selector_cols[n]][idx];
