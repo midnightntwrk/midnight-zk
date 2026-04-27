@@ -11,6 +11,13 @@ verification keys break backwards compatibility.
 * PATCH: Incremented when you make backward-compatible bug fixes
 
 ## [Unreleased]
+### Added
+
+### Changed
+
+### Removed
+
+## [2.0.0]
 ### Changed
 * Do not expose scalar chips separately from `ZkStdLib`; use `secp256k1()`, `p256()`, `bls12_381()` instead [#335](https://github.com/midnightntwrk/midnight-zk/pull/335)
 * Adapt `FromScratch` impls to new `configure_from_scratch` signature with shared column pools [#306](https://github.com/midnightntwrk/midnight-zk/pull/306)
