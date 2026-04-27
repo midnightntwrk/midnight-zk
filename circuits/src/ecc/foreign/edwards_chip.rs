@@ -241,7 +241,7 @@ where
         point: &AssignedForeignEdwardsPoint<F, Curve25519, B>,
     ) -> Result<[AssignedByte<F>; 32], Error> {
         // Decomposition into (LE) bytes enforces canonicity.
-        let y_bytes = self.base_field_chip().assigned_to_le_bytes(
+        let mut y_bytes = self.base_field_chip().assigned_to_le_bytes(
             layouter,
             &self.y_coordinate(point),
             None,
@@ -268,11 +268,10 @@ where
             F::ZERO,
         )?;
 
-        let last_byte: AssignedByte<F> = self.native_gadget.convert_unsafe(layouter, &last_byte)?;
-        let mut compressed_bytes: Vec<AssignedByte<F>> = y_bytes[..y_bytes.len() - 1].to_vec();
-        compressed_bytes.push(last_byte);
+        let last = y_bytes.len() - 1;
+        y_bytes[last] = self.native_gadget.convert_unsafe(layouter, &last_byte)?;
 
-        Ok(compressed_bytes.try_into().expect("exactly 32 bytes"))
+        Ok(y_bytes.try_into().expect("exactly 32 bytes"))
     }
 
     /// In-circuit decompression of little-endian canonical compressed bytes.
