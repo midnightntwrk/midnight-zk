@@ -290,12 +290,14 @@ where
         .map(|_| -> Result<Vec<_>, _> { read_n(transcript, vk.cs.advice_queries.len()) })
         .collect::<Result<Vec<_>, _>>()?;
 
-    // Read (num_fixed_columns - num_simple_selectors) evals and from the transcript
-    // and fill up the "missing" places with 1 (the transcript doesn't contain evals
-    // corresponding to multiplicative, simple selectors)
+    // Read one eval per non-simple-selector fixed query from the transcript,
+    // then fill the "missing" places with 1 (the transcript doesn't contain evals
+    // corresponding to multiplicative, simple selectors).
+    // We count queries (not unique columns) because the same column can appear
+    // multiple times in fixed_queries at different rotation points.
     let mut fixed_evals = read_n(
         transcript,
-        vk.cs.num_fixed_columns() - vk.cs.num_simple_selectors(),
+        vk.cs.fixed_queries().len() - vk.cs.num_simple_selectors(),
     )?;
     for (idx, (col, _)) in vk.cs.fixed_queries().iter().enumerate() {
         if vk.cs.has_simple_selector_col(col.index()) {

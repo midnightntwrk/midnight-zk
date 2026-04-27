@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `fewer-point-sets` feature to reduce the number of distinct multi-open point sets [#281](https://github.com/midnightntwrk/midnight-zk/pull/281)
 
 ### Fixed
+* Fix verifier evals bug [#356](https://github.com/midnightntwrk/midnight-zk/pull/356)
 * Fix broken intra-doc links to private `Polynomial::padded_add` and `padded_sub` [#287](https://github.com/midnightntwrk/midnight-zk/pull/287)
 * Fix cost model to account for committed instance column evaluations [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 * Increase number of blinding factors to account for logup helper polynomials [#312](https://github.com/midnightntwrk/midnight-zk/pull/312)
