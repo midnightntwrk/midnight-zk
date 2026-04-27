@@ -295,13 +295,10 @@ where
     // corresponding to multiplicative, simple selectors).
     // We count queries (not unique columns) because the same column can appear
     // multiple times in fixed_queries at different rotation points.
-    let num_non_selector_fixed_queries = vk
-        .cs
-        .fixed_queries()
-        .iter()
-        .filter(|(col, _)| !vk.cs.has_simple_selector_col(col.index()))
-        .count();
-    let mut fixed_evals = read_n(transcript, num_non_selector_fixed_queries)?;
+    let mut fixed_evals = read_n(
+        transcript,
+        vk.cs.fixed_queries().len() - vk.cs.num_simple_selectors(),
+    )?;
     for (idx, (col, _)) in vk.cs.fixed_queries().iter().enumerate() {
         if vk.cs.has_simple_selector_col(col.index()) {
             fixed_evals.insert(idx, F::ONE)
