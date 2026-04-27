@@ -43,6 +43,7 @@ verification keys break backwards compatibility.
 * Minor type renames [#241](https://github.com/midnightntwrk/midnight-zk/pull/241)
 * Adapting examples to the lazy automaton loading [#232](https://github.com/midnightntwrk/midnight-zk/pull/232)
 * Adapting examples to the lazy automaton loading [#232](https://github.com/midnightntwrk/midnight-zk/pull/232) and [#234](https://github.com/midnightntwrk/midnight-zk/pull/234/changes)
+* Add `from/to_canonical_compressed_bytes` to foreign Edwards chip [#354](https://github.com/midnightntwrk/midnight-zk/pull/354)
 
 ### Removed
 * Move Blake2b and SHA3-256/Keccak256 implementations to zk-stdlib [#178](https://github.com/midnightntwrk/midnight-zk/pull/178)

@@ -75,6 +75,7 @@ verification keys break backwards compatibility.
 * Optimize `mul` and `square` in `BigUintGadget` with `F::add_and_mul` [#260](https://github.com/midnightntwrk/midnight-zk/pull/260)
 * Adapt `foreign_params_gen.py` to general Weierstrass equations [#282](https://github.com/midnightntwrk/midnight-zk/pull/282)
 * Fix `assigned_to_le` functions in field chip [#303](https://github.com/midnightntwrk/midnight-zk/pull/303)
+* Add `from/to_canonical_compressed_bytes` to foreign Edwards chip [#354](https://github.com/midnightntwrk/midnight-zk/pull/354)
 
 ### Fixed
 * Fix `assign_without_subgroup_check` in Edwards chip to assert the point is on the curve [#298](https://github.com/midnightntwrk/midnight-zk/pull/298)
