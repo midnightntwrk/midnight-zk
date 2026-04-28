@@ -489,8 +489,8 @@ fn plonk_api() {
             #[cfg(feature = "committed-instances")]
             0,
             &[&[&[instance]], &[&[instance]]],
-            rng,
             &mut transcript,
+            rng,
         )
         .expect("proof generation should not fail");
 

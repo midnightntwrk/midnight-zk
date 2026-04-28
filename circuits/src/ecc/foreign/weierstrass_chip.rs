@@ -1708,32 +1708,34 @@ where
             return Ok(cached.clone());
         }
 
-        let r: AssignedForeignPoint<F, C, B> = if let Some(cached) = self.msm_randomness.borrow().get(&1) {
-            cached.r
+        let cached_r = self.msm_randomness.borrow().get(&1).map(|c| c.r.clone());
+        let r: AssignedForeignPoint<F, C, B> = if let Some(r) = cached_r {
+            r
         } else {
-            let p = self.assign_without_subgroup_check(
-                layouter,
-                Value::known(self.random_point)
-            )?;
+            let p =
+                self.assign_without_subgroup_check(layouter, Value::known(self.random_point))?;
 
-            // Cache the random point
-            let randomness = MsmRandomness { r: p.clone(), neg_alpha: p.clone() };
-            self.msm_randomness.borrow_mut().insert(1, randomness.clone());
-
-            // Assert the chosen r is not the identity point.
             self.base_field_chip
                 .native_gadget
-                .assert_equal_to_fixed(layouter, &r.is_id, false)?;
+                .assert_equal_to_fixed(layouter, &p.is_id, false)?;
 
             p
         };
 
+        // Cache the random point from the chip. Note that `neg_alpha` is never used for
+        // the base randomness.
+        let randomness = MsmRandomness {
+            r: r.clone(),
+            neg_alpha: r.clone(),
+        };
+        self.msm_randomness.borrow_mut().insert(1, randomness.clone());
+
         let alpha = self.mul_by_u128(layouter, (1u128 << WS) - 1, &r)?;
         let neg_alpha = self.negate(layouter, &alpha)?;
 
-        let randomness = MsmRandomness { r, neg_alpha };
-        self.msm_randomness.borrow_mut().insert(WS, randomness.clone());
-        Ok(randomness)
+        let windowed_randomness = MsmRandomness { r, neg_alpha };
+        self.msm_randomness.borrow_mut().insert(WS, windowed_randomness.clone());
+        Ok(windowed_randomness)
     }
 
     /// Curve multi-scalar multiplication.
@@ -2043,7 +2045,12 @@ where
         let native_gadget = <N as FromScratch<F>>::new_from_scratch(&config.native_gadget_config);
         let scalar_field_chip =
             <S as FromScratch<F>>::new_from_scratch(&config.scalar_field_config);
-        ForeignWeierstrassEccChip::new(&config.ff_ecc_config, &native_gadget, &scalar_field_chip, OsRng)
+        ForeignWeierstrassEccChip::new(
+            &config.ff_ecc_config,
+            &native_gadget,
+            &scalar_field_chip,
+            OsRng,
+        )
     }
 
     fn load_from_scratch(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {

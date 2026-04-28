@@ -68,8 +68,8 @@ pub(crate) fn compute_trace<
     // instances that the verifier receives in committed form.
     #[cfg(feature = "committed-instances")] nb_committed_instances: usize,
     instances: &[&[&[F]]],
-    rng: &mut (impl RngCore + CryptoRng),
     transcript: &mut T,
+    rng: &mut (impl RngCore + CryptoRng),
 ) -> Result<ProverTrace<F>, Error>
 where
     CS::Commitment: Hashable<T::Hash>,
@@ -247,9 +247,8 @@ pub(crate) fn finalise_proof<'a, F, CS: PolynomialCommitmentScheme<F>, T: Transc
     // instances that the verifier receives in committed form.
     #[cfg(feature = "committed-instances")] nb_committed_instances: usize,
     trace: ProverTrace<F>,
-    rng: &mut (impl RngCore + CryptoRng),
     transcript: &mut T,
-    rng: impl RngCore,
+    rng: &mut (impl RngCore + CryptoRng),
 ) -> Result<(), Error>
 where
     CS::Commitment: Hashable<T::Hash>,
@@ -357,8 +356,8 @@ pub fn create_proof<
     circuits: &[ConcreteCircuit],
     #[cfg(feature = "committed-instances")] nb_committed_instances: usize,
     instances: &[&[&[F]]],
-    mut rng: impl RngCore + CryptoRng,
     transcript: &mut T,
+    mut rng: impl RngCore + CryptoRng,
 ) -> Result<(), Error>
 where
     CS::Commitment: Hashable<T::Hash>,
@@ -369,7 +368,6 @@ where
         + Ord
         + FromUniformBytes<64>,
 {
-    let mut rng = rng;
     let trace = compute_trace(
         params,
         pk,
@@ -377,8 +375,8 @@ where
         #[cfg(feature = "committed-instances")]
         nb_committed_instances,
         instances,
-        &mut rng,
         transcript,
+        &mut rng,
     )?;
     finalise_proof(
         params,
@@ -386,9 +384,8 @@ where
         #[cfg(feature = "committed-instances")]
         nb_committed_instances,
         trace,
-        &mut rng,
         transcript,
-        rng,
+        &mut rng,
     )
 }
 
@@ -982,8 +979,8 @@ fn test_create_proof() {
         #[cfg(feature = "committed-instances")]
         0,
         &[],
-        OsRng,
         &mut transcript,
+        OsRng,
     );
     assert!(matches!(proof.unwrap_err(), Error::InvalidInstances));
 
@@ -995,8 +992,8 @@ fn test_create_proof() {
         #[cfg(feature = "committed-instances")]
         0,
         &[&[], &[]],
-        OsRng,
         &mut transcript,
+        OsRng,
     )
     .expect("proof generation should not fail");
 }

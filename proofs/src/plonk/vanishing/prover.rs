@@ -89,7 +89,7 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
         domain: &EvaluationDomain<F>,
         h_poly: Polynomial<F, ExtendedLagrangeCoeff>,
         transcript: &mut T,
-        rng: &mut (impl RngCore + CryptoRng)
+        rng: &mut (impl RngCore + CryptoRng),
     ) -> Result<Constructed<F>, Error>
     where
         CS::Commitment: Hashable<T::Hash>,

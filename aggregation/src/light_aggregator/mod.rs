@@ -377,8 +377,8 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
             &[aggregator_circuit],
             1,
             &[&[&acc_committed_instances, &aggregator_instances]],
-            &mut rng,
             transcript,
+            &mut rng,
         )?;
 
         // Create the IPA proof
