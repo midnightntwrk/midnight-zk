@@ -989,7 +989,7 @@ where
         scalar_field_chip: &S,
     ) -> Self {
         #[cfg(feature = "deterministic-prover")]
-        let mut rng = ChaCha20Rng::seed_from_u64(0x9F3A7C2E);
+        let mut rng = ChaCha20Rng::seed_from_u64(0x5EEDAB1E);
         #[cfg(not(feature = "deterministic-prover"))]
         let mut rng = OsRng;
         let random_point = C::random(&mut rng).into_subgroup();
