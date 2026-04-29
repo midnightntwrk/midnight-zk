@@ -290,8 +290,8 @@ fn criterion_benchmark(c: &mut Criterion) {
             #[cfg(feature = "committed-instances")]
             0,
             &[&[]],
-            rng,
             &mut transcript,
+            rng,
         )
         .expect("proof generation should not fail");
         transcript.finalize()
