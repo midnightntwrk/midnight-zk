@@ -655,6 +655,34 @@ fn test_rotate() {
 }
 
 #[test]
+fn test_lagrange_to_coeff_and_extended_matches_unfused() {
+    use midnight_curves::Fq as Scalar;
+    use rand_core::OsRng;
+
+    // Multiple (k, j) shapes to cover non-trivial extension factors.
+    for &(k, j) in &[(3u32, 2u32), (4, 2), (4, 4), (5, 4), (6, 4)] {
+        let domain = EvaluationDomain::<Scalar>::new(j, k);
+        let mut poly = domain.empty_lagrange();
+        for value in poly.iter_mut() {
+            *value = Scalar::random(OsRng);
+        }
+
+        let (fused_coeff, fused_ext) = domain.lagrange_to_coeff_and_extended(poly.clone());
+        let unfused_coeff = domain.lagrange_to_coeff(poly.clone());
+        let unfused_ext = domain.coeff_to_extended(unfused_coeff.clone());
+
+        assert_eq!(
+            fused_coeff.values, unfused_coeff.values,
+            "coeff (k={k}, j={j})"
+        );
+        assert_eq!(
+            fused_ext.values, unfused_ext.values,
+            "extended (k={k}, j={j})"
+        );
+    }
+}
+
+#[test]
 fn test_l_i() {
     use midnight_curves::Fq;
     use rand_core::OsRng;
