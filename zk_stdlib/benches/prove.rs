@@ -36,8 +36,8 @@ type Signature = (K256Base, K256Scalar);
 
 // SHA256("BIP0340/challenge") tag used in Bitcoin Schnorr signatures.
 const TAG_PREIMAGE: [u8; 17] = [
-    0x42, 0x49, 0x50, 0x30, 0x33, 0x34, 0x30, 0x2f, 0x63, 0x68, 0x61, 0x6c, 0x6c, 0x65, 0x6e,
-    0x67, 0x65,
+    0x42, 0x49, 0x50, 0x30, 0x33, 0x34, 0x30, 0x2f, 0x63, 0x68, 0x61, 0x6c, 0x6c, 0x65, 0x6e, 0x67,
+    0x65,
 ];
 
 #[derive(Clone, Default)]
@@ -171,14 +171,14 @@ fn bench_prove(c: &mut Criterion) {
         195, 152, 39, 214, 170, 247, 161, 98, 139, 224, 162, 131,
     ];
     let pk_bytes: [u8; 32] = [
-        179, 21, 213, 119, 148, 98, 81, 244, 98, 197, 69, 237, 108, 48, 37, 32, 206, 5, 247,
-        157, 67, 110, 22, 104, 179, 49, 214, 89, 58, 147, 58, 98,
+        179, 21, 213, 119, 148, 98, 81, 244, 98, 197, 69, 237, 108, 48, 37, 32, 206, 5, 247, 157,
+        67, 110, 22, 104, 179, 49, 214, 89, 58, 147, 58, 98,
     ];
     let sig_bytes: [u8; 64] = [
-        130, 202, 167, 37, 68, 100, 97, 250, 64, 31, 112, 100, 84, 155, 189, 94, 44, 183, 164,
-        69, 191, 116, 182, 25, 49, 201, 43, 66, 204, 112, 124, 32, 49, 8, 60, 245, 140, 215, 44,
-        157, 221, 20, 191, 69, 227, 251, 112, 89, 42, 136, 159, 147, 148, 126, 60, 47, 139, 187,
-        129, 58, 59, 239, 164, 80,
+        130, 202, 167, 37, 68, 100, 97, 250, 64, 31, 112, 100, 84, 155, 189, 94, 44, 183, 164, 69,
+        191, 116, 182, 25, 49, 201, 43, 66, 204, 112, 124, 32, 49, 8, 60, 245, 140, 215, 44, 157,
+        221, 20, 191, 69, 227, 251, 112, 89, 42, 136, 159, 147, 148, 126, 60, 47, 139, 187, 129,
+        58, 59, 239, 164, 80,
     ];
 
     let instance = (parse_bitcoin_point(&pk_bytes), msg_bytes);
@@ -191,7 +191,12 @@ fn bench_prove(c: &mut Criterion) {
     // This catches correctness regressions without adding verification
     // cost to the timed iterations.
     let proof = midnight_zk_stdlib::prove::<BitcoinSigExample, blake2b_simd::State>(
-        &srs, &pk, &relation, &instance, witness.clone(), OsRng,
+        &srs,
+        &pk,
+        &relation,
+        &instance,
+        witness.clone(),
+        OsRng,
     )
     .expect("proof generation failed");
     midnight_zk_stdlib::verify::<BitcoinSigExample, blake2b_simd::State>(
@@ -210,7 +215,12 @@ fn bench_prove(c: &mut Criterion) {
     group.bench_function("bitcoin_sig", |b| {
         b.iter(|| {
             midnight_zk_stdlib::prove::<BitcoinSigExample, blake2b_simd::State>(
-                &srs, &pk, &relation, &instance, witness.clone(), OsRng,
+                &srs,
+                &pk,
+                &relation,
+                &instance,
+                witness.clone(),
+                OsRng,
             )
             .expect("proof generation failed");
         });

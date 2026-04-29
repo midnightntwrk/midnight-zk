@@ -48,7 +48,7 @@ impl<F: WithSmallOrderMulGroup<3> + Ord> Argument<F> {
                 domain.lagrange_from_vec(evaluate(
                     expression,
                     domain.n as usize,
-                    1,
+                    0,
                     fixed_values,
                     advice_values,
                     instance_values,

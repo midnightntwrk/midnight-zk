@@ -1,5 +1,6 @@
 use ff::{PrimeField, WithSmallOrderMulGroup};
 use group::ff::Field;
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use super::{ConstraintSystem, Expression};
 use crate::{
@@ -8,9 +9,10 @@ use crate::{
     utils::arithmetic::parallelize,
 };
 
-/// Return the index in the polynomial of size `isize` after rotation `rot`.
-pub(crate) fn get_rotation_idx(idx: usize, rot: i32, rot_scale: i32, isize: i32) -> usize {
-    (((idx as i32) + (rot * rot_scale)).rem_euclid(isize)) as usize
+#[inline]
+pub(crate) fn get_rotation_idx(idx: usize, rot: i32, log_scale: u32, log_n: u32) -> usize {
+    let mask = (1usize << log_n) - 1;
+    idx.wrapping_add(((rot as isize) << log_scale) as usize) & mask
 }
 
 /// Value used in a calculation
@@ -46,46 +48,6 @@ impl Default for ValueSource {
     }
 }
 
-impl ValueSource {
-    /// Get the value for this source
-    #[allow(clippy::too_many_arguments)]
-    pub fn get<F: Field, B: PolynomialRepresentation>(
-        &self,
-        rotations: &[usize],
-        constants: &[F],
-        intermediates: &[F],
-        fixed_values: &[Polynomial<F, B>],
-        advice_values: &[Polynomial<F, B>],
-        instance_values: &[Polynomial<F, B>],
-        challenges: &[F],
-        beta: &F,
-        theta: &F,
-        trash_challenge: &F,
-        y: &F,
-        previous_value: &F,
-    ) -> F {
-        match self {
-            ValueSource::Constant(idx) => constants[*idx],
-            ValueSource::Intermediate(idx) => intermediates[*idx],
-            ValueSource::Fixed(column_index, rotation) => {
-                fixed_values[*column_index][rotations[*rotation]]
-            }
-            ValueSource::Advice(column_index, rotation) => {
-                advice_values[*column_index][rotations[*rotation]]
-            }
-            ValueSource::Instance(column_index, rotation) => {
-                instance_values[*column_index][rotations[*rotation]]
-            }
-            ValueSource::Challenge(index) => challenges[*index],
-            ValueSource::Beta() => *beta,
-            ValueSource::Theta() => *theta,
-            ValueSource::TrashChallenge() => *trash_challenge,
-            ValueSource::Y() => *y,
-            ValueSource::PreviousValue() => *previous_value,
-        }
-    }
-}
-
 /// Calculation
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Calculation {
@@ -105,60 +67,6 @@ pub enum Calculation {
     Horner(ValueSource, Vec<ValueSource>, ValueSource),
     /// This is a simple assignment
     Store(ValueSource),
-}
-
-impl Calculation {
-    /// Get the resulting value of this calculation
-    #[allow(clippy::too_many_arguments)]
-    pub fn evaluate<F: Field, B: PolynomialRepresentation>(
-        &self,
-        rotations: &[usize],
-        constants: &[F],
-        intermediates: &[F],
-        fixed_values: &[Polynomial<F, B>],
-        advice_values: &[Polynomial<F, B>],
-        instance_values: &[Polynomial<F, B>],
-        challenges: &[F],
-        beta: &F,
-        theta: &F,
-        trash_challenge: &F,
-        y: &F,
-        previous_value: &F,
-    ) -> F {
-        let get_value = |value: &ValueSource| {
-            value.get(
-                rotations,
-                constants,
-                intermediates,
-                fixed_values,
-                advice_values,
-                instance_values,
-                challenges,
-                beta,
-                theta,
-                trash_challenge,
-                y,
-                previous_value,
-            )
-        };
-        match self {
-            Calculation::Add(a, b) => get_value(a) + get_value(b),
-            Calculation::Sub(a, b) => get_value(a) - get_value(b),
-            Calculation::Mul(a, b) => get_value(a) * get_value(b),
-            Calculation::Square(v) => get_value(v).square(),
-            Calculation::Double(v) => get_value(v).double(),
-            Calculation::Negate(v) => -get_value(v),
-            Calculation::Horner(start_value, parts, factor) => {
-                let factor = get_value(factor);
-                let mut value = get_value(start_value);
-                for part in parts.iter() {
-                    value = value * factor + get_value(part);
-                }
-                value
-            }
-            Calculation::Store(v) => get_value(v),
-        }
-    }
 }
 
 /// Wraps a `GraphEvaluator` for lookups with named handles to the evaluator
@@ -206,25 +114,6 @@ pub struct GraphEvaluator<F: PrimeField> {
     pub calculations: Vec<CalculationInfo>,
     /// Number of intermediates
     pub num_intermediates: usize,
-}
-
-/// EvaluationData
-#[derive(Default, Debug)]
-pub struct EvaluationData<F: PrimeField> {
-    /// Intermediates
-    pub intermediates: Vec<F>,
-    /// Rotations
-    pub rotations: Vec<usize>,
-}
-
-impl<F: PrimeField> EvaluationData<F> {
-    /// Resolve a `ValueSource::Intermediate` handle to its computed value.
-    pub fn resolve(&self, vs: ValueSource) -> F {
-        match vs {
-            ValueSource::Intermediate(idx) => self.intermediates[idx],
-            _ => unreachable!("expected Intermediate, got {vs:?}"),
-        }
-    }
 }
 
 /// CalculationInfo
@@ -976,18 +865,15 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
         l_active_row: &Polynomial<F, B>,
         permutation_pk_cosets: &[Polynomial<F, B>],
     ) -> Polynomial<F, B> {
-        let size = B::len(domain);
-        let rot_scale: i32 = 1 << (B::k(domain) - domain.k());
+        let log_scale = B::k(domain) - domain.k();
         let omega = B::omega(domain);
-        let isize = size as i32;
+        let log_n = B::k(domain);
         let one = F::ONE;
 
         let p = &cs.permutation;
 
         let mut values = B::empty(domain);
 
-        // Core expression evaluations
-        let num_threads = rayon::current_num_threads();
         for ((((advice, instance), lookups), trashcans), permutation) in advice
             .iter()
             .zip(instance.iter())
@@ -1004,15 +890,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
             let template = flat.new_values_buffer(&beta, &theta, &trash_challenge, &y);
             parallelize(&mut values, |values, start| {
                 flat.evaluate_chunk::<4, B>(
-                    &template,
-                    values,
-                    start,
-                    fixed,
-                    advice,
-                    instance,
-                    challenges,
-                    rot_scale.trailing_zeros(),
-                    (isize as u32).trailing_zeros(),
+                    &template, values, start, fixed, advice, instance, challenges, log_scale, log_n,
                 );
             });
 
@@ -1025,7 +903,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                 let delta_start = beta * &B::g_coset(domain);
 
                 let permutation_product_cosets: Vec<Polynomial<F, B>> = sets
-                    .iter()
+                    .par_iter()
                     .map(|set| B::coeff_to_self(domain, set.permutation_product_poly.clone()))
                     .collect();
 
@@ -1038,8 +916,8 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                     let mut beta_term = omega.pow_vartime([start as u64, 0, 0, 0]);
                     for (i, value) in values.iter_mut().enumerate() {
                         let idx = start + i;
-                        let r_next = get_rotation_idx(idx, 1, rot_scale, isize);
-                        let r_last = get_rotation_idx(idx, last_rotation.0, rot_scale, isize);
+                        let r_next = get_rotation_idx(idx, 1, log_scale, log_n);
+                        let r_last = get_rotation_idx(idx, last_rotation.0, log_scale, log_n);
 
                         // Enforce only for the first set.
                         // l_0(X) * (1 - z_0(X)) = 0
@@ -1107,7 +985,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
             // Pre-compute all lookup cosets in parallel. This trades peak memory
             // for parallelism: the FFTs for different lookups can now overlap.
             let all_lookup_cosets: Vec<_> = lookups
-                .iter()
+                .par_iter()
                 .map(|lookup| {
                     let helper_cosets: Vec<_> = lookup
                         .helper_polys
@@ -1124,7 +1002,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
             // Pre-compute all trash cosets in parallel (lookup cosets
             // are already pre-computed above).
             let trash_cosets: Vec<_> = trashcans
-                .iter()
+                .par_iter()
                 .map(|trash| B::coeff_to_self(domain, trash.trash_poly.clone()))
                 .collect();
 
@@ -1195,7 +1073,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
 
                 for (i, value) in values.iter_mut().enumerate() {
                     let idx = start + i;
-                    let r_next = get_rotation_idx(idx, 1, rot_scale, isize);
+                    let r_next = get_rotation_idx(idx, 1, log_scale, log_n);
 
                     // --- Lookup constraints ---
                     for (n, (helper_cosets, aggregator_coset, multiplicities_coset)) in
@@ -1212,7 +1090,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
 
                         for (fi, flat) in flat_batch.iter().enumerate() {
                             for (ri, rot) in flat.rotations.iter().enumerate() {
-                                rot_indices[ri] = get_rotation_idx(idx, *rot, rot_scale, isize);
+                                rot_indices[ri] = get_rotation_idx(idx, *rot, log_scale, log_n);
                             }
                             flat.evaluate::<B>(
                                 &mut bufs[fi],
@@ -1256,7 +1134,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                     for (n, trash_poly) in trash_cosets.iter().enumerate() {
                         let flat = &self.trashcans_flat[n];
                         for (ri, rot) in flat.rotations.iter().enumerate() {
-                            rot_indices[ri] = get_rotation_idx(idx, *rot, rot_scale, isize);
+                            rot_indices[ri] = get_rotation_idx(idx, *rot, log_scale, log_n);
                         }
                         let compressed_expression = flat.evaluate::<B>(
                             &mut trash_bufs[n],
@@ -1437,76 +1315,20 @@ impl<F: PrimeField> GraphEvaluator<F> {
             }
         }
     }
-
-    /// Creates a new evaluation structure
-    pub fn instance(&self) -> EvaluationData<F> {
-        EvaluationData {
-            intermediates: vec![F::ZERO; self.num_intermediates],
-            rotations: vec![0usize; self.rotations.len()],
-        }
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub fn evaluate<B: PolynomialRepresentation>(
-        &self,
-        data: &mut EvaluationData<F>,
-        fixed: &[Polynomial<F, B>],
-        advice: &[Polynomial<F, B>],
-        instance: &[Polynomial<F, B>],
-        challenges: &[F],
-        beta: &F,
-        theta: &F,
-        trash_challenge: &F,
-        y: &F,
-        previous_value: &F,
-        idx: usize,
-        rot_scale: i32,
-        isize: i32,
-    ) -> F {
-        // All rotation index values
-        for (rot_idx, rot) in self.rotations.iter().enumerate() {
-            data.rotations[rot_idx] = get_rotation_idx(idx, *rot, rot_scale, isize);
-        }
-
-        // All calculations, with cached intermediate results
-        for calc in self.calculations.iter() {
-            data.intermediates[calc.target] = calc.calculation.evaluate(
-                &data.rotations,
-                &self.constants,
-                &data.intermediates,
-                fixed,
-                advice,
-                instance,
-                challenges,
-                beta,
-                theta,
-                trash_challenge,
-                y,
-                previous_value,
-            );
-        }
-
-        // Return the result of the last calculation (if any)
-        if let Some(calc) = self.calculations.last() {
-            data.intermediates[calc.target]
-        } else {
-            F::ZERO
-        }
-    }
 }
 
 /// Simple evaluation of an expression
 pub fn evaluate<F: Field, B: PolynomialRepresentation>(
     expression: &Expression<F>,
     size: usize,
-    rot_scale: i32,
+    log_scale: u32,
     fixed: &[Polynomial<F, B>],
     advice: &[Polynomial<F, B>],
     instance: &[Polynomial<F, B>],
     challenges: &[F],
 ) -> Vec<F> {
     let mut values = vec![F::ZERO; size];
-    let isize = size as i32;
+    let log_n = size.ilog2();
     parallelize(&mut values, |values, start| {
         for (i, value) in values.iter_mut().enumerate() {
             let idx = start + i;
@@ -1515,15 +1337,15 @@ pub fn evaluate<F: Field, B: PolynomialRepresentation>(
                 &|_| panic!("virtual selectors are removed during optimization"),
                 &|query| {
                     fixed[query.column_index]
-                        [get_rotation_idx(idx, query.rotation.0, rot_scale, isize)]
+                        [get_rotation_idx(idx, query.rotation.0, log_scale, log_n)]
                 },
                 &|query| {
                     advice[query.column_index]
-                        [get_rotation_idx(idx, query.rotation.0, rot_scale, isize)]
+                        [get_rotation_idx(idx, query.rotation.0, log_scale, log_n)]
                 },
                 &|query| {
                     instance[query.column_index]
-                        [get_rotation_idx(idx, query.rotation.0, rot_scale, isize)]
+                        [get_rotation_idx(idx, query.rotation.0, log_scale, log_n)]
                 },
                 &|challenge| challenges[challenge.index()],
                 &|a| -a,
