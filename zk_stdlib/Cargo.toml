@@ -34,7 +34,7 @@ hex-literal = "1.1"
 
 [dev-dependencies]
 criterion = "0.7"
-rand_chacha = "0.3.1"
+rand_chacha = { workspace = true }
 goldenfile = "=1.8.0"
 num-bigint = { workspace = true, features = ["rand"] }
 serde_json = { workspace = true }

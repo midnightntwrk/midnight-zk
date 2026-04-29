@@ -35,11 +35,15 @@ use midnight_proofs::{
 };
 use num_bigint::BigUint;
 use num_traits::One;
-use rand::{CryptoRng, RngCore};
+#[cfg(not(feature = "deterministic-prover"))]
+use rand::rngs::OsRng;
+use rand::RngCore;
+#[cfg(feature = "deterministic-prover")]
+use rand_chacha::{rand_core::SeedableRng, ChaCha20Rng};
 #[cfg(any(test, feature = "testing"))]
 use {
     crate::testing_utils::Sampleable, crate::utils::util::FromScratch,
-    midnight_proofs::plonk::Instance, rand::rngs::OsRng,
+    midnight_proofs::plonk::Instance,
 };
 
 use super::gates::weierstrass::{
@@ -967,8 +971,11 @@ where
         config: &ForeignWeierstrassEccConfig<C>,
         native_gadget: &N,
         scalar_field_chip: &S,
-        mut rng: impl RngCore + CryptoRng,
     ) -> Self {
+        #[cfg(feature = "deterministic-prover")]
+        let mut rng = ChaCha20Rng::seed_from_u64(0x9F3A7C2E);
+        #[cfg(not(feature = "deterministic-prover"))]
+        let mut rng = OsRng;
         let random_point = C::random(&mut rng).into_subgroup();
 
         let base_field_chip = FieldChip::new(&config.base_field_config, native_gadget);
@@ -2045,12 +2052,7 @@ where
         let native_gadget = <N as FromScratch<F>>::new_from_scratch(&config.native_gadget_config);
         let scalar_field_chip =
             <S as FromScratch<F>>::new_from_scratch(&config.scalar_field_config);
-        ForeignWeierstrassEccChip::new(
-            &config.ff_ecc_config,
-            &native_gadget,
-            &scalar_field_chip,
-            OsRng,
-        )
+        ForeignWeierstrassEccChip::new(&config.ff_ecc_config, &native_gadget, &scalar_field_chip)
     }
 
     fn load_from_scratch(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {

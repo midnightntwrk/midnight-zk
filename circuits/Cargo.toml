@@ -30,7 +30,7 @@ subtle = "2.6"
 base64 = "0.13.1"
 lazy_static = "1.5.0"
 goldenfile = { version = "=1.8.0", optional = true }
-rand_chacha = { version = "0.3.1", optional = true }
+rand_chacha = { workspace = true, optional = true }
 
 [dev-dependencies]
 criterion = "0.7"
@@ -53,6 +53,8 @@ heap_profiling = []
 truncated-challenges = ["midnight-proofs/truncated-challenges"]
 # Enable development curves (BN256, Pasta)
 dev-curves = ["midnight-curves/dev-curves", "midnight-proofs/dev-curves"]
+# Enable deterministic proofs
+deterministic-prover = ["rand_chacha"]
 
 [lib]
 bench = false

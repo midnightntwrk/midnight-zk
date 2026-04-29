@@ -106,7 +106,7 @@ use midnight_proofs::{
     utils::SerdeFormat,
 };
 use num_bigint::BigUint;
-use rand::{rngs::OsRng, CryptoRng, RngCore};
+use rand::{CryptoRng, RngCore};
 
 use crate::{
     external::{blake2b::Blake2bWrapper, keccak_sha3::KeccakSha3Wrapper},
@@ -348,17 +348,17 @@ impl ZkStdLib {
         let secp256k1_chip = (config.secp256k1_config.as_ref())
             .zip(secp256k1_scalar_chip.as_ref())
             .map(|(curve_config, scalar_chip)| {
-                ForeignWeierstrassEccChip::new(curve_config, &native_gadget, scalar_chip, OsRng)
+                ForeignWeierstrassEccChip::new(curve_config, &native_gadget, scalar_chip)
             });
         let p256_scalar_chip = (config.p256_scalar_config.as_ref())
             .map(|scalar_config| FieldChip::new(scalar_config, &native_gadget));
         let p256_chip = (config.p256_config.as_ref()).zip(p256_scalar_chip.as_ref()).map(
             |(curve_config, scalar_chip)| {
-                ForeignWeierstrassEccChip::new(curve_config, &native_gadget, scalar_chip, OsRng)
+                ForeignWeierstrassEccChip::new(curve_config, &native_gadget, scalar_chip)
             },
         );
         let bls12_381_chip = (config.bls12_381_config.as_ref()).map(|curve_config| {
-            ForeignWeierstrassEccChip::new(curve_config, &native_gadget, &native_gadget, OsRng)
+            ForeignWeierstrassEccChip::new(curve_config, &native_gadget, &native_gadget)
         });
         let curve25519_scalar_chip = (config.curve25519_scalar_config.as_ref())
             .map(|scalar_config| FieldChip::new(scalar_config, &native_gadget));
