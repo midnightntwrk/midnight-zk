@@ -113,8 +113,8 @@ macro_rules! plonk_api {
                         std::slice::from_ref(circuit),
                         nb_instance_commitments,
                         &[pi],
-                        rng,
                         &mut transcript,
+                        rng,
                     )?;
                     transcript.finalize()
                 };

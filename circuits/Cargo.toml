@@ -1,6 +1,6 @@
 [package]
 name = "midnight-circuits"
-version = "6.0.0"
+version = "6.1.0"
 edition = "2021"
 license-file.workspace = true
 description = "Circuit and gadget implementations for Midnight zero-knowledge proofs"
@@ -12,7 +12,7 @@ group = { workspace = true }
 ff = { workspace = true }
 rustc-hash = "2"
 midnight-curves = "0.2.0"
-midnight-proofs = { version = "0.7.0", default-features = false, features = [
+midnight-proofs = { version = "0.7.1", default-features = false, features = [
     "circuit-params",
     "committed-instances",
 ] }
@@ -30,7 +30,7 @@ subtle = "2.6"
 base64 = "0.13.1"
 lazy_static = "1.5.0"
 goldenfile = { version = "=1.8.0", optional = true }
-rand_chacha = { version = "0.3.1", optional = true }
+rand_chacha = { workspace = true, optional = true }
 
 [dev-dependencies]
 criterion = "0.7"
@@ -53,6 +53,10 @@ heap_profiling = []
 truncated-challenges = ["midnight-proofs/truncated-challenges"]
 # Enable development curves (BN256, Pasta)
 dev-curves = ["midnight-curves/dev-curves", "midnight-proofs/dev-curves"]
+# Enable deterministic proofs. This feature makes the prover deterministic, which breaks the
+# zero-knowledge property and may lead to completeness issues if circuits are chosen adversarially.
+# DO NOT enable this feature in production, only in tests that need to be reproducible.
+deterministic-prover = ["rand_chacha"]
 
 [lib]
 bench = false

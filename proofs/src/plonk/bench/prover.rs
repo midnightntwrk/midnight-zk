@@ -4,7 +4,7 @@ use std::hash::Hash;
 
 use criterion::BenchmarkGroup;
 use ff::{FromUniformBytes, WithSmallOrderMulGroup};
-use rand_core::{CryptoRng, OsRng, RngCore};
+use rand_core::{CryptoRng, RngCore};
 
 use crate::{
     plonk::{
@@ -44,8 +44,8 @@ pub(crate) fn compute_trace<
     // instances that the verifier receives in committed form.
     #[cfg(feature = "committed-instances")] nb_committed_instances: usize,
     instances: &[&[&[F]]],
-    mut rng: impl RngCore + CryptoRng,
     transcript: &mut T,
+    rng: &mut (impl RngCore + CryptoRng),
     group: &mut BenchmarkGroup<criterion::measurement::WallTime>,
 ) -> Result<ProverTrace<F>, Error>
 where
@@ -112,13 +112,13 @@ where
                 || transcript.clone(),
                 |mut t| {
                     let _ = parse_advices::<F, CS, ConcreteCircuit, T>(
-                        params, pk, circuits, instances, &mut t, &mut rng,
+                        params, pk, circuits, instances, &mut t, rng,
                     );
                 },
                 criterion::BatchSize::LargeInput,
             )
         });
-        parse_advices(params, pk, circuits, instances, transcript, &mut rng)?
+        parse_advices(params, pk, circuits, instances, transcript, rng)?
     };
 
     // Sample theta challenge for keeping lookup columns linearly independent
@@ -148,7 +148,7 @@ where
                                         &pk.fixed_values,
                                         &instance.instance_values,
                                         &challenges,
-                                        &mut rng,
+                                        rng,
                                         &mut t,
                                     )
                                 })
@@ -178,7 +178,7 @@ where
                             &pk.fixed_values,
                             &instance.instance_values,
                             &challenges,
-                            &mut rng,
+                            rng,
                             transcript,
                         )
                     })
@@ -212,7 +212,7 @@ where
                                 &instance.instance_values,
                                 beta,
                                 gamma,
-                                &mut rng,
+                                rng,
                                 &mut t,
                             )
                         })
@@ -234,7 +234,7 @@ where
                     &instance.instance_values,
                     beta,
                     gamma,
-                    &mut rng,
+                    rng,
                     transcript,
                 )
             })
@@ -253,7 +253,7 @@ where
                             lookups
                                 .into_iter()
                                 .map(|lookup| {
-                                    lookup.commit_product(pk, params, beta, gamma, &mut rng, &mut t)
+                                    lookup.commit_product(pk, params, beta, gamma, rng, &mut t)
                                 })
                                 .collect::<Result<Vec<_>, _>>()
                         })
@@ -268,9 +268,7 @@ where
                 // Construct and commit to products for each lookup
                 lookups
                     .into_iter()
-                    .map(|lookup| {
-                        lookup.commit_product(pk, params, beta, gamma, &mut rng, transcript)
-                    })
+                    .map(|lookup| lookup.commit_product(pk, params, beta, gamma, rng, transcript))
                     .collect::<Result<Vec<_>, _>>()
             })
             .collect::<Result<Vec<_>, _>>()?
@@ -341,12 +339,12 @@ where
         b.iter_batched(
             || transcript.clone(),
             |mut t| {
-                let _ = vanishing::Argument::<F, CS>::commit(params, domain, &mut rng, &mut t);
+                let _ = vanishing::Argument::<F, CS>::commit(params, domain, rng, &mut t);
             },
             criterion::BatchSize::SmallInput,
         )
     });
-    let vanishing = vanishing::Argument::<F, CS>::commit(params, domain, &mut rng, transcript)?;
+    let vanishing = vanishing::Argument::<F, CS>::commit(params, domain, rng, transcript)?;
 
     // Obtain challenge for keeping all separate gates linearly independent
     let y: F = transcript.squeeze_challenge();
@@ -397,7 +395,7 @@ pub(crate) fn finalise_proof<'a, F, CS: PolynomialCommitmentScheme<F>, T: Transc
     #[cfg(feature = "committed-instances")] nb_committed_instances: usize,
     trace: ProverTrace<F>,
     transcript: &mut T,
-    rng: impl RngCore,
+    rng: &mut (impl RngCore + CryptoRng),
     group: &mut BenchmarkGroup<criterion::measurement::WallTime>,
 ) -> Result<(), Error>
 where
@@ -439,7 +437,7 @@ where
             b.iter_batched(
                 || (transcript.clone(), h_poly.clone(), vanishing.clone()),
                 |(mut t, h, v)| {
-                    let _ = v.construct::<CS, T>(params, domain, h, &mut t, OsRng);
+                    let _ = v.construct::<CS, T>(params, domain, h, &mut t, rng);
                 },
                 criterion::BatchSize::PerIteration,
             )
@@ -585,8 +583,8 @@ pub fn benchmark_create_proof<
     circuits: &[ConcreteCircuit],
     #[cfg(feature = "committed-instances")] nb_committed_instances: usize,
     instances: &[&[&[F]]],
-    mut rng: impl RngCore + CryptoRng,
     transcript: &mut T,
+    rng: &mut (impl RngCore + CryptoRng),
     group: &mut BenchmarkGroup<criterion::measurement::WallTime>,
 ) -> Result<(), Error>
 where
@@ -608,8 +606,8 @@ where
         #[cfg(feature = "committed-instances")]
         nb_committed_instances,
         instances,
-        &mut rng,
         transcript,
+        rng,
         group,
     )?;
 

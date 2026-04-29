@@ -35,11 +35,15 @@ use midnight_proofs::{
 };
 use num_bigint::BigUint;
 use num_traits::One;
+#[cfg(not(feature = "deterministic-prover"))]
 use rand::rngs::OsRng;
+use rand::RngCore;
+#[cfg(feature = "deterministic-prover")]
+use rand_chacha::{rand_core::SeedableRng, ChaCha20Rng};
 #[cfg(any(test, feature = "testing"))]
 use {
     crate::testing_utils::Sampleable, crate::utils::util::FromScratch,
-    midnight_proofs::plonk::Instance, rand::RngCore,
+    midnight_proofs::plonk::Instance,
 };
 
 use super::gates::weierstrass::{
@@ -166,6 +170,10 @@ where
     // computations depending on it e.g. α can be cached and reused.
     // Importantly, such cache is keyed by window size.
     msm_randomness: Rc<RefCell<MsmRandomnessMap<F, C, B>>>,
+    // A random point used in windowed_msm (to shift the initial accumulator) so that the
+    // double-and-add loop can internally use incomplete addition. Sampled once at chip
+    // construction time.
+    random_point: C::CryptographicGroup,
 }
 
 /// Type for foreign EC points.
@@ -531,12 +539,12 @@ where
         constant: C::CryptographicGroup,
     ) -> Result<(), Error> {
         if constant.is_identity().into() {
-            self.native_gadget.assert_equal_to_fixed(layouter, &p.is_id, true)
+            self.assert_zero(layouter, p)
         } else {
             let coordinates = constant.into().coordinates().expect("Valid point");
             self.base_field_chip().assert_equal_to_fixed(layouter, &p.x, coordinates.0)?;
             self.base_field_chip().assert_equal_to_fixed(layouter, &p.y, coordinates.1)?;
-            self.native_gadget.assert_equal_to_fixed(layouter, &p.is_id, false)
+            self.assert_non_zero(layouter, p)
         }
     }
 
@@ -547,7 +555,7 @@ where
         constant: C::CryptographicGroup,
     ) -> Result<(), Error> {
         if constant.is_identity().into() {
-            self.native_gadget.assert_equal_to_fixed(layouter, &p.is_id, false)
+            self.assert_non_zero(layouter, p)
         } else {
             let equal = self.is_equal_to_fixed(layouter, p, constant)?;
             self.native_gadget.assert_equal_to_fixed(layouter, &equal, false)
@@ -633,6 +641,22 @@ where
     S::Scalar: InnerValue<Element = C::ScalarField>,
     N: NativeInstructions<F>,
 {
+    fn assert_zero(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &AssignedForeignPoint<F, C, B>,
+    ) -> Result<(), Error> {
+        self.native_gadget.assert_equal_to_fixed(layouter, &x.is_id, true)
+    }
+
+    fn assert_non_zero(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &AssignedForeignPoint<F, C, B>,
+    ) -> Result<(), Error> {
+        self.native_gadget.assert_equal_to_fixed(layouter, &x.is_id, false)
+    }
+
     fn is_zero(
         &self,
         _layouter: &mut impl Layouter<F>,
@@ -956,12 +980,22 @@ where
     N: NativeInstructions<F>,
 {
     /// Given config creates new chip that implements foreign ECC
+    /// The RNG is used to sample a random point used for incomplete addition
+    /// Soundness does not rely on this point being random, but completeness
+    /// does.
     pub fn new(
         config: &ForeignWeierstrassEccConfig<C>,
         native_gadget: &N,
         scalar_field_chip: &S,
     ) -> Self {
+        #[cfg(feature = "deterministic-prover")]
+        let mut rng = ChaCha20Rng::seed_from_u64(0x5EEDAB1E);
+        #[cfg(not(feature = "deterministic-prover"))]
+        let mut rng = OsRng;
+        let random_point = C::random(&mut rng).into_subgroup();
+
         let base_field_chip = FieldChip::new(&config.base_field_config, native_gadget);
+
         Self {
             config: config.clone(),
             native_gadget: native_gadget.clone(),
@@ -969,6 +1003,7 @@ where
             scalar_field_chip: scalar_field_chip.clone(),
             tag_cnt: Rc::new(RefCell::new(1)),
             msm_randomness: Rc::new(RefCell::new(HashMap::new())),
+            random_point,
         }
     }
 
@@ -1696,24 +1731,21 @@ where
             return Ok(cached.clone());
         }
 
-        let r: AssignedForeignPoint<F, C, B> = self.assign_without_subgroup_check(
-            layouter,
-            Value::known(C::CryptographicGroup::random(OsRng)),
-        )?;
-
-        Self::completeness_error_if(&r.point, |p| C::CryptographicGroup::is_identity(p).into())?;
-
-        // Assert the chosen r is not the identity point.
-        self.base_field_chip
-            .native_gadget
-            .assert_equal_to_fixed(layouter, &r.is_id, false)?;
+        // Reuse `r` from any cached window size to avoid unnecessary point assignments.
+        let r = match self.msm_randomness.borrow().values().next().map(|c| c.r.clone()) {
+            Some(r) => r,
+            None => {
+                self.assign_without_subgroup_check(layouter, Value::known(self.random_point))?
+            }
+        };
+        self.assert_non_zero(layouter, &r)?;
 
         let alpha = self.mul_by_u128(layouter, (1u128 << WS) - 1, &r)?;
         let neg_alpha = self.negate(layouter, &alpha)?;
 
-        let randomness = MsmRandomness { r, neg_alpha };
-        self.msm_randomness.borrow_mut().insert(WS, randomness.clone());
-        Ok(randomness)
+        let windowed_randomness = MsmRandomness { r, neg_alpha };
+        self.msm_randomness.borrow_mut().insert(WS, windowed_randomness.clone());
+        Ok(windowed_randomness)
     }
 
     /// Curve multi-scalar multiplication.
@@ -1750,7 +1782,7 @@ where
 
         // Assert that none of the bases is the identity point
         for p in bases.iter() {
-            self.native_gadget.assert_equal_to_fixed(layouter, &p.is_id, false)?
+            self.assert_non_zero(layouter, p)?;
         }
 
         // Pad all the sequences of chunks to have the same length.

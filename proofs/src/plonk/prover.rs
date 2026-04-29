@@ -68,8 +68,8 @@ pub(crate) fn compute_trace<
     // instances that the verifier receives in committed form.
     #[cfg(feature = "committed-instances")] nb_committed_instances: usize,
     instances: &[&[&[F]]],
-    mut rng: impl RngCore + CryptoRng,
     transcript: &mut T,
+    rng: &mut (impl RngCore + CryptoRng),
 ) -> Result<ProverTrace<F>, Error>
 where
     CS::Commitment: Hashable<T::Hash>,
@@ -102,8 +102,7 @@ where
 
     let instance = compute_instances(params, pk, instances, nb_committed_instances, transcript)?;
 
-    let (advice, challenges) =
-        parse_advices(params, pk, circuits, instances, transcript, &mut rng)?;
+    let (advice, challenges) = parse_advices(params, pk, circuits, instances, transcript, rng)?;
 
     // Sample theta challenge for keeping lookup columns linearly independent
     let theta: F = transcript.squeeze_challenge();
@@ -127,7 +126,7 @@ where
                         &pk.fixed_values,
                         &instance.instance_values,
                         &challenges,
-                        &mut rng,
+                        rng,
                         transcript,
                     )
                 })
@@ -155,7 +154,7 @@ where
                 &instance.instance_values,
                 beta,
                 gamma,
-                &mut rng,
+                rng,
                 transcript,
             )
         })
@@ -167,7 +166,7 @@ where
             // Construct and commit to products for each lookup
             lookups
                 .into_iter()
-                .map(|lookup| lookup.commit_product(pk, params, beta, gamma, &mut rng, transcript))
+                .map(|lookup| lookup.commit_product(pk, params, beta, gamma, rng, transcript))
                 .collect::<Result<Vec<_>, _>>()
         })
         .collect::<Result<Vec<_>, _>>()?;
@@ -200,7 +199,7 @@ where
         .collect::<Result<Vec<_>, _>>()?;
 
     // Commit to the vanishing argument's random polynomial for blinding h(x_3)
-    let vanishing = vanishing::Argument::<F, CS>::commit(params, domain, &mut rng, transcript)?;
+    let vanishing = vanishing::Argument::<F, CS>::commit(params, domain, rng, transcript)?;
 
     // Obtain challenge for keeping all separate gates linearly independent
     let y: F = transcript.squeeze_challenge();
@@ -249,7 +248,7 @@ pub(crate) fn finalise_proof<'a, F, CS: PolynomialCommitmentScheme<F>, T: Transc
     #[cfg(feature = "committed-instances")] nb_committed_instances: usize,
     trace: ProverTrace<F>,
     transcript: &mut T,
-    rng: impl RngCore,
+    rng: &mut (impl RngCore + CryptoRng),
 ) -> Result<(), Error>
 where
     CS::Commitment: Hashable<T::Hash>,
@@ -357,8 +356,8 @@ pub fn create_proof<
     circuits: &[ConcreteCircuit],
     #[cfg(feature = "committed-instances")] nb_committed_instances: usize,
     instances: &[&[&[F]]],
-    mut rng: impl RngCore + CryptoRng,
     transcript: &mut T,
+    mut rng: impl RngCore + CryptoRng,
 ) -> Result<(), Error>
 where
     CS::Commitment: Hashable<T::Hash>,
@@ -376,8 +375,8 @@ where
         #[cfg(feature = "committed-instances")]
         nb_committed_instances,
         instances,
-        &mut rng,
         transcript,
+        &mut rng,
     )?;
     finalise_proof(
         params,
@@ -386,7 +385,7 @@ where
         nb_committed_instances,
         trace,
         transcript,
-        rng,
+        &mut rng,
     )
 }
 
@@ -464,7 +463,7 @@ pub(super) fn parse_advices<F, CS, ConcreteCircuit, T>(
     circuits: &[ConcreteCircuit],
     instances: &[&[&[F]]],
     transcript: &mut T,
-    mut rng: impl RngCore + CryptoRng,
+    rng: &mut (impl RngCore + CryptoRng),
 ) -> Result<(Vec<AdviceSingle<F, LagrangeCoeff>>, Vec<F>), Error>
 where
     F: WithSmallOrderMulGroup<3> + Sampleable<T::Hash>,
@@ -556,7 +555,7 @@ where
             for (column_index, advice_values) in column_indices.iter().zip(&mut advice_values) {
                 if !witness.unblinded_advice.contains(column_index) {
                     for cell in &mut advice_values[unusable_rows_start..] {
-                        *cell = F::random(&mut rng);
+                        *cell = F::random(&mut *rng);
                     }
                 } else {
                     #[cfg(debug_assertions)]
@@ -967,33 +966,34 @@ fn test_create_proof() {
 
     const K: u32 = 4;
     let params: ParamsKZG<Bn256> = ParamsKZG::unsafe_setup(K, OsRng);
-    let vk = keygen_vk_with_k(&params, &MyCircuit, K).expect("keygen_vk should not fail");
+    let vk = keygen_vk_with_k::<Fr, KZGCommitmentScheme<Bn256>, _>(&params, &MyCircuit, K)
+        .expect("keygen_vk should not fail");
     let pk = keygen_pk(vk, &MyCircuit).expect("keygen_pk should not fail");
     let mut transcript = CircuitTranscript::<_>::init();
 
     // Create proof with wrong number of instances
-    let proof = create_proof::<Fr, KZGCommitmentScheme<Bn256>, _, _>(
+    let proof = create_proof(
         &params,
         &pk,
         &[MyCircuit, MyCircuit],
         #[cfg(feature = "committed-instances")]
         0,
         &[],
-        OsRng,
         &mut transcript,
+        OsRng,
     );
     assert!(matches!(proof.unwrap_err(), Error::InvalidInstances));
 
     // Create proof with correct number of instances
-    create_proof::<Fr, KZGCommitmentScheme<Bn256>, _, _>(
+    create_proof(
         &params,
         &pk,
         &[MyCircuit, MyCircuit],
         #[cfg(feature = "committed-instances")]
         0,
         &[&[], &[]],
-        OsRng,
         &mut transcript,
+        OsRng,
     )
     .expect("proof generation should not fail");
 }
