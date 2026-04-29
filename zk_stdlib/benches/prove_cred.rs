@@ -7,9 +7,7 @@
 #[macro_use]
 extern crate criterion;
 
-use std::fs::OpenOptions;
-use std::io::Read;
-use std::time::Duration;
+use std::{fs::OpenOptions, io::Read, time::Duration};
 
 use criterion::Criterion;
 use midnight_circuits::{
@@ -45,9 +43,8 @@ const PUB_KEY: &[u8] =
     b"_bDXlQJ636HHOvXSe-flG0f-OkkRu8Jusm93PB2GBjoykg753nsOiW1vhEpCnxxybkMdarJLXIUJIYw1K2emQI";
 
 const HOLDER_SK_BYTES: [u8; 32] = [
-    0xc4, 0xe0, 0x5a, 0x8e, 0xc1, 0x68, 0x35, 0xce, 0x36, 0xf0, 0x9f, 0xcb, 0x94, 0x10, 0x08,
-    0x33, 0xc8, 0x2d, 0xba, 0xe7, 0x85, 0xc0, 0x08, 0x36, 0x87, 0xc2, 0x51, 0xf4, 0x0a, 0xc6,
-    0xa5, 0x5e,
+    0xc4, 0xe0, 0x5a, 0x8e, 0xc1, 0x68, 0x35, 0xce, 0x36, 0xf0, 0x9f, 0xcb, 0x94, 0x10, 0x08, 0x33,
+    0xc8, 0x2d, 0xba, 0xe7, 0x85, 0xc0, 0x08, 0x36, 0x87, 0xc2, 0x51, 0xf4, 0x0a, 0xc6, 0xa5, 0x5e,
 ];
 
 const HEADER_LEN: usize = 38;
@@ -95,8 +92,7 @@ impl Relation for FullCredential {
         let name = FullCredential::get_property(std_lib, layouter, &json, b"givenName", 7)?;
         FullCredential::assert_str_match(std_lib, layouter, &name[1..6], b"Alice")?;
 
-        let birthdate =
-            FullCredential::get_property(std_lib, layouter, &json, b"birthDate", 12)?;
+        let birthdate = FullCredential::get_property(std_lib, layouter, &json, b"birthDate", 12)?;
         let limit = Date {
             day: 1,
             month: 1,
@@ -214,7 +210,11 @@ impl FullCredential {
         str1: &[AssignedByte<F>],
         str2: &[u8],
     ) -> Result<(), Error> {
-        assert_eq!(str1.len(), str2.len(), "Compared string lengths must match.");
+        assert_eq!(
+            str1.len(),
+            str2.len(),
+            "Compared string lengths must match."
+        );
         for (b1, b2) in str1.iter().zip(str2.iter()) {
             std_lib.assert_equal_to_fixed(layouter, b1, *b2)?
         }
@@ -315,7 +315,12 @@ fn bench_prove(c: &mut Criterion) {
 
     // Sanity check: generate one proof and verify it before benchmarking.
     let proof = midnight_zk_stdlib::prove::<FullCredential, blake2b_simd::State>(
-        &srs, &pk, &relation, &instance, witness.clone(), OsRng,
+        &srs,
+        &pk,
+        &relation,
+        &instance,
+        witness.clone(),
+        OsRng,
     )
     .expect("proof generation failed");
     midnight_zk_stdlib::verify::<FullCredential, blake2b_simd::State>(
@@ -334,7 +339,12 @@ fn bench_prove(c: &mut Criterion) {
     group.bench_function("cred_full_k17", |b| {
         b.iter(|| {
             midnight_zk_stdlib::prove::<FullCredential, blake2b_simd::State>(
-                &srs, &pk, &relation, &instance, witness.clone(), OsRng,
+                &srs,
+                &pk,
+                &relation,
+                &instance,
+                witness.clone(),
+                OsRng,
             )
             .expect("proof generation failed");
         });
