@@ -20,7 +20,9 @@ use super::{varlen::ScannerVec, ScannerChip, PARSING_MAX_LEN_BITS};
 use crate::{
     field::AssignedNative,
     instructions::{AssertionInstructions, AssignmentInstructions, RangeCheckInstructions},
+    parsing::scanner::ALPHABET_MAX_SIZE,
     types::AssignedByte,
+    vec::get_lims,
     CircuitField,
 };
 
@@ -128,13 +130,20 @@ where
         v2: &ScannerVec<F, M2, A2>,
     ) -> Result<(), Error> {
         self.native_gadget.assert_equal(layouter, v1.len(), v2.len())?;
-        let zero: AssignedNative<F> = self.native_gadget.assign_fixed(layouter, F::ZERO)?;
-        self.check_bytes_varlen(layouter, v1, &zero, v2)
+        if M1 == M2 && A1 == A2 {
+            for (x, y) in v1.buffer.iter().zip(v2.buffer.iter()) {
+                self.native_gadget.assert_equal(layouter, x, y)?;
+            }
+            Ok(())
+        } else {
+            let zero: AssignedNative<F> = self.native_gadget.assign_fixed(layouter, F::ZERO)?;
+            self.check_bytes_varlen(layouter, v1, &zero, v2)
+        }
     }
 
     /// Asserts that two byte slices of variable and fixed length, respectively,
     /// are element-wise equal. Proceeds by testing equality of the lengths,
-    /// and checks that `v2` is a substring of `v1` at index 0.
+    /// and checks equality of the varlen buffer with a padded slice.
     pub fn assert_equal_varlen_partial<const M: usize, const A: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -143,8 +152,15 @@ where
     ) -> Result<(), Error> {
         self.native_gadget
             .assert_equal_to_fixed(layouter, v1.len(), F::from(v2.len() as u64))?;
-        let zero: AssignedNative<F> = self.native_gadget.assign_fixed(layouter, F::ZERO)?;
-        self.check_bytes_varlen_partial(layouter, v1, &zero, v2)
+        let filler: AssignedNative<F> =
+            self.native_gadget.assign_fixed(layouter, F::from(ALPHABET_MAX_SIZE as u64))?;
+        let mut v2_padded = vec![filler; M];
+        v2_padded[get_lims::<M, A>(v2.len())]
+            .clone_from_slice(&v2.iter().map(AssignedNative::from).collect::<Vec<_>>());
+        for (x, y) in v1.buffer.iter().zip(v2_padded.iter()) {
+            self.native_gadget.assert_equal(layouter, x, y)?;
+        }
+        Ok(())
     }
 }
 

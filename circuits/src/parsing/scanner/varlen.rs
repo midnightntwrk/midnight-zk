@@ -12,26 +12,6 @@
 // limitations under the License.
 
 //! Variable-length vector type for scanner operations.
-//!
-//! A [`ScannerVec`] is built from an [`AssignedVector`] of [`AssignedByte`]s
-//! with the following guarantees enforced in-circuit:
-//!
-//!  - **Payload elements are range-checked** to `[0, 255]` (they originate from
-//!    [`AssignedByte`]s).
-//!  - **Filler elements are constrained to 256** ([`ALPHABET_MAX_SIZE`]),
-//!    making them unmatchable in substring lookup arguments.
-//!  - **Length is anchored**: constrained to equal the number of non-filler
-//!    elements in the buffer.
-//!  - **Padding flags and limits are cached** and available at no extra cost
-//!    after construction.
-//!
-//! The chunk size `A` of the source [`AssignedVector`] determines filler
-//! placement and is preserved in the type.
-//!
-//! These properties make [`ScannerVec`] safe for use in both automaton parsing
-//! ([`ScannerChip::parse_varlen`](super::ScannerChip::parse_varlen)) and
-//! variable-length substring checks
-//! ([`ScannerChip::check_bytes_varlen`](super::ScannerChip::check_bytes_varlen)).
 
 use midnight_proofs::{
     circuit::{Layouter, Value},
@@ -49,14 +29,23 @@ use crate::{
     CircuitField,
 };
 
-/// A variable-length vector with filler elements constrained to
-/// [`ALPHABET_MAX_SIZE`].
+/// A [`ScannerVec`] is built from an [`AssignedVector`] of [`AssignedByte`]s
+/// with the following guarantees enforced in-circuit:
 ///
-/// Stores a promoted buffer where filler positions are constrained to 256,
-/// along with the effective payload length. The chunk size `A` of the
-/// original [`AssignedVector`] is preserved in the type for alignment
-/// purposes. The padding flags and limits are computed once at construction
-/// time and cached.
+///  - **Payload elements are range-checked** to `[0, 255]` (they originate from
+///    [`AssignedByte`]s).
+///  - **Filler elements are constrained to 256** ([`ALPHABET_MAX_SIZE`]),
+///    making them unmatchable in substring lookup arguments.
+///  - **Padding flags and limits are cached** and available at no extra cost
+///    after construction.
+///
+/// The chunk size `A` of the source [`AssignedVector`] determines filler
+/// placement and is preserved in the type.
+///
+/// These properties make [`ScannerVec`] safe for use in both automaton parsing
+/// ([`ScannerChip::parse_varlen`](super::ScannerChip::parse_varlen)) and
+/// variable-length substring checks
+/// ([`ScannerChip::check_bytes_varlen`](super::ScannerChip::check_bytes_varlen)).
 #[derive(Debug, Clone)]
 pub struct ScannerVec<F: CircuitField, const M: usize, const A: usize> {
     /// The effective length of the payload (constrained during construction).
@@ -73,29 +62,16 @@ pub struct ScannerVec<F: CircuitField, const M: usize, const A: usize> {
 
 impl<F: CircuitField, const M: usize, const A: usize> ScannerVec<F, M, A> {
     /// Returns the (start, end) positions of the payload in the buffer.
-    ///
-    /// # Cost
-    ///
-    /// Free: the value was computed during construction and cached.
     pub fn get_limits(&self) -> &(AssignedNative<F>, AssignedNative<F>) {
         &self.limits
     }
 
     /// Returns the per-element padding flags (1 = filler, 0 = payload).
-    ///
-    /// # Cost
-    ///
-    /// Free: the value was computed during construction and cached.
     pub fn padding_flags(&self) -> &[AssignedBit<F>; M] {
         &self.padding_flags
     }
 
     /// Returns the effective length of the payload.
-    ///
-    /// # Cost
-    ///
-    /// Free: the value was computed and constrained during construction and
-    /// cached.
     pub fn len(&self) -> &AssignedNative<F> {
         &self.length
     }
