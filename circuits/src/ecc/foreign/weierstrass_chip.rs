@@ -539,12 +539,12 @@ where
         constant: C::CryptographicGroup,
     ) -> Result<(), Error> {
         if constant.is_identity().into() {
-            self.native_gadget.assert_equal_to_fixed(layouter, &p.is_id, true)
+            self.assert_zero(layouter, p)
         } else {
             let coordinates = constant.into().coordinates().expect("Valid point");
             self.base_field_chip().assert_equal_to_fixed(layouter, &p.x, coordinates.0)?;
             self.base_field_chip().assert_equal_to_fixed(layouter, &p.y, coordinates.1)?;
-            self.native_gadget.assert_equal_to_fixed(layouter, &p.is_id, false)
+            self.assert_non_zero(layouter, p)
         }
     }
 
@@ -555,7 +555,7 @@ where
         constant: C::CryptographicGroup,
     ) -> Result<(), Error> {
         if constant.is_identity().into() {
-            self.native_gadget.assert_equal_to_fixed(layouter, &p.is_id, false)
+            self.assert_non_zero(layouter, p)
         } else {
             let equal = self.is_equal_to_fixed(layouter, p, constant)?;
             self.native_gadget.assert_equal_to_fixed(layouter, &equal, false)
@@ -641,6 +641,22 @@ where
     S::Scalar: InnerValue<Element = C::ScalarField>,
     N: NativeInstructions<F>,
 {
+    fn assert_zero(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &AssignedForeignPoint<F, C, B>,
+    ) -> Result<(), Error> {
+        self.native_gadget.assert_equal_to_fixed(layouter, &x.is_id, true)
+    }
+
+    fn assert_non_zero(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &AssignedForeignPoint<F, C, B>,
+    ) -> Result<(), Error> {
+        self.native_gadget.assert_equal_to_fixed(layouter, &x.is_id, false)
+    }
+
     fn is_zero(
         &self,
         _layouter: &mut impl Layouter<F>,
@@ -1779,7 +1795,7 @@ where
 
         // Assert that none of the bases is the identity point
         for p in bases.iter() {
-            self.native_gadget.assert_equal_to_fixed(layouter, &p.is_id, false)?
+            self.assert_non_zero(layouter, p)?;
         }
 
         // Pad all the sequences of chunks to have the same length.
