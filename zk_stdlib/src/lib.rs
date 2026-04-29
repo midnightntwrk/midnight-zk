@@ -343,8 +343,7 @@ impl ZkStdLib {
             .map(|jubjub_config| EccChip::new(jubjub_config, &native_gadget));
         let sha2_256_chip = (config.sha2_256_config.as_ref())
             .map(|sha256_config| Sha256Chip::new(sha256_config, &native_gadget));
-        let varlen_sha2_256_gadget =
-            sha2_256_chip.as_ref().map(|sha256_chip| VarLenSha256Gadget::new(sha256_chip));
+        let varlen_sha2_256_gadget = sha2_256_chip.as_ref().map(VarLenSha256Gadget::new);
         let sha2_512_chip = (config.sha2_512_config.as_ref())
             .map(|sha512_config| Sha512Chip::new(sha512_config, &native_gadget));
         let poseidon_gadget = (config.poseidon_config.as_ref())
