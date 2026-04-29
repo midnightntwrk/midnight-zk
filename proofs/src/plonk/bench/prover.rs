@@ -4,7 +4,7 @@ use std::hash::Hash;
 
 use criterion::BenchmarkGroup;
 use ff::{FromUniformBytes, WithSmallOrderMulGroup};
-use rand_core::{CryptoRng, OsRng, RngCore};
+use rand_core::{CryptoRng, RngCore};
 
 use crate::{
     plonk::{

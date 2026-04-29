@@ -1731,27 +1731,14 @@ where
             return Ok(cached.clone());
         }
 
-        let cached_r = self.msm_randomness.borrow().get(&1).map(|c| c.r.clone());
-        let r: AssignedForeignPoint<F, C, B> = if let Some(r) = cached_r {
-            r
-        } else {
-            let p =
-                self.assign_without_subgroup_check(layouter, Value::known(self.random_point))?;
-
-            self.base_field_chip
-                .native_gadget
-                .assert_equal_to_fixed(layouter, &p.is_id, false)?;
-
-            p
+        // Reuse `r` from any cached window size to avoid unnecessary point assignments.
+        let r = match self.msm_randomness.borrow().values().next().map(|c| c.r.clone()) {
+            Some(r) => r,
+            None => {
+                self.assign_without_subgroup_check(layouter, Value::known(self.random_point))?
+            }
         };
-
-        // Cache the random point from the chip. Note that `neg_alpha` is never used for
-        // the base randomness.
-        let randomness = MsmRandomness {
-            r: r.clone(),
-            neg_alpha: r.clone(),
-        };
-        self.msm_randomness.borrow_mut().insert(1, randomness.clone());
+        self.assert_non_zero(layouter, &r)?;
 
         let alpha = self.mul_by_u128(layouter, (1u128 << WS) - 1, &r)?;
         let neg_alpha = self.negate(layouter, &alpha)?;
