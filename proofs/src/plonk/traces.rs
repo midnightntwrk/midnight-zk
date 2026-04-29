@@ -5,7 +5,10 @@ use ff::PrimeField;
 
 use crate::{
     plonk::{logup, permutation, trash},
-    poly::{commitment::PolynomialCommitmentScheme, Coeff, LagrangeCoeff, Polynomial},
+    poly::{
+        commitment::PolynomialCommitmentScheme, Coeff, ExtendedLagrangeCoeff, LagrangeCoeff,
+        Polynomial,
+    },
 };
 
 /// Prover's trace of a set of proofs. This type guarantees that the size of the
@@ -13,7 +16,14 @@ use crate::{
 #[derive(Debug)]
 pub struct ProverTrace<F: PrimeField> {
     pub(crate) advice_polys: Vec<Vec<Polynomial<F, Coeff>>>,
+    /// Extended coset evaluations for each advice poly, computed eagerly
+    /// alongside `advice_polys` via `lagrange_to_coeff_and_extended`. Consumed
+    /// by `compute_nu_poly` so the iFFT and forward FFT can share a single
+    /// fused scalar pass between them.
+    pub(crate) advice_cosets: Vec<Vec<Polynomial<F, ExtendedLagrangeCoeff>>>,
     pub(crate) instance_polys: Vec<Vec<Polynomial<F, Coeff>>>,
+    /// See [`Self::advice_cosets`].
+    pub(crate) instance_cosets: Vec<Vec<Polynomial<F, ExtendedLagrangeCoeff>>>,
     #[allow(dead_code)]
     // This field will be useful for split accumulation
     pub(crate) instance_values: Vec<Vec<Polynomial<F, LagrangeCoeff>>>,

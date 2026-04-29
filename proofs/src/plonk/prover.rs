@@ -408,22 +408,35 @@ where
     // Obtain challenge for keeping all separate gates linearly independent
     let y: F = transcript.squeeze_challenge();
 
-    let (instance_polys, instance_values) =
-        instance.into_iter().map(|i| (i.instance_polys, i.instance_values)).unzip();
+    // Pull instance data out of `InstanceSingle`. The Coeff and extended-coset
+    // forms were already produced jointly via `lagrange_to_coeff_and_extended`
+    // in `compute_instances`, so no extra FFT work happens here.
+    let mut instance_polys = Vec::with_capacity(instance.len());
+    let mut instance_cosets = Vec::with_capacity(instance.len());
+    let mut instance_values = Vec::with_capacity(instance.len());
+    for i in instance {
+        instance_polys.push(i.instance_polys);
+        instance_cosets.push(i.instance_cosets);
+        instance_values.push(i.instance_values);
+    }
 
-    let advice_polys = advice
+    // For advice, do the Lagrange → (Coeff, Extended) conversion in a single
+    // fused pass, populating both forms of the trace at once.
+    let (advice_polys, advice_cosets): (Vec<_>, Vec<_>) = advice
         .into_iter()
         .map(|a| {
             a.advice_polys
                 .into_par_iter()
-                .map(|p| domain.lagrange_to_coeff(p))
-                .collect::<Vec<_>>()
+                .map(|p| domain.lagrange_to_coeff_and_extended(p))
+                .unzip::<_, _, Vec<_>, Vec<_>>()
         })
-        .collect::<Vec<_>>();
+        .unzip();
 
     Ok(ProverTrace {
         advice_polys,
+        advice_cosets,
         instance_polys,
+        instance_cosets,
         instance_values,
         lookups,
         trashcans,
@@ -681,17 +694,18 @@ where
                 })
                 .collect::<Result<Vec<_>, _>>()?;
 
-            let instance_polys: Vec<_> = instance_values
+            let (instance_polys, instance_cosets): (Vec<_>, Vec<_>) = instance_values
                 .iter()
                 .map(|poly| {
                     let lagrange_vec = pk.vk.domain.lagrange_from_vec(poly.to_vec());
-                    pk.vk.domain.lagrange_to_coeff(lagrange_vec)
+                    pk.vk.domain.lagrange_to_coeff_and_extended(lagrange_vec)
                 })
-                .collect();
+                .unzip();
 
             Ok(InstanceSingle {
                 instance_values,
                 instance_polys,
+                instance_cosets,
             })
         })
         .collect::<Result<Vec<_>, _>>()
@@ -838,8 +852,8 @@ pub(super) fn compute_nu_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommit
     trace: &ProverTrace<F>,
 ) -> Polynomial<F, ExtendedLagrangeCoeff> {
     let ProverTrace {
-        advice_polys,
-        instance_polys,
+        advice_cosets,
+        instance_cosets,
         lookups,
         trashcans,
         permutations,
@@ -851,25 +865,8 @@ pub(super) fn compute_nu_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommit
         y,
         ..
     } = &trace;
-    // Calculate the advice and instance cosets
-    let advice_cosets: Vec<Vec<Polynomial<F, ExtendedLagrangeCoeff>>> = advice_polys
-        .iter()
-        .map(|advice_polys| {
-            advice_polys
-                .par_iter()
-                .map(|poly| pk.vk.get_domain().coeff_to_extended(poly.clone()))
-                .collect()
-        })
-        .collect();
-    let instance_cosets: Vec<Vec<Polynomial<F, ExtendedLagrangeCoeff>>> = instance_polys
-        .iter()
-        .map(|instance_polys| {
-            instance_polys
-                .par_iter()
-                .map(|poly| pk.vk.get_domain().coeff_to_extended(poly.clone()))
-                .collect()
-        })
-        .collect();
+    // Advice and instance cosets were produced eagerly in `compute_trace` via
+    // the fused `lagrange_to_coeff_and_extended`, so no FFT work happens here.
 
     // Evaluate the numerator polynomial nu(X) of the quotient polynomial
     // h(X) = nu(X) / (X^n-1): nu(X) is a random linear combination of all
@@ -1064,6 +1061,10 @@ pub(super) fn compute_queries<
 pub(super) struct InstanceSingle<F: PrimeField> {
     pub instance_values: Vec<Polynomial<F, LagrangeCoeff>>,
     pub instance_polys: Vec<Polynomial<F, Coeff>>,
+    /// Extended-domain coset evaluations, computed eagerly via
+    /// `lagrange_to_coeff_and_extended` so the iFFT and forward FFT share
+    /// a single fused scalar pass.
+    pub instance_cosets: Vec<Polynomial<F, ExtendedLagrangeCoeff>>,
 }
 
 #[derive(Clone)]

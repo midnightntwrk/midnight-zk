@@ -177,6 +177,49 @@ pub fn parallelize<T: Send, F: Fn(&mut [T], usize) + Send + Sync + Clone>(v: &mu
     });
 }
 
+/// Like [`parallelize`] but iterates over two slices of the same length
+/// jointly. The closure receives the matching chunks of each slice and the
+/// global starting offset of the chunk.
+pub fn parallelize_two<T, U, F>(a: &mut [T], b: &mut [U], f: F)
+where
+    T: Send,
+    U: Send,
+    F: Fn(&mut [T], &mut [U], usize) + Send + Sync + Clone,
+{
+    assert_eq!(a.len(), b.len());
+
+    let total_iters = a.len();
+    let num_threads = rayon::current_num_threads();
+    let base_chunk_size = total_iters / num_threads;
+    let cutoff_chunk_id = total_iters % num_threads;
+    let split_pos = cutoff_chunk_id * (base_chunk_size + 1);
+    let (a_hi, a_lo) = a.split_at_mut(split_pos);
+    let (b_hi, b_lo) = b.split_at_mut(split_pos);
+
+    let f = &f;
+    rayon::scope(|scope| {
+        if cutoff_chunk_id != 0 {
+            let large = base_chunk_size + 1;
+            for (chunk_id, (a_chunk, b_chunk)) in
+                a_hi.chunks_exact_mut(large).zip(b_hi.chunks_exact_mut(large)).enumerate()
+            {
+                let offset = chunk_id * large;
+                scope.spawn(move |_| f(a_chunk, b_chunk, offset));
+            }
+        }
+        if base_chunk_size != 0 {
+            for (chunk_id, (a_chunk, b_chunk)) in a_lo
+                .chunks_exact_mut(base_chunk_size)
+                .zip(b_lo.chunks_exact_mut(base_chunk_size))
+                .enumerate()
+            {
+                let offset = split_pos + (chunk_id * base_chunk_size);
+                scope.spawn(move |_| f(a_chunk, b_chunk, offset));
+            }
+        }
+    });
+}
+
 /// Returns coefficients of an n - 1 degree polynomial given a set of n points
 /// and their evaluations. This function will panic if two values in `points`
 /// are the same.

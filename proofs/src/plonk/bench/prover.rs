@@ -464,22 +464,30 @@ where
     // Obtain challenge for keeping all separate gates linearly independent
     let y: F = transcript.squeeze_challenge();
 
-    let (instance_polys, instance_values) =
-        instance.into_iter().map(|i| (i.instance_polys, i.instance_values)).unzip();
+    let mut instance_polys = Vec::with_capacity(instance.len());
+    let mut instance_cosets = Vec::with_capacity(instance.len());
+    let mut instance_values = Vec::with_capacity(instance.len());
+    for i in instance {
+        instance_polys.push(i.instance_polys);
+        instance_cosets.push(i.instance_cosets);
+        instance_values.push(i.instance_values);
+    }
 
-    let advice_polys = advice
+    let (advice_polys, advice_cosets): (Vec<_>, Vec<_>) = advice
         .into_iter()
         .map(|a| {
             a.advice_polys
                 .into_iter()
-                .map(|p| domain.lagrange_to_coeff(p))
-                .collect::<Vec<_>>()
+                .map(|p| domain.lagrange_to_coeff_and_extended(p))
+                .unzip::<_, _, Vec<_>, Vec<_>>()
         })
-        .collect::<Vec<_>>();
+        .unzip();
 
     Ok(ProverTrace {
         advice_polys,
+        advice_cosets,
         instance_polys,
+        instance_cosets,
         instance_values,
         lookups,
         trashcans,

@@ -8,7 +8,10 @@ use group::ff::{BatchInvert, Field};
 use midnight_curves::fft::{best_fft_with_twiddles, compute_twiddles, fft_coeff_to_extended};
 
 use super::{Coeff, ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial, Rotation};
-use crate::utils::{arithmetic::parallelize, rational::Rational};
+use crate::utils::{
+    arithmetic::{parallelize, parallelize_two},
+    rational::Rational,
+};
 
 /// Precomputed twiddle factors for the FFT.
 ///
@@ -274,6 +277,79 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
             values: a.values,
             _marker: PhantomData,
         }
+    }
+
+    /// This takes us from an n-length Lagrange-form polynomial directly to
+    /// **both** its coefficient form and its coset-of-extended-domain
+    /// evaluation form, in a single fused pass between the inverse and
+    /// forward FFTs.
+    ///
+    /// Equivalent to `(lagrange_to_coeff(p), coeff_to_extended(p.clone()))`,
+    /// but saves two full memory sweeps over n elements: the post-iFFT
+    /// `× ifft_divisor` scale and the pre-FFT `distribute_powers_zeta` twist
+    /// are folded into the single pass that also writes both output buffers
+    /// (the input `Vec` is re-used as the coefficient buffer; the extended
+    /// buffer is freshly allocated at full extended length, zero-padded).
+    ///
+    /// Use this when the caller needs both representations — i.e. when a
+    /// polynomial will be both opened (Coeff) and consumed by
+    /// `evaluate_numerator` (Extended). When only one is needed, prefer
+    /// [`Self::lagrange_to_coeff`] or
+    /// `lagrange_to_coeff(...) -> coeff_to_extended(...)` directly.
+    pub fn lagrange_to_coeff_and_extended(
+        &self,
+        mut a: Polynomial<F, LagrangeCoeff>,
+    ) -> (Polynomial<F, Coeff>, Polynomial<F, ExtendedLagrangeCoeff>) {
+        let n = a.values.len();
+        assert_eq!(n, 1 << self.k);
+        let extended_len = self.extended_len();
+
+        // 1. Inverse FFT in place. We omit the `× ifft_divisor` scale here — it is
+        //    folded into the fused pass below.
+        best_fft_with_twiddles(&mut a.values, &self.twiddles.omega_inv, self.k);
+
+        // 2. Allocate the extended buffer (zero-padded out to extended_len).
+        let mut ext_values = vec![F::ZERO; extended_len];
+
+        // 3. Single fused pass over the n-element prefix: coeff[i] = ifft_out[i] ·
+        //    ifft_divisor ext[i]   = coeff[i]    · ζ^(i mod 3) where ζ = g_coset is a
+        //    cube root of unity, so the twist cycles through `[1, ζ, ζ²]`. This
+        //    replaces the post-iFFT divisor scale (pass A) and the pre-FFT
+        //    `distribute_powers_zeta` twist (pass B) with a single read-and-write-twice
+        //    sweep.
+        let coset_factors = [F::ONE, self.g_coset, self.g_coset_inv];
+        let divisor = self.ifft_divisor;
+        parallelize_two(
+            &mut a.values,
+            &mut ext_values[..n],
+            |coeff_chunk, ext_chunk, start| {
+                for (i, (c, e)) in coeff_chunk.iter_mut().zip(ext_chunk.iter_mut()).enumerate() {
+                    let scaled = *c * divisor;
+                    *c = scaled;
+                    *e = scaled * coset_factors[(start + i) % 3];
+                }
+            },
+        );
+
+        // 4. Forward FFT on the extended buffer using the pruned DIF path —
+        //    only the first `n` entries are non-zero, which is exactly the
+        //    zero-padded structure its early-stage skip exploits.
+        fft_coeff_to_extended(
+            &mut ext_values,
+            &self.twiddles.extended_omega,
+            self.extended_k,
+            n,
+        );
+
+        let coeff = Polynomial {
+            values: a.values,
+            _marker: PhantomData,
+        };
+        let extended = Polynomial {
+            values: ext_values,
+            _marker: PhantomData,
+        };
+        (coeff, extended)
     }
 
     /// This takes us from an n-length coefficient vector into a coset of the
