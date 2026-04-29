@@ -829,8 +829,8 @@ mod tests {
             #[cfg(feature = "committed-instances")]
             0,
             &[instances],
-            OsRng,
             &mut transcript,
+            OsRng,
         )
         .expect("proof generation should not fail");
 

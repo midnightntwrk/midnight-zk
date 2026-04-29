@@ -997,8 +997,8 @@ pub(crate) mod tests {
                 &[InnerCircuit::from_witness(preimage)],
                 1,
                 &[&[&[], &inner_public_inputs]],
-                &mut rng,
                 &mut transcript,
+                &mut rng,
             )
             .unwrap_or_else(|_| panic!("Problem creating the inner proof"));
             transcript.finalize()

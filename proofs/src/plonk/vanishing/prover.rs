@@ -2,7 +2,7 @@ use std::{collections::HashMap, iter};
 
 use ff::{PrimeField, WithSmallOrderMulGroup};
 use rand_chacha::ChaCha20Rng;
-use rand_core::{RngCore, SeedableRng};
+use rand_core::{CryptoRng, RngCore, SeedableRng};
 use rayon::current_num_threads;
 
 use super::Argument;
@@ -34,10 +34,10 @@ pub(crate) struct Evaluated<F: PrimeField> {
 }
 
 impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Argument<F, CS> {
-    pub(crate) fn commit<R: RngCore, T: Transcript>(
+    pub(crate) fn commit<T: Transcript>(
         params: &CS::Parameters,
         domain: &EvaluationDomain<F>,
-        mut rng: R,
+        rng: &mut (impl RngCore + CryptoRng),
         transcript: &mut T,
     ) -> Result<Committed<F>, Error>
     where
@@ -89,7 +89,7 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
         domain: &EvaluationDomain<F>,
         h_poly: Polynomial<F, ExtendedLagrangeCoeff>,
         transcript: &mut T,
-        rng: impl RngCore,
+        rng: &mut (impl RngCore + CryptoRng),
     ) -> Result<Constructed<F>, Error>
     where
         CS::Commitment: Hashable<T::Hash>,
@@ -135,12 +135,15 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
     }
 }
 
-fn blind_quotient_limbs<F: PrimeField>(quotient_limbs: &mut [Vec<F>], mut rng: impl RngCore) {
+fn blind_quotient_limbs<F: PrimeField>(
+    quotient_limbs: &mut [Vec<F>],
+    rng: &mut (impl RngCore + CryptoRng),
+) {
     let nr_limbs = quotient_limbs.len();
     assert!(nr_limbs >= 2);
 
     for i in 1..nr_limbs {
-        let t = F::random(&mut rng);
+        let t = F::random(&mut *rng);
         quotient_limbs[i - 1].push(t);
         quotient_limbs[i][0] -= t;
     }

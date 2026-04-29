@@ -48,7 +48,11 @@ verification keys break backwards compatibility.
 ### Removed
 * Move Blake2b and SHA3-256/Keccak256 implementations to zk-stdlib [#178](https://github.com/midnightntwrk/midnight-zk/pull/178)
 
-## 1.0.0
+## [1.1.0]
+### Changed
+* Update `prove` to accept `impl RngCore + CryptoRng` by value [#307](https://github.com/midnightntwrk/midnight-zk/pull/307)
+
+## [1.0.0] 
 ### Added
 - Initial release of zk_stdlib extracted from circuits crate
 
