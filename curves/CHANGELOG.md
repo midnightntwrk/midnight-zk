@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 
 ## [Unreleased]
 ### Added
+
+### Changed
+
+### Removed
+
+## 0.3.0
+### Added
 * Add Curve25519 [#181](https://github.com/midnightntwrk/midnight-zk/pull/181)
 * Add `k256` module [#189](https://github.com/midnightntwrk/midnight-zk/pull/189), [#191](https://github.com/midnightntwrk/midnight-zk/pull/191)
 * Update READMEs and add badges [#261](https://github.com/midnightntwrk/midnight-zk/pull/261)

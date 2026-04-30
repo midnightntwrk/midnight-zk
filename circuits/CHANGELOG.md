@@ -11,6 +11,13 @@ verification keys break backwards compatibility.
 * PATCH: Incremented when you make backward-compatible bug fixes
 
 ## [Unreleased]
+### Added
+
+### Changed
+
+### Removed
+
+## [7.0.0]
 ### Changed
 * `FromScratch::configure_from_scratch` now takes shared `advice_columns` and `fixed_columns` pools [#306](https://github.com/midnightntwrk/midnight-zk/pull/306)
 * Optimize foreign Edwards MSM: windowed scalar multiplication and improved point addition [#305](https://github.com/midnightntwrk/midnight-zk/pull/305)
