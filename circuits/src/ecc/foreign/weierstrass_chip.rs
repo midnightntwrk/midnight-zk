@@ -35,15 +35,11 @@ use midnight_proofs::{
 };
 use num_bigint::BigUint;
 use num_traits::One;
-#[cfg(not(feature = "deterministic-prover"))]
 use rand::rngs::OsRng;
-use rand::RngCore;
-#[cfg(feature = "deterministic-prover")]
-use rand_chacha::{rand_core::SeedableRng, ChaCha20Rng};
 #[cfg(any(test, feature = "testing"))]
 use {
     crate::testing_utils::Sampleable, crate::utils::util::FromScratch,
-    midnight_proofs::plonk::Instance,
+    midnight_proofs::plonk::Instance, rand::RngCore,
 };
 
 use super::gates::weierstrass::{
@@ -988,9 +984,6 @@ where
         native_gadget: &N,
         scalar_field_chip: &S,
     ) -> Self {
-        #[cfg(feature = "deterministic-prover")]
-        let mut rng = ChaCha20Rng::seed_from_u64(0x5EEDAB1E);
-        #[cfg(not(feature = "deterministic-prover"))]
         let mut rng = OsRng;
         let random_point = C::random(&mut rng).into_subgroup();
 
