@@ -53,10 +53,7 @@ heap_profiling = []
 truncated-challenges = ["midnight-proofs/truncated-challenges"]
 # Enable development curves (BN256, Pasta)
 dev-curves = ["midnight-curves/dev-curves", "midnight-proofs/dev-curves"]
-# Enable deterministic proofs. This feature makes the prover deterministic, which breaks the
-# zero-knowledge property and may lead to completeness issues if circuits are chosen adversarially.
-# DO NOT enable this feature in production, only in tests that need to be reproducible.
-deterministic-prover = ["rand_chacha"]
+
 
 [lib]
 bench = false
