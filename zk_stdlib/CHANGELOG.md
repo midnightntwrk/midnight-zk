@@ -17,6 +17,7 @@ verification keys break backwards compatibility.
 * Use `Blake2b256` transcript hash in the `bitcoin_signature` example [#322](https://github.com/midnightntwrk/midnight-zk/pull/322)
 * Removed outdated identity examples and restructured identity example crate [#330](https://github.com/midnightntwrk/midnight-zk/pull/330)
 * Exposing varlen hashes, and minor additional function exposure [#331](https://github.com/midnightntwrk/midnight-zk/pull/331)
+* Negligible regression (1 row) in examples involving substring checks [#332](https://github.com/midnightntwrk/midnight-zk/pull/332)
 
 ### Added
 * Expose P-256 (secp256r1) chip via `ZkStdLib::p256_curve` and `ZkStdLib::p256_scalar` [#317](https://github.com/midnightntwrk/midnight-zk/pull/317)
