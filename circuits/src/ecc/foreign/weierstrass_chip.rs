@@ -39,8 +39,7 @@ use rand::rngs::OsRng;
 #[cfg(any(test, feature = "testing"))]
 use {
     crate::testing_utils::Sampleable, crate::utils::util::FromScratch,
-    midnight_proofs::plonk::Instance,
-    rand::RngCore
+    midnight_proofs::plonk::Instance, rand::RngCore,
 };
 
 use super::gates::weierstrass::{
