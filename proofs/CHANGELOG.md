@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Blind logup multiplicities polynomial on non-usable rows for ZK [#312](https://github.com/midnightntwrk/midnight-zk/pull/312)
 
 ### Changed
+* Store SRS as affine and use an affine MSM path in KZG [#350](https://github.com/midnightntwrk/midnight-zk/pull/350)
+* Cache twiddle factors in `EvaluationDomain` and use a pruned DIF FFT for `coeff_to_extended` [#352](https://github.com/midnightntwrk/midnight-zk/pull/352)
+* Flatten and batch the graph evaluator for custom gates, lookups, and trash [#351](https://github.com/midnightntwrk/midnight-zk/pull/351)
+* Parallelize logup, permutation, and SHPLONK [#353](https://github.com/midnightntwrk/midnight-zk/pull/353)
 * Simplify `CommitmentReference` by removing unused `Chopped` variant [#314](https://github.com/midnightntwrk/midnight-zk/pull/314)
 * Split linearization polynomial into non-constant and constant parts, removing the generator point from the MSM [#313](https://github.com/midnightntwrk/midnight-zk/pull/313)
 * Remove unnecessary polynomial padding in KZG multi-open [#276](https://github.com/midnightntwrk/midnight-zk/pull/276)
