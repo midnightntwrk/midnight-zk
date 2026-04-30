@@ -1,6 +1,5 @@
 use std::any::TypeId;
 
-use curve25519_dalek::Scalar;
 use ff::Field;
 use group::{GroupOpsOwned, ScalarMulOwned};
 
