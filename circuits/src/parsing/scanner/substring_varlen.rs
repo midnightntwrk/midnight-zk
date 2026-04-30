@@ -20,7 +20,6 @@ use super::{varlen::ScannerVec, ScannerChip, PARSING_MAX_LEN_BITS};
 use crate::{
     field::AssignedNative,
     instructions::{AssertionInstructions, AssignmentInstructions, RangeCheckInstructions},
-    parsing::scanner::ALPHABET_MAX_SIZE,
     types::AssignedByte,
     vec::get_lims,
     CircuitField,
@@ -152,13 +151,10 @@ where
     ) -> Result<(), Error> {
         self.native_gadget
             .assert_equal_to_fixed(layouter, v1.len(), F::from(v2.len() as u64))?;
-        let filler: AssignedNative<F> =
-            self.native_gadget.assign_fixed(layouter, F::from(ALPHABET_MAX_SIZE as u64))?;
-        let mut v2_padded = vec![filler; M];
-        v2_padded[get_lims::<M, A>(v2.len())]
-            .clone_from_slice(&v2.iter().map(AssignedNative::from).collect::<Vec<_>>());
-        for (x, y) in v1.buffer.iter().zip(v2_padded.iter()) {
-            self.native_gadget.assert_equal(layouter, x, y)?;
+        let l1 = v1.buffer[get_lims::<M, A>(v2.len())].iter();
+        let l2 = v2.iter().map(AssignedNative::from);
+        for (x, y) in l1.zip(l2) {
+            self.native_gadget.assert_equal(layouter, x, &y)?;
         }
         Ok(())
     }
