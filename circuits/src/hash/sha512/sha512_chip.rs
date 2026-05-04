@@ -1886,8 +1886,37 @@ impl<F: CircuitField> FromScratch<F> for Sha512Chip<F> {
 
     fn configure_from_scratch(
         meta: &mut ConstraintSystem<F>,
+        advice_columns: &mut Vec<Column<Advice>>,
+        fixed_columns: &mut Vec<Column<Fixed>>,
         instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
+        use std::cmp::max;
+
+        use crate::field::{
+            decomposition::pow2range::Pow2RangeChip,
+            native::{NB_ARITH_COLS, NB_ARITH_FIXED_COLS},
+        };
+
+        let nb_advice_needed = max(NB_ARITH_COLS, NB_SHA512_ADVICE_COLS);
+        let nb_fixed_needed = max(NB_ARITH_FIXED_COLS, NB_SHA512_FIXED_COLS);
+
+        while advice_columns.len() < nb_advice_needed {
+            advice_columns.push(meta.advice_column());
+        }
+        while fixed_columns.len() < nb_fixed_needed {
+            fixed_columns.push(meta.fixed_column());
+        }
+
+        let native_config = NativeChip::configure(
+            meta,
+            &(
+                advice_columns[..NB_ARITH_COLS].try_into().unwrap(),
+                fixed_columns[..NB_ARITH_FIXED_COLS].try_into().unwrap(),
+                *instance_columns,
+            ),
+        );
+
+        let pow2range_config = Pow2RangeChip::configure(meta, &advice_columns[1..=4]);
         let core_decomposition_config =
             NativeGadget::configure_from_scratch(meta, instance_columns);
 

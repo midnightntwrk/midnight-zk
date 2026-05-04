@@ -537,8 +537,8 @@ where
             #[cfg(feature = "committed-instances")]
             NB_INSTANCE_COMS,
             &[&public_inputs],
-            OsRng,
             &mut transcript,
+            OsRng,
         )
         .expect("proof generation should not fail");
 

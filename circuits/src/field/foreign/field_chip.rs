@@ -32,7 +32,7 @@ use num_traits::{One, Signed, Zero};
 #[cfg(any(test, feature = "testing"))]
 use {
     crate::testing_utils::{FromScratch, Sampleable},
-    midnight_proofs::plonk::Instance,
+    midnight_proofs::plonk::{Fixed, Instance},
     rand::RngCore,
 };
 
@@ -736,7 +736,19 @@ where
         terms: &[(K, AssignedField<F, K, P>)],
         constant: K,
     ) -> Result<AssignedField<F, K, P>, Error> {
-        // We fold over mul_by_constant and add and only normalize at the end.
+        if terms.is_empty() {
+            return self.assign_fixed(layouter, constant);
+        }
+
+        // Fast path: when all coefficients are +1 or -1, delegate to sum.
+        if terms.iter().all(|(c, _)| *c == K::ONE || *c == -K::ONE) {
+            let (pos, neg): (Vec<_>, Vec<_>) = terms.iter().partition(|(c, _)| *c == K::ONE);
+            let pos: Vec<_> = pos.into_iter().map(|(_, x)| x.clone()).collect();
+            let neg: Vec<_> = neg.into_iter().map(|(_, x)| x.clone()).collect();
+            return self.sum(layouter, &pos, &neg, constant);
+        }
+
+        // General path: fold over mul_by_constant and add.
         let init: AssignedField<F, K, P> = self.assign_fixed(layouter, constant)?;
         let res = terms.iter().try_fold(init, |acc, (c, x)| {
             let prod = self.mul_by_constant(layouter, x, *c)?;
@@ -1028,6 +1040,10 @@ where
             return Ok(x.clone());
         }
 
+        if k == -K::ONE {
+            return self.neg(layouter, x);
+        }
+
         // If the constant is too big, we should multiply normally instead.
         // This threshold is just a heuristic, it will allow us to perform about 1000
         // sums after this multiplication without normalization.
@@ -1145,14 +1161,21 @@ where
             .into_iter()
             .for_each(|new_bits| bits.extend(new_bits));
 
+        let nb_bits = min(
+            K::NUM_BITS as usize,
+            nb_bits.unwrap_or(K::NUM_BITS as usize),
+        );
+
         // Drop the most significant bits up to the desired length, but make sure
         // they encode 0.
-        let nb_bits = nb_bits.unwrap_or(K::NUM_BITS as usize);
         bits[nb_bits..]
             .iter()
             .try_for_each(|byte| self.native_gadget.assert_equal_to_fixed(layouter, byte, false))?;
-        let bits = bits[0..nb_bits].to_vec();
-        if enforce_canonical && nb_bits >= K::NUM_BITS as usize {
+        bits = bits[0..nb_bits].to_vec();
+
+        // The case nb_bits > K::NUM_BITS cannot happen since by above definition
+        // nb_bits = min(K::NUM_BITS,...), and thus nb_bits <= K::NUM_BITS.
+        if enforce_canonical && nb_bits == K::NUM_BITS as usize {
             let canonical = self.is_canonical(layouter, &bits)?;
             self.assert_equal_to_fixed(layouter, &canonical, true)?;
         }
@@ -1433,6 +1456,86 @@ where
     P: FieldEmulationParams<F, K>,
     N: NativeInstructions<F>,
 {
+    /// Computes `sum(positives) - sum(negatives) + constant` in the emulated
+    /// field. Each result limb is produced in a single native
+    /// `linear_combination` call, avoiding the per-term overhead of the
+    /// generic `linear_combination` path.
+    pub fn sum(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        positives: &[AssignedField<F, K, P>],
+        negatives: &[AssignedField<F, K, P>],
+        constant: K,
+    ) -> Result<AssignedField<F, K, P>, Error> {
+        if positives.is_empty() && negatives.is_empty() {
+            return self.assign_fixed(layouter, constant);
+        }
+
+        let base = BI::from(2).pow(P::LOG2_BASE);
+        let p = positives.len();
+        let n = negatives.len();
+
+        // In the +1 representation, each term is stored as 1 + sum_i B^i * t_i.
+        // sum(pos) - sum(neg) + c
+        //   = (P - N + c) + sum_i B^i * (sum_j pos_{j,i} - sum_k neg_{k,i})
+        // In +1 form (1 + sum_i B^i * z_i):
+        //   z_i = sum_j pos_{j,i} - sum_k neg_{k,i} + offset_i
+        // where sum_i B^i * offset_i = P - N - 1 + c.
+        //
+        // Since (c - 1) has base-B limbs c_i with sum B^i c_i = c - 1,
+        // we get P - N - 1 + c = (P - N) + (c - 1) = (P - N) + sum B^i c_i.
+        // So offset_0 = c_0 + (P - N), offset_i = c_i for i > 0.
+        // Note: offset_0 may be negative — bounds tracking handles this.
+        let constant_repr: BI = (constant - K::ONE).to_biguint().into();
+        let constant_limbs = bi_to_limbs(P::NB_LIMBS, &base, &constant_repr);
+        let mut offsets = constant_limbs;
+        offsets[0] += BI::from(p) - BI::from(n);
+
+        let z_limb_values = (0..P::NB_LIMBS as usize)
+            .map(|i| {
+                let pos_terms: Vec<(F, AssignedNative<F>)> =
+                    positives.iter().map(|x| (F::ONE, x.limb_values[i].clone())).collect();
+                let neg_terms: Vec<(F, AssignedNative<F>)> =
+                    negatives.iter().map(|x| (-F::ONE, x.limb_values[i].clone())).collect();
+                let native_terms: Vec<_> = pos_terms.into_iter().chain(neg_terms).collect();
+                self.native_gadget.linear_combination(
+                    layouter,
+                    &native_terms,
+                    bigint_to_fe::<F>(&offsets[i]),
+                )
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        // Bounds: positive terms contribute (lo, hi), negated terms contribute
+        // (-hi, -lo).
+        let all_terms = positives
+            .iter()
+            .zip(std::iter::repeat(false))
+            .chain(negatives.iter().zip(std::iter::repeat(true)));
+        let init_bounds: Vec<(BI, BI)> = (0..P::NB_LIMBS as usize)
+            .map(|i| (offsets[i].clone(), offsets[i].clone()))
+            .collect();
+        let z_bounds = all_terms.fold(init_bounds, |acc, (x, negated)| {
+            acc.into_iter()
+                .zip(x.limb_bounds.iter())
+                .map(|((lo, hi), b)| {
+                    if negated {
+                        (lo - &b.1, hi - &b.0)
+                    } else {
+                        (lo + &b.0, hi + &b.1)
+                    }
+                })
+                .collect()
+        });
+
+        let z = AssignedField::<F, K, P> {
+            limb_values: z_limb_values,
+            limb_bounds: z_bounds,
+            _marker: PhantomData,
+        };
+        self.normalize_if_approaching_limit(layouter, &z)
+    }
+
     /// Normalizes the given assigned field element, but only if its bounds
     /// exceed the limits of the well-formed bounds.
     pub(crate) fn normalize(
@@ -1696,20 +1799,27 @@ where
 
     fn configure_from_scratch(
         meta: &mut ConstraintSystem<F>,
+        advice_columns: &mut Vec<Column<Advice>>,
+        fixed_columns: &mut Vec<Column<Fixed>>,
         instance_columns: &[Column<Instance>; 2],
     ) -> FieldChipConfigForTests<F, N> {
-        let native_gadget_config =
-            <N as FromScratch<F>>::configure_from_scratch(meta, instance_columns);
+        let native_gadget_config = <N as FromScratch<F>>::configure_from_scratch(
+            meta,
+            advice_columns,
+            fixed_columns,
+            instance_columns,
+        );
         // Use hard-coded pow2range values matching NativeGadget::configure_from_scratch
         let nb_parallel_range_checks = 4;
         let max_bit_len = 8;
         let field_chip_config = {
-            let advice_cols = (0..nb_field_chip_columns::<F, K, P>())
-                .map(|_| meta.advice_column())
-                .collect::<Vec<_>>();
+            let nb_fc_cols = nb_field_chip_columns::<F, K, P>();
+            while advice_columns.len() < nb_fc_cols {
+                advice_columns.push(meta.advice_column());
+            }
             FieldChip::<F, K, P, N>::configure(
                 meta,
-                &advice_cols,
+                &advice_columns[..nb_fc_cols],
                 nb_parallel_range_checks,
                 max_bit_len,
             )
@@ -1725,6 +1835,7 @@ where
 mod tests {
     use midnight_curves::{
         k256::{Fp as K256Base, Fq as K256Scalar},
+        p256::{Fp as P256Base, Fq as P256Scalar},
         Fq as BlsScalar,
     };
 
@@ -1758,8 +1869,10 @@ mod tests {
         ($mod:ident, $op:ident) => {
             #[test]
             fn $op() {
-                test_generic!($mod, $op, BlsScalar, K256Base, "field_chip_secp_base");
-                test_generic!($mod, $op, BlsScalar, K256Scalar, "field_chip_secp_scalar");
+                test_generic!($mod, $op, BlsScalar, K256Base, "field_chip_k256_base");
+                test_generic!($mod, $op, BlsScalar, K256Scalar, "field_chip_k256_scalar");
+                test_generic!($mod, $op, BlsScalar, P256Base, "field_chip_p256_base");
+                test_generic!($mod, $op, BlsScalar, P256Scalar, "field_chip_p256_scalar");
             }
         };
     }
@@ -1807,8 +1920,10 @@ mod tests {
         ($mod:ident, $op:ident) => {
             #[test]
             fn $op() {
-                test_generic!($mod, $op, BlsScalar, K256Base, "field_chip_secp_base");
-                test_generic!($mod, $op, BlsScalar, K256Scalar, "field_chip_secp_scalar");
+                test_generic!($mod, $op, BlsScalar, K256Base, "field_chip_k256_base");
+                test_generic!($mod, $op, BlsScalar, K256Scalar, "field_chip_k256_scalar");
+                test_generic!($mod, $op, BlsScalar, P256Base, "field_chip_p256_base");
+                test_generic!($mod, $op, BlsScalar, P256Scalar, "field_chip_p256_scalar");
             }
         };
     }

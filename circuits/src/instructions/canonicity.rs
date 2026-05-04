@@ -137,7 +137,10 @@ pub(crate) mod tests {
     use crate::{
         instructions::{AssertionInstructions, AssignmentInstructions},
         types::InnerValue,
-        utils::{circuit_modeling::circuit_to_json, util::FromScratch},
+        utils::{
+            circuit_modeling::{circuit_to_json, cost_measure_end, cost_measure_start},
+            util::FromScratch,
+        },
     };
 
     #[derive(Clone, Debug)]
@@ -183,6 +186,8 @@ pub(crate) mod tests {
             let instance_column = meta.instance_column();
             CanonicityChip::configure_from_scratch(
                 meta,
+                &mut vec![],
+                &mut vec![],
                 &[committed_instance_column, instance_column],
             )
         }
@@ -201,11 +206,13 @@ pub(crate) mod tests {
                 .collect::<Result<Vec<_>, Error>>()?;
             let bound = self.bound.clone();
 
+            cost_measure_start(&mut layouter);
             let res = match self.operation {
                 Operation::Canonical => chip.is_canonical(&mut layouter, &bits),
                 Operation::Lower => chip.le_bits_lower_than(&mut layouter, &bits, bound),
                 Operation::Geq => chip.le_bits_geq_than(&mut layouter, &bits, bound),
             }?;
+            cost_measure_end(&mut layouter);
 
             chip.assert_equal_to_fixed(&mut layouter, &res, self.expected)?;
 
@@ -240,9 +247,8 @@ pub(crate) mod tests {
             operation,
             _marker: PhantomData,
         };
-        let log2_nb_rows = 10;
         let public_inputs = vec![vec![], vec![]];
-        match MockProver::run(log2_nb_rows, &circuit, public_inputs) {
+        match MockProver::run(&circuit, public_inputs) {
             Ok(prover) => match prover.verify() {
                 Ok(()) => assert!(must_pass),
                 Err(e) => assert!(!must_pass, "Failed verifier with error {e:?}"),

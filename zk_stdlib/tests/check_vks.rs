@@ -27,7 +27,7 @@ use exposing_types::{
     ecc_ops::EccExample,
     ethereum_signature::EthereumSigExample,
     hybrid_mt::HybridMtExample,
-    identity::{
+    identity::jwt::{
         enrollment::CredentialEnrollment, full_credential::FullCredential,
         property_check::CredentialProperty,
     },

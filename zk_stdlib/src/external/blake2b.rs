@@ -133,15 +133,23 @@ impl<F: CircuitField> FromScratch<F> for Blake2bWrapper<F> {
 
     fn configure_from_scratch(
         meta: &mut ConstraintSystem<F>,
+        advice_columns: &mut Vec<Column<Advice>>,
+        fixed_columns: &mut Vec<Column<Fixed>>,
         instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
-        let native_config = NG::configure_from_scratch(meta, instance_columns);
-        let advice_cols =
-            (0..NB_BLAKE2B_ADVICE_COLS).map(|_| meta.advice_column()).collect::<Vec<_>>();
-        let constant_column = meta.fixed_column();
+        let native_config =
+            NG::configure_from_scratch(meta, advice_columns, fixed_columns, instance_columns);
+        while advice_columns.len() < NB_BLAKE2B_ADVICE_COLS {
+            advice_columns.push(meta.advice_column());
+        }
+        while fixed_columns.is_empty() {
+            fixed_columns.push(meta.fixed_column());
+        }
+        let advice_cols: [_; NB_BLAKE2B_ADVICE_COLS] =
+            advice_columns[..NB_BLAKE2B_ADVICE_COLS].try_into().unwrap();
+        let constant_column = fixed_columns[0];
 
-        let blake2b_config =
-            Blake2bWrapper::configure(meta, &(constant_column, advice_cols.try_into().unwrap()));
+        let blake2b_config = Blake2bWrapper::configure(meta, &(constant_column, advice_cols));
         (blake2b_config, native_config)
     }
 
@@ -165,7 +173,7 @@ mod test {
     use midnight_curves::Fq;
     use midnight_proofs::{
         circuit::Layouter,
-        plonk::{Column, ConstraintSystem, Error, Instance},
+        plonk::{Advice, Column, ConstraintSystem, Error, Fixed, Instance},
     };
     use sha2::{
         digest::consts::{U32, U64},
@@ -229,9 +237,16 @@ mod test {
         }
         fn configure_from_scratch(
             meta: &mut ConstraintSystem<F>,
+            advice_columns: &mut Vec<Column<Advice>>,
+            fixed_columns: &mut Vec<Column<Fixed>>,
             instance_columns: &[Column<Instance>; 2],
         ) -> Self::Config {
-            Blake2bWrapper::configure_from_scratch(meta, instance_columns)
+            Blake2bWrapper::configure_from_scratch(
+                meta,
+                advice_columns,
+                fixed_columns,
+                instance_columns,
+            )
         }
         fn load_from_scratch(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
             Blake2bWrapper::load_from_scratch(&self.0, layouter)
@@ -245,9 +260,16 @@ mod test {
         }
         fn configure_from_scratch(
             meta: &mut ConstraintSystem<F>,
+            advice_columns: &mut Vec<Column<Advice>>,
+            fixed_columns: &mut Vec<Column<Fixed>>,
             instance_columns: &[Column<Instance>; 2],
         ) -> Self::Config {
-            Blake2bWrapper::configure_from_scratch(meta, instance_columns)
+            Blake2bWrapper::configure_from_scratch(
+                meta,
+                advice_columns,
+                fixed_columns,
+                instance_columns,
+            )
         }
         fn load_from_scratch(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
             Blake2bWrapper::load_from_scratch(&self.0, layouter)
@@ -256,67 +278,67 @@ mod test {
 
     #[test]
     fn test_blake2b_512_preimage() {
-        fn test_wrapper(input_size: usize, k: u32, cost_model: bool) {
+        fn test_wrapper(input_size: usize, cost_model: bool) {
             test_hash::<
                 Fq,
                 AssignedByte<Fq>,
                 [AssignedByte<Fq>; 64],
                 Blake2b512<Fq>,
                 NativeGadget<Fq, _, _>,
-            >(cost_model, "Blake2b_512", input_size, k);
+            >(cost_model, "Blake2b_512", input_size);
         }
 
         const BLAKE2B_BLOCK_SIZE: usize = 128;
 
-        test_wrapper(BLAKE2B_BLOCK_SIZE - 2, 17, false);
-        test_wrapper(BLAKE2B_BLOCK_SIZE - 1, 17, false);
-        test_wrapper(BLAKE2B_BLOCK_SIZE, 17, false);
-        test_wrapper(BLAKE2B_BLOCK_SIZE + 1, 17, false);
-        test_wrapper(BLAKE2B_BLOCK_SIZE + 2, 17, false);
+        test_wrapper(BLAKE2B_BLOCK_SIZE - 2, false);
+        test_wrapper(BLAKE2B_BLOCK_SIZE - 1, false);
+        test_wrapper(BLAKE2B_BLOCK_SIZE, false);
+        test_wrapper(BLAKE2B_BLOCK_SIZE + 1, false);
+        test_wrapper(BLAKE2B_BLOCK_SIZE + 2, false);
 
-        test_wrapper(2 * BLAKE2B_BLOCK_SIZE - 2, 17, false);
-        test_wrapper(2 * BLAKE2B_BLOCK_SIZE - 1, 17, false);
+        test_wrapper(2 * BLAKE2B_BLOCK_SIZE - 2, false);
+        test_wrapper(2 * BLAKE2B_BLOCK_SIZE - 1, false);
 
         // Cost model update with input size = 256
-        test_wrapper(2 * BLAKE2B_BLOCK_SIZE, 17, true);
-        test_wrapper(2 * BLAKE2B_BLOCK_SIZE + 1, 17, false);
-        test_wrapper(2 * BLAKE2B_BLOCK_SIZE + 2, 17, false);
+        test_wrapper(2 * BLAKE2B_BLOCK_SIZE, true);
+        test_wrapper(2 * BLAKE2B_BLOCK_SIZE + 1, false);
+        test_wrapper(2 * BLAKE2B_BLOCK_SIZE + 2, false);
 
-        test_wrapper(0, 17, false);
-        test_wrapper(1, 17, false);
-        test_wrapper(2, 17, false);
+        test_wrapper(0, false);
+        test_wrapper(1, false);
+        test_wrapper(2, false);
     }
 
     #[test]
     fn test_blake2b_256_preimage() {
-        fn test_wrapper(input_size: usize, k: u32, cost_model: bool) {
+        fn test_wrapper(input_size: usize, cost_model: bool) {
             test_hash::<
                 Fq,
                 AssignedByte<Fq>,
                 [AssignedByte<Fq>; 32],
                 Blake2b256<Fq>,
                 NativeGadget<Fq, _, _>,
-            >(cost_model, "Blake2b_256", input_size, k);
+            >(cost_model, "Blake2b_256", input_size);
         }
 
         const BLAKE2B_BLOCK_SIZE: usize = 128;
 
-        test_wrapper(BLAKE2B_BLOCK_SIZE - 2, 17, false);
-        test_wrapper(BLAKE2B_BLOCK_SIZE - 1, 17, false);
-        test_wrapper(BLAKE2B_BLOCK_SIZE, 17, false);
-        test_wrapper(BLAKE2B_BLOCK_SIZE + 1, 17, false);
-        test_wrapper(BLAKE2B_BLOCK_SIZE + 2, 17, false);
+        test_wrapper(BLAKE2B_BLOCK_SIZE - 2, false);
+        test_wrapper(BLAKE2B_BLOCK_SIZE - 1, false);
+        test_wrapper(BLAKE2B_BLOCK_SIZE, false);
+        test_wrapper(BLAKE2B_BLOCK_SIZE + 1, false);
+        test_wrapper(BLAKE2B_BLOCK_SIZE + 2, false);
 
-        test_wrapper(2 * BLAKE2B_BLOCK_SIZE - 2, 17, false);
-        test_wrapper(2 * BLAKE2B_BLOCK_SIZE - 1, 17, false);
+        test_wrapper(2 * BLAKE2B_BLOCK_SIZE - 2, false);
+        test_wrapper(2 * BLAKE2B_BLOCK_SIZE - 1, false);
 
         // Cost model update with input size = 256
-        test_wrapper(2 * BLAKE2B_BLOCK_SIZE, 17, true);
-        test_wrapper(2 * BLAKE2B_BLOCK_SIZE + 1, 17, false);
-        test_wrapper(2 * BLAKE2B_BLOCK_SIZE + 2, 17, false);
+        test_wrapper(2 * BLAKE2B_BLOCK_SIZE, true);
+        test_wrapper(2 * BLAKE2B_BLOCK_SIZE + 1, false);
+        test_wrapper(2 * BLAKE2B_BLOCK_SIZE + 2, false);
 
-        test_wrapper(0, 17, false);
-        test_wrapper(1, 17, false);
-        test_wrapper(2, 17, false);
+        test_wrapper(0, false);
+        test_wrapper(1, false);
+        test_wrapper(2, false);
     }
 }

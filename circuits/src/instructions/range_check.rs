@@ -78,8 +78,10 @@ pub(crate) mod tests {
 
     use super::*;
     use crate::{
-        instructions::AssignmentInstructions, testing_utils::FromScratch, types::InnerConstants,
-        utils::circuit_modeling::circuit_to_json,
+        instructions::AssignmentInstructions,
+        testing_utils::FromScratch,
+        types::InnerConstants,
+        utils::circuit_modeling::{circuit_to_json, cost_measure_end, cost_measure_start},
     };
 
     #[derive(Clone, Debug, Default)]
@@ -112,7 +114,12 @@ pub(crate) mod tests {
         fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
             let committed_instance_column = meta.instance_column();
             let instance_column = meta.instance_column();
-            Chip::configure_from_scratch(meta, &[committed_instance_column, instance_column])
+            Chip::configure_from_scratch(
+                meta,
+                &mut vec![],
+                &mut vec![],
+                &[committed_instance_column, instance_column],
+            )
         }
 
         fn synthesize(
@@ -123,7 +130,9 @@ pub(crate) mod tests {
             let chip = Chip::new_from_scratch(&config);
 
             let x = chip.assign(&mut layouter, Value::known(self.x))?;
+            cost_measure_start(&mut layouter);
             chip.assert_lower_than_fixed(&mut layouter, &x, &self.bound)?;
+            cost_measure_end(&mut layouter);
 
             chip.load_from_scratch(&mut layouter)
         }
@@ -148,9 +157,8 @@ pub(crate) mod tests {
             bound,
             _marker: PhantomData,
         };
-        let log2_nb_rows = 10;
         let public_inputs = vec![vec![], vec![]];
-        match MockProver::run(log2_nb_rows, &circuit, public_inputs) {
+        match MockProver::run(&circuit, public_inputs) {
             Ok(prover) => match prover.verify() {
                 Ok(()) => assert!(must_pass),
                 Err(e) => assert!(!must_pass, "Failed verifier with error {e:?}"),

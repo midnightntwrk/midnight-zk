@@ -198,7 +198,10 @@ pub(crate) mod tests {
     use rand_chacha::ChaCha8Rng;
 
     use super::*;
-    use crate::{testing_utils::FromScratch, utils::circuit_modeling::circuit_to_json};
+    use crate::{
+        testing_utils::FromScratch,
+        utils::circuit_modeling::{circuit_to_json, cost_measure_end, cost_measure_start},
+    };
 
     #[derive(Clone, Copy, Debug)]
     enum Operation {
@@ -238,7 +241,12 @@ pub(crate) mod tests {
         fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
             let committed_instance_column = meta.instance_column();
             let instance_column = meta.instance_column();
-            BitwiseChip::configure_from_scratch(meta, &[committed_instance_column, instance_column])
+            BitwiseChip::configure_from_scratch(
+                meta,
+                &mut vec![],
+                &mut vec![],
+                &[committed_instance_column, instance_column],
+            )
         }
 
         fn synthesize(
@@ -253,12 +261,14 @@ pub(crate) mod tests {
             let x = chip.assign(&mut layouter, Value::known(self.inputs[0]))?;
             let y = chip.assign(&mut layouter, Value::known(self.inputs[y_idx]))?;
 
+            cost_measure_start(&mut layouter);
             let res = match self.operation {
                 Operation::Band => chip.band(&mut layouter, &x, &y, self.n),
                 Operation::Bor => chip.bor(&mut layouter, &x, &y, self.n),
                 Operation::Bxor => chip.bxor(&mut layouter, &x, &y, self.n),
                 Operation::Bnot => chip.bnot(&mut layouter, &x, self.n),
             }?;
+            cost_measure_end(&mut layouter);
 
             chip.assert_equal_to_fixed(&mut layouter, &res, self.expected)?;
 
@@ -289,9 +299,8 @@ pub(crate) mod tests {
             operation,
             _marker: PhantomData,
         };
-        let log2_nb_rows = 10;
         let public_inputs = vec![vec![], vec![]];
-        match MockProver::run(log2_nb_rows, &circuit, public_inputs) {
+        match MockProver::run(&circuit, public_inputs) {
             Ok(prover) => match prover.verify() {
                 Ok(()) => assert!(must_pass),
                 Err(e) => assert!(!must_pass, "Failed verifier with error {e:?}"),

@@ -159,7 +159,9 @@ pub(crate) mod tests {
 
     use super::*;
     use crate::{
-        testing_utils::FromScratch, types::InnerValue, utils::circuit_modeling::circuit_to_json,
+        testing_utils::FromScratch,
+        types::InnerValue,
+        utils::circuit_modeling::{circuit_to_json, cost_measure_end, cost_measure_start},
     };
 
     struct TestCircuit<F, Assigned, DivChip>
@@ -192,7 +194,12 @@ pub(crate) mod tests {
         fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
             let committed_instance_column = meta.instance_column();
             let instance_column = meta.instance_column();
-            DivChip::configure_from_scratch(meta, &[committed_instance_column, instance_column])
+            DivChip::configure_from_scratch(
+                meta,
+                &mut vec![],
+                &mut vec![],
+                &[committed_instance_column, instance_column],
+            )
         }
 
         fn synthesize(
@@ -203,7 +210,9 @@ pub(crate) mod tests {
             let chip = DivChip::new_from_scratch(&config);
 
             let x = chip.assign(&mut layouter, self.dividend)?;
+            cost_measure_start(&mut layouter);
             let (q, r) = chip.div_rem(&mut layouter, &x, self.divisor.clone(), None)?;
+            cost_measure_end(&mut layouter);
 
             chip.assert_equal_to_fixed(&mut layouter, &q, self.expected.0)?;
             chip.assert_equal_to_fixed(&mut layouter, &r, self.expected.1)?;
@@ -232,9 +241,8 @@ pub(crate) mod tests {
             _marker: PhantomData,
         };
 
-        let log2_nb_rows = 10;
         let public_inputs = vec![vec![], vec![]];
-        match MockProver::run(log2_nb_rows, &circuit, public_inputs) {
+        match MockProver::run(&circuit, public_inputs) {
             Ok(prover) => match prover.verify() {
                 Ok(()) => assert!(must_pass),
                 Err(e) => assert!(!must_pass, "Failed verifier with error {e:?}"),

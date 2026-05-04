@@ -16,18 +16,20 @@ use midnight_zk_stdlib::{MidnightVK, Relation};
 
 use super::{Ivc, IvcCircuit, IvcError, IvcInstance, C, E, F, S};
 
-/// Lightweight IVC verifier carrying only:
+/// Lightweight IVC verifier carrying:
+/// - the application context (for the decider check),
 /// - the self-verifying key,
 /// - the SRS verifier parameters (for the pairing check).
 ///
 /// Returned by [`super::setup()`].
 #[derive(Clone, Debug)]
-pub struct IvcVerifier {
+pub struct IvcVerifier<T: Ivc> {
+    pub(crate) ctx: T::Context,
     pub(crate) vk: MidnightVK,
     pub(crate) params_verifier: ParamsVerifierKZG<E>,
 }
 
-impl IvcVerifier {
+impl<T: Ivc> IvcVerifier<T> {
     /// Verifies an IVC proof against the given instance.
     ///
     /// Checks that the proof is valid with respect to the given instance by:
@@ -42,18 +44,13 @@ impl IvcVerifier {
     /// [`setup`](super::setup())). Without this check, a proof generated
     /// under a different (potentially malicious) circuit could pass
     /// verification.
-    pub fn verify<T: Ivc>(
-        &self,
-        ctx: &T::Context,
-        instance: &IvcInstance<T>,
-        proof: &[u8],
-    ) -> Result<(), IvcError> {
+    pub fn verify(&self, instance: &IvcInstance<T>, proof: &[u8]) -> Result<(), IvcError> {
         // Reject proofs whose instance claims a different verifying key.
         if instance.vk_repr != self.vk.vk().transcript_repr() {
             return Err(IvcError::VkMismatch);
         }
 
-        if !T::decider(ctx, &instance.state) {
+        if !T::decider(&self.ctx, &instance.state) {
             return Err(IvcError::DeciderFailed);
         }
 

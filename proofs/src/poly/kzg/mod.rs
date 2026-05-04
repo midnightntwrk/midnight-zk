@@ -196,6 +196,22 @@ where
             (q_polys, point_sets)
         };
 
+        // Sort point sets by ascending cardinality to ensure the first set is the one
+        // that contains fixed commitments (which are evaluated at x only). This
+        // property is not necessary for the actual proving system, but it is important
+        // for in-circuit verification of proofs. (It enables an optimization based on
+        // an internal collapse.)
+        //
+        // The (len, i) key provides a deterministic total order even when two sets
+        // share the same cardinality.
+        let (q_polys, point_sets) = {
+            let mut order: Vec<usize> = (0..point_sets.len()).collect();
+            order.sort_by_key(|&i| (point_sets[i].len(), i));
+            let q_polys: Vec<_> = order.iter().map(|&i| q_polys[i].clone()).collect();
+            let point_sets: Vec<_> = order.iter().map(|&i| point_sets[i].clone()).collect();
+            (q_polys, point_sets)
+        };
+
         let f_poly = {
             let f_polys: Vec<_> = point_sets
                 .into_par_iter()

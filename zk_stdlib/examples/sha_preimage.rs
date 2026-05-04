@@ -31,6 +31,8 @@ impl Relation for ShaPreImageCircuit {
 
     type Witness = [u8; 24]; // 192 = 24 * 8
 
+    type Error = Error;
+
     fn format_instance(instance: &Self::Instance) -> Result<Vec<F>, Error> {
         Ok(instance.iter().flat_map(AssignedByte::<F>::as_public_input).collect())
     }

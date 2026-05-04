@@ -39,6 +39,9 @@ pub enum Error {
     TableError(TableError),
     /// The SRS provided does not have the correct size for the Circuit
     SrsError(usize, usize),
+    /// Completeness failure due to bad luck in random sampling.
+    /// This error is expected to be almost impossible to trigger.
+    CompletenessFailure,
 }
 
 impl From<io::Error> for Error {
@@ -80,7 +83,8 @@ impl fmt::Display for Error {
                 "Column {column:?} must be included in the permutation. Help: try applying `meta.enable_equalty` on the column",
             ),
             Error::TableError(error) => write!(f, "{error}"),
-            Error::SrsError(srs_k, circuit_k) => write!(f, "The SRS (with size {srs_k}) does not match for the given circuit (of size {circuit_k})")
+            Error::SrsError(srs_k, circuit_k) => write!(f, "The SRS (with size {srs_k}) does not match for the given circuit (of size {circuit_k})"),
+            Self::CompletenessFailure => write!(f, "Completeness failure due to bad luck in random sampling. This error is expected to be almost impossible to trigger."),
         }
     }
 }

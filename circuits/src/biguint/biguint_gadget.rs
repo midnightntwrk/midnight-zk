@@ -29,7 +29,7 @@ use num_traits::One;
 #[cfg(any(test, feature = "testing"))]
 use {
     crate::testing_utils::FromScratch,
-    midnight_proofs::plonk::{Column, ConstraintSystem, Instance},
+    midnight_proofs::plonk::{Advice, Column, ConstraintSystem, Fixed, Instance},
 };
 
 use super::{bound_of_addition, AssignedBigUint};
@@ -562,7 +562,7 @@ where
     }
 
     /// Returns a vector of assigned bits representing the given assigned big
-    /// unsigned integer little-endian.
+    /// unsigned integer in little-endian order.
     pub fn to_le_bits(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -589,8 +589,20 @@ where
         Ok(bits)
     }
 
+    /// Returns a vector of assigned bits representing the given assigned big
+    /// unsigned integer in big-endian order.
+    pub fn to_be_bits(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &AssignedBigUint<F>,
+    ) -> Result<Vec<AssignedBit<F>>, Error> {
+        let mut bits = self.to_le_bits(layouter, x)?;
+        bits.reverse();
+        Ok(bits)
+    }
+
     /// Returns a vector of assigned bytes representing the given assigned big
-    /// unsigned integer little-endian.
+    /// unsigned integer in little-endian order.
     #[allow(clippy::assertions_on_constants)]
     pub fn to_le_bytes(
         &self,
@@ -615,8 +627,21 @@ where
         Ok(bytes)
     }
 
+    /// Returns a vector of assigned bytes representing the given assigned big
+    /// unsigned integer in big-endian order.
+    #[allow(clippy::assertions_on_constants)]
+    pub fn to_be_bytes(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &AssignedBigUint<F>,
+    ) -> Result<Vec<AssignedByte<F>>, Error> {
+        let mut bytes = self.to_le_bytes(layouter, x)?;
+        bytes.reverse();
+        Ok(bytes)
+    }
+
     /// Returns the assigned big unsigned integer represented by the given
-    /// vector of assigned bits, by interpreting it in little-endian.
+    /// vector of assigned bits, by interpreting it in little-endian order.
     pub fn from_le_bits(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -639,7 +664,19 @@ where
     }
 
     /// Returns the assigned big unsigned integer represented by the given
-    /// vector of assigned bytes, by interpreting it in little-endian.
+    /// vector of assigned bits, by interpreting it in big-endian order.
+    pub fn from_be_bits(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        bits: &[AssignedBit<F>],
+    ) -> Result<AssignedBigUint<F>, Error> {
+        let mut bits = bits.to_vec();
+        bits.reverse();
+        self.from_le_bits(layouter, &bits)
+    }
+
+    /// Returns the assigned big unsigned integer represented by the given
+    /// vector of assigned bytes, by interpreting it in little-endian order.
     #[allow(clippy::assertions_on_constants)]
     pub fn from_le_bytes(
         &self,
@@ -663,6 +700,19 @@ where
             limbs,
             limb_size_bounds,
         })
+    }
+
+    /// Returns the assigned big unsigned integer represented by the given
+    /// vector of assigned bytes, by interpreting it in big-endian order.
+    #[allow(clippy::assertions_on_constants)]
+    pub fn from_be_bytes(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        bytes: &[AssignedByte<F>],
+    ) -> Result<AssignedBigUint<F>, Error> {
+        let mut bytes = bytes.to_vec();
+        bytes.reverse();
+        self.from_le_bytes(layouter, &bytes)
     }
 
     /// Returns `1` iff `x < y`.
@@ -938,9 +988,16 @@ where
 
     fn configure_from_scratch(
         meta: &mut ConstraintSystem<F>,
+        advice_columns: &mut Vec<Column<Advice>>,
+        fixed_columns: &mut Vec<Column<Fixed>>,
         instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
-        <N as FromScratch<F>>::configure_from_scratch(meta, instance_columns)
+        <N as FromScratch<F>>::configure_from_scratch(
+            meta,
+            advice_columns,
+            fixed_columns,
+            instance_columns,
+        )
     }
 
     fn load_from_scratch(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
@@ -1039,6 +1096,8 @@ mod tests {
             let instance_column = meta.instance_column();
             <N as FromScratch<F>>::configure_from_scratch(
                 meta,
+                &mut vec![],
+                &mut vec![],
                 &[committed_instance_column, instance_column],
             )
         }
@@ -1095,9 +1154,8 @@ mod tests {
             operation,
             _marker: PhantomData,
         };
-        let log2_nb_rows = 12;
         let public_inputs = vec![vec![], vec![]];
-        match MockProver::run(log2_nb_rows, &circuit, public_inputs) {
+        match MockProver::run(&circuit, public_inputs) {
             Ok(prover) => match prover.verify() {
                 Ok(()) => assert!(must_pass),
                 Err(e) => assert!(!must_pass, "Failed verifier with error {e:?}"),

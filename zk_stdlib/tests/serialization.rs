@@ -38,6 +38,8 @@ impl Relation for DummyCircuit {
 
     type Witness = F;
 
+    type Error = Error;
+
     fn format_instance(x: &Self::Instance) -> Result<Vec<F>, Error> {
         Ok(vec![*x])
     }
@@ -80,7 +82,9 @@ const ARCHITECTURES: [ZkStdLibArch; 4] = [
         keccak_256: false,
         blake2b: false,
         secp256k1: true,
+        p256: false,
         bls12_381: true,
+        curve25519: true,
         base64: false,
         nb_arith_cols: 5,
         nr_pow2range_cols: 4,
@@ -95,7 +99,9 @@ const ARCHITECTURES: [ZkStdLibArch; 4] = [
         keccak_256: false,
         blake2b: false,
         secp256k1: false,
+        p256: false,
         bls12_381: false,
+        curve25519: false,
         base64: false,
         nb_arith_cols: 5,
         nr_pow2range_cols: 4,
@@ -110,7 +116,9 @@ const ARCHITECTURES: [ZkStdLibArch; 4] = [
         keccak_256: false,
         blake2b: false,
         secp256k1: false,
+        p256: false,
         bls12_381: true,
+        curve25519: true,
         base64: false,
         nb_arith_cols: 5,
         nr_pow2range_cols: 4,
@@ -125,7 +133,9 @@ const ARCHITECTURES: [ZkStdLibArch; 4] = [
         keccak_256: false,
         blake2b: false,
         secp256k1: true,
+        p256: false,
         bls12_381: false,
+        curve25519: true,
         base64: true,
         nb_arith_cols: 5,
         nr_pow2range_cols: 4,

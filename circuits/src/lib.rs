@@ -60,7 +60,7 @@ pub mod types {
     pub use crate::{
         biguint::AssignedBigUint,
         ecc::{
-            foreign::AssignedForeignPoint,
+            foreign::weierstrass_chip::AssignedForeignPoint,
             native::{AssignedNativePoint, AssignedScalarOfNativeCurve},
         },
         field::{

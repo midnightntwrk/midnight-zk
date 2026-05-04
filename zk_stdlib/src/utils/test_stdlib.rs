@@ -46,6 +46,8 @@ macro_rules! run_test_stdlib {
 
             type Instance = ();
 
+            type Error = Error;
+
             fn format_instance(_instance: &Self::Instance) -> Result<Vec<F>, Error> {
                 Ok(vec![])
             }
@@ -82,7 +84,7 @@ macro_rules! run_test_stdlib {
 
         let circuit = MidnightCircuit::from_relation(&TestCircuit, None);
 
-        MockProver::run($k, &circuit, vec![vec![], vec![]])
+        MockProver::run(&circuit, vec![vec![], vec![]])
             .expect("Failed to generate proof")
             .assert_satisfied();
     };
