@@ -598,14 +598,12 @@ where
         while fixed_columns.len() < nb_fixed_needed {
             fixed_columns.push(meta.fixed_column());
         }
-        let advice_cols = &advice_columns[..nb_advice_needed];
-        let fixed_cols = &fixed_columns[..nb_fixed_needed];
 
         let native_config = NativeChip::configure(
             meta,
             &(
-                advice_cols[..NB_ARITH_COLS].to_vec(),
-                fixed_cols[..NB_ARITH_FIXED_COLS].to_vec(),
+                advice_columns[..NB_ARITH_COLS].to_vec(),
+                fixed_columns[..NB_ARITH_FIXED_COLS].to_vec(),
                 *instance_columns,
             ),
         );
@@ -613,13 +611,13 @@ where
         let scanner_config = ScannerChip::configure(
             meta,
             &(
-                advice_cols[..NB_SCANNER_ADVICE_COLS].try_into().unwrap(),
-                fixed_cols[0],
+                advice_columns[..NB_SCANNER_ADVICE_COLS].try_into().unwrap(),
+                fixed_columns[0],
                 FxHashMap::default(),
             ),
         );
 
-        let pow2range_config = Pow2RangeChip::configure(meta, &advice_cols[1..=4]);
+        let pow2range_config = Pow2RangeChip::configure(meta, &advice_columns[1..=4]);
 
         let native_gadget_config = P2RDecompositionConfig {
             native_config,
