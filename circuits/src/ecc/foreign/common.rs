@@ -201,7 +201,7 @@ pub(crate) fn configure_multi_select_lookup<F: CircuitField>(
     // separator instead.
     let tag_col_multi_select = meta.fixed_column();
 
-    meta.lookup_any("multi_select lookup", |meta| {
+    meta.lookup_any("multi_select lookup", None, |meta| {
         let sel = meta.query_selector(q_multi_select);
         let not_sel = Expression::from(1) - sel.clone();
 

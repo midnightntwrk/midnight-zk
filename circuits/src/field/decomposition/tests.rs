@@ -100,8 +100,14 @@ where
 
     fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
         let instance_columns = [meta.instance_column(), meta.instance_column()];
-        let native_config = NativeChip::configure_from_scratch(meta, &instance_columns);
-        let advice_columns = native_config.advice_columns();
+        let mut advice_columns = vec![];
+        let mut fixed_columns = vec![];
+        let native_config = NativeChip::configure_from_scratch(
+            meta,
+            &mut advice_columns,
+            &mut fixed_columns,
+            &instance_columns,
+        );
         let pow2range_config = Pow2RangeChip::configure(meta, &advice_columns[1..=NR_COLS]);
 
         P2RDecompositionConfig::new(&native_config, &pow2range_config)
@@ -299,8 +305,13 @@ where
 
     fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
         let instance_columns = [meta.instance_column(), meta.instance_column()];
-        let native_config = NativeChip::configure_from_scratch(meta, &instance_columns);
-        let advice_columns = native_config.advice_columns();
+        let mut advice_columns = vec![];
+        let native_config = NativeChip::configure_from_scratch(
+            meta,
+            &mut advice_columns,
+            &mut vec![],
+            &instance_columns,
+        );
         let pow2range_config = Pow2RangeChip::configure(meta, &advice_columns[1..=NR_COLS]);
 
         P2RDecompositionConfig::new(&native_config, &pow2range_config)

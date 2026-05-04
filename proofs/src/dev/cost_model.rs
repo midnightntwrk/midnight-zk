@@ -923,8 +923,8 @@ mod tests {
             std::slice::from_ref(&circuit),
             1,
             &[instances],
-            OsRng,
             &mut transcript,
+            OsRng,
         )
         .expect("proof generation should not fail");
 

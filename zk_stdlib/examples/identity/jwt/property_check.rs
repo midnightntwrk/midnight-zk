@@ -18,8 +18,7 @@ use midnight_circuits::{
     field::foreign::{params::MultiEmulationParams, AssignedField},
     instructions::{
         public_input::CommittedInstanceInstructions, AssertionInstructions, AssignmentInstructions,
-        Base64Instructions, ControlFlowInstructions, DecompositionInstructions, EccInstructions,
-        EqualityInstructions, RangeCheckInstructions,
+        Base64Instructions, DecompositionInstructions, EccInstructions, RangeCheckInstructions,
     },
     parsing::{DateFormat, Separator},
     testing_utils::ecdsa::{ECDSASig, FromBase64},

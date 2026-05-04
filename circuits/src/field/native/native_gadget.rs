@@ -1733,20 +1733,26 @@ impl<F: CircuitField> FromScratch<F> for NativeGadget<F, P2RDecompositionChip<F>
         fixed_columns: &mut Vec<Column<Fixed>>,
         instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
+        const NB_ARITH_COLS: usize = 5;
+        const NB_ARITH_FIXED_COLS: usize = NB_ARITH_COLS + NB_EXTRA_ARITH_FIXED_COLS;
+
         while advice_columns.len() < NB_ARITH_COLS {
             advice_columns.push(meta.advice_column());
         }
         while fixed_columns.len() < NB_ARITH_FIXED_COLS {
             fixed_columns.push(meta.fixed_column());
         }
-        let advice_cols: [_; NB_ARITH_COLS] = advice_columns[..NB_ARITH_COLS].try_into().unwrap();
-        let fixed_cols: [_; NB_ARITH_FIXED_COLS] =
-            fixed_columns[..NB_ARITH_FIXED_COLS].try_into().unwrap();
 
-        let native_config =
-            NativeChip::configure(meta, &(advice_cols, fixed_cols, *instance_columns));
+        let native_config = NativeChip::configure(
+            meta,
+            &(
+                advice_columns[..NB_ARITH_COLS].to_vec(),
+                fixed_columns[..NB_ARITH_FIXED_COLS].to_vec(),
+                *instance_columns,
+            ),
+        );
         // Use hard-coded value for nr of range check cols in test
-        let pow2range_config = Pow2RangeChip::configure(meta, &advice_cols[1..=4]);
+        let pow2range_config = Pow2RangeChip::configure(meta, &advice_columns[1..=4]);
 
         P2RDecompositionConfig {
             native_config,

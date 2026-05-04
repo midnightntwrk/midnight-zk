@@ -178,7 +178,7 @@ pub(crate) fn compute_trace<
     #[cfg(feature = "committed-instances")] nb_committed_instances: usize,
     instances: &[&[&[F]]],
     transcript: &mut T,
-    rng: &mut (impl RngCore + CryptoRng),
+    mut rng: impl RngCore + CryptoRng,
 ) -> Result<ProverTrace<F>, Error>
 where
     CS::Commitment: Hashable<T::Hash>,
@@ -211,7 +211,8 @@ where
 
     let instance = compute_instances(params, pk, instances, nb_committed_instances, transcript)?;
 
-    let (advice, challenges) = parse_advices(params, pk, circuits, instances, transcript, rng)?;
+    let (advice, challenges) =
+        parse_advices(params, pk, circuits, instances, transcript, &mut rng)?;
 
     // Helper: sample `num_sets` blinding vectors, each of length `inner_len`.
     // Used to pre-generate every blinding the parallel compute sections below
@@ -450,7 +451,6 @@ pub(crate) fn finalise_proof<'a, F, CS: PolynomialCommitmentScheme<F>, T: Transc
     #[cfg(feature = "committed-instances")] nb_committed_instances: usize,
     trace: ProverTrace<F>,
     transcript: &mut T,
-    rng: &mut (impl RngCore + CryptoRng),
 ) -> Result<(), Error>
 where
     CS::Commitment: Hashable<T::Hash>,
@@ -627,7 +627,6 @@ where
         nb_committed_instances,
         trace,
         transcript,
-        &mut rng,
     )
 }
 

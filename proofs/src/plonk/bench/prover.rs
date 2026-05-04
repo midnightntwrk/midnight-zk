@@ -50,7 +50,7 @@ pub(crate) fn compute_trace<
     #[cfg(feature = "committed-instances")] nb_committed_instances: usize,
     instances: &[&[&[F]]],
     transcript: &mut T,
-    rng: &mut (impl RngCore + CryptoRng),
+    mut rng: impl RngCore + CryptoRng,
     group: &mut BenchmarkGroup<criterion::measurement::WallTime>,
 ) -> Result<ProverTrace<F>, Error>
 where
@@ -117,13 +117,13 @@ where
                 || transcript.clone(),
                 |mut t| {
                     let _ = parse_advices::<F, CS, ConcreteCircuit, T>(
-                        params, pk, circuits, instances, &mut t, rng,
+                        params, pk, circuits, instances, &mut t, &mut rng,
                     );
                 },
                 criterion::BatchSize::LargeInput,
             )
         });
-        parse_advices(params, pk, circuits, instances, transcript, rng)?
+        parse_advices(params, pk, circuits, instances, transcript, &mut rng)?
     };
 
     // Sample theta challenge for keeping lookup columns linearly independent
@@ -509,7 +509,6 @@ pub(crate) fn finalise_proof<'a, F, CS: PolynomialCommitmentScheme<F>, T: Transc
     #[cfg(feature = "committed-instances")] nb_committed_instances: usize,
     trace: ProverTrace<F>,
     transcript: &mut T,
-    rng: &mut (impl RngCore + CryptoRng),
     group: &mut BenchmarkGroup<criterion::measurement::WallTime>,
 ) -> Result<(), Error>
 where
@@ -768,8 +767,8 @@ pub fn benchmark_create_proof<
     #[cfg(feature = "committed-instances")] nb_committed_instances: usize,
     instances: &[&[&[F]]],
     transcript: &mut T,
-    group: &mut BenchmarkGroup<criterion::measurement::WallTime>,
     rng: &mut (impl RngCore + CryptoRng),
+    group: &mut BenchmarkGroup<criterion::measurement::WallTime>,
 ) -> Result<(), Error>
 where
     CS::Commitment: Hashable<T::Hash>,
@@ -802,7 +801,6 @@ where
         nb_committed_instances,
         trace,
         transcript,
-        rng,
         group,
     )
 }
