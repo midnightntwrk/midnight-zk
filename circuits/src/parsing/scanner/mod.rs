@@ -591,14 +591,15 @@ where
         const NB_ARITH_FIXED_COLS: usize = NB_ARITH_COLS + NB_EXTRA_ARITH_FIXED_COLS;
 
         let nb_advice_needed = std::cmp::max(NB_SCANNER_ADVICE_COLS, NB_ARITH_COLS);
+        let nb_fixed_needed = std::cmp::max(NB_SCANNER_FIXED_COLS, NB_ARITH_FIXED_COLS);
         while advice_columns.len() < nb_advice_needed {
             advice_columns.push(meta.advice_column());
         }
-        while fixed_columns.len() < NB_ARITH_FIXED_COLS {
+        while fixed_columns.len() < nb_fixed_needed {
             fixed_columns.push(meta.fixed_column());
         }
         let advice_cols = &advice_columns[..nb_advice_needed];
-        let fixed_cols = &fixed_columns[..NB_ARITH_FIXED_COLS];
+        let fixed_cols = &fixed_columns[..nb_fixed_needed];
 
         let native_config = NativeChip::configure(
             meta,
