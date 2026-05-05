@@ -63,8 +63,8 @@ impl<T: Ivc> IvcVerifier<T> {
         let dual_msm =
             plonk::prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<PoseidonState<F>>>(
                 self.vk.vk(),
-                &[&[C::identity()]],
-                &[&[&pi]],
+                &[C::identity()],
+                &[&pi],
                 &mut transcript,
             )
             .map_err(|_| IvcError::InvalidProof)?;

@@ -286,10 +286,10 @@ fn criterion_benchmark(c: &mut Criterion) {
         create_proof::<Scalar, KZGCommitmentScheme<Bls12>, _, _>(
             params,
             pk,
-            &[circuit],
+            &circuit,
             #[cfg(feature = "committed-instances")]
             0,
-            &[&[]],
+            &[],
             &mut transcript,
             rng,
         )
@@ -307,8 +307,8 @@ fn criterion_benchmark(c: &mut Criterion) {
         assert!(prepare::<Scalar, KZGCommitmentScheme<Bls12>, _>(
             vk,
             #[cfg(feature = "committed-instances")]
-            &[&[]],
-            &[&[]],
+            &[],
+            &[],
             &mut transcript
         )
         .unwrap()
