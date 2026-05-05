@@ -42,18 +42,18 @@ pub trait Query<F>: Debug + Sized + Clone + Send + Sync {
     type Eval: Clone + Default + Debug;
 
     fn get_point(&self) -> F;
-    fn get_eval(&self) -> Self::Eval;
+    fn get_evals(&self) -> Vec<Self::Eval>;
     fn get_commitment(&self) -> Self::Commitment;
     fn get_commitment_label(&self) -> CommitmentLabel;
 }
 
-/// A polynomial query at a point
-#[derive(Debug, Clone, Copy)]
+/// An evaluation query of a polynomial batch at a point.
+#[derive(Debug, Clone)]
 pub struct ProverQuery<'com, F: PrimeField> {
-    /// Point at which polynomial is queried
+    /// Point at which a polynomial batch is queried
     pub(crate) point: F,
-    /// Coefficients of polynomial
-    pub(crate) poly: &'com Polynomial<F, Coeff>,
+    /// Batch of polynomials
+    pub(crate) polys: Vec<&'com Polynomial<F, Coeff>>,
 }
 
 impl<'com, F> ProverQuery<'com, F>
@@ -61,35 +61,23 @@ where
     F: PrimeField,
 {
     /// Create a new prover query based on a polynomial
-    pub fn new(point: F, poly: &'com Polynomial<F, Coeff>) -> Self {
-        ProverQuery { point, poly }
-    }
-}
-
-#[doc(hidden)]
-#[derive(Copy, Clone, Debug)]
-pub struct PolynomialPointer<'com, F: PrimeField> {
-    pub(crate) poly: &'com Polynomial<F, Coeff>,
-}
-
-impl<F: PrimeField> PartialEq for PolynomialPointer<'_, F> {
-    fn eq(&self, other: &Self) -> bool {
-        std::ptr::eq(self.poly, other.poly)
+    pub fn new(point: F, polys: Vec<&'com Polynomial<F, Coeff>>) -> Self {
+        ProverQuery { point, polys }
     }
 }
 
 impl<'com, F: PrimeField> Query<F> for ProverQuery<'com, F> {
-    type Commitment = PolynomialPointer<'com, F>;
+    type Commitment = Vec<&'com Polynomial<F, Coeff>>;
     type Eval = F;
 
     fn get_point(&self) -> F {
         self.point
     }
-    fn get_eval(&self) -> Self::Eval {
-        eval_polynomial(&self.poly[..], self.get_point())
+    fn get_evals(&self) -> Vec<Self::Eval> {
+        self.polys.iter().map(|p| eval_polynomial(&p[..], self.get_point())).collect()
     }
     fn get_commitment(&self) -> Self::Commitment {
-        PolynomialPointer { poly: self.poly }
+        self.polys.to_vec()
     }
     fn get_commitment_label(&self) -> CommitmentLabel {
         CommitmentLabel::NoLabel
@@ -166,14 +154,14 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> CommitmentReference<'_, F
 /// A polynomial query at a point.
 #[derive(Debug, Clone)]
 pub struct VerifierQuery<'com, F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
-    /// Point at which polynomial is queried.
+    /// Point at which the polynomial batch is evaluated.
     pub(crate) point: F,
     /// Optional label identifying the commitment in this query.
     pub(crate) commitment_label: CommitmentLabel,
     /// Commitment to polynomial.
     pub(crate) commitment: CommitmentReference<'com, F, CS>,
-    /// Evaluation of polynomial at query point.
-    pub(crate) eval: F,
+    /// Evaluations of the polynomials in the batch (at the query point).
+    pub(crate) evals: Vec<F>,
 }
 
 impl<'com, F, CS> VerifierQuery<'com, F, CS>
@@ -186,13 +174,13 @@ where
         point: F,
         commitment_label: CommitmentLabel,
         commitment: &'com CS::Commitment,
-        eval: F,
+        evals: &[F],
     ) -> Self {
         VerifierQuery {
             point,
             commitment_label,
             commitment: CommitmentReference::OnePiece(commitment),
-            eval,
+            evals: evals.to_vec(),
         }
     }
 
@@ -211,7 +199,7 @@ where
         points: Vec<&'com CS::Commitment>,
         scalars: Vec<F>,
         base_labels: Vec<CommitmentLabel>,
-        eval: F,
+        evals: &[F],
     ) -> Self {
         assert_eq!(
             points.len(),
@@ -227,7 +215,7 @@ where
             point,
             commitment_label,
             commitment: CommitmentReference::Linear(points, scalars, base_labels),
-            eval,
+            evals: evals.to_vec(),
         }
     }
 }
@@ -241,8 +229,8 @@ impl<'com, F: PrimeField, CS: PolynomialCommitmentScheme<F>> Query<F>
     fn get_point(&self) -> F {
         self.point
     }
-    fn get_eval(&self) -> F {
-        self.eval
+    fn get_evals(&self) -> Vec<F> {
+        self.evals.clone()
     }
     fn get_commitment(&self) -> Self::Commitment {
         self.commitment.clone()

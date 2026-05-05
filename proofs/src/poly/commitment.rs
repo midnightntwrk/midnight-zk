@@ -10,7 +10,7 @@ use crate::{
     utils::helpers::ProcessedSerdeObject,
 };
 
-/// Public interface for a Polynomial Commitment Scheme (PCS).
+/// Public interface for a Multi-Polynomial Commitment Scheme (M-PCS).
 pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
     /// Parameters needed to generate a proof in the PCS
     type Parameters: Params;
@@ -18,7 +18,7 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
     /// Parameters needed to verify a proof in the PCS
     type VerifierParameters;
 
-    /// Type of a committed polynomial
+    /// Commitment to a batch of polynomials
     type Commitment: Clone + Debug + Default + PartialEq + ProcessedSerdeObject + Send + Sync;
 
     /// Verification guard. Allows for batch verification
@@ -33,7 +33,7 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
     /// Commit to a polynomial in coefficient form
     fn commit<B: PolynomialRepresentation>(
         params: &Self::Parameters,
-        polynomial: &Polynomial<F, B>,
+        polynomial: &[Polynomial<F, B>],
     ) -> Self::Commitment;
 
     /// Create a multi-opening proof at a set of [ProverQuery]'s.
