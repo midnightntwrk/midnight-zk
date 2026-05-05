@@ -1,5 +1,4 @@
 //! Trait for a commitment scheme
-use core::ops::{Add, Mul};
 use std::{fmt::Debug, hash::Hash};
 
 use ff::{FromUniformBytes, PrimeField};
@@ -11,8 +10,7 @@ use crate::{
     utils::helpers::ProcessedSerdeObject,
 };
 
-/// Public interface for a additively homomorphic Polynomial Commitment Scheme
-/// (PCS)
+/// Public interface for a Polynomial Commitment Scheme (PCS).
 pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
     /// Parameters needed to generate a proof in the PCS
     type Parameters: Params;
@@ -21,15 +19,7 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
     type VerifierParameters;
 
     /// Type of a committed polynomial
-    type Commitment: Clone
-        + Debug
-        + Default
-        + PartialEq
-        + ProcessedSerdeObject
-        + Send
-        + Sync
-        + Add<Output = Self::Commitment>
-        + Mul<F, Output = Self::Commitment>;
+    type Commitment: Clone + Debug + Default + PartialEq + ProcessedSerdeObject + Send + Sync;
 
     /// Verification guard. Allows for batch verification
     type VerificationGuard: Guard<F, Self>;
