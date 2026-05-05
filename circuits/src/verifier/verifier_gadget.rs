@@ -894,7 +894,9 @@ pub(crate) mod tests {
     use crate::{
         ecc::{
             curves::CircuitCurve,
-            foreign::{nb_foreign_ecc_chip_columns, ForeignEccChip, ForeignEccConfig},
+            foreign::weierstrass_chip::{
+                nb_foreign_ecc_chip_columns, ForeignWeierstrassEccChip, ForeignWeierstrassEccConfig,
+            },
         },
         field::{
             decomposition::{
@@ -911,7 +913,7 @@ pub(crate) mod tests {
         },
         instructions::{
             hash::{HashCPU, HashInstructions},
-            AssignmentInstructions,
+            AssignmentInstructions, EccInstructions,
         },
         testing_utils::FromScratch,
         types::{ComposableChip, Instantiable},
@@ -959,6 +961,8 @@ pub(crate) mod tests {
             let instance_column = meta.instance_column();
             PoseidonChip::configure_from_scratch(
                 meta,
+                &mut vec![],
+                &mut vec![],
                 &[committed_instance_column, instance_column],
             )
         }
@@ -994,7 +998,7 @@ pub(crate) mod tests {
         type Config = (
             NativeConfig,
             P2RDecompositionConfig,
-            ForeignEccConfig<C>,
+            ForeignWeierstrassEccConfig<C>,
             PoseidonConfig<F>,
         );
         type FloorPlanner = SimpleFloorPlanner;
@@ -1040,7 +1044,7 @@ pub(crate) mod tests {
                 nb_parallel_range_checks,
                 max_bit_len,
             );
-            let curve_config = ForeignEccChip::<F, C, C, NG, NG>::configure(
+            let curve_config = ForeignWeierstrassEccChip::<F, C, C, NG, NG>::configure(
                 meta,
                 &base_config,
                 &advice_columns,
@@ -1072,7 +1076,8 @@ pub(crate) mod tests {
             let native_chip = <NativeChip<F> as ComposableChip<F>>::new(&config.0, &());
             let core_decomp_chip = P2RDecompositionChip::new(&config.1, &16);
             let native_gadget = NativeGadget::new(core_decomp_chip.clone(), native_chip.clone());
-            let curve_chip = ForeignEccChip::new(&config.2, &native_gadget, &native_gadget);
+            let curve_chip =
+                ForeignWeierstrassEccChip::new(&config.2, &native_gadget, &native_gadget);
             let poseidon_chip = PoseidonChip::new(&config.3, &native_chip);
 
             let verifier_chip =
@@ -1086,8 +1091,8 @@ pub(crate) mod tests {
                 self.inner_vk.2,
             )?;
 
-            let assigned_committed_instance =
-                curve_chip.assign(&mut layouter, self.inner_committed_instance)?;
+            let assigned_committed_instance = curve_chip
+                .assign_without_subgroup_check(&mut layouter, self.inner_committed_instance)?;
 
             let assigned_inner_pi = native_gadget
                 .assign_many(&mut layouter, &self.inner_instances.transpose_array())?;
@@ -1134,8 +1139,8 @@ pub(crate) mod tests {
                 &[InnerCircuit::from_witness(preimage)],
                 1,
                 &[&[&[], &inner_public_inputs]],
-                &mut rng,
                 &mut transcript,
+                &mut rng,
             )
             .unwrap_or_else(|_| panic!("Problem creating the inner proof"));
             transcript.finalize()
@@ -1167,8 +1172,6 @@ pub(crate) mod tests {
         // The inner proof is ready.
         // Now, let us make a proof that we know an inner proof.
 
-        const K: u32 = 18;
-
         let mut public_inputs = AssignedVk::<S>::as_public_input(&inner_vk);
         public_inputs.extend(AssignedAccumulator::as_public_input(&inner_acc));
 
@@ -1184,7 +1187,7 @@ pub(crate) mod tests {
         };
 
         let prover =
-            MockProver::run(K, &circuit, vec![vec![], public_inputs]).expect("MockProver failed");
+            MockProver::run(&circuit, vec![vec![], public_inputs]).expect("MockProver failed");
         prover.assert_satisfied();
     }
 }

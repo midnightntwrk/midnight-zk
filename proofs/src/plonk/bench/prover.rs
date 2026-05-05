@@ -49,8 +49,8 @@ pub(crate) fn compute_trace<
     // instances that the verifier receives in committed form.
     #[cfg(feature = "committed-instances")] nb_committed_instances: usize,
     instances: &[&[&[F]]],
-    mut rng: impl RngCore + CryptoRng,
     transcript: &mut T,
+    mut rng: impl RngCore + CryptoRng,
     group: &mut BenchmarkGroup<criterion::measurement::WallTime>,
 ) -> Result<ProverTrace<F>, Error>
 where
@@ -766,8 +766,8 @@ pub fn benchmark_create_proof<
     circuits: &[ConcreteCircuit],
     #[cfg(feature = "committed-instances")] nb_committed_instances: usize,
     instances: &[&[&[F]]],
-    rng: impl RngCore + CryptoRng,
     transcript: &mut T,
+    rng: &mut (impl RngCore + CryptoRng),
     group: &mut BenchmarkGroup<criterion::measurement::WallTime>,
 ) -> Result<(), Error>
 where
@@ -789,8 +789,8 @@ where
         #[cfg(feature = "committed-instances")]
         nb_committed_instances,
         instances,
-        rng,
         transcript,
+        rng,
         group,
     )?;
 

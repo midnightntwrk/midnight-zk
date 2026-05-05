@@ -53,7 +53,7 @@ macro_rules! plonk_api {
 
         impl<Relation> $name<Relation>
         where
-            Relation: Circuit<$native> + Clone,
+            Relation: Circuit<$native>,
         {
             /// PLONK VK setup for the given circuit. Downsizes the parameters to match
             /// the size of the circuit.
@@ -113,8 +113,8 @@ macro_rules! plonk_api {
                         std::slice::from_ref(circuit),
                         nb_instance_commitments,
                         &[pi],
-                        rng,
                         &mut transcript,
+                        rng,
                     )?;
                     transcript.finalize()
                 };

@@ -13,6 +13,17 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 * Add `k256` module [#189](https://github.com/midnightntwrk/midnight-zk/pull/189), [#191](https://github.com/midnightntwrk/midnight-zk/pull/191)
 
 ### Changed
+
+### Removed
+
+## 0.3.0
+### Added
+* Add Curve25519 [#181](https://github.com/midnightntwrk/midnight-zk/pull/181)
+* Add `k256` module [#189](https://github.com/midnightntwrk/midnight-zk/pull/189), [#191](https://github.com/midnightntwrk/midnight-zk/pull/191)
+* Update READMEs and add badges [#261](https://github.com/midnightntwrk/midnight-zk/pull/261)
+* Add `p256` module [#269](https://github.com/midnightntwrk/midnight-zk/pull/269)
+
+### Changed
 * Change nr of bits to represent JubJub scalar field modulus from 255 -> 252 [#179](https://github.com/midnightntwrk/midnight-zk/pull/179)
 * Updated Rust toolchain to 1.90.0 [#210](https://github.com/midnightntwrk/midnight-zk/pull/210)
 * Feature-gate `derive::curve` macro and `hash_to_curve` module behind `dev-curves` [#216](https://github.com/midnightntwrk/midnight-zk/pull/216)

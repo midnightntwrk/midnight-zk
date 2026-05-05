@@ -20,7 +20,7 @@ use midnight_proofs::{
 #[cfg(any(test, feature = "testing"))]
 use {
     crate::testing_utils::FromScratch,
-    midnight_proofs::plonk::{Column, ConstraintSystem, Instance},
+    midnight_proofs::plonk::{Advice, Column, ConstraintSystem, Fixed, Instance},
 };
 
 use crate::{
@@ -239,11 +239,13 @@ where
 
     fn configure_from_scratch(
         meta: &mut ConstraintSystem<F>,
+        advice_columns: &mut Vec<Column<Advice>>,
+        fixed_columns: &mut Vec<Column<Fixed>>,
         instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
         (
-            N::configure_from_scratch(meta, instance_columns),
-            H::configure_from_scratch(meta, instance_columns),
+            N::configure_from_scratch(meta, advice_columns, fixed_columns, instance_columns),
+            H::configure_from_scratch(meta, advice_columns, fixed_columns, instance_columns),
         )
     }
 
@@ -271,7 +273,7 @@ mod test {
         field::{decomposition::chip::P2RDecompositionChip, NativeChip, NativeGadget},
         hash::poseidon::{constants::PoseidonField, PoseidonChip},
         map::cpu::MapMt,
-        utils::circuit_modeling::circuit_to_json,
+        utils::circuit_modeling::{circuit_to_json, cost_measure_end, cost_measure_start},
     };
 
     #[derive(Clone, Debug)]
@@ -318,6 +320,8 @@ mod test {
             let instance_column = meta.instance_column();
             MapGadget::<F, N, H>::configure_from_scratch(
                 meta,
+                &mut vec![],
+                &mut vec![],
                 &[committed_instance_column, instance_column],
             )
         }
@@ -339,6 +343,7 @@ mod test {
 
             native_gadget.constrain_as_public_input(&mut layouter, &map_gadget.succinct_repr())?;
 
+            cost_measure_start(&mut layouter);
             match self.mode {
                 MapTests::Get => {
                     let value = map_gadget.get(&mut layouter, &assigned_key)?;
@@ -355,6 +360,7 @@ mod test {
                         .constrain_as_public_input(&mut layouter, &map_gadget.succinct_repr())?;
                 }
             }
+            cost_measure_end(&mut layouter);
 
             map_gadget.load_from_scratch(&mut layouter)
         }
@@ -366,7 +372,6 @@ mod test {
         N: NativeInstructions<F> + FromScratch<F>,
         H: HashInstructions<F, AssignedNative<F>, AssignedNative<F>> + FromScratch<F>,
     {
-        let k: u32 = 15;
         let mut rng = ChaCha8Rng::seed_from_u64(0xc0ffee);
 
         let mut mt = MapMt::<F, H>::new(&F::ZERO);
@@ -420,7 +425,7 @@ mod test {
                 _marker: PhantomData::<N>,
             };
 
-            let prover = MockProver::run(k, &circuit, vec![vec![], pi.clone()]).unwrap();
+            let prover = MockProver::run(&circuit, vec![vec![], pi.clone()]).unwrap();
             if test_passes {
                 assert!(prover.verify().is_ok());
             } else {

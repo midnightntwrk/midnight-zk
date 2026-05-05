@@ -1,6 +1,6 @@
 [package]
 name = "midnight-circuits"
-version = "6.0.0"
+version = "7.0.0"
 edition = "2021"
 license-file.workspace = true
 description = "Circuit and gadget implementations for Midnight zero-knowledge proofs"
@@ -11,8 +11,8 @@ description = "Circuit and gadget implementations for Midnight zero-knowledge pr
 group = { workspace = true }
 ff = { workspace = true }
 rustc-hash = "2"
-midnight-curves = "0.2.0"
-midnight-proofs = { version = "0.7.0", default-features = false, features = [
+midnight-curves = "0.3.0"
+midnight-proofs = { version = "0.8.0", default-features = false, features = [
     "circuit-params",
     "committed-instances",
 ] }
@@ -30,7 +30,7 @@ subtle = "2.6"
 base64 = "0.13.1"
 lazy_static = "1.5.0"
 goldenfile = { version = "=1.8.0", optional = true }
-rand_chacha = { version = "0.3.1", optional = true }
+rand_chacha = { workspace = true, optional = true }
 
 [dev-dependencies]
 criterion = "0.7"
@@ -42,9 +42,7 @@ itertools = "0.14"
 dhat = "0.3"
 
 [target.'cfg(ci_build)'.dependencies]
-midnight-curves = { version = "0.2.0", features = [
-    "portable",
-] }
+midnight-curves = { version = "0.3.0", features = ["portable"] }
 
 [features]
 default = []
@@ -60,6 +58,7 @@ single-h-commitment = ["midnight-proofs/single-h-commitment"]
 fewer-point-sets = ["midnight-proofs/fewer-point-sets"]
 # Enable development curves (BN256, Pasta)
 dev-curves = ["midnight-curves/dev-curves", "midnight-proofs/dev-curves"]
+
 
 [lib]
 bench = false

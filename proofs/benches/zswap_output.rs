@@ -76,6 +76,8 @@ impl Relation for ZSwapOutputCircuit {
 
     type Witness = (PK, CoinInfo, JubjubScalar);
 
+    type Error = Error;
+
     fn format_instance(instance: &Self::Instance) -> Result<Vec<F>, Error> {
         let mut pi: Vec<F> =
             instance.0.iter().flat_map(AssignedByte::<F>::as_public_input).collect();
@@ -266,8 +268,8 @@ fn bench_zswap_output(c: &mut Criterion) {
         std::slice::from_ref(&circuit),
         1,
         &[&[&[], &instance]],
-        OsRng,
         &mut transcript,
+        &mut OsRng,
         &mut group,
     )
     .expect("Failed to generate proof");

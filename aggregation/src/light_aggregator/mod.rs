@@ -381,8 +381,8 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
             &[aggregator_circuit],
             1,
             &[&[&acc_committed_instances, &aggregator_instances]],
-            &mut rng,
             transcript,
+            &mut rng,
         )?;
 
         // Create the IPA proof
@@ -513,6 +513,8 @@ mod tests {
         type Instance = [F; 2];
 
         type Witness = [F; 2];
+
+        type Error = Error;
 
         fn format_instance(instance: &Self::Instance) -> Result<Vec<F>, Error> {
             Ok(instance.to_vec())

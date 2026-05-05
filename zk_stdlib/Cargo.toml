@@ -1,6 +1,6 @@
 [package]
 name = "midnight-zk-stdlib"
-version = "1.0.0"
+version = "2.0.0"
 edition = "2021"
 license-file.workspace = true
 description = "Standard library of circuits and utilities for Midnight zero-knowledge proofs"
@@ -11,15 +11,15 @@ description = "Standard library of circuits and utilities for Midnight zero-know
 group = { workspace = true }
 ff = { workspace = true }
 blake2b_simd = { workspace = true }
-midnight-circuits = { version = "6.0.0", features = ["testing"] }
-midnight-curves = { version = "0.2.0" }
-midnight-proofs = { version = "0.7.0", default-features = false, features = [
+midnight-circuits = { version = "7.0.0", features = ["testing"] }
+midnight-curves = { version = "0.3.0" }
+midnight-proofs = { version = "0.8.0", default-features = false, features = [
     "circuit-params",
     "committed-instances",
 ] }
 
-keccak_sha3 = { package = "sha3-circuit", git = "https://github.com/alexandroszacharakis8/sha3-circuit", rev = "1a3ef7d2"}
-blake2b = { package = "blake2b_halo2", git = "https://github.com/eryxcoop/blake2b_halo2", rev = "5f979f"}
+keccak_sha3 = { package = "sha3-circuit", git = "https://github.com/alexandroszacharakis8/sha3-circuit", rev = "1a3ef7d" }
+blake2b = { package = "blake2b_halo2", git = "https://github.com/eryxcoop/blake2b_halo2", rev = "67b2fac" }
 
 serde = { workspace = true, optional = true }
 sha2 = { workspace = true }
@@ -34,7 +34,7 @@ hex-literal = "1.1"
 
 [dev-dependencies]
 criterion = "0.7"
-rand_chacha = "0.3.1"
+rand_chacha = { workspace = true }
 goldenfile = "=1.8.0"
 num-bigint = { workspace = true, features = ["rand"] }
 serde_json = { workspace = true }
@@ -42,11 +42,11 @@ itertools = "0.14"
 dhat = "0.3"
 bellman = "0.14.0"
 serial_test = "3.2.0"
-sha3 = "0.10.0"
+sha3 = "0.11.0"
 blake2 = "0.10.6"
 
 [target.'cfg(ci_build)'.dependencies]
-midnight-curves = { version = "0.2.0", features = ["portable"] }
+midnight-curves = { version = "0.3.0", features = ["portable"] }
 
 [features]
 default = []
@@ -73,12 +73,12 @@ harness = false
 
 [[example]]
 name = "cred_full"
-path = "examples/identity/full_credential.rs"
+path = "examples/identity/jwt/full_credential.rs"
 
 [[example]]
 name = "cred_enrollment"
-path = "examples/identity/enrollment.rs"
+path = "examples/identity/jwt/enrollment.rs"
 
 [[example]]
 name = "cred_property"
-path = "examples/identity/property_check.rs"
+path = "examples/identity/jwt/property_check.rs"

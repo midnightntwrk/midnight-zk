@@ -1871,7 +1871,10 @@ impl<F: CircuitField> CompressionState<F> {
 use midnight_proofs::plonk::Instance;
 
 #[cfg(any(test, feature = "testing"))]
-use crate::{field::decomposition::chip::P2RDecompositionConfig, testing_utils::FromScratch};
+use crate::{
+    field::{decomposition::chip::P2RDecompositionConfig, native::NB_EXTRA_ARITH_FIXED_COLS},
+    testing_utils::FromScratch,
+};
 
 #[cfg(any(test, feature = "testing"))]
 impl<F: CircuitField> FromScratch<F> for Sha512Chip<F> {
@@ -1886,14 +1889,31 @@ impl<F: CircuitField> FromScratch<F> for Sha512Chip<F> {
 
     fn configure_from_scratch(
         meta: &mut ConstraintSystem<F>,
+        advice_columns: &mut Vec<Column<Advice>>,
+        fixed_columns: &mut Vec<Column<Fixed>>,
         instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
-        let core_decomposition_config =
-            NativeGadget::configure_from_scratch(meta, instance_columns);
+        use std::cmp::max;
 
-        let native_config = &core_decomposition_config.native_config;
-        let mut advice_columns = native_config.advice_columns().to_vec();
-        let mut fixed_columns = native_config.fixed_columns();
+        const NB_ARITH_COLS: usize = 5;
+        const NB_ARITH_FIXED_COLS: usize = NB_ARITH_COLS + NB_EXTRA_ARITH_FIXED_COLS;
+
+        let nb_advice_needed = max(NB_ARITH_COLS, NB_SHA512_ADVICE_COLS);
+        let nb_fixed_needed = max(NB_ARITH_FIXED_COLS, NB_SHA512_FIXED_COLS);
+
+        while advice_columns.len() < nb_advice_needed {
+            advice_columns.push(meta.advice_column());
+        }
+        while fixed_columns.len() < nb_fixed_needed {
+            fixed_columns.push(meta.fixed_column());
+        }
+
+        let core_decomposition_config = NativeGadget::configure_from_scratch(
+            meta,
+            advice_columns,
+            fixed_columns,
+            instance_columns,
+        );
 
         while advice_columns.len() < NB_SHA512_ADVICE_COLS {
             advice_columns.push(meta.advice_column());

@@ -23,9 +23,11 @@ use crate::{
         NativeGadget,
     },
     instructions::{
-        division::DivisionInstructions, vector::VectorInstructions, ArithInstructions,
-        AssertionInstructions, AssignmentInstructions, BinaryInstructions, ComparisonInstructions,
-        ControlFlowInstructions, EqualityInstructions, RangeCheckInstructions,
+        division::DivisionInstructions,
+        vector::{VectorBounds, VectorInstructions},
+        ArithInstructions, AssertionInstructions, AssignmentInstructions, BinaryInstructions,
+        ComparisonInstructions, ControlFlowInstructions, EqualityInstructions,
+        RangeCheckInstructions,
     },
     types::{AssignedBit, AssignedVector, InnerValue, Vectorizable},
     vec::get_lims,
@@ -82,8 +84,8 @@ where
             .native_gadget
             .assign_many(layouter, &vec![Value::known(T::FILLER); L - M])?;
 
-        let buffer: [T; L] =
-            [extra_pad.as_slice(), input.buffer.as_slice()].concat().try_into().unwrap();
+        let buffer: Box<[T; L]> =
+            Box::new([extra_pad.as_slice(), input.buffer.as_slice()].concat().try_into().unwrap());
 
         Ok(AssignedVector {
             buffer,
@@ -97,10 +99,18 @@ where
         value: Value<Vec<T::Element>>,
         filler: Option<T::Element>,
     ) -> Result<AssignedVector<F, T, M, A>, Error> {
+        assert!(M >= A, "AssignedVector requires M >= A (got M={M}, A={A})");
+        assert!(A > 0, "AssignedVector requires A positive (A={A})");
+        assert!(
+            M.is_multiple_of(A),
+            "AssignedVector requires M % A == 0 (got M={M}, A={A})"
+        );
         let ng = &self.native_gadget;
         let filler = filler.unwrap_or(T::FILLER);
         let (data_val, len_val) = value
             .map(|v| {
+                // `v` needs to be at most `M - M % A`, i.e., `M` since we require above that it
+                // is a multiple of `A`.
                 assert!(v.len() <= M);
                 let len = F::from(v.len() as u64);
                 let mut buffer = [filler; M];
@@ -109,10 +119,11 @@ where
             })
             .unzip();
 
-        let data = ng
-            .assign_many(layouter, &data_val.transpose_array())?
-            .try_into()
-            .expect("Length mismatch in AssignedVector.");
+        let data: Box<[T; M]> = Box::new(
+            ng.assign_many(layouter, &data_val.transpose_array())?
+                .try_into()
+                .expect("Length mismatch in AssignedVector."),
+        );
         let len = ng.assign_lower_than_fixed(layouter, len_val, &(M + 1).into())?;
         Ok(AssignedVector { buffer: data, len })
     }
@@ -121,28 +132,31 @@ where
         &self,
         layouter: &mut impl Layouter<F>,
         input: &AssignedVector<F, T, M, A>,
-    ) -> Result<[AssignedBit<F>; M], Error> {
+    ) -> Result<(Box<[AssignedBit<F>; M]>, VectorBounds<F>), Error> {
         let ng = &self.native_gadget;
-        let (start, end) = self.get_limits(layouter, input)?;
+        let limits = self.get_limits(layouter, input)?;
+        let (start, end) = &limits;
         let mut is_data: AssignedBit<F> = ng.assign_fixed(layouter, true)?;
 
-        let result = (0..M - A)
+        let result = (0..=M - A)
             .map(|i| {
-                let is_start = ng.is_equal_to_fixed(layouter, &start, F::from(i as u64))?;
+                let is_start = ng.is_equal_to_fixed(layouter, start, F::from(i as u64))?;
                 is_data = ng.xor(layouter, &[is_data.clone(), is_start])?;
                 Ok(is_data.clone())
             })
             .collect::<Result<Vec<_>, Error>>()?;
 
-        let last_chunk = (M - A..M)
+        let last_chunk = (M - A + 1..M)
             .map(|i| {
-                let is_end = ng.is_equal_to_fixed(layouter, &end, F::from(i as u64))?;
+                let is_end = ng.is_equal_to_fixed(layouter, end, F::from(i as u64))?;
                 is_data = ng.xor(layouter, &[is_data.clone(), is_end])?;
                 Ok(is_data.clone())
             })
             .collect::<Result<Vec<_>, Error>>()?;
 
-        Ok([result, last_chunk].concat().try_into().expect("Mismatch in vector lengths"))
+        let flags: Box<[AssignedBit<F>; M]> =
+            Box::new([result, last_chunk].concat().try_into().expect("Mismatch in vector lengths"));
+        Ok((flags, limits))
     }
 
     fn get_limits(
@@ -224,11 +238,13 @@ where
         };
         debug_assert_eq!(buffer.len(), M + A);
 
-        let buffer: [_; M] = (0..M)
-            .map(|i| ng.select(layouter, &needs_adjust, &buffer[i], &buffer[A + i]))
-            .collect::<Result<Vec<_>, Error>>()?
-            .try_into()
-            .unwrap();
+        let buffer: Box<[_; M]> = Box::new(
+            (0..M)
+                .map(|i| ng.select(layouter, &needs_adjust, &buffer[i], &buffer[A + i]))
+                .collect::<Result<Vec<_>, Error>>()?
+                .try_into()
+                .unwrap(),
+        );
 
         // Compute final length.
         let len = ng.add_constant(layouter, &input.len, -F::from(n_elems as u64))?;
@@ -284,6 +300,7 @@ where
         // Check all data values are equal.
         let val_checks = self
             .padding_flag(layouter, x)?
+            .0
             .into_iter()
             .zip(x.buffer.iter().zip(y.buffer.iter()))
             .map(|(is_padding, (a, b))| {
@@ -404,7 +421,7 @@ where
 }
 
 #[cfg(any(test, feature = "testing"))]
-use midnight_proofs::plonk::{Column, ConstraintSystem, Instance};
+use midnight_proofs::plonk::{Advice, Column, ConstraintSystem, Fixed, Instance};
 
 #[cfg(any(test, feature = "testing"))]
 use crate::testing_utils::FromScratch;
@@ -421,9 +438,11 @@ impl<F: CircuitField> FromScratch<F> for VectorGadget<F> {
 
     fn configure_from_scratch(
         meta: &mut ConstraintSystem<F>,
+        advice_columns: &mut Vec<Column<Advice>>,
+        fixed_columns: &mut Vec<Column<Fixed>>,
         instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
-        <NG<F>>::configure_from_scratch(meta, instance_columns)
+        <NG<F>>::configure_from_scratch(meta, advice_columns, fixed_columns, instance_columns)
     }
 
     fn load_from_scratch(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
@@ -448,7 +467,7 @@ mod tests {
             AssignedNative, NativeChip, NativeGadget,
         },
         testing_utils::FromScratch,
-        utils::circuit_modeling::circuit_to_json,
+        utils::circuit_modeling::{circuit_to_json, cost_measure_end, cost_measure_start},
     };
 
     struct TestCircuit<F: CircuitField, const M: usize, const A: usize> {
@@ -484,7 +503,12 @@ mod tests {
         fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
             let comm_ic = meta.instance_column();
             let instance_column = meta.instance_column();
-            NativeGadget::configure_from_scratch(meta, &[comm_ic, instance_column])
+            NativeGadget::configure_from_scratch(
+                meta,
+                &mut vec![],
+                &mut vec![],
+                &[comm_ic, instance_column],
+            )
         }
 
         fn synthesize(
@@ -495,6 +519,7 @@ mod tests {
             let ng = NG::<F>::new_from_scratch(&config);
             let vg = VectorGadget::new(&ng);
 
+            cost_measure_start(&mut layouter);
             match self.opts {
                 TestOpts::Eq {
                     mutate_padding,
@@ -561,7 +586,7 @@ mod tests {
                         })
                         .transpose_array();
 
-                    let result = vg.padding_flag(&mut layouter, &vec_1)?;
+                    let (result, _limits) = vg.padding_flag(&mut layouter, &vec_1)?;
 
                     for (r, e) in result.iter().zip(expected.iter()) {
                         let e: AssignedBit<F> = ng.assign(&mut layouter, *e)?;
@@ -578,6 +603,7 @@ mod tests {
                     vg.assert_equal_to_fixed(&mut layouter, &result, self.input_2.clone())?;
                 }
             }
+            cost_measure_end(&mut layouter);
 
             ng.load_from_scratch(&mut layouter)
         }
@@ -601,9 +627,7 @@ mod tests {
             },
         };
 
-        let k = 14;
-
-        MockProver::run(k, &circuit, vec![vec![], vec![]]).unwrap().assert_satisfied();
+        MockProver::run(&circuit, vec![vec![], vec![]]).unwrap().assert_satisfied();
 
         if cost_model {
             circuit_to_json(
@@ -624,9 +648,7 @@ mod tests {
             opts: TestOpts::Limits,
         };
 
-        let k = 14;
-
-        MockProver::run(k, &circuit, vec![vec![], vec![]]).unwrap().assert_satisfied();
+        MockProver::run(&circuit, vec![vec![], vec![]]).unwrap().assert_satisfied();
 
         if cost_model {
             circuit_to_json(
@@ -647,9 +669,7 @@ mod tests {
             opts: TestOpts::Padding,
         };
 
-        let k = 14;
-
-        MockProver::run(k, &circuit, vec![vec![], vec![]]).unwrap().assert_satisfied();
+        MockProver::run(&circuit, vec![vec![], vec![]]).unwrap().assert_satisfied();
 
         if cost_model {
             circuit_to_json(
@@ -675,9 +695,7 @@ mod tests {
             opts: TestOpts::Trim { trim_size },
         };
 
-        let k = 14;
-
-        MockProver::run(k, &circuit, vec![vec![], vec![]]).unwrap().assert_satisfied();
+        MockProver::run(&circuit, vec![vec![], vec![]]).unwrap().assert_satisfied();
 
         if cost_model {
             circuit_to_json(
@@ -698,7 +716,7 @@ mod tests {
 
         // Equal vectors, different padding.
         run_eq_vec_test::<_, 128, 2>(&inputs, &inputs, true, true, true);
-        run_eq_vec_test::<_, 128, 3>(&inputs, &inputs, true, true, false);
+        run_eq_vec_test::<_, 126, 3>(&inputs, &inputs, true, true, false);
 
         // Equal vectors, equal padding.
         run_eq_vec_test::<_, 128, 2>(&inputs, &inputs, true, false, false);
@@ -727,9 +745,9 @@ mod tests {
         // Test different alignments.
         run_limit_vec_test::<_, 128, 1>(&inputs, true);
         run_limit_vec_test::<_, 128, 2>(&inputs, false);
-        run_limit_vec_test::<_, 128, 3>(&inputs, false);
+        run_limit_vec_test::<_, 126, 3>(&inputs, false);
         run_limit_vec_test::<_, 128, 4>(&inputs, false);
-        run_limit_vec_test::<_, 128, 5>(&inputs, false);
+        run_limit_vec_test::<_, 130, 5>(&inputs, false);
 
         // Test edge cases.
         run_limit_vec_test::<_, 64, 2>(&inputs[..64], false);
@@ -746,7 +764,7 @@ mod tests {
 
         run_padding_flags_test::<_, 128, 1>(&inputs, true);
         run_padding_flags_test::<_, 128, 2>(&inputs, false);
-        run_padding_flags_test::<_, 128, 3>(&inputs, false);
+        run_padding_flags_test::<_, 126, 3>(&inputs, false);
         run_padding_flags_test::<_, 128, 64>(&inputs, false);
         run_padding_flags_test::<F, 128, 64>(&[], false);
         run_padding_flags_test::<F, 64, 16>(&inputs[..64], false);
@@ -772,14 +790,14 @@ mod tests {
         run_trim_vec_test::<_, 128, 32>(&inputs, 31, false);
 
         // Above or equal to A.
-        run_trim_vec_test::<_, 128, 3>(&inputs, 3, false);
-        run_trim_vec_test::<_, 128, 3>(&inputs, 4, false);
-        run_trim_vec_test::<_, 128, 3>(&inputs, 5, false);
-        run_trim_vec_test::<_, 128, 3>(&inputs, 6, false);
-        run_trim_vec_test::<_, 128, 3>(&inputs, 10, false);
-        run_trim_vec_test::<_, 128, 3>(&inputs, 20, false);
-        run_trim_vec_test::<_, 128, 3>(&inputs, 30, false);
-        run_trim_vec_test::<_, 128, 3>(&inputs, 40, false);
+        run_trim_vec_test::<_, 126, 3>(&inputs, 3, false);
+        run_trim_vec_test::<_, 126, 3>(&inputs, 4, false);
+        run_trim_vec_test::<_, 126, 3>(&inputs, 5, false);
+        run_trim_vec_test::<_, 126, 3>(&inputs, 6, false);
+        run_trim_vec_test::<_, 126, 3>(&inputs, 10, false);
+        run_trim_vec_test::<_, 126, 3>(&inputs, 20, false);
+        run_trim_vec_test::<_, 126, 3>(&inputs, 30, false);
+        run_trim_vec_test::<_, 126, 3>(&inputs, 40, false);
 
         // Edge case: offset of original vector = 0;
         run_trim_vec_test::<_, 128, 32>(&inputs[..96], 23, false);

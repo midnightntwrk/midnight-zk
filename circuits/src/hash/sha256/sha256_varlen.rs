@@ -40,6 +40,15 @@ pub struct VarLenSha256Gadget<F: CircuitField> {
 }
 
 impl<F: CircuitField> VarLenSha256Gadget<F> {
+    /// Create a new variable-length SHA256 gadget from its dependencies.
+    pub fn new(sha256chip: &Sha256Chip<F>) -> Self {
+        Self {
+            sha256chip: sha256chip.clone(),
+        }
+    }
+}
+
+impl<F: CircuitField> VarLenSha256Gadget<F> {
     fn ng(&self) -> &NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>> {
         &self.sha256chip.native_gadget
     }
@@ -314,7 +323,7 @@ impl<F: CircuitField> VarLenSha256Gadget<F> {
 }
 
 #[cfg(any(test, feature = "testing"))]
-use midnight_proofs::plonk::{Column, ConstraintSystem, Instance};
+use midnight_proofs::plonk::{Advice, Column, ConstraintSystem, Fixed, Instance};
 
 #[cfg(any(test, feature = "testing"))]
 use crate::testing_utils::FromScratch;
@@ -331,9 +340,11 @@ impl<F: CircuitField> FromScratch<F> for VarLenSha256Gadget<F> {
 
     fn configure_from_scratch(
         meta: &mut ConstraintSystem<F>,
+        advice_columns: &mut Vec<Column<Advice>>,
+        fixed_columns: &mut Vec<Column<Fixed>>,
         instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
-        Sha256Chip::configure_from_scratch(meta, instance_columns)
+        Sha256Chip::configure_from_scratch(meta, advice_columns, fixed_columns, instance_columns)
     }
 
     fn load_from_scratch(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {

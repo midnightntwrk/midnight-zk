@@ -15,15 +15,15 @@ rustdoc-args = ["--cfg", "docsrs", "--html-in-header", "katex-header.html"]
 [dependencies]
 group = { workspace = true }
 ff = { workspace = true }
-midnight-curves = "0.2.0"
-midnight-proofs = { version = "0.7.0", default-features = false, features = [
+midnight-curves = "0.3.0"
+midnight-proofs = { version = "0.8.0", default-features = false, features = [
     "circuit-params",
     "committed-instances",
 ] }
-midnight-circuits = { version = "6.0.0", default-features = false, features = [
+midnight-circuits = { version = "7.0.0", default-features = false, features = [
     "testing",
 ] }
-midnight-zk-stdlib = { path = "../zk_stdlib", version = "1.0.0" }
+midnight-zk-stdlib = { path = "../zk_stdlib", version = "2.0.0" }
 
 rand = { workspace = true }
 blake2b_simd = { workspace = true }
@@ -38,6 +38,10 @@ required-features = ["truncated-challenges"]
 
 [[example]]
 name = "single_circuit_aggregation"
+required-features = ["truncated-challenges"]
+
+[[example]]
+name = "multi_circuit_aggregation"
 required-features = ["truncated-challenges"]
 
 [features]

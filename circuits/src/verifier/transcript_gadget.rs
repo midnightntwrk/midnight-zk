@@ -122,6 +122,11 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
 
     /// Reads a point from the reader buffer, and adds it to the transcript.
     /// Think of the read point as a witness freely chosen by the prover.
+    ///
+    /// # Warning
+    ///
+    /// The received points are not enforced to be part of the relevant prime
+    /// order subgroup.
     pub fn read_point(
         &mut self,
         layouter: &mut impl Layouter<S::F>,
@@ -134,7 +139,7 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
             Err(_) => Value::known(S::C::default()),
         };
 
-        let assigned_point = self.curve_chip.assign(layouter, point)?;
+        let assigned_point = S::assign_without_subgroup_check(layouter, &self.curve_chip, point)?;
         self.common_point(layouter, &assigned_point)?;
 
         Ok(assigned_point)
@@ -162,7 +167,7 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
 }
 
 #[cfg(any(test, feature = "testing"))]
-use midnight_proofs::plonk::{Column, ConstraintSystem, Instance};
+use midnight_proofs::plonk::{Advice, Column, ConstraintSystem, Fixed, Instance};
 
 #[cfg(any(test, feature = "testing"))]
 use crate::testing_utils::FromScratch;
@@ -195,12 +200,29 @@ where
 
     fn configure_from_scratch(
         meta: &mut ConstraintSystem<S::F>,
+        advice_columns: &mut Vec<Column<Advice>>,
+        fixed_columns: &mut Vec<Column<Fixed>>,
         instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
         (
-            S::ScalarChip::configure_from_scratch(meta, instance_columns),
-            S::CurveChip::configure_from_scratch(meta, instance_columns),
-            S::SpongeChip::configure_from_scratch(meta, instance_columns),
+            S::ScalarChip::configure_from_scratch(
+                meta,
+                advice_columns,
+                fixed_columns,
+                instance_columns,
+            ),
+            S::CurveChip::configure_from_scratch(
+                meta,
+                advice_columns,
+                fixed_columns,
+                instance_columns,
+            ),
+            S::SpongeChip::configure_from_scratch(
+                meta,
+                advice_columns,
+                fixed_columns,
+                instance_columns,
+            ),
         )
     }
 }
@@ -240,6 +262,8 @@ mod tests {
         let instance_column = meta.instance_column();
         TranscriptGadget::<S>::configure_from_scratch(
             meta,
+            &mut vec![],
+            &mut vec![],
             &[committed_instance_column, instance_column],
         )
     }
@@ -269,9 +293,18 @@ mod tests {
                 .scalar_chip
                 .assign_many(&mut layouter, &self.scalars.transpose_array())?;
 
-            let assigned_points = transcript_gadget
-                .curve_chip
-                .assign_many(&mut layouter, &self.points.transpose_array())?;
+            let assigned_points = self
+                .points
+                .transpose_array()
+                .iter()
+                .map(|p| {
+                    S::assign_without_subgroup_check(
+                        &mut layouter,
+                        &transcript_gadget.curve_chip,
+                        *p,
+                    )
+                })
+                .collect::<Result<Vec<_>, Error>>()?;
 
             for i in 0..(SIZE / 2) {
                 transcript_gadget.common_scalar(&mut layouter, &assigned_scalars[i])?;
@@ -323,9 +356,8 @@ mod tests {
 
         let challenge_2 = off_circuit_transcript.squeeze_challenge();
 
-        let k = 12;
         let public_inputs = vec![vec![], vec![challenge_1, challenge_2]];
-        let prover = MockProver::run(k, &circuit, public_inputs).unwrap();
+        let prover = MockProver::run(&circuit, public_inputs).unwrap();
         prover.assert_satisfied();
     }
 }

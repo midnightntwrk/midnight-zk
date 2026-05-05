@@ -18,6 +18,7 @@ verification keys break backwards compatibility.
 * Expose `verifier_gadget` and `bls12_381_scalar` (native gadget) from `ZkStdLib` [#227](https://github.com/midnightntwrk/midnight-zk/pull/227)
 * Add `square`, `mod_square` operations in `BigUintGadget` [#259](https://github.com/midnightntwrk/midnight-zk/pull/259)
 * Add `PartialEq` impl for `AssignedBigUint` [#259](https://github.com/midnightntwrk/midnight-zk/pull/259)
+* BREAKING: Implemented linearization prover [#190](https://github.com/midnightntwrk/midnight-zk/pull/190)
 
 ### Fixed
 * Fix cost model proof size check to account for committed instance columns [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
@@ -25,6 +26,29 @@ verification keys break backwards compatibility.
 ### Changed
 * Add `nb_arith_cols` field to `ZkStdLibArch` for configurable arithmetic columns (requires `ZKSTD_VERSION` bump before release) [#287](https://github.com/midnightntwrk/midnight-zk/pull/287)
 * Update goldenfiles and static VKs after logup blinding factor fix [#312](https://github.com/midnightntwrk/midnight-zk/pull/312)
+* Bumped midnight-proofs version to support logup [#153](https://github.com/midnightntwrk/midnight-zk/pull/153)
+* Changed logup to use the selector variant [#220](https://github.com/midnightntwrk/midnight-zk/pull/220)
+* Replace `secp256k1` with `k256`  [#192](https://github.com/midnightntwrk/midnight-zk/pull/192)
+* Parallelise batch_verifier [#236](https://github.com/midnightntwrk/midnight-zk/pull/236)
+
+### Removed
+
+## [2.0.0]
+
+### Added
+* Expose P-256 (secp256r1) chip via `ZkStdLib::p256_curve` and `ZkStdLib::p256_scalar` [#317](https://github.com/midnightntwrk/midnight-zk/pull/317)
+* Added an example verifying an ethereum signature [#177](https://github.com/midnightntwrk/midnight-zk/pull/177)
+* `setup_vk_with_k` for generating a verifying key with an explicit circuit size parameter [#227](https://github.com/midnightntwrk/midnight-zk/pull/227)
+* Expose `verifier_gadget` and `bls12_381_scalar` (native gadget) from `ZkStdLib` [#227](https://github.com/midnightntwrk/midnight-zk/pull/227)
+* Add `square`, `mod_square` operations in `BigUintGadget` [#259](https://github.com/midnightntwrk/midnight-zk/pull/259)
+* Add `PartialEq` impl for `AssignedBigUint` [#259](https://github.com/midnightntwrk/midnight-zk/pull/259)
+* Update READMEs and add badges [#261](https://github.com/midnightntwrk/midnight-zk/pull/261)
+* Adds identity related examples to evaluate the impact of substring checks [#229](https://github.com/midnightntwrk/midnight-zk/pull/229)
+* Example for in-circuit verification of Ed25519 signatures [#310](https://github.com/midnightntwrk/midnight-zk/pull/310)
+
+### Changed
+* Add associated type `Error` to `Relation` trait for typed domain errors [#252](https://github.com/midnightntwrk/midnight-zk/pull/252)
+* Adapt imports to foreign ECC module reorganization [#298](https://github.com/midnightntwrk/midnight-zk/pull/298)
 * bug patch in the credential property verification example, which was omitting some index computation in circuit [#240](https://github.com/midnightntwrk/midnight-zk/pull/240)
 * Pass `max_bit_len` to foreign-field chip configuration [#251](https://github.com/midnightntwrk/midnight-zk/pull/251)
 * Update IVC example to use improved verifier gadget [#212](https://github.com/midnightntwrk/midnight-zk/pull/212)
@@ -32,16 +56,27 @@ verification keys break backwards compatibility.
 * Adapt external hash tests to hash instructions interface [#162](https://github.com/midnightntwrk/midnight-zk/pull/162)
 * Updated Rust toolchain to 1.90.0 [#210](https://github.com/midnightntwrk/midnight-zk/pull/210)
 * `CircuitField` refactor  [#201](https://github.com/midnightntwrk/midnight-zk/pull/201)
-* Bumped midnight-proofs version to support logup [#153](https://github.com/midnightntwrk/midnight-zk/pull/153)
-* BREAKING: Implemented linearization prover [#190](https://github.com/midnightntwrk/midnight-zk/pull/190)
-* Changed logup to use the selector variant [#220](https://github.com/midnightntwrk/midnight-zk/pull/220)
 * Replace `secp256k1` with `k256`  [#192](https://github.com/midnightntwrk/midnight-zk/pull/192)
 * Parallelise batch_verifier [#236](https://github.com/midnightntwrk/midnight-zk/pull/236)
+* Minor type renames [#241](https://github.com/midnightntwrk/midnight-zk/pull/241)
+* Adapting examples to the lazy automaton loading [#232](https://github.com/midnightntwrk/midnight-zk/pull/232)
+* Adapting examples to the lazy automaton loading [#232](https://github.com/midnightntwrk/midnight-zk/pull/232) and [#234](https://github.com/midnightntwrk/midnight-zk/pull/234/changes)
+* Add `from/to_canonical_compressed_bytes` to foreign Edwards chip [#354](https://github.com/midnightntwrk/midnight-zk/pull/354)
+* Do not expose scalar chips separately from `ZkStdLib`; use `secp256k1()`, `p256()`, `bls12_381()` instead [#335](https://github.com/midnightntwrk/midnight-zk/pull/335)
+* Adapt `FromScratch` impls to new `configure_from_scratch` signature with shared column pools [#306](https://github.com/midnightntwrk/midnight-zk/pull/306)
+* Use `Blake2b256` transcript hash in the `bitcoin_signature` example [#322](https://github.com/midnightntwrk/midnight-zk/pull/322)
+* Removed outdated identity examples and restructured identity example crate [#330](https://github.com/midnightntwrk/midnight-zk/pull/330)
+* Exposing varlen hashes, and minor additional function exposure [#331](https://github.com/midnightntwrk/midnight-zk/pull/331)
+* Negligible regression (1 row) in examples involving substring checks [#332](https://github.com/midnightntwrk/midnight-zk/pull/332)
 
 ### Removed
 * Move Blake2b and SHA3-256/Keccak256 implementations to zk-stdlib [#178](https://github.com/midnightntwrk/midnight-zk/pull/178)
 
-## 1.0.0
+## [1.1.0]
+### Changed
+* Update `prove` to accept `impl RngCore + CryptoRng` by value [#307](https://github.com/midnightntwrk/midnight-zk/pull/307)
+
+## [1.0.0] 
 ### Added
 - Initial release of zk_stdlib extracted from circuits crate
 
