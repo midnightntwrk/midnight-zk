@@ -265,9 +265,9 @@ fn bench_zswap_output(c: &mut Criterion) {
     benchmark_create_proof(
         &srs,
         &pk,
-        std::slice::from_ref(&circuit),
+        &circuit,
         1,
-        &[&[&[], &instance]],
+        &[&[], &instance],
         &mut transcript,
         &mut OsRng,
         &mut group,
@@ -282,7 +282,7 @@ fn bench_zswap_output(c: &mut Criterion) {
     group.bench_function("Parse trace", |b| {
         b.iter_batched(
             || transcript.clone(),
-            |mut t| parse_trace(pk.get_vk(), &[&[C::identity()]], &[&[&instance]], &mut t).unwrap(),
+            |mut t| parse_trace(pk.get_vk(), &[C::identity()], &[&instance], &mut t).unwrap(),
             BatchSize::SmallInput,
         )
     });
@@ -292,7 +292,7 @@ fn bench_zswap_output(c: &mut Criterion) {
             || {
                 let mut t = transcript.clone();
                 (
-                    parse_trace(pk.get_vk(), &[&[C::identity()]], &[&[&instance]], &mut t).unwrap(),
+                    parse_trace(pk.get_vk(), &[C::identity()], &[&instance], &mut t).unwrap(),
                     t,
                 )
             },
@@ -300,8 +300,8 @@ fn bench_zswap_output(c: &mut Criterion) {
                 verify_algebraic_constraints(
                     pk.get_vk(),
                     trace,
-                    &[&[C::identity()]],
-                    &[&[&instance]],
+                    &[C::identity()],
+                    &[&instance],
                     &mut t,
                 )
             },
@@ -314,12 +314,12 @@ fn bench_zswap_output(c: &mut Criterion) {
             || {
                 let mut t = transcript.clone();
                 let trace =
-                    parse_trace(pk.get_vk(), &[&[C::identity()]], &[&[&instance]], &mut t).unwrap();
+                    parse_trace(pk.get_vk(), &[C::identity()], &[&instance], &mut t).unwrap();
                 let guard = verify_algebraic_constraints(
                     pk.get_vk(),
                     trace,
-                    &[&[C::identity()]],
-                    &[&[&instance]],
+                    &[C::identity()],
+                    &[&instance],
                     &mut t,
                 )
                 .unwrap();

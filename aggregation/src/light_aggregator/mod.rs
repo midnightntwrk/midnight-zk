@@ -316,8 +316,8 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
                     CircuitTranscript<LightPoseidonFS<F>>,
                 >(
                     &self.inner_vk,
-                    &[&[C::identity()]],
-                    &[&[proof_instances]],
+                    &[C::identity()],
+                    &[proof_instances],
                     &mut inner_transcript,
                 )?;
 
@@ -378,9 +378,9 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
         create_proof::<F, KZGCommitmentScheme<E>, T, AggregatorCircuit<NB_PROOFS>>(
             srs,
             &self.aggregator_pk,
-            &[aggregator_circuit],
+            &aggregator_circuit,
             1,
-            &[&[&acc_committed_instances, &aggregator_instances]],
+            &[&acc_committed_instances, &aggregator_instances],
             transcript,
             &mut rng,
         )?;
@@ -450,8 +450,8 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
         let proof_dual_msm = {
             prepare::<F, KZGCommitmentScheme<E>, T>(
                 &self.aggregator_vk,
-                &[&[acc_rhs_scalars_committed]],
-                &[&[&aggregator_instances]],
+                &[acc_rhs_scalars_committed],
+                &[&aggregator_instances],
                 transcript,
             )?
         };
@@ -608,8 +608,8 @@ mod tests {
             let dual_msm =
                 prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<LightPoseidonFS<F>>>(
                     inner_vk.vk(),
-                    &[&[C::identity()]],
-                    &[&[&InnerCircuit::format_instance(&instances[i]).unwrap()]],
+                    &[C::identity()],
+                    &[&InnerCircuit::format_instance(&instances[i]).unwrap()],
                     &mut transcript,
                 )
                 .unwrap();

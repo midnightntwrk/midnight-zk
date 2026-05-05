@@ -237,8 +237,8 @@ impl IvcTransition for ProofAggregation {
             let dual_msm =
                 plonk::prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<PoseidonState<F>>>(
                     ctx.vk.vk(),
-                    &[&[C::identity()]],
-                    &[&[&statement_pis]],
+                    &[C::identity()],
+                    &[&statement_pis],
                     &mut transcript,
                 )
                 .expect("off-circuit prepare should succeed");

@@ -110,9 +110,9 @@ macro_rules! plonk_api {
                     >(
                         params,
                         pk,
-                        std::slice::from_ref(circuit),
+                        circuit,
                         nb_instance_commitments,
-                        &[pi],
+                        pi,
                         &mut transcript,
                         rng,
                     )?;
@@ -147,8 +147,8 @@ macro_rules! plonk_api {
                 let start = Instant::now();
                 let res = prepare::<$native, KZGCommitmentScheme<$engine>, CircuitTranscript<H>>(
                     vk,
-                    &[&instance_commitments.iter().map(|c| c.into()).collect::<Vec<_>>()],
-                    &[pi],
+                    &instance_commitments.iter().map(|c| c.into()).collect::<Vec<_>>(),
+                    pi,
                     &mut transcript,
                 )?;
                 transcript.assert_empty().map_err(|_| Error::Opening)?;

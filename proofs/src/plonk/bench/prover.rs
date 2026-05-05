@@ -13,7 +13,7 @@ use crate::{
     plonk::{
         circuit::Circuit,
         linearization::prover::compute_linearization_poly,
-        logup, partially_evaluate_identities, permutation,
+        logup, partially_evaluate_identities,
         prover::{
             compute_h_poly, compute_instances, compute_nu_poly, compute_queries, parse_advices,
             write_evals_to_transcript, Evals,
@@ -26,12 +26,12 @@ use crate::{
     utils::arithmetic::eval_polynomial,
 };
 
-/// This computes a proof trace for the provided `circuits` when given the
+/// This computes a proof trace for the provided `circuit` when given the
 /// public parameters `params` and the proving key [`ProvingKey`] that was
 /// generated previously for the same circuit. The provided `instances`
 /// are zero-padded internally.
 ///
-/// The trace can then be used to finalise proofs, or to fold them.
+/// The trace can then be used to finalise the proof.
 ///
 /// Benchmarks individual internal steps using the provided `group`.
 #[allow(clippy::too_many_arguments)]
@@ -43,15 +43,15 @@ pub(crate) fn compute_trace<
 >(
     params: &CS::Parameters,
     pk: &ProvingKey<F, CS>,
-    circuits: &[ConcreteCircuit],
+    circuit: &ConcreteCircuit,
     // The prover needs to get all instances in non-committed form. However,
     // the first `nb_committed_instances` instance columns are dedicated for
     // instances that the verifier receives in committed form.
     #[cfg(feature = "committed-instances")] nb_committed_instances: usize,
-    instances: &[&[&[F]]],
+    instances: &[&[F]],
     transcript: &mut T,
     mut rng: impl RngCore + CryptoRng,
-    group: &mut BenchmarkGroup<criterion::measurement::WallTime>,
+    group: &mut BenchmarkGroup<'_, criterion::measurement::WallTime>,
 ) -> Result<ProverTrace<F>, Error>
 where
     CS::Commitment: Hashable<T::Hash>,
@@ -65,16 +65,9 @@ where
     #[cfg(not(feature = "committed-instances"))]
     let nb_committed_instances: usize = 0;
 
-    if circuits.len() != instances.len() {
+    if instances.len() != pk.vk.cs.num_instance_columns || instances.len() < nb_committed_instances
+    {
         return Err(Error::InvalidInstances);
-    }
-
-    for instances in instances.iter() {
-        if instances.len() != pk.vk.cs.num_instance_columns
-            || instances.len() < nb_committed_instances
-        {
-            return Err(Error::InvalidInstances);
-        }
     }
 
     // Hash verification key into transcript
@@ -117,13 +110,13 @@ where
                 || transcript.clone(),
                 |mut t| {
                     let _ = parse_advices::<F, CS, ConcreteCircuit, T>(
-                        params, pk, circuits, instances, &mut t, &mut rng,
+                        params, pk, circuit, instances, &mut t, &mut rng,
                     );
                 },
                 criterion::BatchSize::LargeInput,
             )
         });
-        parse_advices(params, pk, circuits, instances, transcript, &mut rng)?
+        parse_advices(params, pk, circuit, instances, transcript, &mut rng)?
     };
 
     // Sample theta challenge for keeping lookup columns linearly independent
@@ -134,90 +127,74 @@ where
     // `compute_multiplicities` (see the assert on `table.len() - usable_rows`).
     let num_lookups = pk.vk.cs.lookups.len();
     let mult_blinding_count = pk.vk.cs.blinding_factors() + 1;
-    let mult_all_blindings: Vec<Vec<Vec<F>>> = (0..instance.len())
-        .map(|_| {
-            (0..num_lookups)
-                .map(|_| (0..mult_blinding_count).map(|_| F::random(&mut rng)).collect())
-                .collect()
-        })
+    let mult_blindings: Vec<Vec<F>> = (0..num_lookups)
+        .map(|_| (0..mult_blinding_count).map(|_| F::random(&mut rng)).collect())
         .collect();
 
     // Commit to the multiplicities columns. Compute and transcript write are
     // now separate API calls — measure them together to match the prior
-    // `commit_multiplicities` shape. Lookups inside each circuit run in
-    // parallel via `par_iter` to match `create_proof`'s structure.
-    let lookups: Vec<Vec<logup::prover::ComputedMultiplicities<F>>> = {
+    // `commit_multiplicities` shape.
+    let lookups: Vec<logup::prover::ComputedMultiplicities<F>> = {
         group.bench_function("Commit lookup multiplicities", |b| {
             b.iter_batched(
-                || (transcript.clone(), mult_all_blindings.clone()),
-                |(mut t, mult_blinds_all)| -> Result<(), Error> {
-                    for ((inst, adv), mult_blinds) in
-                        instance.iter().zip(advice.iter()).zip(mult_blinds_all)
-                    {
-                        let logup_args: Vec<_> = pk
-                            .vk
-                            .cs
-                            .lookups
-                            .iter()
-                            .map(|l| l.chunk_by_degree(pk.vk.cs.degree()))
-                            .collect();
-                        let results: Vec<_> = logup_args
-                            .par_iter()
-                            .zip(mult_blinds.par_iter())
-                            .map(|(logup, blinds)| {
-                                logup.compute_multiplicities_parallel(
-                                    pk,
-                                    params,
-                                    theta,
-                                    &adv.advice_polys,
-                                    &pk.fixed_values,
-                                    &inst.instance_values,
-                                    &challenges,
-                                    blinds,
-                                )
-                            })
-                            .collect::<Result<Vec<_>, Error>>()?;
-                        for (_, commitment) in &results {
-                            t.write(commitment)?;
-                        }
+                || (transcript.clone(), mult_blindings.clone()),
+                |(mut t, mult_blinds)| -> Result<(), Error> {
+                    let logup_args: Vec<_> = pk
+                        .vk
+                        .cs
+                        .lookups
+                        .iter()
+                        .map(|l| l.chunk_by_degree(pk.vk.cs.degree()))
+                        .collect();
+                    let results: Vec<_> = logup_args
+                        .par_iter()
+                        .zip(mult_blinds.par_iter())
+                        .map(|(logup, blinds)| {
+                            logup.compute_multiplicities_parallel(
+                                pk,
+                                params,
+                                theta,
+                                &advice.advice_polys,
+                                &pk.fixed_values,
+                                &instance.instance_values,
+                                &challenges,
+                                blinds,
+                            )
+                        })
+                        .collect::<Result<Vec<_>, Error>>()?;
+                    for (_, commitment) in &results {
+                        t.write(commitment)?;
                     }
                     Ok(())
                 },
                 criterion::BatchSize::LargeInput,
             )
         });
-        instance
-            .iter()
-            .zip(advice.iter())
-            .zip(mult_all_blindings)
-            .map(|((inst, adv), mult_blinds)| -> Result<Vec<_>, Error> {
-                let logup_args: Vec<_> =
-                    pk.vk.cs.lookups.iter().map(|l| l.chunk_by_degree(pk.vk.cs.degree())).collect();
-                let results: Vec<_> = logup_args
-                    .par_iter()
-                    .zip(mult_blinds.par_iter())
-                    .map(|(logup, blinds)| {
-                        logup.compute_multiplicities_parallel(
-                            pk,
-                            params,
-                            theta,
-                            &adv.advice_polys,
-                            &pk.fixed_values,
-                            &inst.instance_values,
-                            &challenges,
-                            blinds,
-                        )
-                    })
-                    .collect::<Result<Vec<_>, Error>>()?;
-                results
-                    .into_iter()
-                    .map(|(c, commitment)| {
-                        transcript.write(&commitment)?;
-                        Ok::<_, Error>(c)
-                    })
-                    .collect::<Result<Vec<_>, _>>()
+        let logup_args: Vec<_> =
+            pk.vk.cs.lookups.iter().map(|l| l.chunk_by_degree(pk.vk.cs.degree())).collect();
+        let results: Vec<_> = logup_args
+            .par_iter()
+            .zip(mult_blindings.par_iter())
+            .map(|(logup, blinds)| {
+                logup.compute_multiplicities_parallel(
+                    pk,
+                    params,
+                    theta,
+                    &advice.advice_polys,
+                    &pk.fixed_values,
+                    &instance.instance_values,
+                    &challenges,
+                    blinds,
+                )
             })
-            .collect::<Result<Vec<_>, Error>>()?
+            .collect::<Result<Vec<_>, Error>>()?;
+        results
+            .into_iter()
+            .map(|(c, commitment)| {
+                transcript.write(&commitment)?;
+                Ok::<_, Error>(c)
+            })
+            .collect::<Result<Vec<_>, _>>()?
     };
 
     // Sample beta challenge
@@ -230,233 +207,186 @@ where
     let blinding_factors = pk.vk.cs.blinding_factors();
     let chunk_len = pk.vk.cs_degree - 2;
     let num_perm_sets = pk.vk.cs.permutation.columns.chunks(chunk_len).len();
-    let perm_all_blindings: Vec<Vec<Vec<F>>> = (0..instance.len())
-        .map(|_| {
-            (0..num_perm_sets)
-                .map(|_| (0..blinding_factors).map(|_| F::random(&mut rng)).collect())
-                .collect()
-        })
+    let perm_blindings: Vec<Vec<F>> = (0..num_perm_sets)
+        .map(|_| (0..blinding_factors).map(|_| F::random(&mut rng)).collect())
         .collect();
 
     // Commit to permutations. `Argument::compute` returns z polys + commitments
-    // without touching the transcript; `write_and_convert` then writes commitments
-    // and converts to coefficient form. Measure both together.
+    // without touching the transcript; `write_and_convert` then writes
+    // commitments and converts to coefficient form. Measure both together.
     //
     // CAVEAT: in `create_proof` this phase runs inside a `rayon::join` with the
     // logup logderivative compute, so permutation and logup overlap in wall
     // time. This benchmark measures each phase in isolation, so the sum of
     // "Commit permutations" + "Commit lookup products" overstates the combined
     // cost versus what `create_proof` actually pays.
-    let permutations: Vec<permutation::prover::Committed<F>> = {
+    let permutations = {
         group.bench_function("Commit permutations", |b| {
             b.iter_batched(
-                || (transcript.clone(), perm_all_blindings.clone()),
-                |(mut t, perm_blinds_all)| -> Result<(), Error> {
-                    for ((inst, adv), perm_blinds) in
-                        instance.iter().zip(advice.iter()).zip(perm_blinds_all)
-                    {
-                        let computed = pk.vk.cs.permutation.compute::<F, CS>(
-                            params,
-                            pk,
-                            &pk.permutation,
-                            &adv.advice_polys,
-                            &pk.fixed_values,
-                            &inst.instance_values,
-                            beta,
-                            gamma,
-                            perm_blinds,
-                        );
-                        let _ = computed.write_and_convert(domain, &mut t)?;
-                    }
+                || (transcript.clone(), perm_blindings.clone()),
+                |(mut t, perm_blinds)| -> Result<(), Error> {
+                    let computed = pk.vk.cs.permutation.compute::<F, CS>(
+                        params,
+                        pk,
+                        &pk.permutation,
+                        &advice.advice_polys,
+                        &pk.fixed_values,
+                        &instance.instance_values,
+                        beta,
+                        gamma,
+                        perm_blinds,
+                    );
+                    let _ = computed.write_and_convert(domain, &mut t)?;
                     Ok(())
                 },
                 criterion::BatchSize::LargeInput,
             )
         });
-        instance
-            .iter()
-            .zip(advice.iter())
-            .zip(perm_all_blindings)
-            .map(|((inst, adv), perm_blinds)| {
-                let computed = pk.vk.cs.permutation.compute::<F, CS>(
-                    params,
-                    pk,
-                    &pk.permutation,
-                    &adv.advice_polys,
-                    &pk.fixed_values,
-                    &inst.instance_values,
-                    beta,
-                    gamma,
-                    perm_blinds,
-                );
-                computed.write_and_convert(domain, transcript)
-            })
-            .collect::<Result<Vec<_>, _>>()?
+        let computed = pk.vk.cs.permutation.compute::<F, CS>(
+            params,
+            pk,
+            &pk.permutation,
+            &advice.advice_polys,
+            &pk.fixed_values,
+            &instance.instance_values,
+            beta,
+            gamma,
+            perm_blindings,
+        );
+        computed.write_and_convert(domain, transcript)?
     };
 
-    // Pre-generate logderivative blindings, one vector per lookup per circuit.
-    let logup_all_blindings: Vec<Vec<Vec<F>>> = lookups
-        .iter()
-        .map(|circuit_lookups| {
-            (0..circuit_lookups.len())
-                .map(|_| (0..blinding_factors).map(|_| F::random(&mut rng)).collect())
-                .collect()
-        })
+    // Pre-generate logderivative blindings, one vector per lookup.
+    let logup_blindings: Vec<Vec<F>> = (0..lookups.len())
+        .map(|_| (0..blinding_factors).map(|_| F::random(&mut rng)).collect())
         .collect();
 
     // Construct and commit to lookup product polynomials.
     // `compute_logderivative` returns helper_polys_lagrange + aggregator
     // commitment without transcript writes. Helper commitments must be taken
     // and written here, and Lagrange polys converted to coefficient form.
-    let lookups: Vec<Vec<logup::prover::Committed<F>>> = {
+    let lookups: Vec<logup::prover::Committed<F>> = {
         group.bench_function("Commit lookup products", |b| {
             b.iter_batched(
-                || {
-                    (
-                        transcript.clone(),
-                        lookups.clone(),
-                        logup_all_blindings.clone(),
-                    )
-                },
-                |(mut t, lookups, logup_blinds_all)| -> Result<(), Error> {
-                    for (circuit_lookups, logup_blinds) in lookups.into_iter().zip(logup_blinds_all)
+                || (transcript.clone(), lookups.clone(), logup_blindings.clone()),
+                |(mut t, lookups, logup_blinds)| -> Result<(), Error> {
+                    let computed: Vec<_> = lookups
+                        .into_par_iter()
+                        .zip(logup_blinds.into_par_iter())
+                        .map(|(lookup, blinds)| {
+                            lookup.compute_logderivative(pk, params, beta, blinds)
+                        })
+                        .collect::<Result<Vec<_>, _>>()?;
+                    let all_helper_commitments: Vec<Vec<CS::Commitment>> = computed
+                        .par_iter()
+                        .map(|c| {
+                            c.helper_polys_lagrange
+                                .par_iter()
+                                .map(|h| {
+                                    let h_poly = domain.lagrange_from_vec(h.clone());
+                                    CS::commit(params, &h_poly)
+                                })
+                                .collect()
+                        })
+                        .collect();
+                    for (c, helper_commitments) in
+                        computed.iter().zip(all_helper_commitments.iter())
                     {
-                        let computed: Vec<_> = circuit_lookups
-                            .into_par_iter()
-                            .zip(logup_blinds.into_par_iter())
-                            .map(|(lookup, blinds)| {
-                                lookup.compute_logderivative(pk, params, beta, blinds)
-                            })
-                            .collect::<Result<Vec<_>, _>>()?;
-                        let all_helper_commitments: Vec<Vec<CS::Commitment>> = computed
-                            .par_iter()
-                            .map(|c| {
-                                c.helper_polys_lagrange
-                                    .par_iter()
-                                    .map(|h| {
-                                        let h_poly = domain.lagrange_from_vec(h.clone());
-                                        CS::commit(params, &h_poly)
-                                    })
-                                    .collect()
-                            })
-                            .collect();
-                        for (c, helper_commitments) in
-                            computed.iter().zip(all_helper_commitments.iter())
-                        {
-                            for h_commitment in helper_commitments {
-                                t.write(h_commitment)?;
-                            }
-                            t.write(&c.aggregator_commitment)?;
+                        for h_commitment in helper_commitments {
+                            t.write(h_commitment)?;
                         }
+                        t.write(&c.aggregator_commitment)?;
                     }
                     Ok(())
                 },
                 criterion::BatchSize::LargeInput,
             )
         });
-        lookups
-            .into_iter()
-            .zip(logup_all_blindings)
-            .map(|(circuit_lookups, logup_blinds)| -> Result<Vec<_>, Error> {
-                let computed: Vec<_> = circuit_lookups
-                    .into_par_iter()
-                    .zip(logup_blinds.into_par_iter())
-                    .map(|(lookup, blinds)| lookup.compute_logderivative(pk, params, beta, blinds))
-                    .collect::<Result<Vec<_>, _>>()?;
-                let all_helper_commitments: Vec<Vec<CS::Commitment>> = computed
+        let computed: Vec<_> = lookups
+            .into_par_iter()
+            .zip(logup_blindings.into_par_iter())
+            .map(|(lookup, blinds)| lookup.compute_logderivative(pk, params, beta, blinds))
+            .collect::<Result<Vec<_>, _>>()?;
+        let all_helper_commitments: Vec<Vec<CS::Commitment>> = computed
+            .par_iter()
+            .map(|c| {
+                c.helper_polys_lagrange
                     .par_iter()
-                    .map(|c| {
-                        c.helper_polys_lagrange
-                            .par_iter()
-                            .map(|h| {
-                                let h_poly = domain.lagrange_from_vec(h.clone());
-                                CS::commit(params, &h_poly)
-                            })
-                            .collect()
+                    .map(|h| {
+                        let h_poly = domain.lagrange_from_vec(h.clone());
+                        CS::commit(params, &h_poly)
                     })
-                    .collect();
-                for (c, helper_commitments) in computed.iter().zip(all_helper_commitments.iter()) {
-                    for h_commitment in helper_commitments {
-                        transcript.write(h_commitment)?;
-                    }
-                    transcript.write(&c.aggregator_commitment)?;
-                }
-                let committed: Vec<_> = computed
-                    .into_par_iter()
-                    .map(|c| {
-                        let helper_polys = c
-                            .helper_polys_lagrange
-                            .into_iter()
-                            .map(|h| domain.lagrange_to_coeff(domain.lagrange_from_vec(h)))
-                            .collect();
-                        logup::prover::Committed {
-                            multiplicities: domain.lagrange_to_coeff(c.multiplicities),
-                            helper_polys,
-                            aggregator_poly: domain.lagrange_to_coeff(c.aggregator_poly),
-                        }
-                    })
-                    .collect();
-                Ok(committed)
+                    .collect()
             })
-            .collect::<Result<Vec<_>, _>>()?
+            .collect();
+        for (c, helper_commitments) in computed.iter().zip(all_helper_commitments.iter()) {
+            for h_commitment in helper_commitments {
+                transcript.write(h_commitment)?;
+            }
+            transcript.write(&c.aggregator_commitment)?;
+        }
+        computed
+            .into_par_iter()
+            .map(|c| {
+                let helper_polys = c
+                    .helper_polys_lagrange
+                    .into_iter()
+                    .map(|h| domain.lagrange_to_coeff(domain.lagrange_from_vec(h)))
+                    .collect();
+                logup::prover::Committed {
+                    multiplicities: domain.lagrange_to_coeff(c.multiplicities),
+                    helper_polys,
+                    aggregator_poly: domain.lagrange_to_coeff(c.aggregator_poly),
+                }
+            })
+            .collect()
     };
 
     // Trash argument
     let trash_challenge: F = transcript.squeeze_challenge();
 
-    let trashcans: Vec<Vec<trash::prover::Committed<F>>> = {
+    let trashcans: Vec<trash::prover::Committed<F>> = {
         group.bench_function("Commit trash arguments", |b| {
             b.iter_batched(
                 || (transcript.clone(), instance.clone(), advice.clone()),
                 |(mut t, inst, adv)| {
-                    let _: Result<Vec<Vec<_>>, _> = inst
+                    let _: Result<Vec<_>, _> = pk
+                        .vk
+                        .cs
+                        .trashcans
                         .iter()
-                        .zip(adv.iter())
-                        .map(|(instance, advice)| -> Result<Vec<_>, Error> {
-                            pk.vk
-                                .cs
-                                .trashcans
-                                .iter()
-                                .map(|trash| {
-                                    trash.commit::<CS, _>(
-                                        params,
-                                        domain,
-                                        trash_challenge,
-                                        &advice.advice_polys,
-                                        &pk.fixed_values,
-                                        &instance.instance_values,
-                                        &challenges,
-                                        &mut t,
-                                    )
-                                })
-                                .collect()
+                        .map(|trash| {
+                            trash.commit::<CS, _>(
+                                params,
+                                domain,
+                                trash_challenge,
+                                &adv.advice_polys,
+                                &pk.fixed_values,
+                                &inst.instance_values,
+                                &challenges,
+                                &mut t,
+                            )
                         })
                         .collect();
                 },
                 criterion::BatchSize::LargeInput,
             )
         });
-        instance
+        pk.vk
+            .cs
+            .trashcans
             .iter()
-            .zip(advice.iter())
-            .map(|(instance, advice)| -> Result<Vec<_>, Error> {
-                pk.vk
-                    .cs
-                    .trashcans
-                    .iter()
-                    .map(|trash| {
-                        trash.commit::<CS, _>(
-                            params,
-                            domain,
-                            trash_challenge,
-                            &advice.advice_polys,
-                            &pk.fixed_values,
-                            &instance.instance_values,
-                            &challenges,
-                            transcript,
-                        )
-                    })
-                    .collect()
+            .map(|trash| {
+                trash.commit::<CS, _>(
+                    params,
+                    domain,
+                    trash_challenge,
+                    &advice.advice_polys,
+                    &pk.fixed_values,
+                    &instance.instance_values,
+                    &challenges,
+                    transcript,
+                )
             })
             .collect::<Result<Vec<_>, _>>()?
     };
@@ -464,18 +394,11 @@ where
     // Obtain challenge for keeping all separate gates linearly independent
     let y: F = transcript.squeeze_challenge();
 
-    let (instance_polys, instance_values) =
-        instance.into_iter().map(|i| (i.instance_polys, i.instance_values)).unzip();
+    let instance_polys = instance.instance_polys;
+    let instance_values = instance.instance_values;
 
-    let advice_polys = advice
-        .into_iter()
-        .map(|a| {
-            a.advice_polys
-                .into_iter()
-                .map(|p| domain.lagrange_to_coeff(p))
-                .collect::<Vec<_>>()
-        })
-        .collect::<Vec<_>>();
+    let advice_polys: Vec<_> =
+        advice.advice_polys.into_iter().map(|p| domain.lagrange_to_coeff(p)).collect();
 
     Ok(ProverTrace {
         advice_polys,
@@ -493,7 +416,7 @@ where
     })
 }
 
-/// This takes the computed trace of a set of witnesses and creates a proof
+/// This takes the computed trace of a witness and creates a proof
 /// for the provided `circuit` when given the public
 /// parameters `params` and the proving key [`ProvingKey`] that was
 /// generated previously for the same circuit. The provided `instances`
@@ -509,7 +432,7 @@ pub(crate) fn finalise_proof<'a, F, CS: PolynomialCommitmentScheme<F>, T: Transc
     #[cfg(feature = "committed-instances")] nb_committed_instances: usize,
     trace: ProverTrace<F>,
     transcript: &mut T,
-    group: &mut BenchmarkGroup<criterion::measurement::WallTime>,
+    group: &mut BenchmarkGroup<'_, criterion::measurement::WallTime>,
 ) -> Result<(), Error>
 where
     CS::Commitment: Hashable<T::Hash>,
@@ -613,31 +536,18 @@ where
     let permutations_common = pk.permutation.evaluate(x, transcript)?;
 
     // Evaluate the permutations, if any, at omega^i x.
-    let permutations: Vec<permutation::prover::Evaluated<F>> = permutations
-        .into_iter()
-        .map(|permutation| -> Result<_, _> { permutation.evaluate(pk, x, transcript) })
-        .collect::<Result<Vec<_>, _>>()?;
+    let permutations = permutations.evaluate(pk, x, transcript)?;
 
     // Evaluate the lookups, if any, at omega^i x.
-    let lookups: Vec<Vec<logup::prover::Evaluated<F>>> = lookups
+    let lookups: Vec<logup::prover::Evaluated<F>> = lookups
         .into_iter()
-        .map(|lookups| -> Result<Vec<_>, _> {
-            lookups
-                .into_iter()
-                .map(|p| p.evaluate(pk, x, transcript))
-                .collect::<Result<Vec<_>, _>>()
-        })
+        .map(|p| p.evaluate(pk, x, transcript))
         .collect::<Result<Vec<_>, _>>()?;
 
     // Evaluate the trashcans, if any, at x.
-    let trashcans: Vec<Vec<trash::prover::Evaluated<F>>> = trashcans
+    let trashcans: Vec<trash::prover::Evaluated<F>> = trashcans
         .into_iter()
-        .map(|trash| -> Result<Vec<_>, _> {
-            trash
-                .into_iter()
-                .map(|p| p.evaluate(x, transcript))
-                .collect::<Result<Vec<_>, _>>()
-        })
+        .map(|p| p.evaluate(x, transcript))
         .collect::<Result<Vec<_>, _>>()?;
 
     // Partially evaluate batched identities (without fixed columns
@@ -652,9 +562,9 @@ where
                     &fixed_evals,
                     &instance_evals,
                     &advice_evals,
-                    permutations.iter().map(|e| &e.evaluated),
-                    lookups.iter().map(|e| e.iter().map(|inner| &inner.evaluated)),
-                    trashcans.iter().map(|e| e.iter().map(|inner| &inner.evaluated)),
+                    &permutations.evaluated,
+                    lookups.iter().map(|inner| &inner.evaluated),
+                    trashcans.iter().map(|inner| &inner.evaluated),
                     &permutations_common,
                     x,
                     xn,
@@ -671,9 +581,9 @@ where
             &fixed_evals,
             &instance_evals,
             &advice_evals,
-            permutations.iter().map(|e| &e.evaluated),
-            lookups.iter().map(|e| e.iter().map(|inner| &inner.evaluated)),
-            trashcans.iter().map(|e| e.iter().map(|inner| &inner.evaluated)),
+            &permutations.evaluated,
+            lookups.iter().map(|inner| &inner.evaluated),
+            trashcans.iter().map(|inner| &inner.evaluated),
             &permutations_common,
             x,
             xn,
@@ -763,12 +673,12 @@ pub fn benchmark_create_proof<
 >(
     params: &CS::Parameters,
     pk: &ProvingKey<F, CS>,
-    circuits: &[ConcreteCircuit],
+    circuit: &ConcreteCircuit,
     #[cfg(feature = "committed-instances")] nb_committed_instances: usize,
-    instances: &[&[&[F]]],
+    instances: &[&[F]],
     transcript: &mut T,
     rng: &mut (impl RngCore + CryptoRng),
-    group: &mut BenchmarkGroup<criterion::measurement::WallTime>,
+    group: &mut BenchmarkGroup<'_, criterion::measurement::WallTime>,
 ) -> Result<(), Error>
 where
     CS::Commitment: Hashable<T::Hash>,
@@ -785,7 +695,7 @@ where
     let trace = compute_trace(
         params,
         pk,
-        circuits,
+        circuit,
         #[cfg(feature = "committed-instances")]
         nb_committed_instances,
         instances,

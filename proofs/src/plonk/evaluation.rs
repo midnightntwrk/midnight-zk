@@ -828,28 +828,22 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
     /// Evaluate numerator polynomial `nu(X)` of the quotient polynomial
     /// `h(X) = nu(X) / (X^n-1)`.
     ///
-    /// Iterates over the batched `(advice, instance, lookups, trashcans,
-    /// permutation)` proofs and folds each into a single shared `values`
-    /// accumulator via the verifier challenge `y`. The custom-gates flat
-    /// evaluator threads this accumulator through its outermost `Horner` step
-    /// using `ValueSource::PreviousValue` (loaded into `previous_value_idx`
-    /// in the values buffer at evaluation time).
+    /// Folds the proof's `(advice, instance, lookups, trashcans, permutation)`
+    /// data into a `values` accumulator via the verifier challenge `y`.
     ///
     /// TODO: drop the `previous_value` plumbing — the parameter on
     /// `FlatGraphEvaluator::evaluate` / `Calculation::evaluate`, the
     /// `ValueSource::PreviousValue` variant, the `previous_value_idx` slot,
-    /// and the `Horner(PreviousValue, parts, Y)` start — once this function no
-    /// longer processes batched proofs in a single call. Without batching,
-    /// `previous_value` is always `F::ZERO`, the leading `Add(prev, 0)` flat
-    /// op is dead, and the inter-proof y-fold can be lifted to the caller as
-    /// a single `total = total * y^M + per_proof` pass per proof.
+    /// and the `Horner(PreviousValue, parts, Y)` start. With single-proof
+    /// processing, `previous_value` is always `F::ZERO` and the leading
+    /// `Add(prev, 0)` flat op is dead.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn evaluate_numerator<B: PolynomialRepresentation>(
         &self,
         domain: &EvaluationDomain<F>,
         cs: &ConstraintSystem<F>,
-        advice: &[&[Polynomial<F, B>]],
-        instance: &[&[Polynomial<F, B>]],
+        advice: &[Polynomial<F, B>],
+        instance: &[Polynomial<F, B>],
         fixed: &[Polynomial<F, B>],
         challenges: &[F],
         y: F,
@@ -857,9 +851,9 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
         gamma: F,
         theta: F,
         trash_challenge: F,
-        lookups: &[Vec<logup::prover::Committed<F>>],
-        trashcans: &[Vec<trash::prover::Committed<F>>],
-        permutations: &[permutation::prover::Committed<F>],
+        lookups: &[logup::prover::Committed<F>],
+        trashcans: &[trash::prover::Committed<F>],
+        permutation: &permutation::prover::Committed<F>,
         l0: &Polynomial<F, B>,
         l_last: &Polynomial<F, B>,
         l_active_row: &Polynomial<F, B>,
@@ -874,270 +868,216 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
 
         let mut values = B::empty(domain);
 
-        for ((((advice, instance), lookups), trashcans), permutation) in advice
-            .iter()
-            .zip(instance.iter())
-            .zip(lookups.iter())
-            .zip(trashcans.iter())
-            .zip(permutations.iter())
-        {
-            // Custom gates — flattened evaluator with const-generic batch size.
-            // BATCH is a compile-time constant so LLVM fully unrolls the inner
-            // `for b in 0..BATCH` loops, amortizing opcode dispatch across
-            // BATCH elements and exposing independent Fq ops to the CPU's
-            // out-of-order pipeline.
-            let flat = &self.custom_gates_flat;
-            let template = flat.new_values_buffer(&beta, &theta, &trash_challenge, &y);
-            parallelize(&mut values, |values, start| {
-                flat.evaluate_chunk::<4, B>(
-                    &template, values, start, fixed, advice, instance, challenges, log_scale, log_n,
-                );
-            });
+        // Custom gates — flattened evaluator with const-generic batch size.
+        // BATCH is a compile-time constant so LLVM fully unrolls the inner
+        // `for b in 0..BATCH` loops, amortizing opcode dispatch across
+        // BATCH elements and exposing independent Fq ops to the CPU's
+        // out-of-order pipeline.
+        let flat = &self.custom_gates_flat;
+        let template = flat.new_values_buffer(&beta, &theta, &trash_challenge, &y);
+        parallelize(&mut values, |values, start| {
+            flat.evaluate_chunk::<4, B>(
+                &template, values, start, fixed, advice, instance, challenges, log_scale, log_n,
+            );
+        });
 
-            // Permutations
-            let sets = &permutation.sets;
-            if !sets.is_empty() {
-                let blinding_factors = cs.blinding_factors();
-                let last_rotation = Rotation(-((blinding_factors + 1) as i32));
-                let chunk_len = cs.degree() - 2;
-                let delta_start = beta * &B::g_coset(domain);
+        // Permutations
+        let sets = &permutation.sets;
+        if !sets.is_empty() {
+            let blinding_factors = cs.blinding_factors();
+            let last_rotation = Rotation(-((blinding_factors + 1) as i32));
+            let chunk_len = cs.degree() - 2;
+            let delta_start = beta * &B::g_coset(domain);
 
-                let permutation_product_cosets: Vec<Polynomial<F, B>> = sets
-                    .par_iter()
-                    .map(|set| B::coeff_to_self(domain, set.permutation_product_poly.clone()))
-                    .collect();
-
-                let first_set_permutation_product_coset =
-                    permutation_product_cosets.first().unwrap();
-                let last_set_permutation_product_coset = permutation_product_cosets.last().unwrap();
-
-                // Permutation constraints
-                parallelize(&mut values, |values, start| {
-                    let mut beta_term = omega.pow_vartime([start as u64, 0, 0, 0]);
-                    for (i, value) in values.iter_mut().enumerate() {
-                        let idx = start + i;
-                        let r_next = get_rotation_idx(idx, 1, log_scale, log_n);
-                        let r_last = get_rotation_idx(idx, last_rotation.0, log_scale, log_n);
-
-                        // Enforce only for the first set.
-                        // l_0(X) * (1 - z_0(X)) = 0
-                        *value =
-                            *value * y + (one - first_set_permutation_product_coset[idx]) * l0[idx];
-                        // Enforce only for the last set.
-                        // l_last(X) * (z_l(X)^2 - z_l(X)) = 0
-                        *value = *value * y
-                            + (last_set_permutation_product_coset[idx]
-                                * last_set_permutation_product_coset[idx]
-                                - last_set_permutation_product_coset[idx])
-                                * l_last[idx];
-                        // Except for the first set, enforce.
-                        // l_0(X) * (z_i(X) - z_{i-1}(\omega^(last) X)) = 0
-                        for set_idx in 0..sets.len() {
-                            if set_idx != 0 {
-                                *value = *value * y
-                                    + (permutation_product_cosets[set_idx][idx]
-                                        - permutation_product_cosets[set_idx - 1][r_last])
-                                        * l0[idx];
-                            }
-                        }
-                        // And for all the sets we enforce:
-                        // (1 - (l_last(X) + l_blind(X))) * (
-                        //   z_i(\omega X) \prod_j (p(X) + \beta s_j(X) + \gamma)
-                        // - z_i(X) \prod_j (p(X) + \delta^j \beta X + \gamma)
-                        // )
-                        let mut current_delta = delta_start * beta_term;
-                        for ((permutation_product_coset, columns), cosets) in
-                            permutation_product_cosets
-                                .iter()
-                                .zip(p.columns.chunks(chunk_len))
-                                .zip(permutation_pk_cosets.chunks(chunk_len))
-                        {
-                            let mut left = permutation_product_coset[r_next];
-                            for (values, permutation) in columns
-                                .iter()
-                                .map(|&column| match column.column_type() {
-                                    Any::Advice(_) => &advice[column.index()],
-                                    Any::Fixed => &fixed[column.index()],
-                                    Any::Instance => &instance[column.index()],
-                                })
-                                .zip(cosets.iter())
-                            {
-                                left *= values[idx] + beta * permutation[idx] + gamma;
-                            }
-
-                            let mut right = permutation_product_coset[idx];
-                            for values in columns.iter().map(|&column| match column.column_type() {
-                                Any::Advice(_) => &advice[column.index()],
-                                Any::Fixed => &fixed[column.index()],
-                                Any::Instance => &instance[column.index()],
-                            }) {
-                                right *= values[idx] + current_delta + gamma;
-                                current_delta *= &F::DELTA;
-                            }
-
-                            *value = *value * y + (left - right) * l_active_row[idx];
-                        }
-                        beta_term *= &omega;
-                    }
-                });
-            }
-
-            // Pre-compute all lookup cosets in parallel. This trades peak memory
-            // for parallelism: the FFTs for different lookups can now overlap.
-            let all_lookup_cosets: Vec<_> = lookups
+            let permutation_product_cosets: Vec<Polynomial<F, B>> = sets
                 .par_iter()
-                .map(|lookup| {
-                    let helper_cosets: Vec<_> = lookup
-                        .helper_polys
-                        .iter()
-                        .map(|h| B::coeff_to_self(domain, h.clone()))
-                        .collect();
-                    let aggregator_coset = B::coeff_to_self(domain, lookup.aggregator_poly.clone());
-                    let multiplicities_coset =
-                        B::coeff_to_self(domain, lookup.multiplicities.clone());
-                    (helper_cosets, aggregator_coset, multiplicities_coset)
-                })
+                .map(|set| B::coeff_to_self(domain, set.permutation_product_poly.clone()))
                 .collect();
 
-            // Pre-compute all trash cosets in parallel (lookup cosets
-            // are already pre-computed above).
-            let trash_cosets: Vec<_> = trashcans
-                .par_iter()
-                .map(|trash| B::coeff_to_self(domain, trash.trash_poly.clone()))
-                .collect();
+            let first_set_permutation_product_coset = permutation_product_cosets.first().unwrap();
+            let last_set_permutation_product_coset = permutation_product_cosets.last().unwrap();
 
-            // Pre-resolve lookup output indices for the flat evaluator.
-            let lookup_output_indices: Vec<Vec<(usize, usize, usize, usize)>> = self
-                .lookups
-                .iter()
-                .zip(self.lookups_flat.iter())
-                .map(|(batch, flat_batch)| {
-                    batch
-                        .iter()
-                        .zip(flat_batch.iter())
-                        .map(|(le, flat)| {
-                            (
-                                flat.resolve_idx(le.sum_partial_products),
-                                flat.resolve_idx(le.product),
-                                flat.resolve_idx(le.table),
-                                flat.resolve_idx(le.selector),
-                            )
-                        })
-                        .collect()
-                })
-                .collect();
-
-            // Pre-resolve trash selector column indices.
-            let trash_selector_cols: Vec<usize> = cs
-                .trashcans
-                .iter()
-                .map(|arg| match arg.selector() {
-                    Expression::Fixed(query) => query.column_index(),
-                    _ => unreachable!(),
-                })
-                .collect();
-
-            // Fused lookup + trash constraint evaluation in a single pass
-            // over `values`, using flattened evaluators for reduced dispatch.
+            // Permutation constraints
             parallelize(&mut values, |values, start| {
-                // Per-thread flat values buffers for all lookups.
-                let mut all_lookup_bufs: Vec<Vec<Vec<F>>> = self
-                    .lookups_flat
-                    .iter()
-                    .map(|batch| {
-                        batch
-                            .iter()
-                            .map(|flat| flat.new_values_buffer(&beta, &theta, &trash_challenge, &y))
-                            .collect()
-                    })
-                    .collect();
-                // Per-thread flat values buffers for all trash arguments.
-                let mut trash_bufs: Vec<Vec<F>> = self
-                    .trashcans_flat
-                    .iter()
-                    .map(|flat| flat.new_values_buffer(&beta, &theta, &trash_challenge, &y))
-                    .collect();
-
-                let mut rot_indices = vec![
-                    0usize;
-                    self.custom_gates_flat.rotations.len().max(
-                        self.lookups_flat
-                            .iter()
-                            .flat_map(|b| b.iter())
-                            .chain(self.trashcans_flat.iter())
-                            .map(|f| f.rotations.len())
-                            .max()
-                            .unwrap_or(0)
-                    )
-                ];
-
+                let mut beta_term = omega.pow_vartime([start as u64, 0, 0, 0]);
                 for (i, value) in values.iter_mut().enumerate() {
                     let idx = start + i;
                     let r_next = get_rotation_idx(idx, 1, log_scale, log_n);
+                    let r_last = get_rotation_idx(idx, last_rotation.0, log_scale, log_n);
 
-                    // --- Lookup constraints ---
-                    for (n, (helper_cosets, aggregator_coset, multiplicities_coset)) in
-                        all_lookup_cosets.iter().enumerate()
+                    // Enforce only for the first set.
+                    // l_0(X) * (1 - z_0(X)) = 0
+                    *value =
+                        *value * y + (one - first_set_permutation_product_coset[idx]) * l0[idx];
+                    // Enforce only for the last set.
+                    // l_last(X) * (z_l(X)^2 - z_l(X)) = 0
+                    *value = *value * y
+                        + (last_set_permutation_product_coset[idx]
+                            * last_set_permutation_product_coset[idx]
+                            - last_set_permutation_product_coset[idx])
+                            * l_last[idx];
+                    // Except for the first set, enforce.
+                    // l_0(X) * (z_i(X) - z_{i-1}(\omega^(last) X)) = 0
+                    for set_idx in 0..sets.len() {
+                        if set_idx != 0 {
+                            *value = *value * y
+                                + (permutation_product_cosets[set_idx][idx]
+                                    - permutation_product_cosets[set_idx - 1][r_last])
+                                    * l0[idx];
+                        }
+                    }
+                    // And for all the sets we enforce:
+                    // (1 - (l_last(X) + l_blind(X))) * (
+                    //   z_i(\omega X) \prod_j (p(X) + \beta s_j(X) + \gamma)
+                    // - z_i(X) \prod_j (p(X) + \delta^j \beta X + \gamma)
+                    // )
+                    let mut current_delta = delta_start * beta_term;
+                    for ((permutation_product_coset, columns), cosets) in permutation_product_cosets
+                        .iter()
+                        .zip(p.columns.chunks(chunk_len))
+                        .zip(permutation_pk_cosets.chunks(chunk_len))
                     {
-                        *value = *value * y + aggregator_coset[idx] * (l0[idx] + l_last[idx]);
-
-                        let mut sum_helpers = F::ZERO;
-                        let mut table_value = F::ZERO;
-                        let mut selector = F::ZERO;
-                        let flat_batch = &self.lookups_flat[n];
-                        let output_batch = &lookup_output_indices[n];
-                        let bufs = &mut all_lookup_bufs[n];
-
-                        for (fi, flat) in flat_batch.iter().enumerate() {
-                            for (ri, rot) in flat.rotations.iter().enumerate() {
-                                rot_indices[ri] = get_rotation_idx(idx, *rot, log_scale, log_n);
-                            }
-                            flat.evaluate::<B>(
-                                &mut bufs[fi],
-                                fixed,
-                                advice,
-                                instance,
-                                challenges,
-                                &rot_indices,
-                                &F::ZERO,
-                            );
-
-                            let (spp_idx, prod_idx, tbl_idx, sel_idx) = output_batch[fi];
-                            let sum_partial_products = bufs[fi][spp_idx];
-                            let product = bufs[fi][prod_idx];
-
-                            // We only resolve the table and selector in the first batch
-                            if fi == 0 {
-                                table_value = bufs[fi][tbl_idx];
-                                selector = bufs[fi][sel_idx];
-                            }
-
-                            // Helper constraint: h(X) · ∏ⱼ(fⱼ(X) + β) = Σⱼ ∏_{k≠j}(fₖ(X) + β)
-                            *value = *value * y + helper_cosets[fi][idx] * product
-                                - sum_partial_products;
-
-                            sum_helpers += helper_cosets[fi][idx];
+                        let mut left = permutation_product_coset[r_next];
+                        for (values, permutation) in columns
+                            .iter()
+                            .map(|&column| match column.column_type() {
+                                Any::Advice(_) => &advice[column.index()],
+                                Any::Fixed => &fixed[column.index()],
+                                Any::Instance => &instance[column.index()],
+                            })
+                            .zip(cosets.iter())
+                        {
+                            left *= values[idx] + beta * permutation[idx] + gamma;
                         }
 
-                        // Accumulator constraint:
-                        // (Z(ωX) - Z(X)- s·Σᵢhᵢ(X))·(t(X) + β) + m(X) = 0
-                        *value = *value * y
-                            + l_active_row[idx]
-                                * ((aggregator_coset[r_next]
-                                    - aggregator_coset[idx]
-                                    - selector * sum_helpers)
-                                    * table_value
-                                    + multiplicities_coset[idx]);
-                    }
+                        let mut right = permutation_product_coset[idx];
+                        for values in columns.iter().map(|&column| match column.column_type() {
+                            Any::Advice(_) => &advice[column.index()],
+                            Any::Fixed => &fixed[column.index()],
+                            Any::Instance => &instance[column.index()],
+                        }) {
+                            right *= values[idx] + current_delta + gamma;
+                            current_delta *= &F::DELTA;
+                        }
 
-                    // --- Trash constraints ---
-                    for (n, trash_poly) in trash_cosets.iter().enumerate() {
-                        let flat = &self.trashcans_flat[n];
+                        *value = *value * y + (left - right) * l_active_row[idx];
+                    }
+                    beta_term *= &omega;
+                }
+            });
+        }
+
+        // Pre-compute all lookup cosets in parallel. This trades peak memory
+        // for parallelism: the FFTs for different lookups can now overlap.
+        let all_lookup_cosets: Vec<_> = lookups
+            .par_iter()
+            .map(|lookup| {
+                let helper_cosets: Vec<_> = lookup
+                    .helper_polys
+                    .iter()
+                    .map(|h| B::coeff_to_self(domain, h.clone()))
+                    .collect();
+                let aggregator_coset = B::coeff_to_self(domain, lookup.aggregator_poly.clone());
+                let multiplicities_coset = B::coeff_to_self(domain, lookup.multiplicities.clone());
+                (helper_cosets, aggregator_coset, multiplicities_coset)
+            })
+            .collect();
+
+        // Pre-compute all trash cosets in parallel (lookup cosets
+        // are already pre-computed above).
+        let trash_cosets: Vec<_> = trashcans
+            .par_iter()
+            .map(|trash| B::coeff_to_self(domain, trash.trash_poly.clone()))
+            .collect();
+
+        // Pre-resolve lookup output indices for the flat evaluator.
+        let lookup_output_indices: Vec<Vec<(usize, usize, usize, usize)>> = self
+            .lookups
+            .iter()
+            .zip(self.lookups_flat.iter())
+            .map(|(batch, flat_batch)| {
+                batch
+                    .iter()
+                    .zip(flat_batch.iter())
+                    .map(|(le, flat)| {
+                        (
+                            flat.resolve_idx(le.sum_partial_products),
+                            flat.resolve_idx(le.product),
+                            flat.resolve_idx(le.table),
+                            flat.resolve_idx(le.selector),
+                        )
+                    })
+                    .collect()
+            })
+            .collect();
+
+        // Pre-resolve trash selector column indices.
+        let trash_selector_cols: Vec<usize> = cs
+            .trashcans
+            .iter()
+            .map(|arg| match arg.selector() {
+                Expression::Fixed(query) => query.column_index(),
+                _ => unreachable!(),
+            })
+            .collect();
+
+        // Fused lookup + trash constraint evaluation in a single pass
+        // over `values`, using flattened evaluators for reduced dispatch.
+        parallelize(&mut values, |values, start| {
+            // Per-thread flat values buffers for all lookups.
+            let mut all_lookup_bufs: Vec<Vec<Vec<F>>> = self
+                .lookups_flat
+                .iter()
+                .map(|batch| {
+                    batch
+                        .iter()
+                        .map(|flat| flat.new_values_buffer(&beta, &theta, &trash_challenge, &y))
+                        .collect()
+                })
+                .collect();
+            // Per-thread flat values buffers for all trash arguments.
+            let mut trash_bufs: Vec<Vec<F>> = self
+                .trashcans_flat
+                .iter()
+                .map(|flat| flat.new_values_buffer(&beta, &theta, &trash_challenge, &y))
+                .collect();
+
+            let mut rot_indices = vec![
+                0usize;
+                self.custom_gates_flat.rotations.len().max(
+                    self.lookups_flat
+                        .iter()
+                        .flat_map(|b| b.iter())
+                        .chain(self.trashcans_flat.iter())
+                        .map(|f| f.rotations.len())
+                        .max()
+                        .unwrap_or(0)
+                )
+            ];
+
+            for (i, value) in values.iter_mut().enumerate() {
+                let idx = start + i;
+                let r_next = get_rotation_idx(idx, 1, log_scale, log_n);
+
+                // --- Lookup constraints ---
+                for (n, (helper_cosets, aggregator_coset, multiplicities_coset)) in
+                    all_lookup_cosets.iter().enumerate()
+                {
+                    *value = *value * y + aggregator_coset[idx] * (l0[idx] + l_last[idx]);
+
+                    let mut sum_helpers = F::ZERO;
+                    let mut table_value = F::ZERO;
+                    let mut selector = F::ZERO;
+                    let flat_batch = &self.lookups_flat[n];
+                    let output_batch = &lookup_output_indices[n];
+                    let bufs = &mut all_lookup_bufs[n];
+
+                    for (fi, flat) in flat_batch.iter().enumerate() {
                         for (ri, rot) in flat.rotations.iter().enumerate() {
                             rot_indices[ri] = get_rotation_idx(idx, *rot, log_scale, log_n);
                         }
-                        let compressed_expression = flat.evaluate::<B>(
-                            &mut trash_bufs[n],
+                        flat.evaluate::<B>(
+                            &mut bufs[fi],
                             fixed,
                             advice,
                             instance,
@@ -1146,12 +1086,56 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                             &F::ZERO,
                         );
 
-                        let q = fixed[trash_selector_cols[n]][idx];
-                        *value = *value * y + (compressed_expression - (one - q) * trash_poly[idx]);
+                        let (spp_idx, prod_idx, tbl_idx, sel_idx) = output_batch[fi];
+                        let sum_partial_products = bufs[fi][spp_idx];
+                        let product = bufs[fi][prod_idx];
+
+                        // We only resolve the table and selector in the first batch
+                        if fi == 0 {
+                            table_value = bufs[fi][tbl_idx];
+                            selector = bufs[fi][sel_idx];
+                        }
+
+                        // Helper constraint: h(X) · ∏ⱼ(fⱼ(X) + β) = Σⱼ ∏_{k≠j}(fₖ(X) + β)
+                        *value =
+                            *value * y + helper_cosets[fi][idx] * product - sum_partial_products;
+
+                        sum_helpers += helper_cosets[fi][idx];
                     }
+
+                    // Accumulator constraint:
+                    // (Z(ωX) - Z(X)- s·Σᵢhᵢ(X))·(t(X) + β) + m(X) = 0
+                    *value = *value * y
+                        + l_active_row[idx]
+                            * ((aggregator_coset[r_next]
+                                - aggregator_coset[idx]
+                                - selector * sum_helpers)
+                                * table_value
+                                + multiplicities_coset[idx]);
                 }
-            });
-        }
+
+                // --- Trash constraints ---
+                for (n, trash_poly) in trash_cosets.iter().enumerate() {
+                    let flat = &self.trashcans_flat[n];
+                    for (ri, rot) in flat.rotations.iter().enumerate() {
+                        rot_indices[ri] = get_rotation_idx(idx, *rot, log_scale, log_n);
+                    }
+                    let compressed_expression = flat.evaluate::<B>(
+                        &mut trash_bufs[n],
+                        fixed,
+                        advice,
+                        instance,
+                        challenges,
+                        &rot_indices,
+                        &F::ZERO,
+                    );
+
+                    let q = fixed[trash_selector_cols[n]][idx];
+                    *value = *value * y + (compressed_expression - (one - q) * trash_poly[idx]);
+                }
+            }
+        });
+
         values
     }
 }

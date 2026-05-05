@@ -533,10 +533,10 @@ where
         create_proof::<E::Fr, KZGCommitmentScheme<E>, _, _>(
             &params,
             &pk,
-            &[circuit],
+            &circuit,
             #[cfg(feature = "committed-instances")]
             NB_INSTANCE_COMS,
-            &[&public_inputs],
+            &public_inputs,
             &mut transcript,
             OsRng,
         )
@@ -551,11 +551,11 @@ where
         prepare::<E::Fr, KZGCommitmentScheme<E>, _>(
             pk.get_vk(),
             #[cfg(feature = "committed-instances")]
-            &[&instance_commitments],
+            &instance_commitments,
             #[cfg(feature = "committed-instances")]
-            &[&public_inputs[NB_INSTANCE_COMS..]],
+            &public_inputs[NB_INSTANCE_COMS..],
             #[cfg(not(feature = "committed-instances"))]
-            &[&public_inputs],
+            &public_inputs,
             &mut transcript,
         )
         .unwrap()
