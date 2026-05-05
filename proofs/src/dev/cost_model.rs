@@ -887,10 +887,10 @@ mod tests {
         create_proof::<Fq, KZGCommitmentScheme<Bls12>, _, _>(
             &params,
             &pk,
-            std::slice::from_ref(&circuit),
+            &circuit,
             #[cfg(feature = "committed-instances")]
             0,
-            &[instances],
+            instances,
             &mut transcript,
             OsRng,
         )
@@ -920,9 +920,9 @@ mod tests {
         create_proof::<Fq, KZGCommitmentScheme<Bls12>, _, _>(
             &params,
             &pk,
-            std::slice::from_ref(&circuit),
+            &circuit,
             1,
-            &[instances],
+            instances,
             &mut transcript,
             OsRng,
         )

@@ -2050,9 +2050,8 @@ where
                 CircuitTranscript<H>,
             >(
                 &vk.vk,
-                &[&[midnight_curves::G1Projective::identity()]],
-                // TODO: We could batch here proofs with the same vk.
-                &[&[pi]],
+                &[midnight_curves::G1Projective::identity()],
+                &[pi],
                 &mut transcript,
             )?;
             let summary: F = transcript.squeeze_challenge();

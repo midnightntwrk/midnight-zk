@@ -485,10 +485,10 @@ fn plonk_api() {
         create_plonk_proof::<F, Scheme, _, _>(
             params,
             pk,
-            &[circuit.clone(), circuit.clone()],
+            &circuit,
             #[cfg(feature = "committed-instances")]
             0,
-            &[&[&[instance]], &[&[instance]]],
+            &[&[instance]],
             &mut transcript,
             rng,
         )
@@ -526,8 +526,8 @@ fn plonk_api() {
         let verifier = prepare_plonk_proof(
             vk,
             #[cfg(feature = "committed-instances")]
-            &[&[], &[]],
-            &[&[&pubinputs[..]], &[&pubinputs[..]]],
+            &[],
+            &[&pubinputs[..]],
             &mut transcript,
         )
         .unwrap();

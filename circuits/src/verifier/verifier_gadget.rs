@@ -1136,9 +1136,9 @@ pub(crate) mod tests {
             >(
                 &inner_params,
                 &inner_pk,
-                &[InnerCircuit::from_witness(preimage)],
+                &InnerCircuit::from_witness(preimage),
                 1,
-                &[&[&[], &inner_public_inputs]],
+                &[&[], &inner_public_inputs],
                 &mut transcript,
                 &mut rng,
             )
@@ -1151,8 +1151,8 @@ pub(crate) mod tests {
                 CircuitTranscript::<PoseidonState<F>>::init_from_bytes(&inner_proof);
             prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<PoseidonState<F>>>(
                 &inner_vk,
-                &[&[C::identity()]],
-                &[&[&inner_public_inputs]],
+                &[C::identity()],
+                &[&inner_public_inputs],
                 &mut transcript,
             )
             .expect("Problem preparing the inner proof")

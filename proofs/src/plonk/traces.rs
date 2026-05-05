@@ -1,5 +1,4 @@
-//! Representation of a Trace for a batch of proofs that are being generated
-//! simultaneously.
+//! Representation of a Trace for a single proof being generated.
 
 use ff::PrimeField;
 
@@ -8,18 +7,17 @@ use crate::{
     poly::{commitment::PolynomialCommitmentScheme, Coeff, LagrangeCoeff, Polynomial},
 };
 
-/// Prover's trace of a set of proofs. This type guarantees that the size of the
-/// outer vector of its fields has the same size.
+/// Prover's trace of a proof.
 #[derive(Debug)]
 pub struct ProverTrace<F: PrimeField> {
-    pub(crate) advice_polys: Vec<Vec<Polynomial<F, Coeff>>>,
-    pub(crate) instance_polys: Vec<Vec<Polynomial<F, Coeff>>>,
+    pub(crate) advice_polys: Vec<Polynomial<F, Coeff>>,
+    pub(crate) instance_polys: Vec<Polynomial<F, Coeff>>,
     #[allow(dead_code)]
     // This field will be useful for split accumulation
-    pub(crate) instance_values: Vec<Vec<Polynomial<F, LagrangeCoeff>>>,
-    pub(crate) lookups: Vec<Vec<logup::prover::Committed<F>>>,
-    pub(crate) trashcans: Vec<Vec<trash::prover::Committed<F>>>,
-    pub(crate) permutations: Vec<permutation::prover::Committed<F>>,
+    pub(crate) instance_values: Vec<Polynomial<F, LagrangeCoeff>>,
+    pub(crate) lookups: Vec<logup::prover::Committed<F>>,
+    pub(crate) trashcans: Vec<trash::prover::Committed<F>>,
+    pub(crate) permutations: permutation::prover::Committed<F>,
     pub(crate) challenges: Vec<F>,
     pub(crate) beta: F,
     pub(crate) gamma: F,
@@ -28,14 +26,13 @@ pub struct ProverTrace<F: PrimeField> {
     pub(crate) y: F,
 }
 
-/// Verifier's trace of a set of proofs. This type guarantees that the size of
-/// the outer vector of its fields has the same size.
+/// Verifier's trace of a proof.
 #[derive(Debug)]
 pub struct VerifierTrace<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> {
-    pub(crate) advice_commitments: Vec<Vec<PCS::Commitment>>,
-    pub(crate) lookups: Vec<Vec<logup::verifier::Committed<F, PCS>>>,
-    pub(crate) trashcans: Vec<Vec<trash::verifier::Committed<F, PCS>>>,
-    pub(crate) permutations: Vec<permutation::verifier::Committed<F, PCS>>,
+    pub(crate) advice_commitments: Vec<PCS::Commitment>,
+    pub(crate) lookups: Vec<logup::verifier::Committed<F, PCS>>,
+    pub(crate) trashcans: Vec<trash::verifier::Committed<F, PCS>>,
+    pub(crate) permutations: permutation::verifier::Committed<F, PCS>,
     pub(crate) challenges: Vec<F>,
     pub(crate) beta: F,
     pub(crate) gamma: F,

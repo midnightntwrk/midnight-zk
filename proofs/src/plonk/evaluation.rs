@@ -828,28 +828,22 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
     /// Evaluate numerator polynomial `nu(X)` of the quotient polynomial
     /// `h(X) = nu(X) / (X^n-1)`.
     ///
-    /// Iterates over the batched `(advice, instance, lookups, trashcans,
-    /// permutation)` proofs and folds each into a single shared `values`
-    /// accumulator via the verifier challenge `y`. The custom-gates flat
-    /// evaluator threads this accumulator through its outermost `Horner` step
-    /// using `ValueSource::PreviousValue` (loaded into `previous_value_idx`
-    /// in the values buffer at evaluation time).
+    /// Folds the proof's `(advice, instance, lookups, trashcans, permutation)`
+    /// data into a `values` accumulator via the verifier challenge `y`.
     ///
     /// TODO: drop the `previous_value` plumbing — the parameter on
     /// `FlatGraphEvaluator::evaluate` / `Calculation::evaluate`, the
     /// `ValueSource::PreviousValue` variant, the `previous_value_idx` slot,
-    /// and the `Horner(PreviousValue, parts, Y)` start — once this function no
-    /// longer processes batched proofs in a single call. Without batching,
-    /// `previous_value` is always `F::ZERO`, the leading `Add(prev, 0)` flat
-    /// op is dead, and the inter-proof y-fold can be lifted to the caller as
-    /// a single `total = total * y^M + per_proof` pass per proof.
+    /// and the `Horner(PreviousValue, parts, Y)` start. With single-proof
+    /// processing, `previous_value` is always `F::ZERO` and the leading
+    /// `Add(prev, 0)` flat op is dead.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn evaluate_numerator<B: PolynomialRepresentation>(
         &self,
         domain: &EvaluationDomain<F>,
         cs: &ConstraintSystem<F>,
-        advice: &[&[Polynomial<F, B>]],
-        instance: &[&[Polynomial<F, B>]],
+        advice: &[Polynomial<F, B>],
+        instance: &[Polynomial<F, B>],
         fixed: &[Polynomial<F, B>],
         challenges: &[F],
         y: F,
@@ -857,9 +851,9 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
         gamma: F,
         theta: F,
         trash_challenge: F,
-        lookups: &[Vec<logup::prover::Committed<F>>],
-        trashcans: &[Vec<trash::prover::Committed<F>>],
-        permutations: &[permutation::prover::Committed<F>],
+        lookups: &[logup::prover::Committed<F>],
+        trashcans: &[trash::prover::Committed<F>],
+        permutation: &permutation::prover::Committed<F>,
         l0: &Polynomial<F, B>,
         l_last: &Polynomial<F, B>,
         l_active_row: &Polynomial<F, B>,
@@ -874,12 +868,6 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
 
         let mut values = B::empty(domain);
 
-        for ((((advice, instance), lookups), trashcans), permutation) in advice
-            .iter()
-            .zip(instance.iter())
-            .zip(lookups.iter())
-            .zip(trashcans.iter())
-            .zip(permutations.iter())
         {
             // Custom gates — flattened evaluator with const-generic batch size.
             // BATCH is a compile-time constant so LLVM fully unrolls the inner
