@@ -39,105 +39,6 @@ use crate::{
     },
 };
 
-/// Computes the quotient polynomial `h(X) = nu(X) / (X^n - 1)` and commits to
-/// it, writing the commitment(s) to the transcript.
-///
-/// **Default behaviour** (`single-h-commitment` feature *disabled*): `h(X)` is
-/// split into `quotient_poly_degree` limbs of degree `n-2` each, so that each
-/// can be committed with an SRS of size `n` after 1 term for blinding. Each
-/// limb is independently blinded and committed, and all `quotient_poly_degree`
-/// commitments are written to the transcript. The returned `Vec` contains the
-/// `quotient_poly_degree` limb polynomials in coefficient form.
-///
-/// **Alternative behaviour** (`single-h-commitment` feature *enabled*): `h(X)`
-/// is committed as a single polynomial without splitting. A single commitment
-/// is written to the transcript. The returned `Vec` contains exactly one
-/// element: the full `h(X)` in coefficient form. In this mode the `params`
-/// **must** supply an SRS of at least `(n-1) * quotient_poly_degree` elements
-/// (i.e., params generated with `k' >= log2(n * (d-1))`).
-pub(crate) fn compute_h_poly<
-    F: WithSmallOrderMulGroup<3> + Hashable<T::Hash>,
-    CS: PolynomialCommitmentScheme<F>,
-    T: Transcript,
->(
-    params: &CS::Parameters,
-    domain: &EvaluationDomain<F>,
-    nu_poly: Polynomial<F, ExtendedLagrangeCoeff>,
-    transcript: &mut T,
-) -> Result<Vec<Polynomial<F, Coeff>>, Error>
-where
-    CS::Commitment: Hashable<T::Hash>,
-{
-    // Construct quotient polynomial h(X) = nu(X) / (X^n - 1) in evaluation form
-    let h_poly = domain.divide_by_vanishing_poly(nu_poly);
-
-    // Convert h(X) to coefficient form
-    let mut h_poly = domain.extended_to_coeff(h_poly);
-
-    // Let n := size of evaluation domain
-    // Let d := degree of constraint system
-    // Hence, the degree of the quotient poly is: d*(n-1) - n = (d-1)*(n-1) - 1,
-    // and a domain of size (d-1)*(n-1) suffices to correctly represent it
-    h_poly.truncate((domain.n - 1) as usize * domain.get_quotient_poly_degree());
-
-    // When the single-h-commitment feature is enabled, commit to h(X) in one go.
-    // The params SRS must have at least h_poly.len() monomial elements.
-    #[cfg(feature = "single-h-commitment")]
-    {
-        use crate::poly::commitment::Params;
-        if params.g_monomial_size() < h_poly.len() {
-            return Err(Error::SrsError(params.g_monomial_size(), h_poly.len()));
-        }
-        let h_poly = Polynomial {
-            values: h_poly,
-            _marker: std::marker::PhantomData,
-        };
-        let h_com = CS::commit(params, &h_poly);
-        transcript.write(&h_com)?;
-        Ok(vec![h_poly])
-    }
-
-    // Split h(X) up into limbs and add inter-limb blinding so that
-    // individual limb commitments do not leak information about h(X).
-    #[cfg(not(feature = "single-h-commitment"))]
-    {
-        let h_poly_iter = h_poly.chunks_exact((domain.n - 1) as usize);
-        assert_eq!(h_poly_iter.remainder().len(), 0);
-        let mut h_limbs = h_poly_iter.map(|v| v.to_vec()).collect::<Vec<_>>();
-        drop(h_poly);
-
-        blind_quotient_limbs(&mut h_limbs);
-
-        let h_limbs: Vec<_> =
-            h_limbs.into_iter().map(|h_limb| domain.coeff_from_vec(h_limb)).collect();
-
-        // Compute commitment to each limb (parallel MSMs).
-        let h_commitments: Vec<_> =
-            h_limbs.par_iter().map(|h_piece| CS::commit(params, h_piece)).collect();
-
-        // Write each limb commitment to the transcript in order.
-        for c in h_commitments {
-            transcript.write(&c)?;
-        }
-
-        Ok(h_limbs)
-    }
-}
-
-#[cfg(not(feature = "single-h-commitment"))]
-fn blind_quotient_limbs<F: PrimeField>(quotient_limbs: &mut [Vec<F>]) {
-    let nr_limbs = quotient_limbs.len();
-    assert!(nr_limbs >= 2);
-
-    for i in 1..nr_limbs {
-        let t = F::random(OsRng);
-        quotient_limbs[i - 1].push(t);
-        quotient_limbs[i][0] -= t;
-    }
-
-    quotient_limbs[nr_limbs - 1].push(F::ZERO);
-}
-
 #[cfg(feature = "committed-instances")]
 /// Commit to a vector of raw instances. This function can be used to prepare
 /// the committed instances that the verifier will be provided with when this
@@ -894,6 +795,105 @@ pub(super) fn compute_nu_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommit
         &pk.l_active_row,
         &pk.permutation.cosets,
     )
+}
+
+/// Computes the quotient polynomial `h(X) = nu(X) / (X^n - 1)` and commits to
+/// it, writing the commitment(s) to the transcript.
+///
+/// **Default behaviour** (`single-h-commitment` feature *disabled*): `h(X)` is
+/// split into `quotient_poly_degree` limbs of degree `n-2` each, so that each
+/// can be committed with an SRS of size `n` after 1 term for blinding. Each
+/// limb is independently blinded and committed, and all `quotient_poly_degree`
+/// commitments are written to the transcript. The returned `Vec` contains the
+/// `quotient_poly_degree` limb polynomials in coefficient form.
+///
+/// **Alternative behaviour** (`single-h-commitment` feature *enabled*): `h(X)`
+/// is committed as a single polynomial without splitting. A single commitment
+/// is written to the transcript. The returned `Vec` contains exactly one
+/// element: the full `h(X)` in coefficient form. In this mode the `params`
+/// **must** supply an SRS of at least `(n-1) * quotient_poly_degree` elements
+/// (i.e., params generated with `k' >= log2(n * (d-1))`).
+pub(crate) fn compute_h_poly<
+    F: WithSmallOrderMulGroup<3> + Hashable<T::Hash>,
+    CS: PolynomialCommitmentScheme<F>,
+    T: Transcript,
+>(
+    params: &CS::Parameters,
+    domain: &EvaluationDomain<F>,
+    nu_poly: Polynomial<F, ExtendedLagrangeCoeff>,
+    transcript: &mut T,
+) -> Result<Vec<Polynomial<F, Coeff>>, Error>
+where
+    CS::Commitment: Hashable<T::Hash>,
+{
+    // Construct quotient polynomial h(X) = nu(X) / (X^n - 1) in evaluation form
+    let h_poly = domain.divide_by_vanishing_poly(nu_poly);
+
+    // Convert h(X) to coefficient form
+    let mut h_poly = domain.extended_to_coeff(h_poly);
+
+    // Let n := size of evaluation domain
+    // Let d := degree of constraint system
+    // Hence, the degree of the quotient poly is: d*(n-1) - n = (d-1)*(n-1) - 1,
+    // and a domain of size (d-1)*(n-1) suffices to correctly represent it
+    h_poly.truncate((domain.n - 1) as usize * domain.get_quotient_poly_degree());
+
+    // When the single-h-commitment feature is enabled, commit to h(X) in one go.
+    // The params SRS must have at least h_poly.len() monomial elements.
+    #[cfg(feature = "single-h-commitment")]
+    {
+        use crate::poly::commitment::Params;
+        if params.g_monomial_size() < h_poly.len() {
+            return Err(Error::SrsError(params.g_monomial_size(), h_poly.len()));
+        }
+        let h_poly = Polynomial {
+            values: h_poly,
+            _marker: std::marker::PhantomData,
+        };
+        let h_com = CS::commit(params, &h_poly);
+        transcript.write(&h_com)?;
+        Ok(vec![h_poly])
+    }
+
+    // Split h(X) up into limbs and add inter-limb blinding so that
+    // individual limb commitments do not leak information about h(X).
+    #[cfg(not(feature = "single-h-commitment"))]
+    {
+        let h_poly_iter = h_poly.chunks_exact((domain.n - 1) as usize);
+        assert_eq!(h_poly_iter.remainder().len(), 0);
+        let mut h_limbs = h_poly_iter.map(|v| v.to_vec()).collect::<Vec<_>>();
+        drop(h_poly);
+
+        blind_quotient_limbs(&mut h_limbs);
+
+        let h_limbs: Vec<_> =
+            h_limbs.into_iter().map(|h_limb| domain.coeff_from_vec(h_limb)).collect();
+
+        // Compute commitment to each limb (parallel MSMs).
+        let h_commitments: Vec<_> =
+            h_limbs.par_iter().map(|h_piece| CS::commit(params, h_piece)).collect();
+
+        // Write each limb commitment to the transcript in order.
+        for c in h_commitments {
+            transcript.write(&c)?;
+        }
+
+        Ok(h_limbs)
+    }
+}
+
+#[cfg(not(feature = "single-h-commitment"))]
+fn blind_quotient_limbs<F: PrimeField>(quotient_limbs: &mut [Vec<F>]) {
+    let nr_limbs = quotient_limbs.len();
+    assert!(nr_limbs >= 2);
+
+    for i in 1..nr_limbs {
+        let t = F::random(OsRng);
+        quotient_limbs[i - 1].push(t);
+        quotient_limbs[i][0] -= t;
+    }
+
+    quotient_limbs[nr_limbs - 1].push(F::ZERO);
 }
 
 // Structure for holding evaluations of fixed, instance, and advice columns.
