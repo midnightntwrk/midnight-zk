@@ -209,8 +209,11 @@ where
                     (min, max)
                 }
             });
-        let max_instance_len =
-            instances.iter().map(|instance| instance.len()).max_by(Ord::cmp).unwrap_or_default();
+        let max_instance_len = instances
+            .iter()
+            .map(|instance| instance.len())
+            .max_by(Ord::cmp)
+            .unwrap_or_default();
         let l_i_s = &vk.domain.l_i_range(
             x,
             xn,
@@ -300,14 +303,16 @@ where
     // NB: Queries corresponding to simple, multiplicative selectors need not be
     // checked
     let queries = iter::empty()
-        .chain(vk.cs.advice_queries.iter().enumerate().map(|(query_index, &(column, at))| {
-            VerifierQuery::new(
-                vk.domain.rotate_omega(x, at),
-                CommitmentLabel::Advice(column.index()),
-                &advice_commitments[column.index()],
-                advice_evals[query_index],
-            )
-        }))
+        .chain(
+            vk.cs.advice_queries.iter().enumerate().map(|(query_index, &(column, at))| {
+                VerifierQuery::new(
+                    vk.domain.rotate_omega(x, at),
+                    CommitmentLabel::Advice(column.index()),
+                    &advice_commitments[column.index()],
+                    advice_evals[query_index],
+                )
+            }),
+        )
         .chain(vk.cs.instance_queries.iter().enumerate().filter_map(
             |(query_index, &(column, at))| {
                 if column.index() < nb_committed_instances {

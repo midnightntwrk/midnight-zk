@@ -65,8 +65,7 @@ where
     #[cfg(not(feature = "committed-instances"))]
     let nb_committed_instances: usize = 0;
 
-    if instances.len() != pk.vk.cs.num_instance_columns
-        || instances.len() < nb_committed_instances
+    if instances.len() != pk.vk.cs.num_instance_columns || instances.len() < nb_committed_instances
     {
         return Err(Error::InvalidInstances);
     }

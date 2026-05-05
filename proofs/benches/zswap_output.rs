@@ -318,8 +318,8 @@ fn bench_zswap_output(c: &mut Criterion) {
                 let guard = verify_algebraic_constraints(
                     pk.get_vk(),
                     trace,
-                    &[&[C::identity()]],
-                    &[&[&instance]],
+                    &[C::identity()],
+                    &[&instance],
                     &mut t,
                 )
                 .unwrap();

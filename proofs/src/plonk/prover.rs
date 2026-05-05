@@ -93,8 +93,7 @@ where
     #[cfg(not(feature = "committed-instances"))]
     let nb_committed_instances: usize = 0;
 
-    if instances.len() != pk.vk.cs.num_instance_columns
-        || instances.len() < nb_committed_instances
+    if instances.len() != pk.vk.cs.num_instance_columns || instances.len() < nb_committed_instances
     {
         return Err(Error::InvalidInstances);
     }
@@ -106,8 +105,7 @@ where
 
     let instance = compute_instances(params, pk, instances, nb_committed_instances, transcript)?;
 
-    let (advice, challenges) =
-        parse_advices(params, pk, circuit, instances, transcript, &mut rng)?;
+    let (advice, challenges) = parse_advices(params, pk, circuit, instances, transcript, &mut rng)?;
 
     // Helper: sample `num_sets` blinding vectors, each of length `inner_len`.
     // Used to pre-generate every blinding the parallel compute sections below
@@ -268,8 +266,11 @@ where
         instance_values,
     } = instance;
 
-    let advice_polys: Vec<_> =
-        advice.advice_polys.into_par_iter().map(|p| domain.lagrange_to_coeff(p)).collect();
+    let advice_polys: Vec<_> = advice
+        .advice_polys
+        .into_par_iter()
+        .map(|p| domain.lagrange_to_coeff(p))
+        .collect();
 
     Ok(ProverTrace {
         advice_polys,
@@ -912,20 +913,24 @@ pub(super) fn compute_queries<
 ) -> Vec<ProverQuery<'a, F>> {
     let domain = pk.vk.get_domain();
     iter::empty()
-        .chain(pk.vk.cs.advice_queries.iter().map(move |&(column, at)| ProverQuery {
-            point: domain.rotate_omega(x, at),
-            poly: &advice_polys[column.index()],
-        }))
-        .chain(pk.vk.cs.instance_queries.iter().filter_map(move |&(column, at)| {
-            if column.index() < nb_committed_instances {
-                Some(ProverQuery {
-                    point: domain.rotate_omega(x, at),
-                    poly: &instance_polys[column.index()],
-                })
-            } else {
-                None
-            }
-        }))
+        .chain(
+            pk.vk.cs.advice_queries.iter().map(move |&(column, at)| ProverQuery {
+                point: domain.rotate_omega(x, at),
+                poly: &advice_polys[column.index()],
+            }),
+        )
+        .chain(
+            pk.vk.cs.instance_queries.iter().filter_map(move |&(column, at)| {
+                if column.index() < nb_committed_instances {
+                    Some(ProverQuery {
+                        point: domain.rotate_omega(x, at),
+                        poly: &instance_polys[column.index()],
+                    })
+                } else {
+                    None
+                }
+            }),
+        )
         .chain(permutations.open(pk, x))
         .chain(lookups.iter().flat_map(move |p| p.open(pk, x)))
         .chain(trashcans.iter().flat_map(move |p| p.open(x)))
