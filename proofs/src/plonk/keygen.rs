@@ -271,20 +271,20 @@ where
         cs.constants.clone(),
     )?;
 
-    let mut fixed = batch_invert_rational(assembly.fixed);
+    let mut fixed_polys = batch_invert_rational(assembly.fixed);
     // After this, the ConstraintSystem should not have any selectors: `verify` does
     // not need them, and `keygen_pk` regenerates `cs` from scratch anyways.
     let selectors = std::mem::take(&mut assembly.selectors);
     let (cs, selector_polys) = cs.directly_convert_selectors_to_fixed(selectors);
-    fixed.extend(selector_polys.into_iter().map(|poly| domain.lagrange_from_vec(poly)));
+    fixed_polys.extend(selector_polys.into_iter().map(|poly| domain.lagrange_from_vec(poly)));
 
     let permutation_vk = assembly.permutation.build_vk(params, &domain, &cs.permutation);
 
-    let fixed_commitments = fixed.iter().map(|poly| CS::commit(params, poly)).collect();
+    let fixed_polys_com = CS::commit(params, &fixed_polys);
 
     Ok(VerifyingKey::from_parts(
         domain,
-        fixed_commitments,
+        fixed_polys_com,
         permutation_vk,
         cs,
     ))

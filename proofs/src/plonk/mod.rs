@@ -58,7 +58,7 @@ use crate::poly::commitment::PolynomialCommitmentScheme;
 #[derive(Clone, Debug)]
 pub struct VerifyingKey<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
     domain: EvaluationDomain<F>,
-    fixed_commitments: Vec<CS::Commitment>,
+    fixed_polys_com: CS::Commitment,
     permutation: permutation::VerifyingKey<F, CS>,
     cs: ConstraintSystem<F>,
     /// Cached maximum degree of `cs` (which doesn't change after construction).
@@ -96,10 +96,7 @@ where
         assert!(*k <= F::S);
         // k value fits in 1 byte
         writer.write_all(&[*k as u8])?;
-        writer.write_all(&(self.fixed_commitments.len() as u32).to_le_bytes())?;
-        for commitment in &self.fixed_commitments {
-            commitment.write(writer, format)?;
-        }
+        self.fixed_polys_com.write(writer, format)?;
         self.permutation.write(writer, format)?;
 
         Ok(())
@@ -171,22 +168,14 @@ where
         }
 
         let domain = EvaluationDomain::new(cs.degree() as u32, k.into());
-
-        let mut num_fixed_columns = [0u8; 4];
-        reader.read_exact(&mut num_fixed_columns)?;
-        let num_fixed_columns = u32::from_le_bytes(num_fixed_columns);
-
-        let fixed_commitments: Vec<_> = (0..num_fixed_columns)
-            .map(|_| CS::Commitment::read(reader, format))
-            .collect::<Result<_, _>>()?;
-
+        let fixed_polys_com = CS::Commitment::read(reader, format)?;
         let permutation = permutation::VerifyingKey::read(reader, &cs.permutation, format)?;
 
         // we still need to replace selectors with fixed Expressions in `cs`
         let fake_selectors = vec![vec![]; cs.num_selectors];
         let (cs, _) = cs.directly_convert_selectors_to_fixed(fake_selectors);
 
-        Ok(Self::from_parts(domain, fixed_commitments, permutation, cs))
+        Ok(Self::from_parts(domain, fixed_polys_com, permutation, cs))
     }
 
     /// Writes a verifying key to a vector of bytes using [`Self::write`].
@@ -214,13 +203,12 @@ where
 impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> VerifyingKey<F, CS> {
     /// Return the bytes_length of a VerifyingKey
     pub fn bytes_length(&self, format: SerdeFormat) -> usize {
-        10 + (self.fixed_commitments.iter().map(|c| c.byte_length(format)).sum::<usize>())
-            + self.permutation.bytes_length(format)
+        10 + self.fixed_polys_com.byte_length(format) + self.permutation.bytes_length(format)
     }
 
     fn from_parts(
         domain: EvaluationDomain<F>,
-        fixed_commitments: Vec<CS::Commitment>,
+        fixed_polys_com: CS::Commitment,
         permutation: permutation::VerifyingKey<F, CS>,
         cs: ConstraintSystem<F>,
     ) -> Self
@@ -232,7 +220,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> VerifyingK
 
         let mut vk = Self {
             domain,
-            fixed_commitments,
+            fixed_polys_com,
             permutation,
             cs,
             cs_degree,
@@ -249,12 +237,10 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> VerifyingK
         let k = &vk.domain.k();
         assert!(*k <= F::S);
         buffer.push(*k as u8);
-        buffer.extend_from_slice(&(vk.fixed_commitments.len() as u32).to_le_bytes());
-        for commitment in &vk.fixed_commitments {
-            commitment
-                .write(&mut buffer, SerdeFormat::RawBytesUnchecked)
-                .expect("Failed to write to buffer - this is a bug.");
-        }
+
+        vk.fixed_polys_com
+            .write(&mut buffer, SerdeFormat::RawBytesUnchecked)
+            .expect("Failed to write to buffer - this is a bug.");
 
         buffer.extend_from_slice(&(vk.permutation.commitments().len() as u32).to_le_bytes());
         for commitment in vk.permutation.commitments() {
@@ -292,15 +278,15 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> VerifyingK
     pub fn pinned(&self) -> PinnedVerificationKey<'_, F, CS> {
         PinnedVerificationKey {
             domain: self.domain.pinned(),
-            fixed_commitments: &self.fixed_commitments,
+            fixed_polys_com: &self.fixed_polys_com,
             permutation: &self.permutation,
             cs: self.cs.pinned(),
         }
     }
 
-    /// Returns commitments of fixed polynomials
-    pub fn fixed_commitments(&self) -> &Vec<CS::Commitment> {
-        &self.fixed_commitments
+    /// Returns the commitment to the fixed polynomials
+    pub fn fixed_polys_com(&self) -> &CS::Commitment {
+        &self.fixed_polys_com
     }
 
     /// Returns `VerifyingKey` of permutation
@@ -326,7 +312,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> VerifyingK
 pub struct PinnedVerificationKey<'a, F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
     domain: PinnedEvaluationDomain<'a, F>,
     cs: PinnedConstraintSystem<'a, F>,
-    fixed_commitments: &'a Vec<CS::Commitment>,
+    fixed_polys_com: &'a CS::Commitment,
     permutation: &'a permutation::VerifyingKey<F, CS>,
 }
 /// This is a proving key which allows for the creation of proofs for a
