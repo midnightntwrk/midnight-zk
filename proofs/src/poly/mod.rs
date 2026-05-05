@@ -43,8 +43,22 @@ pub enum Error {
     DuplicatedQuery,
 }
 
+/// The possible basis of a polynomial representation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PolynomialBasis {
+    /// Monomial basis.
+    Coeff,
+    /// Lagrange basis.
+    Lagrange,
+    /// Lagrange basis over an extended coset domain.
+    ExtendedLagrange,
+}
+
 /// The representation with which a polynomial is encoded.
 pub trait PolynomialRepresentation: Copy + Debug + Send + Sync {
+    /// The basis used by this representation.
+    const BASIS: PolynomialBasis;
+
     /// Computes the number of field elements needed to encode a polynomial
     /// in this representation for a given evaluation domain.
     fn len<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> usize;
@@ -83,6 +97,8 @@ pub trait PolynomialRepresentation: Copy + Debug + Send + Sync {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Coeff;
 impl PolynomialRepresentation for Coeff {
+    const BASIS: PolynomialBasis = PolynomialBasis::Coeff;
+
     fn len<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> usize {
         evaluation_domain.n as usize
     }
@@ -111,6 +127,8 @@ impl PolynomialRepresentation for Coeff {
 #[derive(Clone, Copy, Debug)]
 pub struct LagrangeCoeff;
 impl PolynomialRepresentation for LagrangeCoeff {
+    const BASIS: PolynomialBasis = PolynomialBasis::Lagrange;
+
     fn len<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> usize {
         evaluation_domain.n as usize
     }
@@ -140,6 +158,8 @@ impl PolynomialRepresentation for LagrangeCoeff {
 #[derive(Clone, Copy, Debug)]
 pub struct ExtendedLagrangeCoeff;
 impl PolynomialRepresentation for ExtendedLagrangeCoeff {
+    const BASIS: PolynomialBasis = PolynomialBasis::ExtendedLagrange;
+
     fn len<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> usize {
         evaluation_domain.extended_len()
     }
