@@ -244,7 +244,7 @@ pub(crate) fn build_vk<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentSch
     let mut commitments = Vec::with_capacity(p.columns.len());
     for permutation in &permutations {
         // Compute commitment to permutation polynomial
-        commitments.push(CS::commit_lagrange(params, permutation));
+        commitments.push(CS::commit(params, permutation));
     }
 
     VerifyingKey { commitments }

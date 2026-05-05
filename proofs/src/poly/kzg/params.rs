@@ -9,7 +9,7 @@ use midnight_curves::{
 use rand_core::RngCore;
 
 use crate::{
-    poly::commitment::Params,
+    poly::{commitment::Params, PolynomialBasis, PolynomialRepresentation},
     utils::{
         arithmetic::{g_to_lagrange, parallelize, CurveAffine},
         helpers::ProcessedSerdeObject,
@@ -49,6 +49,17 @@ impl<E: Engine + Debug> ParamsKZG<E>
 where
     E::G1Affine: CurveAffine,
 {
+    /// Return the SRS bases corresponding to the polynomial representation `B`.
+    pub fn bases<B: PolynomialRepresentation>(&self) -> &[E::G1Affine] {
+        match B::BASIS {
+            PolynomialBasis::Coeff => &self.g,
+            PolynomialBasis::Lagrange => &self.g_lagrange,
+            PolynomialBasis::ExtendedLagrange => {
+                unimplemented!("KZG does not support extended Lagrange bases")
+            }
+        }
+    }
+
     /// Downsize the current parameters to match a smaller `k`.
     pub fn downsize(&mut self, new_k: u32) {
         if self.max_k() == new_k {
@@ -374,7 +385,7 @@ mod test {
 
         let b = domain.lagrange_to_coeff(a.clone());
 
-        let tmp = KZGCommitmentScheme::commit_lagrange(&params, &a);
+        let tmp = KZGCommitmentScheme::commit(&params, &a);
         let commitment = KZGCommitmentScheme::commit(&params, &b);
 
         assert_eq!(commitment, tmp);

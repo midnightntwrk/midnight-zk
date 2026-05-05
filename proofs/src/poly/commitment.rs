@@ -6,7 +6,7 @@ use ff::{FromUniformBytes, PrimeField};
 
 use crate::{
     plonk::{k_from_circuit, Circuit},
-    poly::{Coeff, Error, LagrangeCoeff, Polynomial, ProverQuery, VerifierQuery},
+    poly::{Error, Polynomial, PolynomialRepresentation, ProverQuery, VerifierQuery},
     transcript::{Hashable, Sampleable, Transcript},
     utils::helpers::ProcessedSerdeObject,
 };
@@ -41,13 +41,9 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
     fn get_verifier_params(params: &Self::Parameters) -> Self::VerifierParameters;
 
     /// Commit to a polynomial in coefficient form
-    fn commit(params: &Self::Parameters, polynomial: &Polynomial<F, Coeff>) -> Self::Commitment;
-
-    /// Commit to a polynomial expressed in Lagrange evaluations form (over the
-    /// underlying domain specified in params).
-    fn commit_lagrange(
+    fn commit<B: PolynomialRepresentation>(
         params: &Self::Parameters,
-        poly: &Polynomial<F, LagrangeCoeff>,
+        polynomial: &Polynomial<F, B>,
     ) -> Self::Commitment;
 
     /// Create a multi-opening proof at a set of [ProverQuery]'s.
