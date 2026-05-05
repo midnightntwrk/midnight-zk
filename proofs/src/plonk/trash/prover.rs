@@ -59,7 +59,7 @@ impl<F: WithSmallOrderMulGroup<3> + Ord> Argument<F> {
                 acc * trash_challenge + &expression
             });
 
-        let trash_commitment = CS::commit_lagrange(params, &compressed_expression);
+        let trash_commitment = CS::commit(params, &compressed_expression);
         let trash_poly = domain.lagrange_to_coeff(compressed_expression);
 
         // Hash permuted input commitment

@@ -157,7 +157,7 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ChunkedArgument<F> {
         );
 
         let multiplicities = pk.vk.domain.lagrange_from_vec(multiplicities);
-        let commitment = CS::commit_lagrange(params, &multiplicities);
+        let commitment = CS::commit(params, &multiplicities);
 
         Ok((
             ComputedMultiplicities {
@@ -278,7 +278,7 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ComputedMultiplicities<F> {
             assert_eq!(aggregator_poly[u], F::ZERO);
         }
 
-        let aggregator_commitment = CS::commit_lagrange(params, &aggregator_poly);
+        let aggregator_commitment = CS::commit(params, &aggregator_poly);
 
         Ok(ComputedLogderivative {
             multiplicities: self.multiplicities,

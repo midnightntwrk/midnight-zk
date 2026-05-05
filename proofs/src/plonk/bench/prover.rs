@@ -335,7 +335,7 @@ where
                                     .par_iter()
                                     .map(|h| {
                                         let h_poly = domain.lagrange_from_vec(h.clone());
-                                        CS::commit_lagrange(params, &h_poly)
+                                        CS::commit(params, &h_poly)
                                     })
                                     .collect()
                             })
@@ -370,7 +370,7 @@ where
                             .par_iter()
                             .map(|h| {
                                 let h_poly = domain.lagrange_from_vec(h.clone());
-                                CS::commit_lagrange(params, &h_poly)
+                                CS::commit(params, &h_poly)
                             })
                             .collect()
                     })

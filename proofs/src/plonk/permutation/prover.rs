@@ -231,7 +231,7 @@ impl Argument {
                     });
                 }
 
-                let commitment = CS::commit_lagrange(params, &z);
+                let commitment = CS::commit(params, &z);
                 (commitment, z)
             })
             .collect();

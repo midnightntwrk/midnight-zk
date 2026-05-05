@@ -154,7 +154,7 @@ where
     for (poly_eval, value) in poly.iter_mut().zip(instances.iter()) {
         *poly_eval = *value;
     }
-    CS::commit_lagrange(params, &poly)
+    CS::commit(params, &poly)
 }
 
 /// This computes a proof trace for the provided `circuits` when given the
@@ -330,7 +330,7 @@ where
                                     .par_iter()
                                     .map(|h| {
                                         let h_poly = domain.lagrange_from_vec(h.clone());
-                                        CS::commit_lagrange(params, &h_poly)
+                                        CS::commit(params, &h_poly)
                                     })
                                     .collect()
                             })
@@ -674,7 +674,7 @@ where
                     }
 
                     if is_committed_instance {
-                        transcript.common(&CS::commit_lagrange(params, &poly))?;
+                        transcript.common(&CS::commit(params, &poly))?;
                     }
 
                     Ok(poly)
@@ -807,7 +807,7 @@ where
             }
 
             let advice_commitments: Vec<_> =
-                advice_values.par_iter().map(|poly| CS::commit_lagrange(params, poly)).collect();
+                advice_values.par_iter().map(|poly| CS::commit(params, poly)).collect();
 
             for commitment in &advice_commitments {
                 transcript.write(commitment)?;

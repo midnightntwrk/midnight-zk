@@ -43,7 +43,7 @@ use crate::{
             utils::construct_intermediate_sets,
         },
         query::{CommitmentLabel, CommitmentReference, VerifierQuery},
-        Coeff, Error, LagrangeCoeff, Polynomial, ProverQuery,
+        Coeff, Error, Polynomial, PolynomialRepresentation, ProverQuery,
     },
     transcript::{Hashable, Sampleable, Transcript},
     utils::{
@@ -80,24 +80,14 @@ where
         params.verifier_params()
     }
 
-    fn commit(
+    fn commit<B: PolynomialRepresentation>(
         params: &Self::Parameters,
-        polynomial: &Polynomial<E::Fr, Coeff>,
+        polynomial: &Polynomial<E::Fr, B>,
     ) -> Self::Commitment {
+        let bases = params.bases::<B>();
         let size = polynomial.values.len();
-        assert!(params.g.len() >= size);
-        msm_specific::<E::G1Affine>(&polynomial.values, &params.g[..size])
-    }
-
-    fn commit_lagrange(
-        params: &Self::Parameters,
-        poly: &Polynomial<E::Fr, LagrangeCoeff>,
-    ) -> E::G1 {
-        let size = poly.values.len();
-
-        assert!(params.g_lagrange.len() >= size);
-
-        msm_specific::<E::G1Affine>(&poly.values, &params.g_lagrange[0..size])
+        assert!(bases.len() >= size);
+        msm_specific::<E::G1Affine>(&polynomial.values, &bases[..size])
     }
 
     fn multi_open<T: Transcript>(
@@ -259,7 +249,7 @@ where
         let v = eval_polynomial(&final_poly, x3);
 
         let pi = {
-            let pi_poly = Polynomial {
+            let pi_poly = Polynomial::<_, Coeff> {
                 values: kate_division(&(&final_poly - v).values, x3),
                 _marker: PhantomData,
             };
@@ -317,8 +307,8 @@ where
             q_eval_sets[com_data.set_index].push(com_data.evals);
         }
 
-        let nb_x1_powers = q_coms.iter().map(|v| v.len()).max().unwrap_or(0);
-        assert!(nb_x1_powers >= q_eval_sets.iter().map(|v| v.len()).max().unwrap_or(0));
+        let nb_x1_powers = q_coms.iter().map(Vec::len).max().unwrap_or(0);
+        assert!(nb_x1_powers >= q_eval_sets.iter().map(Vec::len).max().unwrap_or(0));
 
         #[cfg(feature = "truncated-challenges")]
         let powers_x1 = truncated_powers(x1).take(nb_x1_powers).collect::<Vec<_>>();

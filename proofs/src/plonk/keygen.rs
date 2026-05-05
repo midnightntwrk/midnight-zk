@@ -280,7 +280,7 @@ where
 
     let permutation_vk = assembly.permutation.build_vk(params, &domain, &cs.permutation);
 
-    let fixed_commitments = fixed.iter().map(|poly| CS::commit_lagrange(params, poly)).collect();
+    let fixed_commitments = fixed.iter().map(|poly| CS::commit(params, poly)).collect();
 
     Ok(VerifyingKey::from_parts(
         domain,
