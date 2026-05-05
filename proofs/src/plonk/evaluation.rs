@@ -169,8 +169,7 @@ const COL_TYPE_INSTANCE: u8 = 2;
 /// Column read: load a value from a polynomial column at a rotated index.
 #[derive(Clone, Copy, Debug)]
 pub struct ColumnRead {
-    /// One of [`COL_TYPE_FIXED`], [`COL_TYPE_ADVICE`], [`COL_TYPE_INSTANCE`],
-    /// [`COL_TYPE_CHALLENGE`].
+    /// One of [`COL_TYPE_FIXED`], [`COL_TYPE_ADVICE`], [`COL_TYPE_INSTANCE`].
     pub col_type: u8,
     /// Column index within its type.
     pub col_idx: u16,
