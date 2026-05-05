@@ -29,6 +29,7 @@ verification keys break backwards compatibility.
 * Share the `z` and `m` polynomials across all logup instances [#279](https://github.com/midnightntwrk/midnight-zk/pull/279)
 
 ### Removed
+* Remove `Expression::Challenge` variant and phase-parameterized `Any::Advice`; multi-phase advice columns are no longer supported [#376](https://github.com/midnightntwrk/midnight-zk/pull/376)
 
 ## [7.0.0]
 

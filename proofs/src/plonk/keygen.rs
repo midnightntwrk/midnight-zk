@@ -11,7 +11,7 @@ use super::{
         Selector,
     },
     evaluation::Evaluator,
-    permutation, Challenge, Error, LagrangeCoeff, Polynomial, ProvingKey, VerifyingKey,
+    permutation, Error, LagrangeCoeff, Polynomial, ProvingKey, VerifyingKey,
 };
 use crate::{
     circuit::Value,
@@ -172,10 +172,6 @@ impl<F: Field> Assignment<F> for Assembly<F> {
         }
 
         Ok(())
-    }
-
-    fn get_challenge(&self, _: Challenge) -> Value<F> {
-        Value::unknown()
     }
 
     fn annotate_column<A, AR>(&mut self, _annotation: A, _column: Column<Any>)

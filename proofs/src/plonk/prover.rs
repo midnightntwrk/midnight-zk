@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeSet, HashMap, HashSet},
+    collections::HashSet,
     hash::Hash,
     iter::{self},
     ops::RangeTo,
@@ -15,9 +15,8 @@ use rayon::iter::{
 
 use super::{
     circuit::{
-        sealed::{self},
-        Advice, Any, Assignment, Challenge, Circuit, Column, ConstraintSystem, Fixed, FloorPlanner,
-        Instance, Selector,
+        Advice, Any, Assignment, Circuit, Column, ConstraintSystem, Fixed, FloorPlanner, Instance,
+        Selector,
     },
     logup, permutation, Error, ProvingKey,
 };
@@ -105,7 +104,7 @@ where
 
     let instance = compute_instances(params, pk, instances, nb_committed_instances, transcript)?;
 
-    let (advice, challenges) = parse_advices(params, pk, circuit, instances, transcript, &mut rng)?;
+    let advice = parse_advices(params, pk, circuit, instances, transcript, &mut rng)?;
 
     // Helper: sample `num_sets` blinding vectors, each of length `inner_len`.
     // Used to pre-generate every blinding the parallel compute sections below
@@ -124,7 +123,7 @@ where
     let mult_blindings: Vec<Vec<F>> = sample_blindings(num_lookups, mult_blinding_count);
 
     // Commit to the multiplicities columns.
-    // Parallel compute phase, then sequential transcript writes.
+    // Computation in parallel, then sequential transcript writes.
     let lookups: Vec<logup::prover::ComputedMultiplicities<F>> = {
         let logup_args: Vec<_> =
             pk.vk.cs.lookups.iter().map(|l| l.chunk_by_degree(pk.vk.cs.degree())).collect();
@@ -140,7 +139,6 @@ where
                     &advice.advice_polys,
                     &pk.fixed_values,
                     &instance.instance_values,
-                    &challenges,
                     blinds,
                 )
             })
@@ -252,7 +250,6 @@ where
                 &advice.advice_polys,
                 &pk.fixed_values,
                 &instance.instance_values,
-                &challenges,
                 transcript,
             )
         })
@@ -279,7 +276,6 @@ where
         lookups,
         trashcans,
         permutations,
-        challenges,
         beta,
         gamma,
         theta,
@@ -328,7 +324,6 @@ where
         lookups,
         trashcans,
         permutations,
-        challenges,
         beta,
         gamma,
         theta,
@@ -390,7 +385,6 @@ where
         gamma,
         theta,
         trash_challenge,
-        &challenges,
     );
 
     // Compute linearization polynomial
@@ -530,7 +524,6 @@ where
     })
 }
 
-#[allow(clippy::type_complexity)]
 pub(super) fn parse_advices<F, CS, ConcreteCircuit, T>(
     params: &CS::Parameters,
     pk: &ProvingKey<F, CS>,
@@ -538,7 +531,7 @@ pub(super) fn parse_advices<F, CS, ConcreteCircuit, T>(
     instances: &[&[F]],
     transcript: &mut T,
     rng: &mut (impl RngCore + CryptoRng),
-) -> Result<(AdviceSingle<F, LagrangeCoeff>, Vec<F>), Error>
+) -> Result<AdviceSingle<F, LagrangeCoeff>, Error>
 where
     F: WithSmallOrderMulGroup<3> + Sampleable<T::Hash>,
     CS: PolynomialCommitmentScheme<F>,
@@ -566,98 +559,55 @@ where
     let mut advice = AdviceSingle::<F, LagrangeCoeff> {
         advice_polys: vec![domain.empty_lagrange(); meta.num_advice_columns],
     };
-    let mut challenges = HashMap::<usize, F>::with_capacity(meta.num_challenges);
 
     let unusable_rows_start = domain.n as usize - (meta.blinding_factors() + 1);
-    for current_phase in pk.vk.cs.phases() {
-        let column_indices = meta
-            .advice_column_phase
-            .iter()
-            .enumerate()
-            .filter_map(|(column_index, phase)| {
-                if current_phase == *phase {
-                    Some(column_index)
-                } else {
-                    None
-                }
-            })
-            .collect::<BTreeSet<_>>();
 
-        let mut witness = WitnessCollection {
-            k: domain.k(),
-            current_phase,
-            advice: vec![domain.empty_lagrange_rational(); meta.num_advice_columns],
-            unblinded_advice: HashSet::from_iter(meta.unblinded_advice_columns.clone()),
-            instances,
-            challenges: &challenges,
-            // The prover will not be allowed to assign values to advice
-            // cells that exist within inactive rows, which include some
-            // number of blinding factors and an extra row for use in the
-            // permutation argument.
-            usable_rows: ..unusable_rows_start,
-            _marker: std::marker::PhantomData,
-        };
+    let mut witness = WitnessCollection {
+        k: domain.k(),
+        advice: vec![domain.empty_lagrange_rational(); meta.num_advice_columns],
+        unblinded_advice: HashSet::from_iter(meta.unblinded_advice_columns.clone()),
+        instances,
+        // The prover will not be allowed to assign values to advice
+        // cells that exist within inactive rows, which include some
+        // number of blinding factors and an extra row for use in the
+        // permutation argument.
+        usable_rows: ..unusable_rows_start,
+        _marker: std::marker::PhantomData,
+    };
 
-        // Synthesize the circuit to obtain the witness and other information.
-        ConcreteCircuit::FloorPlanner::synthesize(
-            &mut witness,
-            circuit,
-            config.clone(),
-            meta.constants.clone(),
-        )?;
+    // Synthesize the circuit to obtain the witness and other information.
+    ConcreteCircuit::FloorPlanner::synthesize(
+        &mut witness,
+        circuit,
+        config.clone(),
+        meta.constants.clone(),
+    )?;
 
-        let mut advice_values = batch_invert_rational::<F>(
-            witness
-                .advice
-                .into_iter()
-                .enumerate()
-                .filter_map(|(column_index, advice)| {
-                    if column_indices.contains(&column_index) {
-                        Some(advice)
-                    } else {
-                        None
-                    }
-                })
-                .collect(),
-        );
+    let mut advice_values = batch_invert_rational::<F>(witness.advice);
 
-        for (column_index, advice_values) in column_indices.iter().zip(&mut advice_values) {
-            if !witness.unblinded_advice.contains(column_index) {
-                for cell in &mut advice_values[unusable_rows_start..] {
-                    *cell = F::random(&mut *rng);
-                }
-            } else {
-                #[cfg(debug_assertions)]
-                for cell in &advice_values[unusable_rows_start..] {
-                    assert_eq!(*cell, F::ZERO);
-                }
+    for (i, advice_values) in advice_values.iter_mut().enumerate() {
+        if !witness.unblinded_advice.contains(&i) {
+            for cell in &mut advice_values[unusable_rows_start..] {
+                *cell = F::random(&mut *rng);
             }
-        }
-
-        let advice_commitments: Vec<_> =
-            advice_values.par_iter().map(|poly| CS::commit(params, poly)).collect();
-
-        for commitment in &advice_commitments {
-            transcript.write(commitment)?;
-        }
-        for (column_index, advice_values) in column_indices.iter().zip(advice_values) {
-            advice.advice_polys[*column_index] = advice_values;
-        }
-
-        for (index, phase) in meta.challenge_phase.iter().enumerate() {
-            if current_phase == *phase {
-                let existing = challenges.insert(index, transcript.squeeze_challenge());
-                assert!(existing.is_none());
+        } else {
+            #[cfg(debug_assertions)]
+            for cell in &advice_values[unusable_rows_start..] {
+                assert_eq!(*cell, F::ZERO);
             }
         }
     }
 
-    assert_eq!(challenges.len(), meta.num_challenges);
-    let challenges = (0..meta.num_challenges)
-        .map(|index| challenges.remove(&index).unwrap())
-        .collect::<Vec<_>>();
+    let advice_commitments: Vec<_> =
+        advice_values.par_iter().map(|poly| CS::commit(params, poly)).collect();
 
-    Ok((advice, challenges))
+    for commitment in &advice_commitments {
+        transcript.write(commitment)?;
+    }
+
+    advice.advice_polys = advice_values;
+
+    Ok(advice)
 }
 
 pub(super) fn compute_nu_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>>(
@@ -670,7 +620,6 @@ pub(super) fn compute_nu_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommit
         lookups,
         trashcans,
         permutations,
-        challenges,
         beta,
         gamma,
         theta,
@@ -697,7 +646,6 @@ pub(super) fn compute_nu_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommit
         &advice_cosets,
         &instance_cosets,
         &pk.fixed_cosets,
-        challenges,
         *y,
         *beta,
         *gamma,
@@ -967,10 +915,8 @@ pub(super) struct AdviceSingle<F: PrimeField, B: PolynomialRepresentation> {
 
 struct WitnessCollection<'a, F: Field> {
     k: u32,
-    current_phase: sealed::Phase,
     advice: Vec<Polynomial<Rational<F>, LagrangeCoeff>>,
     unblinded_advice: HashSet<usize>,
-    challenges: &'a HashMap<usize, F>,
     instances: &'a [&'a [F]],
     usable_rows: RangeTo<usize>,
     _marker: std::marker::PhantomData<F>,
@@ -1032,11 +978,6 @@ impl<F: Field> Assignment<F> for WitnessCollection<'_, F> {
         A: FnOnce() -> AR,
         AR: Into<String>,
     {
-        // Ignore assignment of advice column in different phase than current one.
-        if self.current_phase != column.column_type().phase {
-            return Ok(());
-        }
-
         if !self.usable_rows.contains(&row) {
             return Err(Error::not_enough_rows_available(self.k));
         }
@@ -1081,14 +1022,6 @@ impl<F: Field> Assignment<F> for WitnessCollection<'_, F> {
         _: Value<Rational<F>>,
     ) -> Result<(), Error> {
         Ok(())
-    }
-
-    fn get_challenge(&self, challenge: Challenge) -> Value<F> {
-        self.challenges
-            .get(&challenge.index())
-            .cloned()
-            .map(Value::known)
-            .unwrap_or_else(Value::unknown)
     }
 
     fn push_namespace<NR, N>(&mut self, _: N)

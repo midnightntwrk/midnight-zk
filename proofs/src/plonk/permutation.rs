@@ -242,7 +242,7 @@ pub(in crate::plonk) fn expressions<'a, F: PrimeField, CS: PolynomialCommitmentS
                     for (eval, permutation_eval) in columns
                         .iter()
                         .map(|&column| match column.column_type() {
-                            Any::Advice(_) => {
+                            Any::Advice => {
                                 advice_evals[vk.cs.get_any_query_index(column, Rotation::cur())]
                             }
                             Any::Fixed => {
@@ -262,7 +262,7 @@ pub(in crate::plonk) fn expressions<'a, F: PrimeField, CS: PolynomialCommitmentS
                         * &(<F as PrimeField>::DELTA
                             .pow_vartime([(chunk_index * chunk_len) as u64]));
                     for eval in columns.iter().map(|&column| match column.column_type() {
-                        Any::Advice(_) => {
+                        Any::Advice => {
                             advice_evals[vk.cs.get_any_query_index(column, Rotation::cur())]
                         }
                         Any::Fixed => {

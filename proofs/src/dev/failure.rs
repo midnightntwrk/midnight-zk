@@ -73,7 +73,6 @@ impl FailureLocation {
                     &|query| vec![cs.fixed_queries[query.index.unwrap()].0.into()],
                     &|query| vec![cs.advice_queries[query.index.unwrap()].0.into()],
                     &|query| vec![cs.instance_queries[query.index.unwrap()].0.into()],
-                    &|_| vec![],
                     &|a| a,
                     &|mut a, mut b| {
                         a.append(&mut b);
@@ -520,7 +519,7 @@ fn render_lookup<F: Field>(
                     prover
                         .cs
                         .general_column_annotations
-                        .get(&metadata::Column::from((Any::advice(), query.column_index)))
+                        .get(&metadata::Column::from((Any::Advice, query.column_index)))
                         .cloned()
                         .unwrap_or_else(|| format!("A{}", query.column_index()))
                 )
@@ -536,7 +535,6 @@ fn render_lookup<F: Field>(
                         .unwrap_or_else(|| format!("I{}", query.column_index()))
                 )
             },
-            &|challenge| format! {"C{}", challenge.index()},
             &|query| format! {"-{query}"},
             &|a, b| format! {"{a} + {b}"},
             &|a, b| format! {"{a} * {b}"},
@@ -593,7 +591,6 @@ fn render_lookup<F: Field>(
                 &cs.instance_queries,
                 &prover.instance,
             )),
-            &|_| BTreeMap::default(),
             &|a| a,
             &|mut a, mut b| {
                 a.append(&mut b);

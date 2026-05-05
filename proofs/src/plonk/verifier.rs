@@ -64,27 +64,9 @@ where
 
     // Hash the prover's advice commitments into the transcript and squeeze
     // challenges
-    let (advice_commitments, challenges) = {
-        let mut advice_commitments = vec![CS::Commitment::default(); vk.cs.num_advice_columns];
-        let mut challenges = vec![F::ZERO; vk.cs.num_challenges];
-
-        for current_phase in vk.cs.phases() {
-            for (phase, commitment) in
-                vk.cs.advice_column_phase.iter().zip(advice_commitments.iter_mut())
-            {
-                if current_phase == *phase {
-                    *commitment = transcript.read()?;
-                }
-            }
-            for (phase, challenge) in vk.cs.challenge_phase.iter().zip(challenges.iter_mut()) {
-                if current_phase == *phase {
-                    *challenge = transcript.squeeze_challenge();
-                }
-            }
-        }
-
-        (advice_commitments, challenges)
-    };
+    let advice_commitments: Vec<_> = (0..vk.cs.num_advice_columns)
+        .map(|_| transcript.read())
+        .collect::<Result<_, _>>()?;
 
     // Sample theta challenge for keeping lookup columns linearly independent
     let theta: F = transcript.squeeze_challenge();
@@ -128,7 +110,6 @@ where
         lookups: lookups_committed,
         trashcans: trashcans_committed,
         permutations: permutations_committed,
-        challenges,
         beta,
         gamma,
         theta,
@@ -173,7 +154,6 @@ where
         lookups,
         trashcans,
         permutations,
-        challenges,
         beta,
         gamma,
         theta,
@@ -285,7 +265,6 @@ where
         gamma,
         theta,
         trash_challenge,
-        &challenges,
     );
 
     let lin_com = compute_linearization_commitment(
