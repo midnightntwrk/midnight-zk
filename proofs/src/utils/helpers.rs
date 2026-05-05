@@ -28,7 +28,7 @@ pub enum SerdeFormat {
 }
 
 /// Interface for Serde objects that can be represented in compressed form.
-pub trait ProcessedSerdeObject: GroupEncoding {
+pub trait ProcessedSerdeObject: Sized {
     /// Reads an element from the buffer and parses it according to the
     /// `format`:
     /// - `Processed`: Reads a compressed element and decompress it
@@ -41,14 +41,9 @@ pub trait ProcessedSerdeObject: GroupEncoding {
     /// - `Processed`: Writes a compressed element
     /// - Otherwise: Writes an uncompressed element
     fn write<W: io::Write>(&self, writer: &mut W, format: SerdeFormat) -> io::Result<()>;
-}
 
-/// Byte length of an affine curve element according to `format`.
-pub fn byte_length<T: ProcessedSerdeObject>(format: SerdeFormat) -> usize {
-    match format {
-        SerdeFormat::Processed => <T as GroupEncoding>::Repr::default().as_ref().len(),
-        _ => <T as GroupEncoding>::Repr::default().as_ref().len() * 2,
-    }
+    /// Length in bytes of an element when serialized in the given `format`.
+    fn byte_length(&self, format: SerdeFormat) -> usize;
 }
 
 /// Helper function to read a field element with a serde format. There is no way
@@ -105,6 +100,13 @@ where
         match format {
             SerdeFormat::Processed => writer.write_all(self.to_bytes().as_ref()),
             _ => self.to_affine().write_raw(writer),
+        }
+    }
+
+    fn byte_length(&self, format: SerdeFormat) -> usize {
+        match format {
+            SerdeFormat::Processed => C::Repr::default().as_ref().len(),
+            _ => C::Repr::default().as_ref().len() * 2,
         }
     }
 }
