@@ -22,8 +22,29 @@ use crate::{
 pub struct ParamsKZG<E: Engine> {
     pub(crate) g: Vec<E::G1Affine>,
     pub(crate) g_lagrange: Vec<E::G1Affine>,
+    /// Suffix-sum of g_lagrange: g_lagrange_delta[i] = sum_{j=i}^{n-1} g_lagrange[j]`.
+    pub(crate) g_lagrange_delta: Vec<E::G1Affine>,
     pub(crate) g2: E::G2,
     pub(crate) s_g2: E::G2,
+}
+
+/// Builds the suffix-sum of an affine SRS: `out[i] = sum_{j=i}^{n-1} input[j]`.
+///
+/// Accumulate in projective coordinates (one curve add per step) and batch-normalise
+/// to affine at the end. n-1 projective adds + one O(n) batch_normalise.
+fn suffix_sum<C: CurveAffine>(input: &[C]) -> Vec<C> {
+    let n = input.len();
+    if n == 0 {
+        return Vec::new();
+    }
+    let mut acc_proj: Vec<C::Curve> = vec![C::Curve::identity(); n];
+    acc_proj[n - 1] = input[n - 1].into();
+    for i in (0..n - 1).rev() {
+        acc_proj[i] = acc_proj[i + 1] + input[i];
+    }
+    let mut acc_affine = vec![C::identity(); n];
+    C::Curve::batch_normalize(&acc_proj, &mut acc_affine);
+    acc_affine
 }
 
 impl<E: Engine> Params for ParamsKZG<E>
@@ -54,6 +75,7 @@ where
         match B::BASIS {
             PolynomialBasis::Coeff => &self.g,
             PolynomialBasis::Lagrange => &self.g_lagrange,
+            PolynomialBasis::LagrangeDelta => &self.g_lagrange_delta,
             PolynomialBasis::ExtendedLagrange => {
                 unimplemented!("KZG does not support extended Lagrange bases")
             }
@@ -70,6 +92,7 @@ where
         assert!(n < self.g_lagrange.len());
         self.g.truncate(n);
         self.g_lagrange = g_to_lagrange(&self.g, new_k);
+        self.g_lagrange_delta = suffix_sum(&self.g_lagrange);
     }
 
     /// Recompute the Lagrange basis for a smaller circuit domain `new_k` while
@@ -89,6 +112,7 @@ where
             "g is too small to build a Lagrange basis of size 2^{new_k}"
         );
         self.g_lagrange = g_to_lagrange(&self.g[..n], new_k);
+        self.g_lagrange_delta = suffix_sum(&self.g_lagrange);
     }
 
     /// Combine the monomial basis from `extended` with the Lagrange basis from
@@ -157,12 +181,15 @@ where
         let mut g_lagrange_affine = vec![E::G1Affine::identity(); n as usize];
         E::G1::batch_normalize(&g_lagrange, &mut g_lagrange_affine);
 
+        let g_lagrange_delta = suffix_sum(&g_lagrange_affine);
+
         let g2 = E::G2::generator();
         let s_g2 = g2 * s;
 
         Self {
             g: g_affine,
             g_lagrange: g_lagrange_affine,
+            g_lagrange_delta,
             g2,
             s_g2,
         }
@@ -188,9 +215,11 @@ where
             }
             None => g_to_lagrange(&g_affine, k),
         };
+        let g_lagrange_delta = suffix_sum(&g_lagrange_affine);
         Self {
             g: g_affine,
             g_lagrange: g_lagrange_affine,
+            g_lagrange_delta,
             g2,
             s_g2,
         }
@@ -291,9 +320,11 @@ where
         let g2 = E::G2::read(reader, format)?;
         let s_g2 = E::G2::read(reader, format)?;
 
+        let g_lagrange_delta = suffix_sum(&g_lagrange);
         Ok(Self {
             g,
             g_lagrange,
+            g_lagrange_delta,
             g2,
             s_g2,
         })
@@ -389,6 +420,39 @@ mod test {
         let commitment = KZGCommitmentScheme::commit(&params, &b);
 
         assert_eq!(commitment, tmp);
+    }
+
+    #[test]
+    fn test_commit_in_delta_basis_matches_lagrange() {
+        const K: u32 = 6;
+
+        use ff::Field;
+        use midnight_curves::{Bls12, Fq};
+
+        use crate::poly::EvaluationDomain;
+
+        let params: ParamsKZG<Bls12> = ParamsKZG::unsafe_setup(K, OsRng);
+        let domain = EvaluationDomain::new(1, K);
+
+        // A polynomial with long constant runs and a few isolated transitions —
+        // exercises the structure the optimization is designed for.
+        let mut a = domain.empty_lagrange();
+        for (i, slot) in a.iter_mut().enumerate() {
+            *slot = match i {
+                0..16 => Fq::ZERO,
+                16..40 => Fq::from(7),
+                40..50 => Fq::from(7) + Fq::from(i as u64),
+                _ => Fq::from(42),
+            };
+        }
+
+        let c_lagrange = KZGCommitmentScheme::commit(&params, &a);
+        let c_delta = KZGCommitmentScheme::commit(&params, &a.clone().into_delta());
+        assert_eq!(c_lagrange, c_delta);
+
+        // Round-trip identity: into_delta then into_lagrange recovers the original.
+        let restored = a.clone().into_delta().into_lagrange();
+        assert_eq!(restored.values, a.values);
     }
 
     #[test]

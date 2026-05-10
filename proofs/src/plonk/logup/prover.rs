@@ -155,7 +155,13 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ChunkedArgument<F> {
         );
 
         let multiplicities = pk.vk.domain.lagrange_from_vec(multiplicities);
-        let commitment = CS::commit(params, &multiplicities);
+
+        // Multiplicities are produced by sorting/deduplicating into contiguous
+        // equal-value runs, which collapse to zeros in the LagrangeDelta basis.
+        // The Lagrange form is needed downstream for `eval_polynomial` and the
+        // openings, so we borrow into a transient delta buffer rather than
+        // transforming in place and prefix-summing back.
+        let commitment = CS::commit(params, &multiplicities.to_delta());
 
         Ok((
             ComputedMultiplicities {

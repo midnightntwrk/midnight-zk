@@ -52,6 +52,8 @@ pub enum PolynomialBasis {
     Lagrange,
     /// Lagrange basis over an extended coset domain.
     ExtendedLagrange,
+    /// Contiguous friendly = Lagrange where b_i := a_i - a_(i-1)
+    LagrangeDelta,
 }
 
 /// The representation with which a polynomial is encoded.
@@ -184,12 +186,101 @@ impl PolynomialRepresentation for ExtendedLagrangeCoeff {
     }
 }
 
+/// Lagrange-difference basis: a polynomial encoded as
+/// `b_0 = a_0`, `b_i = a_i - a_{i-1}` for `i >= 1`,
+/// where `(a_i)` are the original Lagrange coefficients. The corresponding
+/// SRS bases are the suffix sums of `g_lagrange` (see `ParamsKZG`).
+///
+/// This representation is only ever used as the source for a commitment: it
+/// turns long contiguous-constant runs in `a` into zeros in `b`, which the MSM
+/// filters out for free. It is not intended for evaluation or arithmetic.
+#[derive(Clone, Copy, Debug)]
+pub struct LagrangeDeltaCoeff;
+impl PolynomialRepresentation for LagrangeDeltaCoeff {
+    const BASIS: PolynomialBasis = PolynomialBasis::LagrangeDelta;
+
+    fn len<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> usize {
+        evaluation_domain.n as usize
+    }
+
+    fn omega<F: WithSmallOrderMulGroup<3>>(_evaluation_domain: &EvaluationDomain<F>) -> F {
+        unimplemented!("LagrangeDelta is a commit-only basis and has no evaluation point.")
+    }
+
+    fn k<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> u32 {
+        evaluation_domain.k()
+    }
+
+    fn coeff_to_self<F: WithSmallOrderMulGroup<3>>(
+        _evaluation_domain: &EvaluationDomain<F>,
+        _poly: Polynomial<F, Coeff>,
+    ) -> Polynomial<F, Self> {
+        unimplemented!("LagrangeDelta is constructed from LagrangeCoeff via `into_delta`.")
+    }
+
+    fn g_coset<F: WithSmallOrderMulGroup<3>>(_evaluation_domain: &EvaluationDomain<F>) -> F {
+        F::ONE
+    }
+}
+
 /// Represents a univariate polynomial defined over a field and a particular
 /// representation.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Polynomial<F, B> {
     pub(crate) values: Vec<F>,
     pub(crate) _marker: PhantomData<B>,
+}
+
+impl<F: Field> Polynomial<F, LagrangeCoeff> {
+    /// Convert a Lagrange-form polynomial into its delta encoding,
+    /// `b_0 = a_0`, `b_i = a_i - a_{i-1}`, in place.
+    pub fn into_delta(mut self) -> Polynomial<F, LagrangeDeltaCoeff> {
+        for i in (1..self.values.len()).rev() {
+            let prev = self.values[i - 1];
+            self.values[i] -= prev;
+        }
+        Polynomial {
+            values: self.values,
+            _marker: PhantomData,
+        }
+    }
+
+    /// Borrowing variant of [`Self::into_delta`]: produce the delta
+    /// encoding in a freshly allocated buffer, leaving `self` untouched.
+    ///
+    /// Use this when the original Lagrange polynomial is still needed
+    /// downstream (e.g. for evaluation or opening). One forward sweep, one
+    /// transient `Vec<F>` allocation; avoids the cost of in-place transform
+    /// followed by a prefix-sum to restore.
+    pub fn to_delta(&self) -> Polynomial<F, LagrangeDeltaCoeff> {
+        let n = self.values.len();
+        let mut out = Vec::with_capacity(n);
+        if n >= 1 {
+            out.push(self.values[0]);
+        }
+        for i in 1..n {
+            out.push(self.values[i] - self.values[i - 1]);
+        }
+        Polynomial {
+            values: out,
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<F: Field> Polynomial<F, LagrangeDeltaCoeff> {
+    /// Inverse of `into_delta`: prefix-sum the deltas back to Lagrange form,
+    /// `a_0 = b_0`, `a_i = a_{i-1} + b_i`, in place.
+    pub fn into_lagrange(mut self) -> Polynomial<F, LagrangeCoeff> {
+        for i in 1..self.values.len() {
+            let prev = self.values[i - 1];
+            self.values[i] += prev;
+        }
+        Polynomial {
+            values: self.values,
+            _marker: PhantomData,
+        }
+    }
 }
 
 impl<F: PrimeField, B> Polynomial<F, B> {
