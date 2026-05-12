@@ -24,6 +24,13 @@ pub struct ParamsKZG<E: Engine> {
     pub(crate) g_lagrange: Vec<E::G1Affine>,
     /// Suffix-sum of g_lagrange: g_lagrange_delta[i] = sum_{j=i}^{n-1} g_lagrange[j]`.
     pub(crate) g_lagrange_delta: Vec<E::G1Affine>,
+    /// Suffix-sum of `g_lagrange_delta`:
+    /// `g_lagrange_double_delta[i] = sum_{j=i}^{n-1} g_lagrange_delta[j]`.
+    /// Used as the SRS for the `LagrangeDoubleDelta` basis. Same derivation
+    /// as `g_lagrange_delta`, applied a second time:
+    /// `sum_j a_j · L_j = sum_i c_i · g_lagrange_double_delta[i]`,
+    /// where `c_i = b_i - b_{i-1}` and `b_i = a_i - a_{i-1}`.
+    pub(crate) g_lagrange_double_delta: Vec<E::G1Affine>,
     pub(crate) g2: E::G2,
     pub(crate) s_g2: E::G2,
 }
@@ -76,6 +83,7 @@ where
             PolynomialBasis::Coeff => &self.g,
             PolynomialBasis::Lagrange => &self.g_lagrange,
             PolynomialBasis::LagrangeDelta => &self.g_lagrange_delta,
+            PolynomialBasis::LagrangeDoubleDelta => &self.g_lagrange_double_delta,
             PolynomialBasis::ExtendedLagrange => {
                 unimplemented!("KZG does not support extended Lagrange bases")
             }
@@ -93,6 +101,7 @@ where
         self.g.truncate(n);
         self.g_lagrange = g_to_lagrange(&self.g, new_k);
         self.g_lagrange_delta = suffix_sum(&self.g_lagrange);
+        self.g_lagrange_double_delta = suffix_sum(&self.g_lagrange_delta);
     }
 
     /// Recompute the Lagrange basis for a smaller circuit domain `new_k` while
@@ -113,6 +122,7 @@ where
         );
         self.g_lagrange = g_to_lagrange(&self.g[..n], new_k);
         self.g_lagrange_delta = suffix_sum(&self.g_lagrange);
+        self.g_lagrange_double_delta = suffix_sum(&self.g_lagrange_delta);
     }
 
     /// Combine the monomial basis from `extended` with the Lagrange basis from
@@ -182,6 +192,7 @@ where
         E::G1::batch_normalize(&g_lagrange, &mut g_lagrange_affine);
 
         let g_lagrange_delta = suffix_sum(&g_lagrange_affine);
+        let g_lagrange_double_delta = suffix_sum(&g_lagrange_delta);
 
         let g2 = E::G2::generator();
         let s_g2 = g2 * s;
@@ -190,6 +201,7 @@ where
             g: g_affine,
             g_lagrange: g_lagrange_affine,
             g_lagrange_delta,
+            g_lagrange_double_delta,
             g2,
             s_g2,
         }
@@ -216,10 +228,12 @@ where
             None => g_to_lagrange(&g_affine, k),
         };
         let g_lagrange_delta = suffix_sum(&g_lagrange_affine);
+        let g_lagrange_double_delta = suffix_sum(&g_lagrange_delta);
         Self {
             g: g_affine,
             g_lagrange: g_lagrange_affine,
             g_lagrange_delta,
+            g_lagrange_double_delta,
             g2,
             s_g2,
         }
@@ -321,10 +335,12 @@ where
         let s_g2 = E::G2::read(reader, format)?;
 
         let g_lagrange_delta = suffix_sum(&g_lagrange);
+        let g_lagrange_double_delta = suffix_sum(&g_lagrange_delta);
         Ok(Self {
             g,
             g_lagrange,
             g_lagrange_delta,
+            g_lagrange_double_delta,
             g2,
             s_g2,
         })
@@ -453,6 +469,54 @@ mod test {
         // Round-trip identity: into_delta then into_lagrange recovers the original.
         let restored = a.clone().into_delta().into_lagrange();
         assert_eq!(restored.values, a.values);
+    }
+
+    #[test]
+    fn test_commit_in_double_delta_basis_matches_lagrange() {
+        const K: u32 = 6;
+
+        use midnight_curves::{Bls12, Fq};
+
+        use crate::poly::EvaluationDomain;
+
+        let params: ParamsKZG<Bls12> = ParamsKZG::unsafe_setup(K, OsRng);
+        let domain = EvaluationDomain::new(1, K);
+
+        // A polynomial with linear runs (constant first differences) and a
+        // few transitions — exercises the structure the double-delta basis
+        // is designed for: linear segments collapse to zeros after two
+        // delta applications.
+        let mut a = domain.empty_lagrange();
+        for (i, slot) in a.iter_mut().enumerate() {
+            *slot = match i {
+                0..16 => Fq::from(i as u64),
+                16..40 => Fq::from(16) + Fq::from(2u64) * Fq::from((i - 16) as u64),
+                40..50 => Fq::from(99),
+                _ => Fq::from(i as u64) - Fq::from(50),
+            };
+        }
+
+        let c_lagrange = KZGCommitmentScheme::commit(&params, &a);
+
+        // Fused single-pass conversion matches the two-step path.
+        let c_double_delta_fused =
+            KZGCommitmentScheme::commit(&params, &a.clone().into_double_delta());
+        let c_double_delta_two_step =
+            KZGCommitmentScheme::commit(&params, &a.clone().into_delta().into_double_delta());
+        assert_eq!(c_lagrange, c_double_delta_fused);
+        assert_eq!(c_lagrange, c_double_delta_two_step);
+
+        // Both fused and two-step transforms produce the same scalar vector.
+        let fused = a.clone().into_double_delta();
+        let two_step = a.clone().into_delta().into_double_delta();
+        assert_eq!(fused.values, two_step.values);
+
+        // Round-trip identity, both inverse paths.
+        let restored_fused = a.clone().into_double_delta().into_lagrange();
+        let restored_stepwise =
+            a.clone().into_double_delta().into_lagrange_delta().into_lagrange();
+        assert_eq!(restored_fused.values, a.values);
+        assert_eq!(restored_stepwise.values, a.values);
     }
 
     #[test]
