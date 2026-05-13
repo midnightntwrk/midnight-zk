@@ -35,9 +35,9 @@ REPO_ROOT=$(git rev-parse --show-toplevel)
 # entries in zk_stdlib/Cargo.toml) but no perf-relevant change. Each
 # subsequent entry should be a successive perf-relevant commit.
 COMMITS=(
-    # <baseline-sha>   # bench infrastructure on top of main, no perf change.
-    # <delta-sha>      # LagrangeDelta wired for perm_z + multiplicities.
-    # <ddelta-sha>     # LagrangeDoubleDelta wired for logup_aggregator.
+ 08800448 # bench infrastructure on top of main, no perf change.
+ 244952e7 # LagrangeDelta wired for perm_z + multiplicities.
+ 1c364bb8 # LagrangeDoubleDelta wired for logup_aggregator.
 )
 
 # Check turbo boost.
