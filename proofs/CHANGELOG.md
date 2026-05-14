@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `padded_add` and `padded_sub` polynomial operations [#276](https://github.com/midnightntwrk/midnight-zk/pull/276)
 * `single-h-commitment` feature to commit the quotient polynomial in one piece [#276](https://github.com/midnightntwrk/midnight-zk/pull/276)
 * `fewer-point-sets` feature to reduce the number of distinct multi-open point sets [#281](https://github.com/midnightntwrk/midnight-zk/pull/281)
+* `LagrangeDelta` / `LagrangeDoubleDelta` commit bases [#379](https://github.com/midnightntwrk/midnight-zk/pull/379)
 
 ### Fixed
 * Fix verifier evals bug [#356](https://github.com/midnightntwrk/midnight-zk/pull/356)
@@ -25,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Cache twiddle factors in `EvaluationDomain` and use a pruned DIF FFT for `coeff_to_extended` [#352](https://github.com/midnightntwrk/midnight-zk/pull/352)
 * Flatten and batch the graph evaluator for custom gates, lookups, and trash [#351](https://github.com/midnightntwrk/midnight-zk/pull/351)
 * Parallelize logup, permutation, and SHPLONK [#353](https://github.com/midnightntwrk/midnight-zk/pull/353)
+* Commit `perm_z` and `logup_multiplicities` in `LagrangeDelta`, `logup_aggregator` in `LagrangeDoubleDelta` [#379](https://github.com/midnightntwrk/midnight-zk/pull/379)
 * Simplify `CommitmentReference` by removing unused `Chopped` variant [#314](https://github.com/midnightntwrk/midnight-zk/pull/314)
 * Split linearization polynomial into non-constant and constant parts, removing the generator point from the MSM [#313](https://github.com/midnightntwrk/midnight-zk/pull/313)
 * Remove unnecessary polynomial padding in KZG multi-open [#276](https://github.com/midnightntwrk/midnight-zk/pull/276)
