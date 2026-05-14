@@ -104,7 +104,7 @@ where
         compute_instances(params, pk, instances, nb_committed_instances, transcript)?
     };
 
-    let (advice, challenges) = {
+    let advice = {
         group.bench_function("Parse advices", |b| {
             b.iter_batched(
                 || transcript.clone(),
@@ -157,7 +157,6 @@ where
                                 &advice.advice_polys,
                                 &pk.fixed_values,
                                 &instance.instance_values,
-                                &challenges,
                                 blinds,
                             )
                         })
@@ -183,7 +182,6 @@ where
                     &advice.advice_polys,
                     &pk.fixed_values,
                     &instance.instance_values,
-                    &challenges,
                     blinds,
                 )
             })
@@ -215,9 +213,9 @@ where
     // without touching the transcript; `write_and_convert` then writes
     // commitments and converts to coefficient form. Measure both together.
     //
-    // CAVEAT: in `create_proof` this phase runs inside a `rayon::join` with the
+    // CAVEAT: in `create_proof` this stage runs inside a `rayon::join` with the
     // logup logderivative compute, so permutation and logup overlap in wall
-    // time. This benchmark measures each phase in isolation, so the sum of
+    // time. This benchmark measures each stage in isolation, so the sum of
     // "Commit permutations" + "Commit lookup products" overstates the combined
     // cost versus what `create_proof` actually pays.
     let permutations = {
@@ -363,7 +361,6 @@ where
                                 &adv.advice_polys,
                                 &pk.fixed_values,
                                 &inst.instance_values,
-                                &challenges,
                                 &mut t,
                             )
                         })
@@ -384,7 +381,6 @@ where
                     &advice.advice_polys,
                     &pk.fixed_values,
                     &instance.instance_values,
-                    &challenges,
                     transcript,
                 )
             })
@@ -407,7 +403,6 @@ where
         lookups,
         trashcans,
         permutations,
-        challenges,
         beta,
         gamma,
         theta,
@@ -482,7 +477,6 @@ where
         lookups,
         trashcans,
         permutations,
-        challenges,
         beta,
         gamma,
         theta,
@@ -572,7 +566,6 @@ where
                     gamma,
                     theta,
                     trash_challenge,
-                    &challenges,
                 );
             })
         });
@@ -591,7 +584,6 @@ where
             gamma,
             theta,
             trash_challenge,
-            &challenges,
         )
     };
 

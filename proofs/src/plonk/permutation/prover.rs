@@ -33,7 +33,7 @@ pub(crate) struct Committed<F: PrimeField> {
     pub(crate) sets: Vec<CommittedSet<F>>,
 }
 
-/// Intermediate result from the compute phase of the permutation argument.
+/// Intermediate result from the computation stage of the permutation argument.
 /// Holds commitments and Lagrange-form z polynomials, ready to be written to
 /// the transcript and converted to coefficient form.
 pub(crate) struct Computed<F: PrimeField, C> {
@@ -103,7 +103,7 @@ impl Argument {
         let blinding_factors = pk.vk.cs.blinding_factors();
 
         let col_values = |column: &plonk::Column<Any>| match column.column_type() {
-            Any::Advice(_) => advice,
+            Any::Advice => advice,
             Any::Fixed => fixed,
             Any::Instance => instance,
         };
@@ -120,7 +120,7 @@ impl Argument {
             assert_eq!(blindings.len(), blinding_factors);
         }
 
-        // --- Phase 1: Compute modified_values for all sets in parallel. ---
+        // --- Stage 1: Compute modified_values for all sets in parallel. ---
         // Each set computes the product of fractions
         //   (p_j(ω^i) + δ^j ω^i β + γ) / (p_j(ω^i) + β s_j(ω^i) + γ)
         // The delta power for the first column of set s is δ^(s * chunk_len).
@@ -167,7 +167,7 @@ impl Argument {
             })
             .collect();
 
-        // --- Phase 2: Parallel prefix product across sets. ---
+        // --- Stage 2: Parallel prefix product across sets. ---
         //
         // Each set's z polynomial is a prefix product of its modified_values,
         // chained: set s+1 starts from set s's last non-blinded z value.

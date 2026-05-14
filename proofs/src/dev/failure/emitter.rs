@@ -5,7 +5,7 @@ use group::ff::Field;
 use super::FailureLocation;
 use crate::{
     dev::{metadata, util},
-    plonk::{Advice, Any, Expression},
+    plonk::{Any, Expression},
 };
 
 fn padded(p: char, width: usize, text: &str) -> String {
@@ -23,7 +23,7 @@ fn column_type_and_idx(column: &metadata::Column) -> String {
     format!(
         "{}{}",
         match column.column_type {
-            Any::Advice(_) => "A",
+            Any::Advice => "A",
             Any::Fixed => "F",
             Any::Instance => "I",
         },
@@ -162,15 +162,7 @@ pub(super) fn expression_to_string<F: Field>(
         &|query| {
             layout
                 .get(&query.rotation.0)
-                .and_then(|map| {
-                    map.get(
-                        &(
-                            Any::Advice(Advice { phase: query.phase }),
-                            query.column_index,
-                        )
-                            .into(),
-                    )
-                })
+                .and_then(|map| map.get(&(Any::Advice, query.column_index).into()))
                 .cloned()
                 .unwrap_or_default()
         },
@@ -182,7 +174,6 @@ pub(super) fn expression_to_string<F: Field>(
                 .unwrap()
                 .clone()
         },
-        &|challenge| format!("C{}({})", challenge.index(), challenge.phase()),
         &|a| {
             if a.contains(' ') {
                 format!("-({a})")

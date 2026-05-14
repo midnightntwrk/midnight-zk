@@ -97,7 +97,6 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ChunkedArgument<F> {
         advice_values: &'a [Polynomial<F, LagrangeCoeff>],
         fixed_values: &'a [Polynomial<F, LagrangeCoeff>],
         instance_values: &'a [Polynomial<F, LagrangeCoeff>],
-        challenges: &'a [F],
         blinding_values: &[F],
     ) -> Result<(ComputedMultiplicities<F>, CS::Commitment), Error>
     where
@@ -118,7 +117,6 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ChunkedArgument<F> {
                             fixed_values,
                             advice_values,
                             instance_values,
-                            challenges,
                         ))
                     })
                     .collect()

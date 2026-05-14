@@ -13,9 +13,6 @@
 
 //! A chip implementing the PLONK KZG-based verifier from our halo2 dependency.
 //!
-//! We assume vk.cs.num_challenges = 1 (i.e. vk.cs.phases() is empty),
-//! although there is no fundamental reason why this could not be generalized.
-//!
 //! We assume the CS of the verified circuit defines exactly one instance
 //! column. (This is the norm throughout our whole codebase anyway.)
 use std::{collections::BTreeMap, fmt::Debug, iter};
@@ -330,10 +327,6 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             transcript.common_scalar(layouter, &n)?;
             instance.iter().try_for_each(|pi| transcript.common_scalar(layouter, pi))?;
         }
-
-        // Assert that we only have one phase.
-        // TODO: get rid of this assumption, we could support more than one phase.
-        assert_eq!(cs.phases().count(), 1);
 
         // Hash the prover's advice commitments into the transcript and squeeze
         // challenges

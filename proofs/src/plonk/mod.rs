@@ -498,7 +498,6 @@ pub(crate) fn partially_evaluate_identities<'a, F, CS>(
     gamma: F,
     theta: F,
     trash_challenge: F,
-    challenges: &'a [F],
 ) -> Vec<(Option<usize>, F)>
 where
     F: WithSmallOrderMulGroup<3> + FromUniformBytes<64>,
@@ -523,7 +522,6 @@ where
                     &|query| fixed_evals[query.index.unwrap()],
                     &|query| advice_evals[query.index.unwrap()],
                     &|query| instance_evals[query.index.unwrap()],
-                    &|challenge| challenges[challenge.index()],
                     &|a| -a,
                     &|a, b| a + &b,
                     &|a, b| a * &b,
@@ -571,7 +569,6 @@ where
                         advice_evals,
                         fixed_evals,
                         instance_evals,
-                        challenges,
                     )
                     .collect::<Vec<_>>()
                 })
@@ -587,7 +584,6 @@ where
                         advice_evals,
                         fixed_evals,
                         instance_evals,
-                        challenges,
                     )
                 })
                 .map(|e| (None, e)),

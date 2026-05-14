@@ -18,11 +18,9 @@ use super::Region;
 use crate::{
     circuit::{self, Value},
     plonk::{
-        sealed::{self, SealedPhase},
         Advice,
         Any::{self, Fixed},
-        Assignment, Challenge, Circuit, Column, ConstraintSystem, Error, FirstPhase, FloorPlanner,
-        Instance, Phase, Selector,
+        Assignment, Circuit, Column, ConstraintSystem, Error, FloorPlanner, Instance, Selector,
     },
     utils::rational::Rational,
 };
@@ -462,15 +460,14 @@ pub(crate) fn cost_model_options<F: Ord + Field + FromUniformBytes<64>, C: Circu
 
 // DevAssembly is only used to compute the cost model, meaning that we only care
 // about the number of assignments and not the assignments themselves.
-// Therefore, we only keep track of the number of rows, the regions and the
-// phases, and ignore we values of the trace.
+// Therefore, we only keep track of the number of rows, the regions and ignore
+// we values of the trace.
 struct DevAssembly<F: Field> {
     cs: ConstraintSystem<F>,
     instance_rows: RefCell<usize>,
     /// The regions in the circuit.
     regions: Vec<Region>,
     current_region: Option<Region>,
-    current_phase: sealed::Phase,
     /// Set to `true` while the synthesizer is between a
     /// [`COST_MEASURE_START`] and a [`COST_MEASURE_END`] namespace marker.
     in_measured_region: bool,
@@ -496,20 +493,16 @@ impl<F: FromUniformBytes<64> + Ord> DevAssembly<F> {
             instance_rows: RefCell::new(0),
             regions: vec![],
             current_region: None,
-            current_phase: FirstPhase.to_sealed(),
             in_measured_region: false,
             has_measured_regions: false,
         };
 
-        for current_phase in prover.cs.phases() {
-            prover.current_phase = current_phase;
-            ConcreteCircuit::FloorPlanner::synthesize(
-                &mut prover,
-                circuit,
-                config.clone(),
-                constants.clone(),
-            )?;
-        }
+        ConcreteCircuit::FloorPlanner::synthesize(
+            &mut prover,
+            circuit,
+            config.clone(),
+            constants.clone(),
+        )?;
 
         let selectors = vec![vec![]; prover.cs.num_selectors];
         let (cs, _selector_polys) = prover.cs.directly_convert_selectors_to_fixed(selectors);
@@ -519,22 +512,12 @@ impl<F: FromUniformBytes<64> + Ord> DevAssembly<F> {
     }
 }
 
-impl<F: Field> DevAssembly<F> {
-    fn in_phase<P: Phase>(&self, phase: P) -> bool {
-        self.current_phase == phase.to_sealed()
-    }
-}
-
 impl<F: Field> Assignment<F> for DevAssembly<F> {
     fn enter_region<NR, N>(&mut self, name: N)
     where
         NR: Into<String>,
         N: FnOnce() -> NR,
     {
-        if !self.in_phase(FirstPhase) {
-            return;
-        }
-
         assert!(self.current_region.is_none());
         self.current_region = Some(Region {
             name: name().into(),
@@ -556,10 +539,6 @@ impl<F: Field> Assignment<F> for DevAssembly<F> {
     }
 
     fn exit_region(&mut self) {
-        if !self.in_phase(FirstPhase) {
-            return;
-        }
-
         self.regions.push(self.current_region.take().unwrap());
     }
 
@@ -598,15 +577,13 @@ impl<F: Field> Assignment<F> for DevAssembly<F> {
         A: FnOnce() -> AR,
         AR: Into<String>,
     {
-        if self.in_phase(FirstPhase) {
-            if let Some(region) = self.current_region.as_mut() {
-                region.update_extent(column.into(), row);
-                region
-                    .cells
-                    .entry((column.into(), row))
-                    .and_modify(|count| *count += 1)
-                    .or_default();
-            }
+        if let Some(region) = self.current_region.as_mut() {
+            region.update_extent(column.into(), row);
+            region
+                .cells
+                .entry((column.into(), row))
+                .and_modify(|count| *count += 1)
+                .or_default();
         }
 
         Ok(())
@@ -625,10 +602,6 @@ impl<F: Field> Assignment<F> for DevAssembly<F> {
         A: FnOnce() -> AR,
         AR: Into<String>,
     {
-        if !self.in_phase(FirstPhase) {
-            return Ok(());
-        }
-
         if let Some(region) = self.current_region.as_mut() {
             region.update_extent(column.into(), row);
             region
@@ -666,10 +639,6 @@ impl<F: Field> Assignment<F> for DevAssembly<F> {
         _to: circuit::Value<Rational<F>>,
     ) -> Result<(), Error> {
         Ok(())
-    }
-
-    fn get_challenge(&self, _challenge: Challenge) -> circuit::Value<F> {
-        Value::unknown()
     }
 
     fn push_namespace<NR, N>(&mut self, name_fn: N)

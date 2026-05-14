@@ -8,7 +8,6 @@ use std::{
     rc::Rc,
 };
 
-use blake2b_simd::blake2b;
 use ff::{Field, FromUniformBytes};
 use rayon::{
     iter::{
@@ -20,11 +19,8 @@ use rayon::{
 use crate::{
     circuit,
     plonk::{
-        permutation,
-        permutation::keygen::Assembly,
-        sealed::{self, SealedPhase},
-        Advice, Any, Assignment, Challenge, Circuit, Column, ConstraintSystem, Error, Expression,
-        FirstPhase, Fixed, FloorPlanner, Instance, Phase, Selector,
+        permutation, permutation::keygen::Assembly, Advice, Any, Assignment, Circuit, Column,
+        ConstraintSystem, Error, Expression, Fixed, FloorPlanner, Instance, Selector,
     },
 };
 
@@ -269,9 +265,9 @@ impl<F: Field> Mul<F> for Value<F> {
 ///             offset: 0,
 ///         },
 ///         cell_values: vec![
-///             (((Any::advice(), 0).into(), 0).into(), "0x2".to_string()),
-///             (((Any::advice(), 1).into(), 0).into(), "0x4".to_string()),
-///             (((Any::advice(), 2).into(), 0).into(), "0x8".to_string()),
+///             (((Any::Advice, 0).into(), 0).into(), "0x2".to_string()),
+///             (((Any::Advice, 1).into(), 0).into(), "0x4".to_string()),
+///             (((Any::Advice, 2).into(), 0).into(), "0x8".to_string()),
 ///         ],
 ///     }])
 /// );
@@ -297,14 +293,10 @@ pub struct MockProver<F: Field> {
 
     selectors: Vec<Vec<bool>>,
 
-    challenges: Vec<F>,
-
     permutation: permutation::keygen::Assembly,
 
     // A range of available rows for assignment and copies.
     usable_rows: Range<usize>,
-
-    current_phase: sealed::Phase,
 }
 
 /// Instance Value
@@ -325,22 +317,12 @@ impl<F: Field> InstanceValue<F> {
     }
 }
 
-impl<F: Field> MockProver<F> {
-    fn in_phase<P: Phase>(&self, phase: P) -> bool {
-        self.current_phase == phase.to_sealed()
-    }
-}
-
 impl<F: Field> Assignment<F> for MockProver<F> {
     fn enter_region<NR, N>(&mut self, name: N)
     where
         NR: Into<String>,
         N: FnOnce() -> NR,
     {
-        if !self.in_phase(FirstPhase) {
-            return;
-        }
-
         assert!(self.current_region.is_none());
         self.current_region = Some(Region {
             name: name().into(),
@@ -354,10 +336,6 @@ impl<F: Field> Assignment<F> for MockProver<F> {
     }
 
     fn exit_region(&mut self) {
-        if !self.in_phase(FirstPhase) {
-            return;
-        }
-
         self.regions.push(self.current_region.take().unwrap());
     }
 
@@ -366,10 +344,6 @@ impl<F: Field> Assignment<F> for MockProver<F> {
         A: FnOnce() -> AR,
         AR: Into<String>,
     {
-        if !self.in_phase(FirstPhase) {
-            return;
-        }
-
         if let Some(region) = self.current_region.as_mut() {
             region.annotations.insert(ColumnMetadata::from(column), annotation().into());
         }
@@ -380,10 +354,6 @@ impl<F: Field> Assignment<F> for MockProver<F> {
         A: FnOnce() -> AR,
         AR: Into<String>,
     {
-        if !self.in_phase(FirstPhase) {
-            return Ok(());
-        }
-
         assert!(
             self.usable_rows.contains(&row),
             "row={} not in usable_rows={:?}, k={}",
@@ -441,23 +411,21 @@ impl<F: Field> Assignment<F> for MockProver<F> {
         A: FnOnce() -> AR,
         AR: Into<String>,
     {
-        if self.in_phase(FirstPhase) {
-            assert!(
-                self.usable_rows.contains(&row),
-                "row={}, usable_rows={:?}, k={}",
-                row,
-                self.usable_rows,
-                self.k,
-            );
+        assert!(
+            self.usable_rows.contains(&row),
+            "row={}, usable_rows={:?}, k={}",
+            row,
+            self.usable_rows,
+            self.k,
+        );
 
-            if let Some(region) = self.current_region.as_mut() {
-                region.update_extent(column.into(), row);
-                region
-                    .cells
-                    .entry((column.into(), row))
-                    .and_modify(|count| *count += 1)
-                    .or_default();
-            }
+        if let Some(region) = self.current_region.as_mut() {
+            region.update_extent(column.into(), row);
+            region
+                .cells
+                .entry((column.into(), row))
+                .and_modify(|count| *count += 1)
+                .or_default();
         }
 
         match to().into_field().evaluate().assign() {
@@ -470,10 +438,7 @@ impl<F: Field> Assignment<F> for MockProver<F> {
                 *value = CellValue::Assigned(to);
             }
             Err(err) => {
-                // Propagate `assign` error if the column is in current phase.
-                if self.in_phase(column.column_type().phase) {
-                    return Err(err);
-                }
+                return Err(err);
             }
         }
 
@@ -493,10 +458,6 @@ impl<F: Field> Assignment<F> for MockProver<F> {
         A: FnOnce() -> AR,
         AR: Into<String>,
     {
-        if !self.in_phase(FirstPhase) {
-            return Ok(());
-        }
-
         assert!(
             self.usable_rows.contains(&row),
             "row={}, usable_rows={:?}, k={}",
@@ -530,10 +491,6 @@ impl<F: Field> Assignment<F> for MockProver<F> {
         right_column: Column<Any>,
         right_row: usize,
     ) -> Result<(), crate::plonk::Error> {
-        if !self.in_phase(FirstPhase) {
-            return Ok(());
-        }
-
         assert!(
             self.usable_rows.contains(&left_row) && self.usable_rows.contains(&right_row),
             "left_row={}, right_row={}, usable_rows={:?}, k={}",
@@ -552,10 +509,6 @@ impl<F: Field> Assignment<F> for MockProver<F> {
         from_row: usize,
         to: circuit::Value<Rational<F>>,
     ) -> Result<(), Error> {
-        if !self.in_phase(FirstPhase) {
-            return Ok(());
-        }
-
         assert!(
             self.usable_rows.contains(&from_row),
             "row={}, usable_rows={:?}, k={}",
@@ -569,14 +522,6 @@ impl<F: Field> Assignment<F> for MockProver<F> {
         }
 
         Ok(())
-    }
-
-    fn get_challenge(&self, challenge: Challenge) -> circuit::Value<F> {
-        if self.current_phase <= challenge.phase {
-            return circuit::Value::unknown();
-        }
-
-        circuit::Value::known(self.challenges[challenge.index()])
     }
 
     fn push_namespace<NR, N>(&mut self, _: N)
@@ -787,10 +732,6 @@ impl<F: Field> Assignment<F> for RowSizer<F> {
         Ok(())
     }
 
-    fn get_challenge(&self, _: Challenge) -> circuit::Value<F> {
-        circuit::Value::unknown()
-    }
-
     fn push_namespace<NR, N>(&mut self, _: N)
     where
         NR: Into<String>,
@@ -857,16 +798,6 @@ impl<F: FromUniformBytes<64> + Ord> MockProver<F> {
         ];
         let permutation = permutation::keygen::Assembly::new(n, &cs.permutation);
 
-        let challenges = {
-            let mut hash: [u8; 64] = blake2b(b"Halo2-MockProver").as_bytes().try_into().unwrap();
-            iter::repeat_with(|| {
-                hash = blake2b(&hash).as_bytes().try_into().unwrap();
-                F::from_uniform_bytes(&hash)
-            })
-            .take(cs.num_challenges)
-            .collect()
-        };
-
         let mut prover = MockProver {
             k,
             n: n as u32,
@@ -877,21 +808,16 @@ impl<F: FromUniformBytes<64> + Ord> MockProver<F> {
             advice,
             instance,
             selectors,
-            challenges,
             permutation,
             usable_rows: 0..usable_rows,
-            current_phase: FirstPhase.to_sealed(),
         };
 
-        for current_phase in prover.cs.phases() {
-            prover.current_phase = current_phase;
-            ConcreteCircuit::FloorPlanner::synthesize(
-                &mut prover,
-                circuit,
-                config.clone(),
-                constants.clone(),
-            )?;
-        }
+        ConcreteCircuit::FloorPlanner::synthesize(
+            &mut prover,
+            circuit,
+            config.clone(),
+            constants.clone(),
+        )?;
 
         let (cs, selector_polys) =
             prover.cs.directly_convert_selectors_to_fixed(prover.selectors.clone());
@@ -1058,7 +984,6 @@ impl<F: FromUniformBytes<64> + Ord> MockProver<F> {
                                     &self.cs.instance_queries,
                                     &self.instance,
                                 ),
-                                &|challenge| Value::Real(self.challenges[challenge.index()]),
                                 &|a| -a,
                                 &|a, b| a + b,
                                 &|a, b| a * b,
@@ -1128,7 +1053,6 @@ impl<F: FromUniformBytes<64> + Ord> MockProver<F> {
                             .value(),
                     )
                 },
-                &|challenge| Value::Real(self.challenges[challenge.index()]),
                 &|a| -a,
                 &|a, b| a + b,
                 &|a, b| a * b,
@@ -1259,7 +1183,7 @@ impl<F: FromUniformBytes<64> + Ord> MockProver<F> {
                     .get_columns()
                     .get(column)
                     .map(|c: &Column<Any>| match c.column_type() {
-                        Any::Advice(_) => self.advice[c.index()][row],
+                        Any::Advice => self.advice[c.index()][row],
                         Any::Fixed => self.fixed[c.index()][row],
                         Any::Instance => {
                             let cell: &InstanceValue<F> = &self.instance[c.index()][row];
@@ -1358,15 +1282,12 @@ impl<F: FromUniformBytes<64> + Ord> MockProver<F> {
         match expr {
             Expression::Constant(_) | Expression::Selector(_) => true,
             Expression::Fixed(query) => !eq_query(query.column_index, query.rotation(), Any::Fixed),
-            Expression::Advice(query) => !eq_query(
-                query.column_index,
-                query.rotation(),
-                Any::Advice(Advice::new(query.phase)),
-            ),
+            Expression::Advice(query) => {
+                !eq_query(query.column_index, query.rotation(), Any::Advice)
+            }
             Expression::Instance(query) => {
                 !eq_query(query.column_index, query.rotation(), Any::Instance)
             }
-            Expression::Challenge(_) => true,
             Expression::Negated(e) => self.cell_is_irrelevant(cell, e, offset),
             Expression::Sum(e1, e2) => {
                 self.cell_is_irrelevant(cell, e1, offset)
@@ -1481,8 +1402,8 @@ mod tests {
     use crate::{
         circuit::{Layouter, SimpleFloorPlanner, Value},
         plonk::{
-            sealed::SealedPhase, Advice, Any, Circuit, Column, ConstraintSystem, Constraints,
-            Error, Expression, FirstPhase, Fixed, Instance, Selector, TableColumn,
+            Advice, Any, Circuit, Column, ConstraintSystem, Constraints, Error, Expression, Fixed,
+            Instance, Selector, TableColumn,
         },
         poly::Rotation,
     };
@@ -1560,12 +1481,7 @@ mod tests {
                 gate: (0, "Equality check").into(),
                 region: (0, "Faulty synthesis".to_owned()).into(),
                 gate_offset: 1,
-                column: Column::new(
-                    1,
-                    Any::Advice(Advice {
-                        phase: FirstPhase.to_sealed()
-                    })
-                ),
+                column: Column::new(1, Any::Advice),
                 offset: 1,
             }])
         );
@@ -2009,48 +1925,9 @@ mod tests {
                     offset: 0,
                 },
                 cell_values: vec![
-                    (
-                        (
-                            (
-                                Any::Advice(Advice {
-                                    phase: FirstPhase.to_sealed()
-                                }),
-                                0
-                            )
-                                .into(),
-                            0
-                        )
-                            .into(),
-                        "1".to_string()
-                    ),
-                    (
-                        (
-                            (
-                                Any::Advice(Advice {
-                                    phase: FirstPhase.to_sealed()
-                                }),
-                                1
-                            )
-                                .into(),
-                            0
-                        )
-                            .into(),
-                        "0".to_string()
-                    ),
-                    (
-                        (
-                            (
-                                Any::Advice(Advice {
-                                    phase: FirstPhase.to_sealed()
-                                }),
-                                2
-                            )
-                                .into(),
-                            0
-                        )
-                            .into(),
-                        "0x5".to_string()
-                    ),
+                    (((Any::Advice, 0).into(), 0).into(), "1".to_string()),
+                    (((Any::Advice, 1).into(), 0).into(), "0".to_string()),
+                    (((Any::Advice, 2).into(), 0).into(), "0x5".to_string()),
                     (((Any::Fixed, 0).into(), 0).into(), "0x7".to_string()),
                 ],
             },])

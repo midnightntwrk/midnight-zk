@@ -2073,7 +2073,7 @@ where
         std::iter::successors(Some(F::ONE), |p| Some(*p * r)).take(n_guards).collect();
     guards.par_iter_mut().enumerate().for_each(|(i, guard)| guard.scale(powers[i]));
 
-    // Phase 4: add scaled guards sequentially.
+    // Add scaled guards sequentially.
     let Some(mut acc_guard) = guards.pop() else {
         return Ok(());
     };

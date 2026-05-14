@@ -28,8 +28,6 @@ pub enum ValueSource {
     Advice(usize, usize),
     /// This is an instance (external) column
     Instance(usize, usize),
-    /// This is a challenge
-    Challenge(usize),
     /// beta
     Beta(),
     /// theta
@@ -167,13 +165,11 @@ const NUM_CHALLENGE_SLOTS: usize = 5;
 const COL_TYPE_FIXED: u8 = 0;
 const COL_TYPE_ADVICE: u8 = 1;
 const COL_TYPE_INSTANCE: u8 = 2;
-const COL_TYPE_CHALLENGE: u8 = 3;
 
 /// Column read: load a value from a polynomial column at a rotated index.
 #[derive(Clone, Copy, Debug)]
 pub struct ColumnRead {
-    /// One of [`COL_TYPE_FIXED`], [`COL_TYPE_ADVICE`], [`COL_TYPE_INSTANCE`],
-    /// [`COL_TYPE_CHALLENGE`].
+    /// One of [`COL_TYPE_FIXED`], [`COL_TYPE_ADVICE`], [`COL_TYPE_INSTANCE`].
     pub col_type: u8,
     /// Column index within its type.
     pub col_idx: u16,
@@ -258,10 +254,7 @@ impl<F: PrimeField> GraphEvaluator<F> {
             let mut check = |vs: &ValueSource| {
                 if matches!(
                     vs,
-                    ValueSource::Fixed(..)
-                        | ValueSource::Advice(..)
-                        | ValueSource::Instance(..)
-                        | ValueSource::Challenge(..)
+                    ValueSource::Fixed(..) | ValueSource::Advice(..) | ValueSource::Instance(..)
                 ) && !reads.iter().any(|(v, _)| *v == *vs)
                 {
                     let dst = (base_offset + reads.len()) as u32;
@@ -282,12 +275,6 @@ impl<F: PrimeField> GraphEvaluator<F> {
                             col_type: COL_TYPE_INSTANCE,
                             col_idx: c as u16,
                             rot_idx: r as u8,
-                            dst,
-                        },
-                        ValueSource::Challenge(i) => ColumnRead {
-                            col_type: COL_TYPE_CHALLENGE,
-                            col_idx: i as u16,
-                            rot_idx: 0,
                             dst,
                         },
                         _ => unreachable!(),
@@ -340,10 +327,7 @@ impl<F: PrimeField> GraphEvaluator<F> {
                 ValueSource::TrashChallenge() => trash_challenge_idx,
                 ValueSource::Y() => y_idx,
                 ValueSource::PreviousValue() => previous_value_idx,
-                ValueSource::Fixed(..)
-                | ValueSource::Advice(..)
-                | ValueSource::Instance(..)
-                | ValueSource::Challenge(..) => {
+                ValueSource::Fixed(..) | ValueSource::Advice(..) | ValueSource::Instance(..) => {
                     column_read_map.iter().find(|(v, _)| *v == *vs).unwrap().1
                 }
             }
@@ -496,7 +480,6 @@ impl<F: PrimeField> FlatGraphEvaluator<F> {
         fixed: &[Polynomial<F, B>],
         advice: &[Polynomial<F, B>],
         instance: &[Polynomial<F, B>],
-        challenges: &[F],
         rotations: &[usize],
         previous_value: &F,
     ) -> F {
@@ -508,7 +491,6 @@ impl<F: PrimeField> FlatGraphEvaluator<F> {
                 COL_TYPE_FIXED => fixed[cr.col_idx as usize][rotations[cr.rot_idx as usize]],
                 COL_TYPE_ADVICE => advice[cr.col_idx as usize][rotations[cr.rot_idx as usize]],
                 COL_TYPE_INSTANCE => instance[cr.col_idx as usize][rotations[cr.rot_idx as usize]],
-                COL_TYPE_CHALLENGE => challenges[cr.col_idx as usize],
                 _ => unreachable!(),
             };
         }
@@ -553,7 +535,6 @@ impl<F: PrimeField> FlatGraphEvaluator<F> {
         fixed: &[Polynomial<F, Repr>],
         advice: &[Polynomial<F, Repr>],
         instance: &[Polynomial<F, Repr>],
-        challenges: &[F],
         log_scale: u32,
         log_n: u32,
     ) {
@@ -591,7 +572,6 @@ impl<F: PrimeField> FlatGraphEvaluator<F> {
                         COL_TYPE_FIXED => fixed[cr.col_idx as usize][rot],
                         COL_TYPE_ADVICE => advice[cr.col_idx as usize][rot],
                         COL_TYPE_INSTANCE => instance[cr.col_idx as usize][rot],
-                        COL_TYPE_CHALLENGE => challenges[cr.col_idx as usize],
                         _ => unreachable!(),
                     };
                 }
@@ -662,7 +642,6 @@ impl<F: PrimeField> FlatGraphEvaluator<F> {
                     fixed,
                     advice,
                     instance,
-                    challenges,
                     &rot_indices,
                     &output[pos],
                 );
@@ -845,7 +824,6 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
         advice: &[Polynomial<F, B>],
         instance: &[Polynomial<F, B>],
         fixed: &[Polynomial<F, B>],
-        challenges: &[F],
         y: F,
         beta: F,
         gamma: F,
@@ -877,7 +855,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
         let template = flat.new_values_buffer(&beta, &theta, &trash_challenge, &y);
         parallelize(&mut values, |values, start| {
             flat.evaluate_chunk::<4, B>(
-                &template, values, start, fixed, advice, instance, challenges, log_scale, log_n,
+                &template, values, start, fixed, advice, instance, log_scale, log_n,
             );
         });
 
@@ -941,7 +919,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                         for (values, permutation) in columns
                             .iter()
                             .map(|&column| match column.column_type() {
-                                Any::Advice(_) => &advice[column.index()],
+                                Any::Advice => &advice[column.index()],
                                 Any::Fixed => &fixed[column.index()],
                                 Any::Instance => &instance[column.index()],
                             })
@@ -952,7 +930,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
 
                         let mut right = permutation_product_coset[idx];
                         for values in columns.iter().map(|&column| match column.column_type() {
-                            Any::Advice(_) => &advice[column.index()],
+                            Any::Advice => &advice[column.index()],
                             Any::Fixed => &fixed[column.index()],
                             Any::Instance => &instance[column.index()],
                         }) {
@@ -1081,7 +1059,6 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                             fixed,
                             advice,
                             instance,
-                            challenges,
                             &rot_indices,
                             &F::ZERO,
                         );
@@ -1125,7 +1102,6 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                         fixed,
                         advice,
                         instance,
-                        challenges,
                         &rot_indices,
                         &F::ZERO,
                     );
@@ -1223,9 +1199,6 @@ impl<F: PrimeField> GraphEvaluator<F> {
                     rot_idx,
                 )))
             }
-            Expression::Challenge(challenge) => self.add_calculation(Calculation::Store(
-                ValueSource::Challenge(challenge.index()),
-            )),
             Expression::Negated(a) => match **a {
                 Expression::Constant(scalar) => self.add_constant(&-scalar),
                 _ => {
@@ -1309,7 +1282,6 @@ pub fn evaluate<F: Field, B: PolynomialRepresentation>(
     fixed: &[Polynomial<F, B>],
     advice: &[Polynomial<F, B>],
     instance: &[Polynomial<F, B>],
-    challenges: &[F],
 ) -> Vec<F> {
     let mut values = vec![F::ZERO; size];
     let log_n = size.ilog2();
@@ -1331,7 +1303,6 @@ pub fn evaluate<F: Field, B: PolynomialRepresentation>(
                     instance[query.column_index]
                         [get_rotation_idx(idx, query.rotation.0, log_scale, log_n)]
                 },
-                &|challenge| challenges[challenge.index()],
                 &|a| -a,
                 &|a, b| a + b,
                 &|a, b| a * b,

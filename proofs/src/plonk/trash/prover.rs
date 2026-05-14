@@ -32,7 +32,6 @@ impl<F: WithSmallOrderMulGroup<3> + Ord> Argument<F> {
         advice_values: &'a [Polynomial<F, LagrangeCoeff>],
         fixed_values: &'a [Polynomial<F, LagrangeCoeff>],
         instance_values: &'a [Polynomial<F, LagrangeCoeff>],
-        challenges: &'a [F],
         transcript: &mut T,
     ) -> Result<Committed<F>, Error>
     where
@@ -52,7 +51,6 @@ impl<F: WithSmallOrderMulGroup<3> + Ord> Argument<F> {
                     fixed_values,
                     advice_values,
                     instance_values,
-                    challenges,
                 ))
             })
             .fold(domain.empty_lagrange(), |acc, expression| {
