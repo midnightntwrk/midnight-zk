@@ -95,7 +95,7 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ChunkedArgument<F> {
         &self,
         pk: &ProvingKey<F, CS>,
         params: &CS::Parameters,
-        theta: F,
+        theta: &[F],
         advice_values: &'a [Polynomial<F, LagrangeCoeff>],
         fixed_values: &'a [Polynomial<F, LagrangeCoeff>],
         instance_values: &'a [Polynomial<F, LagrangeCoeff>],
@@ -126,12 +126,12 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ChunkedArgument<F> {
 
         // Closure to get values of expressions and compress them
         let compress_expressions = |expressions: &[Expression<F>]| {
-            let compressed_expression = eval_expressions(expressions)
-                .iter()
-                .fold(domain.empty_lagrange(), |acc, expression| {
-                    acc * theta + expression
-                });
-            compressed_expression
+            eval_expressions(expressions)
+                .into_iter()
+                .enumerate()
+                .fold(domain.empty_lagrange(), |acc, (i, expression)| {
+                    acc + expression * theta[i]
+                })
         };
 
         let chunked_compressed_inputs: Vec<Vec<Polynomial<F, LagrangeCoeff>>> = self

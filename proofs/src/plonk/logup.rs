@@ -408,7 +408,7 @@ impl<F: PrimeField> Evaluated<F> {
         l_last: F,
         l_blind: F,
         argument: &'a ChunkedArgument<F>,
-        theta: F,
+        theta: &'a [F],
         beta: F,
         advice_evals: &[F],
         fixed_evals: &[F],
@@ -438,7 +438,8 @@ impl<F: PrimeField> Evaluated<F> {
         let compress_expressions = |expressions: &[Expression<F>]| {
             evaluate_expressions(expressions)
                 .iter()
-                .fold(F::ZERO, |acc, eval| acc * theta + eval)
+                .enumerate()
+                .fold(F::ZERO, |acc, (i, eval)| acc + theta[i] * eval)
         };
 
         let compressed_table = compress_expressions(&argument.table_expressions);

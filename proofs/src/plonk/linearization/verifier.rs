@@ -30,7 +30,8 @@ pub(crate) fn compute_linearization_commitment<
 >(
     expressions: Vec<(Option<usize>, F)>,
     vk: &VerifyingKey<F, CS>,
-    y: &F,
+    x: F,
+    y: &[F],
     xn: &F,
     splitting_factor: &F,
     quotient_limb_commitments: &[CS::Commitment],
@@ -40,10 +41,8 @@ pub(crate) fn compute_linearization_commitment<
     // Group multiples of the same fixed column to reduce the number of scalar
     // multiplications
     let mut grouped_points: BTreeMap<Option<usize>, F> = BTreeMap::new();
-    let mut y_pow = F::ONE;
-    for (col_idx, eval) in expressions.iter().rev() {
-        *grouped_points.entry(*col_idx).or_insert(F::ZERO) += y_pow * eval;
-        y_pow *= y;
+    for (idx, (col_idx, eval)) in expressions.iter().enumerate() {
+        *grouped_points.entry(*col_idx).or_insert(F::ZERO) += y[idx] * eval;
     }
 
     let mut splitting_pow = F::ONE - *xn;

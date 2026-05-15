@@ -41,30 +41,26 @@ use crate::{
 pub(crate) fn compute_linearization_poly<F: PrimeField, CS: PolynomialCommitmentScheme<F>>(
     expressions: Vec<(Option<usize>, F)>,
     pk: &ProvingKey<F, CS>,
-    y: F,
+    y: &[F],
     xn: F,
     splitting_factor: F,
     quotient_limbs: Vec<Polynomial<F, Coeff>>,
 ) -> (Polynomial<F, Coeff>, F) {
-    let mut y_pow = F::ONE;
     let mut lin_poly_constant_term = F::ZERO;
-    let lin_poly_non_constant_part = expressions.iter().rev().fold(
-        Polynomial::init(pk.vk.get_domain().n as usize),
-        |acc, (col_idx, eval)| match col_idx {
+    let mut poly = Polynomial::init(pk.vk.get_domain().n as usize);
+    for (j, (col_idx, eval)) in expressions.iter().enumerate() {
+        match col_idx {
             Some(col_idx) => {
-                let acc = acc + pk.fixed_polys[*col_idx].clone() * (y_pow * eval);
-                y_pow *= y;
-                acc
+                poly = poly + pk.fixed_polys[*col_idx].clone() * (y[j] * eval);
             }
             None => {
                 // The constant term is excluded from L'(X). It is moved to the
                 // eval side of the VerifierQuery (as -C) by the verifier.
-                lin_poly_constant_term += y_pow * eval;
-                y_pow *= y;
-                acc
+                lin_poly_constant_term += y[j] * eval;
             }
-        },
-    );
+        }
+    }
+    let lin_poly_non_constant_part = poly;
 
     let splitting_powers = successors(Some(xn - F::ONE), |&prev| Some(prev * splitting_factor));
 

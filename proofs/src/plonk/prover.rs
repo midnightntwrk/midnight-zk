@@ -115,8 +115,19 @@ where
             .collect()
     };
 
-    // Sample theta challenge for keeping lookup columns linearly independent
-    let theta: F = transcript.squeeze_challenge();
+    // Sample one independent theta challenge per lookup column (max width across
+    // all lookups). Independent challenges (instead of powers of a single
+    // challenge) are required for protogalaxy folding correctness.
+    let nb_theta = pk
+        .vk
+        .cs
+        .lookups
+        .iter()
+        .map(|l| l.table_expressions().len())
+        .max()
+        .unwrap_or(0)
+        .max(1);
+    let theta: Vec<F> = (0..nb_theta).map(|_| transcript.squeeze_challenge()).collect();
 
     let num_lookups = pk.vk.cs.lookups.len();
     let mult_blinding_count = pk.vk.cs.blinding_factors() + 1;
@@ -135,7 +146,7 @@ where
                 logup.compute_multiplicities_parallel(
                     pk,
                     params,
-                    theta,
+                    &theta,
                     &advice.advice_polys,
                     &pk.fixed_values,
                     &instance.instance_values,
@@ -259,8 +270,30 @@ where
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    // Obtain challenge for keeping all separate gates linearly independent
-    let y: F = transcript.squeeze_challenge();
+    // Sample one independent y challenge per constraint polynomial for protogalaxy
+    // folding.
+    let n_gate_polys: usize = pk.vk.cs.gates.iter().map(|g| g.polynomials().len()).sum();
+    let chunk_len = pk.vk.cs_degree - 2;
+    let num_perm_sets = if pk.vk.cs.permutation.columns.is_empty() {
+        0
+    } else {
+        pk.vk.cs.permutation.columns.len().div_ceil(chunk_len)
+    };
+    let n_perm = if num_perm_sets == 0 {
+        0
+    } else {
+        2 * num_perm_sets + 1
+    };
+    let n_logup: usize = pk
+        .vk
+        .cs
+        .lookups
+        .iter()
+        .map(|l| 2 + l.chunk_by_degree(pk.vk.cs_degree).input_expression_chunks.len())
+        .sum();
+    let n_trash = pk.vk.cs.trashcans.len();
+    let nb_y = (n_gate_polys + n_perm + n_logup + n_trash).max(1);
+    let y: Vec<F> = (0..nb_y).map(|_| transcript.squeeze_challenge()).collect();
 
     let InstanceSingle {
         instance_polys,
@@ -387,13 +420,13 @@ where
         xn,
         beta,
         gamma,
-        theta,
+        &theta,
         trash_challenge,
     );
 
     // Compute linearization polynomial
     let (lin_poly_non_constant_part, lin_poly_constant_term) =
-        compute_linearization_poly(expressions, pk, y, xn, splitting_factor, quotient_limbs);
+        compute_linearization_poly(expressions, pk, &y, xn, splitting_factor, quotient_limbs);
 
     debug_assert_eq!(
         eval_polynomial(&lin_poly_non_constant_part, x),
@@ -661,10 +694,10 @@ pub(super) fn compute_nu_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommit
         &advice_cosets,
         &instance_cosets,
         &pk.fixed_cosets,
-        *y,
+        y,
         *beta,
         *gamma,
-        *theta,
+        theta,
         *trash_challenge,
         lookups,
         trashcans,

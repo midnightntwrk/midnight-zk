@@ -512,7 +512,7 @@ pub(crate) fn partially_evaluate_identities<'a, F, CS>(
     xn: F,
     beta: F,
     gamma: F,
-    theta: F,
+    theta: &'a [F],
     trash_challenge: F,
 ) -> Vec<(Option<usize>, F)>
 where

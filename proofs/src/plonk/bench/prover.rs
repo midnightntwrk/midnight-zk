@@ -119,8 +119,16 @@ where
         parse_advices(params, pk, circuit, instances, transcript, &mut rng)?
     };
 
-    // Sample theta challenge for keeping lookup columns linearly independent
-    let theta: F = transcript.squeeze_challenge();
+    let nb_theta = pk
+        .vk
+        .cs
+        .lookups
+        .iter()
+        .map(|l| l.table_expressions().len())
+        .max()
+        .unwrap_or(0)
+        .max(1);
+    let theta: Vec<F> = (0..nb_theta).map(|_| transcript.squeeze_challenge()).collect();
 
     // Pre-generate multiplicities blindings so the measured closures don't need
     // `&mut rng`. One extra value beyond `blinding_factors` is required by
@@ -153,7 +161,7 @@ where
                             logup.compute_multiplicities_parallel(
                                 pk,
                                 params,
-                                theta,
+                                &theta,
                                 &advice.advice_polys,
                                 &pk.fixed_values,
                                 &instance.instance_values,
@@ -178,7 +186,7 @@ where
                 logup.compute_multiplicities_parallel(
                     pk,
                     params,
-                    theta,
+                    &theta,
                     &advice.advice_polys,
                     &pk.fixed_values,
                     &instance.instance_values,
@@ -395,8 +403,28 @@ where
             .collect::<Result<Vec<_>, _>>()?
     };
 
-    // Obtain challenge for keeping all separate gates linearly independent
-    let y: F = transcript.squeeze_challenge();
+    let n_gate_polys: usize = pk.vk.cs.gates.iter().map(|g| g.polynomials().len()).sum();
+    let chunk_len = pk.vk.cs_degree - 2;
+    let num_perm_sets = if pk.vk.cs.permutation.columns.is_empty() {
+        0
+    } else {
+        pk.vk.cs.permutation.columns.len().div_ceil(chunk_len)
+    };
+    let n_perm = if num_perm_sets == 0 {
+        0
+    } else {
+        2 * num_perm_sets + 1
+    };
+    let n_logup: usize = pk
+        .vk
+        .cs
+        .lookups
+        .iter()
+        .map(|l| 2 + l.chunk_by_degree(pk.vk.cs_degree).input_expression_chunks.len())
+        .sum();
+    let n_trash = pk.vk.cs.trashcans.len();
+    let nb_y = (n_gate_polys + n_perm + n_logup + n_trash).max(1);
+    let y: Vec<F> = (0..nb_y).map(|_| transcript.squeeze_challenge()).collect();
 
     let instance_polys = instance.instance_polys;
     let instance_values = instance.instance_values;
@@ -572,7 +600,7 @@ where
                     xn,
                     beta,
                     gamma,
-                    theta,
+                    &theta,
                     trash_challenge,
                 );
             })
@@ -590,7 +618,7 @@ where
             xn,
             beta,
             gamma,
-            theta,
+            &theta,
             trash_challenge,
         )
     };
@@ -602,14 +630,14 @@ where
                 let _ = compute_linearization_poly(
                     expressions.clone(),
                     pk,
-                    y,
+                    &y,
                     xn,
                     splitting_factor,
                     quotient_limbs.clone(),
                 );
             })
         });
-        compute_linearization_poly(expressions, pk, y, xn, splitting_factor, quotient_limbs)
+        compute_linearization_poly(expressions, pk, &y, xn, splitting_factor, quotient_limbs)
     };
 
     debug_assert_eq!(

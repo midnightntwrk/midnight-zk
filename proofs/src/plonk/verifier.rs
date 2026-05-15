@@ -71,8 +71,16 @@ where
         .map(|i| transcript.read().map(|c: CS::Commitment| c.label(PolynomialLabel::Advice(i))))
         .collect::<Result<_, _>>()?;
 
-    // Sample theta challenge for keeping lookup columns linearly independent
-    let theta: F = transcript.squeeze_challenge();
+    // Sample one independent theta challenge per lookup column.
+    let nb_theta = vk
+        .cs
+        .lookups
+        .iter()
+        .map(|l| l.table_expressions().len())
+        .max()
+        .unwrap_or(0)
+        .max(1);
+    let theta: Vec<F> = (0..nb_theta).map(|_| transcript.squeeze_challenge()).collect();
 
     // Read multiplicities
     let lookup_multiplicities: Vec<_> = vk
@@ -105,8 +113,28 @@ where
         .map(|argument| argument.read_committed::<CS, _>(transcript))
         .collect::<Result<Vec<_>, _>>()?;
 
-    // Sample y challenge, which keeps the gates linearly independent.
-    let y: F = transcript.squeeze_challenge();
+    // Sample one independent y challenge per constraint polynomial.
+    let n_gate_polys: usize = vk.cs.gates.iter().map(|g| g.polynomials().len()).sum();
+    let chunk_len = vk.cs_degree - 2;
+    let num_perm_sets = if vk.cs.permutation.columns.is_empty() {
+        0
+    } else {
+        vk.cs.permutation.columns.len().div_ceil(chunk_len)
+    };
+    let n_perm = if num_perm_sets == 0 {
+        0
+    } else {
+        2 * num_perm_sets + 1
+    };
+    let n_logup: usize = vk
+        .cs
+        .lookups
+        .iter()
+        .map(|l| 2 + l.chunk_by_degree(vk.cs_degree).input_expression_chunks.len())
+        .sum();
+    let n_trash = vk.cs.trashcans.len();
+    let nb_y = (n_gate_polys + n_perm + n_logup + n_trash).max(1);
+    let y: Vec<F> = (0..nb_y).map(|_| transcript.squeeze_challenge()).collect();
 
     Ok(VerifierTrace {
         advice_commitments,
@@ -278,7 +306,7 @@ where
         xn,
         beta,
         gamma,
-        theta,
+        &theta,
         trash_challenge,
     );
 

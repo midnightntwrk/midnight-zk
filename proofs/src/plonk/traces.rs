@@ -20,9 +20,9 @@ pub struct ProverTrace<F: PrimeField> {
     pub(crate) permutations: permutation::prover::Committed<F>,
     pub(crate) beta: F,
     pub(crate) gamma: F,
-    pub(crate) theta: F,
+    pub(crate) theta: Vec<F>,
     pub(crate) trash_challenge: F,
-    pub(crate) y: F,
+    pub(crate) y: Vec<F>,
 }
 
 /// Verifier's trace of a proof.
@@ -34,7 +34,7 @@ pub struct VerifierTrace<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> {
     pub(crate) permutations: permutation::verifier::Committed<F, PCS>,
     pub(crate) beta: F,
     pub(crate) gamma: F,
-    pub(crate) theta: F,
+    pub(crate) theta: Vec<F>,
     pub(crate) trash_challenge: F,
-    pub(crate) y: F,
+    pub(crate) y: Vec<F>,
 }
