@@ -57,13 +57,32 @@ where
     CS::commit(params, &poly, PolynomialLabel::Instance(0))
 }
 
+/// Raw trace returned by [`compute_raw_trace`]: advice polynomials are kept in
+/// Lagrange form so that folding can use them directly without an extra FFT.
+pub(crate) struct RawTrace<F: PrimeField> {
+    pub(crate) advice_lagrange: Vec<Polynomial<F, LagrangeCoeff>>,
+    pub(crate) instance_polys: Vec<Polynomial<F, Coeff>>,
+    pub(crate) instance_values: Vec<Polynomial<F, LagrangeCoeff>>,
+    pub(crate) lookups: Vec<logup::prover::Committed<F>>,
+    pub(crate) trashcans: Vec<trash::prover::Committed<F>>,
+    pub(crate) permutations: permutation::prover::Committed<F>,
+    pub(crate) challenges: Vec<F>,
+    pub(crate) beta: F,
+    pub(crate) gamma: F,
+    pub(crate) theta: Vec<F>,
+    pub(crate) trash_challenge: F,
+    pub(crate) y: Vec<F>,
+}
+
 /// This computes a proof trace for the provided `circuit` when given the
 /// public parameters `params` and the proving key [`ProvingKey`] that was
 /// generated previously for the same circuit. The provided `instances`
 /// are zero-padded internally.
 ///
 /// The trace can then be used to finalise the proof.
-pub(crate) fn compute_trace<
+/// Like [`compute_trace`] but returns advice polynomials in Lagrange form,
+/// avoiding the `lagrange_to_coeff` FFT. Used by the protogalaxy folding prover.
+pub(crate) fn compute_raw_trace<
     F,
     CS: PolynomialCommitmentScheme<F>,
     T: Transcript,
@@ -72,14 +91,11 @@ pub(crate) fn compute_trace<
     params: &CS::Parameters,
     pk: &ProvingKey<F, CS>,
     circuit: &ConcreteCircuit,
-    // The prover needs to get all instances in non-committed form. However,
-    // the first `nb_committed_instances` instance columns are dedicated for
-    // instances that the verifier receives in committed form.
     #[cfg(feature = "committed-instances")] nb_committed_instances: usize,
     instances: &[&[F]],
     transcript: &mut T,
     mut rng: impl RngCore + CryptoRng,
-) -> Result<ProverTrace<F>, Error>
+) -> Result<RawTrace<F>, Error>
 where
     CS::Commitment: Hashable<T::Hash>,
     F: WithSmallOrderMulGroup<3>
@@ -300,14 +316,8 @@ where
         instance_values,
     } = instance;
 
-    let advice_polys: Vec<_> = advice
-        .advice_polys
-        .into_par_iter()
-        .map(|p| domain.lagrange_to_coeff(p))
-        .collect();
-
-    Ok(ProverTrace {
-        advice_polys,
+    Ok(RawTrace {
+        advice_lagrange: advice.advice_polys,
         instance_polys,
         instance_values,
         lookups,
@@ -318,6 +328,61 @@ where
         theta,
         trash_challenge,
         y,
+    })
+}
+
+pub(crate) fn compute_trace<
+    F,
+    CS: PolynomialCommitmentScheme<F>,
+    T: Transcript,
+    ConcreteCircuit: Circuit<F>,
+>(
+    params: &CS::Parameters,
+    pk: &ProvingKey<F, CS>,
+    circuit: &ConcreteCircuit,
+    #[cfg(feature = "committed-instances")] nb_committed_instances: usize,
+    instances: &[&[F]],
+    transcript: &mut T,
+    rng: impl RngCore + CryptoRng,
+) -> Result<ProverTrace<F>, Error>
+where
+    CS::Commitment: Hashable<T::Hash>,
+    F: WithSmallOrderMulGroup<3>
+        + Sampleable<T::Hash>
+        + Hashable<T::Hash>
+        + Hash
+        + Ord
+        + FromUniformBytes<64>,
+{
+    let domain = &pk.vk.domain;
+    let raw = compute_raw_trace(
+        params,
+        pk,
+        circuit,
+        #[cfg(feature = "committed-instances")]
+        nb_committed_instances,
+        instances,
+        transcript,
+        rng,
+    )?;
+    let advice_polys = raw
+        .advice_lagrange
+        .into_par_iter()
+        .map(|p| domain.lagrange_to_coeff(p))
+        .collect();
+    Ok(ProverTrace {
+        advice_polys,
+        instance_polys: raw.instance_polys,
+        instance_values: raw.instance_values,
+        lookups: raw.lookups,
+        trashcans: raw.trashcans,
+        permutations: raw.permutations,
+        challenges: raw.challenges,
+        beta: raw.beta,
+        gamma: raw.gamma,
+        theta: raw.theta,
+        trash_challenge: raw.trash_challenge,
+        y: raw.y,
     })
 }
 
@@ -658,7 +723,7 @@ where
     Ok(advice)
 }
 
-pub(super) fn compute_nu_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>>(
+pub(crate) fn compute_nu_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>>(
     pk: &ProvingKey<F, CS>,
     trace: &ProverTrace<F>,
 ) -> Polynomial<F, ExtendedLagrangeCoeff> {
@@ -813,7 +878,7 @@ fn blind_quotient_limbs<F: PrimeField>(quotient_limbs: &mut [Vec<F>]) {
 
 // Structure for holding evaluations of fixed, instance, and advice columns.
 #[derive(Debug, Clone)]
-pub(super) struct Evals<F>
+pub(crate) struct Evals<F>
 where
     F: WithSmallOrderMulGroup<3>,
 {
@@ -822,7 +887,7 @@ where
     pub(crate) advice_evals: Vec<F>,
 }
 
-pub(super) fn write_evals_to_transcript<F, CS, T>(
+pub(crate) fn write_evals_to_transcript<F, CS, T>(
     pk: &ProvingKey<F, CS>,
     nb_committed_instances: usize,
     instance_polys: &[Polynomial<F, Coeff>],
@@ -895,7 +960,7 @@ where
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn compute_queries<
+pub(crate) fn compute_queries<
     'a,
     F: WithSmallOrderMulGroup<3>,
     CS: PolynomialCommitmentScheme<F>,
