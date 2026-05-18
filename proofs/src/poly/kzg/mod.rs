@@ -44,7 +44,7 @@ use crate::{
             params::{ParamsKZG, ParamsVerifierKZG},
             utils::construct_intermediate_sets,
         },
-        query::{CommitmentLabel, CommitmentReference, VerifierQuery},
+        query::{CommitmentLabel, VerifierQuery},
         Coeff, Error, Polynomial, PolynomialRepresentation, ProverQuery,
     },
     transcript::{Hashable, Sampleable, Transcript},
@@ -257,25 +257,9 @@ where
     ) -> Result<DualMSM<E>, Error>
     where
         E::Fr: Sampleable<T::Hash> + Ord + Hash + Hashable<T::Hash>,
-        E::G1: 'com + CurveExt<ScalarExt = E::Fr>,
-        KZGCommitment<E>: Hashable<T::Hash>,
+        E::G1: CurveExt<ScalarExt = E::Fr>,
+        KZGCommitment<E>: Hashable<T::Hash> + 'com,
     {
-        // Add dummy queries to reduce the number of distinct multi-open point sets.
-        #[cfg(feature = "fewer-point-sets")]
-        let queries = &{
-            let mut queries = queries.to_vec();
-            let pairs: Vec<_> = queries.iter().map(|q| (q.commitment.clone(), q.point)).collect();
-            for (idx, point) in compute_dummy_queries(&pairs) {
-                queries.push(VerifierQuery {
-                    point,
-                    commitment_label: queries[idx].commitment_label.clone(),
-                    commitment: queries[idx].commitment.clone(),
-                    eval: transcript.read().map_err(|_| Error::SamplingError)?,
-                });
-            }
-            queries
-        };
-
         // Refer to the halo2 book for docs:
         // https://zcash.github.io/halo2/design/proving-system/multipoint-opening.html
         let x1: E::Fr = transcript.squeeze_challenge();
@@ -288,13 +272,11 @@ where
 
         for com_data in commitment_map.into_iter() {
             let mut msm = MSMKZG::init();
-            for (scalar, commitment) in com_data.commitment.as_terms() {
-                match commitment {
-                    KZGCommitment::Simple(p, label) => msm.append_term(scalar, p, label),
-                    KZGCommitment::Linear(points, scalars, labels) => {
-                        for ((p, s), label) in points.into_iter().zip(scalars).zip(labels) {
-                            msm.append_term(scalar * s, p, label);
-                        }
+            match com_data.commitment.0 {
+                KZGCommitment::Simple(p, label) => msm.append_term(E::Fr::ONE, *p, label.clone()),
+                KZGCommitment::Linear(points, scalars, labels) => {
+                    for ((p, s), label) in points.iter().zip(scalars).zip(labels) {
+                        msm.append_term(*s, *p, label.clone());
                     }
                 }
             }

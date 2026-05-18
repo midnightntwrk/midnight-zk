@@ -267,10 +267,9 @@ where
         trash_challenge,
     );
 
-    let lin_com = compute_linearization_commitment(
+    let (lin_commitment, lin_eval) = compute_linearization_commitment(
         expressions,
         vk,
-        x,
         &y,
         &xn,
         &splitting_factor,
@@ -326,7 +325,12 @@ where
                 }),
         )
         .chain(permutations_common.queries(&vk.permutation, x))
-        .chain(iter::once(lin_com))
+        .chain(iter::once(VerifierQuery::new(
+            x,
+            CommitmentLabel::Custom("linearization_poly".into()),
+            &lin_commitment,
+            lin_eval,
+        )))
         .collect::<Vec<_>>();
 
     // We are now convinced the circuit is satisfied so long as the

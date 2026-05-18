@@ -96,70 +96,28 @@ impl<'com, F: PrimeField> Query<F> for ProverQuery<'com, F> {
     }
 }
 
-#[derive(Clone, Debug)]
-/// A reference to a polynomial commitment.
+/// A pointer to a commitment, with pointer-based equality.
 ///
-/// A commitment can either be a single piece (`OnePiece`) or a linear
-/// combination of commitments (`Linear`). The linear form is used, e.g., for
-/// the linearization polynomial, whose commitment is expressed as:
-///     * scalars (representing - partially or fully - evaluated identities),
-///       and
-///     * commitments (representing, either, commitments to simple,
-///       multiplicative selectors or the commitment to the constant polynomial
-///       `P(X) = 1`).
-/// The linear combination is given in form of two vectors: one holds references
-/// to the commitments, the other one holds the scalars.
-pub enum CommitmentReference<'com, F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
-    OnePiece(&'com CS::Commitment),
-    Linear(Vec<&'com CS::Commitment>, Vec<F>, Vec<CommitmentLabel>),
+/// Two `CommitmentReference`s are equal iff they point to the same allocation,
+/// so that commitments are grouped by identity rather than by value.
+#[derive(Debug)]
+pub struct CommitmentReference<'com, F: PrimeField, CS: PolynomialCommitmentScheme<F>>(
+    pub(crate) &'com CS::Commitment,
+);
+
+impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> Copy for CommitmentReference<'_, F, CS> {}
+
+impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> Clone for CommitmentReference<'_, F, CS> {
+    fn clone(&self) -> Self {
+        *self
+    }
 }
 
 impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> PartialEq
     for CommitmentReference<'_, F, CS>
 {
     fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (
-                &CommitmentReference::OnePiece(self_com),
-                &CommitmentReference::OnePiece(other_com),
-            ) => std::ptr::eq(self_com, other_com),
-            (
-                CommitmentReference::Linear(self_points, self_scalars, _),
-                CommitmentReference::Linear(other_points, other_scalars, _),
-            ) => (self_points == other_points) && (self_scalars == other_scalars),
-            _ => false,
-        }
-    }
-}
-
-impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> CommitmentReference<'_, F, CS> {
-    /// Returns the commitment as a list of `(scalar, commitment)` pairs.
-    ///
-    /// If the commitment is represented in one piece, this function returns
-    /// `vec![(F::ONE, com)]`.
-    ///
-    /// If the commitment is a linear combination, this function returns the
-    /// pairs `(scalar_i, commitment_i)`.
-    ///
-    /// # Panics
-    ///
-    /// If the commitment is "linear" and the number of points and the number
-    /// of scalars are not equal.
-    pub(crate) fn as_terms(&self) -> Vec<(F, CS::Commitment)> {
-        match self.clone() {
-            CommitmentReference::OnePiece(com) => {
-                vec![(F::ONE, com.clone())]
-            }
-            CommitmentReference::Linear(points, scalars, _) => {
-                assert_eq!(points.len(), scalars.len());
-
-                let mut terms = Vec::with_capacity(points.len());
-                for (&p, s) in points.iter().zip(scalars.iter()) {
-                    terms.push((*s, p.clone()));
-                }
-                terms
-            }
-        }
+        std::ptr::eq(self.0, other.0)
     }
 }
 
@@ -181,7 +139,7 @@ where
     F: PrimeField,
     CS: PolynomialCommitmentScheme<F>,
 {
-    /// Create a new verifier query based on an optionally labeled commitment.
+    /// Create a new verifier query.
     pub fn new(
         point: F,
         commitment_label: CommitmentLabel,
@@ -191,42 +149,7 @@ where
         VerifierQuery {
             point,
             commitment_label,
-            commitment: CommitmentReference::OnePiece(commitment),
-            eval,
-        }
-    }
-
-    /// Create a new verifier query based on a commitment
-    /// represented in the form of curve points and corresponding
-    /// scalars. Each term carries its own `CommitmentLabel` so that
-    /// downstream consumers (e.g. `from_dual_msm`) can classify
-    /// individual bases correctly.
-    ///
-    /// # panics
-    ///
-    /// If the number of points, scalars, or base_labels differs.
-    pub fn new_linear(
-        point: F,
-        commitment_label: CommitmentLabel,
-        points: Vec<&'com CS::Commitment>,
-        scalars: Vec<F>,
-        base_labels: Vec<CommitmentLabel>,
-        eval: F,
-    ) -> Self {
-        assert_eq!(
-            points.len(),
-            scalars.len(),
-            "The number of points and scalars needs to be equal."
-        );
-        assert_eq!(
-            points.len(),
-            base_labels.len(),
-            "The number of points and base_labels needs to be equal."
-        );
-        VerifierQuery {
-            point,
-            commitment_label,
-            commitment: CommitmentReference::Linear(points, scalars, base_labels),
+            commitment: CommitmentReference(commitment),
             eval,
         }
     }
@@ -245,7 +168,7 @@ impl<'com, F: PrimeField, CS: PolynomialCommitmentScheme<F>> Query<F>
         self.eval
     }
     fn get_commitment(&self) -> Self::Commitment {
-        self.commitment.clone()
+        self.commitment
     }
     fn get_commitment_label(&self) -> CommitmentLabel {
         self.commitment_label.clone()
