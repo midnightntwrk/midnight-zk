@@ -22,7 +22,8 @@ use crate::{
 pub struct ParamsKZG<E: Engine> {
     pub(crate) g: Vec<E::G1Affine>,
     pub(crate) g_lagrange: Vec<E::G1Affine>,
-    /// Suffix-sum of g_lagrange: g_lagrange_delta[i] = sum_{j=i}^{n-1} g_lagrange[j]`.
+    /// Suffix-sum of `g_lagrange`:
+    /// `g_lagrange_delta[i] = sum_{j=i}^{n-1} g_lagrange[j]`.
     pub(crate) g_lagrange_delta: Vec<E::G1Affine>,
     /// Suffix-sum of `g_lagrange_delta`:
     /// `g_lagrange_double_delta[i] = sum_{j=i}^{n-1} g_lagrange_delta[j]`.
@@ -37,13 +38,11 @@ pub struct ParamsKZG<E: Engine> {
 
 /// Builds the suffix-sum of an affine SRS: `out[i] = sum_{j=i}^{n-1} input[j]`.
 ///
-/// Accumulate in projective coordinates (one curve add per step) and batch-normalise
-/// to affine at the end. n-1 projective adds + one O(n) batch_normalise.
+/// Accumulate in projective coordinates (one curve add per step) and
+/// batch-normalise to affine at the end. n-1 projective adds + one O(n)
+/// batch_normalise.
 fn suffix_sum<C: CurveAffine>(input: &[C]) -> Vec<C> {
     let n = input.len();
-    if n == 0 {
-        return Vec::new();
-    }
     let mut acc_proj: Vec<C::Curve> = vec![C::Curve::identity(); n];
     acc_proj[n - 1] = input[n - 1].into();
     for i in (0..n - 1).rev() {
@@ -463,11 +462,11 @@ mod test {
         }
 
         let c_lagrange = KZGCommitmentScheme::commit(&params, &a);
-        let c_delta = KZGCommitmentScheme::commit(&params, &a.clone().into_delta());
+        let c_delta = KZGCommitmentScheme::commit(&params, &a.to_delta());
         assert_eq!(c_lagrange, c_delta);
 
-        // Round-trip identity: into_delta then into_lagrange recovers the original.
-        let restored = a.clone().into_delta().into_lagrange();
+        // Round-trip identity: to_delta then into_lagrange recovers the original.
+        let restored = a.to_delta().into_lagrange();
         assert_eq!(restored.values, a.values);
     }
 
@@ -499,22 +498,20 @@ mod test {
         let c_lagrange = KZGCommitmentScheme::commit(&params, &a);
 
         // Fused single-pass conversion matches the two-step path.
-        let c_double_delta_fused =
-            KZGCommitmentScheme::commit(&params, &a.clone().into_double_delta());
+        let c_double_delta_fused = KZGCommitmentScheme::commit(&params, &a.to_double_delta());
         let c_double_delta_two_step =
-            KZGCommitmentScheme::commit(&params, &a.clone().into_delta().into_double_delta());
+            KZGCommitmentScheme::commit(&params, &a.to_delta().into_double_delta());
         assert_eq!(c_lagrange, c_double_delta_fused);
         assert_eq!(c_lagrange, c_double_delta_two_step);
 
         // Both fused and two-step transforms produce the same scalar vector.
-        let fused = a.clone().into_double_delta();
-        let two_step = a.clone().into_delta().into_double_delta();
+        let fused = a.to_double_delta();
+        let two_step = a.to_delta().into_double_delta();
         assert_eq!(fused.values, two_step.values);
 
         // Round-trip identity, both inverse paths.
-        let restored_fused = a.clone().into_double_delta().into_lagrange();
-        let restored_stepwise =
-            a.clone().into_double_delta().into_lagrange_delta().into_lagrange();
+        let restored_fused = a.to_double_delta().into_lagrange();
+        let restored_stepwise = a.to_double_delta().into_lagrange_delta().into_lagrange();
         assert_eq!(restored_fused.values, a.values);
         assert_eq!(restored_stepwise.values, a.values);
     }

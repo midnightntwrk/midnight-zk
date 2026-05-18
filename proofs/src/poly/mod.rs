@@ -52,13 +52,21 @@ pub enum PolynomialBasis {
     Lagrange,
     /// Lagrange basis over an extended coset domain.
     ExtendedLagrange,
-    /// Contiguous friendly:
-    /// Delta of the Lagrange encoding:  b_i := a_i - a_(i-1)
-    /// where `a_i` are the values of the Lagrange polynomial
+    /// Delta of the Lagrange encoding:
+    /// b_0 = a_0;  b_i := a_i - a_(i-1) for i>0.
+    /// where `a_i` are the values of the Lagrange polynomial.
+    /// This basis is convenient for committing polynomials with large
+    /// contiguous constant chunks. k-sized constant chunks in Lagrange form
+    /// are converted into (k-1)-sized zero chunks in this basis.
     LagrangeDelta,
-    /// Linear friendly:
-    /// Delta of the delta encoding: c_i := b_i - b_(i-1)
+    /// Delta of the delta encoding:
+    /// c_0 = b_0; c_i := b_i - b_(i-1) for i>0.
     /// where `b_i` are the values of the LagrangeDelta polynomial.
+    /// This basis is convenient for committing polynomials with large
+    /// contiguous linear chunks. k-sized linear chunks in Lagrange form are
+    /// converted into (k-1)-sized constant chunks in this LagrangeDelta
+    /// basis, which in turn, are converted into (k-2) sized zero chunks in
+    /// this basis.
     LagrangeDoubleDelta,
 }
 
@@ -221,11 +229,11 @@ impl PolynomialRepresentation for LagrangeDeltaCoeff {
         _evaluation_domain: &EvaluationDomain<F>,
         _poly: Polynomial<F, Coeff>,
     ) -> Polynomial<F, Self> {
-        unimplemented!("LagrangeDelta is constructed from LagrangeCoeff via `into_delta`.")
+        unimplemented!("LagrangeDelta is constructed from LagrangeCoeff via `to_delta`.")
     }
 
     fn g_coset<F: WithSmallOrderMulGroup<3>>(_evaluation_domain: &EvaluationDomain<F>) -> F {
-        F::ONE
+        unimplemented!()
     }
 }
 
@@ -261,13 +269,12 @@ impl PolynomialRepresentation for LagrangeDoubleDeltaCoeff {
         _poly: Polynomial<F, Coeff>,
     ) -> Polynomial<F, Self> {
         unimplemented!(
-            "LagrangeDoubleDelta is constructed from LagrangeCoeff via `into_double_delta` \
-             (or from LagrangeDeltaCoeff via `into_double_delta`)."
+            "LagrangeDoubleDelta is constructed from LagrangeCoeff via `to_double_delta`."
         )
     }
 
     fn g_coset<F: WithSmallOrderMulGroup<3>>(_evaluation_domain: &EvaluationDomain<F>) -> F {
-        F::ONE
+        unimplemented!()
     }
 }
 
@@ -280,26 +287,13 @@ pub struct Polynomial<F, B> {
 }
 
 impl<F: Field> Polynomial<F, LagrangeCoeff> {
-    /// Convert a Lagrange-form polynomial into its delta encoding,
-    /// `b_0 = a_0`, `b_i = a_i - a_{i-1}`, in place.
-    pub fn into_delta(mut self) -> Polynomial<F, LagrangeDeltaCoeff> {
-        for i in (1..self.values.len()).rev() {
-            let prev = self.values[i - 1];
-            self.values[i] -= prev;
-        }
-        Polynomial {
-            values: self.values,
-            _marker: PhantomData,
-        }
-    }
-
-    /// Borrowing variant of [`Self::into_delta`]: produce the delta
-    /// encoding in a freshly allocated buffer, leaving `self` untouched.
+    /// Produce the delta encoding of a Lagrange-form polynomial:
+    /// b_0 = a_0 ; b_i = a_i - a_{i-1} for all i > 0,
+    /// in a freshly allocated buffer, leaving `self` untouched.
     ///
-    /// Use this when the original Lagrange polynomial is still needed
-    /// downstream (e.g. for evaluation or opening). One forward sweep, one
-    /// transient `Vec<F>` allocation; avoids the cost of in-place transform
-    /// followed by a prefix-sum to restore.
+    /// Used when the original Lagrange polynomial is still needed downstream
+    /// (e.g. for evaluation or opening). One forward sweep, one transient
+    /// `Vec<F>` allocation.
     pub fn to_delta(&self) -> Polynomial<F, LagrangeDeltaCoeff> {
         let n = self.values.len();
         let mut out = Vec::with_capacity(n);
@@ -315,40 +309,14 @@ impl<F: Field> Polynomial<F, LagrangeCoeff> {
         }
     }
 
-    /// Convert a Lagrange-form polynomial directly into its double-delta
-    /// encoding, `c_0 = a_0`, `c_1 = a_1 - 2·a_0`,
-    /// `c_i = a_i - 2·a_{i-1} + a_{i-2}` for `i >= 2`, in place.
+    /// Produce the double-delta encoding of a Lagrange-form polynomial:
+    /// c_0 = a_0, c_1 = a_1 - 2·a_0, c_i = a_i - 2·a_{i-1} + a_{i-2} for
+    /// i >= 2, in a freshly allocated buffer, leaving `self` untouched.
     ///
-    /// Equivalent to `self.into_delta().into_delta()` but fused into a single
-    /// sweep.
-    // TODO: Remove if `to_double_data` proves to be the better alternative.
-    pub fn into_double_delta(mut self) -> Polynomial<F, LagrangeDoubleDeltaCoeff> {
-        if self.values.len() > 1 {
-            let mut prev_a = self.values[0];
-            let mut prev_b = prev_a;
-            for i in 1..self.values.len() {
-                let cur_a = self.values[i];
-                let cur_b = cur_a - prev_a;
-                self.values[i] = cur_b - prev_b;
-                prev_a = cur_a;
-                prev_b = cur_b;
-            }
-        }
-        Polynomial {
-            values: self.values,
-            _marker: PhantomData,
-        }
-    }
-
-    /// Borrowing variant of [`Self::into_double_delta`]: produce the
-    /// double-delta encoding in a freshly allocated buffer, leaving `self`
-    /// untouched.
-    ///
-    /// Use this when the original Lagrange polynomial is still needed
-    /// downstream (e.g. for evaluation or opening). The fused single-pass
-    /// formula avoids the cost of in-place transform followed by two
-    /// prefix-sums to restore at the price of one transient `Vec<F>`
-    /// allocation.
+    /// Used when the original Lagrange polynomial is still needed downstream
+    /// (e.g. for evaluation or opening). The fused single-pass formula avoids
+    /// applying the delta transform twice at the price of one transient
+    /// `Vec<F>` allocation.
     pub fn to_double_delta(&self) -> Polynomial<F, LagrangeDoubleDeltaCoeff> {
         let n = self.values.len();
         let mut out = Vec::with_capacity(n);
@@ -368,10 +336,13 @@ impl<F: Field> Polynomial<F, LagrangeCoeff> {
     }
 }
 
+#[cfg(test)]
 impl<F: Field> Polynomial<F, LagrangeDeltaCoeff> {
-    /// Inverse of `into_delta`: prefix-sum the deltas back to Lagrange form,
-    /// `a_0 = b_0`, `a_i = a_{i-1} + b_i`, in place.
-    pub fn into_lagrange(mut self) -> Polynomial<F, LagrangeCoeff> {
+    /// Inverse of `to_delta`: prefix-sum the deltas back to Lagrange form:
+    /// a_0 = b_0; a_i = a_{i-1} + b_i, in place.
+    ///
+    /// Test-only: used to assert round-trip identity of the delta transform.
+    pub(crate) fn into_lagrange(mut self) -> Polynomial<F, LagrangeCoeff> {
         for i in 1..self.values.len() {
             let prev = self.values[i - 1];
             self.values[i] += prev;
@@ -384,12 +355,12 @@ impl<F: Field> Polynomial<F, LagrangeDeltaCoeff> {
 
     /// Apply the delta transform once more, going from `LagrangeDelta` to
     /// `LagrangeDoubleDelta`: `c_0 = b_0`, `c_i = b_i - b_{i-1}` for
-    /// `i >= 1`, in place. Same shape as [`Self::into_delta`] on
-    /// `LagrangeCoeff`; included for completeness when the caller already
-    /// holds a delta-form polynomial. If you start from Lagrange form,
-    /// prefer the fused
-    /// [`Polynomial::<_, LagrangeCoeff>::into_double_delta`].
-    pub fn into_double_delta(mut self) -> Polynomial<F, LagrangeDoubleDeltaCoeff> {
+    /// `i >= 1`, in place.
+    ///
+    /// Test-only: used to assert the fused
+    /// [`Polynomial::<_, LagrangeCoeff>::to_double_delta`] matches the
+    /// two-step delta-of-delta path.
+    pub(crate) fn into_double_delta(mut self) -> Polynomial<F, LagrangeDoubleDeltaCoeff> {
         for i in (1..self.values.len()).rev() {
             let prev = self.values[i - 1];
             self.values[i] -= prev;
@@ -401,11 +372,15 @@ impl<F: Field> Polynomial<F, LagrangeDeltaCoeff> {
     }
 }
 
+#[cfg(test)]
 impl<F: Field> Polynomial<F, LagrangeDoubleDeltaCoeff> {
     /// Inverse of [`Polynomial::<_, LagrangeDeltaCoeff>::into_double_delta`]:
     /// prefix-sum the double-deltas back to delta form,
     /// `b_0 = c_0`, `b_i = b_{i-1} + c_i`, in place.
-    pub fn into_lagrange_delta(mut self) -> Polynomial<F, LagrangeDeltaCoeff> {
+    ///
+    /// Test-only: used to assert round-trip identity of the stepwise
+    /// double-delta path.
+    pub(crate) fn into_lagrange_delta(mut self) -> Polynomial<F, LagrangeDeltaCoeff> {
         for i in 1..self.values.len() {
             let prev = self.values[i - 1];
             self.values[i] += prev;
@@ -416,21 +391,21 @@ impl<F: Field> Polynomial<F, LagrangeDoubleDeltaCoeff> {
         }
     }
 
-    /// Fused inverse of
-    /// [`Polynomial::<_, LagrangeCoeff>::into_double_delta`]: recover
-    /// Lagrange form directly from double-delta form via a single forward
-    /// sweep using two running accumulators (the partial sums for `b` and
-    /// for `a`). Two field additions per element, single memory pass, no
-    /// allocation.
-    pub fn into_lagrange(mut self) -> Polynomial<F, LagrangeCoeff> {
-        if self.values.len() > 1 {
-            let mut b_running = self.values[0];
-            let mut a_running = b_running;
-            for i in 1..self.values.len() {
-                b_running += self.values[i];
-                a_running += b_running;
-                self.values[i] = a_running;
-            }
+    /// Fused inverse of [`Polynomial::<_, LagrangeCoeff>::to_double_delta`]:
+    /// recover Lagrange form directly from double-delta form via a single
+    /// forward sweep using two running accumulators (the partial sums for
+    /// `b` and for `a`). Two field additions per element, single memory
+    /// pass, no allocation.
+    ///
+    /// Test-only: used to assert round-trip identity of the fused
+    /// double-delta path.
+    pub(crate) fn into_lagrange(mut self) -> Polynomial<F, LagrangeCoeff> {
+        let mut b_running = F::ZERO;
+        let mut a_running = F::ZERO;
+        for v in self.values.iter_mut() {
+            b_running += *v;
+            a_running += b_running;
+            *v = a_running;
         }
         Polynomial {
             values: self.values,
