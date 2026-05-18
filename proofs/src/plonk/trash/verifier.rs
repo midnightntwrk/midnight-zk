@@ -37,6 +37,14 @@ impl<F: PrimeField> Argument<F> {
 }
 
 impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> Committed<F, CS> {
+    pub(in crate::plonk) fn from_commitment(trash_commitment: CS::Commitment) -> Self {
+        Self { trash_commitment }
+    }
+
+    pub(in crate::plonk) fn into_commitment(self) -> CS::Commitment {
+        self.trash_commitment
+    }
+
     pub(crate) fn evaluate<T: Transcript>(
         self,
         transcript: &mut T,

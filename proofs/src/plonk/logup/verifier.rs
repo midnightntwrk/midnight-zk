@@ -101,6 +101,18 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>>
 }
 
 impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> Committed<F, CS> {
+    pub(in crate::plonk) fn from_parts(
+        multiplicities: CS::Commitment,
+        helper_polys: Vec<CS::Commitment>,
+        accumulator: CS::Commitment,
+    ) -> Self {
+        Self { multiplicities, helper_polys, accumulator }
+    }
+
+    pub(in crate::plonk) fn into_parts(self) -> (CS::Commitment, Vec<CS::Commitment>, CS::Commitment) {
+        (self.multiplicities, self.helper_polys, self.accumulator)
+    }
+
     /// Reads the polynomial evaluations from the transcript.
     ///
     /// Order: `m_eval`, then `hᵢ_eval` for each batched chunk, then `Z_eval`,

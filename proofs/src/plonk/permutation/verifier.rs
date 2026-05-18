@@ -74,6 +74,14 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> VerifyingKey<F, CS> {
 }
 
 impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> Committed<F, CS> {
+    pub(in crate::plonk) fn from_commitments(commitments: Vec<CS::Commitment>) -> Self {
+        Self { permutation_product_commitments: commitments }
+    }
+
+    pub(in crate::plonk) fn into_commitments(self) -> Vec<CS::Commitment> {
+        self.permutation_product_commitments
+    }
+
     pub(crate) fn evaluate<T: Transcript>(
         self,
         transcript: &mut T,
