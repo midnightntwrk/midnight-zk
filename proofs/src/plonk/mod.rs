@@ -39,6 +39,8 @@ pub mod bench;
 
 mod prover;
 mod verifier;
+/// Protogalaxy folding prover and verifier.
+pub mod protogalaxy;
 
 use std::io;
 
