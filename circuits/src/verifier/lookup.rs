@@ -16,7 +16,7 @@
 //! This is the in-circuit analog of `proofs/src/plonk/logup/verifier.rs`.
 //! The constraint expressions are implemented in `expressions/lookup.rs`.
 
-use midnight_proofs::{circuit::Layouter, plonk::Error, poly::CommitmentLabel};
+use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use crate::{
     field::AssignedNative,
@@ -125,7 +125,6 @@ impl<S: SelfEmulation> Evaluated<S> {
             VerifierQuery::new(
                 one,
                 x,
-                CommitmentLabel::NoLabel,
                 &self.committed.multiplicities,
                 &self.evaluated.multiplicities_eval,
             ),
@@ -134,19 +133,12 @@ impl<S: SelfEmulation> Evaluated<S> {
         for (h_commit, h_eval) in
             self.committed.helper_polys.iter().zip(self.evaluated.helper_evals.iter())
         {
-            queries.push(VerifierQuery::new(
-                one,
-                x,
-                CommitmentLabel::NoLabel,
-                h_commit,
-                h_eval,
-            ));
+            queries.push(VerifierQuery::new(one, x, h_commit, h_eval));
         }
         // Open lookup table commitments at x
         queries.push(VerifierQuery::new(
             one,
             x,
-            CommitmentLabel::NoLabel,
             &self.committed.accumulator,
             &self.evaluated.accumulator_eval,
         ));
@@ -154,7 +146,6 @@ impl<S: SelfEmulation> Evaluated<S> {
         queries.push(VerifierQuery::new(
             one,
             x_next,
-            CommitmentLabel::NoLabel,
             &self.committed.accumulator,
             &self.evaluated.accumulator_next_eval,
         ));

@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Blind logup multiplicities polynomial on non-usable rows for ZK [#312](https://github.com/midnightntwrk/midnight-zk/pull/312)
 
 ### Changed
+* Introduce `KZGCommitment` enum with `Simple` and `Linear` variants; attach `CommitmentLabel` at `commit` time and propagate it homomorphically through arithmetic [#381](https://github.com/midnightntwrk/midnight-zk/pull/381)
+* Simplify `CommitmentReference` to a pointer wrapper with identity-based equality; remove `commitment_label` from `VerifierQuery` [#381](https://github.com/midnightntwrk/midnight-zk/pull/381)
 * Store SRS as affine and use an affine MSM path in KZG [#350](https://github.com/midnightntwrk/midnight-zk/pull/350)
 * Cache twiddle factors in `EvaluationDomain` and use a pruned DIF FFT for `coeff_to_extended` [#352](https://github.com/midnightntwrk/midnight-zk/pull/352)
 * Flatten and batch the graph evaluator for custom gates, lookups, and trash [#351](https://github.com/midnightntwrk/midnight-zk/pull/351)

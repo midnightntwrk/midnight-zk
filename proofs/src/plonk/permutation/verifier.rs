@@ -3,7 +3,7 @@ use ff::{PrimeField, WithSmallOrderMulGroup};
 use super::{Argument, VerifyingKey};
 use crate::{
     plonk::{self, permutation, Error},
-    poly::{commitment::PolynomialCommitmentScheme, CommitmentLabel, Rotation, VerifierQuery},
+    poly::{commitment::PolynomialCommitmentScheme, Rotation, VerifierQuery},
     transcript::{Hashable, Transcript},
 };
 
@@ -114,13 +114,11 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
         for (i, set) in self.sets.iter().enumerate() {
             queries.push(VerifierQuery::new(
                 x,
-                CommitmentLabel::NoLabel,
                 &product_coms[i],
                 set.permutation_product_eval,
             ));
             queries.push(VerifierQuery::new(
                 x_next,
-                CommitmentLabel::NoLabel,
                 &product_coms[i],
                 set.permutation_product_next_eval,
             ));
@@ -129,7 +127,6 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
         for (i, set) in self.sets.iter().enumerate().rev().skip(1) {
             queries.push(VerifierQuery::new(
                 x_last,
-                CommitmentLabel::NoLabel,
                 &product_coms[i],
                 set.permutation_product_last_eval.unwrap(),
             ));
@@ -145,10 +142,9 @@ impl<F: PrimeField> CommonEvaluated<F> {
         x: F,
     ) -> impl Iterator<Item = VerifierQuery<'vkey, F, CS>> + Clone {
         let evals = self.permutation_evals.clone();
-        vkey.commitments.iter().zip(evals).enumerate().map(
-            move |(i, (commitment, eval))| {
-                VerifierQuery::new(x, CommitmentLabel::Permutation(i), commitment, eval)
-            },
-        )
+        vkey.commitments
+            .iter()
+            .zip(evals)
+            .map(move |(commitment, eval)| VerifierQuery::new(x, commitment, eval))
     }
 }

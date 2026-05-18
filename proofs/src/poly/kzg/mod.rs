@@ -27,6 +27,7 @@ mod utils;
 
 use std::{fmt::Debug, hash::Hash};
 
+use commitment::KZGCommitment;
 use ff::Field;
 use group::Group;
 use midnight_curves::pairing::MultiMillerLoop;
@@ -57,8 +58,6 @@ use crate::{
         helpers::ProcessedSerdeObject,
     },
 };
-
-use commitment::KZGCommitment;
 
 #[derive(Clone, Debug)]
 /// KZG verifier
@@ -479,16 +478,15 @@ mod tests {
         let bvx: E::Fr = transcript.read().unwrap();
         let cvy: E::Fr = transcript.read().unwrap();
 
-        use CommitmentLabel::NoLabel;
         let valid_queries = std::iter::empty()
-            .chain(Some(VerifierQuery::new(x, NoLabel, &a, avx)))
-            .chain(Some(VerifierQuery::new(x, NoLabel, &b, bvx)))
-            .chain(Some(VerifierQuery::new(y, NoLabel, &c, cvy)));
+            .chain(Some(VerifierQuery::new(x, &a, avx)))
+            .chain(Some(VerifierQuery::new(x, &b, bvx)))
+            .chain(Some(VerifierQuery::new(y, &c, cvy)));
 
         let invalid_queries = std::iter::empty()
-            .chain(Some(VerifierQuery::new(x, NoLabel, &a, avx)))
-            .chain(Some(VerifierQuery::new(x, NoLabel, &b, avx)))
-            .chain(Some(VerifierQuery::new(y, NoLabel, &c, cvy)));
+            .chain(Some(VerifierQuery::new(x, &a, avx)))
+            .chain(Some(VerifierQuery::new(x, &b, avx)))
+            .chain(Some(VerifierQuery::new(y, &c, cvy)));
 
         let queries = if should_fail {
             invalid_queries

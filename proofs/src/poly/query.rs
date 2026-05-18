@@ -44,7 +44,6 @@ pub trait Query<F>: Debug + Sized + Clone + Send + Sync {
     fn get_point(&self) -> F;
     fn get_eval(&self) -> Self::Eval;
     fn get_commitment(&self) -> Self::Commitment;
-    fn get_commitment_label(&self) -> CommitmentLabel;
 }
 
 /// A polynomial query at a point
@@ -91,9 +90,6 @@ impl<'com, F: PrimeField> Query<F> for ProverQuery<'com, F> {
     fn get_commitment(&self) -> Self::Commitment {
         PolynomialPointer { poly: self.poly }
     }
-    fn get_commitment_label(&self) -> CommitmentLabel {
-        CommitmentLabel::NoLabel
-    }
 }
 
 /// A pointer to a commitment, with pointer-based equality.
@@ -126,8 +122,6 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> PartialEq
 pub struct VerifierQuery<'com, F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
     /// Point at which polynomial is queried.
     pub(crate) point: F,
-    /// Optional label identifying the commitment in this query.
-    pub(crate) commitment_label: CommitmentLabel,
     /// Commitment to polynomial.
     pub(crate) commitment: CommitmentReference<'com, F, CS>,
     /// Evaluation of polynomial at query point.
@@ -140,15 +134,9 @@ where
     CS: PolynomialCommitmentScheme<F>,
 {
     /// Create a new verifier query.
-    pub fn new(
-        point: F,
-        commitment_label: CommitmentLabel,
-        commitment: &'com CS::Commitment,
-        eval: F,
-    ) -> Self {
+    pub fn new(point: F, commitment: &'com CS::Commitment, eval: F) -> Self {
         VerifierQuery {
             point,
-            commitment_label,
             commitment: CommitmentReference(commitment),
             eval,
         }
@@ -169,8 +157,5 @@ impl<'com, F: PrimeField, CS: PolynomialCommitmentScheme<F>> Query<F>
     }
     fn get_commitment(&self) -> Self::Commitment {
         self.commitment
-    }
-    fn get_commitment_label(&self) -> CommitmentLabel {
-        self.commitment_label.clone()
     }
 }
