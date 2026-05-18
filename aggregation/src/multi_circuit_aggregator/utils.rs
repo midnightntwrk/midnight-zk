@@ -67,8 +67,11 @@ pub fn assign_and_hash_vk(
 
     // Witness the VK commitment points.
     let base_values: Vec<Value<C>> = (0..nb_fixed)
-        .map(|i| vk.map(|vk| vk.vk().fixed_commitments()[i]))
-        .chain((0..nb_perm).map(|i| vk.map(|vk| vk.vk().permutation().commitments()[i])))
+        .map(|i| vk.map(|vk| vk.vk().fixed_commitments()[i].clone().into_point()))
+        .chain(
+            (0..nb_perm)
+                .map(|i| vk.map(|vk| vk.vk().permutation().commitments()[i].clone().into_point())),
+        )
         .collect();
 
     let assigned_bases = base_values

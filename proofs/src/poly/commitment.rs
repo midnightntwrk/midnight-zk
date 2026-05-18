@@ -6,7 +6,10 @@ use ff::{FromUniformBytes, PrimeField};
 
 use crate::{
     plonk::{k_from_circuit, Circuit},
-    poly::{Error, Polynomial, PolynomialRepresentation, ProverQuery, VerifierQuery},
+    poly::{
+        query::CommitmentLabel, Error, Polynomial, PolynomialRepresentation, ProverQuery,
+        VerifierQuery,
+    },
     transcript::{Hashable, Sampleable, Transcript},
     utils::helpers::ProcessedSerdeObject,
 };
@@ -40,10 +43,12 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
     /// Extract the `VerifierParameters` from `Parameters`
     fn get_verifier_params(params: &Self::Parameters) -> Self::VerifierParameters;
 
-    /// Commit to a polynomial in coefficient form
+    /// Commit to a polynomial in coefficient form, tagging the result with
+    /// `label` for identification during multi-open accumulation.
     fn commit<B: PolynomialRepresentation>(
         params: &Self::Parameters,
         polynomial: &Polynomial<F, B>,
+        label: CommitmentLabel,
     ) -> Self::Commitment;
 
     /// Create a multi-opening proof at a set of [ProverQuery]'s.
@@ -64,7 +69,7 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
     ) -> Result<Self::VerificationGuard, Error>
     where
         F: Sampleable<T::Hash> + Hash + Ord + Hashable<T::Hash>,
-        Self::Commitment: 'com + Hashable<T::Hash>;
+        Self::Commitment: Hashable<T::Hash> + 'com;
 }
 
 /// Interface for verifier finalizer

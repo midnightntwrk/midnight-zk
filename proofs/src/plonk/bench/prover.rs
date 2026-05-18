@@ -21,7 +21,7 @@ use crate::{
         traces::ProverTrace,
         trash, Error, ProvingKey,
     },
-    poly::commitment::PolynomialCommitmentScheme,
+    poly::{commitment::PolynomialCommitmentScheme, CommitmentLabel},
     transcript::{Hashable, Sampleable, Transcript},
     utils::arithmetic::eval_polynomial,
 };
@@ -282,7 +282,7 @@ where
                                 .par_iter()
                                 .map(|h| {
                                     let h_poly = domain.lagrange_from_vec(h.clone());
-                                    CS::commit(params, &h_poly)
+                                    CS::commit(params, &h_poly, CommitmentLabel::NoLabel)
                                 })
                                 .collect()
                         })
@@ -312,7 +312,7 @@ where
                     .par_iter()
                     .map(|h| {
                         let h_poly = domain.lagrange_from_vec(h.clone());
-                        CS::commit(params, &h_poly)
+                        CS::commit(params, &h_poly, CommitmentLabel::NoLabel)
                     })
                     .collect()
             })

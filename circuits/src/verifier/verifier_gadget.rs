@@ -877,7 +877,7 @@ pub(crate) mod tests {
         circuit::SimpleFloorPlanner,
         dev::MockProver,
         plonk::{create_proof, keygen_pk, keygen_vk_with_k, prepare, Circuit, Error},
-        poly::kzg::{params::ParamsKZG, KZGCommitmentScheme},
+        poly::kzg::{commitment::KZGCommitment, params::ParamsKZG, KZGCommitmentScheme},
         transcript::{CircuitTranscript, Transcript},
     };
     use rand::SeedableRng;
@@ -1144,7 +1144,7 @@ pub(crate) mod tests {
                 CircuitTranscript::<PoseidonState<F>>::init_from_bytes(&inner_proof);
             prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<PoseidonState<F>>>(
                 &inner_vk,
-                &[C::identity()],
+                &[KZGCommitment::Simple(C::identity(), CommitmentLabel::NoLabel)],
                 &[&inner_public_inputs],
                 &mut transcript,
             )
