@@ -24,7 +24,6 @@ use crate::{plonk::VerifyingKey, poly::commitment::PolynomialCommitmentScheme};
 ///
 /// `(commitment, expected_eval)` where the commitment to the linearization
 /// polynomial is expected to open to `expected_eval` at `x`.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn compute_linearization_commitment<
     F: PrimeField + ff::WithSmallOrderMulGroup<3> + ff::FromUniformBytes<64> + std::cmp::Ord,
     CS: PolynomialCommitmentScheme<F>,
@@ -36,33 +35,29 @@ pub(crate) fn compute_linearization_commitment<
     splitting_factor: &F,
     quotient_limb_commitments: &[CS::Commitment],
 ) -> (CS::Commitment, F) {
-    let mut terms: Vec<(F, CS::Commitment)> = Vec::new();
+    let mut commitment = CS::Commitment::default();
+    let mut expected_eval = F::ZERO;
 
     let mut splitting_pow = F::ONE - *xn;
     for com in quotient_limb_commitments {
-        terms.push((splitting_pow, com.clone()));
+        commitment = commitment + com.clone() * splitting_pow;
         splitting_pow *= splitting_factor;
     }
 
-    // Group multiples of the same fixed column in the MSM
+    // Group multiples of the same fixed column to reduce the number of scalar multiplications
     let mut grouped_points: BTreeMap<Option<usize>, F> = BTreeMap::new();
     let mut y_pow = F::ONE;
-    expressions.iter().rev().for_each(|(col_idx, eval)| {
+    for (col_idx, eval) in expressions.iter().rev() {
         *grouped_points.entry(*col_idx).or_insert(F::ZERO) += y_pow * eval;
         y_pow *= y;
-    });
+    }
 
-    let mut expected_eval = F::ZERO;
-    grouped_points.into_iter().for_each(|(col_idx, eval)| match col_idx {
-        Some(col_idx) => terms.push((eval, vk.fixed_commitments[col_idx].clone())),
-        None => expected_eval -= eval,
-    });
-
-    let commitment = terms
-        .into_iter()
-        .map(|(scalar, com)| com * scalar)
-        .reduce(|acc, term| acc + term)
-        .unwrap_or_default();
+    for (col_idx, eval) in grouped_points {
+        match col_idx {
+            Some(idx) => commitment = commitment + vk.fixed_commitments[idx].clone() * eval,
+            None => expected_eval -= eval,
+        }
+    }
 
     (commitment, expected_eval)
 }
