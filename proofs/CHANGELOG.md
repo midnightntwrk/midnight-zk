@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `single-h-commitment` feature to commit the quotient polynomial in one piece [#276](https://github.com/midnightntwrk/midnight-zk/pull/276)
 * `fewer-point-sets` feature to reduce the number of distinct multi-open point sets [#281](https://github.com/midnightntwrk/midnight-zk/pull/281)
 * `LagrangeDelta` / `LagrangeDoubleDelta` commit bases [#379](https://github.com/midnightntwrk/midnight-zk/pull/379)
+* `FloorPlanner` region-layout caching API (`synthesize_capturing_regions`, `synthesize_with_cached_regions`) and implementation in `SimpleFloorPlanner` to skip the shape pass during proving [#380](https://github.com/midnightntwrk/midnight-zk/pull/380)
 
 ### Fixed
 * Fix verifier evals bug [#356](https://github.com/midnightntwrk/midnight-zk/pull/356)
