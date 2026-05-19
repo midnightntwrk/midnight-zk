@@ -3541,7 +3541,7 @@
       "max_deg": "5",
       "permutations": "10",
       "point_sets": "4",
-      "rows": "481",
+      "rows": "321",
       "table_rows": "455"
     },
     "add_and_mul": {
@@ -3552,7 +3552,7 @@
       "max_deg": "5",
       "permutations": "10",
       "point_sets": "4",
-      "rows": "1442",
+      "rows": "965",
       "table_rows": "455"
     },
     "add_constant": {
@@ -3563,7 +3563,7 @@
       "max_deg": "5",
       "permutations": "10",
       "point_sets": "4",
-      "rows": "522",
+      "rows": "362",
       "table_rows": "455"
     },
     "assert_eq": {
@@ -3640,7 +3640,7 @@
       "max_deg": "5",
       "permutations": "11",
       "point_sets": "4",
-      "rows": "898",
+      "rows": "578",
       "table_rows": "455"
     },
     "cond_swap": {
@@ -3651,7 +3651,7 @@
       "max_deg": "5",
       "permutations": "11",
       "point_sets": "4",
-      "rows": "1400",
+      "rows": "760",
       "table_rows": "455"
     },
     "div": {
@@ -3662,7 +3662,7 @@
       "max_deg": "5",
       "permutations": "10",
       "point_sets": "4",
-      "rows": "653",
+      "rows": "333",
       "table_rows": "455"
     },
     "inv": {
@@ -3673,7 +3673,7 @@
       "max_deg": "5",
       "permutations": "10",
       "point_sets": "4",
-      "rows": "743",
+      "rows": "423",
       "table_rows": "455"
     },
     "is_equal": {
@@ -3739,7 +3739,7 @@
       "max_deg": "5",
       "permutations": "10",
       "point_sets": "4",
-      "rows": "1032",
+      "rows": "712",
       "table_rows": "487"
     },
     "mul": {
@@ -3750,7 +3750,7 @@
       "max_deg": "5",
       "permutations": "10",
       "point_sets": "4",
-      "rows": "485",
+      "rows": "325",
       "table_rows": "455"
     },
     "mul_by_const": {
@@ -3761,7 +3761,7 @@
       "max_deg": "5",
       "permutations": "10",
       "point_sets": "4",
-      "rows": "523",
+      "rows": "363",
       "table_rows": "455"
     },
     "neg": {
@@ -3772,7 +3772,7 @@
       "max_deg": "5",
       "permutations": "10",
       "point_sets": "4",
-      "rows": "636",
+      "rows": "476",
       "table_rows": "455"
     },
     "pow": {
@@ -3783,7 +3783,7 @@
       "max_deg": "5",
       "permutations": "10",
       "point_sets": "4",
-      "rows": "798",
+      "rows": "478",
       "table_rows": "455"
     },
     "public_inputs": {
@@ -3805,7 +3805,7 @@
       "max_deg": "5",
       "permutations": "11",
       "point_sets": "4",
-      "rows": "700",
+      "rows": "380",
       "table_rows": "455"
     },
     "sub": {
@@ -3816,7 +3816,7 @@
       "max_deg": "5",
       "permutations": "10",
       "point_sets": "4",
-      "rows": "600",
+      "rows": "440",
       "table_rows": "455"
     }
   },
