@@ -41,6 +41,9 @@ pub struct ParamsKZG<E: Engine> {
 /// Accumulate in projective coordinates (one curve add per step) and
 /// batch-normalise to affine at the end. n-1 projective adds + one O(n)
 /// batch_normalise.
+///
+/// # Panics
+/// If input is empty
 fn suffix_sum<C: CurveAffine>(input: &[C]) -> Vec<C> {
     let n = input.len();
     let mut acc_proj: Vec<C::Curve> = vec![C::Curve::identity(); n];

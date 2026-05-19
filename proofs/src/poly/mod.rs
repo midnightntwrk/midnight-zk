@@ -233,7 +233,7 @@ impl PolynomialRepresentation for LagrangeDeltaCoeff {
     }
 
     fn g_coset<F: WithSmallOrderMulGroup<3>>(_evaluation_domain: &EvaluationDomain<F>) -> F {
-        unimplemented!()
+        unimplemented!("g_coset is undefined for the commit-only LagrangeDelta basis.")
     }
 }
 
@@ -274,7 +274,7 @@ impl PolynomialRepresentation for LagrangeDoubleDeltaCoeff {
     }
 
     fn g_coset<F: WithSmallOrderMulGroup<3>>(_evaluation_domain: &EvaluationDomain<F>) -> F {
-        unimplemented!()
+        unimplemented!("g_coset is undefined for the commit-only LagrangeDoubleDelta basis.")
     }
 }
 
