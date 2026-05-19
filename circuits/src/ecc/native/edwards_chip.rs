@@ -174,7 +174,7 @@ impl<C: CircuitCurve> AssignedScalarOfNativeCurve<C> {
     /// Converts the scalar's bits into an [`AssignedBigUint`].
     /// The result is not guaranteed to be in canonical form (i.e. it may
     /// represent a value greater than or equal to the scalar field order).
-    fn into_biguint(
+    fn to_biguint(
         &self,
         layouter: &mut impl Layouter<C::Base>,
         biguint_gadget: &BigUintGadget<C::Base, NG<C::Base>>,
@@ -184,7 +184,7 @@ impl<C: CircuitCurve> AssignedScalarOfNativeCurve<C> {
 
     /// Converts the scalar's bits into an [`AssignedBigUint`].
     /// The result is guaranteed to be in canonical form.
-    fn into_canonical_biguint(
+    fn to_canonical_biguint(
         &self,
         layouter: &mut impl Layouter<C::Base>,
         biguint_gadget: &BigUintGadget<C::Base, NG<C::Base>>,
@@ -917,8 +917,8 @@ impl<C: EdwardsCurve> AssertionInstructions<C::Base, AssignedScalarOfNativeCurve
         r: &AssignedScalarOfNativeCurve<C>,
         s: &AssignedScalarOfNativeCurve<C>,
     ) -> Result<(), Error> {
-        let r = r.into_canonical_biguint(layouter, &self.biguint_gadget)?;
-        let s = s.into_canonical_biguint(layouter, &self.biguint_gadget)?;
+        let r = r.to_canonical_biguint(layouter, &self.biguint_gadget)?;
+        let s = s.to_canonical_biguint(layouter, &self.biguint_gadget)?;
         self.biguint_gadget.assert_equal(layouter, &r, &s)
     }
 
@@ -928,8 +928,8 @@ impl<C: EdwardsCurve> AssertionInstructions<C::Base, AssignedScalarOfNativeCurve
         r: &AssignedScalarOfNativeCurve<C>,
         s: &AssignedScalarOfNativeCurve<C>,
     ) -> Result<(), Error> {
-        let r = r.into_canonical_biguint(layouter, &self.biguint_gadget)?;
-        let s = s.into_canonical_biguint(layouter, &self.biguint_gadget)?;
+        let r = r.to_canonical_biguint(layouter, &self.biguint_gadget)?;
+        let s = s.to_canonical_biguint(layouter, &self.biguint_gadget)?;
         self.biguint_gadget.assert_not_equal(layouter, &r, &s)
     }
 
@@ -939,7 +939,7 @@ impl<C: EdwardsCurve> AssertionInstructions<C::Base, AssignedScalarOfNativeCurve
         s: &AssignedScalarOfNativeCurve<C>,
         constant: C::ScalarField,
     ) -> Result<(), Error> {
-        let s = s.into_canonical_biguint(layouter, &self.biguint_gadget)?;
+        let s = s.to_canonical_biguint(layouter, &self.biguint_gadget)?;
         self.biguint_gadget.assert_equal_to_fixed(layouter, &s, constant.to_biguint())
     }
 
@@ -949,7 +949,7 @@ impl<C: EdwardsCurve> AssertionInstructions<C::Base, AssignedScalarOfNativeCurve
         s: &AssignedScalarOfNativeCurve<C>,
         constant: C::ScalarField,
     ) -> Result<(), Error> {
-        let s = s.into_canonical_biguint(layouter, &self.biguint_gadget)?;
+        let s = s.to_canonical_biguint(layouter, &self.biguint_gadget)?;
         self.biguint_gadget
             .assert_not_equal_to_fixed(layouter, &s, constant.to_biguint())
     }
@@ -1087,8 +1087,8 @@ impl<C: EdwardsCurve> EqualityInstructions<C::Base, AssignedScalarOfNativeCurve<
         r: &AssignedScalarOfNativeCurve<C>,
         s: &AssignedScalarOfNativeCurve<C>,
     ) -> Result<AssignedBit<C::Base>, Error> {
-        let r = r.into_canonical_biguint(layouter, &self.biguint_gadget)?;
-        let s = s.into_canonical_biguint(layouter, &self.biguint_gadget)?;
+        let r = r.to_canonical_biguint(layouter, &self.biguint_gadget)?;
+        let s = s.to_canonical_biguint(layouter, &self.biguint_gadget)?;
         self.biguint_gadget.is_equal(layouter, &r, &s)
     }
 
@@ -1098,8 +1098,8 @@ impl<C: EdwardsCurve> EqualityInstructions<C::Base, AssignedScalarOfNativeCurve<
         r: &AssignedScalarOfNativeCurve<C>,
         s: &AssignedScalarOfNativeCurve<C>,
     ) -> Result<AssignedBit<C::Base>, Error> {
-        let r = r.into_canonical_biguint(layouter, &self.biguint_gadget)?;
-        let s = s.into_canonical_biguint(layouter, &self.biguint_gadget)?;
+        let r = r.to_canonical_biguint(layouter, &self.biguint_gadget)?;
+        let s = s.to_canonical_biguint(layouter, &self.biguint_gadget)?;
         self.biguint_gadget.is_not_equal(layouter, &s, &r)
     }
 
@@ -1109,7 +1109,7 @@ impl<C: EdwardsCurve> EqualityInstructions<C::Base, AssignedScalarOfNativeCurve<
         s: &AssignedScalarOfNativeCurve<C>,
         constant: C::ScalarField,
     ) -> Result<AssignedBit<C::Base>, Error> {
-        let s = s.into_canonical_biguint(layouter, &self.biguint_gadget)?;
+        let s = s.to_canonical_biguint(layouter, &self.biguint_gadget)?;
         self.biguint_gadget.is_equal_to_fixed(layouter, &s, constant.to_biguint())
     }
 
@@ -1119,7 +1119,7 @@ impl<C: EdwardsCurve> EqualityInstructions<C::Base, AssignedScalarOfNativeCurve<
         s: &AssignedScalarOfNativeCurve<C>,
         constant: C::ScalarField,
     ) -> Result<AssignedBit<C::Base>, Error> {
-        let s = s.into_canonical_biguint(layouter, &self.biguint_gadget)?;
+        let s = s.to_canonical_biguint(layouter, &self.biguint_gadget)?;
         self.biguint_gadget.is_not_equal_to_fixed(layouter, &s, constant.to_biguint())
     }
 }
@@ -1137,7 +1137,7 @@ impl<C: EdwardsCurve> ArithInstructions<C::Base, AssignedScalarOfNativeCurve<C>>
         let mut acc = self.biguint_gadget.assign_fixed_biguint(layouter, constant.to_biguint())?;
 
         for (c, s) in terms {
-            let s = s.into_biguint(layouter, &self.biguint_gadget)?;
+            let s = s.to_biguint(layouter, &self.biguint_gadget)?;
             let c = self.biguint_gadget.assign_fixed_biguint(layouter, c.to_biguint())?;
             let c_times_s = self.biguint_gadget.mul(layouter, &c, &s)?;
             acc = self.biguint_gadget.add(layouter, &acc, &c_times_s)?;
@@ -1152,8 +1152,8 @@ impl<C: EdwardsCurve> ArithInstructions<C::Base, AssignedScalarOfNativeCurve<C>>
         r: &AssignedScalarOfNativeCurve<C>,
         s: &AssignedScalarOfNativeCurve<C>,
     ) -> Result<AssignedScalarOfNativeCurve<C>, Error> {
-        let r = r.into_biguint(layouter, &self.biguint_gadget)?;
-        let s = s.into_biguint(layouter, &self.biguint_gadget)?;
+        let r = r.to_biguint(layouter, &self.biguint_gadget)?;
+        let s = s.to_biguint(layouter, &self.biguint_gadget)?;
         let res = self.biguint_gadget.add(layouter, &r, &s)?;
         AssignedScalarOfNativeCurve::from_biguint(layouter, &self.biguint_gadget, &res)
     }
@@ -1165,8 +1165,8 @@ impl<C: EdwardsCurve> ArithInstructions<C::Base, AssignedScalarOfNativeCurve<C>>
         s: &AssignedScalarOfNativeCurve<C>,
         multiplying_constant: Option<C::ScalarField>,
     ) -> Result<AssignedScalarOfNativeCurve<C>, Error> {
-        let r = r.into_biguint(layouter, &self.biguint_gadget)?;
-        let s = s.into_biguint(layouter, &self.biguint_gadget)?;
+        let r = r.to_biguint(layouter, &self.biguint_gadget)?;
+        let s = s.to_biguint(layouter, &self.biguint_gadget)?;
         let mut res = self.biguint_gadget.mul(layouter, &r, &s)?;
 
         if let Some(c) = multiplying_constant {
@@ -1192,8 +1192,8 @@ impl<C: EdwardsCurve> ArithInstructions<C::Base, AssignedScalarOfNativeCurve<C>>
             C::ScalarField::NUM_BITS,
         )?;
 
-        let r = r.into_biguint(layouter, &self.biguint_gadget)?;
-        let s = s.into_biguint(layouter, &self.biguint_gadget)?;
+        let r = r.to_biguint(layouter, &self.biguint_gadget)?;
+        let s = s.to_biguint(layouter, &self.biguint_gadget)?;
         let res_times_s = self.biguint_gadget.mul(layouter, &res, &s)?;
         let reduced_res_times_s =
             reduce_biguint_mod_scalar_order::<C>(layouter, &self.biguint_gadget, &res_times_s)?;
@@ -1259,8 +1259,8 @@ impl<C: EdwardsCurve> ControlFlowInstructions<C::Base, AssignedScalarOfNativeCur
         a: &AssignedScalarOfNativeCurve<C>,
         b: &AssignedScalarOfNativeCurve<C>,
     ) -> Result<AssignedScalarOfNativeCurve<C>, Error> {
-        let a_as_big = a.into_biguint(layouter, &self.biguint_gadget)?;
-        let b_as_big = b.into_biguint(layouter, &self.biguint_gadget)?;
+        let a_as_big = a.to_biguint(layouter, &self.biguint_gadget)?;
+        let b_as_big = b.to_biguint(layouter, &self.biguint_gadget)?;
         let selected = self.biguint_gadget.select(layouter, cond, &a_as_big, &b_as_big)?;
         Ok(AssignedScalarOfNativeCurve {
             bits: self.biguint_gadget.to_le_bits(layouter, &selected)?,
