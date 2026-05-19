@@ -1312,3 +1312,258 @@ pub fn evaluate<F: Field, B: PolynomialRepresentation>(
     });
     values
 }
+
+#[cfg(test)]
+mod tests {
+    use std::marker::PhantomData;
+
+    use ff::Field;
+    use midnight_curves::Fq;
+    use rand_chacha::ChaCha20Rng;
+    use rand_core::{RngCore, SeedableRng};
+
+    use super::*;
+    use crate::{
+        plonk::{AdviceQuery, FixedQuery, InstanceQuery},
+        poly::{LagrangeCoeff, Polynomial, Rotation},
+    };
+
+    fn rand_fq(rng: &mut ChaCha20Rng) -> Fq {
+        Fq::from(rng.next_u64()).double() + Fq::from(rng.next_u64())
+    }
+
+    fn rand_poly(rng: &mut ChaCha20Rng, n: usize) -> Polynomial<Fq, LagrangeCoeff> {
+        Polynomial {
+            values: (0..n).map(|_| rand_fq(rng)).collect(),
+            _marker: PhantomData,
+        }
+    }
+
+    // Note: We need this instead of Expression::evaluate to test for
+    // Horner and Store as well.
+    /// Reference evaluator for `GraphEvaluator` without flattening.
+    #[allow(clippy::too_many_arguments)]
+    fn ref_evaluate(
+        graph: &GraphEvaluator<Fq>,
+        fixed: &[Polynomial<Fq, LagrangeCoeff>],
+        advice: &[Polynomial<Fq, LagrangeCoeff>],
+        instance: &[Polynomial<Fq, LagrangeCoeff>],
+        rots: &[usize],
+        beta: Fq,
+        theta: Fq,
+        tc: Fq,
+        y: Fq,
+        prev: Fq,
+    ) -> Fq {
+        let mut im = vec![Fq::ZERO; graph.num_intermediates];
+        let r = |vs: &ValueSource, im: &[Fq]| match *vs {
+            ValueSource::Constant(i) => graph.constants[i],
+            ValueSource::Intermediate(i) => im[i],
+            ValueSource::Fixed(c, k) => fixed[c][rots[k]],
+            ValueSource::Advice(c, k) => advice[c][rots[k]],
+            ValueSource::Instance(c, k) => instance[c][rots[k]],
+            ValueSource::Beta() => beta,
+            ValueSource::Theta() => theta,
+            ValueSource::TrashChallenge() => tc,
+            ValueSource::Y() => y,
+            ValueSource::PreviousValue() => prev,
+        };
+        for ci in &graph.calculations {
+            im[ci.target] = match &ci.calculation {
+                Calculation::Add(a, b) => r(a, &im) + r(b, &im),
+                Calculation::Sub(a, b) => r(a, &im) - r(b, &im),
+                Calculation::Mul(a, b) => r(a, &im) * r(b, &im),
+                Calculation::Square(v) => r(v, &im).square(),
+                Calculation::Double(v) => r(v, &im).double(),
+                Calculation::Negate(v) => -r(v, &im),
+                Calculation::Store(v) => r(v, &im),
+                Calculation::Horner(s, parts, f) => {
+                    let fv = r(f, &im);
+                    let mut acc = r(s, &im);
+                    for p in parts {
+                        acc = acc * fv + r(p, &im);
+                    }
+                    acc
+                }
+            };
+        }
+        *im.last().expect("non-empty graph")
+    }
+
+    /// Assert `FlatGraphEvaluator::{evaluate, evaluate_chunk}` agrees with the
+    /// ref_evalute for `graph` for several BATCH sizes.
+    fn check_graph(graph: &GraphEvaluator<Fq>, n: usize, seed: u64) {
+        let mut rng = ChaCha20Rng::seed_from_u64(seed);
+
+        let log_n = n.trailing_zeros();
+        // Log scaling factor for the extended domain. No extended domain log 1 = 0.
+        let log_scale = 0u32;
+
+        let fixed: Vec<_> = (0..3).map(|_| rand_poly(&mut rng, n)).collect();
+        let advice: Vec<_> = (0..3).map(|_| rand_poly(&mut rng, n)).collect();
+        let instance: Vec<_> = (0..2).map(|_| rand_poly(&mut rng, n)).collect();
+
+        let prev: Vec<_> = (0..n).map(|_| rand_fq(&mut rng)).collect();
+
+        let (beta, theta, tc, y) = (
+            rand_fq(&mut rng),
+            rand_fq(&mut rng),
+            rand_fq(&mut rng),
+            rand_fq(&mut rng),
+        );
+
+        let flat = graph.flatten();
+        let challenges = flat.new_values_buffer(&beta, &theta, &tc, &y);
+        let rots = |idx: usize| -> Vec<usize> {
+            graph
+                .rotations
+                .iter()
+                .map(|&r| get_rotation_idx(idx, r, log_scale, log_n))
+                .collect()
+        };
+
+        let expected: Vec<Fq> = (0..n)
+            .map(|idx| {
+                ref_evaluate(
+                    graph,
+                    &fixed,
+                    &advice,
+                    &instance,
+                    &rots(idx),
+                    beta,
+                    theta,
+                    tc,
+                    y,
+                    prev[idx],
+                )
+            })
+            .collect();
+
+        // Per-element `evaluate` check.
+        // Checks negative (under 0) and positive (over n) wrap-around.
+        for idx in 0..n {
+            let mut buf = flat.new_values_buffer(&beta, &theta, &tc, &y);
+            let got = flat.evaluate::<LagrangeCoeff>(
+                &mut buf,
+                &fixed,
+                &advice,
+                &instance,
+                &rots(idx),
+                &prev[idx],
+            );
+            assert_eq!(expected[idx], got, "evaluate mismatch at idx={idx}");
+        }
+
+        // `evaluate_chunk` parity across BATCH sizes and partial windows.
+        macro_rules! check_chunk {
+            ($B:literal, $start:expr, $len:expr) => {{
+                let mut out: Vec<Fq> = prev[$start..$start + $len].to_vec();
+                flat.evaluate_chunk::<$B, LagrangeCoeff>(
+                    &challenges,
+                    &mut out,
+                    $start,
+                    &fixed,
+                    &advice,
+                    &instance,
+                    log_scale,
+                    log_n,
+                );
+                assert_eq!(
+                    &expected[$start..$start + $len],
+                    out.as_slice(),
+                    "BATCH={} start={} len={}",
+                    $B,
+                    $start,
+                    $len
+                );
+            }};
+        }
+        check_chunk!(1, 0, n);
+        check_chunk!(2, 0, n);
+        check_chunk!(3, 0, n);
+        check_chunk!(4, 0, n);
+        check_chunk!(8, 0, n);
+        check_chunk!(4, 1, n - 1);
+        check_chunk!(4, 3, 5);
+        check_chunk!(4, n - 1, 1);
+    }
+
+    /// `FlatGraphEvaluator` must agree with the original `GraphEvaluator`,
+    /// both for a hand-built graph that uses every [`Calculation`] variant
+    /// and for a graph built via `add_expression`.
+    #[test]
+    fn flat_matches_graph() {
+        // Hand-built graph: every Calculation variant, all column types,
+        // negative/positive rotations, and every named challenge slot.
+        let mut g = GraphEvaluator::<Fq>::default();
+        let (rm1, r0, r1, r2) = (
+            g.add_rotation(&Rotation(-1)),
+            g.add_rotation(&Rotation(0)),
+            g.add_rotation(&Rotation(1)),
+            g.add_rotation(&Rotation(2)),
+        );
+
+        // Fixed, advice and instance value sources.
+        let f0 = g.add_calculation(Calculation::Store(ValueSource::Fixed(0, r0)));
+        let f1 = g.add_calculation(Calculation::Store(ValueSource::Fixed(1, rm1)));
+        let a0 = g.add_calculation(Calculation::Store(ValueSource::Advice(0, r1)));
+        let a1 = g.add_calculation(Calculation::Store(ValueSource::Advice(1, r2)));
+        let i0 = g.add_calculation(Calculation::Store(ValueSource::Instance(0, r0)));
+
+        // Operations on all types of value sources.
+        let add = g.add_calculation(Calculation::Add(f0, a0));
+        let sub = g.add_calculation(Calculation::Sub(a1, i0));
+        let mul = g.add_calculation(Calculation::Mul(add, sub));
+        let sq = g.add_calculation(Calculation::Square(a0));
+        let dbl = g.add_calculation(Calculation::Double(f1));
+        let neg = g.add_calculation(Calculation::Negate(mul));
+        let wb = g.add_calculation(Calculation::Mul(add, ValueSource::Beta()));
+        let wt = g.add_calculation(Calculation::Add(wb, ValueSource::Theta()));
+        let wc = g.add_calculation(Calculation::Sub(wt, ValueSource::TrashChallenge()));
+
+        // Constant as a Calculation operand.
+        let with_const = g.add_calculation(Calculation::Add(neg, ValueSource::Constant(2)));
+
+        // Horner caluclation to compute linear combination on challenge Y of previous
+        // calculations.
+        g.add_calculation(Calculation::Horner(
+            ValueSource::PreviousValue(),
+            vec![sq, dbl, neg, wc, with_const],
+            ValueSource::Y(),
+        ));
+        check_graph(&g, 16, 0xCAFE);
+
+        // Expression path: q * (a * b - c) + 7 * d.
+        // Uses Sum / Product / Negated / Scaled simplifications inside
+        // `add_expression`.
+        let fixed_query = |col_idx, rot| {
+            Expression::<Fq>::Fixed(FixedQuery {
+                index: Some(col_idx),
+                column_index: col_idx,
+                rotation: Rotation(rot),
+            })
+        };
+        let advice_query = |col_idx, rot| {
+            Expression::<Fq>::Advice(AdviceQuery {
+                index: Some(col_idx),
+                column_index: col_idx,
+                rotation: Rotation(rot),
+            })
+        };
+        let instance_query = |col_idx, rot| {
+            Expression::<Fq>::Instance(InstanceQuery {
+                index: Some(col_idx),
+                column_index: col_idx,
+                rotation: Rotation(rot),
+            })
+        };
+
+        let expr = fixed_query(0, 0)
+            * (advice_query(0, 0) * advice_query(1, 1) - advice_query(2, -1))
+            + Expression::Scaled(Box::new(instance_query(0, 0)), Fq::from(7u64));
+
+        let mut g = GraphEvaluator::default();
+        let _ = g.add_expression(&expr);
+        check_graph(&g, 16, 0xBEEF);
+    }
+}
