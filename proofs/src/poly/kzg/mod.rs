@@ -259,6 +259,22 @@ where
         E::G1: CurveExt<ScalarExt = E::Fr>,
         KZGCommitment<E>: Hashable<T::Hash> + 'com,
     {
+        // Add dummy queries to reduce the number of distinct multi-open point sets.
+        #[cfg(feature = "fewer-point-sets")]
+        let queries = &{
+            let mut queries = queries.to_vec();
+            let pairs: Vec<_> =
+                queries.iter().map(|q| (q.get_commitment(), q.get_point())).collect();
+            for (idx, point) in compute_dummy_queries(&pairs) {
+                queries.push(VerifierQuery::new(
+                    point,
+                    queries[idx].commitment.0,
+                    transcript.read().map_err(|_| Error::SamplingError)?,
+                ));
+            }
+            queries
+        };
+
         // Refer to the halo2 book for docs:
         // https://zcash.github.io/halo2/design/proving-system/multipoint-opening.html
         let x1: E::Fr = transcript.squeeze_challenge();

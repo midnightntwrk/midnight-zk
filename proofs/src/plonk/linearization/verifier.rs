@@ -35,16 +35,10 @@ pub(crate) fn compute_linearization_commitment<
     splitting_factor: &F,
     quotient_limb_commitments: &[CS::Commitment],
 ) -> (CS::Commitment, F) {
-    let mut commitment = CS::Commitment::default();
     let mut expected_eval = F::ZERO;
 
-    let mut splitting_pow = F::ONE - *xn;
-    for com in quotient_limb_commitments {
-        commitment = commitment + com.clone() * splitting_pow;
-        splitting_pow *= splitting_factor;
-    }
-
-    // Group multiples of the same fixed column to reduce the number of scalar multiplications
+    // Group multiples of the same fixed column to reduce the number of scalar
+    // multiplications
     let mut grouped_points: BTreeMap<Option<usize>, F> = BTreeMap::new();
     let mut y_pow = F::ONE;
     for (col_idx, eval) in expressions.iter().rev() {
@@ -52,12 +46,33 @@ pub(crate) fn compute_linearization_commitment<
         y_pow *= y;
     }
 
-    for (col_idx, eval) in grouped_points {
-        match col_idx {
-            Some(idx) => commitment = commitment + vk.fixed_commitments[idx].clone() * eval,
-            None => expected_eval -= eval,
-        }
-    }
+    let mut splitting_pow = F::ONE - *xn;
+    let (first_com, rest_coms) = quotient_limb_commitments
+        .split_first()
+        .expect("at least one quotient limb commitment");
+
+    let init = {
+        let term = first_com.clone() * splitting_pow;
+        splitting_pow *= splitting_factor;
+        term
+    };
+
+    let commitment = rest_coms.iter().fold(init, |acc, com| {
+        let term = com.clone() * splitting_pow;
+        splitting_pow *= splitting_factor;
+        acc + term
+    });
+
+    let commitment =
+        grouped_points
+            .into_iter()
+            .fold(commitment, |acc, (col_idx, eval)| match col_idx {
+                Some(idx) => acc + vk.fixed_commitments[idx].clone() * eval,
+                None => {
+                    expected_eval -= eval;
+                    acc
+                }
+            });
 
     (commitment, expected_eval)
 }

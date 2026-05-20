@@ -18,11 +18,23 @@ use crate::{
 /// Each point carries a [`CommitmentLabel`] that identifies its role in the
 /// protocol (e.g. `Fixed(i)`, `Advice(i)`).  Labels are protocol-level
 /// metadata; they are not included in serialization or hashing.
+///
+/// # Serialization invariant
+///
+/// Only `Simple` commitments are ever serialized or hashed.  `Linear`
+/// is a **verifier-internal** structure: the verifier assembles it from
+/// individually deserialized `Simple` points (via [`Mul`] and [`Add`]) so
+/// that all scalar multiplications can be batched in a single multi-scalar
+/// multiplication at the end of [`PolynomialCommitmentScheme::multi_prepare`].
+/// It is therefore a programming error to attempt to serialize or hash a
+/// `Linear` commitment; the corresponding trait methods panic.
 #[derive(Clone, Debug)]
 pub enum KZGCommitment<E: MultiMillerLoop> {
     /// A single committed point with its label.
     Simple(E::G1, CommitmentLabel),
-    /// A linear combination `∑ scalars[i] * points[i]` with per-term labels.
+    /// A lazy linear combination `∑ scalars[i] * points[i]` with per-term
+    /// labels, accumulated during verification for MSM batching.  Never
+    /// serialized or hashed directly.
     Linear(Vec<E::G1>, Vec<E::Fr>, Vec<CommitmentLabel>),
 }
 
@@ -69,12 +81,11 @@ where
     }
 }
 
-/// Serialization assumes commitments are `Simple`. `Linear` commitments are
-/// constructed by the verifier from individually serialized `Simple` points and
-/// are never written to or read from a transcript directly.
+/// Only `Simple` commitments are serialized; see the type-level doc for why
+/// `Linear` is never written to or read from a proof directly.
 ///
-/// Labels are not included in the serialized form; deserialized commitments
-/// always receive [`CommitmentLabel::NoLabel`].
+/// Labels are not part of the serialized form; deserialized commitments always
+/// receive [`CommitmentLabel::NoLabel`].
 impl<E: MultiMillerLoop> ProcessedSerdeObject for KZGCommitment<E>
 where
     E::G1: Default + ProcessedSerdeObject,
@@ -101,8 +112,9 @@ where
     }
 }
 
-/// Transcript operations assume commitments are `Simple` — see
-/// [`ProcessedSerdeObject`]. Labels are not part of the transcript.
+/// Only `Simple` commitments are hashed into transcripts; see the type-level
+/// doc for why `Linear` is never hashed directly. Labels are not part of the
+/// transcript.
 impl<H: TranscriptHash, E: MultiMillerLoop> Hashable<H> for KZGCommitment<E>
 where
     E::G1: Hashable<H>,
