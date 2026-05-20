@@ -268,7 +268,7 @@ pub fn circuit_model<
 /// Place this marker in `synthesize` (via `layouter.namespace(||
 /// COST_MEASURE_START)`) immediately before the operation whose cost you want
 /// to isolate.  Pair it with [`COST_MEASURE_END`].  When both markers are
-/// present, [`cost_model_options`] reports `rows` as the span of the rows
+/// present, `cost_model_options` reports `rows` as the span of the rows
 /// assigned between the two markers rather than the full circuit row count.
 pub const COST_MEASURE_START: &str = "__cost_model_measure_start__";
 

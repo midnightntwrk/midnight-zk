@@ -433,8 +433,8 @@ where
     ///
     /// The returned vector has the same length as `input`'s buffer (`M`
     /// elements). It inherits the same
-    /// [`get_limits`](`ScannerVec::get_limits`), and
-    /// [`padding_flags`](`ScannerVec::padding_flags`) as `input`. Filler
+    /// `get_limits`, and
+    /// `padding_flags` as `input`. Filler
     /// positions in the output are constrained to 0 (the self-loop transitions
     /// on initial/final states output marker 0).
     pub fn parse_varlen<const M: usize, const A: usize>(

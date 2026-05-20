@@ -233,7 +233,7 @@ where
     /// most significant bit of the final byte of the y-coordinate.
     ///
     /// # Returns
-    /// An array [AssignedByte<F>; 32] constrained to represent a canonical
+    /// An array [`AssignedByte<F>`; 32] constrained to represent a canonical
     /// encoding.
     pub fn to_canonical_compressed_bytes(
         &self,
@@ -287,7 +287,7 @@ where
     ///
     /// # Unsatisfiable Circuit
     /// If the given array of [AssignedByte] is a non-canonical encoding of the
-    /// point provided by [Value<Curve25519Subgroup>].
+    /// point provided by [`Value<Curve25519Subgroup>`].
     pub fn from_canonical_compressed_bytes(
         &self,
         layouter: &mut impl Layouter<F>,

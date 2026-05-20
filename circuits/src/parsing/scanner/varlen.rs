@@ -92,7 +92,7 @@ impl<F> ScannerChip<F>
 where
     F: CircuitField + Ord,
 {
-    /// Converts a [`ScannerVec`] into an `AssignedVector` of [`AssignedByte`]s.
+    /// Converts a `ScannerVec` into an `AssignedVector` of [`AssignedByte`]s.
     ///
     /// Filler positions (value 256) are replaced with 0 so that all buffer
     /// elements are valid bytes. The resulting vector can be passed to
@@ -100,7 +100,7 @@ where
     /// SHA-256.
     ///
     /// No range-check constraints are added: payload bytes were already
-    /// range-checked during [`ScannerVec`] construction, and fillers are
+    /// range-checked during `ScannerVec` construction, and fillers are
     /// replaced by a known constant (0).
     pub fn scanner_vec_to_byte_vector<const M: usize, const A: usize>(
         &self,
@@ -124,11 +124,11 @@ where
         })
     }
 
-    /// Assigns a variable-length byte vector as a [`ScannerVec`].
+    /// Assigns a variable-length byte vector as a `ScannerVec`.
     ///
     /// The input bytes are assigned as [`AssignedByte`]s (range-checked to
     /// `[0, 255]`), promoted to [`AssignedNative`] elements, and filler
-    /// positions are constrained to [`ALPHABET_MAX_SIZE`] in-circuit.
+    /// positions are constrained to `ALPHABET_MAX_SIZE` in-circuit.
     pub fn assign_scanner_vec<const M: usize, const A: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -140,7 +140,7 @@ where
     }
 
     /// Converts an existing [`AssignedVector`] of [`AssignedByte`]s into a
-    /// [`ScannerVec`], constraining filler positions to [`ALPHABET_MAX_SIZE`]
+    /// `ScannerVec`, constraining filler positions to `ALPHABET_MAX_SIZE`
     /// and anchoring the length.
     ///
     /// The input elements are already range-checked (they are
