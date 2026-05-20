@@ -17,6 +17,13 @@ verification keys break backwards compatibility.
 
 ### Removed
 
+## [2.1.0]
+### Added
+* `AssignedScalarOfNativeCurve` now implements `InnerValue`, `InnerConstants`, `Instantiable`, and `Sampleable` [#383](https://github.com/midnightntwrk/midnight-zk/pull/383)
+
+### Changed
+* Bump `ZKSTD_VERSION` to 2; add `ZkStdLibArchV1` for backward-compatible deserialization of v1 verifying keys
+
 ## [2.0.0]
 ### Changed
 * Do not expose scalar chips separately from `ZkStdLib`; use `secp256k1()`, `p256()`, `bls12_381()` instead [#335](https://github.com/midnightntwrk/midnight-zk/pull/335)
