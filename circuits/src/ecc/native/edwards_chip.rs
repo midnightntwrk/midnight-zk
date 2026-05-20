@@ -198,7 +198,7 @@ impl<C: CircuitCurve> AssignedScalarOfNativeCurve<C> {
 
     /// Constructs an [`AssignedScalarOfNativeCurve`] from an
     /// [`AssignedBigUint`]. The result is not guaranteed to be canonical but is
-    /// guaranteed to have at most [`C::ScalarField::NUM_BITS`] bits.
+    /// guaranteed to have at most `C::ScalarField::NUM_BITS` bits.
     fn from_biguint(
         layouter: &mut impl Layouter<C::Base>,
         biguint_gadget: &BigUintGadget<C::Base, NG<C::Base>>,
