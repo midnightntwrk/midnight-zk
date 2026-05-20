@@ -95,7 +95,7 @@ impl<'com, F: PrimeField> Query<F> for ProverQuery<'com, F> {
 /// A pointer to a commitment, with pointer-based equality.
 ///
 /// Two `CommitmentReference`s are equal iff they point to the same allocation,
-/// so that commitments are grouped by identity rather than by value.
+/// so that commitments are grouped by reference rather than by value.
 #[derive(Debug)]
 pub struct CommitmentReference<'com, F: PrimeField, CS: PolynomialCommitmentScheme<F>>(
     pub(crate) &'com CS::Commitment,
