@@ -245,6 +245,7 @@ struct ZkStdLibArchV1 {
     bls12_381: bool,
     base64: bool,
     automaton: bool,
+    nr_pow2range_cols: u8,
 }
 
 impl From<ZkStdLibArchV1> for ZkStdLibArch {
@@ -263,7 +264,7 @@ impl From<ZkStdLibArchV1> for ZkStdLibArch {
             curve25519: false,
             base64: v1.base64,
             automaton: v1.automaton,
-            nr_pow2range_cols: 1,
+            nr_pow2range_cols: v1.nr_pow2range_cols,
         }
     }
 }
