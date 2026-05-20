@@ -190,6 +190,9 @@ impl<C: CircuitCurve> AssignedScalarOfNativeCurve<C> {
         biguint_gadget: &BigUintGadget<C::Base, NG<C::Base>>,
     ) -> Result<AssignedBigUint<C::Base>, Error> {
         let s = biguint_gadget.from_le_bits(layouter, &self.bits)?;
+        if self.enforced_canonical {
+            return Ok(s);
+        }
         reduce_biguint_mod_scalar_order::<C>(layouter, biguint_gadget, &s)
     }
 
