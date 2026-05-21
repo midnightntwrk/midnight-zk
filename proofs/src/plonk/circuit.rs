@@ -18,7 +18,7 @@ use crate::{
     dev::metadata,
     plonk::trash::Argument,
     poly::Rotation,
-    utils::rational::Rational,
+    utils::{helpers::ordinal, rational::Rational},
 };
 
 /// A column type
@@ -1806,13 +1806,14 @@ impl<F: Field> ConstraintSystem<F> {
                 (inputs, table)
             })
             .collect();
+
         let index = self.lookups.len();
 
-        self.lookups.push(logup::BatchedArgument::new(
-            name.as_ref(),
-            selector,
-            table_map,
-        ));
+        // Append the ordinal to guarantee uniqueness even when the caller supplies
+        // the same name twice (e.g. the same chip configured more than once).
+        let name = format!("{} lookup: {}", ordinal(index + 1), name.as_ref());
+
+        self.lookups.push(logup::BatchedArgument::new(&name, selector, table_map));
 
         index
     }
@@ -2400,7 +2401,13 @@ impl<'a, F: Field> VirtualCells<'a, F> {
                 let q = self.query_selector(s);
                 let names: Vec<_> = c.constraints.iter().map(|c| c.name.clone()).collect();
                 let polys: Vec<_> = c.constraints.into_iter().map(|c| c.poly).collect();
-                (self.meta.trashcans).push(Argument::new(names.join("&"), q, polys));
+
+                // Append the ordinal to guarantee uniqueness even when the caller supplies
+                // the same name twice (e.g. the same chip configured more than once).
+                let index = self.meta.trashcans.len();
+                let name = format!("{} trash: {}", ordinal(index + 1), names.join("&"));
+                (self.meta.trashcans).push(Argument::new(name, q, polys));
+
                 vec![]
             }
             SelectorType::None => c.constraints,
