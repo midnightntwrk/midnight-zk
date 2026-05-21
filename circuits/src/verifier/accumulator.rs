@@ -39,7 +39,7 @@ use midnight_proofs::{
             msm::{DualMSM, MSMKZG},
             params::ParamsVerifierKZG,
         },
-        CommitmentLabel,
+        PolynomialLabel,
     },
 };
 use num_bigint::BigUint;
@@ -94,23 +94,23 @@ impl<S: SelfEmulation> Accumulator<S> {
     ) -> Self {
         let (lhs, rhs) = dual_msm.split();
 
-        let process_msm = |msm: Vec<(&CommitmentLabel, &S::F, &S::C)>| {
+        let process_msm = |msm: Vec<(&PolynomialLabel, &S::F, &S::C)>| {
             let mut bases = Vec::with_capacity(msm.len());
             let mut scalars = Vec::with_capacity(msm.len());
             let mut fixed_base_scalars = BTreeMap::new();
             for (label, scalar, base) in msm {
                 match label {
-                    CommitmentLabel::Fixed(i) => {
+                    PolynomialLabel::Fixed(i) => {
                         let name = fixed_commitment_name(prefix, *i);
                         assert_eq!(fixed_bases.get(&name), Some(base));
                         fixed_base_scalars.insert(name, *scalar);
                     }
-                    CommitmentLabel::Permutation(i) => {
+                    PolynomialLabel::Permutation(i) => {
                         let name = perm_commitment_name(prefix, *i);
                         assert_eq!(fixed_bases.get(&name), Some(base));
                         fixed_base_scalars.insert(name, *scalar);
                     }
-                    CommitmentLabel::Custom(s) if s == "-G" => {
+                    PolynomialLabel::Custom(s) if s == "-G" => {
                         assert_eq!(fixed_bases.get(s), Some(base));
                         fixed_base_scalars.insert("-G".into(), *scalar);
                     }

@@ -34,7 +34,7 @@ use midnight_proofs::{
     plonk::{self, ConstraintSystem, Error},
     poly::{
         kzg::{commitment::KZGCommitment, params::ParamsVerifierKZG, KZGCommitmentScheme},
-        CommitmentLabel, EvaluationDomain,
+        PolynomialLabel, EvaluationDomain,
     },
     transcript::{CircuitTranscript, Transcript},
 };
@@ -239,7 +239,7 @@ impl IvcTransition for ProofAggregation {
                     ctx.vk.vk(),
                     &[KZGCommitment::Simple(
                         C::identity(),
-                        CommitmentLabel::NoLabel,
+                        PolynomialLabel::NoLabel,
                     )],
                     &[&statement_pis],
                     &mut transcript,

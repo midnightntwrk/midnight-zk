@@ -15,7 +15,7 @@ use crate::{
     poly::{
         commitment::{Guard, PolynomialCommitmentScheme},
         kzg::KZGCommitmentScheme,
-        CommitmentLabel, Error,
+        PolynomialLabel, Error,
     },
     utils::{
         arithmetic::{CurveExt, MSM},
@@ -30,7 +30,7 @@ use crate::{
 pub struct MSMKZG<E: Engine> {
     pub(crate) scalars: Vec<E::Fr>,
     pub(crate) bases: Vec<E::G1>,
-    pub(crate) labels: Vec<CommitmentLabel>,
+    pub(crate) labels: Vec<PolynomialLabel>,
 }
 
 impl<E: Engine> MSMKZG<E> {
@@ -69,7 +69,7 @@ impl<E: Engine> MSMKZG<E> {
         MSMKZG {
             scalars: vec![E::Fr::ONE],
             bases: vec![*base],
-            labels: vec![CommitmentLabel::NoLabel],
+            labels: vec![PolynomialLabel::NoLabel],
         }
     }
 }
@@ -95,14 +95,14 @@ where
         debug_assert!(
             self.labels
                 .iter()
-                .all(|l| matches!(l, CommitmentLabel::NoLabel | CommitmentLabel::Advice(_))),
+                .all(|l| matches!(l, PolynomialLabel::NoLabel | PolynomialLabel::Advice(_))),
             "collapse: all labels must be NoLabel or Advice, found: {:?}",
             self.labels,
         );
         let point = self.eval();
         self.scalars = vec![E::Fr::ONE];
         self.bases = vec![point];
-        self.labels = vec![CommitmentLabel::NoLabel];
+        self.labels = vec![PolynomialLabel::NoLabel];
     }
 }
 
@@ -110,7 +110,7 @@ impl<E: Engine + Debug> MSM<E::G1Affine> for MSMKZG<E>
 where
     E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
 {
-    fn append_term(&mut self, scalar: E::Fr, point: E::G1, label: CommitmentLabel) {
+    fn append_term(&mut self, scalar: E::Fr, point: E::G1, label: PolynomialLabel) {
         self.scalars.push(scalar);
         self.bases.push(point);
         self.labels.push(label);
@@ -155,7 +155,7 @@ where
         self.scalars.clone()
     }
 
-    fn labels(&self) -> Vec<CommitmentLabel> {
+    fn labels(&self) -> Vec<PolynomialLabel> {
         self.labels.clone()
     }
 }
@@ -202,12 +202,12 @@ pub struct DualMSM<E: Engine> {
 /// A [DualMSM] split into left and right vectors of `(Scalar, Point)` tuples
 pub type SplitDualMSM<'a, E> = (
     Vec<(
-        &'a CommitmentLabel,
+        &'a PolynomialLabel,
         &'a <E as Engine>::Fr,
         &'a <E as Engine>::G1,
     )>,
     Vec<(
-        &'a CommitmentLabel,
+        &'a PolynomialLabel,
         &'a <E as Engine>::Fr,
         &'a <E as Engine>::G1,
     )>,

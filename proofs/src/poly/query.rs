@@ -9,7 +9,7 @@ use crate::{
 
 /// A structured label for polynomial commitments in verifier queries.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub enum CommitmentLabel {
+pub enum PolynomialLabel {
     /// Advice column commitment (column index).
     Advice(usize),
     /// Instance column commitment (column index).
@@ -24,7 +24,7 @@ pub enum CommitmentLabel {
     NoLabel,
 }
 
-impl fmt::Display for CommitmentLabel {
+impl fmt::Display for PolynomialLabel {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Advice(i) => write!(f, "advice_{i}"),

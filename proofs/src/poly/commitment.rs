@@ -7,7 +7,7 @@ use ff::{FromUniformBytes, PrimeField};
 use crate::{
     plonk::{k_from_circuit, Circuit},
     poly::{
-        query::CommitmentLabel, Error, Polynomial, PolynomialRepresentation, ProverQuery,
+        query::PolynomialLabel, Error, Polynomial, PolynomialRepresentation, ProverQuery,
         VerifierQuery,
     },
     transcript::{Hashable, Sampleable, Transcript},
@@ -48,7 +48,7 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
     fn commit<B: PolynomialRepresentation>(
         params: &Self::Parameters,
         polynomial: &Polynomial<F, B>,
-        label: CommitmentLabel,
+        label: PolynomialLabel,
     ) -> Self::Commitment;
 
     /// Create a multi-opening proof at a set of [ProverQuery]'s.

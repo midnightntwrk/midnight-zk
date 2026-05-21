@@ -7,7 +7,7 @@ use super::{Argument, ProvingKey, VerifyingKey};
 use crate::{
     plonk::{Any, Column, Error},
     poly::{
-        commitment::PolynomialCommitmentScheme, Coeff, CommitmentLabel, EvaluationDomain,
+        commitment::PolynomialCommitmentScheme, Coeff, PolynomialLabel, EvaluationDomain,
         ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial,
     },
     utils::arithmetic::parallelize,
@@ -247,7 +247,7 @@ pub(crate) fn build_vk<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentSch
         commitments.push(CS::commit(
             params,
             permutation,
-            CommitmentLabel::Permutation(i),
+            PolynomialLabel::Permutation(i),
         ));
     }
 

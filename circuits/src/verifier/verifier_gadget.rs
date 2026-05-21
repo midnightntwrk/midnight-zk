@@ -875,7 +875,7 @@ pub(crate) mod tests {
         plonk::{create_proof, keygen_pk, keygen_vk_with_k, prepare, Circuit, Error},
         poly::{
             kzg::{commitment::KZGCommitment, params::ParamsKZG, KZGCommitmentScheme},
-            CommitmentLabel,
+            PolynomialLabel,
         },
         transcript::{CircuitTranscript, Transcript},
     };
@@ -1145,7 +1145,7 @@ pub(crate) mod tests {
                 &inner_vk,
                 &[KZGCommitment::Simple(
                     C::identity(),
-                    CommitmentLabel::NoLabel,
+                    PolynomialLabel::NoLabel,
                 )],
                 &[&inner_public_inputs],
                 &mut transcript,

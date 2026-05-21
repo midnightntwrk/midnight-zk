@@ -17,7 +17,7 @@ use midnight_proofs::{
     plonk::{self},
     poly::{
         kzg::{commitment::KZGCommitment, params::ParamsKZG, KZGCommitmentScheme},
-        CommitmentLabel,
+        PolynomialLabel,
     },
     transcript::{CircuitTranscript, Transcript},
 };
@@ -102,7 +102,7 @@ impl<T: Ivc> IvcProver<T> {
                     vk,
                     &[KZGCommitment::Simple(
                         C::identity(),
-                        CommitmentLabel::NoLabel,
+                        PolynomialLabel::NoLabel,
                     )],
                     &[&prev_pi],
                     &mut transcript,

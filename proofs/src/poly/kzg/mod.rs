@@ -45,7 +45,7 @@ use crate::{
             params::{ParamsKZG, ParamsVerifierKZG},
             utils::construct_intermediate_sets,
         },
-        query::{CommitmentLabel, VerifierQuery},
+        query::{PolynomialLabel, VerifierQuery},
         Coeff, Error, Polynomial, PolynomialRepresentation, ProverQuery,
     },
     transcript::{Hashable, Sampleable, Transcript},
@@ -86,7 +86,7 @@ where
     fn commit<B: PolynomialRepresentation>(
         params: &Self::Parameters,
         polynomial: &Polynomial<E::Fr, B>,
-        label: CommitmentLabel,
+        label: PolynomialLabel,
     ) -> Self::Commitment {
         let bases = params.bases::<B>();
         let size = polynomial.values.len();
@@ -210,7 +210,7 @@ where
             poly_inner_product(&f_polys, powers(x2))
         };
 
-        let f_com = Self::commit(params, &f_poly, CommitmentLabel::NoLabel);
+        let f_com = Self::commit(params, &f_poly, PolynomialLabel::NoLabel);
         transcript.write(&f_com).map_err(|_| Error::OpeningError)?;
 
         let x3: E::Fr = transcript.squeeze_challenge();
@@ -244,7 +244,7 @@ where
                 values: kate_division(&(&final_poly - v).values, x3),
                 _marker: PhantomData,
             };
-            Self::commit(params, &pi_poly, CommitmentLabel::NoLabel)
+            Self::commit(params, &pi_poly, PolynomialLabel::NoLabel)
         };
 
         transcript.write(&pi).map_err(|_| Error::OpeningError)
@@ -373,7 +373,7 @@ where
             let mut coms = q_coms;
             let mut f_com_as_msm = MSMKZG::init();
 
-            f_com_as_msm.append_term(E::Fr::ONE, f_com, CommitmentLabel::NoLabel);
+            f_com_as_msm.append_term(E::Fr::ONE, f_com, PolynomialLabel::NoLabel);
 
             // Collapse all MSMs before combining with x4 powers, to match the
             // in-circuit verifier. Skip the first one since its x4 power is 1.
@@ -409,15 +409,15 @@ where
             .into_point();
 
         let mut pi_msm = MSMKZG::<E>::init();
-        pi_msm.append_term(E::Fr::ONE, pi, CommitmentLabel::Custom("π".into()));
+        pi_msm.append_term(E::Fr::ONE, pi, PolynomialLabel::Custom("π".into()));
 
         // Scale zπ - vG
         let scaled_pi = MSMKZG {
             scalars: vec![x3, v],
             bases: vec![pi, -E::G1::generator()],
             labels: vec![
-                CommitmentLabel::Custom("π".into()),
-                CommitmentLabel::Custom("-G".into()),
+                PolynomialLabel::Custom("π".into()),
+                PolynomialLabel::Custom("-G".into()),
             ],
         };
 
@@ -450,7 +450,7 @@ mod tests {
                 KZGCommitmentScheme,
             },
             query::{ProverQuery, VerifierQuery},
-            CommitmentLabel, EvaluationDomain,
+            PolynomialLabel, EvaluationDomain,
         },
         transcript::{CircuitTranscript, Hashable, Sampleable, Transcript},
         utils::arithmetic::eval_polynomial,
@@ -549,9 +549,9 @@ mod tests {
 
         let mut transcript = T::init();
 
-        let a = KZGCommitmentScheme::commit(kzg_params, &ax, CommitmentLabel::NoLabel);
-        let b = KZGCommitmentScheme::commit(kzg_params, &bx, CommitmentLabel::NoLabel);
-        let c = KZGCommitmentScheme::commit(kzg_params, &cx, CommitmentLabel::NoLabel);
+        let a = KZGCommitmentScheme::commit(kzg_params, &ax, PolynomialLabel::NoLabel);
+        let b = KZGCommitmentScheme::commit(kzg_params, &bx, PolynomialLabel::NoLabel);
+        let c = KZGCommitmentScheme::commit(kzg_params, &cx, PolynomialLabel::NoLabel);
 
         transcript.write(&a).unwrap();
         transcript.write(&b).unwrap();

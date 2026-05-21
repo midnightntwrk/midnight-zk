@@ -80,7 +80,7 @@ use midnight_proofs::{
             params::{ParamsKZG, ParamsVerifierKZG},
             KZGCommitmentScheme,
         },
-        CommitmentLabel, EvaluationDomain,
+        PolynomialLabel, EvaluationDomain,
     },
     transcript::{CircuitTranscript, Hashable, Sampleable, Transcript},
 };
@@ -319,7 +319,7 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
                     &self.inner_vk,
                     &[KZGCommitment::Simple(
                         C::identity(),
-                        CommitmentLabel::NoLabel,
+                        PolynomialLabel::NoLabel,
                     )],
                     &[proof_instances],
                     &mut inner_transcript,
@@ -614,7 +614,7 @@ mod tests {
                     inner_vk.vk(),
                     &[KZGCommitment::Simple(
                         C::identity(),
-                        CommitmentLabel::NoLabel,
+                        PolynomialLabel::NoLabel,
                     )],
                     &[&InnerCircuit::format_instance(&instances[i]).unwrap()],
                     &mut transcript,

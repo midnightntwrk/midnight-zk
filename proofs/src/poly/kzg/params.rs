@@ -411,7 +411,7 @@ mod test {
         poly::{
             commitment::PolynomialCommitmentScheme,
             kzg::{params::ParamsKZG, KZGCommitmentScheme},
-            CommitmentLabel,
+            PolynomialLabel,
         },
         utils::SerdeFormat,
     };
@@ -435,8 +435,8 @@ mod test {
 
         let b = domain.lagrange_to_coeff(a.clone());
 
-        let tmp = KZGCommitmentScheme::commit(&params, &a, CommitmentLabel::NoLabel);
-        let commitment = KZGCommitmentScheme::commit(&params, &b, CommitmentLabel::NoLabel);
+        let tmp = KZGCommitmentScheme::commit(&params, &a, PolynomialLabel::NoLabel);
+        let commitment = KZGCommitmentScheme::commit(&params, &b, PolynomialLabel::NoLabel);
 
         assert_eq!(commitment, tmp);
     }

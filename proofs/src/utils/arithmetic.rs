@@ -330,7 +330,7 @@ pub(crate) fn evals_inner_product<F: PrimeField + Clone>(
 /// Multi scalar multiplication engine
 pub trait MSM<C: PrimeCurveAffine>: Clone + Debug + Send + Sized + Sync {
     /// Add arbitrary term (the scalar and the point).
-    fn append_term(&mut self, scalar: C::Scalar, point: C::Curve, label: CommitmentLabel);
+    fn append_term(&mut self, scalar: C::Scalar, point: C::Curve, label: PolynomialLabel);
 
     /// Add another multiexp into this one.
     fn add_msm(&mut self, other: &Self);
@@ -351,7 +351,7 @@ pub trait MSM<C: PrimeCurveAffine>: Clone + Debug + Send + Sized + Sync {
     fn scalars(&self) -> Vec<C::Scalar>;
 
     /// Base labels.
-    fn labels(&self) -> Vec<CommitmentLabel>;
+    fn labels(&self) -> Vec<PolynomialLabel>;
 }
 
 #[cfg(test)]
@@ -359,7 +359,7 @@ use midnight_curves::Fq as Scalar;
 #[cfg(test)]
 use rand_core::OsRng;
 
-use crate::poly::{kzg::msm::MSMKZG, CommitmentLabel};
+use crate::poly::{kzg::msm::MSMKZG, PolynomialLabel};
 
 #[test]
 fn test_lagrange_interpolate() {

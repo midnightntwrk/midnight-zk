@@ -35,7 +35,7 @@ use midnight_proofs::{
             params::{ParamsKZG, ParamsVerifierKZG},
             KZGCommitmentScheme,
         },
-        CommitmentLabel,
+        PolynomialLabel,
     },
     transcript::{CircuitTranscript, Hashable, Sampleable, Transcript, TranscriptHash},
     utils::SerdeFormat,
@@ -151,7 +151,7 @@ macro_rules! plonk_api {
                     vk,
                     &instance_commitments
                         .iter()
-                        .map(|c| KZGCommitment::Simple((*c).into(), CommitmentLabel::NoLabel))
+                        .map(|c| KZGCommitment::Simple((*c).into(), PolynomialLabel::NoLabel))
                         .collect::<Vec<_>>(),
                     pi,
                     &mut transcript,

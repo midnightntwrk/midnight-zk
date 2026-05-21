@@ -4,7 +4,7 @@ use super::{super::Error, Argument};
 use crate::{
     plonk::{evaluation::evaluate, trash},
     poly::{
-        commitment::PolynomialCommitmentScheme, Coeff, CommitmentLabel, EvaluationDomain,
+        commitment::PolynomialCommitmentScheme, Coeff, PolynomialLabel, EvaluationDomain,
         LagrangeCoeff, Polynomial, ProverQuery,
     },
     transcript::{Hashable, Transcript},
@@ -57,7 +57,7 @@ impl<F: WithSmallOrderMulGroup<3> + Ord> Argument<F> {
                 acc * trash_challenge + &expression
             });
 
-        let trash_commitment = CS::commit(params, &compressed_expression, CommitmentLabel::NoLabel);
+        let trash_commitment = CS::commit(params, &compressed_expression, PolynomialLabel::NoLabel);
         let trash_poly = domain.lagrange_to_coeff(compressed_expression);
 
         // Hash permuted input commitment

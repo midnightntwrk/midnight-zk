@@ -2097,7 +2097,7 @@ where
                 &[
                     midnight_proofs::poly::kzg::commitment::KZGCommitment::Simple(
                         midnight_curves::G1Projective::identity(),
-                        midnight_proofs::poly::CommitmentLabel::NoLabel,
+                        midnight_proofs::poly::PolynomialLabel::NoLabel,
                     ),
                 ],
                 &[pi],

@@ -26,7 +26,7 @@ pub mod kzg;
 pub mod commitment;
 
 pub use domain::*;
-pub use query::{CommitmentLabel, ProverQuery, VerifierQuery};
+pub use query::{PolynomialLabel, ProverQuery, VerifierQuery};
 
 use crate::utils::{helpers::read_f, rational::Rational};
 
