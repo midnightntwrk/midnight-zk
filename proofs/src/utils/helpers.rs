@@ -111,7 +111,8 @@ where
     }
 }
 
-/// Returns the English ordinal string for `n` (e.g. "1st", "2nd", "3rd", "4th").
+/// Returns the English ordinal string for `n` (e.g. "1st", "2nd", "3rd",
+/// "4th").
 pub fn ordinal(n: usize) -> String {
     let suffix = match (n % 100, n % 10) {
         (11..=13, _) => "th",

@@ -210,7 +210,7 @@ where
             poly_inner_product(&f_polys, powers(x2))
         };
 
-        let f_com = Self::commit(params, &f_poly, PolynomialLabel::NoLabel);
+        let f_com = Self::commit(params, &f_poly, PolynomialLabel::Custom("kzg_batch".into()));
         transcript.write(&f_com).map_err(|_| Error::OpeningError)?;
 
         let x3: E::Fr = transcript.squeeze_challenge();
@@ -244,7 +244,11 @@ where
                 values: kate_division(&(&final_poly - v).values, x3),
                 _marker: PhantomData,
             };
-            Self::commit(params, &pi_poly, PolynomialLabel::NoLabel)
+            Self::commit(
+                params,
+                &pi_poly,
+                PolynomialLabel::Custom("kzg_proof".into()),
+            )
         };
 
         transcript.write(&pi).map_err(|_| Error::OpeningError)
@@ -373,7 +377,11 @@ where
             let mut coms = q_coms;
             let mut f_com_as_msm = MSMKZG::init();
 
-            f_com_as_msm.append_term(E::Fr::ONE, f_com, PolynomialLabel::NoLabel);
+            f_com_as_msm.append_term(
+                E::Fr::ONE,
+                f_com,
+                PolynomialLabel::Custom("kzg_batch".into()),
+            );
 
             // Collapse all MSMs before combining with x4 powers, to match the
             // in-circuit verifier. Skip the first one since its x4 power is 1.
@@ -450,7 +458,7 @@ mod tests {
                 KZGCommitmentScheme,
             },
             query::{ProverQuery, VerifierQuery},
-            PolynomialLabel, EvaluationDomain,
+            EvaluationDomain, PolynomialLabel,
         },
         transcript::{CircuitTranscript, Hashable, Sampleable, Transcript},
         utils::arithmetic::eval_polynomial,
@@ -549,9 +557,9 @@ mod tests {
 
         let mut transcript = T::init();
 
-        let a = KZGCommitmentScheme::commit(kzg_params, &ax, PolynomialLabel::NoLabel);
-        let b = KZGCommitmentScheme::commit(kzg_params, &bx, PolynomialLabel::NoLabel);
-        let c = KZGCommitmentScheme::commit(kzg_params, &cx, PolynomialLabel::NoLabel);
+        let a = KZGCommitmentScheme::commit(kzg_params, &ax, PolynomialLabel::Custom("a".into()));
+        let b = KZGCommitmentScheme::commit(kzg_params, &bx, PolynomialLabel::Custom("b".into()));
+        let c = KZGCommitmentScheme::commit(kzg_params, &cx, PolynomialLabel::Custom("c".into()));
 
         transcript.write(&a).unwrap();
         transcript.write(&b).unwrap();

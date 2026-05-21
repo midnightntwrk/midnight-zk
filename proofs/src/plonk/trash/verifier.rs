@@ -3,7 +3,10 @@ use ff::{PrimeField, WithSmallOrderMulGroup};
 use super::Argument;
 use crate::{
     plonk::{trash, Error},
-    poly::{commitment::PolynomialCommitmentScheme, VerifierQuery},
+    poly::{
+        commitment::{Labelable, PolynomialCommitmentScheme},
+        PolynomialLabel, VerifierQuery,
+    },
     transcript::{Hashable, Transcript},
 };
 
@@ -26,7 +29,9 @@ impl<F: PrimeField> Argument<F> {
     where
         CS::Commitment: Hashable<T::Hash>,
     {
-        let trash_commitment = transcript.read()?;
+        let trash_commitment = transcript
+            .read()
+            .map(|c: CS::Commitment| c.label(PolynomialLabel::Trash(self.name.clone())))?;
         Ok(Committed { trash_commitment })
     }
 }

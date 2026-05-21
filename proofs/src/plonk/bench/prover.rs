@@ -282,7 +282,11 @@ where
                                 .par_iter()
                                 .map(|h| {
                                     let h_poly = domain.lagrange_from_vec(h.clone());
-                                    CS::commit(params, &h_poly, PolynomialLabel::NoLabel)
+                                    CS::commit(
+                                        params,
+                                        &h_poly,
+                                        PolynomialLabel::LogupHelper(c.name.clone()),
+                                    )
                                 })
                                 .collect()
                         })
@@ -312,7 +316,11 @@ where
                     .par_iter()
                     .map(|h| {
                         let h_poly = domain.lagrange_from_vec(h.clone());
-                        CS::commit(params, &h_poly, PolynomialLabel::NoLabel)
+                        CS::commit(
+                            params,
+                            &h_poly,
+                            PolynomialLabel::LogupHelper(c.name.clone()),
+                        )
                     })
                     .collect()
             })

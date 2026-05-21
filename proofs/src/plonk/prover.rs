@@ -27,8 +27,8 @@ use crate::{
         traces::ProverTrace, trash,
     },
     poly::{
-        batch_invert_rational, commitment::PolynomialCommitmentScheme, Coeff, PolynomialLabel,
-        EvaluationDomain, ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial,
+        batch_invert_rational, commitment::PolynomialCommitmentScheme, Coeff, EvaluationDomain,
+        ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial, PolynomialLabel,
         PolynomialRepresentation, ProverQuery, Rotation,
     },
     transcript::{Hashable, Sampleable, Transcript},
@@ -198,7 +198,11 @@ where
                         .par_iter()
                         .map(|h| {
                             let h_poly = domain.lagrange_from_vec(h.clone());
-                            CS::commit(params, &h_poly, PolynomialLabel::NoLabel)
+                            CS::commit(
+                                params,
+                                &h_poly,
+                                PolynomialLabel::LogupHelper(c.name.clone()),
+                            )
                         })
                         .collect()
                 })
@@ -503,7 +507,11 @@ where
             }
 
             if is_committed_instance {
-                transcript.common(&CS::commit(params, &poly, PolynomialLabel::NoLabel))?;
+                transcript.common(&CS::commit(
+                    params,
+                    &poly,
+                    PolynomialLabel::CommittedInstance(i),
+                ))?;
             }
 
             Ok(poly)
@@ -721,7 +729,7 @@ where
             values: h_poly,
             _marker: std::marker::PhantomData,
         };
-        let h_com = CS::commit(params, &h_poly, PolynomialLabel::NoLabel);
+        let h_com = CS::commit(params, &h_poly, PolynomialLabel::Quotient);
         transcript.write(&h_com)?;
         Ok(vec![h_poly])
     }
@@ -743,7 +751,8 @@ where
         // Compute commitment to each limb (parallel MSMs).
         let h_commitments: Vec<_> = h_limbs
             .par_iter()
-            .map(|h_piece| CS::commit(params, h_piece, PolynomialLabel::NoLabel))
+            .enumerate()
+            .map(|(i, h_piece)| CS::commit(params, h_piece, PolynomialLabel::QuotientPiece(i)))
             .collect();
 
         // Write each limb commitment to the transcript in order.

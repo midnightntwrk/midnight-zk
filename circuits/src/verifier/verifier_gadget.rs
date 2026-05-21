@@ -1145,7 +1145,7 @@ pub(crate) mod tests {
                 &inner_vk,
                 &[KZGCommitment::Simple(
                     C::identity(),
-                    PolynomialLabel::NoLabel,
+                    PolynomialLabel::Instance(0),
                 )],
                 &[&inner_public_inputs],
                 &mut transcript,

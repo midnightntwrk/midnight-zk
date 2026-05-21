@@ -19,7 +19,7 @@ use crate::{
     poly::{
         batch_invert_rational,
         commitment::{Params, PolynomialCommitmentScheme},
-        PolynomialLabel, EvaluationDomain, ExtendedLagrangeCoeff,
+        EvaluationDomain, ExtendedLagrangeCoeff, PolynomialLabel,
     },
     utils::{arithmetic::parallelize, rational::Rational},
 };

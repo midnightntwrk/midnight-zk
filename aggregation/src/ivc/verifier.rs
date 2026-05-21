@@ -68,7 +68,7 @@ impl<T: Ivc> IvcVerifier<T> {
                 self.vk.vk(),
                 &[KZGCommitment::Simple(
                     C::identity(),
-                    PolynomialLabel::NoLabel,
+                    PolynomialLabel::Instance(0),
                 )],
                 &[&pi],
                 &mut transcript,

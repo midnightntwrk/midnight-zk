@@ -102,7 +102,7 @@ impl<T: Ivc> IvcProver<T> {
                     vk,
                     &[KZGCommitment::Simple(
                         C::identity(),
-                        PolynomialLabel::NoLabel,
+                        PolynomialLabel::Instance(0),
                     )],
                     &[&prev_pi],
                     &mut transcript,

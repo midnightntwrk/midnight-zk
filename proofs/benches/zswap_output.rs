@@ -288,7 +288,7 @@ fn bench_zswap_output(c: &mut Criterion) {
                     pk.get_vk(),
                     &[KZGCommitment::Simple(
                         C::identity(),
-                        PolynomialLabel::NoLabel,
+                        PolynomialLabel::Instance(0),
                     )],
                     &[&instance],
                     &mut t,
@@ -308,7 +308,7 @@ fn bench_zswap_output(c: &mut Criterion) {
                         pk.get_vk(),
                         &[KZGCommitment::Simple(
                             C::identity(),
-                            PolynomialLabel::NoLabel,
+                            PolynomialLabel::Instance(0),
                         )],
                         &[&instance],
                         &mut t,
@@ -323,7 +323,7 @@ fn bench_zswap_output(c: &mut Criterion) {
                     trace,
                     &[KZGCommitment::Simple(
                         C::identity(),
-                        PolynomialLabel::NoLabel,
+                        PolynomialLabel::Instance(0),
                     )],
                     &[&instance],
                     &mut t,
@@ -341,7 +341,7 @@ fn bench_zswap_output(c: &mut Criterion) {
                     pk.get_vk(),
                     &[KZGCommitment::Simple(
                         C::identity(),
-                        PolynomialLabel::NoLabel,
+                        PolynomialLabel::Instance(0),
                     )],
                     &[&instance],
                     &mut t,
@@ -352,7 +352,7 @@ fn bench_zswap_output(c: &mut Criterion) {
                     trace,
                     &[KZGCommitment::Simple(
                         C::identity(),
-                        PolynomialLabel::NoLabel,
+                        PolynomialLabel::Instance(0),
                     )],
                     &[&instance],
                     &mut t,

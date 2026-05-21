@@ -435,8 +435,9 @@ mod test {
 
         let b = domain.lagrange_to_coeff(a.clone());
 
-        let tmp = KZGCommitmentScheme::commit(&params, &a, PolynomialLabel::NoLabel);
-        let commitment = KZGCommitmentScheme::commit(&params, &b, PolynomialLabel::NoLabel);
+        let tmp = KZGCommitmentScheme::commit(&params, &a, PolynomialLabel::Custom("a".into()));
+        let commitment =
+            KZGCommitmentScheme::commit(&params, &b, PolynomialLabel::Custom("b".into()));
 
         assert_eq!(commitment, tmp);
     }

@@ -105,7 +105,7 @@ impl<S: SelfEmulation> Accumulator<S> {
                         assert_eq!(fixed_bases.get(&name), Some(base));
                         fixed_base_scalars.insert(name, *scalar);
                     }
-                    PolynomialLabel::Permutation(i) => {
+                    PolynomialLabel::PermutationFixed(i) => {
                         let name = perm_commitment_name(prefix, *i);
                         assert_eq!(fixed_bases.get(&name), Some(base));
                         fixed_base_scalars.insert(name, *scalar);
@@ -113,6 +113,9 @@ impl<S: SelfEmulation> Accumulator<S> {
                     PolynomialLabel::Custom(s) if s == "-G" => {
                         assert_eq!(fixed_bases.get(s), Some(base));
                         fixed_base_scalars.insert("-G".into(), *scalar);
+                    }
+                    PolynomialLabel::NoLabel => {
+                        panic!("commitment with NoLabel reached the MSM layer; call .label() after deserialization");
                     }
                     _ => {
                         bases.push(*base);

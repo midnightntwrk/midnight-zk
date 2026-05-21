@@ -29,6 +29,7 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
         + Default
         + PartialEq
         + ProcessedSerdeObject
+        + Labelable
         + Send
         + Sync
         + Add<Output = Self::Commitment>
@@ -70,6 +71,16 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
     where
         F: Sampleable<T::Hash> + Hash + Ord + Hashable<T::Hash>,
         Self::Commitment: Hashable<T::Hash> + 'com;
+}
+
+/// A commitment that can be assigned a [`PolynomialLabel`].
+///
+/// Deserialized commitments start with [`PolynomialLabel::NoLabel`]; call sites
+/// must attach the correct label before the commitment reaches the MSM layer.
+pub trait Labelable {
+    /// Attaches the given [`PolynomialLabel`] to this commitment, replacing any
+    /// existing label (including [`PolynomialLabel::NoLabel`]).
+    fn label(self, label: PolynomialLabel) -> Self;
 }
 
 /// Interface for verifier finalizer

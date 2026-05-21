@@ -28,7 +28,7 @@ use midnight_proofs::{
     plonk::{self, ConstraintSystem, Error},
     poly::{
         kzg::{commitment::KZGCommitment, params::ParamsVerifierKZG, KZGCommitmentScheme},
-        PolynomialLabel, EvaluationDomain,
+        EvaluationDomain, PolynomialLabel,
     },
     transcript::{CircuitTranscript, Transcript},
     utils::SerdeFormat,
@@ -252,7 +252,7 @@ impl IvcTransition for ProofAggregation {
                     witness.claim.vk.vk(),
                     &[KZGCommitment::Simple(
                         C::identity(),
-                        PolynomialLabel::NoLabel,
+                        PolynomialLabel::Instance(0),
                     )],
                     &[&[statement]],
                     &mut transcript,
@@ -326,7 +326,7 @@ impl IvcTransition for ProofAggregation {
                     w.claim.vk.vk(),
                     &[KZGCommitment::Simple(
                         C::identity(),
-                        PolynomialLabel::NoLabel,
+                        PolynomialLabel::Instance(0),
                     )],
                     &[&[w.claim.statement.format_instance()]],
                     &mut transcript,

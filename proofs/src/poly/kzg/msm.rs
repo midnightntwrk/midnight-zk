@@ -15,7 +15,7 @@ use crate::{
     poly::{
         commitment::{Guard, PolynomialCommitmentScheme},
         kzg::KZGCommitmentScheme,
-        PolynomialLabel, Error,
+        Error, PolynomialLabel,
     },
     utils::{
         arithmetic::{CurveExt, MSM},
@@ -69,7 +69,7 @@ impl<E: Engine> MSMKZG<E> {
         MSMKZG {
             scalars: vec![E::Fr::ONE],
             bases: vec![*base],
-            labels: vec![PolynomialLabel::NoLabel],
+            labels: vec![PolynomialLabel::Collapsed],
         }
     }
 }
@@ -79,30 +79,34 @@ where
     E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
 {
     /// Evaluates the MSM to a single point and replaces all terms with that
-    /// single point (scalar = 1, label = `NoLabel`).
+    /// single point (scalar = 1, label = `Collapsed`).
     ///
     /// This mirrors `AssignedMsm::collapse` in the circuits crate.
     ///
     /// # Panics (in debug mode)
     ///
-    /// If any term carries a label other than `NoLabel` or `Advice`.
+    /// If any term carries a label other than `Collapsed`, `Advice`, or
+    /// `Instance`.
     //
-    // We only allow `NoLabel` or `Advice` because these types of labels are
-    // not relevant for the `verifier_gadget` in `midnight-circuits` (at least for
-    // now). Other types of labels may carry information that we do not want to lose
-    // when "collapsing".
+    // We only allow `Collapsed`, `Advice`, and `Instance` because these label types
+    // are not relevant for the `verifier_gadget` in `midnight-circuits`. Other
+    // label types may carry information that we do not want to silently lose
+    // when collapsing.
     pub fn collapse(&mut self) {
         debug_assert!(
-            self.labels
-                .iter()
-                .all(|l| matches!(l, PolynomialLabel::NoLabel | PolynomialLabel::Advice(_))),
-            "collapse: all labels must be NoLabel or Advice, found: {:?}",
+            self.labels.iter().all(|l| matches!(
+                l,
+                PolynomialLabel::Collapsed
+                    | PolynomialLabel::Advice(_)
+                    | PolynomialLabel::Instance(_)
+            )),
+            "collapse: all labels must be Collapsed, Advice or Instance, found: {:?}",
             self.labels,
         );
         let point = self.eval();
         self.scalars = vec![E::Fr::ONE];
         self.bases = vec![point];
-        self.labels = vec![PolynomialLabel::NoLabel];
+        self.labels = vec![PolynomialLabel::Collapsed];
     }
 }
 

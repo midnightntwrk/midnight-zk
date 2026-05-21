@@ -7,7 +7,7 @@ use ff::Field;
 use midnight_curves::pairing::MultiMillerLoop;
 
 use crate::{
-    poly::query::PolynomialLabel,
+    poly::{commitment::Labelable, query::PolynomialLabel},
     transcript::{Hashable, TranscriptHash},
     utils::helpers::{ProcessedSerdeObject, SerdeFormat},
 };
@@ -78,15 +78,28 @@ where
     E::G1: Default,
 {
     fn default() -> Self {
-        Self::Simple(E::G1::default(), PolynomialLabel::NoLabel)
+        Self::Simple(E::G1::default(), PolynomialLabel::Collapsed)
+    }
+}
+
+impl<E: MultiMillerLoop> Labelable for KZGCommitment<E> {
+    fn label(self, label: PolynomialLabel) -> Self {
+        match self {
+            Self::Simple(p, _) => Self::Simple(p, label),
+            Self::Linear(points, scalars, labels) => Self::Linear(
+                points,
+                scalars,
+                labels.into_iter().map(|_| label.clone()).collect(),
+            ),
+        }
     }
 }
 
 /// Only `Simple` commitments are serialized; see the type-level doc for why
 /// `Linear` is never written to or read from a proof directly.
 ///
-/// Labels are not part of the serialized form; deserialized commitments always
-/// receive [`PolynomialLabel::NoLabel`].
+/// Labels are not part of the serialized form; deserialized commitments receive
+/// [`PolynomialLabel::NoLabel`] and must be labeled at the call site.
 impl<E: MultiMillerLoop> ProcessedSerdeObject for KZGCommitment<E>
 where
     E::G1: Default + ProcessedSerdeObject,
