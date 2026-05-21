@@ -1749,32 +1749,12 @@ impl<F: Field> ConstraintSystem<F> {
         selector: Option<Selector>,
         table_map: impl FnOnce(&mut VirtualCells<'_, F>) -> Vec<(Vec<Expression<F>>, TableColumn)>,
     ) -> usize {
-        let mut cells = VirtualCells::new(self);
-        let table_map = table_map(&mut cells)
-            .into_iter()
-            .map(|(mut inputs, table)| {
-                let mut table = cells.query_fixed(table.inner(), Rotation::cur());
-                for input in inputs.iter_mut() {
-                    assert!(
-                        !input.contains_simple_selector(),
-                        "expression containing simple selector supplied to lookup argument"
-                    );
-
-                    input.query_cells(&mut cells);
-                }
-                table.query_cells(&mut cells);
-                (inputs, table)
-            })
-            .collect();
-        let index = self.lookups.len();
-
-        self.lookups.push(logup::BatchedArgument::new(
-            name.as_ref(),
-            selector,
-            table_map,
-        ));
-
-        index
+        self.batch_lookup_any(name, selector, |cells| {
+            table_map(cells)
+                .into_iter()
+                .map(|(inputs, table)| (inputs, cells.query_fixed(table.inner(), Rotation::cur())))
+                .collect()
+        })
     }
 
     /// Add a lookup argument for a single input expression per table
