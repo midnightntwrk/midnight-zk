@@ -1749,7 +1749,7 @@ impl<F: Field> ConstraintSystem<F> {
         selector: Option<Selector>,
         table_map: impl FnOnce(&mut VirtualCells<'_, F>) -> Vec<(Vec<Expression<F>>, TableColumn)>,
     ) -> usize {
-        self.batch_lookup_any(name, selector, |cells| {
+        self.batched_lookup_any(name, selector, |cells| {
             table_map(cells)
                 .into_iter()
                 .map(|(inputs, table)| (inputs, cells.query_fixed(table.inner(), Rotation::cur())))
@@ -1764,14 +1764,14 @@ impl<F: Field> ConstraintSystem<F> {
     /// table expression it needs to match.
     ///
     /// If you want to batch multiple lookups to the same table expression in
-    /// parallel, use [`batch_lookup_any`](Self::batch_lookup_any) instead.
+    /// parallel, use [`batched_lookup_any`](Self::batched_lookup_any) instead.
     pub fn lookup_any<S: AsRef<str>>(
         &mut self,
         name: S,
         selector: Option<Selector>,
         table_map: impl FnOnce(&mut VirtualCells<'_, F>) -> Vec<(Expression<F>, Expression<F>)>,
     ) -> usize {
-        self.batch_lookup_any(name, selector, |cells| {
+        self.batched_lookup_any(name, selector, |cells| {
             table_map(cells).into_iter().map(|(expr, table)| (vec![expr], table)).collect()
         })
     }
@@ -1781,7 +1781,7 @@ impl<F: Field> ConstraintSystem<F> {
     ///
     /// `table_map` returns a vector of maps between input expressions (batched
     /// together) and the table expressions they need to match.
-    pub fn batch_lookup_any<S: AsRef<str>>(
+    pub fn batched_lookup_any<S: AsRef<str>>(
         &mut self,
         name: S,
         selector: Option<Selector>,
