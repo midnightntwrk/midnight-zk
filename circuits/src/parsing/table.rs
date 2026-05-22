@@ -121,13 +121,6 @@ pub(super) fn two_entry_table() -> Vec<(u16, u16)> {
     ret
 }
 
-/// Returns the default element of the first column of the table.
-/// This must be the element corresponding to the 0 value in the second column.
-/// It is used when the lookup is disabled.
-pub(super) fn two_entry_default() -> u64 {
-    (('A' as u64) << 8) ^ ('A' as u64)
-}
-
 /// Decodes a single b64 character into its u8 value.
 pub(super) fn decode_char(input: char) -> u8 {
     *BASE64_MAP.get(&input).expect("Valid base64 character.")

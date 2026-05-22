@@ -7,10 +7,13 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 
 ## [Unreleased]
 ### Added
+* `fewer-point-sets` feature [#281](https://github.com/midnightntwrk/midnight-zk/pull/281)
+* `single-h-commitment` feature [#276](https://github.com/midnightntwrk/midnight-zk/pull/276)
 * Multi-circuit proof aggregation module and example [#311](https://github.com/midnightntwrk/midnight-zk/pull/311)
 * Add `IvcError::InvalidWitness` variant [#311](https://github.com/midnightntwrk/midnight-zk/pull/311)
 * Add `assign_without_subgroup_check` to `SelfEmulation` trait [#284](https://github.com/midnightntwrk/midnight-zk/pull/284)
 ### Changed
+* Adapt to single-proof prover API [#375](https://github.com/midnightntwrk/midnight-zk/pull/375)
 * Adapt to new `ZkStdLib` curve accessors [#335](https://github.com/midnightntwrk/midnight-zk/pull/335)
 * `IvcCircuit`'s `Relation::Error` is now `IvcError` instead of `plonk::Error` [#311](https://github.com/midnightntwrk/midnight-zk/pull/311)
 * `IvcVerifier` is now generic over `T: Ivc` and stores the context internally; `verify` no longer takes a `ctx` parameter [#302](https://github.com/midnightntwrk/midnight-zk/pull/302)
@@ -23,7 +26,12 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 * Rebase to new `circuits/` with `sha512` [#96](https://github.com/midnightntwrk/midnight-zk/pull/96)
 * truncated_challenges feature to allow --all-features compilation [#146](https://github.com/midnightntwrk/midnight-zk/pull/146)
 * Rebase to new `circuits/` with `keccak` and `blake2b` [#135](https://github.com/midnightntwrk/midnight-zk/pull/135)
+### Fixed
+* Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
+
 ### Changed
+* Adapt `LightAggregator` to affine SRS storage [#350](https://github.com/midnightntwrk/midnight-zk/pull/350)
+* Adapt to configurable `NB_ARITH_COLS` [#287](https://github.com/midnightntwrk/midnight-zk/pull/287)
 * Remove `is_genesis` from `IvcState` trait; genesis detection is now derived generically from `format_public_input` [#272](https://github.com/midnightntwrk/midnight-zk/pull/272)
 * Rename `proof_aggregation` example to `single_circuit_aggregation` [#264](https://github.com/midnightntwrk/midnight-zk/pull/264)
 * Remove `InnerValue` and `Instantiable` requirements from IVC `AssignedState` [#264](https://github.com/midnightntwrk/midnight-zk/pull/264)

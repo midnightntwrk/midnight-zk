@@ -11,7 +11,7 @@ use super::{
         Selector,
     },
     evaluation::Evaluator,
-    permutation, Challenge, Error, LagrangeCoeff, Polynomial, ProvingKey, VerifyingKey,
+    permutation, Error, LagrangeCoeff, Polynomial, ProvingKey, VerifyingKey,
 };
 use crate::{
     circuit::Value,
@@ -174,10 +174,6 @@ impl<F: Field> Assignment<F> for Assembly<F> {
         Ok(())
     }
 
-    fn get_challenge(&self, _: Challenge) -> Value<F> {
-        Value::unknown()
-    }
-
     fn annotate_column<A, AR>(&mut self, _annotation: A, _column: Column<Any>)
     where
         A: FnOnce() -> AR,
@@ -201,7 +197,7 @@ impl<F: Field> Assignment<F> for Assembly<F> {
 
 /// Compute the minimal `k` to compute a circuit.
 pub fn k_from_circuit<F: Ord + Field + FromUniformBytes<64>, C: Circuit<F>>(circuit: &C) -> u32 {
-    cost_model_options(circuit).min_k as u32
+    cost_model_options(circuit, 0).min_k as u32
 }
 
 /// Generates a `VerifyingKey` from a `Circuit` instance.
@@ -280,7 +276,7 @@ where
 
     let permutation_vk = assembly.permutation.build_vk(params, &domain, &cs.permutation);
 
-    let fixed_commitments = fixed.iter().map(|poly| CS::commit_lagrange(params, poly)).collect();
+    let fixed_commitments = fixed.iter().map(|poly| CS::commit(params, poly)).collect();
 
     Ok(VerifyingKey::from_parts(
         domain,

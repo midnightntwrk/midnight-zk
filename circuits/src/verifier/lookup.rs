@@ -11,10 +11,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! A module for in-circuit lookup arguments. It is the in-circuit analog
-//! of file proofs/src/plonk/lookup/verifier.rs.
+//! In-circuit lookup argument verification.
 //!
-//! The "expressions" part is dealt with in our `expressions/` directory.
+//! This is the in-circuit analog of `proofs/src/plonk/logup/verifier.rs`.
+//! The constraint expressions are implemented in `expressions/lookup.rs`.
 
 use midnight_proofs::{circuit::Layouter, plonk::Error, poly::CommitmentLabel};
 
@@ -26,57 +26,61 @@ use crate::{
     },
 };
 
+/// Commitment to the multiplicity columns, read from the transcript.
+#[derive(Clone, Debug)]
+pub(crate) struct CommittedMultiplicities<S: SelfEmulation> {
+    multiplicities: S::AssignedPoint,
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct LookupEvaluated<S: SelfEmulation> {
-    pub(crate) product_eval: AssignedNative<S::F>,
-    pub(crate) product_next_eval: AssignedNative<S::F>,
-    pub(crate) permuted_input_eval: AssignedNative<S::F>,
-    pub(crate) permuted_input_inv_eval: AssignedNative<S::F>,
-    pub(crate) permuted_table_eval: AssignedNative<S::F>,
+    pub(crate) multiplicities_eval: AssignedNative<S::F>,
+    pub(crate) helper_evals: Vec<AssignedNative<S::F>>,
+    pub(crate) accumulator_eval: AssignedNative<S::F>,
+    pub(crate) accumulator_next_eval: AssignedNative<S::F>,
 }
 
-#[derive(Clone, Debug)]
-pub(crate) struct PermutationCommitments<S: SelfEmulation> {
-    permuted_input_commitment: S::AssignedPoint,
-    permuted_table_commitment: S::AssignedPoint,
-}
-
+/// Commitments to the LogUp polynomials, read from the transcript.
 #[derive(Clone, Debug)]
 pub(crate) struct Committed<S: SelfEmulation> {
-    permuted: PermutationCommitments<S>,
-    product_commitment: S::AssignedPoint,
+    multiplicities: S::AssignedPoint,
+    helper_polys: Vec<S::AssignedPoint>,
+    accumulator: S::AssignedPoint,
 }
 
+/// Commitments plus evaluations at challenge point.
 #[derive(Clone, Debug)]
 pub(crate) struct Evaluated<S: SelfEmulation> {
     committed: Committed<S>,
     pub(crate) evaluated: LookupEvaluated<S>,
 }
 
-pub(crate) fn read_permuted_commitments<S: SelfEmulation>(
+/// Reads the prover's commitments from the transcript.
+pub(crate) fn read_multiplicities<S: SelfEmulation>(
     layouter: &mut impl Layouter<S::F>,
     transcript_gadget: &mut TranscriptGadget<S>,
-) -> Result<PermutationCommitments<S>, Error> {
-    let permuted_input_commitment = transcript_gadget.read_point(layouter)?;
-    let permuted_table_commitment = transcript_gadget.read_point(layouter)?;
+) -> Result<CommittedMultiplicities<S>, Error> {
+    let multiplicities = transcript_gadget.read_point(layouter)?;
 
-    Ok(PermutationCommitments {
-        permuted_input_commitment,
-        permuted_table_commitment,
-    })
+    Ok(CommittedMultiplicities { multiplicities })
 }
 
-impl<S: SelfEmulation> PermutationCommitments<S> {
-    pub(crate) fn read_product_commitment(
+impl<S: SelfEmulation> CommittedMultiplicities<S> {
+    pub(crate) fn read_commitment(
         self,
+        nb_flattened: usize,
         layouter: &mut impl Layouter<S::F>,
         transcript_gadget: &mut TranscriptGadget<S>,
     ) -> Result<Committed<S>, Error> {
-        let product_commitment = transcript_gadget.read_point(layouter)?;
+        let helper_polys = (0..nb_flattened)
+            .map(|_| transcript_gadget.read_point(layouter))
+            .collect::<Result<Vec<_>, Error>>()?;
+        let accumulator = transcript_gadget.read_point(layouter)?;
 
         Ok(Committed {
-            permuted: self,
-            product_commitment,
+            multiplicities: self.multiplicities,
+            helper_polys,
+            accumulator,
         })
     }
 }
@@ -87,20 +91,21 @@ impl<S: SelfEmulation> Committed<S> {
         layouter: &mut impl Layouter<S::F>,
         transcript_gadget: &mut TranscriptGadget<S>,
     ) -> Result<Evaluated<S>, Error> {
-        let product_eval = transcript_gadget.read_scalar(layouter)?;
-        let product_next_eval = transcript_gadget.read_scalar(layouter)?;
-        let permuted_input_eval = transcript_gadget.read_scalar(layouter)?;
-        let permuted_input_inv_eval = transcript_gadget.read_scalar(layouter)?;
-        let permuted_table_eval = transcript_gadget.read_scalar(layouter)?;
+        let nb_flattened = self.helper_polys.len();
+        let multiplicities_eval = transcript_gadget.read_scalar(layouter)?;
+        let helper_evals = (0..nb_flattened)
+            .map(|_| transcript_gadget.read_scalar(layouter))
+            .collect::<Result<Vec<_>, Error>>()?;
+        let accumulator_eval = transcript_gadget.read_scalar(layouter)?;
+        let accumulator_next_eval = transcript_gadget.read_scalar(layouter)?;
 
         Ok(Evaluated {
             committed: self,
             evaluated: LookupEvaluated {
-                product_eval,
-                product_next_eval,
-                permuted_input_eval,
-                permuted_input_inv_eval,
-                permuted_table_eval,
+                multiplicities_eval,
+                helper_evals,
+                accumulator_eval,
+                accumulator_next_eval,
             },
         })
     }
@@ -113,50 +118,46 @@ impl<S: SelfEmulation> Evaluated<S> {
         &self,
         one: &AssignedBoundedScalar<S::F>, // 1
         x: &AssignedNative<S::F>,          // evaluation point x
-        x_next: &AssignedNative<S::F>,     // x * \omega
-        x_prev: &AssignedNative<S::F>,     // x * \omega^(-1)
+        x_next: &AssignedNative<S::F>,     // ωx
     ) -> Vec<VerifierQuery<S>> {
-        vec![
+        let mut queries = vec![
             // Open lookup product commitment at x
             VerifierQuery::new(
                 one,
                 x,
                 CommitmentLabel::NoLabel,
-                &self.committed.product_commitment,
-                &self.evaluated.product_eval,
+                &self.committed.multiplicities,
+                &self.evaluated.multiplicities_eval,
             ),
-            // Open lookup input commitments at x
-            VerifierQuery::new(
+        ];
+        // Open lookup input commitments at x
+        for (h_commit, h_eval) in
+            self.committed.helper_polys.iter().zip(self.evaluated.helper_evals.iter())
+        {
+            queries.push(VerifierQuery::new(
                 one,
                 x,
                 CommitmentLabel::NoLabel,
-                &self.committed.permuted.permuted_input_commitment,
-                &self.evaluated.permuted_input_eval,
-            ),
-            // Open lookup table commitments at x
-            VerifierQuery::new(
-                one,
-                x,
-                CommitmentLabel::NoLabel,
-                &self.committed.permuted.permuted_table_commitment,
-                &self.evaluated.permuted_table_eval,
-            ),
-            // Open lookup input commitments at \omega^{-1} x
-            VerifierQuery::new(
-                one,
-                x_prev,
-                CommitmentLabel::NoLabel,
-                &self.committed.permuted.permuted_input_commitment,
-                &self.evaluated.permuted_input_inv_eval,
-            ),
-            // Open lookup product commitment at \omega x
-            VerifierQuery::new(
-                one,
-                x_next,
-                CommitmentLabel::NoLabel,
-                &self.committed.product_commitment,
-                &self.evaluated.product_next_eval,
-            ),
-        ]
+                h_commit,
+                h_eval,
+            ));
+        }
+        // Open lookup table commitments at x
+        queries.push(VerifierQuery::new(
+            one,
+            x,
+            CommitmentLabel::NoLabel,
+            &self.committed.accumulator,
+            &self.evaluated.accumulator_eval,
+        ));
+        // Open lookup product commitment at \omega x
+        queries.push(VerifierQuery::new(
+            one,
+            x_next,
+            CommitmentLabel::NoLabel,
+            &self.committed.accumulator,
+            &self.evaluated.accumulator_next_eval,
+        ));
+        queries
     }
 }

@@ -74,13 +74,10 @@ type IntermediateSets<S> = (
     Vec<Vec<AssignedNative<<S as SelfEmulation>::F>>>,
 );
 
-fn construct_intermediate_sets<S: SelfEmulation, I>(
-    queries: I,
+fn construct_intermediate_sets<S: SelfEmulation>(
+    queries: &[VerifierQuery<S>],
     default_eval: AssignedNative<S::F>,
-) -> Result<IntermediateSets<S>, Error>
-where
-    I: IntoIterator<Item = VerifierQuery<S>> + Clone,
-{
+) -> Result<IntermediateSets<S>, Error> {
     // Construct sets of unique commitments and corresponding information about
     // their queries.
     let mut commitment_map: Vec<CommitmentData<S>> = vec![];
@@ -95,7 +92,7 @@ where
 
     // Iterate over all of the queries, computing the ordering of the points
     // while also creating new commitment data.
-    for query in queries.clone() {
+    for query in queries.iter() {
         let num_points = point_index_map.len();
         let point_idx = point_index_map.entry(query.get_point()).or_insert(num_points);
 
@@ -145,7 +142,7 @@ where
     }
 
     // Populate set_index, evals and points for each commitment using point_idx_sets
-    for query in queries {
+    for query in queries.iter() {
         // The index of the point at which the commitment is queried
         let point_index = point_index_map.get(&query.get_point()).unwrap();
 
@@ -325,16 +322,30 @@ fn evals_inner_product<F: CircuitField>(
 
 /// Verifies a bunch of KZG queries in a multi-open argument.
 /// The resulting accumulator satisfies the invariant iff all queries are valid.
-pub(crate) fn multi_prepare<I, S: SelfEmulation>(
+pub(crate) fn multi_prepare<S: SelfEmulation>(
     layouter: &mut impl Layouter<S::F>,
     #[cfg(feature = "truncated-challenges")] curve_chip: &S::CurveChip,
     scalar_chip: &S::ScalarChip,
     transcript_gadget: &mut TranscriptGadget<S>,
-    queries: I,
-) -> Result<AssignedAccumulator<S>, Error>
-where
-    I: IntoIterator<Item = VerifierQuery<S>> + Clone,
-{
+    queries: &[VerifierQuery<S>],
+) -> Result<AssignedAccumulator<S>, Error> {
+    // Add dummy queries to reduce the number of distinct multi-open point sets.
+    #[cfg(feature = "fewer-point-sets")]
+    let queries = &{
+        let pairs: Vec<_> = queries.iter().map(|q| (q.get_commitment(), q.get_point())).collect();
+        let dummy_openings = midnight_proofs::poly::kzg::compute_dummy_queries(&pairs);
+        let mut queries = queries.to_vec();
+        for (idx, point) in dummy_openings {
+            queries.push(VerifierQuery {
+                point,
+                label: queries[idx].label.clone(),
+                commitment: queries[idx].commitment.clone(),
+                eval: transcript_gadget.read_scalar(layouter)?,
+            });
+        }
+        queries
+    };
+
     let x1 = transcript_gadget.squeeze_challenge(layouter)?;
     let x2 = transcript_gadget.squeeze_challenge(layouter)?;
 

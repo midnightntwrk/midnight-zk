@@ -43,8 +43,22 @@ pub enum Error {
     DuplicatedQuery,
 }
 
+/// The possible basis of a polynomial representation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PolynomialBasis {
+    /// Monomial basis.
+    Coeff,
+    /// Lagrange basis.
+    Lagrange,
+    /// Lagrange basis over an extended coset domain.
+    ExtendedLagrange,
+}
+
 /// The representation with which a polynomial is encoded.
 pub trait PolynomialRepresentation: Copy + Debug + Send + Sync {
+    /// The basis used by this representation.
+    const BASIS: PolynomialBasis;
+
     /// Computes the number of field elements needed to encode a polynomial
     /// in this representation for a given evaluation domain.
     fn len<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> usize;
@@ -83,6 +97,8 @@ pub trait PolynomialRepresentation: Copy + Debug + Send + Sync {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Coeff;
 impl PolynomialRepresentation for Coeff {
+    const BASIS: PolynomialBasis = PolynomialBasis::Coeff;
+
     fn len<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> usize {
         evaluation_domain.n as usize
     }
@@ -111,6 +127,8 @@ impl PolynomialRepresentation for Coeff {
 #[derive(Clone, Copy, Debug)]
 pub struct LagrangeCoeff;
 impl PolynomialRepresentation for LagrangeCoeff {
+    const BASIS: PolynomialBasis = PolynomialBasis::Lagrange;
+
     fn len<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> usize {
         evaluation_domain.n as usize
     }
@@ -140,6 +158,8 @@ impl PolynomialRepresentation for LagrangeCoeff {
 #[derive(Clone, Copy, Debug)]
 pub struct ExtendedLagrangeCoeff;
 impl PolynomialRepresentation for ExtendedLagrangeCoeff {
+    const BASIS: PolynomialBasis = PolynomialBasis::ExtendedLagrange;
+
     fn len<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> usize {
         evaluation_domain.extended_len()
     }
@@ -179,6 +199,30 @@ impl<F: PrimeField, B> Polynomial<F, B> {
             values: vec![F::ZERO; num_coeffs],
             _marker: PhantomData,
         }
+    }
+}
+
+impl<F: Field> Polynomial<F, Coeff> {
+    /// Subtracts two coefficient-form polynomials that may have different
+    /// lengths, zero-extending the shorter one. Returns a polynomial whose
+    /// length is `max(self.len(), rhs.len())`.
+    ///
+    /// This is only meaningful for coefficient-form (`Coeff`) polynomials,
+    /// where trailing zeros do not change the represented polynomial. In
+    /// Lagrange or ExtendedLagrange representations the length is tied to the
+    /// evaluation domain, so mixing lengths would be semantically wrong.
+    pub(crate) fn padded_sub(mut self, rhs: &Self) -> Self {
+        if self.values.len() < rhs.values.len() {
+            self.values.resize(rhs.values.len(), F::ZERO);
+        }
+        parallelize(&mut self.values, |lhs, start| {
+            if let Some(rhs_slice) = rhs.values.get(start..) {
+                for (lhs, rhs) in lhs.iter_mut().zip(rhs_slice.iter()) {
+                    *lhs -= *rhs;
+                }
+            }
+        });
+        self
     }
 }
 
@@ -327,6 +371,12 @@ impl<F: Field> Polynomial<Rational<F>, LagrangeCoeff> {
     }
 }
 
+/// Point-wise addition of two polynomials of the **same length**.
+///
+/// Both operands must have been created over the same domain (or with the same
+/// number of coefficients). This invariant is enforced by a runtime assertion.
+/// For coefficient-form polynomials of different lengths see
+/// `Polynomial::padded_add`.
 impl<'a, F: Field, B: PolynomialRepresentation> Add<&'a Polynomial<F, B>> for Polynomial<F, B> {
     type Output = Polynomial<F, B>;
 
@@ -336,10 +386,17 @@ impl<'a, F: Field, B: PolynomialRepresentation> Add<&'a Polynomial<F, B>> for Po
     }
 }
 
+/// Point-wise addition-assignment of two polynomials of the **same length**.
+///
+/// Both operands must have been created over the same domain (or with the same
+/// number of coefficients). This invariant is enforced by a runtime assertion.
+/// For coefficient-form polynomials of different lengths see
+/// `Polynomial::padded_add`.
 impl<'a, F: Field, B: PolynomialRepresentation> AddAssign<&'a Polynomial<F, B>>
     for Polynomial<F, B>
 {
     fn add_assign(&mut self, rhs: &'a Polynomial<F, B>) {
+        assert_eq!(self.values.len(), rhs.values.len());
         parallelize(&mut self.values, |lhs, start| {
             for (lhs, rhs) in lhs.iter_mut().zip(rhs.values[start..].iter()) {
                 *lhs += *rhs;
@@ -348,10 +405,17 @@ impl<'a, F: Field, B: PolynomialRepresentation> AddAssign<&'a Polynomial<F, B>>
     }
 }
 
+/// Point-wise addition of two polynomials of the **same length** (by value).
+///
+/// Both operands must have been created over the same domain (or with the same
+/// number of coefficients). This invariant is enforced by a runtime assertion.
+/// For coefficient-form polynomials of different lengths see
+/// `Polynomial::padded_add`.
 impl<F: Field, B: PolynomialRepresentation> Add<Polynomial<F, B>> for Polynomial<F, B> {
     type Output = Polynomial<F, B>;
 
     fn add(mut self, rhs: Polynomial<F, B>) -> Polynomial<F, B> {
+        assert_eq!(self.values.len(), rhs.values.len());
         parallelize(&mut self.values, |lhs, start| {
             for (lhs, rhs) in lhs.iter_mut().zip(rhs.values[start..].iter()) {
                 *lhs += *rhs;
@@ -362,10 +426,17 @@ impl<F: Field, B: PolynomialRepresentation> Add<Polynomial<F, B>> for Polynomial
     }
 }
 
+/// Point-wise subtraction of two polynomials of the **same length**.
+///
+/// Both operands must have been created over the same domain (or with the same
+/// number of coefficients). This invariant is enforced by a runtime assertion.
+/// For coefficient-form polynomials of different lengths see
+/// `Polynomial::padded_sub`.
 impl<'a, F: Field, B: PolynomialRepresentation> Sub<&'a Polynomial<F, B>> for Polynomial<F, B> {
     type Output = Polynomial<F, B>;
 
     fn sub(mut self, rhs: &'a Polynomial<F, B>) -> Polynomial<F, B> {
+        assert_eq!(self.values.len(), rhs.values.len());
         parallelize(&mut self.values, |lhs, start| {
             for (lhs, rhs) in lhs.iter_mut().zip(rhs.values[start..].iter()) {
                 *lhs -= *rhs;

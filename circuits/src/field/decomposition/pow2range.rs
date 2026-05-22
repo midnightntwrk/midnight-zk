@@ -23,8 +23,7 @@ use midnight_proofs::{
 };
 
 use crate::{
-    field::native::NB_ARITH_COLS, instructions::decomposition::Pow2RangeInstructions,
-    types::AssignedNative, CircuitField,
+    instructions::decomposition::Pow2RangeInstructions, types::AssignedNative, CircuitField,
 };
 
 /// Pow2Range gate configuration.
@@ -173,34 +172,26 @@ impl<F: CircuitField> Pow2RangeChip<F> {
 
     /// Creates a Pow2RangeConfig given a constraint system and a set of
     /// available advice columns.
-    ///
-    /// # Panics
-    ///
-    /// If the number of provided columns is greater than or equal to
-    /// `NB_ARITH_COLS`.
     pub fn configure(
         meta: &mut ConstraintSystem<F>,
         columns: &[Column<Advice>],
     ) -> Pow2RangeConfig {
         let val_cols = columns.to_vec();
-        assert!(
-            val_cols.len() < NB_ARITH_COLS,
-            "Nr of range-check columns should be smaller than NB_ARITHM_COLS."
-        );
 
         let q_pow2range = meta.complex_selector();
         let tag_col = meta.fixed_column();
         let t_tag = meta.lookup_table_column();
         let t_val = meta.lookup_table_column();
 
-        for val_col in &val_cols {
-            meta.lookup("pow2range column check", |meta| {
-                let sel = meta.query_selector(q_pow2range);
-                let tag = meta.query_fixed(tag_col, Rotation::cur());
-                let val = meta.query_advice(*val_col, Rotation::cur());
-                vec![(tag, t_tag), (sel * val, t_val)]
-            });
-        }
+        meta.batched_lookup("pow2range column check", Some(q_pow2range), |meta| {
+            let tag = meta.query_fixed(tag_col, Rotation::cur());
+            let tags = vec![tag; val_cols.len()];
+            let vals = val_cols
+                .iter()
+                .map(|val_col| meta.query_advice(*val_col, Rotation::cur()))
+                .collect();
+            vec![(tags, t_tag), (vals, t_val)]
+        });
 
         Pow2RangeConfig {
             q_pow2range,

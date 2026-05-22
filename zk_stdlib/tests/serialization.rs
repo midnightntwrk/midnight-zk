@@ -22,7 +22,7 @@ use midnight_proofs::{
     utils::SerdeFormat,
 };
 use midnight_zk_stdlib::{
-    utils::plonk_api::filecoin_srs, MidnightPK, MidnightVK, Relation, ZkStdLib, ZkStdLibArch,
+    utils::plonk_api::srs_for_test, MidnightPK, MidnightVK, Relation, ZkStdLib, ZkStdLibArch,
 };
 use serial_test::serial;
 
@@ -86,6 +86,7 @@ const ARCHITECTURES: [ZkStdLibArch; 4] = [
         bls12_381: true,
         curve25519: true,
         base64: false,
+        nb_arith_cols: 5,
         nr_pow2range_cols: 4,
         automaton: false,
     },
@@ -102,6 +103,7 @@ const ARCHITECTURES: [ZkStdLibArch; 4] = [
         bls12_381: false,
         curve25519: false,
         base64: false,
+        nb_arith_cols: 5,
         nr_pow2range_cols: 4,
         automaton: false,
     },
@@ -118,6 +120,7 @@ const ARCHITECTURES: [ZkStdLibArch; 4] = [
         bls12_381: true,
         curve25519: true,
         base64: false,
+        nb_arith_cols: 5,
         nr_pow2range_cols: 4,
         automaton: false,
     },
@@ -134,18 +137,15 @@ const ARCHITECTURES: [ZkStdLibArch; 4] = [
         bls12_381: false,
         curve25519: true,
         base64: true,
+        nb_arith_cols: 5,
         nr_pow2range_cols: 4,
         automaton: false,
     },
 ];
 
 fn vk_serde_test(architecture: ZkStdLibArch, write_format: SerdeFormat, read_format: SerdeFormat) {
-    let mut srs = filecoin_srs(13);
-
     let relation = DummyCircuit { architecture };
-
-    let k = midnight_zk_stdlib::optimal_k(&relation);
-    srs.downsize(k);
+    let srs = srs_for_test(&relation, None);
     let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
 
     let mut buffer = Vec::new();
@@ -205,12 +205,8 @@ fn vk_write_raw_then_read_processed() {
 }
 
 fn pk_serde_test(architecture: ZkStdLibArch, write_format: SerdeFormat, read_format: SerdeFormat) {
-    let mut srs = filecoin_srs(13);
-
     let relation = DummyCircuit { architecture };
-
-    let k = midnight_zk_stdlib::optimal_k(&relation);
-    srs.downsize(k);
+    let srs = srs_for_test(&relation, None);
     let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
     let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
 

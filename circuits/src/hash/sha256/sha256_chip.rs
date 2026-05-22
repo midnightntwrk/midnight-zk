@@ -200,20 +200,19 @@ impl<F: CircuitField> ComposableChip<F> for Sha256Chip<F> {
         let q_12_1x3_7_3_4_3 = meta.selector();
         let q_add_mod_2_32 = meta.selector();
 
-        (0..2).for_each(|idx| {
-            meta.lookup("plain-spreaded lookup", |meta| {
-                let q_lookup = meta.query_selector(q_lookup);
+        meta.batched_lookup("plain-spreaded lookup", Some(q_lookup), |meta| {
+            let nbits_0 = meta.query_fixed(fixed_cols[0], Rotation(0));
+            let nbits_1 = meta.query_fixed(fixed_cols[1], Rotation(0));
+            let plain_0 = meta.query_advice(advice_cols[0], Rotation(0));
+            let plain_1 = meta.query_advice(advice_cols[2], Rotation(0));
+            let sprdd_0 = meta.query_advice(advice_cols[1], Rotation(0));
+            let sprdd_1 = meta.query_advice(advice_cols[3], Rotation(0));
 
-                let nbits = meta.query_fixed(fixed_cols[idx], Rotation(0));
-                let plain = meta.query_advice(advice_cols[2 * idx], Rotation(0));
-                let sprdd = meta.query_advice(advice_cols[2 * idx + 1], Rotation(0));
-
-                vec![
-                    (q_lookup.clone() * nbits, table.nbits_col),
-                    (q_lookup.clone() * plain, table.plain_col),
-                    (q_lookup * sprdd, table.sprdd_col),
-                ]
-            });
+            vec![
+                (vec![nbits_0, nbits_1], table.nbits_col),
+                (vec![plain_0, plain_1], table.plain_col),
+                (vec![sprdd_0, sprdd_1], table.sprdd_col),
+            ]
         });
 
         meta.create_gate("Maj(A, B, C)", |meta| {
@@ -1682,10 +1681,9 @@ impl<F: CircuitField> FromScratch<F> for Sha256Chip<F> {
     ) -> Self::Config {
         use std::cmp::max;
 
-        use crate::field::{
-            decomposition::pow2range::Pow2RangeChip,
-            native::{NB_ARITH_COLS, NB_ARITH_FIXED_COLS},
-        };
+        use crate::field::native::NB_EXTRA_ARITH_FIXED_COLS;
+        const NB_ARITH_COLS: usize = 5;
+        const NB_ARITH_FIXED_COLS: usize = NB_ARITH_COLS + NB_EXTRA_ARITH_FIXED_COLS;
 
         let nb_advice_needed = max(NB_ARITH_COLS, NB_SHA256_ADVICE_COLS);
         let nb_fixed_needed = max(NB_ARITH_FIXED_COLS, NB_SHA256_FIXED_COLS);
@@ -1697,18 +1695,20 @@ impl<F: CircuitField> FromScratch<F> for Sha256Chip<F> {
             fixed_columns.push(meta.fixed_column());
         }
 
-        let native_config = NativeChip::configure(
+        let core_decomposition_config = NativeGadget::configure_from_scratch(
             meta,
-            &(
-                advice_columns[..NB_ARITH_COLS].try_into().unwrap(),
-                fixed_columns[..NB_ARITH_FIXED_COLS].try_into().unwrap(),
-                *instance_columns,
-            ),
+            advice_columns,
+            fixed_columns,
+            instance_columns,
         );
 
-        let pow2range_config = Pow2RangeChip::configure(meta, &advice_columns[1..=4]);
-        let core_decomposition_config =
-            P2RDecompositionChip::configure(meta, &(native_config, pow2range_config));
+        // Create additional columns if SHA256 needs more than the native chip provides.
+        while advice_columns.len() < NB_SHA256_ADVICE_COLS {
+            advice_columns.push(meta.advice_column());
+        }
+        while fixed_columns.len() < NB_SHA256_FIXED_COLS {
+            fixed_columns.push(meta.fixed_column());
+        }
 
         let sha256_config = Sha256Chip::configure(
             meta,

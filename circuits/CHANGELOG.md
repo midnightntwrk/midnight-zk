@@ -14,17 +14,25 @@ verification keys break backwards compatibility.
 ### Added
 * Implement `AssertionInstructions`, `EqualityInstructions`, `ZeroInstructions`, `ControlFlowInstructions` and `ArithInstructions` for `AssignedScalarOfNativeCurve` on `EccChip` [#383](https://github.com/midnightntwrk/midnight-zk/pull/383)
 
+### Fixed
+* Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
+
 ### Changed
+* Adapt verifier gadget to single-proof prover API [#375](https://github.com/midnightntwrk/midnight-zk/pull/375)
+* Split linearization commitment into non-constant and constant parts, removing the generator point from the MSM [#313](https://github.com/midnightntwrk/midnight-zk/pull/313)
+* Make `NB_ARITH_COLS` configurable instead of a compile-time constant [#287](https://github.com/midnightntwrk/midnight-zk/pull/287)
+* Support `fewer-point-sets` feature in verifier gadget [#281](https://github.com/midnightntwrk/midnight-zk/pull/281)
+* `multi_prepare` now takes a slice instead of `IntoIterator` [#281](https://github.com/midnightntwrk/midnight-zk/pull/281)
+* Support `single-h-commitment` feature in verifier gadget [#276](https://github.com/midnightntwrk/midnight-zk/pull/276)
+* Filter out compile-time identity points in MSM [#256](https://github.com/midnightntwrk/midnight-zk/pull/256)
+* Sort point sets deterministically in KZG multiopen for in-circuit verification [#256](https://github.com/midnightntwrk/midnight-zk/pull/256)
+* Move advice queries before instance queries in verifier gadget [#256](https://github.com/midnightntwrk/midnight-zk/pull/256)
+* Share the `z` and `m` polynomials across all logup instances [#279](https://github.com/midnightntwrk/midnight-zk/pull/279)
 
 ### Removed
+* Remove `Expression::Challenge` variant and phase-parameterized `Any::Advice`; multi-phase advice columns are no longer supported [#376](https://github.com/midnightntwrk/midnight-zk/pull/376)
 
 ## [7.0.0]
-### Changed
-* `FromScratch::configure_from_scratch` now takes shared `advice_columns` and `fixed_columns` pools [#306](https://github.com/midnightntwrk/midnight-zk/pull/306)
-* Optimize foreign Edwards MSM: windowed scalar multiplication and improved point addition [#305](https://github.com/midnightntwrk/midnight-zk/pull/305)
-* Refactoring static specs to handle more identity-related examples [#330](https://github.com/midnightntwrk/midnight-zk/pull/330)
-* Boxing assigned vectors to assign overflows [#331](https://github.com/midnightntwrk/midnight-zk/pull/331)
-* Variable length automata and substring checks [#332](https://github.com/midnightntwrk/midnight-zk/pull/332)
 
 ### Added
 * Add functions to mark the region of a circuit to be measured for cost modelling [#296](https://github.com/midnightntwrk/midnight-zk/pull/296)
@@ -86,6 +94,11 @@ verification keys break backwards compatibility.
 * Adapt `foreign_params_gen.py` to general Weierstrass equations [#282](https://github.com/midnightntwrk/midnight-zk/pull/282)
 * Fix `assigned_to_le` functions in field chip [#303](https://github.com/midnightntwrk/midnight-zk/pull/303)
 * Add `from/to_canonical_compressed_bytes` to foreign Edwards chip [#354](https://github.com/midnightntwrk/midnight-zk/pull/354)
+* `FromScratch::configure_from_scratch` now takes shared `advice_columns` and `fixed_columns` pools [#306](https://github.com/midnightntwrk/midnight-zk/pull/306)
+* Optimize foreign Edwards MSM: windowed scalar multiplication and improved point addition [#305](https://github.com/midnightntwrk/midnight-zk/pull/305)
+* Refactoring static specs to handle more identity-related examples [#330](https://github.com/midnightntwrk/midnight-zk/pull/330)
+* Boxing assigned vectors to assign overflows [#331](https://github.com/midnightntwrk/midnight-zk/pull/331)
+* Variable length automata and substring checks [#332](https://github.com/midnightntwrk/midnight-zk/pull/332)
 
 ### Fixed
 * Fix `assign_without_subgroup_check` in Edwards chip to assert the point is on the curve [#298](https://github.com/midnightntwrk/midnight-zk/pull/298)
@@ -96,6 +109,7 @@ verification keys break backwards compatibility.
 * Remove native `secp256k1` `CircuitCurve` and `WeierstrassCurve` implementations [#216](https://github.com/midnightntwrk/midnight-zk/pull/216)
 
 ## [6.1.0]
+
 ### Changed
 * `ForeignEccChip::new` samples the windowed-MSM blinding point at construction time [#307](https://github.com/midnightntwrk/midnight-zk/pull/307)
 

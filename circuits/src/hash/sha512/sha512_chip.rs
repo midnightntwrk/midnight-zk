@@ -214,20 +214,19 @@ impl<F: CircuitField> ComposableChip<F> for Sha512Chip<F> {
         let q_3_13x3_3_11_1_1_5_1 = meta.selector();
         let q_add_mod_2_64 = meta.selector();
 
-        (0..2).for_each(|idx| {
-            meta.lookup("plain-spreaded lookup", |meta| {
-                let q_lookup = meta.query_selector(q_lookup);
+        meta.batched_lookup("plain-spreaded lookup", Some(q_lookup), |meta| {
+            let nbits_0 = meta.query_fixed(fixed_cols[0], Rotation(0));
+            let nbits_1 = meta.query_fixed(fixed_cols[1], Rotation(0));
+            let plain_0 = meta.query_advice(advice_cols[0], Rotation(0));
+            let plain_1 = meta.query_advice(advice_cols[2], Rotation(0));
+            let sprdd_0 = meta.query_advice(advice_cols[1], Rotation(0));
+            let sprdd_1 = meta.query_advice(advice_cols[3], Rotation(0));
 
-                let nbits = meta.query_fixed(fixed_cols[idx], Rotation(0));
-                let plain = meta.query_advice(advice_cols[2 * idx], Rotation(0));
-                let sprdd = meta.query_advice(advice_cols[2 * idx + 1], Rotation(0));
-
-                vec![
-                    (q_lookup.clone() * nbits, table.nbits_col),
-                    (q_lookup.clone() * plain, table.plain_col),
-                    (q_lookup * sprdd, table.sprdd_col),
-                ]
-            });
+            vec![
+                (vec![nbits_0, nbits_1], table.nbits_col),
+                (vec![plain_0, plain_1], table.plain_col),
+                (vec![sprdd_0, sprdd_1], table.sprdd_col),
+            ]
         });
 
         meta.create_gate("Maj(A, B, C)", |meta| {
@@ -1872,7 +1871,10 @@ impl<F: CircuitField> CompressionState<F> {
 use midnight_proofs::plonk::Instance;
 
 #[cfg(any(test, feature = "testing"))]
-use crate::{field::decomposition::chip::P2RDecompositionConfig, testing_utils::FromScratch};
+use crate::{
+    field::{decomposition::chip::P2RDecompositionConfig, native::NB_EXTRA_ARITH_FIXED_COLS},
+    testing_utils::FromScratch,
+};
 
 #[cfg(any(test, feature = "testing"))]
 impl<F: CircuitField> FromScratch<F> for Sha512Chip<F> {
@@ -1893,10 +1895,8 @@ impl<F: CircuitField> FromScratch<F> for Sha512Chip<F> {
     ) -> Self::Config {
         use std::cmp::max;
 
-        use crate::field::{
-            decomposition::pow2range::Pow2RangeChip,
-            native::{NB_ARITH_COLS, NB_ARITH_FIXED_COLS},
-        };
+        const NB_ARITH_COLS: usize = 5;
+        const NB_ARITH_FIXED_COLS: usize = NB_ARITH_COLS + NB_EXTRA_ARITH_FIXED_COLS;
 
         let nb_advice_needed = max(NB_ARITH_COLS, NB_SHA512_ADVICE_COLS);
         let nb_fixed_needed = max(NB_ARITH_FIXED_COLS, NB_SHA512_FIXED_COLS);
@@ -1908,18 +1908,19 @@ impl<F: CircuitField> FromScratch<F> for Sha512Chip<F> {
             fixed_columns.push(meta.fixed_column());
         }
 
-        let native_config = NativeChip::configure(
+        let core_decomposition_config = NativeGadget::configure_from_scratch(
             meta,
-            &(
-                advice_columns[..NB_ARITH_COLS].try_into().unwrap(),
-                fixed_columns[..NB_ARITH_FIXED_COLS].try_into().unwrap(),
-                *instance_columns,
-            ),
+            advice_columns,
+            fixed_columns,
+            instance_columns,
         );
 
-        let pow2range_config = Pow2RangeChip::configure(meta, &advice_columns[1..=4]);
-        let core_decomposition_config =
-            P2RDecompositionChip::configure(meta, &(native_config, pow2range_config));
+        while advice_columns.len() < NB_SHA512_ADVICE_COLS {
+            advice_columns.push(meta.advice_column());
+        }
+        while fixed_columns.len() < NB_SHA512_FIXED_COLS {
+            fixed_columns.push(meta.fixed_column());
+        }
 
         let sha512_config = Sha512Chip::configure(
             meta,

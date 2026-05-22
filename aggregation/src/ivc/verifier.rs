@@ -60,14 +60,12 @@ impl<T: Ivc> IvcVerifier<T> {
             IvcCircuit::<T>::format_instance(instance).map_err(|_| IvcError::InvalidInstance)?;
 
         let mut transcript = CircuitTranscript::<PoseidonState<F>>::init_from_bytes(proof);
-        let dual_msm =
-            plonk::prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<PoseidonState<F>>>(
-                self.vk.vk(),
-                &[&[C::identity()]],
-                &[&[&pi]],
-                &mut transcript,
-            )
-            .map_err(|_| IvcError::InvalidProof)?;
+        let dual_msm = plonk::prepare::<
+            F,
+            KZGCommitmentScheme<E>,
+            CircuitTranscript<PoseidonState<F>>,
+        >(self.vk.vk(), &[C::identity()], &[&pi], &mut transcript)
+        .map_err(|_| IvcError::InvalidProof)?;
 
         transcript.assert_empty().map_err(|_| IvcError::TranscriptNotEmpty)?;
 

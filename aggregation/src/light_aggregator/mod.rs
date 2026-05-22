@@ -55,10 +55,7 @@ use inner_product_argument::{ipa_prove, ipa_verify};
 use light_fiat_shamir::LightPoseidonFS;
 use light_self_emulation::{FakeCurveChip, LightBlstrsEmulation};
 use midnight_circuits::{
-    field::{
-        native::{NB_ARITH_COLS, NB_ARITH_FIXED_COLS},
-        AssignedNative, NativeChip, NativeConfig,
-    },
+    field::{native::NB_EXTRA_ARITH_FIXED_COLS, AssignedNative, NativeChip, NativeConfig},
     hash::poseidon::{
         PoseidonChip, PoseidonConfig, NB_POSEIDON_ADVICE_COLS, NB_POSEIDON_FIXED_COLS,
     },
@@ -140,6 +137,9 @@ impl<const NB_PROOFS: usize> Circuit<F> for AggregatorCircuit<NB_PROOFS> {
     }
 
     fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+        const NB_ARITH_COLS: usize = 5;
+        const NB_ARITH_FIXED_COLS: usize = NB_ARITH_COLS + NB_EXTRA_ARITH_FIXED_COLS;
+
         let nb_advice_cols = std::cmp::max(NB_ARITH_COLS, NB_POSEIDON_ADVICE_COLS);
         let nb_fixed_cols = std::cmp::max(NB_ARITH_FIXED_COLS, NB_POSEIDON_FIXED_COLS);
 
@@ -151,8 +151,8 @@ impl<const NB_PROOFS: usize> Circuit<F> for AggregatorCircuit<NB_PROOFS> {
         let native_config = NativeChip::configure(
             meta,
             &(
-                advice_columns[..NB_ARITH_COLS].try_into().unwrap(),
-                fixed_columns[..NB_ARITH_FIXED_COLS].try_into().unwrap(),
+                advice_columns[..NB_ARITH_COLS].to_vec(),
+                fixed_columns[..NB_ARITH_FIXED_COLS].to_vec(),
                 [committed_instance_column, instance_column],
             ),
         );
@@ -250,6 +250,7 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
         dbg!(
             midnight_proofs::dev::cost_model::circuit_model::<_, 48, 32>(
                 &default_aggregator_circuit,
+                1,
             )
         );
 
@@ -271,7 +272,10 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
             inner_vk: inner_vk.clone(),
             aggregator_vk,
             aggregator_pk,
-            lagrange_commitments: srs.g_lagrange()[..(nb_coms_per_proof * NB_PROOFS)].to_vec(),
+            lagrange_commitments: srs.g_lagrange()[..(nb_coms_per_proof * NB_PROOFS)]
+                .iter()
+                .map(|p| (*p).into())
+                .collect(),
         })
     }
 
@@ -312,8 +316,8 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
                     CircuitTranscript<LightPoseidonFS<F>>,
                 >(
                     &self.inner_vk,
-                    &[&[C::identity()]],
-                    &[&[proof_instances]],
+                    &[C::identity()],
+                    &[proof_instances],
                     &mut inner_transcript,
                 )?;
 
@@ -374,9 +378,9 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
         create_proof::<F, KZGCommitmentScheme<E>, T, AggregatorCircuit<NB_PROOFS>>(
             srs,
             &self.aggregator_pk,
-            &[aggregator_circuit],
+            &aggregator_circuit,
             1,
-            &[&[&acc_committed_instances, &aggregator_instances]],
+            &[&acc_committed_instances, &aggregator_instances],
             transcript,
             &mut rng,
         )?;
@@ -446,8 +450,8 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
         let proof_dual_msm = {
             prepare::<F, KZGCommitmentScheme<E>, T>(
                 &self.aggregator_vk,
-                &[&[acc_rhs_scalars_committed]],
-                &[&[&aggregator_instances]],
+                &[acc_rhs_scalars_committed],
+                &[&aggregator_instances],
                 transcript,
             )?
         };
@@ -604,8 +608,8 @@ mod tests {
             let dual_msm =
                 prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<LightPoseidonFS<F>>>(
                     inner_vk.vk(),
-                    &[&[C::identity()]],
-                    &[&[&InnerCircuit::format_instance(&instances[i]).unwrap()]],
+                    &[C::identity()],
+                    &[&InnerCircuit::format_instance(&instances[i]).unwrap()],
                     &mut transcript,
                 )
                 .unwrap();

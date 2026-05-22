@@ -46,7 +46,6 @@ pub(crate) fn eval_expression<S: SelfEmulation>(
         Expression::Fixed(query) => Ok(fixed[query.index().unwrap()].clone()),
         Expression::Advice(query) => Ok(advice[query.index.unwrap()].clone()),
         Expression::Instance(query) => Ok(instance[query.index.unwrap()].clone()),
-        Expression::Challenge(_) => panic!("We do not suport multi-phase yet"),
         Expression::Negated(e) => {
             let val = eval_expression::<S>(layouter, scalar_chip, advice, fixed, instance, e)?;
             scalar_chip.neg(layouter, &val)

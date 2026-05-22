@@ -9,8 +9,8 @@ use crate::{
         Cell, Layouter, Region, RegionIndex, RegionStart, Table, Value,
     },
     plonk::{
-        Advice, Any, Assignment, Challenge, Circuit, Column, Error, Fixed, FloorPlanner, Instance,
-        Selector, TableColumn,
+        Advice, Any, Assignment, Circuit, Column, Error, Fixed, FloorPlanner, Instance, Selector,
+        TableColumn,
     },
     utils::rational::Rational,
 };
@@ -194,10 +194,6 @@ impl<'a, F: Field, CS: Assignment<F> + 'a + SyncDeps> Layouter<F>
             instance.into(),
             row,
         )
-    }
-
-    fn get_challenge(&self, challenge: Challenge) -> Value<F> {
-        self.cs.get_challenge(challenge)
     }
 
     fn get_root(&mut self) -> &mut Self::Root {
