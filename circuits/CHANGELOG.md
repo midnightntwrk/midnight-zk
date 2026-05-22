@@ -12,6 +12,7 @@ verification keys break backwards compatibility.
 
 ## [Unreleased]
 ### Added
+* Implement `AssertionInstructions`, `EqualityInstructions`, `ZeroInstructions`, `ControlFlowInstructions` and `ArithInstructions` for `AssignedScalarOfNativeCurve` on `EccChip` [#383](https://github.com/midnightntwrk/midnight-zk/pull/383)
 
 ### Fixed
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)

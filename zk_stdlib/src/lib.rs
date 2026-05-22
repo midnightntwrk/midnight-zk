@@ -145,7 +145,7 @@ type Curve25519BaseChip = FieldChip<F, curve25519_mod::Fp, MEP, NG>;
 type Curve25519ScalarChip = FieldChip<F, curve25519_mod::Scalar, MEP, NG>;
 type Curve25519Chip = ForeignEdwardsEccChip<F, Curve25519, MEP, Curve25519ScalarChip, NG>;
 
-const ZKSTD_VERSION: u32 = 1;
+const ZKSTD_VERSION: u32 = 2;
 
 /// Byte size of a serialized BLS12-381 G1 commitment (compressed).
 const COMMITMENT_BYTE_SIZE: usize = 48;
@@ -242,6 +242,47 @@ impl Default for ZkStdLibArch {
     }
 }
 
+/// Serialized layout of [`ZkStdLibArch`] as it existed in
+/// `midnight-zk-stdlib` v1.0.0 (ZKSTD_VERSION 1). Used only for migration
+/// when reading old serialized verifying keys.
+#[derive(Decode)]
+struct ZkStdLibArchV1 {
+    jubjub: bool,
+    poseidon: bool,
+    sha2_256: bool,
+    sha2_512: bool,
+    keccak_256: bool,
+    sha3_256: bool,
+    blake2b: bool,
+    secp256k1: bool,
+    bls12_381: bool,
+    base64: bool,
+    automaton: bool,
+    nr_pow2range_cols: u8,
+}
+
+impl From<ZkStdLibArchV1> for ZkStdLibArch {
+    fn from(v1: ZkStdLibArchV1) -> Self {
+        ZkStdLibArch {
+            jubjub: v1.jubjub,
+            poseidon: v1.poseidon,
+            sha2_256: v1.sha2_256,
+            sha2_512: v1.sha2_512,
+            keccak_256: v1.keccak_256,
+            sha3_256: v1.sha3_256,
+            blake2b: v1.blake2b,
+            secp256k1: v1.secp256k1,
+            p256: false,
+            bls12_381: v1.bls12_381,
+            curve25519: false,
+            base64: v1.base64,
+            automaton: v1.automaton,
+            nb_arith_cols: 5,
+            nr_pow2range_cols: v1.nr_pow2range_cols,
+        }
+    }
+}
+
 impl ZkStdLibArch {
     /// Writes the ZKStd architecture to a buffer.
     pub fn write<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
@@ -257,7 +298,10 @@ impl ZkStdLibArch {
         reader.read_exact(&mut version)?;
         let version = u32::from_le_bytes(version);
         match version {
-            1 => bincode::decode_from_std_read(reader, standard())
+            1 => bincode::decode_from_std_read::<ZkStdLibArchV1, _, _>(reader, standard())
+                .map(ZkStdLibArch::from)
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e)),
+            2 => bincode::decode_from_std_read(reader, standard())
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e)),
             _ => Err(io::Error::new(
                 io::ErrorKind::InvalidData,
