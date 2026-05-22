@@ -131,3 +131,58 @@ pub fn construct_intermediate_sets<F: Field + Hash + Ord, Q: Query<F>>(
 
     Ok((commitment_map, point_sets))
 }
+
+/// Computes the dummy openings needed to reduce the number of distinct
+/// multi-open point sets. Each input `(key, point)` pair represents a query
+/// (e.g., a commitment opened at a given point). The function groups queries
+/// by key (by commitment) computes the union of all point sets that contain
+/// more than one point, and returns the missing `(index, point)` pairs that,
+/// once added, make every such point set identical. Keys with a single point
+/// are left untouched (we do this because there are many commitments opened
+/// at a single point, e.g. most selectors; we could also pad those, but the
+/// impact on the proof size would be more significant).
+///
+/// Each returned `index` refers to the position of the key's first occurrence
+/// in the input, so callers can index back into the original query slice.
+///
+/// The output order is deterministic (insertion order), so prover and verifier
+/// stay in sync.
+#[cfg(feature = "fewer-point-sets")]
+pub fn compute_dummy_queries<K: PartialEq, P: PartialEq + Clone>(
+    pairs: &[(K, P)],
+) -> Vec<(usize, P)> {
+    // Group by key, tracking each key's first occurrence index.
+    let mut groups: Vec<(usize, Vec<P>)> = vec![];
+    for (i, (key, point)) in pairs.iter().enumerate() {
+        match groups.iter_mut().find(|(idx, _)| pairs[*idx].0 == *key) {
+            Some((_, points)) if !points.contains(point) => points.push(point.clone()),
+            Some(_) => panic!("duplicate (key, point) pair in compute_dummy_queries input"),
+            None => groups.push((i, vec![point.clone()])),
+        }
+    }
+
+    // Union of all non-singleton point sets (insertion order).
+    let mut union = vec![];
+    for (_, points) in &groups {
+        assert!(!points.is_empty(), "unexpected empty point set");
+        if points.len() == 1 {
+            continue;
+        }
+        for p in points {
+            if !union.contains(p) {
+                union.push(p.clone());
+            }
+        }
+    }
+
+    // Collect missing (first_index, point) dummy queries.
+    let mut dummy_queries = vec![];
+    for (idx, existing) in &groups {
+        for p in &union {
+            if !existing.contains(p) {
+                dummy_queries.push((*idx, p.clone()));
+            }
+        }
+    }
+    dummy_queries
+}

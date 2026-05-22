@@ -106,6 +106,11 @@ impl<T: Ivc> IvcCircuit<T> {
         arch.poseidon = true;
         arch
     }
+
+    /// Returns the constraint-system degree of the IVC circuit.
+    pub fn cs_degree() -> usize {
+        midnight_zk_stdlib::cs_degree(Self::arch())
+    }
 }
 
 impl<T: Ivc> Relation for IvcCircuit<T> {

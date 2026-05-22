@@ -429,9 +429,7 @@ impl<F: CircuitField> ComposableChip<F> for Base64Chip<F> {
         let t_char = meta.lookup_table_column();
         let t_val = meta.lookup_table_column();
 
-        meta.lookup("Base64 lookup", |meta| {
-            let s = meta.query_selector(lookup_sel);
-
+        meta.lookup("Base64 lookup", Some(lookup_sel), |meta| {
             // Each row decodes 2 characters. The first 2 columns contain
             // the characters. The third column contains their combined value as:
             //  char_1 * (2^6) + char_2
@@ -447,16 +445,7 @@ impl<F: CircuitField> ComposableChip<F> for Base64Chip<F> {
 
             let value = meta.query_advice(advice_cols[2], Rotation::cur());
 
-            // Default value for the deactivated lookup.
-            let default_char = Expression::from(super::table::two_entry_default());
-
-            vec![
-                (
-                    s.clone() * characters + (Expression::from(1) - s.clone()) * default_char,
-                    t_char,
-                ),
-                (s.clone() * value, t_val),
-            ]
+            vec![(characters, t_char), (value, t_val)]
         });
         Base64Config {
             advice_cols,

@@ -1,14 +1,17 @@
 use std::{fmt::Debug, io};
 
 use ff::{Field, PrimeField};
-use group::{prime::PrimeCurveAffine, Curve, Group};
-use midnight_curves::pairing::{Engine, MultiMillerLoop};
+use group::{prime::PrimeCurveAffine, Curve, Group, GroupEncoding};
+use midnight_curves::{
+    pairing::{Engine, MultiMillerLoop},
+    serde::SerdeObject,
+};
 use rand_core::RngCore;
 
 use crate::{
-    poly::commitment::Params,
+    poly::{commitment::Params, PolynomialBasis, PolynomialRepresentation},
     utils::{
-        arithmetic::{g_to_lagrange, parallelize},
+        arithmetic::{g_to_lagrange, parallelize, CurveAffine},
         helpers::ProcessedSerdeObject,
         SerdeFormat,
     },
@@ -17,17 +20,54 @@ use crate::{
 /// These are the public parameters for the polynomial commitment scheme.
 #[derive(Debug, Clone)]
 pub struct ParamsKZG<E: Engine> {
-    pub(crate) g: Vec<E::G1>,
-    pub(crate) g_lagrange: Vec<E::G1>,
+    pub(crate) g: Vec<E::G1Affine>,
+    pub(crate) g_lagrange: Vec<E::G1Affine>,
+    /// Suffix-sum of `g_lagrange`:
+    /// `g_lagrange_delta[i] = sum_{j=i}^{n-1} g_lagrange[j]`.
+    pub(crate) g_lagrange_delta: Vec<E::G1Affine>,
+    /// Suffix-sum of `g_lagrange_delta`:
+    /// `g_lagrange_double_delta[i] = sum_{j=i}^{n-1} g_lagrange_delta[j]`.
+    /// Used as the SRS for the `LagrangeDoubleDelta` basis. Same derivation
+    /// as `g_lagrange_delta`, applied a second time:
+    /// `sum_j a_j · L_j = sum_i c_i · g_lagrange_double_delta[i]`,
+    /// where `c_i = b_i - b_{i-1}` and `b_i = a_i - a_{i-1}`.
+    pub(crate) g_lagrange_double_delta: Vec<E::G1Affine>,
     pub(crate) g2: E::G2,
     pub(crate) s_g2: E::G2,
 }
 
-impl<E: Engine> Params for ParamsKZG<E> {
-    fn max_k(&self) -> u32 {
-        assert_eq!(self.g.len(), self.g_lagrange.len());
+/// Builds the suffix-sum of an affine SRS: `out[i] = sum_{j=i}^{n-1} input[j]`.
+///
+/// Accumulate in projective coordinates (one curve add per step) and
+/// batch-normalise to affine at the end. n-1 projective adds + one O(n)
+/// batch_normalise.
+///
+/// # Panics
+/// If input is empty
+fn suffix_sum<C: CurveAffine>(input: &[C]) -> Vec<C> {
+    let n = input.len();
+    let mut acc_proj: Vec<C::Curve> = vec![C::Curve::identity(); n];
+    acc_proj[n - 1] = input[n - 1].into();
+    for i in (0..n - 1).rev() {
+        acc_proj[i] = acc_proj[i + 1] + input[i];
+    }
+    let mut acc_affine = vec![C::identity(); n];
+    C::Curve::batch_normalize(&acc_proj, &mut acc_affine);
+    acc_affine
+}
 
-        self.g.len().ilog2()
+impl<E: Engine> Params for ParamsKZG<E>
+where
+    E::G1Affine: CurveAffine,
+{
+    fn max_k(&self) -> u32 {
+        #[cfg(not(feature = "single-h-commitment"))]
+        assert_eq!(self.g.len(), self.g_lagrange.len());
+        self.g_lagrange.len().ilog2()
+    }
+
+    fn g_monomial_size(&self) -> usize {
+        self.g.len()
     }
 
     fn downsize(&mut self, new_k: u32) {
@@ -35,7 +75,23 @@ impl<E: Engine> Params for ParamsKZG<E> {
     }
 }
 
-impl<E: Engine + Debug> ParamsKZG<E> {
+impl<E: Engine + Debug> ParamsKZG<E>
+where
+    E::G1Affine: CurveAffine,
+{
+    /// Return the SRS bases corresponding to the polynomial representation `B`.
+    pub fn bases<B: PolynomialRepresentation>(&self) -> &[E::G1Affine] {
+        match B::BASIS {
+            PolynomialBasis::Coeff => &self.g,
+            PolynomialBasis::Lagrange => &self.g_lagrange,
+            PolynomialBasis::LagrangeDelta => &self.g_lagrange_delta,
+            PolynomialBasis::LagrangeDoubleDelta => &self.g_lagrange_double_delta,
+            PolynomialBasis::ExtendedLagrange => {
+                unimplemented!("KZG does not support extended Lagrange bases")
+            }
+        }
+    }
+
     /// Downsize the current parameters to match a smaller `k`.
     pub fn downsize(&mut self, new_k: u32) {
         if self.max_k() == new_k {
@@ -46,6 +102,51 @@ impl<E: Engine + Debug> ParamsKZG<E> {
         assert!(n < self.g_lagrange.len());
         self.g.truncate(n);
         self.g_lagrange = g_to_lagrange(&self.g, new_k);
+        self.g_lagrange_delta = suffix_sum(&self.g_lagrange);
+        self.g_lagrange_double_delta = suffix_sum(&self.g_lagrange_delta);
+    }
+
+    /// Recompute the Lagrange basis for a smaller circuit domain `new_k` while
+    /// keeping the full monomial basis `g` intact.
+    ///
+    /// Use this when the `single-h-commitment` feature is enabled: generate an
+    /// SRS large enough for the whole quotient polynomial (i.e. with `k'`
+    /// such that `2^{k'} ≥ (n-1) * quotient_poly_degree`), then call
+    /// `downsize_lagrange(k)` so that `max_k()` equals the circuit domain size
+    /// `k` while `g` retains its original length for the H-polynomial
+    /// commitment.
+    #[cfg(feature = "single-h-commitment")]
+    pub fn downsize_lagrange(&mut self, new_k: u32) {
+        let n = 1usize << new_k;
+        assert!(
+            self.g.len() >= n,
+            "g is too small to build a Lagrange basis of size 2^{new_k}"
+        );
+        self.g_lagrange = g_to_lagrange(&self.g[..n], new_k);
+        self.g_lagrange_delta = suffix_sum(&self.g_lagrange);
+        self.g_lagrange_double_delta = suffix_sum(&self.g_lagrange_delta);
+    }
+
+    /// Combine the monomial basis from `extended` with the Lagrange basis from
+    /// `self`, consuming both. This avoids the FFT that [`downsize_lagrange`]
+    /// would otherwise require.
+    ///
+    /// # Panics
+    ///
+    /// If `extended.g` is not strictly larger than `self.g`, or if the shared
+    /// prefix of the monomial bases does not match.
+    #[cfg(feature = "single-h-commitment")]
+    pub fn with_extended_monomial(mut self, extended: Self) -> Self {
+        assert!(
+            extended.g.len() > self.g.len(),
+            "extended SRS must be strictly larger than the base SRS"
+        );
+        assert!(
+            self.g[..] == extended.g[..self.g.len()],
+            "monomial bases of the two SRSs do not match"
+        );
+        self.g = extended.g;
+        self
     }
 
     /// Initializes parameters for the curve, draws toxic secret from given rng.
@@ -86,12 +187,23 @@ impl<E: Engine + Debug> ParamsKZG<E> {
             }
         });
 
+        let mut g_affine = vec![E::G1Affine::identity(); n as usize];
+        E::G1::batch_normalize(&g, &mut g_affine);
+
+        let mut g_lagrange_affine = vec![E::G1Affine::identity(); n as usize];
+        E::G1::batch_normalize(&g_lagrange, &mut g_lagrange_affine);
+
+        let g_lagrange_delta = suffix_sum(&g_lagrange_affine);
+        let g_lagrange_double_delta = suffix_sum(&g_lagrange_delta);
+
         let g2 = E::G2::generator();
         let s_g2 = g2 * s;
 
         Self {
-            g,
-            g_lagrange,
+            g: g_affine,
+            g_lagrange: g_lagrange_affine,
+            g_lagrange_delta,
+            g_lagrange_double_delta,
             g2,
             s_g2,
         }
@@ -106,19 +218,31 @@ impl<E: Engine + Debug> ParamsKZG<E> {
         g2: E::G2,
         s_g2: E::G2,
     ) -> Self {
+        let n = g.len();
+        let mut g_affine = vec![E::G1Affine::identity(); n];
+        E::G1::batch_normalize(&g, &mut g_affine);
+        let g_lagrange_affine = match g_lagrange {
+            Some(g_l) => {
+                let mut aff = vec![E::G1Affine::identity(); g_l.len()];
+                E::G1::batch_normalize(&g_l, &mut aff);
+                aff
+            }
+            None => g_to_lagrange(&g_affine, k),
+        };
+        let g_lagrange_delta = suffix_sum(&g_lagrange_affine);
+        let g_lagrange_double_delta = suffix_sum(&g_lagrange_delta);
         Self {
-            g_lagrange: match g_lagrange {
-                Some(g_l) => g_l,
-                None => g_to_lagrange(&g, k),
-            },
-            g,
+            g: g_affine,
+            g_lagrange: g_lagrange_affine,
+            g_lagrange_delta,
+            g_lagrange_double_delta,
             g2,
             s_g2,
         }
     }
 
     /// Returns the committed lagrange polynomials of these KZG params.
-    pub fn g_lagrange(&self) -> &[E::G1] {
+    pub fn g_lagrange(&self) -> &[E::G1Affine] {
         &self.g_lagrange
     }
 
@@ -135,15 +259,21 @@ impl<E: Engine + Debug> ParamsKZG<E> {
     /// Writes parameters to buffer
     pub fn write_custom<W: io::Write>(&self, writer: &mut W, format: SerdeFormat) -> io::Result<()>
     where
-        E::G1: Curve + ProcessedSerdeObject,
-        E::G2: Curve + ProcessedSerdeObject,
+        E::G1Affine: SerdeObject,
+        E::G2: ProcessedSerdeObject,
     {
         writer.write_all(&self.g.len().ilog2().to_le_bytes())?;
         for el in self.g.iter() {
-            el.write(writer, format)?;
+            match format {
+                SerdeFormat::Processed => writer.write_all(el.to_bytes().as_ref())?,
+                _ => el.write_raw(writer)?,
+            }
         }
         for el in self.g_lagrange.iter() {
-            el.write(writer, format)?;
+            match format {
+                SerdeFormat::Processed => writer.write_all(el.to_bytes().as_ref())?,
+                _ => el.write_raw(writer)?,
+            }
         }
         self.g2.write(writer, format)?;
         self.s_g2.write(writer, format)?;
@@ -153,8 +283,8 @@ impl<E: Engine + Debug> ParamsKZG<E> {
     /// Reads params from a buffer.
     pub fn read_custom<R: io::Read>(reader: &mut R, format: SerdeFormat) -> io::Result<Self>
     where
-        E::G1: Curve + ProcessedSerdeObject,
-        E::G2: Curve + ProcessedSerdeObject,
+        E::G1Affine: SerdeObject,
+        E::G2: ProcessedSerdeObject,
     {
         let mut k = [0u8; 4];
         reader.read_exact(&mut k[..])?;
@@ -163,54 +293,42 @@ impl<E: Engine + Debug> ParamsKZG<E> {
 
         let (g, g_lagrange) = match format {
             SerdeFormat::Processed => {
-                use group::GroupEncoding;
                 let load_points_from_file_parallelly =
-                    |reader: &mut R| -> io::Result<Vec<Option<E::G1>>> {
+                    |reader: &mut R| -> io::Result<Vec<E::G1Affine>> {
                         let mut points_compressed =
-                            vec![<<E as Engine>::G1 as GroupEncoding>::Repr::default(); n];
+                            vec![<E::G1Affine as GroupEncoding>::Repr::default(); n];
                         for points_compressed in points_compressed.iter_mut() {
                             reader.read_exact((*points_compressed).as_mut())?;
                         }
-
-                        let mut points = vec![Option::<E::G1>::None; n];
+                        let mut points = vec![Option::<E::G1Affine>::None; n];
                         parallelize(&mut points, |points, chunks| {
                             for (i, point) in points.iter_mut().enumerate() {
-                                *point =
-                                    Option::from(E::G1::from_bytes(&points_compressed[chunks + i]));
+                                *point = Option::from(E::G1Affine::from_bytes(
+                                    &points_compressed[chunks + i],
+                                ));
                             }
                         });
-                        Ok(points)
+                        points
+                            .into_iter()
+                            .map(|p| p.ok_or_else(|| io::Error::other("invalid point encoding")))
+                            .collect()
                     };
 
                 let g = load_points_from_file_parallelly(reader)?;
-                let g: Vec<<E as Engine>::G1> = g
-                    .iter()
-                    .map(|point| point.ok_or_else(|| io::Error::other("invalid point encoding")))
-                    .collect::<Result<_, _>>()?;
                 let g_lagrange = load_points_from_file_parallelly(reader)?;
-                let g_lagrange: Vec<<E as Engine>::G1> = g_lagrange
-                    .iter()
-                    .map(|point| point.ok_or_else(|| io::Error::other("invalid point encoding")))
-                    .collect::<Result<_, _>>()?;
                 (g, g_lagrange)
             }
             SerdeFormat::RawBytes => {
-                let g = (0..n)
-                    .map(|_| <E::G1 as ProcessedSerdeObject>::read(reader, format))
-                    .collect::<Result<Vec<_>, _>>()?;
-                let g_lagrange = (0..n)
-                    .map(|_| <E::G1 as ProcessedSerdeObject>::read(reader, format))
-                    .collect::<Result<Vec<_>, _>>()?;
+                let g =
+                    (0..n).map(|_| E::G1Affine::read_raw(reader)).collect::<Result<Vec<_>, _>>()?;
+                let g_lagrange =
+                    (0..n).map(|_| E::G1Affine::read_raw(reader)).collect::<Result<Vec<_>, _>>()?;
                 (g, g_lagrange)
             }
             SerdeFormat::RawBytesUnchecked => {
-                // avoid try branching for performance
-                let g = (0..n)
-                    .map(|_| <E::G1 as ProcessedSerdeObject>::read(reader, format).unwrap())
-                    .collect::<Vec<_>>();
-                let g_lagrange = (0..n)
-                    .map(|_| <E::G1 as ProcessedSerdeObject>::read(reader, format).unwrap())
-                    .collect::<Vec<_>>();
+                let g = (0..n).map(|_| E::G1Affine::read_raw_unchecked(reader)).collect::<Vec<_>>();
+                let g_lagrange =
+                    (0..n).map(|_| E::G1Affine::read_raw_unchecked(reader)).collect::<Vec<_>>();
                 (g, g_lagrange)
             }
         };
@@ -218,9 +336,13 @@ impl<E: Engine + Debug> ParamsKZG<E> {
         let g2 = E::G2::read(reader, format)?;
         let s_g2 = E::G2::read(reader, format)?;
 
+        let g_lagrange_delta = suffix_sum(&g_lagrange);
+        let g_lagrange_double_delta = suffix_sum(&g_lagrange_delta);
         Ok(Self {
             g,
             g_lagrange,
+            g_lagrange_delta,
+            g_lagrange_double_delta,
             g2,
             s_g2,
         })
@@ -312,10 +434,89 @@ mod test {
 
         let b = domain.lagrange_to_coeff(a.clone());
 
-        let tmp = KZGCommitmentScheme::commit_lagrange(&params, &a);
+        let tmp = KZGCommitmentScheme::commit(&params, &a);
         let commitment = KZGCommitmentScheme::commit(&params, &b);
 
         assert_eq!(commitment, tmp);
+    }
+
+    #[test]
+    fn test_commit_in_delta_basis_matches_lagrange() {
+        const K: u32 = 6;
+
+        use ff::Field;
+        use midnight_curves::{Bls12, Fq};
+
+        use crate::poly::EvaluationDomain;
+
+        let params: ParamsKZG<Bls12> = ParamsKZG::unsafe_setup(K, OsRng);
+        let domain = EvaluationDomain::new(1, K);
+
+        // A polynomial with long constant runs and a few isolated transitions —
+        // exercises the structure the optimization is designed for.
+        let mut a = domain.empty_lagrange();
+        for (i, slot) in a.iter_mut().enumerate() {
+            *slot = match i {
+                0..16 => Fq::ZERO,
+                16..40 => Fq::from(7),
+                40..50 => Fq::from(7) + Fq::from(i as u64),
+                _ => Fq::from(42),
+            };
+        }
+
+        let c_lagrange = KZGCommitmentScheme::commit(&params, &a);
+        let c_delta = KZGCommitmentScheme::commit(&params, &a.to_delta());
+        assert_eq!(c_lagrange, c_delta);
+
+        // Round-trip identity: to_delta then into_lagrange recovers the original.
+        let restored = a.to_delta().into_lagrange();
+        assert_eq!(restored.values, a.values);
+    }
+
+    #[test]
+    fn test_commit_in_double_delta_basis_matches_lagrange() {
+        const K: u32 = 6;
+
+        use midnight_curves::{Bls12, Fq};
+
+        use crate::poly::EvaluationDomain;
+
+        let params: ParamsKZG<Bls12> = ParamsKZG::unsafe_setup(K, OsRng);
+        let domain = EvaluationDomain::new(1, K);
+
+        // A polynomial with linear runs (constant first differences) and a
+        // few transitions — exercises the structure the double-delta basis
+        // is designed for: linear segments collapse to zeros after two
+        // delta applications.
+        let mut a = domain.empty_lagrange();
+        for (i, slot) in a.iter_mut().enumerate() {
+            *slot = match i {
+                0..16 => Fq::from(i as u64),
+                16..40 => Fq::from(16) + Fq::from(2u64) * Fq::from((i - 16) as u64),
+                40..50 => Fq::from(99),
+                _ => Fq::from(i as u64) - Fq::from(50),
+            };
+        }
+
+        let c_lagrange = KZGCommitmentScheme::commit(&params, &a);
+
+        // Fused single-pass conversion matches the two-step path.
+        let c_double_delta_fused = KZGCommitmentScheme::commit(&params, &a.to_double_delta());
+        let c_double_delta_two_step =
+            KZGCommitmentScheme::commit(&params, &a.to_delta().into_double_delta());
+        assert_eq!(c_lagrange, c_double_delta_fused);
+        assert_eq!(c_lagrange, c_double_delta_two_step);
+
+        // Both fused and two-step transforms produce the same scalar vector.
+        let fused = a.to_double_delta();
+        let two_step = a.to_delta().into_double_delta();
+        assert_eq!(fused.values, two_step.values);
+
+        // Round-trip identity, both inverse paths.
+        let restored_fused = a.to_double_delta().into_lagrange();
+        let restored_stepwise = a.to_double_delta().into_lagrange_delta().into_lagrange();
+        assert_eq!(restored_fused.values, a.values);
+        assert_eq!(restored_stepwise.values, a.values);
     }
 
     #[test]

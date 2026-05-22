@@ -62,10 +62,12 @@ pub(crate) type OutputTestVector<'a> = (&'a [u8], &'a [usize]);
 #[cfg(test)]
 use {
     crate::field::decomposition::chip::P2RDecompositionConfig,
-    crate::field::decomposition::pow2range::Pow2RangeChip, crate::field::native::NB_ARITH_COLS,
-    crate::testing_utils::FromScratch, midnight_proofs::plonk::Instance, regex::RegexInstructions,
+    crate::field::decomposition::pow2range::Pow2RangeChip, crate::testing_utils::FromScratch,
+    midnight_proofs::plonk::Instance, regex::RegexInstructions,
 };
 
+#[cfg(test)]
+use crate::field::native::NB_EXTRA_ARITH_FIXED_COLS;
 use crate::{
     field::{
         decomposition::chip::P2RDecompositionChip, native::AssignedBit, AssignedNative, NativeChip,
@@ -402,8 +404,8 @@ where
         for batch in 0..AUTOMATON_PARALLELISM {
             meta.lookup(
                 format!("automaton transition check (batch {batch})"),
+                Some(q_automaton),
                 |meta| {
-                    let q = meta.query_selector(q_automaton);
                     let base = NB_AUTOMATON_COLS * batch;
                     let [source, letter, output] = core::array::from_fn(|i| {
                         meta.query_advice(advice_cols[base + i], Rotation::cur())
@@ -414,10 +416,10 @@ where
                         meta.query_advice(advice_cols[0], Rotation::next())
                     };
                     vec![
-                        (q.clone() * source, t_source),
-                        (q.clone() * letter, t_letter),
-                        (q.clone() * target, t_target),
-                        (q * output, t_output),
+                        (source, t_source),
+                        (letter, t_letter),
+                        (target, t_target),
+                        (output, t_output),
                     ]
                 },
             );
@@ -468,7 +470,7 @@ where
         // unrelated rows: a query tagged T can only match table entries with the
         // same tag T, and rows with tag 0 never participate in any lookup.
         for batch in 0..SUBSTRING_PARALLELISM {
-            meta.lookup_any(format!("substring lookup (batch {batch})"), |meta| {
+            meta.lookup_any(format!("substring lookup (batch {batch})"), None, |meta| {
                 let sel = meta.query_selector(q_substring);
                 let not_sel = Expression::Constant(F::ONE) - sel.clone();
                 let index = meta.query_fixed(*index_col, Rotation::cur());
@@ -585,22 +587,23 @@ where
         fixed_columns: &mut Vec<Column<Fixed>>,
         instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
+        const NB_ARITH_COLS: usize = 5;
+        const NB_ARITH_FIXED_COLS: usize = NB_ARITH_COLS + NB_EXTRA_ARITH_FIXED_COLS;
+
         let nb_advice_needed = std::cmp::max(NB_SCANNER_ADVICE_COLS, NB_ARITH_COLS);
-        let nb_fixed_needed = NB_ARITH_COLS + 4;
+        let nb_fixed_needed = std::cmp::max(NB_SCANNER_FIXED_COLS, NB_ARITH_FIXED_COLS);
         while advice_columns.len() < nb_advice_needed {
             advice_columns.push(meta.advice_column());
         }
         while fixed_columns.len() < nb_fixed_needed {
             fixed_columns.push(meta.fixed_column());
         }
-        let advice_cols = &advice_columns[..nb_advice_needed];
-        let fixed_cols = &fixed_columns[..nb_fixed_needed];
 
         let native_config = NativeChip::configure(
             meta,
             &(
-                advice_cols[..NB_ARITH_COLS].try_into().unwrap(),
-                fixed_cols[..NB_ARITH_COLS + 4].try_into().unwrap(),
+                advice_columns[..NB_ARITH_COLS].to_vec(),
+                fixed_columns[..NB_ARITH_FIXED_COLS].to_vec(),
                 *instance_columns,
             ),
         );
@@ -608,13 +611,13 @@ where
         let scanner_config = ScannerChip::configure(
             meta,
             &(
-                advice_cols[..NB_SCANNER_ADVICE_COLS].try_into().unwrap(),
-                fixed_cols[0],
+                advice_columns[..NB_SCANNER_ADVICE_COLS].try_into().unwrap(),
+                fixed_columns[0],
                 FxHashMap::default(),
             ),
         );
 
-        let pow2range_config = Pow2RangeChip::configure(meta, &advice_cols[1..=4]);
+        let pow2range_config = Pow2RangeChip::configure(meta, &advice_columns[1..=4]);
 
         let native_gadget_config = P2RDecompositionConfig {
             native_config,

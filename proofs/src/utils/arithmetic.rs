@@ -9,8 +9,8 @@ use std::{
 pub use ff::Field;
 use group::{
     ff::{BatchInvert, PrimeField},
-    prime::{PrimeCurve, PrimeCurveAffine},
-    GroupOpsOwned, ScalarMulOwned,
+    prime::PrimeCurveAffine,
+    Curve, GroupOpsOwned, ScalarMulOwned,
 };
 use midnight_curves::{fft::best_fft, pairing::MultiMillerLoop};
 pub use midnight_curves::{CurveAffine, CurveExt};
@@ -31,33 +31,43 @@ where
 }
 
 /// Convert coefficient bases group elements to lagrange basis by inverse FFT.
-pub fn g_to_lagrange<C: PrimeCurve>(g_projective: &[C], k: u32) -> Vec<C> {
-    let n_inv = C::Scalar::TWO_INV.pow_vartime([k as u64, 0, 0, 0]);
-    let mut omega_inv = C::Scalar::ROOT_OF_UNITY_INV;
-    for _ in k..C::Scalar::S {
+pub fn g_to_lagrange<C: CurveAffine>(g_affine: &[C], k: u32) -> Vec<C> {
+    let n_inv = C::ScalarExt::TWO_INV.pow_vartime([k as u64, 0, 0, 0]);
+    let mut omega_inv = C::ScalarExt::ROOT_OF_UNITY_INV;
+    for _ in k..C::ScalarExt::S {
         omega_inv = omega_inv.square();
     }
 
-    let mut g_lagrange = g_projective.to_vec();
-    best_fft(&mut g_lagrange, omega_inv, k);
-    parallelize(&mut g_lagrange, |g, _| {
+    // The FFT operates in projective coordinates (G1Affine is not closed
+    // under addition), so convert on entry and normalize back on exit.
+    let mut g_proj: Vec<C::CurveExt> = g_affine.iter().map(|p| (*p).into()).collect();
+    best_fft(&mut g_proj, omega_inv, k);
+    parallelize(&mut g_proj, |g, _| {
         for g in g.iter_mut() {
             *g *= n_inv;
         }
     });
 
-    g_lagrange.to_vec()
+    let mut g_lagrange = vec![C::identity(); g_proj.len()];
+    C::CurveExt::batch_normalize(&g_proj, &mut g_lagrange);
+    g_lagrange
 }
 
-/// This evaluates a provided polynomial (in coefficient form) at `point`.
+/// Sequential Horner evaluation. Use inside `par_iter` batches where
+/// outer parallelism replaces the per-call parallelism of
+/// [`eval_polynomial`].
+pub fn eval_polynomial_seq<F: Field>(poly: &[F], point: F) -> F {
+    poly.iter().rev().fold(F::ZERO, |acc, coeff| acc * point + coeff)
+}
+
+/// Evaluates a polynomial (in coefficient form) at `point`.
+/// Internally parallel — for batched evaluations prefer
+/// [`eval_polynomial_seq`] inside a `par_iter`.
 pub fn eval_polynomial<F: Field>(poly: &[F], point: F) -> F {
-    fn evaluate<F: Field>(poly: &[F], point: F) -> F {
-        poly.iter().rev().fold(F::ZERO, |acc, coeff| acc * point + coeff)
-    }
     let n = poly.len();
     let num_threads = rayon::current_num_threads();
     if n * 2 < num_threads {
-        evaluate(poly, point)
+        eval_polynomial_seq(poly, point)
     } else {
         let chunk_size = n.div_ceil(num_threads);
         let mut parts = vec![F::ZERO; num_threads];
@@ -67,7 +77,8 @@ pub fn eval_polynomial<F: Field>(poly: &[F], point: F) -> F {
             {
                 scope.spawn(move |_| {
                     let start = chunk_idx * chunk_size;
-                    out[0] = evaluate(poly, point) * point.pow_vartime([start as u64, 0, 0, 0]);
+                    out[0] = eval_polynomial_seq(poly, point)
+                        * point.pow_vartime([start as u64, 0, 0, 0]);
                 });
             }
         });

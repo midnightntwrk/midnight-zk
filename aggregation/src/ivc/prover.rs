@@ -98,7 +98,7 @@ impl<T: Ivc> IvcProver<T> {
                 F,
                 KZGCommitmentScheme<E>,
                 CircuitTranscript<PoseidonState<F>>,
-            >(vk, &[&[C::identity()]], &[&[&prev_pi]], &mut transcript)?;
+            >(vk, &[C::identity()], &[&prev_pi], &mut transcript)?;
 
             if !dual_msm.clone().check(&self.params.verifier_params()) {
                 return Err(IvcError::InvalidProof);

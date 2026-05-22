@@ -43,7 +43,7 @@ use crate::{
 ///  - **1-bit scalar bases**: pairs `(base, scalar)` where the scalar is known
 ///    to be 0 or 1, to be handled separately by [`add_1bit_scalar_bases`].
 ///
-/// The simplification proceeds in two phases:
+/// The simplification proceeds in two steps:
 ///  1. Filters out identity bases (no-ops) and separates 1-bit scalars.
 ///  2. Deduplicates equal bases (by adding their scalars) and equal scalars (by
 ///     adding their bases).
@@ -70,7 +70,7 @@ where
     SFI::Scalar: InnerValue<Element = C::ScalarField>,
     EI::Point: PartialEq + Eq + Hash,
 {
-    // Phase 1:
+    // Step 1:
     // --------
 
     // Filter out bases that are known to be the identity at compile time.
@@ -102,7 +102,7 @@ where
     let scalars = filtered_scalars;
     let bases = filtered_bases;
 
-    // Phase 2:
+    // Step 2:
     // --------
 
     // If two bases are exactly the same (as symbolic PLONK variables), we
@@ -201,7 +201,7 @@ pub(crate) fn configure_multi_select_lookup<F: CircuitField>(
     // separator instead.
     let tag_col_multi_select = meta.fixed_column();
 
-    meta.lookup_any("multi_select lookup", |meta| {
+    meta.lookup_any("multi_select lookup", None, |meta| {
         let sel = meta.query_selector(q_multi_select);
         let not_sel = Expression::from(1) - sel.clone();
 

@@ -41,6 +41,7 @@ serde = { workspace = true }
 serde_derive = { workspace = true }
 rayon = { workspace = true }
 criterion = { version = "0.7", optional = true }
+rustc-hash = "2"
 
 # Developer tooling dependencies
 tabbycat = { version = "0.1", features = ["attributes"], optional = true }
@@ -84,6 +85,19 @@ committed-instances = []
 
 # Feature to expose internal prover types and benchmarking utilities.
 bench-internal = ["criterion"]
+
+# Feature to commit to the quotient polynomial H as a single polynomial
+# commitment instead of splitting it into degree-(n-1) limbs. Requires the
+# KZG parameters to support polynomials of degree up to (d-1)*(n-1), where d
+# is the maximum constraint degree and n is the circuit domain size (i.e., the
+# params must be generated with k >= log2(n * (d-1))).
+single-h-commitment = []
+
+# Enables a heuristic to reduce the number of distinct multi-open point sets,
+# lowering the verifier MSM length. This can be particularly beneficial for
+# in-circuit verifiers. The heuristic works by adding dummy queries for some
+# polynomials, which may slightly increase proof size.
+fewer-point-sets = []
 
 [lib]
 bench = false

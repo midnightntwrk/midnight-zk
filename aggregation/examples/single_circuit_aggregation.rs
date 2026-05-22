@@ -22,7 +22,7 @@ use std::{collections::BTreeMap, time::Instant};
 
 use ff::Field;
 use group::Group;
-use midnight_aggregation::ivc::{self, IvcContext, IvcIO, IvcState, IvcTransition};
+use midnight_aggregation::ivc::{self, IvcCircuit, IvcContext, IvcIO, IvcState, IvcTransition};
 use midnight_circuits::{
     hash::poseidon::{PoseidonChip, PoseidonState},
     instructions::{hash::HashCPU, *},
@@ -33,15 +33,16 @@ use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::{self, ConstraintSystem, Error},
     poly::{
-        kzg::{
-            params::{ParamsKZG, ParamsVerifierKZG},
-            KZGCommitmentScheme,
-        },
+        kzg::{params::ParamsVerifierKZG, KZGCommitmentScheme},
         EvaluationDomain,
     },
     transcript::{CircuitTranscript, Transcript},
 };
-use midnight_zk_stdlib::{prove, setup_pk, setup_vk, MidnightVK, Relation, ZkStdLib, ZkStdLibArch};
+use midnight_zk_stdlib::{
+    cs_degree, prove, setup_pk, setup_vk,
+    utils::plonk_api::{load_srs, SrsSource},
+    MidnightVK, Relation, ZkStdLib, ZkStdLibArch,
+};
 use rand::rngs::OsRng;
 use sha_preimage::ShaPreimageCircuit;
 
@@ -236,8 +237,8 @@ impl IvcTransition for ProofAggregation {
             let dual_msm =
                 plonk::prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<PoseidonState<F>>>(
                     ctx.vk.vk(),
-                    &[&[C::identity()]],
-                    &[&[&statement_pis]],
+                    &[C::identity()],
+                    &[&statement_pis],
                     &mut transcript,
                 )
                 .expect("off-circuit prepare should succeed");
@@ -342,15 +343,16 @@ fn main() {
     const IVC_K: u32 = 19;
     const STEPS: usize = 3;
 
+    let inner_arch = ShaPreimageCircuit.used_chips();
+
     // The inner circuit can use a different SRS than the IVC circuit.
-    let inner_srs = ParamsKZG::unsafe_setup(sha_preimage::K, OsRng);
+    let inner_srs = load_srs(SrsSource::Filecoin, sha_preimage::K, cs_degree(inner_arch));
     let inner_vk = setup_vk(&inner_srs, &ShaPreimageCircuit);
     let inner_pk = setup_pk(&ShaPreimageCircuit, &inner_vk);
     let inner_ctx = {
-        let arch = ShaPreimageCircuit.used_chips();
         let k = sha_preimage::K;
         let mut cs = midnight_proofs::plonk::ConstraintSystem::default();
-        ZkStdLib::configure(&mut cs, (arch, (k - 1) as u8));
+        ZkStdLib::configure(&mut cs, (inner_arch, (k - 1) as u8));
         let domain = midnight_proofs::poly::EvaluationDomain::new(cs.degree() as u32, k);
 
         InnerCircuitContext {
@@ -381,7 +383,11 @@ fn main() {
     println!("{STEPS} inner proofs generated in {:.2?}", start.elapsed());
 
     // IVC setup.
-    let ivc_srs = midnight_zk_stdlib::utils::plonk_api::filecoin_srs(IVC_K);
+    let ivc_srs = load_srs(
+        SrsSource::Midnight,
+        IVC_K,
+        IvcCircuit::<ProofAggregation>::cs_degree(),
+    );
     let start = Instant::now();
     let (mut prover, verifier) = ivc::setup::<ProofAggregation>(ivc_srs, IVC_K, inner_ctx);
     println!("IVC setup completed in {:.2?}", start.elapsed());

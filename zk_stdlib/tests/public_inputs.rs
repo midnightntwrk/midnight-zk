@@ -29,7 +29,7 @@ use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
-use midnight_zk_stdlib::{utils::plonk_api::filecoin_srs, Relation, ZkStdLib, ZkStdLibArch};
+use midnight_zk_stdlib::{utils::plonk_api::srs_for_test, Relation, ZkStdLib, ZkStdLibArch};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 
@@ -108,19 +108,21 @@ impl Relation for PIsCircuit {
     }
 
     fn used_chips(&self) -> ZkStdLibArch {
+        // We enable extra chips beyond what the circuit needs so that the proof-size
+        // check below exercises the cost model with a richer architecture.
         ZkStdLibArch {
             poseidon: true,
+            jubjub: true,
+            sha2_256: true,
+            secp256k1: true,
             ..ZkStdLibArch::default()
         }
     }
 }
 
 fn pi_test(nb_public_inputs: u32, extra_pi: bool) {
-    let mut srs = filecoin_srs(10);
-
     let relation = PIsCircuit { nb_public_inputs };
-    let k = midnight_zk_stdlib::optimal_k(&relation);
-    srs.downsize(k);
+    let srs = srs_for_test(&relation, None);
     let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
     let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
 
@@ -141,6 +143,12 @@ fn pi_test(nb_public_inputs: u32, extra_pi: bool) {
         &srs, &pk, &relation, &instance, witness, rng,
     )
     .expect("Proof generation should not fail");
+
+    // Check that the cost model proof size matches the actual proof size.
+    assert_eq!(
+        midnight_zk_stdlib::cost_model(&relation, Some(vk.k() as u32)).size,
+        proof.len()
+    );
 
     assert!(
         midnight_zk_stdlib::verify::<PIsCircuit, blake2b_simd::State>(

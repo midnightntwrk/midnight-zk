@@ -119,7 +119,7 @@ pub(crate) fn permutation_expressions<S: SelfEmulation>(
             for (eval, permutation_eval) in columns
                 .iter()
                 .map(|&column| match column.column_type() {
-                    Any::Advice(_) => {
+                    Any::Advice => {
                         advice_evals[get_query_index(column, cs.advice_queries())].clone()
                     }
                     Any::Fixed => fixed_evals[get_query_index(column, cs.fixed_queries())].clone(),
@@ -152,9 +152,7 @@ pub(crate) fn permutation_expressions<S: SelfEmulation>(
             };
 
             for eval in columns.iter().map(|&column| match column.column_type() {
-                Any::Advice(_) => {
-                    advice_evals[get_query_index(column, cs.advice_queries())].clone()
-                }
+                Any::Advice => advice_evals[get_query_index(column, cs.advice_queries())].clone(),
                 Any::Fixed => fixed_evals[get_query_index(column, cs.fixed_queries())].clone(),
                 Any::Instance => {
                     instance_evals[get_query_index(column, cs.instance_queries())].clone()

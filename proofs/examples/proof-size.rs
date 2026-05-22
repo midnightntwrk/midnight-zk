@@ -34,7 +34,7 @@ impl Circuit<Scalar> for TestCircuit {
             advice: meta.advice_column(),
         };
 
-        meta.lookup("lookup", |meta| {
+        meta.lookup("lookup", None, |meta| {
             let selector = meta.query_selector(config.selector);
             let not_selector = Expression::from(1) - selector.clone();
             let advice = meta.query_advice(config.advice, Rotation::cur());
@@ -87,7 +87,7 @@ impl Circuit<Scalar> for TestCircuit {
 fn main() {
     let circuit = TestCircuit {};
 
-    let model = circuit_model::<_, 32, 32>(&circuit);
+    let model = circuit_model::<_, 32, 32>(&circuit, 0);
     println!(
         "Cost of circuit with 8 bit lookup table: \n{}",
         serde_json::to_string_pretty(&model).unwrap()

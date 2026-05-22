@@ -5,7 +5,7 @@ use group::ff::Field;
 use super::{metadata, CellValue, InstanceValue, Value};
 use crate::{
     plonk::{
-        Advice, AdviceQuery, Any, Column, ColumnType, Expression, FixedQuery, Gate, InstanceQuery,
+        AdviceQuery, Any, Column, ColumnType, Expression, FixedQuery, Gate, InstanceQuery,
         VirtualCell,
     },
     poly::Rotation,
@@ -37,7 +37,7 @@ impl From<AdviceQuery> for AnyQuery {
     fn from(query: AdviceQuery) -> Self {
         Self {
             index: query.index,
-            column_type: Any::Advice(Advice { phase: query.phase }),
+            column_type: Any::Advice,
             column_index: query.column_index,
             rotation: query.rotation,
         }
@@ -146,7 +146,6 @@ pub(super) fn cell_values<'a, F: Field>(
         &cell_value(virtual_cells, load_fixed),
         &cell_value(virtual_cells, load_advice),
         &cell_value(virtual_cells, load_instance),
-        &|_| BTreeMap::default(),
         &|a| a,
         &|mut a, mut b| {
             a.append(&mut b);

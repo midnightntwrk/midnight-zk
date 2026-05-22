@@ -16,11 +16,11 @@ use serde_derive::Serialize;
 
 use super::Region;
 use crate::{
-    circuit,
-    circuit::Value,
+    circuit::{self, Value},
     plonk::{
-        sealed, sealed::SealedPhase, Advice, Any, Any::Fixed, Assignment, Challenge, Circuit,
-        Column, ConstraintSystem, Error, FirstPhase, FloorPlanner, Instance, Phase, Selector,
+        Advice,
+        Any::{self, Fixed},
+        Assignment, Circuit, Column, ConstraintSystem, Error, FloorPlanner, Instance, Selector,
     },
     utils::rational::Rational,
 };
@@ -34,6 +34,9 @@ pub(crate) struct CostOptions {
     /// An instance column with the given rotations. May be repeated.
     instance: Vec<Poly>,
 
+    /// How many of the instance columns are given in committed form.
+    nb_committed_instances: usize,
+
     /// A fixed column with the given rotations. May be repeated.
     fixed: Vec<Poly>,
 
@@ -46,6 +49,9 @@ pub(crate) struct CostOptions {
 
     /// A permutation over N columns. May be repeated.
     permutation: Permutation,
+
+    /// Trash arguments (one per additive-selector gate).
+    trash: Vec<Trash>,
 
     /// 2^K bound on the number of rows, accounting for ZK, PIs and Lookup
     /// tables.
@@ -84,22 +90,49 @@ impl FromStr for Poly {
 }
 
 /// Structure holding the Lookup related data for circuit benchmarks.
+///
+/// Each lookup argument has shared multiplicity `m(X)` and accumulator `Z(X)`
+/// polynomials, plus one helper polynomial `h_i(X)` per degree-bounded chunk.
 #[derive(Debug, Clone)]
-struct Lookup;
+struct Lookup {
+    num_chunks: usize,
+}
 
 impl Lookup {
-    /// Returns the queries of the lookup argument
+    /// Returns the queries of the LogUp lookup argument.
+    ///
+    /// Per argument:
+    ///  - 1 multiplicities polynomial at x,
+    ///  - `num_chunks` helper polynomials at x,
+    ///  - 1 accumulator polynomial at x and ωx.
     fn queries(&self) -> impl Iterator<Item = Poly> {
-        // - product commitments at x and \omega x
-        // - input commitments at x and x_inv
-        // - table commitments at x
-        let product = "0,1".parse().unwrap();
-        let input = "-1,0".parse().unwrap();
-        let table = "0".parse().unwrap();
+        let multiplicities: Poly = "0".parse().unwrap();
+        let helper: Poly = "0".parse().unwrap();
+        let aggregator: Poly = "0,1".parse().unwrap();
 
-        iter::empty().chain(Some(product)).chain(Some(input)).chain(Some(table))
+        iter::once(multiplicities)
+            .chain(iter::repeat(helper).take(self.num_chunks))
+            .chain(iter::once(aggregator))
+    }
+
+    /// Number of commitments:
+    /// 1 (multiplicities) + num_chunks (helpers) + 1 (Z).
+    fn num_commitments(&self) -> usize {
+        self.num_chunks + 2
+    }
+
+    /// Number of evaluations:
+    /// 1 (multiplicities) + num_chunks (helpers) + 1 (Z at x) + 1 (Z at ωx).
+    fn num_evaluations(&self) -> usize {
+        self.num_chunks + 3
     }
 }
+
+/// Structure holding the Trash argument data for circuit benchmarks.
+///
+/// Each trash argument contributes 1 commitment and 1 evaluation.
+#[derive(Debug, Clone)]
+struct Trash;
 
 /// Number of permutation enabled columns
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -145,8 +178,10 @@ pub struct CircuitModel {
     /// Number of fixed columns. This includes selectors, tables (for lookups),
     /// and permutation commitments.
     pub fixed_columns: usize,
-    /// Number of advice columns used in the lookup argument.
+    /// Number of lookup arguments.
     pub lookups: usize,
+    /// Number of trash arguments.
+    pub trashcans: usize,
     /// Equality constraint enabled columns (fixed columns are counted in
     /// `fixed_columns` value).
     pub permutations: usize,
@@ -164,12 +199,13 @@ impl CostOptions {
     fn into_circuit_model<const COMM: usize, const SCALAR: usize>(self) -> CircuitModel {
         let mut queries: Vec<_> = iter::empty()
             .chain(self.advice.iter())
-            .chain(self.instance.iter())
+            .chain(self.instance.iter().take(self.nb_committed_instances))
             .chain(self.fixed.iter())
             .cloned()
             .chain(self.lookup.iter().flat_map(|l| l.queries()))
             .chain(self.permutation.queries())
-            .chain(iter::repeat("0".parse().unwrap()).take(self.max_degree - 1))
+            .chain(iter::repeat("0".parse().unwrap()).take(self.trash.len()))
+            .chain(iter::once("0".parse().unwrap())) // Linearization polynomial query at x
             .filter(|p| !p.rotations.is_empty())
             .collect();
 
@@ -182,15 +218,14 @@ impl CostOptions {
         let comp_bytes = |points: usize, scalars: usize| points * COMM + scalars * SCALAR;
 
         // PLONK:
-        // - COMM bytes (commitment) per advice column
-        // - 3 * COMM bytes per lookup
-        // - COMM bytes per ((self.permutation.columns - 1) / (self.max_degree - 2)) + 1
-        // - 3 * SCALAR bytes per ((self.permutation.columns - 1) / (self.max_degree -
-        //   2)) + 1
-        // - SCALAR bytes per advice per query
-        // - SCALAR bytes per fixed per query <- missing
+        // - COMM bytes per advice column
+        // - SCALAR bytes per advice column per query
+        // - SCALAR bytes per committed instance column per query
+        // - SCALAR bytes per fixed column per query
         // - SCALAR bytes per permutation column
-        // - 5 * SCALAR bytes per lookup argument
+        // - Per permutation chunk: 1 COMM + 3 SCALAR (last chunk has 2 SCALAR)
+        // - Per lookup argument: (num_chunks + 2) COMM + (num_chunks + 3) SCALAR
+        // - Per trash argument: 1 COMM + 1 SCALAR
         let nb_perm_chunks =
             (self.permutation.columns.saturating_sub(1) / self.max_degree.saturating_sub(2)) + 1;
         let plonk = comp_bytes(1, 0) * self.advice.len()
@@ -200,19 +235,28 @@ impl CostOptions {
                 .map(|polys| comp_bytes(0, polys.rotations.len()))
                 .sum::<usize>()
             + self
+                .instance
+                .iter()
+                .take(self.nb_committed_instances)
+                .map(|polys| comp_bytes(0, polys.rotations.len()))
+                .sum::<usize>()
+            + self
                 .fixed
                 .iter()
                 .map(|polys| comp_bytes(0, polys.rotations.len()))
                 .sum::<usize>()
-            + comp_bytes(3, 5) * self.lookup.len()
+            + comp_bytes(0, 1) * self.permutation.columns
             + (comp_bytes(1, 3) * nb_perm_chunks).saturating_sub(comp_bytes(0, 1)) // we don't need the permutation_product_last_eval of the last chunk
-            + comp_bytes(0, 1) * self.permutation.columns;
+            + self
+                .lookup
+                .iter()
+                .map(|l| comp_bytes(l.num_commitments(), l.num_evaluations()))
+                .sum::<usize>()
+            + comp_bytes(1, 1) * self.trash.len();
 
-        // Vanishing argument:
-        // - COMM bytes for random poly
-        // - (max_deg - 1) COMM bytes for the pieces
-        // - SCALAR bytes for random piece eval
-        let vanishing = comp_bytes(self.max_degree, 1);
+        // Commitments to quotient limbs:
+        // - (max_deg - 1) COMM bytes for the limbs
+        let limbs = comp_bytes(self.max_degree - 1, 0);
 
         // Multiopening argument:
         // - COMM bytes for f_commitment
@@ -231,7 +275,7 @@ impl CostOptions {
             nr_rotations.extend(poly.rotations.clone());
         }
 
-        let size = plonk + vanishing + multiopen;
+        let size = plonk + multiopen + limbs;
 
         CircuitModel {
             k: self.min_k,
@@ -243,6 +287,7 @@ impl CostOptions {
             // Note that we have one fixed commitment per column in the permutation argument
             fixed_columns: self.fixed.len() + self.permutation.columns,
             lookups: self.lookup.len(),
+            trashcans: self.trash.len(),
             permutations: self.permutation.columns,
             column_queries,
             point_sets,
@@ -258,8 +303,9 @@ pub fn circuit_model<
     const SCALAR: usize,
 >(
     circuit: &impl Circuit<F>,
+    nb_committed_instances: usize,
 ) -> CircuitModel {
-    let options = cost_model_options(circuit);
+    let options = cost_model_options(circuit, nb_committed_instances);
     options.into_circuit_model::<COMM, SCALAR>()
 }
 
@@ -282,6 +328,7 @@ pub const COST_MEASURE_END: &str = "__cost_model_measure_end__";
 /// computation).
 pub(crate) fn cost_model_options<F: Ord + Field + FromUniformBytes<64>, C: Circuit<F>>(
     circuit: &C,
+    nb_committed_instances: usize,
 ) -> CostOptions {
     let prover = DevAssembly::run(circuit).unwrap();
 
@@ -291,7 +338,9 @@ pub(crate) fn cost_model_options<F: Ord + Field + FromUniformBytes<64>, C: Circu
         // init the fixed polynomials with no rotations
         let mut fixed = vec![Poly { rotations: vec![] }; cs.num_fixed_columns()];
         for (col, rot) in cs.fixed_queries() {
-            fixed[col.index()].rotations.push(rot.0 as isize);
+            if !cs.has_simple_selector_col(col.index()) {
+                fixed[col.index()].rotations.push(rot.0 as isize);
+            }
         }
         fixed
     };
@@ -317,7 +366,16 @@ pub(crate) fn cost_model_options<F: Ord + Field + FromUniformBytes<64>, C: Circu
         instance
     };
 
-    let lookup = { cs.lookups().iter().map(|_| Lookup).collect::<Vec<_>>() };
+    let lookup = {
+        cs.lookups()
+            .iter()
+            .map(|l| Lookup {
+                num_chunks: l.num_chunks(cs.degree()),
+            })
+            .collect::<Vec<_>>()
+    };
+
+    let trash: Vec<Trash> = cs.trashcans().iter().map(|_| Trash).collect();
 
     let permutation = Permutation {
         chunk_len: cs.degree() - 2,
@@ -387,10 +445,12 @@ pub(crate) fn cost_model_options<F: Ord + Field + FromUniformBytes<64>, C: Circu
     CostOptions {
         advice,
         instance,
+        nb_committed_instances,
         fixed,
         max_degree: cs.degree(),
         lookup,
         permutation,
+        trash,
         min_k: min_circuit_size.next_power_of_two().ilog2(),
         rows_count,
         table_rows_count,
@@ -400,15 +460,14 @@ pub(crate) fn cost_model_options<F: Ord + Field + FromUniformBytes<64>, C: Circu
 
 // DevAssembly is only used to compute the cost model, meaning that we only care
 // about the number of assignments and not the assignments themselves.
-// Therefore, we only keep track of the number of rows, the regions and the
-// phases, and ignore we values of the trace.
+// Therefore, we only keep track of the number of rows, the regions and ignore
+// we values of the trace.
 struct DevAssembly<F: Field> {
     cs: ConstraintSystem<F>,
     instance_rows: RefCell<usize>,
     /// The regions in the circuit.
     regions: Vec<Region>,
     current_region: Option<Region>,
-    current_phase: sealed::Phase,
     /// Set to `true` while the synthesizer is between a
     /// [`COST_MEASURE_START`] and a [`COST_MEASURE_END`] namespace marker.
     in_measured_region: bool,
@@ -434,20 +493,16 @@ impl<F: FromUniformBytes<64> + Ord> DevAssembly<F> {
             instance_rows: RefCell::new(0),
             regions: vec![],
             current_region: None,
-            current_phase: FirstPhase.to_sealed(),
             in_measured_region: false,
             has_measured_regions: false,
         };
 
-        for current_phase in prover.cs.phases() {
-            prover.current_phase = current_phase;
-            ConcreteCircuit::FloorPlanner::synthesize(
-                &mut prover,
-                circuit,
-                config.clone(),
-                constants.clone(),
-            )?;
-        }
+        ConcreteCircuit::FloorPlanner::synthesize(
+            &mut prover,
+            circuit,
+            config.clone(),
+            constants.clone(),
+        )?;
 
         let selectors = vec![vec![]; prover.cs.num_selectors];
         let (cs, _selector_polys) = prover.cs.directly_convert_selectors_to_fixed(selectors);
@@ -457,22 +512,12 @@ impl<F: FromUniformBytes<64> + Ord> DevAssembly<F> {
     }
 }
 
-impl<F: Field> DevAssembly<F> {
-    fn in_phase<P: Phase>(&self, phase: P) -> bool {
-        self.current_phase == phase.to_sealed()
-    }
-}
-
 impl<F: Field> Assignment<F> for DevAssembly<F> {
     fn enter_region<NR, N>(&mut self, name: N)
     where
         NR: Into<String>,
         N: FnOnce() -> NR,
     {
-        if !self.in_phase(FirstPhase) {
-            return;
-        }
-
         assert!(self.current_region.is_none());
         self.current_region = Some(Region {
             name: name().into(),
@@ -494,10 +539,6 @@ impl<F: Field> Assignment<F> for DevAssembly<F> {
     }
 
     fn exit_region(&mut self) {
-        if !self.in_phase(FirstPhase) {
-            return;
-        }
-
         self.regions.push(self.current_region.take().unwrap());
     }
 
@@ -536,15 +577,13 @@ impl<F: Field> Assignment<F> for DevAssembly<F> {
         A: FnOnce() -> AR,
         AR: Into<String>,
     {
-        if self.in_phase(FirstPhase) {
-            if let Some(region) = self.current_region.as_mut() {
-                region.update_extent(column.into(), row);
-                region
-                    .cells
-                    .entry((column.into(), row))
-                    .and_modify(|count| *count += 1)
-                    .or_default();
-            }
+        if let Some(region) = self.current_region.as_mut() {
+            region.update_extent(column.into(), row);
+            region
+                .cells
+                .entry((column.into(), row))
+                .and_modify(|count| *count += 1)
+                .or_default();
         }
 
         Ok(())
@@ -563,10 +602,6 @@ impl<F: Field> Assignment<F> for DevAssembly<F> {
         A: FnOnce() -> AR,
         AR: Into<String>,
     {
-        if !self.in_phase(FirstPhase) {
-            return Ok(());
-        }
-
         if let Some(region) = self.current_region.as_mut() {
             region.update_extent(column.into(), row);
             region
@@ -604,10 +639,6 @@ impl<F: Field> Assignment<F> for DevAssembly<F> {
         _to: circuit::Value<Rational<F>>,
     ) -> Result<(), Error> {
         Ok(())
-    }
-
-    fn get_challenge(&self, _challenge: Challenge) -> circuit::Value<F> {
-        Value::unknown()
     }
 
     fn push_namespace<NR, N>(&mut self, name_fn: N)
@@ -687,7 +718,7 @@ mod tests {
             let table_selector = meta.complex_selector();
             let sl = meta.lookup_table_column();
 
-            meta.lookup("lookup", |meta| {
+            meta.lookup("lookup", None, |meta| {
                 let selector = meta.query_selector(table_selector);
                 let not_selector = Expression::from(1) - selector.clone();
                 let advice = meta.query_advice(a, Rotation::cur());
@@ -825,10 +856,10 @@ mod tests {
         create_proof::<Fq, KZGCommitmentScheme<Bls12>, _, _>(
             &params,
             &pk,
-            std::slice::from_ref(&circuit),
+            &circuit,
             #[cfg(feature = "committed-instances")]
             0,
-            &[instances],
+            instances,
             &mut transcript,
             OsRng,
         )
@@ -836,7 +867,39 @@ mod tests {
 
         let proof = transcript.finalize();
 
-        assert_eq!(circuit_model::<_, 48, 32>(&circuit).size, proof.len());
+        assert_eq!(circuit_model::<_, 48, 32>(&circuit, 0).size, proof.len());
+    }
+
+    #[cfg(feature = "committed-instances")]
+    #[test]
+    fn cost_model_with_committed_instances() {
+        let k = 9;
+        let mut random_byte = [0u8; 1];
+        OsRng::fill_bytes(&mut OsRng, &mut random_byte);
+        let circuit = StandardPlonk::<1>(Fq::from(random_byte[0] as u64));
+
+        let params = ParamsKZG::<Bls12>::unsafe_setup(k, OsRng);
+        let vk = keygen_vk_with_k::<_, KZGCommitmentScheme<Bls12>, _>(&params, &circuit, k)
+            .expect("vk should not fail");
+        let pk = keygen_pk(vk, &circuit).expect("pk should not fail");
+
+        let instances: &[&[Fq]] = &[&[circuit.0]];
+        let mut transcript = CircuitTranscript::<State>::init();
+
+        create_proof::<Fq, KZGCommitmentScheme<Bls12>, _, _>(
+            &params,
+            &pk,
+            &circuit,
+            1,
+            instances,
+            &mut transcript,
+            OsRng,
+        )
+        .expect("proof generation should not fail");
+
+        let proof = transcript.finalize();
+
+        assert_eq!(circuit_model::<_, 48, 32>(&circuit, 1).size, proof.len());
     }
 
     #[test]
@@ -850,10 +913,10 @@ mod tests {
                     {
                         const NB_PI: usize = $nb_pi;
                         let circuit = StandardPlonk::<NB_PI>(Fq::from(random_byte[0] as u64));
-                        let cost_model = cost_model_options(&circuit);
+                        let cost_model = cost_model_options(&circuit, 0);
 
-                        // nb of unusable rows for this circuit is 6.
-                        let pi_k = (NB_PI + 6).next_power_of_two().ilog2();
+                        // nb of unusable rows for this circuit is 8.
+                        let pi_k = (NB_PI + 8).next_power_of_two().ilog2();
                         assert_eq!(cost_model.min_k, max(9, pi_k));
                     }
                 )*

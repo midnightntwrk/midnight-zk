@@ -61,7 +61,7 @@ use midnight_circuits::{
         foreign::{
             nb_field_chip_columns, params::MultiEmulationParams as MEP, FieldChip, FieldChipConfig,
         },
-        native::{NB_ARITH_COLS, NB_ARITH_FIXED_COLS},
+        native::NB_EXTRA_ARITH_FIXED_COLS,
         NativeChip, NativeConfig, NativeGadget,
     },
     hash::{
@@ -153,6 +153,9 @@ const COMMITMENT_BYTE_SIZE: usize = 48;
 /// Byte size of a serialized BLS12-381 scalar.
 const SCALAR_BYTE_SIZE: usize = 32;
 
+/// Number of instance columns given in committed form in a ZK stdlib proof.
+const NB_COMMITTED_INSTANCES: usize = 1;
+
 /// Architecture of the standard library. Specifies what chips need to be
 /// configured.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Encode, Decode)]
@@ -204,7 +207,16 @@ pub struct ZkStdLibArch {
     /// Enable scanner chip (automaton-based parsing and substring checks)?
     pub automaton: bool,
 
+    /// Number of columns for the arithmetic identity. The higher, the more
+    /// terms can be added in a single row. This number also limits the number
+    /// of range-check parallel lookups.
+    ///
+    /// Must be at least 5.
+    pub nb_arith_cols: u8,
+
     /// Number of parallel lookups for range checks.
+    ///
+    /// Must be strictly smaller than `nb_arith_cols`.
     pub nr_pow2range_cols: u8,
 }
 
@@ -224,6 +236,7 @@ impl Default for ZkStdLibArch {
             curve25519: false,
             base64: false,
             automaton: false,
+            nb_arith_cols: 5,
             nr_pow2range_cols: 1,
         }
     }
@@ -264,6 +277,7 @@ impl From<ZkStdLibArchV1> for ZkStdLibArch {
             curve25519: false,
             base64: v1.base64,
             automaton: v1.automaton,
+            nb_arith_cols: 5,
             nr_pow2range_cols: v1.nr_pow2range_cols,
         }
     }
@@ -296,7 +310,7 @@ impl ZkStdLibArch {
         }
     }
 
-    /// Reads the ZkStdArchitecture from a buffer where a MidnightVK was
+    /// Reads the ZkStdLib architecture from a buffer where a MidnightVK was
     /// serialized. This enables the reader to know the architecture without
     /// the need of deserializing the full verifying key.
     pub fn read_from_serialized_vk<R: io::Read>(reader: &mut R) -> io::Result<Self> {
@@ -490,7 +504,7 @@ impl ZkStdLib {
         (arch, max_bit_len): (ZkStdLibArch, u8),
     ) -> ZkStdLibConfig {
         let nb_advice_cols = [
-            NB_ARITH_COLS,
+            arch.nb_arith_cols as usize,
             arch.nr_pow2range_cols as usize,
             arch.jubjub as usize * NB_EDWARDS_COLS,
             arch.poseidon as usize * NB_POSEIDON_ADVICE_COLS,
@@ -530,8 +544,10 @@ impl ZkStdLib {
         .max()
         .unwrap_or(0);
 
+        let nb_arith_fixed_cols = arch.nb_arith_cols as usize + NB_EXTRA_ARITH_FIXED_COLS;
+
         let nb_fixed_cols = [
-            NB_ARITH_FIXED_COLS,
+            nb_arith_fixed_cols,
             arch.poseidon as usize * NB_POSEIDON_FIXED_COLS,
             arch.sha2_256 as usize * NB_SHA256_FIXED_COLS,
             arch.sha2_512 as usize * NB_SHA512_FIXED_COLS,
@@ -550,8 +566,8 @@ impl ZkStdLib {
         let native_config = NativeChip::configure(
             meta,
             &(
-                advice_columns[..NB_ARITH_COLS].try_into().unwrap(),
-                fixed_columns[..NB_ARITH_FIXED_COLS].try_into().unwrap(),
+                advice_columns[..arch.nb_arith_cols as usize].to_vec(),
+                fixed_columns[..nb_arith_fixed_cols].to_vec(),
                 [committed_instance_column, instance_column],
             ),
         );
@@ -1537,7 +1553,7 @@ impl<'a, R: Relation> MidnightCircuit<'a, R> {
     }
 
     /// Takes the circuit error stashed during synthesis, if any.
-    pub fn take_error(&self) -> Option<R::Error> {
+    fn take_error(&self) -> Option<R::Error> {
         self.circuit_error.take()
     }
 }
@@ -1707,7 +1723,7 @@ impl<Rel: Relation> MidnightPK<Rel> {
 /// #     instructions::{AssignmentInstructions, PublicInputInstructions},
 /// #     types::{AssignedByte, Instantiable},
 /// # };
-/// # use midnight_zk_stdlib::{utils::plonk_api::filecoin_srs, Relation, ZkStdLib, ZkStdLibArch};
+/// # use midnight_zk_stdlib::{utils::plonk_api::srs_for_test, Relation, ZkStdLib, ZkStdLibArch};
 /// # use midnight_proofs::{
 /// #     circuit::{Layouter, Value},
 /// #     plonk::Error,
@@ -1764,10 +1780,8 @@ impl<Rel: Relation> MidnightPK<Rel> {
 ///     }
 /// }
 ///
-/// const K: u32 = 13;
-/// let mut srs = filecoin_srs(K);
-///
 /// let relation = ShaPreImageCircuit;
+/// let srs = srs_for_test(&relation, Some(13));
 ///
 /// let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
 /// let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
@@ -2004,7 +2018,7 @@ where
         params,
         &pk.pk,
         &circuit,
-        1,
+        NB_COMMITTED_INSTANCES,
         &[com_inst.as_slice(), &pi],
         rng,
     )
@@ -2080,9 +2094,8 @@ where
                 CircuitTranscript<H>,
             >(
                 &vk.vk,
-                &[&[midnight_curves::G1Projective::identity()]],
-                // TODO: We could batch here proofs with the same vk.
-                &[&[pi]],
+                &[midnight_curves::G1Projective::identity()],
+                &[pi],
                 &mut transcript,
             )?;
             let summary: F = transcript.squeeze_challenge();
@@ -2104,7 +2117,7 @@ where
         std::iter::successors(Some(F::ONE), |p| Some(*p * r)).take(n_guards).collect();
     guards.par_iter_mut().enumerate().for_each(|(i, guard)| guard.scale(powers[i]));
 
-    // Phase 4: add scaled guards sequentially.
+    // Add scaled guards sequentially.
     let Some(mut acc_guard) = guards.pop() else {
         return Ok(());
     };
@@ -2115,12 +2128,20 @@ where
     acc_guard.verify(params_verifier).map_err(|_| Error::Opening)
 }
 
+/// Returns the constraint-system degree relative to the given [`ZkStdLibArch`].
+pub fn cs_degree(arch: ZkStdLibArch) -> usize {
+    let mut cs = midnight_proofs::plonk::ConstraintSystem::<F>::default();
+    // max_bit_len does not affect the CS degree, use an arbitrary value.
+    ZkStdLib::configure(&mut cs, (arch, 8));
+    cs.degree()
+}
+
 /// Cost model of the given relation for the given `k`.
 /// `k` is the log2 of the circuit size. If `None`, the optimal value is
 /// computed automatically.
 pub fn cost_model<R: Relation>(relation: &R, k: Option<u32>) -> CircuitModel {
     let circuit = MidnightCircuit::from_relation(relation, k);
-    circuit_model::<_, COMMITMENT_BYTE_SIZE, SCALAR_BYTE_SIZE>(&circuit)
+    circuit_model::<_, COMMITMENT_BYTE_SIZE, SCALAR_BYTE_SIZE>(&circuit, NB_COMMITTED_INSTANCES)
 }
 
 /// Finds the optimal `k` (log2 of the circuit size) for the given relation.

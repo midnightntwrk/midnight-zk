@@ -10,6 +10,12 @@
 use std::marker::PhantomData;
 
 use midnight_curves::pairing::Engine;
+use rayon::iter::{
+    IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
+};
+
+#[cfg(feature = "fewer-point-sets")]
+use super::query::Query;
 
 /// Multiscalar multiplication engines
 pub mod msm;
@@ -23,25 +29,28 @@ use ff::Field;
 use group::Group;
 use midnight_curves::pairing::MultiMillerLoop;
 use rand_core::OsRng;
+#[cfg(feature = "fewer-point-sets")]
+pub use utils::compute_dummy_queries;
 
 #[cfg(feature = "truncated-challenges")]
 use crate::utils::arithmetic::{truncate, truncated_powers};
 use crate::{
     poly::{
-        commitment::{Params, PolynomialCommitmentScheme},
+        commitment::PolynomialCommitmentScheme,
         kzg::{
             msm::{msm_specific, DualMSM, MSMKZG},
             params::{ParamsKZG, ParamsVerifierKZG},
             utils::construct_intermediate_sets,
         },
-        query::{CommitmentLabel, VerifierQuery},
-        Coeff, Error, LagrangeCoeff, Polynomial, ProverQuery,
+        query::{CommitmentLabel, CommitmentReference, VerifierQuery},
+        Coeff, Error, Polynomial, PolynomialRepresentation, ProverQuery,
     },
     transcript::{Hashable, Sampleable, Transcript},
     utils::{
         arithmetic::{
             eval_polynomial, evals_inner_product, inner_product, kate_division,
-            lagrange_interpolate, msm_inner_product, powers, CurveAffine, CurveExt, MSM,
+            lagrange_interpolate, msm_inner_product, parallelize, powers, CurveAffine, CurveExt,
+            MSM,
         },
         helpers::ProcessedSerdeObject,
     },
@@ -71,41 +80,76 @@ where
         params.verifier_params()
     }
 
-    fn commit(
+    fn commit<B: PolynomialRepresentation>(
         params: &Self::Parameters,
-        polynomial: &Polynomial<E::Fr, Coeff>,
+        polynomial: &Polynomial<E::Fr, B>,
     ) -> Self::Commitment {
+        let bases = params.bases::<B>();
         let size = polynomial.values.len();
-        assert!(params.g.len() >= size);
-        msm_specific::<E::G1Affine>(&polynomial.values, &params.g[..size])
-    }
-
-    fn commit_lagrange(
-        params: &Self::Parameters,
-        poly: &Polynomial<E::Fr, LagrangeCoeff>,
-    ) -> E::G1 {
-        let size = poly.values.len();
-
-        assert!(params.g_lagrange.len() >= size);
-
-        msm_specific::<E::G1Affine>(&poly.values, &params.g_lagrange[0..size])
+        assert!(bases.len() >= size);
+        msm_specific::<E::G1Affine>(&polynomial.values, &bases[..size])
     }
 
     fn multi_open<T: Transcript>(
         params: &Self::Parameters,
-        prover_query: &[ProverQuery<E::Fr>],
+        queries: &[ProverQuery<E::Fr>],
         transcript: &mut T,
     ) -> Result<(), Error>
     where
         E::Fr: Sampleable<T::Hash> + Hash + Ord + Hashable<T::Hash>,
         E::G1: Hashable<T::Hash>,
     {
+        /// Like [`inner_product`] but for coefficient-form polynomials that may
+        /// have different lengths (zero-extending the shorter operands).
+        ///
+        /// Fused parallel implementation: a single pass accumulates all
+        /// scaled contributions directly into the output buffer, avoiding
+        /// M intermediate allocations and the sequential reduce chain.
+        fn poly_inner_product<F: ff::PrimeField>(
+            polys: &[Polynomial<F, Coeff>],
+            scalars: impl IntoIterator<Item = F>,
+        ) -> Polynomial<F, Coeff> {
+            let scalars: Vec<F> = scalars.into_iter().take(polys.len()).collect();
+            let max_len = polys.iter().map(|p| p.len()).max().unwrap_or(0);
+            let mut values = vec![F::ZERO; max_len];
+            parallelize(&mut values, |chunk, start| {
+                for (poly, scalar) in polys.iter().zip(scalars.iter()) {
+                    let pv: &[F] = poly;
+                    let end = (start + chunk.len()).min(pv.len());
+                    if start < pv.len() {
+                        for (out, coeff) in chunk[..end - start].iter_mut().zip(&pv[start..end]) {
+                            *out += *coeff * scalar;
+                        }
+                    }
+                }
+            });
+            Polynomial {
+                values,
+                _marker: PhantomData,
+            }
+        }
+
+        // Add dummy queries to reduce the number of distinct multi-open point sets.
+        #[cfg(feature = "fewer-point-sets")]
+        let queries = &{
+            let mut queries = queries.to_vec();
+            let pairs: Vec<_> = queries.iter().map(|q| (q.get_commitment(), q.point)).collect();
+            for (idx, point) in compute_dummy_queries(&pairs) {
+                let poly = queries[idx].poly;
+                transcript
+                    .write(&eval_polynomial(poly, point))
+                    .map_err(|_| Error::OpeningError)?;
+                queries.push(ProverQuery::new(point, poly));
+            }
+            queries
+        };
+
         // Refer to the halo2 book for docs:
         // https://zcash.github.io/halo2/design/proving-system/multipoint-opening.html
         let x1: E::Fr = transcript.squeeze_challenge();
         let x2: E::Fr = transcript.squeeze_challenge();
 
-        let (poly_map, point_sets) = construct_intermediate_sets(prover_query)?;
+        let (poly_map, point_sets) = construct_intermediate_sets(queries)?;
 
         let mut q_polys = vec![vec![]; point_sets.len()];
 
@@ -113,8 +157,8 @@ where
             q_polys[com_data.set_index].push(com_data.commitment.poly.clone());
         }
 
-        let q_polys = q_polys
-            .iter()
+        let q_polys: Vec<_> = q_polys
+            .par_iter()
             .map(|polys| {
                 #[cfg(feature = "truncated-challenges")]
                 let x1 = truncated_powers(x1);
@@ -122,9 +166,9 @@ where
                 #[cfg(not(feature = "truncated-challenges"))]
                 let x1 = powers(x1);
 
-                inner_product(polys, x1)
+                poly_inner_product(polys, x1)
             })
-            .collect::<Vec<_>>();
+            .collect();
 
         // Sort point sets by ascending cardinality to ensure the first set is the one
         // that contains fixed commitments (which are evaluated at x only). This
@@ -143,21 +187,20 @@ where
         };
 
         let f_poly = {
-            let f_polys = point_sets
-                .iter()
-                .zip(q_polys.clone())
+            let f_polys: Vec<_> = point_sets
+                .into_par_iter()
+                .zip(q_polys.clone().into_par_iter())
                 .map(|(points, q_poly)| {
-                    let mut poly = points.iter().fold(q_poly.clone().values, |poly, point| {
-                        kate_division(&poly, *point)
-                    });
-                    poly.resize(1 << params.max_k() as usize, E::Fr::ZERO);
+                    let poly = points
+                        .iter()
+                        .fold(q_poly.values, |poly, point| kate_division(&poly, *point));
                     Polynomial {
                         values: poly,
                         _marker: PhantomData,
                     }
                 })
-                .collect::<Vec<_>>();
-            inner_product(&f_polys, powers(x2))
+                .collect();
+            poly_inner_product(&f_polys, powers(x2))
         };
 
         let f_com = Self::commit(params, &f_poly);
@@ -167,10 +210,11 @@ where
         #[cfg(feature = "truncated-challenges")]
         let x3 = truncate(x3);
 
-        for q_poly in q_polys.iter() {
-            transcript
-                .write(&eval_polynomial(&q_poly.values, x3))
-                .map_err(|_| Error::OpeningError)?;
+        // Evaluate all q_polys at x3 in parallel, then write sequentially.
+        let q_evals: Vec<E::Fr> =
+            q_polys.par_iter().map(|q_poly| eval_polynomial(&q_poly.values, x3)).collect();
+        for eval in &q_evals {
+            transcript.write(eval).map_err(|_| Error::OpeningError)?;
         }
 
         let x4: E::Fr = transcript.squeeze_challenge();
@@ -184,12 +228,12 @@ where
             #[cfg(not(feature = "truncated-challenges"))]
             let powers = powers(x4);
 
-            inner_product(&polys, powers)
+            poly_inner_product(&polys, powers)
         };
         let v = eval_polynomial(&final_poly, x3);
 
         let pi = {
-            let pi_poly = Polynomial {
+            let pi_poly = Polynomial::<_, Coeff> {
                 values: kate_division(&(&final_poly - v).values, x3),
                 _marker: PhantomData,
             };
@@ -200,42 +244,55 @@ where
     }
 
     fn multi_prepare<'com, T: Transcript>(
-        verifier_query: &[VerifierQuery<'com, E::Fr, KZGCommitmentScheme<E>>],
+        queries: &[VerifierQuery<'com, E::Fr, KZGCommitmentScheme<E>>],
         transcript: &mut T,
     ) -> Result<DualMSM<E>, Error>
     where
         E::Fr: Sampleable<T::Hash> + Ord + Hash + Hashable<T::Hash>,
         E::G1: 'com + Hashable<T::Hash> + CurveExt<ScalarExt = E::Fr>,
     {
+        // Add dummy queries to reduce the number of distinct multi-open point sets.
+        #[cfg(feature = "fewer-point-sets")]
+        let queries = &{
+            let mut queries = queries.to_vec();
+            let pairs: Vec<_> = queries.iter().map(|q| (q.commitment.clone(), q.point)).collect();
+            for (idx, point) in compute_dummy_queries(&pairs) {
+                queries.push(VerifierQuery {
+                    point,
+                    commitment_label: queries[idx].commitment_label.clone(),
+                    commitment: queries[idx].commitment.clone(),
+                    eval: transcript.read().map_err(|_| Error::SamplingError)?,
+                });
+            }
+            queries
+        };
+
         // Refer to the halo2 book for docs:
         // https://zcash.github.io/halo2/design/proving-system/multipoint-opening.html
         let x1: E::Fr = transcript.squeeze_challenge();
         let x2: E::Fr = transcript.squeeze_challenge();
 
-        let (commitment_map, point_sets) = construct_intermediate_sets(verifier_query)?;
+        let (commitment_map, point_sets) = construct_intermediate_sets(queries)?;
 
         let mut q_coms: Vec<_> = vec![vec![]; point_sets.len()];
         let mut q_eval_sets = vec![vec![]; point_sets.len()];
 
         for com_data in commitment_map.into_iter() {
             let mut msm = MSMKZG::init();
-            let eval_point_opt = if com_data.commitment.is_chopped() {
-                // When the commitment is in chopped form, we require that it be evaluated
-                // in a single point.
-                debug_assert!(com_data.point_indices.len() == 1);
-                Some(point_sets[com_data.set_index][com_data.point_indices[0]])
-            } else {
-                None
+            let terms = com_data.commitment.as_terms();
+            let term_labels: Vec<CommitmentLabel> = match &com_data.commitment {
+                CommitmentReference::Linear(_, _, labels) => labels.clone(),
+                _ => vec![com_data.commitment_label.clone(); terms.len()],
             };
-            for (scalar, commitment) in com_data.commitment.as_terms(eval_point_opt) {
-                msm.append_term(scalar, commitment, com_data.commitment_label.clone());
+            for ((scalar, commitment), label) in terms.into_iter().zip(term_labels) {
+                msm.append_term(scalar, commitment, label);
             }
             q_coms[com_data.set_index].push(msm);
             q_eval_sets[com_data.set_index].push(com_data.evals);
         }
 
-        let nb_x1_powers = q_coms.iter().map(|v| v.len()).max().unwrap_or(0);
-        assert!(nb_x1_powers >= q_eval_sets.iter().map(|v| v.len()).max().unwrap_or(0));
+        let nb_x1_powers = q_coms.iter().map(Vec::len).max().unwrap_or(0);
+        assert!(nb_x1_powers >= q_eval_sets.iter().map(Vec::len).max().unwrap_or(0));
 
         #[cfg(feature = "truncated-challenges")]
         let powers_x1 = truncated_powers(x1).take(nb_x1_powers).collect::<Vec<_>>();

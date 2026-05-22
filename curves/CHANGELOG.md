@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 
 ## [Unreleased]
 ### Added
+* Affine MSM path `G1Affine::multi_exp_affine` [#350](https://github.com/midnightntwrk/midnight-zk/pull/350)
+* Cached-twiddle FFT (`best_fft_with_twiddles`, `compute_twiddles`) and pruned DIF FFT (`fft_coeff_to_extended`) [#352](https://github.com/midnightntwrk/midnight-zk/pull/352)
+* Add Curve25519 [#181](https://github.com/midnightntwrk/midnight-zk/pull/181)
+* Add `k256` module [#189](https://github.com/midnightntwrk/midnight-zk/pull/189), [#191](https://github.com/midnightntwrk/midnight-zk/pull/191)
 
 ### Changed
 

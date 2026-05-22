@@ -2,7 +2,7 @@ use ff::{FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
 
 use super::{super::Error, Argument};
 use crate::{
-    plonk::evaluation::evaluate,
+    plonk::{evaluation::evaluate, trash},
     poly::{
         commitment::PolynomialCommitmentScheme, Coeff, EvaluationDomain, LagrangeCoeff, Polynomial,
         ProverQuery,
@@ -17,7 +17,10 @@ pub(crate) struct Committed<F: PrimeField> {
     pub(crate) trash_poly: Polynomial<F, Coeff>,
 }
 
-pub(crate) struct Evaluated<F: PrimeField>(Committed<F>);
+pub(crate) struct Evaluated<F: PrimeField> {
+    committed: Committed<F>,
+    pub(crate) evaluated: trash::Evaluated<F>,
+}
 
 impl<F: WithSmallOrderMulGroup<3> + Ord> Argument<F> {
     #[allow(clippy::too_many_arguments)]
@@ -29,7 +32,6 @@ impl<F: WithSmallOrderMulGroup<3> + Ord> Argument<F> {
         advice_values: &'a [Polynomial<F, LagrangeCoeff>],
         fixed_values: &'a [Polynomial<F, LagrangeCoeff>],
         instance_values: &'a [Polynomial<F, LagrangeCoeff>],
-        challenges: &'a [F],
         transcript: &mut T,
     ) -> Result<Committed<F>, Error>
     where
@@ -45,18 +47,17 @@ impl<F: WithSmallOrderMulGroup<3> + Ord> Argument<F> {
                 domain.lagrange_from_vec(evaluate(
                     expression,
                     domain.n as usize,
-                    1,
+                    0,
                     fixed_values,
                     advice_values,
                     instance_values,
-                    challenges,
                 ))
             })
             .fold(domain.empty_lagrange(), |acc, expression| {
                 acc * trash_challenge + &expression
             });
 
-        let trash_commitment = CS::commit_lagrange(params, &compressed_expression);
+        let trash_commitment = CS::commit(params, &compressed_expression);
         let trash_poly = domain.lagrange_to_coeff(compressed_expression);
 
         // Hash permuted input commitment
@@ -75,7 +76,10 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
         let trash_eval = eval_polynomial(&self.trash_poly, x);
         transcript.write(&trash_eval)?;
 
-        Ok(Evaluated(self))
+        Ok(Evaluated {
+            committed: self,
+            evaluated: trash::Evaluated { trash_eval },
+        })
     }
 }
 
@@ -83,7 +87,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluated<F> {
     pub(crate) fn open(&self, x: F) -> impl Iterator<Item = ProverQuery<'_, F>> + Clone {
         vec![ProverQuery {
             point: x,
-            poly: &self.0.trash_poly,
+            poly: &self.committed.trash_poly,
         }]
         .into_iter()
     }
