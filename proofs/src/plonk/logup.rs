@@ -336,6 +336,11 @@ impl<F: Field> BatchedArgument<F> {
         }
     }
 
+    /// The name of this argument.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
     /// Returns the selector expression for this argument.
     pub fn selector_expression(&self) -> &Expression<F> {
         &self.selector
