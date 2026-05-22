@@ -155,7 +155,13 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ChunkedArgument<F> {
         );
 
         let multiplicities = pk.vk.domain.lagrange_from_vec(multiplicities);
-        let commitment = CS::commit(params, &multiplicities);
+
+        // Multiplicities are produced by sorting/deduplicating into contiguous
+        // equal-value runs, which collapse to zeros in the LagrangeDelta basis.
+        // The Lagrange form is needed downstream for `eval_polynomial` and the
+        // openings, so we borrow into a transient delta buffer rather than
+        // transforming in place and prefix-summing back.
+        let commitment = CS::commit(params, &multiplicities.to_delta());
 
         Ok((
             ComputedMultiplicities {
@@ -276,7 +282,12 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ComputedMultiplicities<F> {
             assert_eq!(aggregator_poly[u], F::ZERO);
         }
 
-        let aggregator_commitment = CS::commit(params, &aggregator_poly);
+        // The aggregator is a running sum. When the per-row contribution
+        // (selector·h − m·(t+β)⁻¹) is locally constant (common, because
+        // multiplicities m are highly contiguous and tables are zero-padded)
+        // the aggregator is locally *linear*. Δ² converts them in zero runs,
+        // which will be filtered out.
+        let aggregator_commitment = CS::commit(params, &aggregator_poly.to_double_delta());
 
         Ok(ComputedLogderivative {
             multiplicities: self.multiplicities,

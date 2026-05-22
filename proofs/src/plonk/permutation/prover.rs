@@ -218,6 +218,7 @@ impl Argument {
         }
 
         // Step C: Apply corrections and commit.
+        //
         let committed: Vec<(CS::Commitment, Polynomial<F, LagrangeCoeff>)> = z_and_uncorrected
             .into_par_iter()
             .zip(corrections.par_iter())
@@ -231,7 +232,12 @@ impl Argument {
                     });
                 }
 
-                let commitment = CS::commit(params, &z);
+                // perm_z has long contiguous-constant runs (the identity-permutation
+                // tail and interior gaps), so we commit in the LagrangeDelta basis.
+                // The Lagrange form is needed downstream for the linearization step,
+                // so we borrow into a transient delta buffer rather than transforming
+                // in place and prefix-summing back.
+                let commitment = CS::commit(params, &z.to_delta());
                 (commitment, z)
             })
             .collect();
