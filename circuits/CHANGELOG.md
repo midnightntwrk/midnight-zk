@@ -18,6 +18,7 @@ verification keys break backwards compatibility.
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 
 ### Changed
+* Panic loudly in `from_dual_msm` when a `NoLabel` commitment reaches the MSM layer [#392](https://github.com/midnightntwrk/midnight-zk/pull/392)
 * Adapt verifier gadget to single-proof prover API [#375](https://github.com/midnightntwrk/midnight-zk/pull/375)
 * Split linearization commitment into non-constant and constant parts, removing the generator point from the MSM [#313](https://github.com/midnightntwrk/midnight-zk/pull/313)
 * Make `NB_ARITH_COLS` configurable instead of a compile-time constant [#287](https://github.com/midnightntwrk/midnight-zk/pull/287)
