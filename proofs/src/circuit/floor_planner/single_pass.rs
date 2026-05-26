@@ -1,4 +1,4 @@
-use std::{cell::RefCell, cmp, collections::HashMap, fmt, marker::PhantomData, rc::Rc};
+use std::{cmp, collections::HashMap, fmt, marker::PhantomData};
 
 use ff::Field;
 
@@ -41,17 +41,10 @@ impl FloorPlanner for SimpleFloorPlanner {
         config: C::Config,
         constants: Vec<Column<Fixed>>,
     ) -> Result<Option<Vec<RegionStart>>, Error> {
-        // The layouter mirrors each computed RegionStart into `sink` as
-        // synthesis runs. After `circuit.synthesize` consumes the layouter,
-        // we are the sole owner of `sink` and can extract the layout.
-        let sink = Rc::new(RefCell::new(Vec::new()));
-        let layouter = SingleChipLayouter::new_capturing(cs, constants, Rc::clone(&sink))?;
+        let mut sink = Vec::new();
+        let layouter = SingleChipLayouter::new_capturing(cs, constants, &mut sink)?;
         circuit.synthesize(config, layouter)?;
-        Ok(Some(
-            Rc::try_unwrap(sink)
-                .expect("layouter dropped after synthesize; sink must be sole owner")
-                .into_inner(),
-        ))
+        Ok(Some(sink))
     }
 
     fn synthesize_with_cached_regions<F: Field, CS: Assignment<F> + SyncDeps, C: Circuit<F>>(
@@ -91,7 +84,7 @@ pub struct SingleChipLayouter<'a, F: Field, CS: Assignment<F> + 'a> {
     /// When `Some`, each newly determined `RegionStart` is also written here
     /// so the caller can read the layout back after `circuit.synthesize`
     /// has consumed the layouter. Used by `synthesize_capturing_regions`.
-    region_sink: Option<Rc<RefCell<Vec<RegionStart>>>>,
+    region_sink: Option<&'a mut Vec<RegionStart>>,
     _marker: PhantomData<F>,
 }
 
@@ -145,7 +138,7 @@ impl<'a, F: Field, CS: Assignment<F>> SingleChipLayouter<'a, F, CS> {
     pub fn new_capturing(
         cs: &'a mut CS,
         constants: Vec<Column<Fixed>>,
-        sink: Rc<RefCell<Vec<RegionStart>>>,
+        sink: &'a mut Vec<RegionStart>,
     ) -> Result<Self, Error> {
         Ok(SingleChipLayouter {
             cs,
@@ -200,8 +193,8 @@ impl<'a, F: Field, CS: Assignment<F> + 'a + SyncDeps> SingleChipLayouter<'a, F, 
             }
         }
 
-        if let Some(ref sink) = self.region_sink {
-            sink.borrow_mut().push(*self.regions.last().unwrap());
+        if let Some(ref mut sink) = self.region_sink {
+            sink.push(*self.regions.last().unwrap());
         }
 
         // Assign region cells.
