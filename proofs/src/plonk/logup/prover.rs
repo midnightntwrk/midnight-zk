@@ -287,7 +287,11 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ComputedMultiplicities<F> {
         // multiplicities m are highly contiguous and tables are zero-padded)
         // the aggregator is locally *linear*. Δ² converts them in zero runs,
         // which will be filtered out.
-        let aggregator_commitment = CS::commit(params, &aggregator_poly.to_double_delta(), CommitmentLabel::NoLabel);
+        let aggregator_commitment = CS::commit(
+            params,
+            &aggregator_poly.to_double_delta(),
+            CommitmentLabel::NoLabel,
+        );
 
         Ok(ComputedLogderivative {
             multiplicities: self.multiplicities,
