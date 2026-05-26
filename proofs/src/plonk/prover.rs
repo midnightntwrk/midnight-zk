@@ -575,12 +575,16 @@ where
         _marker: std::marker::PhantomData,
     };
 
-    // Synthesize the circuit to obtain the witness and other information.
-    ConcreteCircuit::FloorPlanner::synthesize(
+    // Synthesize the circuit to obtain the witness. If keygen captured
+    // the region layout (see `ProvingKey::region_starts`), we reuse it
+    // here to skip the shape pass; otherwise the floor planner falls
+    // back to computing it.
+    ConcreteCircuit::FloorPlanner::synthesize_with_cached_regions(
         &mut witness,
         circuit,
         config.clone(),
         meta.constants.clone(),
+        pk.region_starts.as_deref(),
     )?;
 
     let mut advice_values = batch_invert_rational::<F>(witness.advice);

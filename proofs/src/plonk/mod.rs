@@ -342,6 +342,11 @@ pub struct ProvingKey<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
     pub(crate) fixed_cosets: Vec<Polynomial<F, ExtendedLagrangeCoeff>>,
     pub(crate) permutation: permutation::ProvingKey<F>,
     pub(crate) ev: Evaluator<F>,
+    /// Region layout captured during keygen, consumed during proving to skip
+    /// the shape pass. `None` means no cached layout is available (either the
+    /// `FloorPlanner` does not support capture, or the key was deserialized);
+    /// in that case the prover falls back to running the shape pass itself.
+    pub(crate) region_starts: Option<Vec<crate::circuit::RegionStart>>,
 }
 
 impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> ProvingKey<F, CS>
@@ -433,6 +438,11 @@ where
             fixed_cosets,
             permutation,
             ev,
+            // The region layout is not serialized: the first proof produced
+            // from a deserialized key will re-run the shape pass. Subsequent
+            // proofs from the same in-memory key still pay that cost unless
+            // the caller caches the layout externally.
+            region_starts: None,
         })
     }
 

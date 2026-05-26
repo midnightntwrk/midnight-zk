@@ -14,7 +14,7 @@ use ff::Field;
 
 use super::{logup, permutation, trash, Error};
 use crate::{
-    circuit::{layouter::SyncDeps, Layouter, Region, Value},
+    circuit::{layouter::SyncDeps, Layouter, Region, RegionStart, Value},
     dev::metadata,
     plonk::trash::Argument,
     poly::Rotation,
@@ -606,6 +606,58 @@ pub trait FloorPlanner {
         config: C::Config,
         constants: Vec<Column<Fixed>>,
     ) -> Result<(), Error>;
+
+    /// Synthesize the circuit, additionally capturing the region layout so
+    /// that a later synthesis can skip the shape pass via
+    /// [`synthesize_with_cached_regions`]. The typical usage is to capture
+    /// the layout during keygen and reuse it during proving.
+    ///
+    /// Returns `None` if the planner does not support layout capture; in
+    /// that case the default implementation simply performs a regular
+    /// [`synthesize`]. Planners that override this must guarantee that the
+    /// returned `Vec<RegionStart>`, when later passed to
+    /// [`synthesize_with_cached_regions`] on an equivalent circuit, yields
+    /// the same layout as a plain [`synthesize`].
+    ///
+    /// [`synthesize`]: Self::synthesize
+    /// [`synthesize_with_cached_regions`]: Self::synthesize_with_cached_regions
+    fn synthesize_capturing_regions<F: Field, CS: Assignment<F> + SyncDeps, C: Circuit<F>>(
+        cs: &mut CS,
+        circuit: &C,
+        config: C::Config,
+        constants: Vec<Column<Fixed>>,
+    ) -> Result<Option<Vec<RegionStart>>, Error> {
+        Self::synthesize(cs, circuit, config, constants)?;
+        Ok(None)
+    }
+
+    /// Synthesize the circuit using region starts captured by an earlier
+    /// call to [`synthesize_capturing_regions`], skipping the shape pass
+    /// where the planner supports it. If `cached_regions` is `None`, this
+    /// behaves exactly like [`synthesize`].
+    ///
+    /// Correctness invariant: when `cached_regions` is `Some`, the circuit
+    /// passed here must produce the same sequence of `assign_region` calls
+    /// (same count, same order, same column usage) as the circuit used to
+    /// capture the layout. Violating this yields an incorrect layout and,
+    /// typically, a broken proof. In practice this holds because keygen
+    /// and proving call `Circuit::synthesize` on the same circuit type,
+    /// which is expected to be a deterministic function of its inputs.
+    ///
+    /// The default implementation ignores `cached_regions` and falls back
+    /// to [`synthesize`].
+    ///
+    /// [`synthesize`]: Self::synthesize
+    /// [`synthesize_capturing_regions`]: Self::synthesize_capturing_regions
+    fn synthesize_with_cached_regions<F: Field, CS: Assignment<F> + SyncDeps, C: Circuit<F>>(
+        cs: &mut CS,
+        circuit: &C,
+        config: C::Config,
+        constants: Vec<Column<Fixed>>,
+        _cached_regions: Option<&[RegionStart]>,
+    ) -> Result<(), Error> {
+        Self::synthesize(cs, circuit, config, constants)
+    }
 }
 
 /// This is a trait that circuits provide implementations for so that the
