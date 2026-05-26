@@ -19,7 +19,7 @@ use crate::{
     poly::{
         batch_invert_rational,
         commitment::{Params, PolynomialCommitmentScheme},
-        EvaluationDomain, ExtendedLagrangeCoeff,
+        CommitmentLabel, EvaluationDomain, ExtendedLagrangeCoeff,
     },
     utils::{arithmetic::parallelize, rational::Rational},
 };
@@ -276,7 +276,11 @@ where
 
     let permutation_vk = assembly.permutation.build_vk(params, &domain, &cs.permutation);
 
-    let fixed_commitments = fixed.iter().map(|poly| CS::commit(params, poly)).collect();
+    let fixed_commitments = fixed
+        .iter()
+        .enumerate()
+        .map(|(i, poly)| CS::commit(params, poly, CommitmentLabel::Fixed(i)))
+        .collect();
 
     Ok(VerifyingKey::from_parts(
         domain,

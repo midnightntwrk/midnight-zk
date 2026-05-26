@@ -27,9 +27,9 @@ use crate::{
         traces::ProverTrace, trash,
     },
     poly::{
-        batch_invert_rational, commitment::PolynomialCommitmentScheme, Coeff, EvaluationDomain,
-        ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial, PolynomialRepresentation, ProverQuery,
-        Rotation,
+        batch_invert_rational, commitment::PolynomialCommitmentScheme, Coeff, CommitmentLabel,
+        EvaluationDomain, ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial,
+        PolynomialRepresentation, ProverQuery, Rotation,
     },
     transcript::{Hashable, Sampleable, Transcript},
     utils::{
@@ -54,7 +54,7 @@ where
     for (poly_eval, value) in poly.iter_mut().zip(instances.iter()) {
         *poly_eval = *value;
     }
-    CS::commit(params, &poly)
+    CS::commit(params, &poly, CommitmentLabel::Instance(0))
 }
 
 /// This computes a proof trace for the provided `circuit` when given the
@@ -198,7 +198,7 @@ where
                         .par_iter()
                         .map(|h| {
                             let h_poly = domain.lagrange_from_vec(h.clone());
-                            CS::commit(params, &h_poly)
+                            CS::commit(params, &h_poly, CommitmentLabel::NoLabel)
                         })
                         .collect()
                 })
@@ -503,7 +503,7 @@ where
             }
 
             if is_committed_instance {
-                transcript.common(&CS::commit(params, &poly))?;
+                transcript.common(&CS::commit(params, &poly, CommitmentLabel::NoLabel))?;
             }
 
             Ok(poly)
@@ -598,8 +598,11 @@ where
         }
     }
 
-    let advice_commitments: Vec<_> =
-        advice_values.par_iter().map(|poly| CS::commit(params, poly)).collect();
+    let advice_commitments: Vec<_> = advice_values
+        .par_iter()
+        .enumerate()
+        .map(|(i, poly)| CS::commit(params, poly, CommitmentLabel::Advice(i)))
+        .collect();
 
     for commitment in &advice_commitments {
         transcript.write(commitment)?;
@@ -714,7 +717,7 @@ where
             values: h_poly,
             _marker: std::marker::PhantomData,
         };
-        let h_com = CS::commit(params, &h_poly);
+        let h_com = CS::commit(params, &h_poly, CommitmentLabel::NoLabel);
         transcript.write(&h_com)?;
         Ok(vec![h_poly])
     }
@@ -734,8 +737,10 @@ where
             h_limbs.into_iter().map(|h_limb| domain.coeff_from_vec(h_limb)).collect();
 
         // Compute commitment to each limb (parallel MSMs).
-        let h_commitments: Vec<_> =
-            h_limbs.par_iter().map(|h_piece| CS::commit(params, h_piece)).collect();
+        let h_commitments: Vec<_> = h_limbs
+            .par_iter()
+            .map(|h_piece| CS::commit(params, h_piece, CommitmentLabel::NoLabel))
+            .collect();
 
         // Write each limb commitment to the transcript in order.
         for c in h_commitments {

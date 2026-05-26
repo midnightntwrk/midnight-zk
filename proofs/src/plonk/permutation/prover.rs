@@ -14,8 +14,8 @@ use crate::{
         Error,
     },
     poly::{
-        commitment::PolynomialCommitmentScheme, Coeff, EvaluationDomain, LagrangeCoeff, Polynomial,
-        ProverQuery, Rotation,
+        commitment::PolynomialCommitmentScheme, Coeff, CommitmentLabel, EvaluationDomain,
+        LagrangeCoeff, Polynomial, ProverQuery, Rotation,
     },
     transcript::{Hashable, Transcript},
     utils::arithmetic::{eval_polynomial, eval_polynomial_seq, parallelize},
@@ -237,7 +237,7 @@ impl Argument {
                 // The Lagrange form is needed downstream for the linearization step,
                 // so we borrow into a transient delta buffer rather than transforming
                 // in place and prefix-summing back.
-                let commitment = CS::commit(params, &z.to_delta());
+                let commitment = CS::commit(params, &z.to_delta(), CommitmentLabel::NoLabel);
                 (commitment, z)
             })
             .collect();

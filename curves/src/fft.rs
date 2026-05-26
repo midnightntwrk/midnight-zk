@@ -185,8 +185,8 @@ fn recursive_dif_pruned(a: &mut [Fq], n: usize, tc: usize, tw: &[Fq], nz: usize)
     );
 }
 
-/// In-place Gentleman-Sande butterfly on `a[i]` and `a[j]` with twiddle `t`:
-/// (a[i], a[j]) ← (a[i] + a[j], (a[i] - a[j])·t).
+/// In-place Gentleman-Sande butterfly on `a\[i\]` and `a\[j\]` with twiddle
+/// `t`: (a\[i\], a\[j\]) ← (a\[i\] + a\[j\], (a\[i\] - a\[j\])·t).
 #[inline(always)]
 fn gs(a: &mut [Fq], i: usize, j: usize, t: &Fq) {
     // SAFETY: i != j and both in bounds — callers always supply i = k, j = k + h

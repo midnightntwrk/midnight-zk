@@ -341,6 +341,7 @@ fn main() {
     let committed_credential: G1Affine = {
         let instance = CredentialProperty::format_committed_instances(&witness);
         commit_to_instances::<_, KZGCommitmentScheme<_>>(&srs, vk.vk().get_domain(), &instance)
+            .into_point()
             .into()
     };
     println!("... done ({:?})", wit.elapsed());

@@ -122,11 +122,11 @@ pub fn fixed_bases<S: SelfEmulation>(
     let perm_commitments = vk.permutation().commitments();
 
     for (i, com) in fixed_commitments.iter().enumerate() {
-        fixed_bases.insert(fixed_commitment_name(vk_name, i), *com);
+        fixed_bases.insert(fixed_commitment_name(vk_name, i), *com.as_point());
     }
 
     for (i, com) in perm_commitments.iter().enumerate() {
-        fixed_bases.insert(perm_commitment_name(vk_name, i), *com);
+        fixed_bases.insert(perm_commitment_name(vk_name, i), *com.as_point());
     }
 
     fixed_bases

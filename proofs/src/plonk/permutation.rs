@@ -25,7 +25,7 @@ use crate::{
         permutation::{keygen::compute_polys_and_cosets, verifier::CommonEvaluated},
     },
     poly::{commitment::PolynomialCommitmentScheme, EvaluationDomain},
-    utils::helpers::{byte_length, ProcessedSerdeObject},
+    utils::helpers::ProcessedSerdeObject,
 };
 
 /// A permutation argument.
@@ -130,7 +130,7 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> VerifyingKey<F, CS> {
     where
         CS::Commitment: ProcessedSerdeObject,
     {
-        self.commitments.len() * byte_length::<CS::Commitment>(format)
+        self.commitments.iter().map(|c| c.byte_length(format)).sum()
     }
 }
 

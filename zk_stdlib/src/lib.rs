@@ -2094,7 +2094,12 @@ where
                 CircuitTranscript<H>,
             >(
                 &vk.vk,
-                &[midnight_curves::G1Projective::identity()],
+                &[
+                    midnight_proofs::poly::kzg::commitment::KZGCommitment::Simple(
+                        midnight_curves::G1Projective::identity(),
+                        midnight_proofs::poly::CommitmentLabel::NoLabel,
+                    ),
+                ],
                 &[pi],
                 &mut transcript,
             )?;

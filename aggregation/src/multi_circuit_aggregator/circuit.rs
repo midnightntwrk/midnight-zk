@@ -27,8 +27,8 @@ use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::{self, ConstraintSystem, Error},
     poly::{
-        kzg::{params::ParamsVerifierKZG, KZGCommitmentScheme},
-        EvaluationDomain,
+        kzg::{commitment::KZGCommitment, params::ParamsVerifierKZG, KZGCommitmentScheme},
+        CommitmentLabel, EvaluationDomain,
     },
     transcript::{CircuitTranscript, Transcript},
     utils::SerdeFormat,
@@ -250,7 +250,10 @@ impl IvcTransition for ProofAggregation {
             let dual_msm =
                 plonk::prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<PoseidonState<F>>>(
                     witness.claim.vk.vk(),
-                    &[C::identity()],
+                    &[KZGCommitment::Simple(
+                        C::identity(),
+                        CommitmentLabel::NoLabel,
+                    )],
                     &[&[statement]],
                     &mut transcript,
                 )
@@ -321,7 +324,10 @@ impl IvcTransition for ProofAggregation {
                     CircuitTranscript<PoseidonState<F>>,
                 >(
                     w.claim.vk.vk(),
-                    &[C::identity()],
+                    &[KZGCommitment::Simple(
+                        C::identity(),
+                        CommitmentLabel::NoLabel,
+                    )],
                     &[&[w.claim.statement.format_instance()]],
                     &mut transcript,
                 )

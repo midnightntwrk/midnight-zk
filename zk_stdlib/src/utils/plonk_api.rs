@@ -31,9 +31,11 @@ use midnight_proofs::{
     poly::{
         commitment::Guard,
         kzg::{
+            commitment::KZGCommitment,
             params::{ParamsKZG, ParamsVerifierKZG},
             KZGCommitmentScheme,
         },
+        CommitmentLabel,
     },
     transcript::{CircuitTranscript, Hashable, Sampleable, Transcript, TranscriptHash},
     utils::SerdeFormat,
@@ -147,7 +149,10 @@ macro_rules! plonk_api {
                 let start = Instant::now();
                 let res = prepare::<$native, KZGCommitmentScheme<$engine>, CircuitTranscript<H>>(
                     vk,
-                    &instance_commitments.iter().map(|c| c.into()).collect::<Vec<_>>(),
+                    &instance_commitments
+                        .iter()
+                        .map(|c| KZGCommitment::Simple((*c).into(), CommitmentLabel::NoLabel))
+                        .collect::<Vec<_>>(),
                     pi,
                     &mut transcript,
                 )?;

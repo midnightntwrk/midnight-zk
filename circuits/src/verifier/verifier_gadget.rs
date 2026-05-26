@@ -21,7 +21,7 @@ use ff::Field;
 use midnight_proofs::{
     circuit::{AssignedCell, Chip, Layouter, Value},
     plonk::{ConstraintSystem, Error},
-    poly::{CommitmentLabel, EvaluationDomain, Rotation},
+    poly::{EvaluationDomain, Rotation},
 };
 use num_bigint::BigUint;
 use num_traits::One;
@@ -764,7 +764,6 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                     VerifierQuery::<S>::new(
                         &one,
                         get_point(&rot),
-                        CommitmentLabel::Advice(column.index()),
                         &advice_commitments[column.index()],
                         &advice_evals[query_index],
                     )
@@ -776,7 +775,6 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                         Some(VerifierQuery::<S>::new(
                             &one,
                             get_point(&rot),
-                            CommitmentLabel::Instance(column.index()),
                             &assigned_committed_instances[column.index()],
                             &instance_evals[query_index],
                         ))
@@ -797,7 +795,6 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                         VerifierQuery::new_fixed(
                             &one,
                             get_point(&rot),
-                            CommitmentLabel::Fixed(col.index()),
                             &assigned_vk.fixed_commitment_name(col.index()),
                             &fixed_evals[query_index],
                         )
@@ -814,7 +811,6 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             )
             .chain(iter::once(VerifierQuery::new_from_msm(
                 &x,
-                CommitmentLabel::Custom("linearization_poly".into()),
                 &linearization_com,
                 &expected_lin_eval,
             )));
@@ -877,7 +873,10 @@ pub(crate) mod tests {
         circuit::SimpleFloorPlanner,
         dev::MockProver,
         plonk::{create_proof, keygen_pk, keygen_vk_with_k, prepare, Circuit, Error},
-        poly::kzg::{params::ParamsKZG, KZGCommitmentScheme},
+        poly::{
+            kzg::{commitment::KZGCommitment, params::ParamsKZG, KZGCommitmentScheme},
+            CommitmentLabel,
+        },
         transcript::{CircuitTranscript, Transcript},
     };
     use rand::SeedableRng;
@@ -1144,7 +1143,10 @@ pub(crate) mod tests {
                 CircuitTranscript::<PoseidonState<F>>::init_from_bytes(&inner_proof);
             prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<PoseidonState<F>>>(
                 &inner_vk,
-                &[C::identity()],
+                &[KZGCommitment::Simple(
+                    C::identity(),
+                    CommitmentLabel::NoLabel,
+                )],
                 &[&inner_public_inputs],
                 &mut transcript,
             )

@@ -11,7 +11,7 @@ use crate::{
         linearization::verifier::compute_linearization_commitment, partially_evaluate_identities,
         traces::VerifierTrace,
     },
-    poly::{commitment::PolynomialCommitmentScheme, CommitmentLabel, VerifierQuery},
+    poly::{commitment::PolynomialCommitmentScheme, VerifierQuery},
     transcript::{read_n, Hashable, Sampleable, Transcript},
     utils::arithmetic::compute_inner_product,
 };
@@ -267,10 +267,9 @@ where
         trash_challenge,
     );
 
-    let lin_com = compute_linearization_commitment(
+    let (lin_commitment, lin_eval) = compute_linearization_commitment(
         expressions,
         vk,
-        x,
         &y,
         &xn,
         &splitting_factor,
@@ -286,7 +285,6 @@ where
             vk.cs.advice_queries.iter().enumerate().map(|(query_index, &(column, at))| {
                 VerifierQuery::new(
                     vk.domain.rotate_omega(x, at),
-                    CommitmentLabel::Advice(column.index()),
                     &advice_commitments[column.index()],
                     advice_evals[query_index],
                 )
@@ -297,7 +295,6 @@ where
                 if column.index() < nb_committed_instances {
                     Some(VerifierQuery::new(
                         vk.domain.rotate_omega(x, at),
-                        CommitmentLabel::Instance(column.index()),
                         &committed_instances[column.index()],
                         instance_evals[query_index],
                     ))
@@ -319,14 +316,13 @@ where
                 .map(|(query_index, &(column, at))| {
                     VerifierQuery::new(
                         vk.domain.rotate_omega(x, at),
-                        CommitmentLabel::Fixed(column.index()),
                         &vk.fixed_commitments[column.index()],
                         fixed_evals[query_index],
                     )
                 }),
         )
         .chain(permutations_common.queries(&vk.permutation, x))
-        .chain(iter::once(lin_com))
+        .chain(iter::once(VerifierQuery::new(x, &lin_commitment, lin_eval)))
         .collect::<Vec<_>>();
 
     // We are now convinced the circuit is satisfied so long as the

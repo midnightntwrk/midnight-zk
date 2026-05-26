@@ -75,11 +75,12 @@ use midnight_proofs::{
     poly::{
         commitment::{Guard, Params},
         kzg::{
+            commitment::KZGCommitment,
             msm::{DualMSM, MSMKZG},
             params::{ParamsKZG, ParamsVerifierKZG},
             KZGCommitmentScheme,
         },
-        EvaluationDomain,
+        CommitmentLabel, EvaluationDomain,
     },
     transcript::{CircuitTranscript, Hashable, Sampleable, Transcript},
 };
@@ -316,7 +317,10 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
                     CircuitTranscript<LightPoseidonFS<F>>,
                 >(
                     &self.inner_vk,
-                    &[C::identity()],
+                    &[KZGCommitment::Simple(
+                        C::identity(),
+                        CommitmentLabel::NoLabel,
+                    )],
                     &[proof_instances],
                     &mut inner_transcript,
                 )?;
@@ -400,7 +404,7 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
             &bases1,
             &bases2,
             &acc_rhs_evaluated,
-            &acc_rhs_scalars_committed,
+            acc_rhs_scalars_committed.as_point(),
             transcript,
         )
     }
@@ -432,7 +436,7 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
             let n: u32 = transcript.read()?;
             (0..n).map(|_| transcript.read()).collect::<Result<Vec<C>, io::Error>>()?
         };
-        let acc_rhs_scalars_committed: C = transcript.read()?;
+        let acc_rhs_scalars_committed: KZGCommitment<E> = transcript.read()?;
         let acc_rhs_evaluated: C = transcript.read()?;
 
         // Verify the proof of validity of the native verification of all inner proofs.
@@ -450,7 +454,7 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
         let proof_dual_msm = {
             prepare::<F, KZGCommitmentScheme<E>, T>(
                 &self.aggregator_vk,
-                &[acc_rhs_scalars_committed],
+                std::slice::from_ref(&acc_rhs_scalars_committed),
                 &[&aggregator_instances],
                 transcript,
             )?
@@ -477,7 +481,7 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
             &bases1,
             &bases2,
             &acc_rhs_evaluated,
-            &acc_rhs_scalars_committed,
+            acc_rhs_scalars_committed.as_point(),
             transcript,
         )?;
 
@@ -608,7 +612,10 @@ mod tests {
             let dual_msm =
                 prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<LightPoseidonFS<F>>>(
                     inner_vk.vk(),
-                    &[C::identity()],
+                    &[KZGCommitment::Simple(
+                        C::identity(),
+                        CommitmentLabel::NoLabel,
+                    )],
                     &[&InnerCircuit::format_instance(&instances[i]).unwrap()],
                     &mut transcript,
                 )

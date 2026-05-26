@@ -32,8 +32,8 @@ use crate::{
         Error, Expression, ProvingKey,
     },
     poly::{
-        commitment::PolynomialCommitmentScheme, Coeff, LagrangeCoeff, Polynomial, ProverQuery,
-        Rotation,
+        commitment::PolynomialCommitmentScheme, Coeff, CommitmentLabel, LagrangeCoeff, Polynomial,
+        ProverQuery, Rotation,
     },
     transcript::{Hashable, Transcript},
     utils::arithmetic::{eval_polynomial, parallelize},
@@ -161,7 +161,7 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ChunkedArgument<F> {
         // The Lagrange form is needed downstream for `eval_polynomial` and the
         // openings, so we borrow into a transient delta buffer rather than
         // transforming in place and prefix-summing back.
-        let commitment = CS::commit(params, &multiplicities.to_delta());
+        let commitment = CS::commit(params, &multiplicities.to_delta(), CommitmentLabel::NoLabel);
 
         Ok((
             ComputedMultiplicities {
@@ -287,7 +287,11 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ComputedMultiplicities<F> {
         // multiplicities m are highly contiguous and tables are zero-padded)
         // the aggregator is locally *linear*. Δ² converts them in zero runs,
         // which will be filtered out.
-        let aggregator_commitment = CS::commit(params, &aggregator_poly.to_double_delta());
+        let aggregator_commitment = CS::commit(
+            params,
+            &aggregator_poly.to_double_delta(),
+            CommitmentLabel::NoLabel,
+        );
 
         Ok(ComputedLogderivative {
             multiplicities: self.multiplicities,
