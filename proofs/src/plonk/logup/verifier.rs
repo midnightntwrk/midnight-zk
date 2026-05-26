@@ -22,7 +22,7 @@ use crate::{
         logup::{self, ChunkedArgument},
         Error, VerifyingKey,
     },
-    poly::{commitment::PolynomialCommitmentScheme, CommitmentLabel, Rotation, VerifierQuery},
+    poly::{commitment::PolynomialCommitmentScheme, Rotation, VerifierQuery},
     transcript::{Hashable, Transcript},
 };
 
@@ -130,7 +130,6 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
 
         let m_query = iter::once(VerifierQuery::new(
             x,
-            CommitmentLabel::NoLabel,
             &self.committed.multiplicities,
             self.evaluated.multiplicities_eval,
         ));
@@ -140,19 +139,17 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
             .helper_polys
             .iter()
             .zip(self.evaluated.helper_evals.iter())
-            .map(move |(com, &eval)| VerifierQuery::new(x, CommitmentLabel::NoLabel, com, eval))
+            .map(move |(com, &eval)| VerifierQuery::new(x, com, eval))
             .collect::<Vec<_>>();
 
         let z_queries = [
             VerifierQuery::new(
                 x,
-                CommitmentLabel::NoLabel,
                 &self.committed.accumulator,
                 self.evaluated.accumulator_eval,
             ),
             VerifierQuery::new(
                 x_next,
-                CommitmentLabel::NoLabel,
                 &self.committed.accumulator,
                 self.evaluated.accumulator_next_eval,
             ),

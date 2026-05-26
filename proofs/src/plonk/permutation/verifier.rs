@@ -1,11 +1,9 @@
-use std::iter;
-
 use ff::{PrimeField, WithSmallOrderMulGroup};
 
 use super::{Argument, VerifyingKey};
 use crate::{
     plonk::{self, permutation, Error},
-    poly::{commitment::PolynomialCommitmentScheme, CommitmentLabel, Rotation, VerifierQuery},
+    poly::{commitment::PolynomialCommitmentScheme, Rotation, VerifierQuery},
     transcript::{Hashable, Transcript},
 };
 
@@ -102,57 +100,51 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> Committed<F, CS> {
 }
 
 impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<F, CS> {
-    pub(in crate::plonk) fn queries<'r>(
-        &'r self,
-        vk: &'r plonk::VerifyingKey<F, CS>,
+    pub(in crate::plonk) fn queries(
+        &self,
+        vk: &plonk::VerifyingKey<F, CS>,
         x: F,
-    ) -> impl Iterator<Item = VerifierQuery<'r, F, CS>> + Clone + 'r {
+    ) -> impl Iterator<Item = VerifierQuery<'_, F, CS>> + Clone {
         let blinding_factors = vk.cs.blinding_factors();
         let x_next = vk.domain.rotate_omega(x, Rotation::next());
         let x_last = vk.domain.rotate_omega(x, Rotation(-((blinding_factors + 1) as i32)));
 
-        iter::empty()
-            .chain(self.sets.iter().enumerate().flat_map(move |(i, set)| {
-                iter::empty()
-                    // Open permutation product commitments at x and \omega x
-                    .chain(Some(VerifierQuery::new(
-                        x,
-                        CommitmentLabel::NoLabel,
-                        &self.coms.permutation_product_commitments[i],
-                        set.permutation_product_eval,
-                    )))
-                    .chain(Some(VerifierQuery::new(
-                        x_next,
-                        CommitmentLabel::NoLabel,
-                        &self.coms.permutation_product_commitments[i],
-                        set.permutation_product_next_eval,
-                    )))
-            }))
-            // Open it at \omega^{last} x for all but the last set
-            .chain(
-                self.sets.iter().enumerate().rev().skip(1).flat_map(move |(i, set)| {
-                    Some(VerifierQuery::new(
-                        x_last,
-                        CommitmentLabel::NoLabel,
-                        &self.coms.permutation_product_commitments[i],
-                        set.permutation_product_last_eval.unwrap(),
-                    ))
-                }),
-            )
+        let product_coms = &self.coms.permutation_product_commitments;
+        let mut queries = Vec::new();
+        for (i, set) in self.sets.iter().enumerate() {
+            queries.push(VerifierQuery::new(
+                x,
+                &product_coms[i],
+                set.permutation_product_eval,
+            ));
+            queries.push(VerifierQuery::new(
+                x_next,
+                &product_coms[i],
+                set.permutation_product_next_eval,
+            ));
+        }
+        // Open at \omega^{last} x for all but the last set
+        for (i, set) in self.sets.iter().enumerate().rev().skip(1) {
+            queries.push(VerifierQuery::new(
+                x_last,
+                &product_coms[i],
+                set.permutation_product_last_eval.unwrap(),
+            ));
+        }
+        queries.into_iter()
     }
 }
 
 impl<F: PrimeField> CommonEvaluated<F> {
-    pub(in crate::plonk) fn queries<'r, CS: PolynomialCommitmentScheme<F>>(
-        &'r self,
-        vkey: &'r VerifyingKey<F, CS>,
+    pub(in crate::plonk) fn queries<'vkey, CS: PolynomialCommitmentScheme<F>>(
+        &self,
+        vkey: &'vkey VerifyingKey<F, CS>,
         x: F,
-    ) -> impl Iterator<Item = VerifierQuery<'r, F, CS>> + Clone {
-        // Open permutation commitments for each permutation argument at x
-        vkey.commitments.iter().zip(self.permutation_evals.iter()).enumerate().map(
-            move |(i, (commitment, &eval))| {
-                VerifierQuery::new(x, CommitmentLabel::Permutation(i), commitment, eval)
-            },
-        )
+    ) -> impl Iterator<Item = VerifierQuery<'vkey, F, CS>> + Clone {
+        let evals = self.permutation_evals.clone();
+        vkey.commitments
+            .iter()
+            .zip(evals)
+            .map(move |(commitment, eval)| VerifierQuery::new(x, commitment, eval))
     }
 }

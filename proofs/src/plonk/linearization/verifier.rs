@@ -2,14 +2,12 @@ use std::collections::BTreeMap;
 
 use ff::PrimeField;
 
-use crate::{
-    plonk::VerifyingKey,
-    poly::{commitment::PolynomialCommitmentScheme, CommitmentLabel, VerifierQuery},
-};
+use crate::{plonk::VerifyingKey, poly::commitment::PolynomialCommitmentScheme};
 
-/// Construct the commitment to the linearization polynomial
-/// (which will be checked that it opens to `0` at `x` in the multi-open
-/// argument):
+/// Construct the commitment to the linearization polynomial and its expected
+/// evaluation at `x`.
+///
+/// The commitment is:
 ///
 ///  `S_0 * id_0(x) + y * S_1 * id_1(x) + ... + y^m * S_m * id_m(x)
 ///        - (h_0 + x^{n-1} * h_1 + ... + x^{l*(n-1)} * h_l) * (x^n-1),`
@@ -18,87 +16,63 @@ use crate::{
 /// * `y` is the batching challenge,
 /// * `x` is the evaluation challenge,
 /// * `id_j(x)` is a (partially or fully) evaluated identity at `x`,
-/// * `S_j` is, either,
-///      - (i)  the commitment to a fixed column representing a simple,
-///        multiplicative selector, or,
-///      - (ii) the commitment to the constant polynomial `P(X) = 1` (in case
-///        the corresponding identity `id_j` has been fully evaluated and, thus,
-///        the resulting scalar is part of the constant term of the
-///        linearization polynomial)
+/// * `S_j` is either the commitment to a simple selector column or the
+///   commitment to `P(X) = 1` (for fully evaluated identities),
 /// * `h_k` are commitments to the limbs of the quotient polynomial.
-///
-/// # Arguments
-///
-/// * `expressions` - the output of
-///   [crate::plonk::partially_evaluate_identities]
-/// * `splitting_factor` - the evaluated splitting factor `x^{n-1}` from
-///   decomposing the quotient polynomial `h(T)` into limbs
 ///
 /// # Returns
 ///
-/// A [VerifierQuery], that checks if the commitment to the linearization
-/// polynomial opens to `0` at the evaluation challenge `x`. The commitment
-/// itself is an MSM represented as a vector of points and a vector
-/// of scalars.
-#[allow(clippy::type_complexity)]
-#[allow(clippy::too_many_arguments)]
+/// `(commitment, expected_eval)` where the commitment to the linearization
+/// polynomial is expected to open to `expected_eval` at `x`.
 pub(crate) fn compute_linearization_commitment<
-    'com,
     F: PrimeField + ff::WithSmallOrderMulGroup<3> + ff::FromUniformBytes<64> + std::cmp::Ord,
     CS: PolynomialCommitmentScheme<F>,
 >(
     expressions: Vec<(Option<usize>, F)>,
-    vk: &'com VerifyingKey<F, CS>,
-    x: F,
+    vk: &VerifyingKey<F, CS>,
     y: &F,
     xn: &F,
     splitting_factor: &F,
-    quotient_limb_commitments: &'com [CS::Commitment],
-) -> VerifierQuery<'com, F, CS> {
-    let lin_com_len = vk.cs.num_simple_selectors() + quotient_limb_commitments.len() + 1;
-    let mut identities_points = Vec::with_capacity(lin_com_len);
-    let mut identities_scalars = Vec::with_capacity(lin_com_len);
-    let mut identities_labels = Vec::with_capacity(lin_com_len);
+    quotient_limb_commitments: &[CS::Commitment],
+) -> (CS::Commitment, F) {
+    let mut expected_eval = F::ZERO;
 
-    identities_points.extend(quotient_limb_commitments);
-
-    let mut splitting_pow = F::ONE - *xn;
-    for _ in 0..quotient_limb_commitments.len() {
-        identities_scalars.push(splitting_pow);
-        identities_labels.push(CommitmentLabel::NoLabel);
-        splitting_pow *= splitting_factor;
-    }
-
-    // Group multiples of the same point in the MSM
+    // Group multiples of the same fixed column to reduce the number of scalar
+    // multiplications
     let mut grouped_points: BTreeMap<Option<usize>, F> = BTreeMap::new();
     let mut y_pow = F::ONE;
-    expressions.iter().rev().for_each(|(col_idx, eval)| {
+    for (col_idx, eval) in expressions.iter().rev() {
         *grouped_points.entry(*col_idx).or_insert(F::ZERO) += y_pow * eval;
         y_pow *= y;
+    }
+
+    let mut splitting_pow = F::ONE - *xn;
+    let (first_com, rest_coms) = quotient_limb_commitments
+        .split_first()
+        .expect("at least one quotient limb commitment");
+
+    let init = {
+        let term = first_com.clone() * splitting_pow;
+        splitting_pow *= splitting_factor;
+        term
+    };
+
+    let commitment = rest_coms.iter().fold(init, |acc, com| {
+        let term = com.clone() * splitting_pow;
+        splitting_pow *= splitting_factor;
+        acc + term
     });
 
-    let mut expected_eval = F::ZERO;
-    grouped_points.into_iter().for_each(|(col_idx, eval)| {
-        match col_idx {
-            Some(col_idx) => {
-                identities_points.push(&vk.fixed_commitments[col_idx]);
-                identities_labels.push(CommitmentLabel::Fixed(col_idx));
-                identities_scalars.push(eval);
-            }
-            // Fully evaluated identities are not included and pass (negated)
-            // to the evaluation side.
-            None => {
-                expected_eval -= eval;
-            }
-        }
-    });
+    let commitment =
+        grouped_points
+            .into_iter()
+            .fold(commitment, |acc, (col_idx, eval)| match col_idx {
+                Some(idx) => acc + vk.fixed_commitments[idx].clone() * eval,
+                None => {
+                    expected_eval -= eval;
+                    acc
+                }
+            });
 
-    VerifierQuery::new_linear(
-        x,
-        CommitmentLabel::Custom("linearization_poly".into()),
-        identities_points,
-        identities_scalars,
-        identities_labels,
-        expected_eval,
-    )
+    (commitment, expected_eval)
 }

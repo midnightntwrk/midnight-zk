@@ -17,7 +17,7 @@ use crate::{
     transcript::{Hashable, Transcript},
     utils::{
         helpers::{
-            byte_length, polynomial_slice_byte_length, read_polynomial_vec, write_polynomial_slice,
+            polynomial_slice_byte_length, read_polynomial_vec, write_polynomial_slice,
             ProcessedSerdeObject,
         },
         SerdeFormat,
@@ -214,7 +214,7 @@ where
 impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> VerifyingKey<F, CS> {
     /// Return the bytes_length of a VerifyingKey
     pub fn bytes_length(&self, format: SerdeFormat) -> usize {
-        10 + (self.fixed_commitments.len() * byte_length::<CS::Commitment>(format))
+        10 + (self.fixed_commitments.iter().map(|c| c.byte_length(format)).sum::<usize>())
             + self.permutation.bytes_length(format)
     }
 

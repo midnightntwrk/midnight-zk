@@ -411,6 +411,7 @@ mod test {
         poly::{
             commitment::PolynomialCommitmentScheme,
             kzg::{params::ParamsKZG, KZGCommitmentScheme},
+            CommitmentLabel,
         },
         utils::SerdeFormat,
     };
@@ -434,8 +435,8 @@ mod test {
 
         let b = domain.lagrange_to_coeff(a.clone());
 
-        let tmp = KZGCommitmentScheme::commit(&params, &a);
-        let commitment = KZGCommitmentScheme::commit(&params, &b);
+        let tmp = KZGCommitmentScheme::commit(&params, &a, CommitmentLabel::NoLabel);
+        let commitment = KZGCommitmentScheme::commit(&params, &b, CommitmentLabel::NoLabel);
 
         assert_eq!(commitment, tmp);
     }
@@ -464,8 +465,8 @@ mod test {
             };
         }
 
-        let c_lagrange = KZGCommitmentScheme::commit(&params, &a);
-        let c_delta = KZGCommitmentScheme::commit(&params, &a.to_delta());
+        let c_lagrange = KZGCommitmentScheme::commit(&params, &a, CommitmentLabel::NoLabel);
+        let c_delta = KZGCommitmentScheme::commit(&params, &a.to_delta(), CommitmentLabel::NoLabel);
         assert_eq!(c_lagrange, c_delta);
 
         // Round-trip identity: to_delta then into_lagrange recovers the original.
@@ -498,12 +499,16 @@ mod test {
             };
         }
 
-        let c_lagrange = KZGCommitmentScheme::commit(&params, &a);
+        let c_lagrange = KZGCommitmentScheme::commit(&params, &a, CommitmentLabel::NoLabel);
 
         // Fused single-pass conversion matches the two-step path.
-        let c_double_delta_fused = KZGCommitmentScheme::commit(&params, &a.to_double_delta());
-        let c_double_delta_two_step =
-            KZGCommitmentScheme::commit(&params, &a.to_delta().into_double_delta());
+        let c_double_delta_fused =
+            KZGCommitmentScheme::commit(&params, &a.to_double_delta(), CommitmentLabel::NoLabel);
+        let c_double_delta_two_step = KZGCommitmentScheme::commit(
+            &params,
+            &a.to_delta().into_double_delta(),
+            CommitmentLabel::NoLabel,
+        );
         assert_eq!(c_lagrange, c_double_delta_fused);
         assert_eq!(c_lagrange, c_double_delta_two_step);
 

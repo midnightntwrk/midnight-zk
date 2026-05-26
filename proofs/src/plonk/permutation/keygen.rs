@@ -7,8 +7,8 @@ use super::{Argument, ProvingKey, VerifyingKey};
 use crate::{
     plonk::{Any, Column, Error},
     poly::{
-        commitment::PolynomialCommitmentScheme, Coeff, EvaluationDomain, ExtendedLagrangeCoeff,
-        LagrangeCoeff, Polynomial,
+        commitment::PolynomialCommitmentScheme, Coeff, CommitmentLabel, EvaluationDomain,
+        ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial,
     },
     utils::arithmetic::parallelize,
 };
@@ -242,9 +242,13 @@ pub(crate) fn build_vk<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentSch
 
     // Pre-compute commitments for the URS.
     let mut commitments = Vec::with_capacity(p.columns.len());
-    for permutation in &permutations {
+    for (i, permutation) in permutations.iter().enumerate() {
         // Compute commitment to permutation polynomial
-        commitments.push(CS::commit(params, permutation));
+        commitments.push(CS::commit(
+            params,
+            permutation,
+            CommitmentLabel::Permutation(i),
+        ));
     }
 
     VerifyingKey { commitments }
