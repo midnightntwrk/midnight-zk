@@ -25,7 +25,7 @@ use crate::{
 /// is a **verifier-internal** structure: the verifier assembles it from
 /// individually deserialized `Simple` points (via [`Mul`] and [`Add`]) so
 /// that all scalar multiplications can be batched in a single multi-scalar
-/// multiplication at the end of [`PolynomialCommitmentScheme::multi_prepare`].
+/// multiplication at the end of [`crate::poly::commitment::PolynomialCommitmentScheme::multi_prepare`].
 /// It is therefore a programming error to attempt to serialize or hash a
 /// `Linear` commitment; the corresponding trait methods panic.
 #[derive(Clone, Debug)]
