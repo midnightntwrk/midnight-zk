@@ -18,6 +18,8 @@ verification keys break backwards compatibility.
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 
 ### Changed
+* Replace `LabeledPoint` with `AssignedCommitment` (carries `Vec<PolynomialLabel>`) in the in-circuit verifier; verifier gadget now reads the advice batch as a single multi-commitment [#397](https://github.com/midnightntwrk/midnight-zk/pull/397)
+* `circuit_to_json` no longer requires a `KZGCommitmentScheme` bound; commitment size is computed via a hardcoded BLS12-381 formula [#397](https://github.com/midnightntwrk/midnight-zk/pull/397)
 * Panic loudly in `from_dual_msm` when a `NoLabel` commitment reaches the MSM layer [#392](https://github.com/midnightntwrk/midnight-zk/pull/392)
 * Adapt verifier gadget to single-proof prover API [#375](https://github.com/midnightntwrk/midnight-zk/pull/375)
 * Split linearization commitment into non-constant and constant parts, removing the generator point from the MSM [#313](https://github.com/midnightntwrk/midnight-zk/pull/313)
