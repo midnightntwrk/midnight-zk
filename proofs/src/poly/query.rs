@@ -69,15 +69,18 @@ pub struct ProverQuery<'com, F: PrimeField> {
     pub(crate) point: F,
     /// Coefficients of polynomial
     pub(crate) poly: &'com Polynomial<F, Coeff>,
+    /// Label identifying which polynomial within the commitment is being
+    /// opened.
+    pub(crate) label: PolynomialLabel,
 }
 
 impl<'com, F> ProverQuery<'com, F>
 where
     F: PrimeField,
 {
-    /// Create a new prover query based on a polynomial
-    pub fn new(point: F, poly: &'com Polynomial<F, Coeff>) -> Self {
-        ProverQuery { point, poly }
+    /// Create a new prover query based on a polynomial and its label.
+    pub fn new(point: F, poly: &'com Polynomial<F, Coeff>, label: PolynomialLabel) -> Self {
+        ProverQuery { point, poly, label }
     }
 }
 
@@ -90,6 +93,9 @@ pub struct VerifierQuery<'com, F: PrimeField, CS: PolynomialCommitmentScheme<F>>
     pub(crate) commitment: &'com CS::Commitment,
     /// Evaluation of polynomial at query point.
     pub(crate) eval: F,
+    /// Label identifying which polynomial within the commitment is being
+    /// opened.
+    pub(crate) label: PolynomialLabel,
 }
 
 impl<'com, F, CS> VerifierQuery<'com, F, CS>
@@ -98,11 +104,17 @@ where
     CS: PolynomialCommitmentScheme<F>,
 {
     /// Create a new verifier query.
-    pub fn new(point: F, commitment: &'com CS::Commitment, eval: F) -> Self {
+    pub fn new(
+        point: F,
+        commitment: &'com CS::Commitment,
+        eval: F,
+        label: PolynomialLabel,
+    ) -> Self {
         VerifierQuery {
             point,
             commitment,
             eval,
+            label,
         }
     }
 }
