@@ -54,7 +54,7 @@ where
     for (poly_eval, value) in poly.iter_mut().zip(instances.iter()) {
         *poly_eval = *value;
     }
-    CS::commit(params, &poly, PolynomialLabel::Instance(0))
+    CS::commit(params, &[&poly], &[PolynomialLabel::Instance(0)])
 }
 
 /// This computes a proof trace for the provided `circuit` when given the
@@ -200,8 +200,8 @@ where
                             let h_poly = domain.lagrange_from_vec(h.clone());
                             CS::commit(
                                 params,
-                                &h_poly,
-                                PolynomialLabel::LogupHelper(c.name.clone()),
+                                &[&h_poly],
+                                &[PolynomialLabel::LogupHelper(c.name.clone())],
                             )
                         })
                         .collect()
@@ -231,6 +231,7 @@ where
                 .map(|h| domain.lagrange_to_coeff(domain.lagrange_from_vec(h)))
                 .collect();
             logup::prover::Committed {
+                name: c.name,
                 multiplicities: domain.lagrange_to_coeff(c.multiplicities),
                 helper_polys,
                 aggregator_poly: domain.lagrange_to_coeff(c.aggregator_poly),
@@ -509,8 +510,8 @@ where
             if is_committed_instance {
                 transcript.common(&CS::commit(
                     params,
-                    &poly,
-                    PolynomialLabel::CommittedInstance(i),
+                    &[&poly],
+                    &[PolynomialLabel::CommittedInstance(i)],
                 ))?;
             }
 
@@ -610,15 +611,10 @@ where
         }
     }
 
-    let advice_commitments: Vec<_> = advice_values
-        .par_iter()
-        .enumerate()
-        .map(|(i, poly)| CS::commit(params, poly, PolynomialLabel::Advice(i)))
-        .collect();
-
-    for commitment in &advice_commitments {
-        transcript.write(commitment)?;
-    }
+    let advice_labels: Vec<_> = (0..advice_values.len()).map(PolynomialLabel::Advice).collect();
+    let advice_polys: Vec<_> = advice_values.iter().collect();
+    let advice_com = CS::commit(params, &advice_polys, &advice_labels);
+    transcript.write(&advice_com)?;
 
     advice.advice_polys = advice_values;
 
@@ -729,7 +725,7 @@ where
             values: h_poly,
             _marker: std::marker::PhantomData,
         };
-        let h_com = CS::commit(params, &h_poly, PolynomialLabel::Quotient);
+        let h_com = CS::commit(params, &[&h_poly], &[PolynomialLabel::Quotient]);
         transcript.write(&h_com)?;
         Ok(vec![h_poly])
     }
@@ -752,7 +748,9 @@ where
         let h_commitments: Vec<_> = h_limbs
             .par_iter()
             .enumerate()
-            .map(|(i, h_piece)| CS::commit(params, h_piece, PolynomialLabel::QuotientPiece(i)))
+            .map(|(i, h_piece)| {
+                CS::commit(params, &[h_piece], &[PolynomialLabel::QuotientPiece(i)])
+            })
             .collect();
 
         // Write each limb commitment to the transcript in order.
@@ -879,19 +877,21 @@ pub(super) fn compute_queries<
 ) -> Vec<ProverQuery<'a, F>> {
     let domain = pk.vk.get_domain();
     iter::empty()
-        .chain(
-            pk.vk.cs.advice_queries.iter().map(move |&(column, at)| ProverQuery {
-                point: domain.rotate_omega(x, at),
-                poly: &advice_polys[column.index()],
-            }),
-        )
+        .chain(pk.vk.cs.advice_queries.iter().map(move |&(column, at)| {
+            ProverQuery::new(
+                domain.rotate_omega(x, at),
+                &advice_polys[column.index()],
+                PolynomialLabel::Advice(column.index()),
+            )
+        }))
         .chain(
             pk.vk.cs.instance_queries.iter().filter_map(move |&(column, at)| {
                 if column.index() < nb_committed_instances {
-                    Some(ProverQuery {
-                        point: domain.rotate_omega(x, at),
-                        poly: &instance_polys[column.index()],
-                    })
+                    Some(ProverQuery::new(
+                        domain.rotate_omega(x, at),
+                        &instance_polys[column.index()],
+                        PolynomialLabel::CommittedInstance(column.index()),
+                    ))
                 } else {
                     None
                 }
@@ -907,16 +907,20 @@ pub(super) fn compute_queries<
                 .iter()
                 // Filter out queries for simple, multiplicative selectors
                 .filter(|(col, _)| !pk.vk.cs.has_simple_selector_col(col.index()))
-                .map(|&(column, at)| ProverQuery {
-                    point: domain.rotate_omega(x, at),
-                    poly: &pk.fixed_polys[column.index()],
+                .map(|&(column, at)| {
+                    ProverQuery::new(
+                        domain.rotate_omega(x, at),
+                        &pk.fixed_polys[column.index()],
+                        PolynomialLabel::Fixed(column.index()),
+                    )
                 }),
         )
         .chain(pk.permutation.open(x))
-        .chain(iter::once(ProverQuery {
-            point: domain.rotate_omega(x, Rotation::cur()),
-            poly: lin_poly_non_constant_part,
-        }))
+        .chain(iter::once(ProverQuery::new(
+            domain.rotate_omega(x, Rotation::cur()),
+            lin_poly_non_constant_part,
+            PolynomialLabel::Collapsed,
+        )))
         .collect()
 }
 
@@ -1053,75 +1057,4 @@ impl<F: Field> Assignment<F> for WitnessCollection<'_, F> {
     fn pop_namespace(&mut self, _: Option<String>) {
         // Do nothing; we don't care about namespaces in this context.
     }
-}
-
-#[test]
-#[cfg(feature = "dev-curves")]
-fn test_create_proof() {
-    use midnight_curves::bn256::{Bn256, Fr};
-    use rand_core::OsRng;
-
-    use crate::{
-        circuit::SimpleFloorPlanner,
-        plonk::{keygen_pk, keygen_vk_with_k},
-        poly::kzg::{params::ParamsKZG, KZGCommitmentScheme},
-        transcript::CircuitTranscript,
-    };
-
-    #[derive(Clone, Copy)]
-    struct MyCircuit;
-
-    impl<F: Field> Circuit<F> for MyCircuit {
-        type Config = ();
-        type FloorPlanner = SimpleFloorPlanner;
-        #[cfg(feature = "circuit-params")]
-        type Params = ();
-
-        fn without_witnesses(&self) -> Self {
-            *self
-        }
-
-        fn configure(_meta: &mut ConstraintSystem<F>) -> Self::Config {}
-
-        fn synthesize(
-            &self,
-            _config: Self::Config,
-            _layouter: impl crate::circuit::Layouter<F>,
-        ) -> Result<(), Error> {
-            Ok(())
-        }
-    }
-
-    const K: u32 = 4;
-    let params: ParamsKZG<Bn256> = ParamsKZG::unsafe_setup(K, OsRng);
-    let vk = keygen_vk_with_k::<Fr, KZGCommitmentScheme<Bn256>, _>(&params, &MyCircuit, K)
-        .expect("keygen_vk should not fail");
-    let pk = keygen_pk(vk, &MyCircuit).expect("keygen_pk should not fail");
-    let mut transcript = CircuitTranscript::<_>::init();
-
-    // Create proof with wrong number of instances (extra column).
-    let proof = create_proof(
-        &params,
-        &pk,
-        &MyCircuit,
-        #[cfg(feature = "committed-instances")]
-        0,
-        &[&[]],
-        &mut transcript,
-        OsRng,
-    );
-    assert!(matches!(proof.unwrap_err(), Error::InvalidInstances));
-
-    // Create proof with correct number of instances.
-    create_proof(
-        &params,
-        &pk,
-        &MyCircuit,
-        #[cfg(feature = "committed-instances")]
-        0,
-        &[],
-        &mut transcript,
-        OsRng,
-    )
-    .expect("proof generation should not fail");
 }

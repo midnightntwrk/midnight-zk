@@ -24,7 +24,7 @@ use midnight_proofs::{
     },
     poly::{
         commitment::Guard,
-        kzg::{commitment::KZGCommitment, params::ParamsKZG, KZGCommitmentScheme},
+        kzg::{commitment::{KZGCommitment, KZGMultiCommitment}, params::ParamsKZG, KZGCommitmentScheme},
         PolynomialLabel,
     },
     transcript::{CircuitTranscript, Transcript},
@@ -286,10 +286,10 @@ fn bench_zswap_output(c: &mut Criterion) {
             |mut t| {
                 parse_trace(
                     pk.get_vk(),
-                    &[KZGCommitment::Simple(
+                    &[KZGMultiCommitment(vec![KZGCommitment::Simple(
                         C::identity(),
-                        PolynomialLabel::Instance(0),
-                    )],
+                        PolynomialLabel::CommittedInstance(0),
+                        )])],
                     &[&instance],
                     &mut t,
                 )
@@ -306,10 +306,10 @@ fn bench_zswap_output(c: &mut Criterion) {
                 (
                     parse_trace(
                         pk.get_vk(),
-                        &[KZGCommitment::Simple(
+                        &[KZGMultiCommitment(vec![KZGCommitment::Simple(
                             C::identity(),
-                            PolynomialLabel::Instance(0),
-                        )],
+                            PolynomialLabel::CommittedInstance(0),
+                            )])],
                         &[&instance],
                         &mut t,
                     )
@@ -321,10 +321,10 @@ fn bench_zswap_output(c: &mut Criterion) {
                 verify_algebraic_constraints(
                     pk.get_vk(),
                     trace,
-                    &[KZGCommitment::Simple(
+                    &[KZGMultiCommitment(vec![KZGCommitment::Simple(
                         C::identity(),
-                        PolynomialLabel::Instance(0),
-                    )],
+                        PolynomialLabel::CommittedInstance(0),
+                        )])],
                     &[&instance],
                     &mut t,
                 )
@@ -339,10 +339,10 @@ fn bench_zswap_output(c: &mut Criterion) {
                 let mut t = transcript.clone();
                 let trace = parse_trace(
                     pk.get_vk(),
-                    &[KZGCommitment::Simple(
+                    &[KZGMultiCommitment(vec![KZGCommitment::Simple(
                         C::identity(),
-                        PolynomialLabel::Instance(0),
-                    )],
+                        PolynomialLabel::CommittedInstance(0),
+                        )])],
                     &[&instance],
                     &mut t,
                 )
@@ -350,10 +350,10 @@ fn bench_zswap_output(c: &mut Criterion) {
                 let guard = verify_algebraic_constraints(
                     pk.get_vk(),
                     trace,
-                    &[KZGCommitment::Simple(
+                    &[KZGMultiCommitment(vec![KZGCommitment::Simple(
                         C::identity(),
-                        PolynomialLabel::Instance(0),
-                    )],
+                        PolynomialLabel::CommittedInstance(0),
+                        )])],
                     &[&instance],
                     &mut t,
                 )

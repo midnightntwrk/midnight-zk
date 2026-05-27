@@ -284,8 +284,8 @@ where
                                     let h_poly = domain.lagrange_from_vec(h.clone());
                                     CS::commit(
                                         params,
-                                        &h_poly,
-                                        PolynomialLabel::LogupHelper(c.name.clone()),
+                                        &[&h_poly],
+                                        &[PolynomialLabel::LogupHelper(c.name.clone())],
                                     )
                                 })
                                 .collect()
@@ -318,8 +318,8 @@ where
                         let h_poly = domain.lagrange_from_vec(h.clone());
                         CS::commit(
                             params,
-                            &h_poly,
-                            PolynomialLabel::LogupHelper(c.name.clone()),
+                            &[&h_poly],
+                            &[PolynomialLabel::LogupHelper(c.name.clone())],
                         )
                     })
                     .collect()
@@ -340,6 +340,7 @@ where
                     .map(|h| domain.lagrange_to_coeff(domain.lagrange_from_vec(h)))
                     .collect();
                 logup::prover::Committed {
+                    name: c.name,
                     multiplicities: domain.lagrange_to_coeff(c.multiplicities),
                     helper_polys,
                     aggregator_poly: domain.lagrange_to_coeff(c.aggregator_poly),

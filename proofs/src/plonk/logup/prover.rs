@@ -43,6 +43,7 @@ use crate::{
 #[cfg_attr(feature = "bench-internal", derive(Clone))]
 #[derive(Debug)]
 pub(crate) struct Committed<F: PrimeField> {
+    pub(crate) name: String,
     pub(crate) multiplicities: Polynomial<F, Coeff>,
     pub(crate) helper_polys: Vec<Polynomial<F, Coeff>>,
     pub(crate) aggregator_poly: Polynomial<F, Coeff>,
@@ -165,8 +166,8 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ChunkedArgument<F> {
         // transforming in place and prefix-summing back.
         let commitment = CS::commit(
             params,
-            &multiplicities.to_delta(),
-            PolynomialLabel::LogupMultiplicities(self.name.clone()),
+            &[&multiplicities.to_delta()],
+            &[PolynomialLabel::LogupMultiplicities(self.name.clone())],
         );
 
         Ok((
@@ -296,8 +297,8 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ComputedMultiplicities<F> {
         // which will be filtered out.
         let aggregator_commitment = CS::commit(
             params,
-            &aggregator_poly.to_double_delta(),
-            PolynomialLabel::LogupAggregator(self.name.clone()),
+            &[&aggregator_poly.to_double_delta()],
+            &[PolynomialLabel::LogupAggregator(self.name.clone())],
         );
 
         Ok(ComputedLogderivative {
@@ -358,27 +359,32 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluated<F> {
         x: F,
     ) -> impl Iterator<Item = ProverQuery<'a, F>> + Clone {
         let x_next = pk.vk.domain.rotate_omega(x, Rotation::next());
+        let name = self.constructed.name.clone();
 
-        let m_query = iter::once(ProverQuery {
-            point: x,
-            poly: &self.constructed.multiplicities,
-        });
+        let m_query = iter::once(ProverQuery::new(
+            x,
+            &self.constructed.multiplicities,
+            PolynomialLabel::LogupMultiplicities(name.clone()),
+        ));
 
         let helper_queries = self
             .constructed
             .helper_polys
             .iter()
-            .map(move |h| ProverQuery { point: x, poly: h });
+            .map(move |h| ProverQuery::new(x, h, PolynomialLabel::LogupHelper(name.clone())));
 
+        let name = self.constructed.name.clone();
         let z_queries = [
-            ProverQuery {
-                point: x,
-                poly: &self.constructed.aggregator_poly,
-            },
-            ProverQuery {
-                point: x_next,
-                poly: &self.constructed.aggregator_poly,
-            },
+            ProverQuery::new(
+                x,
+                &self.constructed.aggregator_poly,
+                PolynomialLabel::LogupAggregator(name.clone()),
+            ),
+            ProverQuery::new(
+                x_next,
+                &self.constructed.aggregator_poly,
+                PolynomialLabel::LogupAggregator(name),
+            ),
         ];
 
         m_query.chain(helper_queries).chain(z_queries)

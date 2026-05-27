@@ -14,6 +14,7 @@ use crate::{
 #[cfg_attr(feature = "bench-internal", derive(Clone))]
 #[derive(Debug)]
 pub(crate) struct Committed<F: PrimeField> {
+    pub(crate) name: String,
     pub(crate) trash_poly: Polynomial<F, Coeff>,
 }
 
@@ -59,15 +60,18 @@ impl<F: WithSmallOrderMulGroup<3> + Ord> Argument<F> {
 
         let trash_commitment = CS::commit(
             params,
-            &compressed_expression,
-            PolynomialLabel::Trash(self.name.clone()),
+            &[&compressed_expression],
+            &[PolynomialLabel::Trash(self.name.clone())],
         );
         let trash_poly = domain.lagrange_to_coeff(compressed_expression);
 
         // Hash permuted input commitment
         transcript.write(&trash_commitment)?;
 
-        Ok(Committed { trash_poly })
+        Ok(Committed {
+            name: self.name.clone(),
+            trash_poly,
+        })
     }
 }
 
@@ -89,10 +93,11 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
 
 impl<F: WithSmallOrderMulGroup<3>> Evaluated<F> {
     pub(crate) fn open(&self, x: F) -> impl Iterator<Item = ProverQuery<'_, F>> + Clone {
-        vec![ProverQuery {
-            point: x,
-            poly: &self.committed.trash_poly,
-        }]
+        vec![ProverQuery::new(
+            x,
+            &self.committed.trash_poly,
+            PolynomialLabel::Trash(self.committed.name.clone()),
+        )]
         .into_iter()
     }
 }
