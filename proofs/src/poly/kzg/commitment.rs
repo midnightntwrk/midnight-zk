@@ -83,13 +83,23 @@ where
 }
 
 impl<E: MultiMillerLoop> Labelable for KZGCommitment<E> {
-    fn label(self, label: PolynomialLabel) -> Self {
+    fn length(&self) -> usize {
+        1
+    }
+
+    fn label(self, labels: Vec<PolynomialLabel>) -> Self {
+        assert_eq!(
+            labels.len(),
+            1,
+            "KZGCommitment holds exactly one polynomial"
+        );
+        let label = labels.into_iter().next().unwrap();
         match self {
             Self::Simple(p, _) => Self::Simple(p, label),
-            Self::Linear(points, scalars, labels) => Self::Linear(
+            Self::Linear(points, scalars, old_labels) => Self::Linear(
                 points,
                 scalars,
-                labels.into_iter().map(|_| label.clone()).collect(),
+                old_labels.into_iter().map(|_| label.clone()).collect(),
             ),
         }
     }
@@ -183,5 +193,148 @@ impl<E: MultiMillerLoop> Add for KZGCommitment<E> {
         scalars.extend(other_scalars);
         labels.extend(other_labels);
         Self::Linear(points, scalars, labels)
+    }
+}
+
+/// A KZG commitment to one or more polynomials.
+///
+/// Each inner [`KZGCommitment`] corresponds to one polynomial. All current
+/// protocol uses hold exactly one polynomial; multi-polynomial support is
+/// reserved for future batching schemes.
+#[derive(Clone, Debug)]
+pub struct KZGMultiCommitment<E: MultiMillerLoop>(pub Vec<KZGCommitment<E>>);
+
+impl<E: MultiMillerLoop> KZGMultiCommitment<E> {
+    fn assert_single(&self) {
+        assert_eq!(
+            self.0.len(),
+            1,
+            "Add/Mul on KZGMultiCommitment requires exactly one polynomial"
+        );
+    }
+
+    /// Returns a reference to the inner curve point, panicking if this
+    /// commitment does not hold exactly one polynomial.
+    pub fn as_point(&self) -> &E::G1 {
+        self.assert_single();
+        self.0[0].as_point()
+    }
+
+    /// Extracts the inner curve point, panicking if this commitment does not
+    /// hold exactly one polynomial.
+    pub fn into_point(self) -> E::G1 {
+        self.assert_single();
+        self.0.into_iter().next().unwrap().into_point()
+    }
+}
+
+impl<E: MultiMillerLoop> PartialEq for KZGMultiCommitment<E>
+where
+    E::G1: PartialEq,
+    E::Fr: PartialEq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl<E: MultiMillerLoop> Default for KZGMultiCommitment<E>
+where
+    E::G1: Default,
+{
+    fn default() -> Self {
+        Self(vec![KZGCommitment::default()])
+    }
+}
+
+impl<E: MultiMillerLoop> Labelable for KZGMultiCommitment<E> {
+    fn length(&self) -> usize {
+        self.0.len()
+    }
+
+    fn label(self, labels: Vec<PolynomialLabel>) -> Self {
+        assert_eq!(
+            labels.len(),
+            self.0.len(),
+            "label count must match polynomial count"
+        );
+        Self(self.0.into_iter().zip(labels).map(|(c, l)| c.label(vec![l])).collect())
+    }
+}
+
+impl<E: MultiMillerLoop> ProcessedSerdeObject for KZGMultiCommitment<E>
+where
+    E::G1: Default + ProcessedSerdeObject,
+{
+    fn read<R: io::Read>(reader: &mut R, format: SerdeFormat) -> io::Result<Self> {
+        let mut len_bytes = [0u8; 4];
+        reader.read_exact(&mut len_bytes)?;
+        let len = u32::from_le_bytes(len_bytes) as usize;
+        let inner = (0..len)
+            .map(|_| <KZGCommitment<E> as ProcessedSerdeObject>::read(reader, format))
+            .collect::<io::Result<Vec<_>>>()?;
+        Ok(Self(inner))
+    }
+
+    fn write<W: io::Write>(&self, writer: &mut W, format: SerdeFormat) -> io::Result<()> {
+        let len = self.0.len() as u32;
+        writer.write_all(&len.to_le_bytes())?;
+        for c in &self.0 {
+            c.write(writer, format)?;
+        }
+        Ok(())
+    }
+
+    fn byte_length(&self, format: SerdeFormat) -> usize {
+        4 + self.0.iter().map(|c| c.byte_length(format)).sum::<usize>()
+    }
+}
+
+impl<H: TranscriptHash, E: MultiMillerLoop> Hashable<H> for KZGMultiCommitment<E>
+where
+    E::G1: Hashable<H>,
+{
+    fn to_input(&self) -> H::Input {
+        self.0.iter().flat_map(|c| c.to_input()).collect()
+    }
+
+    fn to_bytes(&self) -> Vec<u8> {
+        let len = self.0.len() as u32;
+        let mut bytes = len.to_le_bytes().to_vec();
+        for c in &self.0 {
+            bytes.extend_from_slice(&c.to_bytes());
+        }
+        bytes
+    }
+
+    fn read(buffer: &mut impl Read) -> io::Result<Self> {
+        let mut len_bytes = [0u8; 4];
+        buffer.read_exact(&mut len_bytes)?;
+        let len = u32::from_le_bytes(len_bytes) as usize;
+        let inner = (0..len)
+            .map(|_| <KZGCommitment<E> as Hashable<H>>::read(buffer))
+            .collect::<io::Result<Vec<_>>>()?;
+        Ok(Self(inner))
+    }
+}
+
+impl<E: MultiMillerLoop> Mul<E::Fr> for KZGMultiCommitment<E> {
+    type Output = Self;
+
+    fn mul(self, scalar: E::Fr) -> Self {
+        self.assert_single();
+        Self(vec![self.0.into_iter().next().unwrap() * scalar])
+    }
+}
+
+impl<E: MultiMillerLoop> Add for KZGMultiCommitment<E> {
+    type Output = Self;
+
+    fn add(self, other: Self) -> Self {
+        self.assert_single();
+        other.assert_single();
+        Self(vec![
+            self.0.into_iter().next().unwrap() + other.0.into_iter().next().unwrap(),
+        ])
     }
 }
