@@ -47,6 +47,7 @@ pub use accumulator::{Accumulator, AssignedAccumulator};
 #[derive(Clone, Debug)]
 pub(crate) struct LabeledPoint<S: SelfEmulation> {
     pub(crate) point: S::AssignedPoint,
+    #[allow(dead_code)]
     pub(crate) label: PolynomialLabel,
 }
 
