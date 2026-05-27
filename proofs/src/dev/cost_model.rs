@@ -22,7 +22,11 @@ use crate::{
         Any::{self, Fixed},
         Assignment, Circuit, Column, ConstraintSystem, Error, FloorPlanner, Instance, Selector,
     },
-    utils::rational::Rational,
+    poly::{commitment::PolynomialCommitmentScheme, Coeff, Polynomial, PolynomialLabel},
+    utils::{
+        helpers::{ProcessedSerdeObject, SerdeFormat},
+        rational::Rational,
+    },
 };
 
 /// Options to build a circuit specification to measure the cost model of.
@@ -193,120 +197,118 @@ pub struct CircuitModel {
     pub size: usize,
 }
 
-impl CostOptions {
-    /// Convert [CostOptions] to [CircuitModel]. The proof sizè is computed
-    /// depending on the base and scalar field size of the curve used.
-    fn into_circuit_model<const COMM: usize, const SCALAR: usize>(self) -> CircuitModel {
-        let mut queries: Vec<_> = iter::empty()
-            .chain(self.advice.iter())
-            .chain(self.instance.iter().take(self.nb_committed_instances))
-            .chain(self.fixed.iter())
-            .cloned()
-            .chain(self.lookup.iter().flat_map(|l| l.queries()))
-            .chain(self.permutation.queries())
-            .chain(iter::repeat("0".parse().unwrap()).take(self.trash.len()))
-            .chain(iter::once("0".parse().unwrap())) // Linearization polynomial query at x
-            .filter(|p| !p.rotations.is_empty())
-            .collect();
+/// Given a Plonk circuit, this function returns a [CircuitModel].
+///
+/// `commit` is a function mapping a number of polynomials `n` to the byte
+/// length of a single commitment that covers all `n` of them.  This lets
+/// callers supply a commitment-scheme-specific size without requiring a generic
+/// `CS` type parameter here.
+///
+/// See [`circuit_model`] for the variant that derives `commit` automatically
+/// from a `PolynomialCommitmentScheme`.
+pub fn circuit_model_with<F: Ord + Field + FromUniformBytes<64>>(
+    circuit: &impl Circuit<F>,
+    nb_committed_instances: usize,
+    commit: impl Fn(usize) -> usize,
+) -> CircuitModel {
+    let o = cost_model_options(circuit, nb_committed_instances);
 
-        let column_queries = queries.len();
-        queries.iter_mut().for_each(|p| p.rotations.sort());
-        queries.sort_unstable();
-        queries.dedup();
-        let point_sets = queries.len();
+    let scalar = (F::NUM_BITS as usize).div_ceil(8);
 
-        let comp_bytes = |points: usize, scalars: usize| points * COMM + scalars * SCALAR;
+    let mut queries: Vec<_> = iter::empty()
+        .chain(o.advice.iter())
+        .chain(o.instance.iter().take(o.nb_committed_instances))
+        .chain(o.fixed.iter())
+        .cloned()
+        .chain(o.lookup.iter().flat_map(|l| l.queries()))
+        .chain(o.permutation.queries())
+        .chain(iter::repeat("0".parse().unwrap()).take(o.trash.len()))
+        .chain(iter::once("0".parse().unwrap())) // Linearization polynomial query at x
+        .filter(|p| !p.rotations.is_empty())
+        .collect();
 
-        // PLONK:
-        // - COMM bytes per advice column
-        // - SCALAR bytes per advice column per query
-        // - SCALAR bytes per committed instance column per query
-        // - SCALAR bytes per fixed column per query
-        // - SCALAR bytes per permutation column
-        // - Per permutation chunk: 1 COMM + 3 SCALAR (last chunk has 2 SCALAR)
-        // - Per lookup argument: (num_chunks + 2) COMM + (num_chunks + 3) SCALAR
-        // - Per trash argument: 1 COMM + 1 SCALAR
-        let nb_perm_chunks =
-            (self.permutation.columns.saturating_sub(1) / self.max_degree.saturating_sub(2)) + 1;
-        let plonk = comp_bytes(1, 0) * self.advice.len()
-            + self
-                .advice
-                .iter()
-                .map(|polys| comp_bytes(0, polys.rotations.len()))
-                .sum::<usize>()
-            + self
-                .instance
-                .iter()
-                .take(self.nb_committed_instances)
-                .map(|polys| comp_bytes(0, polys.rotations.len()))
-                .sum::<usize>()
-            + self
-                .fixed
-                .iter()
-                .map(|polys| comp_bytes(0, polys.rotations.len()))
-                .sum::<usize>()
-            + comp_bytes(0, 1) * self.permutation.columns
-            + (comp_bytes(1, 3) * nb_perm_chunks).saturating_sub(comp_bytes(0, 1)) // we don't need the permutation_product_last_eval of the last chunk
-            + self
-                .lookup
-                .iter()
-                .map(|l| comp_bytes(l.num_commitments(), l.num_evaluations()))
-                .sum::<usize>()
-            + comp_bytes(1, 1) * self.trash.len();
+    let column_queries = queries.len();
+    queries.iter_mut().for_each(|p| p.rotations.sort());
+    queries.sort_unstable();
+    queries.dedup();
+    let point_sets = queries.len();
 
-        // Commitments to quotient limbs:
-        // - (max_deg - 1) COMM bytes for the limbs
-        let limbs = comp_bytes(self.max_degree - 1, 0);
+    let commit1 = commit(1);
 
-        // Multiopening argument:
-        // - COMM bytes for f_commitment
-        // - SCALAR bytes per set of points in multiopen argument
-        // - COMM bytes for proof
-        let multiopen = comp_bytes(2, point_sets);
+    // PLONK:
+    // - 1 commitment for the entire advice batch
+    // - SCALAR bytes per advice column per query
+    // - SCALAR bytes per committed instance column per query
+    // - SCALAR bytes per fixed column per query
+    // - SCALAR bytes per permutation column
+    // - Per permutation chunk: commit1 + 3 SCALAR (last chunk has 2 SCALAR)
+    // - Per lookup argument: num_commitments commits + (num_chunks + 3) SCALAR
+    // - Per trash argument: commit1 + 1 SCALAR
+    let nb_perm_chunks =
+        (o.permutation.columns.saturating_sub(1) / o.max_degree.saturating_sub(2)) + 1;
+    let plonk = commit(o.advice.len())
+        + o.advice.iter().map(|p| p.rotations.len() * scalar).sum::<usize>()
+        + o.instance
+            .iter()
+            .take(o.nb_committed_instances)
+            .map(|p| p.rotations.len() * scalar)
+            .sum::<usize>()
+        + o.fixed.iter().map(|p| p.rotations.len() * scalar).sum::<usize>()
+        + scalar * o.permutation.columns
+        + (commit1 * nb_perm_chunks + scalar * 3 * nb_perm_chunks).saturating_sub(scalar) // last chunk has 2 evals
+        + o.lookup
+            .iter()
+            .map(|l| commit1 * l.num_commitments() + scalar * l.num_evaluations())
+            .sum::<usize>()
+        + (commit1 + scalar) * o.trash.len();
 
-        let mut nr_rotations = HashSet::new();
-        for poly in self.advice.iter() {
-            nr_rotations.extend(poly.rotations.clone());
-        }
-        for poly in self.fixed.iter() {
-            nr_rotations.extend(poly.rotations.clone());
-        }
-        for poly in self.instance.iter() {
-            nr_rotations.extend(poly.rotations.clone());
-        }
+    // Commitments to quotient limbs: one commitment per limb.
+    let limbs = commit1 * (o.max_degree - 1);
 
-        let size = plonk + multiopen + limbs;
+    // Multiopening argument:
+    // - commit1 bytes for f_commitment
+    // - scalar bytes per set of points
+    // - commit1 bytes for proof
+    let multiopen = commit1 * 2 + scalar * point_sets;
 
-        CircuitModel {
-            k: self.min_k,
-            rows: self.rows_count,
-            table_rows: self.table_rows_count,
-            nb_unusable_rows: self.nb_unusable_rows,
-            max_deg: self.max_degree,
-            advice_columns: self.advice.len(),
-            // Note that we have one fixed commitment per column in the permutation argument
-            fixed_columns: self.fixed.len() + self.permutation.columns,
-            lookups: self.lookup.len(),
-            trashcans: self.trash.len(),
-            permutations: self.permutation.columns,
-            column_queries,
-            point_sets,
-            size,
-        }
+    CircuitModel {
+        k: o.min_k,
+        rows: o.rows_count,
+        table_rows: o.table_rows_count,
+        nb_unusable_rows: o.nb_unusable_rows,
+        max_deg: o.max_degree,
+        advice_columns: o.advice.len(),
+        // Note that we have one fixed commitment per column in the permutation argument
+        fixed_columns: o.fixed.len() + o.permutation.columns,
+        lookups: o.lookup.len(),
+        trashcans: o.trash.len(),
+        permutations: o.permutation.columns,
+        column_queries,
+        point_sets,
+        size: plonk + multiopen + limbs,
     }
 }
 
-/// Given a Plonk circuit, this function returns a [CircuitModel]
-pub fn circuit_model<
-    F: Ord + Field + FromUniformBytes<64>,
-    const COMM: usize,
-    const SCALAR: usize,
->(
+/// Given a Plonk circuit, this function returns a [CircuitModel].
+///
+/// `CS` is the commitment scheme; commitment byte sizes and scalar field
+/// element sizes are both derived from it — no size constants need to be
+/// supplied.
+pub fn circuit_model<F: Ord + Field + FromUniformBytes<64>, CS: PolynomialCommitmentScheme<F>>(
     circuit: &impl Circuit<F>,
     nb_committed_instances: usize,
 ) -> CircuitModel {
-    let options = cost_model_options(circuit, nb_committed_instances);
-    options.into_circuit_model::<COMM, SCALAR>()
+    let params = CS::gen_params(1);
+    let zero_poly = Polynomial::<F, Coeff>::init(1);
+    let commit = |n: usize| {
+        if n == 0 {
+            return 0;
+        }
+        let polys: Vec<&Polynomial<F, Coeff>> = vec![&zero_poly; n];
+        let labels = vec![PolynomialLabel::NoLabel; n];
+        CS::commit(&params, &polys, &labels).byte_length(SerdeFormat::Processed)
+    };
+    circuit_model_with(circuit, nb_committed_instances, commit)
 }
 
 /// Namespace marker that signals the start of the region to measure.
@@ -867,7 +869,10 @@ mod tests {
 
         let proof = transcript.finalize();
 
-        assert_eq!(circuit_model::<_, 48, 32>(&circuit, 0).size, proof.len());
+        assert_eq!(
+            circuit_model::<_, KZGCommitmentScheme<Bls12>>(&circuit, 0).size,
+            proof.len()
+        );
     }
 
     #[cfg(feature = "committed-instances")]
@@ -899,7 +904,10 @@ mod tests {
 
         let proof = transcript.finalize();
 
-        assert_eq!(circuit_model::<_, 48, 32>(&circuit, 1).size, proof.len());
+        assert_eq!(
+            circuit_model::<_, KZGCommitmentScheme<Bls12>>(&circuit, 1).size,
+            proof.len()
+        );
     }
 
     #[test]

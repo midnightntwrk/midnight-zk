@@ -18,12 +18,12 @@ use std::{
     sync::{Arc, Mutex, OnceLock},
 };
 
-use ff::{Field, FromUniformBytes, PrimeField};
+use ff::{Field, FromUniformBytes, PrimeField as _};
 use goldenfile::Mint;
 use midnight_curves::Fq;
 use midnight_proofs::{
     circuit::Layouter,
-    dev::cost_model::{circuit_model, CircuitModel, COST_MEASURE_END, COST_MEASURE_START},
+    dev::cost_model::{circuit_model_with, CircuitModel, COST_MEASURE_END, COST_MEASURE_START},
     plonk::Circuit,
 };
 use serde_json::{json, Map, Value};
@@ -76,9 +76,12 @@ where
     F: FromUniformBytes<64> + Ord,
 {
     // Store model only when tests are run in BLS12-381 (i.e. when the
-    // native scalar is BLS's scalar
+    // native scalar is BLS's scalar field)
     if F::MODULUS == Fq::MODULUS {
-        let model = circuit_model::<F, 48, 32>(&circuit, 0);
+        // BLS12-381 KZG: committing n polynomials together yields 4 + n×48 bytes
+        // (4-byte length prefix followed by n compressed G1 affine points).
+        let commit = |n: usize| if n == 0 { 0 } else { 4 + n * 48 };
+        let model = circuit_model_with(&circuit, 0, commit);
         update_json(chip_name, op_name, model).expect("csv generation failed");
     }
 }
@@ -86,7 +89,7 @@ where
 #[cfg(target_os = "windows")]
 /// Does nothing on Windows since goldenfiles do not work due to different line
 /// endings.
-pub fn circuit_to_json<F>(chip_name: &str, op_name: &str, circuit: impl Circuit<F>)
+pub fn circuit_to_json<F>(_chip_name: &str, _op_name: &str, _circuit: impl Circuit<F>)
 where
     F: FromUniformBytes<64> + Ord,
 {
