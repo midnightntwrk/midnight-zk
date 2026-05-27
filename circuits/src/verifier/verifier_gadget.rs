@@ -43,8 +43,8 @@ use crate::{
         transcript_gadget::TranscriptGadget,
         trash,
         utils::{evaluate_lagrange_polynomials, inner_product, sum, AssignedBoundedScalar},
-        Accumulator, AssignedAccumulator, AssignedMsm, AssignedVk, LabeledPoint, SelfEmulation,
-        VerifyingKey,
+        Accumulator, AssignedAccumulator, AssignedCommitment, AssignedMsm, AssignedVk,
+        SelfEmulation, VerifyingKey,
     },
 };
 
@@ -330,12 +330,14 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         }
 
         // Hash the prover's advice commitments into the transcript and squeeze
-        // challenges
+        // challenges. The advice batch is serialized as [u32 len][N points];
+        // skip the 4-byte length prefix before reading the individual points.
+        transcript.skip_bytes(4);
         let advice_commitments = (0..cs.num_advice_columns())
             .map(|i| {
                 transcript
                     .read_point(layouter)
-                    .map(|p| LabeledPoint::new(p, PolynomialLabel::Advice(i)))
+                    .map(|p| AssignedCommitment::new(p, vec![PolynomialLabel::Advice(i)]))
             })
             .collect::<Result<Vec<_>, Error>>()?;
 
@@ -435,7 +437,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         y: AssignedNative<S::F>,
         xn: AssignedNative<S::F>,
         splitting_factor: AssignedNative<S::F>,
-        quotient_limb_commitments: &'com [LabeledPoint<S>],
+        quotient_limb_commitments: &'com [AssignedCommitment<S>],
     ) -> Result<(AssignedMsm<S>, AssignedNative<S::F>), Error> {
         let mut acc_msm: AssignedMsm<S> = AssignedMsm::empty();
 
@@ -537,18 +539,18 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         let nb_quotient_coms = 1;
         let limb_commitments = {
             let raw = (0..nb_quotient_coms)
-                .map(|_| transcript.read_point(layouter))
+                .map(|_| transcript.read_commitment(layouter))
                 .collect::<Result<Vec<_>, Error>>()?;
             #[cfg(not(feature = "single-h-commitment"))]
             let labeled = raw
                 .into_iter()
                 .enumerate()
-                .map(|(i, p)| LabeledPoint::new(p, PolynomialLabel::QuotientPiece(i)))
+                .map(|(i, p)| AssignedCommitment::new(p, vec![PolynomialLabel::QuotientPiece(i)]))
                 .collect::<Vec<_>>();
             #[cfg(feature = "single-h-commitment")]
             let labeled = raw
                 .into_iter()
-                .map(|p| LabeledPoint::new(p, PolynomialLabel::Quotient))
+                .map(|p| AssignedCommitment::new(p, vec![PolynomialLabel::Quotient]))
                 .collect::<Vec<_>>();
             labeled
         };
@@ -783,7 +785,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                     VerifierQuery::<S>::new(
                         &one,
                         get_point(&rot),
-                        &advice_commitments[column.index()].point,
+                        &advice_commitments[column.index()],
                         &advice_evals[query_index],
                     )
                 }),
@@ -791,10 +793,14 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             .chain(cs.instance_queries().iter().enumerate().filter_map(
                 |(query_index, &(column, rot))| {
                     if column.index() < nb_committed_instances {
+                        let com = AssignedCommitment::new(
+                            assigned_committed_instances[column.index()].clone(),
+                            vec![PolynomialLabel::CommittedInstance(column.index())],
+                        );
                         Some(VerifierQuery::<S>::new(
                             &one,
                             get_point(&rot),
-                            &assigned_committed_instances[column.index()],
+                            &com,
                             &instance_evals[query_index],
                         ))
                     } else {
@@ -816,6 +822,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                             get_point(&rot),
                             &assigned_vk.fixed_commitment_name(col.index()),
                             &fixed_evals[query_index],
+                            PolynomialLabel::Fixed(col.index()),
                         )
                     }),
             )
@@ -832,6 +839,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                 &x,
                 &linearization_com,
                 &expected_lin_eval,
+                PolynomialLabel::Collapsed,
             )));
 
         // We are now convinced the circuit is satisfied so long as the
@@ -893,7 +901,11 @@ pub(crate) mod tests {
         dev::MockProver,
         plonk::{create_proof, keygen_pk, keygen_vk_with_k, prepare, Circuit, Error},
         poly::{
-            kzg::{commitment::KZGCommitment, params::ParamsKZG, KZGCommitmentScheme},
+            kzg::{
+                commitment::{KZGCommitment, KZGMultiCommitment},
+                params::ParamsKZG,
+                KZGCommitmentScheme,
+            },
             PolynomialLabel,
         },
         transcript::{CircuitTranscript, Transcript},
@@ -1162,10 +1174,10 @@ pub(crate) mod tests {
                 CircuitTranscript::<PoseidonState<F>>::init_from_bytes(&inner_proof);
             prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<PoseidonState<F>>>(
                 &inner_vk,
-                &[KZGCommitment::Simple(
+                &[KZGMultiCommitment(vec![KZGCommitment::Simple(
                     C::identity(),
-                    PolynomialLabel::Instance(0),
-                )],
+                    PolynomialLabel::CommittedInstance(0),
+                )])],
                 &[&inner_public_inputs],
                 &mut transcript,
             )

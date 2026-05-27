@@ -22,14 +22,14 @@ use crate::{
     field::AssignedNative,
     verifier::{
         kzg::VerifierQuery, transcript_gadget::TranscriptGadget, utils::AssignedBoundedScalar,
-        LabeledPoint, SelfEmulation,
+        AssignedCommitment, SelfEmulation,
     },
 };
 
 /// Commitment to the multiplicity columns, read from the transcript.
 #[derive(Clone, Debug)]
 pub(crate) struct CommittedMultiplicities<S: SelfEmulation> {
-    multiplicities: LabeledPoint<S>,
+    multiplicities: AssignedCommitment<S>,
 }
 
 #[derive(Clone, Debug)]
@@ -43,9 +43,9 @@ pub(crate) struct LookupEvaluated<S: SelfEmulation> {
 /// Commitments to the LogUp polynomials, read from the transcript.
 #[derive(Clone, Debug)]
 pub(crate) struct Committed<S: SelfEmulation> {
-    multiplicities: LabeledPoint<S>,
-    helper_polys: Vec<LabeledPoint<S>>,
-    accumulator: LabeledPoint<S>,
+    multiplicities: AssignedCommitment<S>,
+    helper_polys: Vec<AssignedCommitment<S>>,
+    accumulator: AssignedCommitment<S>,
 }
 
 /// Commitments plus evaluations at challenge point.
@@ -61,9 +61,9 @@ pub(crate) fn read_multiplicities<S: SelfEmulation>(
     layouter: &mut impl Layouter<S::F>,
     transcript_gadget: &mut TranscriptGadget<S>,
 ) -> Result<CommittedMultiplicities<S>, Error> {
-    let multiplicities = LabeledPoint::new(
-        transcript_gadget.read_point(layouter)?,
-        PolynomialLabel::LogupMultiplicities(name.to_owned()),
+    let multiplicities = AssignedCommitment::new(
+        transcript_gadget.read_commitment(layouter)?,
+        vec![PolynomialLabel::LogupMultiplicities(name.to_owned())],
     );
     Ok(CommittedMultiplicities { multiplicities })
 }
@@ -78,14 +78,14 @@ impl<S: SelfEmulation> CommittedMultiplicities<S> {
     ) -> Result<Committed<S>, Error> {
         let helper_polys = (0..nb_flattened)
             .map(|_| {
-                transcript_gadget
-                    .read_point(layouter)
-                    .map(|p| LabeledPoint::new(p, PolynomialLabel::LogupHelper(name.to_owned())))
+                transcript_gadget.read_commitment(layouter).map(|p| {
+                    AssignedCommitment::new(p, vec![PolynomialLabel::LogupHelper(name.to_owned())])
+                })
             })
             .collect::<Result<Vec<_>, Error>>()?;
-        let accumulator = LabeledPoint::new(
-            transcript_gadget.read_point(layouter)?,
-            PolynomialLabel::LogupAggregator(name.to_owned()),
+        let accumulator = AssignedCommitment::new(
+            transcript_gadget.read_commitment(layouter)?,
+            vec![PolynomialLabel::LogupAggregator(name.to_owned())],
         );
 
         Ok(Committed {
@@ -136,7 +136,7 @@ impl<S: SelfEmulation> Evaluated<S> {
             VerifierQuery::new(
                 one,
                 x,
-                &self.committed.multiplicities.point,
+                &self.committed.multiplicities,
                 &self.evaluated.multiplicities_eval,
             ),
         ];
@@ -144,20 +144,20 @@ impl<S: SelfEmulation> Evaluated<S> {
         for (h_commit, h_eval) in
             self.committed.helper_polys.iter().zip(self.evaluated.helper_evals.iter())
         {
-            queries.push(VerifierQuery::new(one, x, &h_commit.point, h_eval));
+            queries.push(VerifierQuery::new(one, x, h_commit, h_eval));
         }
         // Open lookup table commitments at x
         queries.push(VerifierQuery::new(
             one,
             x,
-            &self.committed.accumulator.point,
+            &self.committed.accumulator,
             &self.evaluated.accumulator_eval,
         ));
         // Open lookup product commitment at \omega x
         queries.push(VerifierQuery::new(
             one,
             x_next,
-            &self.committed.accumulator.point,
+            &self.committed.accumulator,
             &self.evaluated.accumulator_next_eval,
         ));
         queries

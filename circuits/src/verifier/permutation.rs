@@ -26,13 +26,13 @@ use crate::{
     field::AssignedNative,
     verifier::{
         kzg::VerifierQuery, transcript_gadget::TranscriptGadget, utils::AssignedBoundedScalar,
-        LabeledPoint, SelfEmulation,
+        AssignedCommitment, SelfEmulation,
     },
 };
 
 #[derive(Clone, Debug)]
 pub(crate) struct Committed<S: SelfEmulation> {
-    permutation_product_commitments: Vec<LabeledPoint<S>>,
+    permutation_product_commitments: Vec<AssignedCommitment<S>>,
 }
 
 #[derive(Clone, Debug)]
@@ -64,11 +64,11 @@ pub(crate) fn read_product_commitments<S: SelfEmulation>(
         .permutation()
         .get_columns()
         .chunks(chunk_len)
-        .map(|_| transcript_gadget.read_point(layouter))
+        .map(|_| transcript_gadget.read_commitment(layouter))
         .collect::<Result<Vec<_>, _>>()?
         .into_iter()
         .enumerate()
-        .map(|(i, p)| LabeledPoint::new(p, PolynomialLabel::PermutationAccumulator(i)))
+        .map(|(i, p)| AssignedCommitment::new(p, vec![PolynomialLabel::PermutationAccumulator(i)]))
         .collect();
 
     Ok(Committed {
@@ -101,7 +101,7 @@ impl<S: SelfEmulation> Committed<S> {
     ) -> Result<Evaluated<S>, Error> {
         let mut sets = vec![];
 
-        let mut iter = self.permutation_product_commitments.iter().map(|lp| &lp.point);
+        let mut iter = self.permutation_product_commitments.iter().map(|c| &c.point);
 
         while iter.next().is_some() {
             let permutation_product_eval = transcript_gadget.read_scalar(layouter)?;
@@ -139,13 +139,13 @@ impl<S: SelfEmulation> Evaluated<S> {
             queries.push(VerifierQuery::new(
                 one,
                 x,
-                &self.coms.permutation_product_commitments[i].point,
+                &self.coms.permutation_product_commitments[i],
                 &set.permutation_product_eval,
             ));
             queries.push(VerifierQuery::new(
                 one,
                 x_next,
-                &self.coms.permutation_product_commitments[i].point,
+                &self.coms.permutation_product_commitments[i],
                 &set.permutation_product_next_eval,
             ));
         }
@@ -155,7 +155,7 @@ impl<S: SelfEmulation> Evaluated<S> {
             queries.push(VerifierQuery::new(
                 one,
                 x_last,
-                &self.coms.permutation_product_commitments[i].point,
+                &self.coms.permutation_product_commitments[i],
                 set.permutation_product_last_eval.as_ref().unwrap(),
             ));
         }
@@ -179,7 +179,16 @@ impl<S: SelfEmulation> CommonEvaluated<S> {
         commitment_names
             .iter()
             .zip(self.permutation_evals.iter())
-            .map(|(com_name, eval)| VerifierQuery::new_fixed(one, x, com_name, eval))
+            .enumerate()
+            .map(|(i, (com_name, eval))| {
+                VerifierQuery::new_fixed(
+                    one,
+                    x,
+                    com_name,
+                    eval,
+                    PolynomialLabel::PermutationFixed(i),
+                )
+            })
             .collect()
     }
 }

@@ -22,7 +22,7 @@ use crate::{
     field::AssignedNative,
     verifier::{
         kzg::VerifierQuery, transcript_gadget::TranscriptGadget, utils::AssignedBoundedScalar,
-        LabeledPoint, SelfEmulation,
+        AssignedCommitment, SelfEmulation,
     },
 };
 
@@ -33,7 +33,7 @@ pub(crate) struct TrashEvaluated<S: SelfEmulation> {
 
 #[derive(Clone, Debug)]
 pub(crate) struct Committed<S: SelfEmulation> {
-    trash_commitment: LabeledPoint<S>,
+    trash_commitment: AssignedCommitment<S>,
 }
 
 #[derive(Clone, Debug)]
@@ -47,9 +47,9 @@ pub(crate) fn read_committed<S: SelfEmulation>(
     layouter: &mut impl Layouter<S::F>,
     transcript_gadget: &mut TranscriptGadget<S>,
 ) -> Result<Committed<S>, Error> {
-    let trash_commitment = LabeledPoint::new(
-        transcript_gadget.read_point(layouter)?,
-        PolynomialLabel::Trash(name.to_owned()),
+    let trash_commitment = AssignedCommitment::new(
+        transcript_gadget.read_commitment(layouter)?,
+        vec![PolynomialLabel::Trash(name.to_owned())],
     );
     Ok(Committed { trash_commitment })
 }
@@ -80,7 +80,7 @@ impl<S: SelfEmulation> Evaluated<S> {
         vec![VerifierQuery::new(
             one,
             x,
-            &self.committed.trash_commitment.point,
+            &self.committed.trash_commitment,
             &self.evaluated.trash_eval,
         )]
     }

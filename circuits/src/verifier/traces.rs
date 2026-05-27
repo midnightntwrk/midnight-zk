@@ -1,12 +1,12 @@
 use crate::{
     field::AssignedNative,
-    verifier::{LabeledPoint, SelfEmulation},
+    verifier::{AssignedCommitment, SelfEmulation},
 };
 
 /// In-circuit verifier trace of a proof.
 #[derive(Debug)]
 pub struct VerifierTrace<S: SelfEmulation> {
-    pub(crate) advice_commitments: Vec<LabeledPoint<S>>,
+    pub(crate) advice_commitments: Vec<AssignedCommitment<S>>,
     pub(crate) lookups: Vec<super::lookup::Committed<S>>,
     pub(crate) trashcans: Vec<super::trash::Committed<S>>,
     pub(crate) permutations: super::permutation::Committed<S>,

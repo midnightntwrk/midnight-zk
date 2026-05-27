@@ -43,17 +43,17 @@ mod verifier_gadget;
 
 pub use accumulator::{Accumulator, AssignedAccumulator};
 
-/// An in-circuit commitment point tagged with its polynomial label.
+/// An in-circuit commitment to one or more polynomials.
 #[derive(Clone, Debug)]
-pub(crate) struct LabeledPoint<S: SelfEmulation> {
+pub(crate) struct AssignedCommitment<S: SelfEmulation> {
     pub(crate) point: S::AssignedPoint,
     #[allow(dead_code)]
-    pub(crate) label: PolynomialLabel,
+    pub(crate) labels: Vec<PolynomialLabel>,
 }
 
-impl<S: SelfEmulation> LabeledPoint<S> {
-    pub(crate) fn new(point: S::AssignedPoint, label: PolynomialLabel) -> Self {
-        Self { point, label }
+impl<S: SelfEmulation> AssignedCommitment<S> {
+    pub(crate) fn new(point: S::AssignedPoint, labels: Vec<PolynomialLabel>) -> Self {
+        Self { point, labels }
     }
 }
 pub use msm::{AssignedMsm, Msm};

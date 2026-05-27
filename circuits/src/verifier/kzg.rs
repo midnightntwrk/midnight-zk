@@ -27,7 +27,7 @@ use std::{
 };
 
 use ff::Field;
-use midnight_proofs::{circuit::Layouter, plonk::Error};
+use midnight_proofs::{circuit::Layouter, plonk::Error, poly::PolynomialLabel};
 
 #[cfg(feature = "truncated-challenges")]
 use crate::verifier::utils::truncate;
@@ -41,7 +41,7 @@ use crate::{
             evaluate_interpolated_polynomial, inner_product, mul_add, truncated_powers,
             AssignedBoundedScalar,
         },
-        AssignedAccumulator, SelfEmulation,
+        AssignedAccumulator, AssignedCommitment, SelfEmulation,
     },
     CircuitField,
 };
@@ -52,16 +52,16 @@ use crate::{
 
 #[derive(Clone, Debug)]
 pub(crate) struct CommitmentData<S: SelfEmulation> {
-    commitment: AssignedMsm<S>,
+    label: PolynomialLabel,
     set_index: usize,
     point_indices: Vec<usize>,
     evals: Vec<AssignedNative<S::F>>,
 }
 
 impl<S: SelfEmulation> CommitmentData<S> {
-    fn new(commitment: AssignedMsm<S>) -> Self {
+    fn new(label: PolynomialLabel) -> Self {
         CommitmentData {
-            commitment,
+            label,
             set_index: 0,
             point_indices: vec![],
             evals: vec![],
@@ -69,118 +69,89 @@ impl<S: SelfEmulation> CommitmentData<S> {
     }
 }
 
-type IntermediateSets<S> = (
-    Vec<CommitmentData<S>>,
-    Vec<Vec<AssignedNative<<S as SelfEmulation>::F>>>,
-);
-
+/// Groups `(label, point, eval)` triples by label and computes the
+/// intermediate data structures needed by the Halo2 multi-opening argument.
+///
+/// `default_eval` is used to initialise the eval slots before they are filled
+/// in by the second pass; any assigned zero works.
+#[allow(clippy::type_complexity)]
 fn construct_intermediate_sets<S: SelfEmulation>(
-    queries: &[VerifierQuery<S>],
+    queries: &[(PolynomialLabel, AssignedNative<S::F>, AssignedNative<S::F>)],
     default_eval: AssignedNative<S::F>,
-) -> Result<IntermediateSets<S>, Error> {
-    // Construct sets of unique commitments and corresponding information about
-    // their queries.
+) -> Result<(Vec<CommitmentData<S>>, Vec<Vec<AssignedNative<S::F>>>), Error> {
     let mut commitment_map: Vec<CommitmentData<S>> = vec![];
 
-    // Also construct mapping from a unique point to a point_index. This defines
-    // an ordering on the points.
-    // Note that we use a HashMap, whereas halo2 uses a BTreeMap. This is because
-    // `AssignedScalar` does not implement `Ord`, but implements `Hash`.
-    // This difference is not a problem, since the order of keys does not matter
-    // for this algorithm.
+    // Maps each unique point to a compact integer index.
+    // Note: HashMap (not BTreeMap) because AssignedNative does not implement Ord.
     let mut point_index_map = HashMap::new();
 
-    // Iterate over all of the queries, computing the ordering of the points
-    // while also creating new commitment data.
-    for query in queries.iter() {
+    for (label, point, _eval) in queries {
         let num_points = point_index_map.len();
-        let point_idx = point_index_map.entry(query.get_point()).or_insert(num_points);
+        let point_idx = point_index_map.entry(point.clone()).or_insert(num_points);
 
-        if let Some(pos) =
-            commitment_map.iter().position(|comm| comm.commitment == query.get_commitment())
-        {
+        if let Some(pos) = commitment_map.iter().position(|c| &c.label == label) {
             if commitment_map[pos].point_indices.contains(point_idx) {
                 return Err(Error::Synthesis("repeated query".into()));
             }
             commitment_map[pos].point_indices.push(*point_idx);
         } else {
-            let mut tmp = CommitmentData::new(query.get_commitment());
+            let mut tmp = CommitmentData::new(label.clone());
             tmp.point_indices.push(*point_idx);
             commitment_map.push(tmp);
         }
     }
 
-    // Also construct inverse mapping from point_index to the point
+    // Inverse map: point_index → point.
     let mut inverse_point_index_map = HashMap::new();
     for (point, &point_index) in point_index_map.iter() {
         inverse_point_index_map.insert(point_index, point.clone());
     }
 
-    // Construct map of unique ordered point_idx_sets to their set_idx.
+    // Map from ordered point-index-sets to their set index.
     let mut point_idx_sets = HashMap::new();
-    // Also construct mapping from commitment to point_idx_set
-    let mut commitment_set_map = Vec::new();
+    // Per-commitment snapshot of its point_index_set (used in the second pass).
+    let mut commitment_set_map: Vec<(PolynomialLabel, BTreeSet<usize>)> = Vec::new();
 
     for commitment_data in commitment_map.iter() {
-        let mut point_index_set = BTreeSet::new();
-        // Note that point_index_set is ordered, unlike point_indices
-        for &point_index in commitment_data.point_indices.iter() {
-            point_index_set.insert(point_index);
-        }
-
-        // Push point_index_set to CommitmentData for the relevant commitment
-        commitment_set_map.push((commitment_data.commitment.clone(), point_index_set.clone()));
+        let point_index_set: BTreeSet<_> = commitment_data.point_indices.iter().cloned().collect();
+        commitment_set_map.push((commitment_data.label.clone(), point_index_set.clone()));
 
         let num_sets = point_idx_sets.len();
         point_idx_sets.entry(point_index_set).or_insert(num_sets);
     }
 
-    // Initialise empty evals vec for each unique commitment
+    // Initialise empty evals vec for each unique commitment.
     for commitment_data in commitment_map.iter_mut() {
         let len = commitment_data.point_indices.len();
         commitment_data.evals = vec![default_eval.clone(); len];
     }
 
-    // Populate set_index, evals and points for each commitment using point_idx_sets
-    for query in queries.iter() {
-        // The index of the point at which the commitment is queried
-        let point_index = point_index_map.get(&query.get_point()).unwrap();
+    // Populate set_index and evals for each commitment.
+    for (label, point, eval) in queries {
+        let point_index = point_index_map.get(point).unwrap();
 
-        // The point_index_set at which the commitment was queried
-        let mut point_index_set = BTreeSet::new();
-        for (commitment, point_idx_set) in commitment_set_map.iter() {
-            if query.get_commitment() == *commitment {
-                point_index_set.clone_from(point_idx_set);
-            }
-        }
+        let point_index_set =
+            commitment_set_map.iter().find(|(l, _)| l == label).map(|(_, s)| s).unwrap();
         assert!(!point_index_set.is_empty());
 
-        // The set_index of the point_index_set
-        let set_index = point_idx_sets.get(&point_index_set).unwrap();
+        let set_index = point_idx_sets.get(point_index_set).unwrap();
+        let point_index_set_vec: Vec<usize> = point_index_set.iter().cloned().collect();
+        let point_index_in_set = point_index_set_vec.iter().position(|i| i == point_index).unwrap();
+
         for commitment_data in commitment_map.iter_mut() {
-            if query.get_commitment() == commitment_data.commitment {
+            if &commitment_data.label == label {
                 commitment_data.set_index = *set_index;
-            }
-        }
-        let point_index_set: Vec<usize> = point_index_set.iter().cloned().collect();
-
-        // The offset of the point_index in the point_index_set
-        let point_index_in_set = point_index_set.iter().position(|i| i == point_index).unwrap();
-
-        for commitment_data in commitment_map.iter_mut() {
-            if query.get_commitment() == commitment_data.commitment {
-                // Insert the eval using the ordering of the point_index_set
-                commitment_data.evals[point_index_in_set] = query.get_eval();
+                commitment_data.evals[point_index_in_set] = eval.clone();
             }
         }
     }
 
-    // Get actual points in each point set
+    // Build the actual point sets from the index sets.
     let mut point_sets: Vec<Vec<AssignedNative<S::F>>> = vec![Vec::new(); point_idx_sets.len()];
     for (point_idx_set, &set_idx) in point_idx_sets.iter() {
         for &point_idx in point_idx_set.iter() {
             let point = inverse_point_index_map.get(&point_idx).unwrap();
-            point_sets[set_idx].push((*point).clone());
+            point_sets[set_idx].push(point.clone());
         }
     }
 
@@ -196,66 +167,64 @@ fn construct_intermediate_sets<S: SelfEmulation>(
 pub(crate) struct VerifierQuery<S: SelfEmulation> {
     /// Point at which polynomial is queried.
     point: AssignedNative<S::F>,
-    /// Commitment to the polynomial.
+    /// MSM representation of the commitment to the polynomial.
     commitment: AssignedMsm<S>,
     /// Evaluation of polynomial at query point.
     eval: AssignedNative<S::F>,
+    /// Label identifying which polynomial this query is for.
+    label: PolynomialLabel,
 }
 
 impl<S: SelfEmulation> VerifierQuery<S> {
-    /// Create a verifier query on a commitment.
-    /// This function requires an assigned bounded scalar of one as input.
+    /// Create a verifier query on a commitment, extracting the label from it.
     pub(crate) fn new(
         one: &AssignedBoundedScalar<S::F>,
         point: &AssignedNative<S::F>,
-        commitment: &S::AssignedPoint,
+        commitment: &AssignedCommitment<S>,
         eval: &AssignedNative<S::F>,
     ) -> Self {
+        assert_eq!(
+            commitment.labels.len(),
+            1,
+            "commitment must carry exactly one label"
+        );
         Self {
             point: point.clone(),
-            commitment: AssignedMsm::from_term(one, commitment),
+            commitment: AssignedMsm::from_term(one, &commitment.point),
             eval: eval.clone(),
+            label: commitment.labels[0].clone(),
         }
     }
 
-    /// Create a verifier query on a commitment (represented as an MSM).
+    /// Create a verifier query on a commitment represented as an MSM.
     pub(crate) fn new_from_msm(
         point: &AssignedNative<S::F>,
         commitment: &AssignedMsm<S>,
         eval: &AssignedNative<S::F>,
+        label: PolynomialLabel,
     ) -> Self {
         Self {
             point: point.clone(),
             commitment: commitment.clone(),
             eval: eval.clone(),
+            label,
         }
     }
 
     /// Create a verifier query on a fixed commitment (given its name).
-    /// This function requires an assigned bounded scalar of one as input.
     pub(crate) fn new_fixed(
         one: &AssignedBoundedScalar<S::F>,
         point: &AssignedNative<S::F>,
         commitment_name: &str,
         eval: &AssignedNative<S::F>,
+        label: PolynomialLabel,
     ) -> Self {
         Self {
             point: point.clone(),
             commitment: AssignedMsm::from_fixed_term(one, commitment_name),
             eval: eval.clone(),
+            label,
         }
-    }
-
-    fn get_point(&self) -> AssignedNative<S::F> {
-        self.point.clone()
-    }
-
-    fn get_eval(&self) -> AssignedNative<S::F> {
-        self.eval.clone()
-    }
-
-    fn get_commitment(&self) -> AssignedMsm<S> {
-        self.commitment.clone()
     }
 }
 
@@ -316,7 +285,7 @@ pub(crate) fn multi_prepare<S: SelfEmulation>(
     // Add dummy queries to reduce the number of distinct multi-open point sets.
     #[cfg(feature = "fewer-point-sets")]
     let queries = &{
-        let pairs: Vec<_> = queries.iter().map(|q| (q.get_commitment(), q.get_point())).collect();
+        let pairs: Vec<_> = queries.iter().map(|q| (q.label.clone(), q.point.clone())).collect();
         let dummy_openings = midnight_proofs::poly::kzg::compute_dummy_queries(&pairs);
         let mut queries = queries.to_vec();
         for (idx, point) in dummy_openings {
@@ -324,6 +293,7 @@ pub(crate) fn multi_prepare<S: SelfEmulation>(
                 point,
                 commitment: queries[idx].commitment.clone(),
                 eval: transcript_gadget.read_scalar(layouter)?,
+                label: queries[idx].label.clone(),
             });
         }
         queries
@@ -332,14 +302,24 @@ pub(crate) fn multi_prepare<S: SelfEmulation>(
     let x1 = transcript_gadget.squeeze_challenge(layouter)?;
     let x2 = transcript_gadget.squeeze_challenge(layouter)?;
 
+    // Build a map from label → MSM so the commitment loop can look up the
+    // actual group element(s) for each query group (keyed by label).
+    let label_to_msm: HashMap<PolynomialLabel, AssignedMsm<S>> =
+        queries.iter().map(|q| (q.label.clone(), q.commitment.clone())).collect();
+
     let default_eval = scalar_chip.assign_fixed(layouter, S::F::default())?;
-    let (commitment_map, point_sets) = construct_intermediate_sets(queries, default_eval)?;
+    #[allow(clippy::type_complexity)]
+    let triples: Vec<(PolynomialLabel, AssignedNative<S::F>, AssignedNative<S::F>)> = queries
+        .iter()
+        .map(|q| (q.label.clone(), q.point.clone(), q.eval.clone()))
+        .collect();
+    let (commitment_map, point_sets) = construct_intermediate_sets::<S>(&triples, default_eval)?;
 
     let mut q_coms: Vec<_> = vec![vec![]; point_sets.len()];
     let mut q_eval_sets = vec![vec![]; point_sets.len()];
 
     for com_data in commitment_map.into_iter() {
-        q_coms[com_data.set_index].push(com_data.commitment);
+        q_coms[com_data.set_index].push(label_to_msm[&com_data.label].clone());
         q_eval_sets[com_data.set_index].push(com_data.evals);
     }
 
@@ -376,7 +356,7 @@ pub(crate) fn multi_prepare<S: SelfEmulation>(
         (q_coms, q_eval_sets, point_sets)
     };
 
-    let f_com = transcript_gadget.read_point(layouter)?;
+    let f_com = transcript_gadget.read_commitment(layouter)?;
 
     let x3 = transcript_gadget.squeeze_challenge(layouter)?;
     #[cfg(feature = "truncated-challenges")]
@@ -448,7 +428,7 @@ pub(crate) fn multi_prepare<S: SelfEmulation>(
         )
     };
 
-    let pi = transcript_gadget.read_point(layouter)?;
+    let pi = transcript_gadget.read_commitment(layouter)?;
     let pi_msm = AssignedMsm::from_term(&one, &pi);
 
     // Scale zπ

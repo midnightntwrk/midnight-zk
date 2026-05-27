@@ -123,6 +123,29 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
     /// Reads a point from the reader buffer, and adds it to the transcript.
     /// Think of the read point as a witness freely chosen by the prover.
     ///
+    /// Skips `n` bytes in the proof buffer without absorbing them into the
+    /// transcript hash.  Used to discard serialization framing (e.g. the
+    /// 4-byte length prefix of a multi-commitment batch) that is not part of
+    /// the Fiat-Shamir state.
+    pub fn skip_bytes(&mut self, n: usize) {
+        if let Some(reader) = self.transcript_reader.as_mut() {
+            let buf = reader.buffer();
+            let pos = buf.position();
+            buf.set_position(pos + n as u64);
+        }
+    }
+
+    /// Reads a single commitment from the proof buffer. The commitment is
+    /// serialized as `[u32 len=1][point bytes]`; this method discards the
+    /// 4-byte length prefix before reading the curve point.
+    pub fn read_commitment(
+        &mut self,
+        layouter: &mut impl Layouter<S::F>,
+    ) -> Result<S::AssignedPoint, Error> {
+        self.skip_bytes(4);
+        self.read_point(layouter)
+    }
+
     /// # Warning
     ///
     /// The received points are not enforced to be part of the relevant prime
