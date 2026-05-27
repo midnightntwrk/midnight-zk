@@ -12,6 +12,7 @@ use crate::{
 
 #[derive(Debug)]
 pub struct Committed<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
+    name: String,
     trash_commitment: CS::Commitment,
 }
 
@@ -31,8 +32,11 @@ impl<F: PrimeField> Argument<F> {
     {
         let trash_commitment = transcript
             .read()
-            .map(|c: CS::Commitment| c.label(PolynomialLabel::Trash(self.name.clone())))?;
-        Ok(Committed { trash_commitment })
+            .map(|c: CS::Commitment| c.label(vec![PolynomialLabel::Trash(self.name.clone())]))?;
+        Ok(Committed {
+            name: self.name.clone(),
+            trash_commitment,
+        })
     }
 }
 
@@ -59,6 +63,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
             x,
             &self.committed.trash_commitment,
             self.evaluated.trash_eval,
+            PolynomialLabel::Trash(self.committed.name.clone()),
         )]
         .into_iter()
     }

@@ -46,7 +46,7 @@ impl Argument {
             .collect::<Result<Vec<_>, _>>()?
             .into_iter()
             .enumerate()
-            .map(|(i, c)| c.label(PolynomialLabel::PermutationAccumulator(i)))
+            .map(|(i, c)| c.label(vec![PolynomialLabel::PermutationAccumulator(i)]))
             .collect();
 
         Ok(Committed {
@@ -123,11 +123,13 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
                 x,
                 &product_coms[i],
                 set.permutation_product_eval,
+                PolynomialLabel::PermutationAccumulator(i),
             ));
             queries.push(VerifierQuery::new(
                 x_next,
                 &product_coms[i],
                 set.permutation_product_next_eval,
+                PolynomialLabel::PermutationAccumulator(i),
             ));
         }
         // Open at \omega^{last} x for all but the last set
@@ -136,6 +138,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
                 x_last,
                 &product_coms[i],
                 set.permutation_product_last_eval.unwrap(),
+                PolynomialLabel::PermutationAccumulator(i),
             ));
         }
         queries.into_iter()
@@ -151,7 +154,10 @@ impl<F: PrimeField> CommonEvaluated<F> {
         let evals = self.permutation_evals.clone();
         vkey.commitments
             .iter()
+            .enumerate()
             .zip(evals)
-            .map(move |(commitment, eval)| VerifierQuery::new(x, commitment, eval))
+            .map(move |((i, commitment), eval)| {
+                VerifierQuery::new(x, commitment, eval, PolynomialLabel::PermutationFixed(i))
+            })
     }
 }

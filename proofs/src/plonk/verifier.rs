@@ -67,9 +67,9 @@ where
 
     // Hash the prover's advice commitments into the transcript and squeeze
     // challenges
-    let advice_commitments: Vec<_> = (0..vk.cs.num_advice_columns)
-        .map(|i| transcript.read().map(|c: CS::Commitment| c.label(PolynomialLabel::Advice(i))))
-        .collect::<Result<_, _>>()?;
+    let advice_labels: Vec<_> =
+        (0..vk.cs.num_advice_columns).map(PolynomialLabel::Advice).collect();
+    let advice_commitments = transcript.read::<CS::Commitment>()?.label(advice_labels);
 
     // Sample theta challenge for keeping lookup columns linearly independent
     let theta: F = transcript.squeeze_challenge();
@@ -178,11 +178,13 @@ where
         let labeled = raw
             .into_iter()
             .enumerate()
-            .map(|(i, c)| c.label(PolynomialLabel::QuotientPiece(i)))
+            .map(|(i, c)| c.label(vec![PolynomialLabel::QuotientPiece(i)]))
             .collect::<Vec<_>>();
         #[cfg(feature = "single-h-commitment")]
-        let labeled =
-            raw.into_iter().map(|c| c.label(PolynomialLabel::Quotient)).collect::<Vec<_>>();
+        let labeled = raw
+            .into_iter()
+            .map(|c| c.label(vec![PolynomialLabel::Quotient]))
+            .collect::<Vec<_>>();
         labeled
     };
 
@@ -300,8 +302,9 @@ where
             vk.cs.advice_queries.iter().enumerate().map(|(query_index, &(column, at))| {
                 VerifierQuery::new(
                     vk.domain.rotate_omega(x, at),
-                    &advice_commitments[column.index()],
+                    &advice_commitments,
                     advice_evals[query_index],
+                    PolynomialLabel::Advice(column.index()),
                 )
             }),
         )
@@ -312,6 +315,7 @@ where
                         vk.domain.rotate_omega(x, at),
                         &committed_instances[column.index()],
                         instance_evals[query_index],
+                        PolynomialLabel::CommittedInstance(column.index()),
                     ))
                 } else {
                     None
@@ -333,11 +337,17 @@ where
                         vk.domain.rotate_omega(x, at),
                         &vk.fixed_commitments[column.index()],
                         fixed_evals[query_index],
+                        PolynomialLabel::Fixed(column.index()),
                     )
                 }),
         )
         .chain(permutations_common.queries(&vk.permutation, x))
-        .chain(iter::once(VerifierQuery::new(x, &lin_commitment, lin_eval)))
+        .chain(iter::once(VerifierQuery::new(
+            x,
+            &lin_commitment,
+            lin_eval,
+            PolynomialLabel::Collapsed,
+        )))
         .collect::<Vec<_>>();
 
     // We are now convinced the circuit is satisfied so long as the

@@ -28,7 +28,7 @@ pub struct ProverTrace<F: PrimeField> {
 /// Verifier's trace of a proof.
 #[derive(Debug)]
 pub struct VerifierTrace<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> {
-    pub(crate) advice_commitments: Vec<PCS::Commitment>,
+    pub(crate) advice_commitments: PCS::Commitment,
     pub(crate) lookups: Vec<logup::verifier::Committed<F, PCS>>,
     pub(crate) trashcans: Vec<trash::verifier::Committed<F, PCS>>,
     pub(crate) permutations: permutation::verifier::Committed<F, PCS>,

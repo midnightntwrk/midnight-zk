@@ -13,8 +13,10 @@ const BLAKE2B_PREFIX_COMMON: u8 = 1;
 
 /// Hash function that can be used for transcript
 pub trait TranscriptHash: Clone {
-    /// Input type of the hash function
-    type Input;
+    /// Input type of the hash function.
+    /// Must be iterable and collectible so that multi-polynomial commitments
+    /// can combine their per-polynomial inputs into a single absorb.
+    type Input: IntoIterator + FromIterator<<Self::Input as IntoIterator>::Item>;
     /// Output type of the hash function
     type Output;
 
@@ -116,7 +118,6 @@ impl<H: TranscriptHash> Transcript for CircuitTranscript<H> {
 
     fn common<T: Hashable<H>>(&mut self, input: &T) -> io::Result<()> {
         self.state.absorb(&input.to_input());
-
         Ok(())
     }
 

@@ -279,7 +279,7 @@ where
     let fixed_commitments = fixed
         .iter()
         .enumerate()
-        .map(|(i, poly)| CS::commit(params, poly, PolynomialLabel::Fixed(i)))
+        .map(|(i, poly)| CS::commit(params, &[poly], &[PolynomialLabel::Fixed(i)]))
         .collect();
 
     Ok(VerifyingKey::from_parts(

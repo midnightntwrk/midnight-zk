@@ -246,8 +246,8 @@ pub(crate) fn build_vk<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentSch
         // Compute commitment to permutation polynomial
         commitments.push(CS::commit(
             params,
-            permutation,
-            PolynomialLabel::PermutationFixed(i),
+            &[permutation],
+            &[PolynomialLabel::PermutationFixed(i)],
         ));
     }
 
