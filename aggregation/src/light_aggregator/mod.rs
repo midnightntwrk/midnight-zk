@@ -73,9 +73,9 @@ use midnight_proofs::{
         ConstraintSystem, Error,
     },
     poly::{
-        commitment::{Guard, Params},
+        commitment::{Guard, Labelable, Params},
         kzg::{
-            commitment::KZGCommitment,
+            commitment::{KZGCommitment, KZGMultiCommitment},
             msm::{DualMSM, MSMKZG},
             params::{ParamsKZG, ParamsVerifierKZG},
             KZGCommitmentScheme,
@@ -248,12 +248,10 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
         };
 
         // TODO: Remove, we are hardcoding BLS constants here.
-        dbg!(
-            midnight_proofs::dev::cost_model::circuit_model::<_, 48, 32>(
-                &default_aggregator_circuit,
-                1,
-            )
-        );
+        dbg!(midnight_proofs::dev::cost_model::circuit_model::<
+            _,
+            KZGCommitmentScheme<E>,
+        >(&default_aggregator_circuit, 1,));
 
         srs.downsize_from_circuit(&default_aggregator_circuit);
 
@@ -317,10 +315,10 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
                     CircuitTranscript<LightPoseidonFS<F>>,
                 >(
                     &self.inner_vk,
-                    &[KZGCommitment::Simple(
+                    &[KZGMultiCommitment(vec![KZGCommitment::Simple(
                         C::identity(),
-                        PolynomialLabel::Instance(0),
-                    )],
+                        PolynomialLabel::CommittedInstance(0),
+                    )])],
                     &[proof_instances],
                     &mut inner_transcript,
                 )?;
@@ -436,7 +434,9 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
             let n: u32 = transcript.read()?;
             (0..n).map(|_| transcript.read()).collect::<Result<Vec<C>, io::Error>>()?
         };
-        let acc_rhs_scalars_committed: KZGCommitment<E> = transcript.read()?;
+        let acc_rhs_scalars_committed: KZGMultiCommitment<E> = transcript
+            .read::<KZGMultiCommitment<E>>()?
+            .label(vec![PolynomialLabel::CommittedInstance(0)]);
         let acc_rhs_evaluated: C = transcript.read()?;
 
         // Verify the proof of validity of the native verification of all inner proofs.
@@ -612,10 +612,10 @@ mod tests {
             let dual_msm =
                 prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<LightPoseidonFS<F>>>(
                     inner_vk.vk(),
-                    &[KZGCommitment::Simple(
+                    &[KZGMultiCommitment(vec![KZGCommitment::Simple(
                         C::identity(),
-                        PolynomialLabel::Instance(0),
-                    )],
+                        PolynomialLabel::CommittedInstance(0),
+                    )])],
                     &[&InnerCircuit::format_instance(&instances[i]).unwrap()],
                     &mut transcript,
                 )

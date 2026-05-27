@@ -147,12 +147,6 @@ type Curve25519Chip = ForeignEdwardsEccChip<F, Curve25519, MEP, Curve25519Scalar
 
 const ZKSTD_VERSION: u32 = 2;
 
-/// Byte size of a serialized BLS12-381 G1 commitment (compressed).
-const COMMITMENT_BYTE_SIZE: usize = 48;
-
-/// Byte size of a serialized BLS12-381 scalar.
-const SCALAR_BYTE_SIZE: usize = 32;
-
 /// Number of instance columns given in committed form in a ZK stdlib proof.
 const NB_COMMITTED_INSTANCES: usize = 1;
 
@@ -2094,12 +2088,14 @@ where
                 CircuitTranscript<H>,
             >(
                 &vk.vk,
-                &[
-                    midnight_proofs::poly::kzg::commitment::KZGCommitment::Simple(
-                        midnight_curves::G1Projective::identity(),
-                        midnight_proofs::poly::PolynomialLabel::Instance(0),
-                    ),
-                ],
+                &[midnight_proofs::poly::kzg::commitment::KZGMultiCommitment(
+                    vec![
+                        midnight_proofs::poly::kzg::commitment::KZGCommitment::Simple(
+                            midnight_curves::G1Projective::identity(),
+                            midnight_proofs::poly::PolynomialLabel::CommittedInstance(0),
+                        ),
+                    ],
+                )],
                 &[pi],
                 &mut transcript,
             )?;
@@ -2146,7 +2142,10 @@ pub fn cs_degree(arch: ZkStdLibArch) -> usize {
 /// computed automatically.
 pub fn cost_model<R: Relation>(relation: &R, k: Option<u32>) -> CircuitModel {
     let circuit = MidnightCircuit::from_relation(relation, k);
-    circuit_model::<_, COMMITMENT_BYTE_SIZE, SCALAR_BYTE_SIZE>(&circuit, NB_COMMITTED_INSTANCES)
+    circuit_model::<_, KZGCommitmentScheme<midnight_curves::Bls12>>(
+        &circuit,
+        NB_COMMITTED_INSTANCES,
+    )
 }
 
 /// Finds the optimal `k` (log2 of the circuit size) for the given relation.

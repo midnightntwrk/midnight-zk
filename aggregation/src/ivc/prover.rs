@@ -16,7 +16,11 @@ use midnight_circuits::{
 use midnight_proofs::{
     plonk::{self},
     poly::{
-        kzg::{commitment::KZGCommitment, params::ParamsKZG, KZGCommitmentScheme},
+        kzg::{
+            commitment::{KZGCommitment, KZGMultiCommitment},
+            params::ParamsKZG,
+            KZGCommitmentScheme,
+        },
         PolynomialLabel,
     },
     transcript::{CircuitTranscript, Transcript},
@@ -100,10 +104,10 @@ impl<T: Ivc> IvcProver<T> {
             let dual_msm =
                 plonk::prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<PoseidonState<F>>>(
                     vk,
-                    &[KZGCommitment::Simple(
+                    &[KZGMultiCommitment(vec![KZGCommitment::Simple(
                         C::identity(),
-                        PolynomialLabel::Instance(0),
-                    )],
+                        PolynomialLabel::CommittedInstance(0),
+                    )])],
                     &[&prev_pi],
                     &mut transcript,
                 )?;

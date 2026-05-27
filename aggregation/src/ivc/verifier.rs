@@ -10,7 +10,11 @@ use midnight_circuits::{hash::poseidon::PoseidonState, verifier::Accumulator};
 use midnight_proofs::{
     plonk::{self},
     poly::{
-        kzg::{commitment::KZGCommitment, params::ParamsVerifierKZG, KZGCommitmentScheme},
+        kzg::{
+            commitment::{KZGCommitment, KZGMultiCommitment},
+            params::ParamsVerifierKZG,
+            KZGCommitmentScheme,
+        },
         PolynomialLabel,
     },
     transcript::{CircuitTranscript, Transcript},
@@ -66,10 +70,10 @@ impl<T: Ivc> IvcVerifier<T> {
         let dual_msm =
             plonk::prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<PoseidonState<F>>>(
                 self.vk.vk(),
-                &[KZGCommitment::Simple(
+                &[KZGMultiCommitment(vec![KZGCommitment::Simple(
                     C::identity(),
-                    PolynomialLabel::Instance(0),
-                )],
+                    PolynomialLabel::CommittedInstance(0),
+                )])],
                 &[&pi],
                 &mut transcript,
             )
