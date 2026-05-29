@@ -1,30 +1,23 @@
 # Changelog
 
-We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html). To capture
-the changes that do not affect the API, do not add any new functionality, but
-are breaking changes, we increment the `MAJOR` version. This happens when the
-circuit is modified for performance or bug fixes; the modification of the
-verification keys break backwards compatibility.
+We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-* MAJOR: Incremented when you make incompatible API or VK changes
-* MINOR: Incremented when you add functionality in a backward-compatible manner
-* PATCH: Incremented when you make backward-compatible bug fixes
+* MAJOR: Incremented on incompatible API changes
+* MINOR: Incremented on backward-compatible API changes that may affect the VKs
+* PATCH: Incremented on minor changes and bug fixes that do not alter the VKs
 
 ## [Unreleased]
 ### Added
-* Implement `AssertionInstructions`, `EqualityInstructions`, `ZeroInstructions`, `ControlFlowInstructions` and `ArithInstructions` for `AssignedScalarOfNativeCurve` on `EccChip` [#383](https://github.com/midnightntwrk/midnight-zk/pull/383)
 
 ### Changed
 
 ### Removed
 
-## [7.0.0]
+## [7.1.0]
 ### Changed
-* `FromScratch::configure_from_scratch` now takes shared `advice_columns` and `fixed_columns` pools [#306](https://github.com/midnightntwrk/midnight-zk/pull/306)
-* Optimize foreign Edwards MSM: windowed scalar multiplication and improved point addition [#305](https://github.com/midnightntwrk/midnight-zk/pull/305)
-* Refactoring static specs to handle more identity-related examples [#330](https://github.com/midnightntwrk/midnight-zk/pull/330)
-* Boxing assigned vectors to assign overflows [#331](https://github.com/midnightntwrk/midnight-zk/pull/331)
-* Variable length automata and substring checks [#332](https://github.com/midnightntwrk/midnight-zk/pull/332)
+* Modify `is_identity` flag encoding in Weierstrass chip: append as a dedicated public input element instead of packing into the first limb [#398](https://github.com/midnightntwrk/midnight-zk/pull/398)
+
+## [7.0.0]
 
 ### Added
 * Add functions to mark the region of a circuit to be measured for cost modelling [#296](https://github.com/midnightntwrk/midnight-zk/pull/296)
@@ -55,6 +48,7 @@ verification keys break backwards compatibility.
 * Add implementation of `p256` as foreign Weierstrass chip [#291](https://github.com/midnightntwrk/midnight-zk/pull/291)
 * Scanner chip: parallel lookups [#234](https://github.com/midnightntwrk/midnight-zk/pull/234)
 * Example for in-circuit verification of Ed25519 signatures [#310](https://github.com/midnightntwrk/midnight-zk/pull/310)
+* Implement `AssertionInstructions`, `EqualityInstructions`, `ZeroInstructions`, `ControlFlowInstructions` and `ArithInstructions` for `AssignedScalarOfNativeCurve` on `EccChip` [#383](https://github.com/midnightntwrk/midnight-zk/pull/383)
 
 ### Changed
 * Reorganize foreign ECC gates into `weierstrass/` and `edwards/` subdirectories [#298](https://github.com/midnightntwrk/midnight-zk/pull/298)
@@ -86,6 +80,11 @@ verification keys break backwards compatibility.
 * Adapt `foreign_params_gen.py` to general Weierstrass equations [#282](https://github.com/midnightntwrk/midnight-zk/pull/282)
 * Fix `assigned_to_le` functions in field chip [#303](https://github.com/midnightntwrk/midnight-zk/pull/303)
 * Add `from/to_canonical_compressed_bytes` to foreign Edwards chip [#354](https://github.com/midnightntwrk/midnight-zk/pull/354)
+* `FromScratch::configure_from_scratch` now takes shared `advice_columns` and `fixed_columns` pools [#306](https://github.com/midnightntwrk/midnight-zk/pull/306)
+* Optimize foreign Edwards MSM: windowed scalar multiplication and improved point addition [#305](https://github.com/midnightntwrk/midnight-zk/pull/305)
+* Refactoring static specs to handle more identity-related examples [#330](https://github.com/midnightntwrk/midnight-zk/pull/330)
+* Boxing assigned vectors to assign overflows [#331](https://github.com/midnightntwrk/midnight-zk/pull/331)
+* Variable length automata and substring checks [#332](https://github.com/midnightntwrk/midnight-zk/pull/332)
 
 ### Fixed
 * Fix `assign_without_subgroup_check` in Edwards chip to assert the point is on the curve [#298](https://github.com/midnightntwrk/midnight-zk/pull/298)

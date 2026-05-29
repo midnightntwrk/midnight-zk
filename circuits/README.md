@@ -44,12 +44,8 @@ For a higher-level abstraction that simplifies circuit development, see the [`mi
 
 ## Versioning
 
-We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html). To capture
-the changes that do not affect the API, do not add any new functionality, but
-are breaking changes, we increment the `MAJOR` version. This happens when the
-circuit is modified for performance or bug fixes; the modification of the
-verification keys break backwards compatibility.
+We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-* MAJOR: Incremented when you make incompatible API or VK changes
-* MINOR: Incremented when you add functionality in a backward-compatible manner
-* PATCH: Incremented when you make backward-compatible bug fixes
+* MAJOR: Incremented on incompatible API changes
+* MINOR: Incremented on backward-compatible API changes that may affect the VKs
+* PATCH: Incremented on minor changes and bug fixes that do not alter the VKs
