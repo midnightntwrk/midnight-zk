@@ -2277,7 +2277,7 @@
       "max_deg": "5",
       "permutations": "19",
       "point_sets": "5",
-      "rows": "15415",
+      "rows": "15414",
       "table_rows": "385"
     },
     "select": {
@@ -2543,7 +2543,7 @@
       "max_deg": "5",
       "permutations": "13",
       "point_sets": "5",
-      "rows": "47",
+      "rows": "46",
       "table_rows": "449"
     },
     "select": {
@@ -2809,7 +2809,7 @@
       "max_deg": "5",
       "permutations": "13",
       "point_sets": "5",
-      "rows": "63",
+      "rows": "62",
       "table_rows": "449"
     },
     "select": {
