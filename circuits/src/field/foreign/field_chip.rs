@@ -137,6 +137,22 @@ where
             .map(|chunk| bigint_to_fe::<F>(&bi_from_limbs(&base, chunk)))
             .collect()
     }
+
+    #[cfg(any(test, feature = "testing"))]
+    fn from_public_input(fields: &[F]) -> Option<K> {
+        let base = BI::from(2).pow(P::LOG2_BASE);
+        let nb_limbs_per_batch = (F::CAPACITY / P::LOG2_BASE) as usize;
+        let limbs: Vec<BI> = fields
+            .iter()
+            .flat_map(|f| {
+                let bi: BI = f.to_biguint().into();
+                bi_to_limbs(nb_limbs_per_batch as u32, &base, &bi)
+            })
+            .take(P::NB_LIMBS as usize)
+            .collect();
+        let element_as_bi = bi_from_limbs(&base, &limbs) + BI::one();
+        Some(bigint_to_fe::<K>(&element_as_bi))
+    }
 }
 
 impl<F, K, P> InnerValue for AssignedField<F, K, P>
@@ -1880,6 +1896,7 @@ mod tests {
     test!(assertions, test_assertions);
 
     test!(public_input, test_public_inputs);
+    test!(public_input, test_from_public_input);
 
     test!(equality, test_is_equal);
 

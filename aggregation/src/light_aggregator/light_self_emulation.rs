@@ -44,6 +44,11 @@ where
     fn as_public_input(p: &C) -> Vec<C::ScalarField> {
         <C as Hashable<LightPoseidonFS<C::ScalarField>>>::to_input(p)
     }
+
+    fn from_public_input(_fields: &[C::ScalarField]) -> Option<C> {
+        // as_public_input encodes via Poseidon hash — not invertible
+        unimplemented!()
+    }
 }
 
 impl<C: CircuitCurve> InnerValue for FakePoint<C> {

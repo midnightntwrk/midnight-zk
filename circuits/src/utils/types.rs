@@ -71,6 +71,11 @@ impl<F: CircuitField> Instantiable<F> for AssignedNative<F> {
     fn as_public_input(element: &F) -> Vec<F> {
         vec![*element]
     }
+
+    #[cfg(any(test, feature = "testing"))]
+    fn from_public_input(fields: &[F]) -> Option<F> {
+        fields.first().copied()
+    }
 }
 
 impl<F: CircuitField> InnerValue for AssignedNative<F> {

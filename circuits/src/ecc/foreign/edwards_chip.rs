@@ -363,6 +363,15 @@ where
         ]
         .concat()
     }
+
+    #[cfg(any(test, feature = "testing"))]
+    fn from_public_input(fields: &[F]) -> Option<C::CryptographicGroup> {
+        let nb_limbs_per_batch = (F::CAPACITY / B::LOG2_BASE) as usize;
+        let nb_pi_per_coord = (B::NB_LIMBS as usize).div_ceil(nb_limbs_per_batch);
+        let x = AssignedField::<F, C::Base, B>::from_public_input(&fields[..nb_pi_per_coord])?;
+        let y = AssignedField::<F, C::Base, B>::from_public_input(&fields[nb_pi_per_coord..])?;
+        C::from_xy(x, y).map(|p| p.into_subgroup())
+    }
 }
 
 impl<F, C, B> InnerValue for AssignedForeignEdwardsPoint<F, C, B>
@@ -1432,6 +1441,7 @@ mod tests {
     test!(assertions, test_assertions);
 
     test!(public_input, test_public_inputs);
+    test!(public_input, test_from_public_input);
 
     test!(equality, test_is_equal);
 

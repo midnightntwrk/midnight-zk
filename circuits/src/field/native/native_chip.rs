@@ -1092,6 +1092,15 @@ impl<F: CircuitField> Instantiable<F> for AssignedBit<F> {
     fn as_public_input(element: &bool) -> Vec<F> {
         vec![if *element { F::ONE } else { F::ZERO }]
     }
+
+    #[cfg(any(test, feature = "testing"))]
+    fn from_public_input(fields: &[F]) -> Option<bool> {
+        match fields.first() {
+            Some(&f) if f == F::ZERO => Some(false),
+            Some(&f) if f == F::ONE => Some(true),
+            _ => None,
+        }
+    }
 }
 
 /// This wrapper type on `AssignedNative<F>` is designed to enforce type safety
@@ -1731,6 +1740,7 @@ mod tests {
     test!(assertions, test_assertions);
 
     test!(public_input, test_public_inputs);
+    test!(public_input, test_from_public_input);
 
     test!(arithmetic, test_add);
     test!(arithmetic, test_sub);

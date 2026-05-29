@@ -95,6 +95,11 @@ impl<C: CircuitCurve> Instantiable<C::Base> for AssignedNativePoint<C> {
         let coordinates = point.coordinates().unwrap();
         vec![coordinates.0, coordinates.1]
     }
+
+    #[cfg(any(test, feature = "testing"))]
+    fn from_public_input(fields: &[C::Base]) -> Option<C::CryptographicGroup> {
+        C::from_xy(fields[0], fields[1]).map(|p| p.into_subgroup())
+    }
 }
 
 impl<C: EdwardsCurve> InnerConstants for AssignedNativePoint<C> {
@@ -133,6 +138,17 @@ impl<C: EdwardsCurve> Instantiable<C::Base> for AssignedScalarOfNativeCurve<C> {
             .chunks(nb_bits_per_batch)
             .map(C::Base::from_bits_le)
             .collect()
+    }
+
+    #[cfg(any(test, feature = "testing"))]
+    fn from_public_input(fields: &[C::Base]) -> Option<C::ScalarField> {
+        let nb_bits_per_batch = C::Base::NUM_BITS as usize - 1;
+        let bits: Vec<bool> = fields
+            .iter()
+            .flat_map(|f| f.to_bits_le(Some(nb_bits_per_batch)))
+            .take(C::NUM_BITS_SUBGROUP as usize)
+            .collect();
+        Some(C::ScalarField::from_bits_le(&bits))
     }
 }
 
@@ -1401,6 +1417,7 @@ mod tests {
     test!(assertions, test_assertions);
 
     test!(public_input, test_public_inputs);
+    test!(public_input, test_from_public_input);
 
     test!(equality, test_is_equal);
 
@@ -1427,6 +1444,11 @@ mod tests {
     test_scalar!(assertions, test_assertions, scalar_assertions);
 
     test_scalar!(public_input, test_public_inputs, scalar_public_inputs);
+    test_scalar!(
+        public_input,
+        test_from_public_input,
+        scalar_from_public_input
+    );
 
     test_scalar!(equality, test_is_equal, scalar_is_equal);
 

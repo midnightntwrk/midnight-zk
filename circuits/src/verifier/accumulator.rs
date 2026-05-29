@@ -242,6 +242,12 @@ impl<S: SelfEmulation> Instantiable<S::F> for AssignedAccumulator<S> {
         .flatten()
         .collect()
     }
+
+    #[cfg(any(test, feature = "testing"))]
+    fn from_public_input(_fields: &[S::F]) -> Option<Accumulator<S>> {
+        // as_public_input delegates to AssignedMsm which is not invertible
+        unimplemented!()
+    }
 }
 
 impl<S: SelfEmulation> AssignedAccumulator<S> {
