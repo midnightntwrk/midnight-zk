@@ -238,6 +238,7 @@ pub(crate) mod tests {
     where
         F: CircuitField + FromUniformBytes<64> + Ord,
         Assigned: Instantiable<F> + InnerConstants + Sampleable,
+        Assigned::Element: PartialEq + std::fmt::Debug,
         Chip: AssignmentInstructions<F, Assigned>
             + PublicInputInstructions<F, Assigned>
             + FromScratch<F>,
@@ -256,26 +257,7 @@ pub(crate) mod tests {
             run::<F, Assigned, Chip>(&x, Operation::Assign, true, cost_model, name);
             run::<F, Assigned, Chip>(&x, Operation::Constrain, false, cost_model, name);
             run::<F, Assigned, Chip>(&x, Operation::Assign, false, cost_model, name);
-        });
-    }
 
-    // `Chip` is unused here but kept so this function can be invoked uniformly
-    // via the shared `test!` macros that always pass `<F, Assigned, Chip>`.
-    #[allow(clippy::extra_unused_type_parameters)]
-    pub fn test_from_public_input<F, Assigned, Chip>(_name: &str)
-    where
-        F: CircuitField + FromUniformBytes<64> + Ord,
-        Assigned: Instantiable<F> + InnerConstants + Sampleable,
-        Assigned::Element: PartialEq + std::fmt::Debug,
-    {
-        let mut rng = ChaCha8Rng::seed_from_u64(0xc0ffee);
-        [
-            Assigned::sample_inner(&mut rng),
-            Assigned::inner_zero(),
-            Assigned::inner_one(),
-        ]
-        .into_iter()
-        .for_each(|x| {
             let encoded = Assigned::as_public_input(&x);
             let decoded = Assigned::from_public_input(&encoded)
                 .expect("from_public_input should decode a valid encoding");

@@ -74,7 +74,10 @@ impl<F: CircuitField> Instantiable<F> for AssignedNative<F> {
 
     #[cfg(any(test, feature = "testing"))]
     fn from_public_input(fields: &[F]) -> Option<F> {
-        fields.first().copied()
+        match fields {
+            [f] => Some(*f),
+            _ => None,
+        }
     }
 }
 

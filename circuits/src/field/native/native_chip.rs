@@ -1095,9 +1095,9 @@ impl<F: CircuitField> Instantiable<F> for AssignedBit<F> {
 
     #[cfg(any(test, feature = "testing"))]
     fn from_public_input(fields: &[F]) -> Option<bool> {
-        match fields.first() {
-            Some(&f) if f == F::ZERO => Some(false),
-            Some(&f) if f == F::ONE => Some(true),
+        match fields {
+            [f] if *f == F::ZERO => Some(false),
+            [f] if *f == F::ONE => Some(true),
             _ => None,
         }
     }
@@ -1740,7 +1740,6 @@ mod tests {
     test!(assertions, test_assertions);
 
     test!(public_input, test_public_inputs);
-    test!(public_input, test_from_public_input);
 
     test!(arithmetic, test_add);
     test!(arithmetic, test_sub);

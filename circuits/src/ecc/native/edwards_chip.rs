@@ -98,6 +98,9 @@ impl<C: CircuitCurve> Instantiable<C::Base> for AssignedNativePoint<C> {
 
     #[cfg(any(test, feature = "testing"))]
     fn from_public_input(fields: &[C::Base]) -> Option<C::CryptographicGroup> {
+        if fields.len() != 2 {
+            return None;
+        }
         C::from_xy(fields[0], fields[1]).map(|p| p.into_subgroup())
     }
 }
@@ -142,6 +145,10 @@ impl<C: EdwardsCurve> Instantiable<C::Base> for AssignedScalarOfNativeCurve<C> {
 
     #[cfg(any(test, feature = "testing"))]
     fn from_public_input(fields: &[C::Base]) -> Option<C::ScalarField> {
+        // A scalar needs at most two elements to be represented.
+        if fields.len() > 2 {
+            return None;
+        }
         let nb_bits_per_batch = C::Base::NUM_BITS as usize - 1;
         let bits: Vec<bool> = fields
             .iter()
@@ -1417,7 +1424,6 @@ mod tests {
     test!(assertions, test_assertions);
 
     test!(public_input, test_public_inputs);
-    test!(public_input, test_from_public_input);
 
     test!(equality, test_is_equal);
 
@@ -1444,11 +1450,6 @@ mod tests {
     test_scalar!(assertions, test_assertions, scalar_assertions);
 
     test_scalar!(public_input, test_public_inputs, scalar_public_inputs);
-    test_scalar!(
-        public_input,
-        test_from_public_input,
-        scalar_from_public_input
-    );
 
     test_scalar!(equality, test_is_equal, scalar_is_equal);
 

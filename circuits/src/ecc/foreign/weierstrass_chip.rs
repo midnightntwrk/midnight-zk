@@ -253,6 +253,9 @@ where
         }
         let nb_limbs_per_batch = (F::CAPACITY / B::LOG2_BASE) as usize;
         let nb_pi_per_coord = B::NB_LIMBS.div_ceil(nb_limbs_per_batch as u32) as usize;
+        if fields.len() != 2 * nb_pi_per_coord + 1 {
+            return None;
+        }
         let x = AssignedField::<F, C::Base, B>::from_public_input(&fields[..nb_pi_per_coord])?;
         let y = AssignedField::<F, C::Base, B>::from_public_input(
             &fields[nb_pi_per_coord..nb_pi_per_coord * 2],
@@ -2154,7 +2157,6 @@ mod tests {
     test!(assertions, test_assertions);
 
     test!(public_input, test_public_inputs);
-    test!(public_input, test_from_public_input);
 
     test!(equality, test_is_equal);
 

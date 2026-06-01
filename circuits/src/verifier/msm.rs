@@ -240,9 +240,7 @@ impl<S: SelfEmulation> Instantiable<S::F> for AssignedMsm<S> {
 
     #[cfg(any(test, feature = "testing"))]
     fn from_public_input(_fields: &[S::F]) -> Option<Msm<S>> {
-        // Not invertible: the flat encoding loses structural metadata (number of
-        // bases/scalars) and HashMap key ordering is non-deterministic
-        unimplemented!()
+        unimplemented!("not invertible: the flat encoding loses structural metadata.")
     }
 }
 

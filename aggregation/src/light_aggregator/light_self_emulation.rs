@@ -46,8 +46,7 @@ where
     }
 
     fn from_public_input(_fields: &[C::ScalarField]) -> Option<C> {
-        // as_public_input encodes via Poseidon hash — not invertible
-        unimplemented!()
+        unimplemented!("as_public_input encodes via Poseidon hash — not invertible")
     }
 }
 

@@ -142,6 +142,9 @@ where
     fn from_public_input(fields: &[F]) -> Option<K> {
         let base = BI::from(2).pow(P::LOG2_BASE);
         let nb_limbs_per_batch = (F::CAPACITY / P::LOG2_BASE) as usize;
+        if fields.len() != (P::NB_LIMBS as usize).div_ceil(nb_limbs_per_batch) {
+            return None;
+        }
         let limbs: Vec<BI> = fields
             .iter()
             .flat_map(|f| {
@@ -1896,7 +1899,6 @@ mod tests {
     test!(assertions, test_assertions);
 
     test!(public_input, test_public_inputs);
-    test!(public_input, test_from_public_input);
 
     test!(equality, test_is_equal);
 
