@@ -1320,7 +1320,7 @@ mod tests {
     use ff::Field;
     use midnight_curves::Fq;
     use rand_chacha::ChaCha20Rng;
-    use rand_core::{RngCore, SeedableRng};
+    use rand_core::SeedableRng;
 
     use super::*;
     use crate::{
@@ -1328,13 +1328,9 @@ mod tests {
         poly::{LagrangeCoeff, Polynomial, Rotation},
     };
 
-    fn rand_fq(rng: &mut ChaCha20Rng) -> Fq {
-        Fq::from(rng.next_u64()).double() + Fq::from(rng.next_u64())
-    }
-
     fn rand_poly(rng: &mut ChaCha20Rng, n: usize) -> Polynomial<Fq, LagrangeCoeff> {
         Polynomial {
-            values: (0..n).map(|_| rand_fq(rng)).collect(),
+            values: (0..n).map(|_| Fq::random(&mut *rng)).collect(),
             _marker: PhantomData,
         }
     }
@@ -1391,7 +1387,7 @@ mod tests {
     }
 
     /// Assert `FlatGraphEvaluator::{evaluate, evaluate_chunk}` agrees with the
-    /// ref_evalute for `graph` for several BATCH sizes.
+    /// ref_evaluate for `graph` for several BATCH sizes.
     fn check_graph(graph: &GraphEvaluator<Fq>, n: usize, seed: u64) {
         let mut rng = ChaCha20Rng::seed_from_u64(seed);
 
@@ -1403,13 +1399,13 @@ mod tests {
         let advice: Vec<_> = (0..3).map(|_| rand_poly(&mut rng, n)).collect();
         let instance: Vec<_> = (0..2).map(|_| rand_poly(&mut rng, n)).collect();
 
-        let prev: Vec<_> = (0..n).map(|_| rand_fq(&mut rng)).collect();
+        let prev: Vec<_> = (0..n).map(|_| Fq::random(&mut rng)).collect();
 
         let (beta, theta, tc, y) = (
-            rand_fq(&mut rng),
-            rand_fq(&mut rng),
-            rand_fq(&mut rng),
-            rand_fq(&mut rng),
+            Fq::random(&mut rng),
+            Fq::random(&mut rng),
+            Fq::random(&mut rng),
+            Fq::random(&mut rng),
         );
 
         let flat = graph.flatten();
@@ -1524,7 +1520,7 @@ mod tests {
         // Constant as a Calculation operand.
         let with_const = g.add_calculation(Calculation::Add(neg, ValueSource::Constant(2)));
 
-        // Horner caluclation to compute linear combination on challenge Y of previous
+        // Horner calculation to compute linear combination on challenge Y of previous
         // calculations.
         g.add_calculation(Calculation::Horner(
             ValueSource::PreviousValue(),
