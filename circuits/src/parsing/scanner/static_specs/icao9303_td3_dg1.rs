@@ -64,7 +64,7 @@ pub(super) fn spec_icao9303_td3_dg1() -> Regex {
         Regex::uppercase_letter().output(&|_| Some(6)).repeat(3),
         date(7),
         Regex::digit(), // No-output checksum.
-        Regex::byte_from([b'<', b'M', b'F']).output(&|_| Some(8)),
+        Regex::byte_from(*b"<MF").output(&|_| Some(8)),
         date(9),
         Regex::digit(), // No-output checksum.
         any.repeat(14).output(&|_| Some(10)),

@@ -331,10 +331,7 @@ where
 
             // Assert all range-checks
             Ok((
-                z_range_checks
-                    .into_iter()
-                    .chain([u_range_check].into_iter())
-                    .chain(vs_range_checks.into_iter()),
+                z_range_checks.into_iter().chain([u_range_check]).chain(vs_range_checks),
                 z_cells,
             ))
         },

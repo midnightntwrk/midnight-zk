@@ -216,7 +216,7 @@ pub(crate) fn expr_pow2_ip<F: CircuitField, const N: usize>(
     terms: [&Expression<F>; N],
 ) -> Expression<F> {
     let mut expr = Expression::Constant(F::ZERO);
-    for (pow, term) in exponents.into_iter().zip(terms.into_iter()) {
+    for (pow, term) in exponents.into_iter().zip(terms) {
         expr = expr + Expression::Constant(u128_to_fe(1 << pow)) * term.clone();
     }
     expr
