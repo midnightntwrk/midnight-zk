@@ -968,6 +968,25 @@ impl<C: EdwardsCurve> EccChip<C> {
         }
         Ok(AssignedScalarOfNativeCurve(bits))
     }
+
+    /// Creates an assigned Jubjub scalar from an integer represented as a
+    /// sequence of little-endian bytes.
+    ///
+    /// # Unsatisfiable
+    ///
+    /// The circuit becomes unsatisfiable if bytes represent an integer larger
+    /// than 2^252.
+    pub fn scalar_from_reduced_le_bytes(
+        &self,
+        layouter: &mut impl Layouter<C::Base>,
+        bytes: &[AssignedByte<C::Base>],
+    ) -> Result<AssignedScalarOfNativeCurve<C>, Error> {
+        let s = self.scalar_from_le_bytes(layouter, bytes)?;
+        for b in s.0[252..].iter() {
+            self.native_gadget.assert_equal_to_fixed(layouter, b, false)?;
+        }
+        Ok(AssignedScalarOfNativeCurve(s.0[..252].to_vec()))
+    }
 }
 
 /// This conversion should not exist for Base -> Scalar. It is a tech debt. We
