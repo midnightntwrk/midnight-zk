@@ -13,6 +13,11 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Removed
 
+## [7.2.0]
+### Added
+* `Instantiable::from_public_input`: inverse of `as_public_input` for decoding values from their public input representation [#408](https://github.com/midnightntwrk/midnight-zk/pull/408)
+* Expose `to_biguint`, `to_canonical_biguint` and `from_biguint` in native Edwards chip [#408](https://github.com/midnightntwrk/midnight-zk/pull/408)
+
 ## [7.1.0]
 ### Changed
 * Modify `is_identity` flag encoding in Weierstrass chip: append as a dedicated public input element instead of packing into the first limb [#398](https://github.com/midnightntwrk/midnight-zk/pull/398)

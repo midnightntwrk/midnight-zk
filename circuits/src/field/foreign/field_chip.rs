@@ -137,6 +137,27 @@ where
             .map(|chunk| bigint_to_fe::<F>(&bi_from_limbs(&base, chunk)))
             .collect()
     }
+
+    fn from_public_input(fields: &[F]) -> Option<K> {
+        let base = BI::from(2).pow(P::LOG2_BASE);
+        let nb_limbs_per_batch = (F::CAPACITY / P::LOG2_BASE) as usize;
+        if fields.len() != (P::NB_LIMBS as usize).div_ceil(nb_limbs_per_batch) {
+            return None;
+        }
+        let limbs: Vec<BI> = fields
+            .iter()
+            .flat_map(|f| {
+                let bi: BI = f.to_biguint().into();
+                bi_to_limbs(nb_limbs_per_batch as u32, &base, &bi)
+            })
+            .collect();
+        let (head, tail) = limbs.split_at(P::NB_LIMBS as usize);
+        if tail.iter().any(|l| !l.is_zero()) {
+            return None;
+        }
+        let element_as_bi = bi_from_limbs(&base, head) + BI::one();
+        Some(bigint_to_fe::<K>(&element_as_bi))
+    }
 }
 
 impl<F, K, P> InnerValue for AssignedField<F, K, P>

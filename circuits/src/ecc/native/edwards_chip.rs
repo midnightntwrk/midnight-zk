@@ -95,6 +95,13 @@ impl<C: CircuitCurve> Instantiable<C::Base> for AssignedNativePoint<C> {
         let coordinates = point.coordinates().unwrap();
         vec![coordinates.0, coordinates.1]
     }
+
+    fn from_public_input(fields: &[C::Base]) -> Option<C::CryptographicGroup> {
+        if fields.len() != 2 {
+            return None;
+        }
+        C::from_xy(fields[0], fields[1]).map(|p| p.into_subgroup())
+    }
 }
 
 impl<C: EdwardsCurve> InnerConstants for AssignedNativePoint<C> {
@@ -134,6 +141,20 @@ impl<C: EdwardsCurve> Instantiable<C::Base> for AssignedScalarOfNativeCurve<C> {
             .map(C::Base::from_bits_le)
             .collect()
     }
+
+    fn from_public_input(fields: &[C::Base]) -> Option<C::ScalarField> {
+        // A scalar needs at most two elements to be represented.
+        if fields.len() > 2 {
+            return None;
+        }
+        let nb_bits_per_batch = C::Base::NUM_BITS as usize - 1;
+        let bits: Vec<bool> = fields
+            .iter()
+            .flat_map(|f| f.to_bits_le(Some(nb_bits_per_batch)))
+            .take(C::NUM_BITS_SUBGROUP as usize)
+            .collect();
+        Some(C::ScalarField::from_bits_le(&bits))
+    }
 }
 
 impl<C: EdwardsCurve> InnerConstants for AssignedScalarOfNativeCurve<C> {
@@ -171,10 +192,10 @@ fn reduce_biguint_mod_scalar_order<C: CircuitCurve>(
 }
 
 impl<C: CircuitCurve> AssignedScalarOfNativeCurve<C> {
-    /// Converts the scalar's bits into an [`AssignedBigUint`].
+    /// Converts the scalar into an [`AssignedBigUint`].
     /// The result is not guaranteed to be in canonical form (i.e. it may
     /// represent a value greater than or equal to the scalar field order).
-    fn to_biguint(
+    pub fn to_biguint(
         &self,
         layouter: &mut impl Layouter<C::Base>,
         biguint_gadget: &BigUintGadget<C::Base, NG<C::Base>>,
@@ -182,9 +203,9 @@ impl<C: CircuitCurve> AssignedScalarOfNativeCurve<C> {
         biguint_gadget.from_le_bits(layouter, &self.bits)
     }
 
-    /// Converts the scalar's bits into an [`AssignedBigUint`].
+    /// Converts the scalar into an [`AssignedBigUint`].
     /// The result is guaranteed to be in canonical form.
-    fn to_canonical_biguint(
+    pub fn to_canonical_biguint(
         &self,
         layouter: &mut impl Layouter<C::Base>,
         biguint_gadget: &BigUintGadget<C::Base, NG<C::Base>>,
@@ -199,7 +220,7 @@ impl<C: CircuitCurve> AssignedScalarOfNativeCurve<C> {
     /// Constructs an [`AssignedScalarOfNativeCurve`] from an
     /// [`AssignedBigUint`]. The result is not guaranteed to be canonical but is
     /// guaranteed to have at most `C::ScalarField::NUM_BITS` bits.
-    fn from_biguint(
+    pub fn from_biguint(
         layouter: &mut impl Layouter<C::Base>,
         biguint_gadget: &BigUintGadget<C::Base, NG<C::Base>>,
         s: &AssignedBigUint<C::Base>,

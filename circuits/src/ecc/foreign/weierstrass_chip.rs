@@ -245,6 +245,22 @@ where
 
         pis
     }
+
+    fn from_public_input(fields: &[F]) -> Option<C::CryptographicGroup> {
+        if *fields.last()? == F::ONE {
+            return Some(C::CryptographicGroup::identity());
+        }
+        let nb_limbs_per_batch = (F::CAPACITY / B::LOG2_BASE) as usize;
+        let nb_pi_per_coord = B::NB_LIMBS.div_ceil(nb_limbs_per_batch as u32) as usize;
+        if fields.len() != 2 * nb_pi_per_coord + 1 {
+            return None;
+        }
+        let x = AssignedField::<F, C::Base, B>::from_public_input(&fields[..nb_pi_per_coord])?;
+        let y = AssignedField::<F, C::Base, B>::from_public_input(
+            &fields[nb_pi_per_coord..nb_pi_per_coord * 2],
+        )?;
+        C::from_xy(x, y).map(|p| p.into_subgroup())
+    }
 }
 
 impl<F, C, B> InnerValue for AssignedForeignPoint<F, C, B>
