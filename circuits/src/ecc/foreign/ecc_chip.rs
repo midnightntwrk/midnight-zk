@@ -206,12 +206,12 @@ where
     fn from_public_input(fields: &[F]) -> Option<C::CryptographicGroup> {
         let n = B::NB_LIMBS as usize;
 
-        if fe_to_le_bits(fields.first()?, Some(n + 1))[n] {
-            return Some(C::CryptographicGroup::identity());
-        }
-
         if fields.len() != 2 * n {
             return None;
+        }
+
+        if fe_to_le_bits(fields.first()?, Some(n + 1))[n] {
+            return Some(C::CryptographicGroup::identity());
         }
 
         let x = AssignedField::<F, C::Base, B>::from_public_input(&fields[..n])?;
