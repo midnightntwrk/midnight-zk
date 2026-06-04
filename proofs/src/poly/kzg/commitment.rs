@@ -83,14 +83,16 @@ where
 }
 
 impl<E: MultiMillerLoop> Labelable for KZGCommitment<E> {
+    /// Adds a label to the KZG commitment.
+    ///
+    /// # Panics
+    ///
+    /// If the commitment is not `Simple` or if it was already labeled.
     fn label(self, label: PolynomialLabel) -> Self {
         match self {
-            Self::Simple(p, _) => Self::Simple(p, label),
-            Self::Linear(points, scalars, labels) => Self::Linear(
-                points,
-                scalars,
-                labels.into_iter().map(|_| label.clone()).collect(),
-            ),
+            Self::Simple(p, PolynomialLabel::NoLabel) => Self::Simple(p, label),
+            Self::Simple(_, existing) => panic!("commitment is already labeled: {existing:?}"),
+            Self::Linear(_, _, _) => panic!("KZGCommitment::Linear cannot be labeled"),
         }
     }
 }

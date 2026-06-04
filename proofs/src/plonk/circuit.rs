@@ -18,7 +18,7 @@ use crate::{
     dev::metadata,
     plonk::trash::Argument,
     poly::Rotation,
-    utils::{helpers::ordinal, rational::Rational},
+    utils::rational::Rational,
 };
 
 /// A column type
@@ -1811,7 +1811,7 @@ impl<F: Field> ConstraintSystem<F> {
 
         // Append the ordinal to guarantee uniqueness even when the caller supplies
         // the same name twice (e.g. the same chip configured more than once).
-        let name = format!("{} lookup: {}", ordinal(index + 1), name.as_ref());
+        let name = format!("lookup #{}: {}", index + 1, name.as_ref());
 
         self.lookups.push(logup::BatchedArgument::new(&name, selector, table_map));
 
@@ -2405,7 +2405,7 @@ impl<'a, F: Field> VirtualCells<'a, F> {
                 // Append the ordinal to guarantee uniqueness even when the caller supplies
                 // the same name twice (e.g. the same chip configured more than once).
                 let index = self.meta.trashcans.len();
-                let name = format!("{} trash: {}", ordinal(index + 1), names.join("&"));
+                let name = format!("trash #{}: {}", index + 1, names.join("&"));
                 (self.meta.trashcans).push(Argument::new(name, q, polys));
 
                 vec![]

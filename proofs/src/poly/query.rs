@@ -59,7 +59,7 @@ impl fmt::Display for PolynomialLabel {
             Self::Quotient => f.write_str("quotient"),
             Self::QuotientPiece(i) => write!(f, "quotient_piece_{i}"),
             Self::Collapsed => f.write_str("collapsed"),
-            Self::Custom(s) => f.write_str(s),
+            Self::Custom(s) => write!(f, "custom({s})"),
             Self::NoLabel => f.write_str("no_label"),
         }
     }

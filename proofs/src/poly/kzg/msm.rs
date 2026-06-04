@@ -85,20 +85,14 @@ where
     ///
     /// # Panics (in debug mode)
     ///
-    /// If any term carries a label other than `Collapsed`, `Advice`, or
-    /// `Instance`.
-    //
-    // We only allow `Collapsed`, `Advice`, and `Instance` because these label types
-    // are not relevant for the `verifier_gadget` in `midnight-circuits`. Other
-    // label types may carry information that we do not want to silently lose
-    // when collapsing.
+    /// If a term carries a `Fixed` or `PermutationFixed` label.
+    //  This is because these "fixed" labels carry information that we do not want
+    //  to lose when collapsing, since it is relevant for the `verifier_gadget`.
     pub fn collapse(&mut self) {
         debug_assert!(
-            self.labels.iter().all(|l| matches!(
+            !self.labels.iter().any(|l| matches!(
                 l,
-                PolynomialLabel::Collapsed
-                    | PolynomialLabel::Advice(_)
-                    | PolynomialLabel::Instance(_)
+                PolynomialLabel::Fixed(_) | PolynomialLabel::PermutationFixed(_)
             )),
             "collapse: all labels must be Collapsed, Advice or Instance, found: {:?}",
             self.labels,

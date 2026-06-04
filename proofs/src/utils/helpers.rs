@@ -111,19 +111,6 @@ where
     }
 }
 
-/// Returns the English ordinal string for `n` (e.g. "1st", "2nd", "3rd",
-/// "4th").
-pub fn ordinal(n: usize) -> String {
-    let suffix = match (n % 100, n % 10) {
-        (11..=13, _) => "th",
-        (_, 1) => "st",
-        (_, 2) => "nd",
-        (_, 3) => "rd",
-        _ => "th",
-    };
-    format!("{n}{suffix}")
-}
-
 /// Convert a slice of `bool` into a `u8`.
 ///
 /// Panics if the slice has length greater than 8.

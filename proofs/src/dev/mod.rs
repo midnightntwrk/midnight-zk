@@ -1646,7 +1646,7 @@ mod tests {
         assert_eq!(
             prover.verify(),
             Err(vec![VerifyFailure::Lookup {
-                name: "1st lookup: test_lookup".to_string(),
+                name: "lookup #1: test_lookup".to_string(),
                 lookup_index: 0,
                 parallel_lookup_index: 0,
                 location: FailureLocation::InRegion {
@@ -1781,7 +1781,7 @@ mod tests {
         assert_eq!(
             prover.verify(),
             Err(vec![VerifyFailure::Lookup {
-                name: "1st lookup: test_lookup".to_string(),
+                name: "lookup #1: test_lookup".to_string(),
                 lookup_index: 0,
                 parallel_lookup_index: 0,
                 location: FailureLocation::InRegion {

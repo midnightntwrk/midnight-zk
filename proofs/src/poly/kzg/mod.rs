@@ -210,7 +210,11 @@ where
             poly_inner_product(&f_polys, powers(x2))
         };
 
-        let f_com = Self::commit(params, &f_poly, PolynomialLabel::Custom("kzg_batch".into()));
+        let f_com = Self::commit(
+            params,
+            &f_poly,
+            PolynomialLabel::Custom("multi_open_batch".into()),
+        );
         transcript.write(&f_com).map_err(|_| Error::OpeningError)?;
 
         let x3: E::Fr = transcript.squeeze_challenge();
