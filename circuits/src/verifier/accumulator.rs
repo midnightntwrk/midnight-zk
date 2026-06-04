@@ -243,7 +243,6 @@ impl<S: SelfEmulation> Instantiable<S::F> for AssignedAccumulator<S> {
         .collect()
     }
 
-    #[cfg(any(test, feature = "testing"))]
     fn from_public_input(_fields: &[S::F]) -> Option<Accumulator<S>> {
         unimplemented!("Size of inner MSMs cannot be known from public input format.")
     }

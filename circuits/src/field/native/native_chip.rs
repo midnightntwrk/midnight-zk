@@ -1049,7 +1049,6 @@ impl<F: CircuitField> Instantiable<F> for AssignedBit<F> {
         vec![if *element { F::ONE } else { F::ZERO }]
     }
 
-    #[cfg(any(test, feature = "testing"))]
     fn from_public_input(fields: &[F]) -> Option<bool> {
         match fields {
             [f] if *f == F::ZERO => Some(false),
