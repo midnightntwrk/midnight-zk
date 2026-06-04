@@ -129,15 +129,15 @@ jobs:
           package: midnight-proofs
           args: --release
 
-  test-aggregation:
+  test-aggregator:
     if: github.event.pull_request.draft == false
-    name: Test Aggregation
+    name: Test Aggregator
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
       - uses: ./.github/actions/cargo-test
         with:
-          package: midnight-aggregation
+          package: midnight-aggregator
           args: --release --all-features
 
   doc-links:
@@ -188,6 +188,6 @@ jobs:
         if: always()
         run: cargo clippy --all-targets --all-features -- -Dwarnings
 
-      - name: Run Clippy on `aggregation`
+      - name: Run Clippy on `aggregator`
         if: always()
-        run: cargo clippy -p midnight-aggregation --all-targets --all-features -- -Dwarnings
+        run: cargo clippy -p midnight-aggregator --all-targets --all-features -- -Dwarnings
