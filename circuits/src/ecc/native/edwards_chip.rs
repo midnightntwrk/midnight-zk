@@ -146,7 +146,7 @@ impl<C: EdwardsCurve> Instantiable<C::Base> for AssignedScalarOfNativeCurve<C> {
             return None;
         }
 
-        Some(le_bits_to_field_elem(&head))
+        Some(le_bits_to_field_elem(head))
     }
 }
 
