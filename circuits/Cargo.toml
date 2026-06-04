@@ -1,6 +1,6 @@
 [package]
 name = "midnight-circuits"
-version = "6.1.0"
+version = "6.2.0"
 edition = "2021"
 license-file.workspace = true
 description = "Circuit and gadget implementations for Midnight zero-knowledge proofs"
@@ -44,9 +44,7 @@ sha3 = "0.10.0"
 blake2 = "0.10.6"
 
 [target.'cfg(ci_build)'.dependencies]
-midnight-curves = { version = "0.2.0", features = [
-    "portable",
-] }
+midnight-curves = { version = "0.2.0", features = ["portable"] }
 
 [features]
 default = []

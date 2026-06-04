@@ -17,6 +17,10 @@ verification keys break backwards compatibility.
 
 ### Removed
 
+## [1.2.0]
+### Added
+* `Instantiable::from_public_input`: inverse of `as_public_input` for decoding values from their public input representation [#407](https://github.com/midnightntwrk/midnight-zk/pull/407)
+
 ## [1.1.0]
 ### Changed
 * Update `prove` to accept `impl RngCore + CryptoRng` by value [#307](https://github.com/midnightntwrk/midnight-zk/pull/307)

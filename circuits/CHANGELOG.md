@@ -17,6 +17,11 @@ verification keys break backwards compatibility.
 
 ### Removed
 
+## [6.2.0]
+### Added
+* `EccChip::scalar_from_reduced_le_bytes`: convert little-endian bytes to a scalar bounded to `NUM_BITS_SUBGROUP` bits [#407](https://github.com/midnightntwrk/midnight-zk/pull/407)
+* `Instantiable::from_public_input`: inverse of `as_public_input` for decoding values from their public input representation [#407](https://github.com/midnightntwrk/midnight-zk/pull/407)
+
 ## [6.1.0]
 ### Changed
 * `ForeignEccChip::new` samples the windowed-MSM blinding point at construction time [#307](https://github.com/midnightntwrk/midnight-zk/pull/307)
