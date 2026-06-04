@@ -13,6 +13,10 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Removed
 
+## [2.3.0]
+### Added
+* `Instantiable::from_public_input`: inverse of `as_public_input` for decoding values from their public input representation [#408](https://github.com/midnightntwrk/midnight-zk/pull/408)
+
 ## [2.2.0]
 ### Changed
 * Update verification keys following Weierstrass chip public input update [#398](https://github.com/midnightntwrk/midnight-zk/pull/398)
