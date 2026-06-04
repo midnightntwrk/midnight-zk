@@ -133,6 +133,18 @@ where
             .map(|x| bigint_to_fe::<F>(x))
             .collect()
     }
+
+    fn from_public_input(fields: &[F]) -> Option<K> {
+        let base = BI::from(2).pow(P::LOG2_BASE);
+
+        if fields.len() != P::NB_LIMBS as usize {
+            return None;
+        }
+
+        let limbs_as_bi = fields.iter().map(|f| fe_to_bigint(f)).collect::<Vec<_>>();
+        let element_as_bi = bi_from_limbs(&base, &limbs_as_bi) + BI::one();
+        Some(bigint_to_fe::<K>(&element_as_bi))
+    }
 }
 
 impl<F, K, P> InnerValue for AssignedField<F, K, P>

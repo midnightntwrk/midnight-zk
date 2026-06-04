@@ -202,6 +202,22 @@ where
 
         pis
     }
+
+    fn from_public_input(fields: &[F]) -> Option<C::CryptographicGroup> {
+        let n = B::NB_LIMBS as usize;
+
+        if fe_to_le_bits(fields.first()?, Some(n + 1))[n] {
+            return Some(C::CryptographicGroup::identity());
+        }
+
+        if fields.len() != 2 * n {
+            return None;
+        }
+
+        let x = AssignedField::<F, C::Base, B>::from_public_input(&fields[..n])?;
+        let y = AssignedField::<F, C::Base, B>::from_public_input(&fields[n..])?;
+        C::from_xy(x, y).map(|p| p.into_subgroup())
+    }
 }
 
 impl<F, C, B> InnerValue for AssignedForeignPoint<F, C, B>

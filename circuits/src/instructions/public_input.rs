@@ -109,7 +109,7 @@ pub(crate) mod tests {
     use crate::{
         instructions::AssignmentInstructions,
         testing_utils::{FromScratch, Sampleable},
-        types::{InnerConstants, InnerValue},
+        types::{InnerConstants, InnerValue, Instantiable},
         utils::circuit_modeling::circuit_to_json,
     };
 
@@ -230,6 +230,7 @@ pub(crate) mod tests {
     where
         F: PrimeField + FromUniformBytes<64> + Ord,
         Assigned: Instantiable<F> + InnerConstants + Sampleable,
+        Assigned::Element: PartialEq + std::fmt::Debug,
         Chip: AssignmentInstructions<F, Assigned>
             + PublicInputInstructions<F, Assigned>
             + FromScratch<F>,
@@ -248,6 +249,11 @@ pub(crate) mod tests {
             run::<F, Assigned, Chip>(&x, Operation::Assign, true, cost_model, name);
             run::<F, Assigned, Chip>(&x, Operation::Constrain, false, cost_model, name);
             run::<F, Assigned, Chip>(&x, Operation::Assign, false, cost_model, name);
+
+            let encoded = Assigned::as_public_input(&x);
+            let decoded = Assigned::from_public_input(&encoded)
+                .expect("from_public_input should decode a valid encoding");
+            assert_eq!(decoded, x);
         });
     }
 }
