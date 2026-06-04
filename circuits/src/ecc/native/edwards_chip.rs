@@ -192,10 +192,10 @@ fn reduce_biguint_mod_scalar_order<C: CircuitCurve>(
 }
 
 impl<C: CircuitCurve> AssignedScalarOfNativeCurve<C> {
-    /// Converts the scalar's bits into an [`AssignedBigUint`].
+    /// Converts the scalar into an [`AssignedBigUint`].
     /// The result is not guaranteed to be in canonical form (i.e. it may
     /// represent a value greater than or equal to the scalar field order).
-    fn to_biguint(
+    pub fn to_biguint(
         &self,
         layouter: &mut impl Layouter<C::Base>,
         biguint_gadget: &BigUintGadget<C::Base, NG<C::Base>>,
@@ -203,9 +203,9 @@ impl<C: CircuitCurve> AssignedScalarOfNativeCurve<C> {
         biguint_gadget.from_le_bits(layouter, &self.bits)
     }
 
-    /// Converts the scalar's bits into an [`AssignedBigUint`].
+    /// Converts the scalar into an [`AssignedBigUint`].
     /// The result is guaranteed to be in canonical form.
-    fn to_canonical_biguint(
+    pub fn to_canonical_biguint(
         &self,
         layouter: &mut impl Layouter<C::Base>,
         biguint_gadget: &BigUintGadget<C::Base, NG<C::Base>>,
@@ -220,7 +220,7 @@ impl<C: CircuitCurve> AssignedScalarOfNativeCurve<C> {
     /// Constructs an [`AssignedScalarOfNativeCurve`] from an
     /// [`AssignedBigUint`]. The result is not guaranteed to be canonical but is
     /// guaranteed to have at most `C::ScalarField::NUM_BITS` bits.
-    fn from_biguint(
+    pub fn from_biguint(
         layouter: &mut impl Layouter<C::Base>,
         biguint_gadget: &BigUintGadget<C::Base, NG<C::Base>>,
         s: &AssignedBigUint<C::Base>,
