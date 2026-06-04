@@ -142,7 +142,7 @@ impl<C: EdwardsCurve> Instantiable<C::Base> for AssignedScalarOfNativeCurve<C> {
             fields.iter().flat_map(|f| fe_to_le_bits(f, Some(nb_bits_per_batch))).collect();
 
         let (head, tail) = bits.split_at(C::NUM_BITS_SUBGROUP as usize);
-        if tail.into_iter().any(|b| b) {
+        if tail.iter().any(|b| *b) {
             return None;
         }
 
