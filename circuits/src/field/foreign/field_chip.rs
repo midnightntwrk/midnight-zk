@@ -151,9 +151,12 @@ where
                 let bi: BI = f.to_biguint().into();
                 bi_to_limbs(nb_limbs_per_batch as u32, &base, &bi)
             })
-            .take(P::NB_LIMBS as usize)
             .collect();
-        let element_as_bi = bi_from_limbs(&base, &limbs) + BI::one();
+        let (head, tail) = limbs.split_at(P::NB_LIMBS as usize);
+        if tail.iter().any(|l| !l.is_zero()) {
+            return None;
+        }
+        let element_as_bi = bi_from_limbs(&base, head) + BI::one();
         Some(bigint_to_fe::<K>(&element_as_bi))
     }
 }
