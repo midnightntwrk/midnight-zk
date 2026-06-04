@@ -88,12 +88,12 @@ macro_rules! curve_testing_suite {
 
                 let a = $c::identity();
                 let a = a.double();
-                assert!(bool::from(c.is_on_curve()));
+                assert!(bool::from(a.is_on_curve()));
                 assert!(bool::from(a.is_identity()));
 
                 let a = $c::generator();
                 let a = a.double();
-                assert!(bool::from(c.is_on_curve()));
+                assert!(bool::from(a.is_on_curve()));
                 assert_eq!(a, $c::generator() + $c::generator());
 
                 let a = $c::random(OsRng);
@@ -260,10 +260,10 @@ macro_rules! curve_testing_suite {
                     let affine_repr = affine_point.to_bytes();
 
                     let projective_point_rec = $c::from_bytes(&projective_repr).unwrap();
-                    let projective_point_rec_unchecked = $c::from_bytes(&projective_repr).unwrap();
+                    let projective_point_rec_unchecked = $c::from_bytes_unchecked(&projective_repr).unwrap();
 
                     let affine_point_rec = <$c as CurveExt>::AffineExt::from_bytes(&affine_repr).unwrap();
-                    let affine_point_rec_unchecked = <$c as CurveExt>::AffineExt::from_bytes(&affine_repr).unwrap();
+                    let affine_point_rec_unchecked = <$c as CurveExt>::AffineExt::from_bytes_unchecked(&affine_repr).unwrap();
 
                     assert_eq!(projective_point, projective_point_rec);
                     assert_eq!(projective_point, projective_point_rec_unchecked);
@@ -273,7 +273,7 @@ macro_rules! curve_testing_suite {
                     // Uncompressed format
                     let affine_repr = affine_point.to_uncompressed();
 
-                    let affine_point_rec = <$c as CurveExt>::AffineExt::from_uncompressed_unchecked(&affine_repr).unwrap();
+                    let affine_point_rec = <$c as CurveExt>::AffineExt::from_uncompressed(&affine_repr).unwrap();
                     let affine_point_rec_unchecked = <$c as CurveExt>::AffineExt::from_uncompressed_unchecked(&affine_repr).unwrap();
 
                     assert_eq!(affine_point, affine_point_rec);
