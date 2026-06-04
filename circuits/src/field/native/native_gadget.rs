@@ -104,6 +104,12 @@ impl<F: CircuitField> Instantiable<F> for AssignedByte<F> {
     fn as_public_input(element: &u8) -> Vec<F> {
         vec![F::from(*element as u64)]
     }
+
+    #[cfg(any(test, feature = "testing"))]
+    fn from_public_input(fields: &[F]) -> Option<u8> {
+        let [f] = fields else { return None };
+        u8::try_from(f.to_biguint()).ok()
+    }
 }
 
 /// This wrapper type on `AssignedNative<F>` is designed to enforce type safety

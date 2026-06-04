@@ -98,6 +98,11 @@ impl<S: SelfEmulation> Instantiable<S::F> for AssignedVk<S> {
     fn as_public_input(vk: &VerifyingKey<S>) -> Vec<S::F> {
         AssignedNative::<S::F>::as_public_input(&vk.transcript_repr())
     }
+
+    #[cfg(any(test, feature = "testing"))]
+    fn from_public_input(_fields: &[S::F]) -> Option<VerifyingKey<S>> {
+        unimplemented!("as_public_input encodes the VK as its transcript_repr() — not invertible")
+    }
 }
 
 /// Canonical name for the i-th verifying-key fixed commitment.
