@@ -20,7 +20,7 @@ use midnight_proofs::{
     circuit::Value,
     plonk,
     plonk::ConstraintSystem,
-    poly::{kzg::KZGCommitmentScheme, EvaluationDomain},
+    poly::{kzg::KZGCommitmentScheme, EvaluationDomain, PolynomialLabel},
 };
 
 use crate::{
@@ -42,6 +42,20 @@ mod utils;
 mod verifier_gadget;
 
 pub use accumulator::{Accumulator, AssignedAccumulator};
+
+/// An in-circuit commitment point tagged with its polynomial label.
+#[derive(Clone, Debug)]
+pub(crate) struct LabeledPoint<S: SelfEmulation> {
+    pub(crate) point: S::AssignedPoint,
+    #[allow(dead_code)]
+    pub(crate) label: PolynomialLabel,
+}
+
+impl<S: SelfEmulation> LabeledPoint<S> {
+    pub(crate) fn new(point: S::AssignedPoint, label: PolynomialLabel) -> Self {
+        Self { point, label }
+    }
+}
 pub use msm::{AssignedMsm, Msm};
 #[cfg(feature = "dev-curves")]
 pub use types::BnEmulation;

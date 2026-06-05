@@ -16,13 +16,13 @@
 //!
 //! The "expressions" part is dealt with in our `expressions/` directory.
 
-use midnight_proofs::{circuit::Layouter, plonk::Error};
+use midnight_proofs::{circuit::Layouter, plonk::Error, poly::PolynomialLabel};
 
 use crate::{
     field::AssignedNative,
     verifier::{
         kzg::VerifierQuery, transcript_gadget::TranscriptGadget, utils::AssignedBoundedScalar,
-        SelfEmulation,
+        LabeledPoint, SelfEmulation,
     },
 };
 
@@ -33,7 +33,7 @@ pub(crate) struct TrashEvaluated<S: SelfEmulation> {
 
 #[derive(Clone, Debug)]
 pub(crate) struct Committed<S: SelfEmulation> {
-    trash_commitment: S::AssignedPoint,
+    trash_commitment: LabeledPoint<S>,
 }
 
 #[derive(Clone, Debug)]
@@ -43,11 +43,14 @@ pub(crate) struct Evaluated<S: SelfEmulation> {
 }
 
 pub(crate) fn read_committed<S: SelfEmulation>(
+    name: &str,
     layouter: &mut impl Layouter<S::F>,
     transcript_gadget: &mut TranscriptGadget<S>,
 ) -> Result<Committed<S>, Error> {
-    let trash_commitment = transcript_gadget.read_point(layouter)?;
-
+    let trash_commitment = LabeledPoint::new(
+        transcript_gadget.read_point(layouter)?,
+        PolynomialLabel::Trash(name.to_owned()),
+    );
     Ok(Committed { trash_commitment })
 }
 
@@ -77,7 +80,7 @@ impl<S: SelfEmulation> Evaluated<S> {
         vec![VerifierQuery::new(
             one,
             x,
-            &self.committed.trash_commitment,
+            &self.committed.trash_commitment.point,
             &self.evaluated.trash_eval,
         )]
     }

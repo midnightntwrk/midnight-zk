@@ -1516,7 +1516,7 @@ mod tests {
                 meta.annotate_lookup_any_column(advice_table, || "Adv-Table");
                 meta.enable_equality(advice_table);
 
-                meta.lookup_any("lookup", None, |cells| {
+                meta.lookup_any("test_lookup", None, |cells| {
                     let a = cells.query_advice(a, Rotation::cur());
                     let q = cells.query_selector(q);
                     let advice_table = cells.query_advice(advice_table, Rotation::cur());
@@ -1646,7 +1646,7 @@ mod tests {
         assert_eq!(
             prover.verify(),
             Err(vec![VerifyFailure::Lookup {
-                name: "lookup".to_string(),
+                name: "lookup #1: test_lookup".to_string(),
                 lookup_index: 0,
                 parallel_lookup_index: 0,
                 location: FailureLocation::InRegion {
@@ -1682,7 +1682,7 @@ mod tests {
                 let table = meta.lookup_table_column();
                 meta.annotate_lookup_column(table, || "Table1");
 
-                meta.lookup("lookup", None, |cells| {
+                meta.lookup("test_lookup", None, |cells| {
                     let a = cells.query_advice(a, Rotation::cur());
                     let q = cells.query_selector(q);
 
@@ -1781,7 +1781,7 @@ mod tests {
         assert_eq!(
             prover.verify(),
             Err(vec![VerifyFailure::Lookup {
-                name: "lookup".to_string(),
+                name: "lookup #1: test_lookup".to_string(),
                 lookup_index: 0,
                 parallel_lookup_index: 0,
                 location: FailureLocation::InRegion {

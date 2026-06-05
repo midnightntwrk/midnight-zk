@@ -22,7 +22,10 @@ use crate::{
         logup::{self, ChunkedArgument},
         Error, VerifyingKey,
     },
-    poly::{commitment::PolynomialCommitmentScheme, Rotation, VerifierQuery},
+    poly::{
+        commitment::{Labelable, PolynomialCommitmentScheme},
+        PolynomialLabel, Rotation, VerifierQuery,
+    },
     transcript::{Hashable, Transcript},
 };
 
@@ -57,7 +60,9 @@ impl<F: WithSmallOrderMulGroup<3>> ChunkedArgument<F> {
     where
         CS::Commitment: Hashable<T::Hash>,
     {
-        let multiplicities = transcript.read()?;
+        let multiplicities = transcript.read().map(|c: CS::Commitment| {
+            c.label(PolynomialLabel::LogupMultiplicities(self.name.clone()))
+        })?;
         Ok(CommittedMultiplicities { multiplicities })
     }
 }
@@ -69,15 +74,23 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>>
     /// from the transcript.
     pub(in crate::plonk) fn read_commitment<T: Transcript>(
         self,
+        name: &str,
         nb_chunks: usize,
         transcript: &mut T,
     ) -> Result<Committed<F, CS>, Error>
     where
         CS::Commitment: Hashable<T::Hash>,
     {
-        let helper_polys =
-            (0..nb_chunks).map(|_| transcript.read()).collect::<Result<Vec<_>, _>>()?;
-        let accumulator = transcript.read()?;
+        let helper_polys = (0..nb_chunks)
+            .map(|_| {
+                transcript
+                    .read()
+                    .map(|c: CS::Commitment| c.label(PolynomialLabel::LogupHelper(name.to_owned())))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let accumulator = transcript
+            .read()
+            .map(|c: CS::Commitment| c.label(PolynomialLabel::LogupAggregator(name.to_owned())))?;
 
         Ok(Committed {
             multiplicities: self.multiplicities,

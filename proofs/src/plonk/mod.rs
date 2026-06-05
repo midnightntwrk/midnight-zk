@@ -51,7 +51,10 @@ use midnight_curves::serde::SerdeObject;
 pub use prover::*;
 pub use verifier::*;
 
-use crate::poly::commitment::PolynomialCommitmentScheme;
+use crate::poly::{
+    commitment::{Labelable, PolynomialCommitmentScheme},
+    PolynomialLabel,
+};
 
 /// This is a verifying key which allows for the verification of proofs for a
 /// particular circuit.
@@ -177,7 +180,10 @@ where
         let num_fixed_columns = u32::from_le_bytes(num_fixed_columns);
 
         let fixed_commitments: Vec<_> = (0..num_fixed_columns)
-            .map(|_| CS::Commitment::read(reader, format))
+            .map(|i| {
+                CS::Commitment::read(reader, format)
+                    .map(|c| c.label(PolynomialLabel::Fixed(i as usize)))
+            })
             .collect::<Result<_, _>>()?;
 
         let permutation = permutation::VerifyingKey::read(reader, &cs.permutation, format)?;

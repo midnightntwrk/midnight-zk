@@ -21,7 +21,7 @@ use ff::Field;
 use midnight_proofs::{
     circuit::{AssignedCell, Chip, Layouter, Value},
     plonk::{ConstraintSystem, Error},
-    poly::{EvaluationDomain, Rotation},
+    poly::{EvaluationDomain, PolynomialLabel, Rotation},
 };
 use num_bigint::BigUint;
 use num_traits::One;
@@ -43,7 +43,8 @@ use crate::{
         transcript_gadget::TranscriptGadget,
         trash,
         utils::{evaluate_lagrange_polynomials, inner_product, sum, AssignedBoundedScalar},
-        Accumulator, AssignedAccumulator, AssignedMsm, AssignedVk, SelfEmulation, VerifyingKey,
+        Accumulator, AssignedAccumulator, AssignedMsm, AssignedVk, LabeledPoint, SelfEmulation,
+        VerifyingKey,
     },
 };
 
@@ -331,7 +332,11 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         // Hash the prover's advice commitments into the transcript and squeeze
         // challenges
         let advice_commitments = (0..cs.num_advice_columns())
-            .map(|_| transcript.read_point(layouter))
+            .map(|i| {
+                transcript
+                    .read_point(layouter)
+                    .map(|p| LabeledPoint::new(p, PolynomialLabel::Advice(i)))
+            })
             .collect::<Result<Vec<_>, Error>>()?;
 
         // Sample theta challenge for keeping lookup columns linearly independent
@@ -340,7 +345,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         let multiplicities_committed = cs
             .lookups()
             .iter()
-            .map(|_| lookup::read_multiplicities(layouter, &mut transcript))
+            .map(|l| lookup::read_multiplicities(l.name(), layouter, &mut transcript))
             .collect::<Result<Vec<_>, Error>>()?;
 
         let beta = transcript.squeeze_challenge(layouter)?;
@@ -356,7 +361,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             .map(|(m, batch)| {
                 let nb_flat = batch.num_chunks(assigned_vk.cs.degree());
                 // Hash each lookup product commitment
-                m.read_commitment(nb_flat, layouter, &mut transcript)
+                m.read_commitment(batch.name(), nb_flat, layouter, &mut transcript)
             })
             .collect::<Result<Vec<_>, _>>()?;
 
@@ -365,7 +370,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         let trashcans_committed = cs
             .trashcans()
             .iter()
-            .map(|_| trash::read_committed(layouter, &mut transcript))
+            .map(|t| trash::read_committed(t.name(), layouter, &mut transcript))
             .collect::<Result<Vec<_>, _>>()?;
 
         // Sample y challenge, which keeps the gates linearly independent
@@ -430,7 +435,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         y: AssignedNative<S::F>,
         xn: AssignedNative<S::F>,
         splitting_factor: AssignedNative<S::F>,
-        quotient_limb_commitments: &'com [S::AssignedPoint],
+        quotient_limb_commitments: &'com [LabeledPoint<S>],
     ) -> Result<(AssignedMsm<S>, AssignedNative<S::F>), Error> {
         let mut acc_msm: AssignedMsm<S> = AssignedMsm::empty();
 
@@ -446,7 +451,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         for (idx, limb) in quotient_limb_commitments.iter().enumerate() {
             acc_msm.add_term(
                 &AssignedBoundedScalar::new(&splitting_powers[idx], None),
-                limb,
+                &limb.point,
             );
         }
 
@@ -530,9 +535,23 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         let nb_quotient_coms = assigned_vk.domain.get_quotient_poly_degree();
         #[cfg(feature = "single-h-commitment")]
         let nb_quotient_coms = 1;
-        let limb_commitments = (0..nb_quotient_coms)
-            .map(|_| transcript.read_point(layouter))
-            .collect::<Result<Vec<_>, Error>>()?;
+        let limb_commitments = {
+            let raw = (0..nb_quotient_coms)
+                .map(|_| transcript.read_point(layouter))
+                .collect::<Result<Vec<_>, Error>>()?;
+            #[cfg(not(feature = "single-h-commitment"))]
+            let labeled = raw
+                .into_iter()
+                .enumerate()
+                .map(|(i, p)| LabeledPoint::new(p, PolynomialLabel::QuotientPiece(i)))
+                .collect::<Vec<_>>();
+            #[cfg(feature = "single-h-commitment")]
+            let labeled = raw
+                .into_iter()
+                .map(|p| LabeledPoint::new(p, PolynomialLabel::Quotient))
+                .collect::<Vec<_>>();
+            labeled
+        };
 
         // Sample x challenge, which is used to ensure the circuit is satisfied with
         // high probability
@@ -764,7 +783,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                     VerifierQuery::<S>::new(
                         &one,
                         get_point(&rot),
-                        &advice_commitments[column.index()],
+                        &advice_commitments[column.index()].point,
                         &advice_evals[query_index],
                     )
                 }),
@@ -875,7 +894,7 @@ pub(crate) mod tests {
         plonk::{create_proof, keygen_pk, keygen_vk_with_k, prepare, Circuit, Error},
         poly::{
             kzg::{commitment::KZGCommitment, params::ParamsKZG, KZGCommitmentScheme},
-            CommitmentLabel,
+            PolynomialLabel,
         },
         transcript::{CircuitTranscript, Transcript},
     };
@@ -1156,7 +1175,7 @@ pub(crate) mod tests {
                 &inner_vk,
                 &[KZGCommitment::Simple(
                     C::identity(),
-                    CommitmentLabel::NoLabel,
+                    PolynomialLabel::Instance(0),
                 )],
                 &[&inner_public_inputs],
                 &mut transcript,

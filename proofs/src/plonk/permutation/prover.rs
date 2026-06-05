@@ -14,8 +14,8 @@ use crate::{
         Error,
     },
     poly::{
-        commitment::PolynomialCommitmentScheme, Coeff, CommitmentLabel, EvaluationDomain,
-        LagrangeCoeff, Polynomial, ProverQuery, Rotation,
+        commitment::PolynomialCommitmentScheme, Coeff, EvaluationDomain, LagrangeCoeff, Polynomial,
+        PolynomialLabel, ProverQuery, Rotation,
     },
     transcript::{Hashable, Transcript},
     utils::arithmetic::{eval_polynomial, eval_polynomial_seq, parallelize},
@@ -222,7 +222,8 @@ impl Argument {
         let committed: Vec<(CS::Commitment, Polynomial<F, LagrangeCoeff>)> = z_and_uncorrected
             .into_par_iter()
             .zip(corrections.par_iter())
-            .map(|((mut z, _), &correction)| {
+            .enumerate()
+            .map(|(i, ((mut z, _), &correction))| {
                 // Multiply every z value by the correction factor.
                 if correction != F::ONE {
                     parallelize(&mut z, |z, _| {
@@ -237,7 +238,11 @@ impl Argument {
                 // The Lagrange form is needed downstream for the linearization step,
                 // so we borrow into a transient delta buffer rather than transforming
                 // in place and prefix-summing back.
-                let commitment = CS::commit(params, &z.to_delta(), CommitmentLabel::NoLabel);
+                let commitment = CS::commit(
+                    params,
+                    &z.to_delta(),
+                    PolynomialLabel::PermutationAccumulator(i),
+                );
                 (commitment, z)
             })
             .collect();

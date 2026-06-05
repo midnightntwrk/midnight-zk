@@ -19,7 +19,7 @@ use crate::{
     poly::{
         batch_invert_rational,
         commitment::{Params, PolynomialCommitmentScheme},
-        CommitmentLabel, EvaluationDomain, ExtendedLagrangeCoeff,
+        EvaluationDomain, ExtendedLagrangeCoeff, PolynomialLabel,
     },
     utils::{arithmetic::parallelize, rational::Rational},
 };
@@ -279,7 +279,7 @@ where
     let fixed_commitments = fixed
         .iter()
         .enumerate()
-        .map(|(i, poly)| CS::commit(params, poly, CommitmentLabel::Fixed(i)))
+        .map(|(i, poly)| CS::commit(params, poly, PolynomialLabel::Fixed(i)))
         .collect();
 
     Ok(VerifyingKey::from_parts(
