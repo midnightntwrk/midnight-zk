@@ -208,12 +208,8 @@ pub fn lagrange_interpolate<F: Field + Ord>(points: &[F], evals: &[F]) -> Vec<F>
             let mut tmp: Vec<F> = Vec::with_capacity(points.len());
             let mut product = Vec::with_capacity(points.len() - 1);
             tmp.push(F::ONE);
-            for (x_k, denom) in points
-                .iter()
-                .enumerate()
-                .filter(|&(k, _)| k != j)
-                .map(|a| a.1)
-                .zip(denoms.into_iter())
+            for (x_k, denom) in
+                points.iter().enumerate().filter(|&(k, _)| k != j).map(|a| a.1).zip(denoms)
             {
                 product.resize(tmp.len() + 1, F::ZERO);
                 for ((a, b), product) in tmp
@@ -228,7 +224,7 @@ pub fn lagrange_interpolate<F: Field + Ord>(points: &[F], evals: &[F]) -> Vec<F>
             }
             assert_eq!(tmp.len(), points.len());
             assert_eq!(product.len(), points.len() - 1);
-            for (final_coeff, interpolation_coeff) in final_poly.iter_mut().zip(tmp.into_iter()) {
+            for (final_coeff, interpolation_coeff) in final_poly.iter_mut().zip(tmp) {
                 *final_coeff += interpolation_coeff * eval;
             }
         }

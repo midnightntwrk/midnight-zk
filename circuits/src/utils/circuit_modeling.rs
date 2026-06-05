@@ -175,7 +175,7 @@ fn report_model_json(model: &CircuitModel, json_value: &mut Value) -> io::Result
     ];
 
     let mut map = BTreeMap::new();
-    for (key, value) in headers.iter().zip(row.into_iter()) {
+    for (key, value) in headers.iter().zip(row) {
         map.insert(*key, value);
     }
 

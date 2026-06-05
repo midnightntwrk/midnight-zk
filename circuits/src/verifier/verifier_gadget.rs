@@ -1110,7 +1110,18 @@ pub(crate) mod tests {
         let mut rng = ChaCha8Rng::from_seed([0u8; 32]);
 
         let inner_k = 10;
+        #[cfg(not(feature = "single-h-commitment"))]
         let inner_params = ParamsKZG::unsafe_setup(inner_k, &mut rng);
+
+        #[cfg(feature = "single-h-commitment")]
+        let inner_params: ParamsKZG<_> = {
+            let inner_cs_degree = 5;
+            let extended_k = inner_k + ((inner_cs_degree - 1) as f64).log2().ceil() as u32;
+            let mut extended = ParamsKZG::unsafe_setup(extended_k, &mut rng);
+            extended.downsize_lagrange(inner_k);
+            extended
+        };
+
         let inner_vk = keygen_vk_with_k(&inner_params, &InnerCircuit::default(), inner_k).unwrap();
         let inner_pk = keygen_pk(inner_vk.clone(), &InnerCircuit::default()).unwrap();
 
