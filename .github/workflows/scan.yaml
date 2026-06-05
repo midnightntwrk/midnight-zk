@@ -3,9 +3,9 @@ permissions: {}
 
 on:
   push:
-    branches: [main, next]
+    branches: [main, next, 'zk-stdlib-v*']
   pull_request:
-    branches: [main, next]
+    branches: [main, next, 'zk-stdlib-v*']
   workflow_dispatch: {}   # so you can still run it manually
   schedule:
     - cron: '0 0 * * *'   # run daily at midnight UTC
