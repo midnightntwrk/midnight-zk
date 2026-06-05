@@ -92,6 +92,13 @@ impl<C: CircuitCurve> Instantiable<C::Base> for AssignedNativePoint<C> {
         let coordinates = point.coordinates().expect("non-id");
         vec![coordinates.0, coordinates.1]
     }
+
+    fn from_public_input(fields: &[C::Base]) -> Option<C::CryptographicGroup> {
+        if fields.len() != 2 {
+            return None;
+        }
+        C::from_xy(fields[0], fields[1]).map(|p| p.into_subgroup())
+    }
 }
 
 impl<C: EdwardsCurve> InnerConstants for AssignedNativePoint<C> {
@@ -126,6 +133,20 @@ impl<C: EdwardsCurve> Instantiable<C::Base> for AssignedScalarOfNativeCurve<C> {
             .chunks(nb_bits_per_batch)
             .map(le_bits_to_field_elem)
             .collect()
+    }
+
+    fn from_public_input(fields: &[C::Base]) -> Option<C::Scalar> {
+        let nb_bits_per_batch = C::Base::NUM_BITS as usize - 1;
+
+        let bits: Vec<bool> =
+            fields.iter().flat_map(|f| fe_to_le_bits(f, Some(nb_bits_per_batch))).collect();
+
+        let (head, tail) = bits.split_at(C::NUM_BITS_SUBGROUP as usize);
+        if tail.iter().any(|b| *b) {
+            return None;
+        }
+
+        Some(le_bits_to_field_elem(head))
     }
 }
 
@@ -967,6 +988,28 @@ impl<C: EdwardsCurve> EccChip<C> {
             )?)
         }
         Ok(AssignedScalarOfNativeCurve(bits))
+    }
+
+    /// Creates an assigned Jubjub scalar from an integer represented as a
+    /// sequence of little-endian bytes.
+    ///
+    /// # Unsatisfiable
+    ///
+    /// The circuit becomes unsatisfiable if bytes represent an integer larger
+    /// than or equal to 2^C::NUM_BITS_SUBGROUP.
+    ///
+    /// NB: In the case of Jubjub, NUM_BITS_SUBGROUP equals 252.
+    pub fn scalar_from_reduced_le_bytes(
+        &self,
+        layouter: &mut impl Layouter<C::Base>,
+        bytes: &[AssignedByte<C::Base>],
+    ) -> Result<AssignedScalarOfNativeCurve<C>, Error> {
+        let n = C::NUM_BITS_SUBGROUP as usize;
+        let s = self.scalar_from_le_bytes(layouter, bytes)?;
+        for b in s.0[n..].iter() {
+            self.native_gadget.assert_equal_to_fixed(layouter, b, false)?;
+        }
+        Ok(AssignedScalarOfNativeCurve(s.0[..n].to_vec()))
     }
 }
 

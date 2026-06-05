@@ -274,6 +274,10 @@ impl<S: SelfEmulation> Instantiable<S::F> for AssignedMsm<S> {
         .flatten()
         .collect::<Vec<_>>()
     }
+
+    fn from_public_input(_fields: &[S::F]) -> Option<Msm<S>> {
+        unimplemented!("not invertible: the flat encoding loses structural metadata.")
+    }
 }
 
 impl<S: SelfEmulation> AssignedMsm<S> {
