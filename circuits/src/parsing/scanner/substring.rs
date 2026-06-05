@@ -475,6 +475,7 @@ where
             |mut region| {
                 let mut offset = 1;
                 for (tag, parallel_calls) in packed_calls.iter().enumerate() {
+                    #[allow(clippy::needless_range_loop)]
                     for row in 0..parallel_calls[0].len() {
                         let lookups = core::array::from_fn(|col| parallel_calls[col][row].clone());
                         self.assign_substring_row(&mut region, &lookups, offset, row, tag + 1)?;

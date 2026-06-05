@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Blind logup multiplicities polynomial on non-usable rows for ZK [#312](https://github.com/midnightntwrk/midnight-zk/pull/312)
 
 ### Changed
+* Rename `CommitmentLabel` to `PolynomialLabel`; add `NoLabel` variant for freshly deserialized commitments; introduce `Labelable` trait so every call site attaches the correct label after deserialization [#392](https://github.com/midnightntwrk/midnight-zk/pull/392)
 * Introduce `KZGCommitment` enum with `Simple` and `Linear` variants; attach `CommitmentLabel` at `commit` time and propagate it homomorphically through arithmetic [#381](https://github.com/midnightntwrk/midnight-zk/pull/381)
 * Simplify `CommitmentReference` to a pointer wrapper with identity-based equality; remove `commitment_label` from `VerifierQuery` [#381](https://github.com/midnightntwrk/midnight-zk/pull/381)
 * Store SRS as affine and use an affine MSM path in KZG [#350](https://github.com/midnightntwrk/midnight-zk/pull/350)

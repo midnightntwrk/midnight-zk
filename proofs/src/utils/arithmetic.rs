@@ -208,12 +208,8 @@ pub fn lagrange_interpolate<F: Field + Ord>(points: &[F], evals: &[F]) -> Vec<F>
             let mut tmp: Vec<F> = Vec::with_capacity(points.len());
             let mut product = Vec::with_capacity(points.len() - 1);
             tmp.push(F::ONE);
-            for (x_k, denom) in points
-                .iter()
-                .enumerate()
-                .filter(|&(k, _)| k != j)
-                .map(|a| a.1)
-                .zip(denoms.into_iter())
+            for (x_k, denom) in
+                points.iter().enumerate().filter(|&(k, _)| k != j).map(|a| a.1).zip(denoms)
             {
                 product.resize(tmp.len() + 1, F::ZERO);
                 for ((a, b), product) in tmp
@@ -228,7 +224,7 @@ pub fn lagrange_interpolate<F: Field + Ord>(points: &[F], evals: &[F]) -> Vec<F>
             }
             assert_eq!(tmp.len(), points.len());
             assert_eq!(product.len(), points.len() - 1);
-            for (final_coeff, interpolation_coeff) in final_poly.iter_mut().zip(tmp.into_iter()) {
+            for (final_coeff, interpolation_coeff) in final_poly.iter_mut().zip(tmp) {
                 *final_coeff += interpolation_coeff * eval;
             }
         }
@@ -330,7 +326,7 @@ pub(crate) fn evals_inner_product<F: PrimeField + Clone>(
 /// Multi scalar multiplication engine
 pub trait MSM<C: PrimeCurveAffine>: Clone + Debug + Send + Sized + Sync {
     /// Add arbitrary term (the scalar and the point).
-    fn append_term(&mut self, scalar: C::Scalar, point: C::Curve, label: CommitmentLabel);
+    fn append_term(&mut self, scalar: C::Scalar, point: C::Curve, label: PolynomialLabel);
 
     /// Add another multiexp into this one.
     fn add_msm(&mut self, other: &Self);
@@ -351,7 +347,7 @@ pub trait MSM<C: PrimeCurveAffine>: Clone + Debug + Send + Sized + Sync {
     fn scalars(&self) -> Vec<C::Scalar>;
 
     /// Base labels.
-    fn labels(&self) -> Vec<CommitmentLabel>;
+    fn labels(&self) -> Vec<PolynomialLabel>;
 }
 
 #[cfg(test)]
@@ -359,7 +355,7 @@ use midnight_curves::Fq as Scalar;
 #[cfg(test)]
 use rand_core::OsRng;
 
-use crate::poly::{kzg::msm::MSMKZG, CommitmentLabel};
+use crate::poly::{kzg::msm::MSMKZG, PolynomialLabel};
 
 #[test]
 fn test_lagrange_interpolate() {

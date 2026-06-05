@@ -234,7 +234,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         ) -> Result<(), Error> {
             let cs = StandardPlonk::new(config);
 
-            for _ in 0..((1 << (self.k - 1)) - 3) {
+            for _ in 0..((1 << (self.k - 1)) - 4) {
                 let a: Value<Rational<_>> = self.a.into();
                 let mut a_squared = Value::unknown();
                 let (a0, _, c0) = cs.raw_multiply(&mut layouter, || {

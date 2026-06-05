@@ -1749,32 +1749,12 @@ impl<F: Field> ConstraintSystem<F> {
         selector: Option<Selector>,
         table_map: impl FnOnce(&mut VirtualCells<'_, F>) -> Vec<(Vec<Expression<F>>, TableColumn)>,
     ) -> usize {
-        let mut cells = VirtualCells::new(self);
-        let table_map = table_map(&mut cells)
-            .into_iter()
-            .map(|(mut inputs, table)| {
-                let mut table = cells.query_fixed(table.inner(), Rotation::cur());
-                for input in inputs.iter_mut() {
-                    assert!(
-                        !input.contains_simple_selector(),
-                        "expression containing simple selector supplied to lookup argument"
-                    );
-
-                    input.query_cells(&mut cells);
-                }
-                table.query_cells(&mut cells);
-                (inputs, table)
-            })
-            .collect();
-        let index = self.lookups.len();
-
-        self.lookups.push(logup::BatchedArgument::new(
-            name.as_ref(),
-            selector,
-            table_map,
-        ));
-
-        index
+        self.batched_lookup_any(name, selector, |cells| {
+            table_map(cells)
+                .into_iter()
+                .map(|(inputs, table)| (inputs, cells.query_fixed(table.inner(), Rotation::cur())))
+                .collect()
+        })
     }
 
     /// Add a lookup argument for a single input expression per table
@@ -1784,14 +1764,14 @@ impl<F: Field> ConstraintSystem<F> {
     /// table expression it needs to match.
     ///
     /// If you want to batch multiple lookups to the same table expression in
-    /// parallel, use [`batch_lookup_any`](Self::batch_lookup_any) instead.
+    /// parallel, use [`batched_lookup_any`](Self::batched_lookup_any) instead.
     pub fn lookup_any<S: AsRef<str>>(
         &mut self,
         name: S,
         selector: Option<Selector>,
         table_map: impl FnOnce(&mut VirtualCells<'_, F>) -> Vec<(Expression<F>, Expression<F>)>,
     ) -> usize {
-        self.batch_lookup_any(name, selector, |cells| {
+        self.batched_lookup_any(name, selector, |cells| {
             table_map(cells).into_iter().map(|(expr, table)| (vec![expr], table)).collect()
         })
     }
@@ -1801,7 +1781,7 @@ impl<F: Field> ConstraintSystem<F> {
     ///
     /// `table_map` returns a vector of maps between input expressions (batched
     /// together) and the table expressions they need to match.
-    pub fn batch_lookup_any<S: AsRef<str>>(
+    pub fn batched_lookup_any<S: AsRef<str>>(
         &mut self,
         name: S,
         selector: Option<Selector>,
@@ -1826,13 +1806,14 @@ impl<F: Field> ConstraintSystem<F> {
                 (inputs, table)
             })
             .collect();
+
         let index = self.lookups.len();
 
-        self.lookups.push(logup::BatchedArgument::new(
-            name.as_ref(),
-            selector,
-            table_map,
-        ));
+        // Append the ordinal to guarantee uniqueness even when the caller supplies
+        // the same name twice (e.g. the same chip configured more than once).
+        let name = format!("lookup #{}: {}", index + 1, name.as_ref());
+
+        self.lookups.push(logup::BatchedArgument::new(&name, selector, table_map));
 
         index
     }
@@ -2420,7 +2401,13 @@ impl<'a, F: Field> VirtualCells<'a, F> {
                 let q = self.query_selector(s);
                 let names: Vec<_> = c.constraints.iter().map(|c| c.name.clone()).collect();
                 let polys: Vec<_> = c.constraints.into_iter().map(|c| c.poly).collect();
-                (self.meta.trashcans).push(Argument::new(names.join("&"), q, polys));
+
+                // Append the ordinal to guarantee uniqueness even when the caller supplies
+                // the same name twice (e.g. the same chip configured more than once).
+                let index = self.meta.trashcans.len();
+                let name = format!("trash #{}: {}", index + 1, names.join("&"));
+                (self.meta.trashcans).push(Argument::new(name, q, polys));
+
                 vec![]
             }
             SelectorType::None => c.constraints,

@@ -7,7 +7,7 @@ use ff::Field;
 use midnight_curves::pairing::MultiMillerLoop;
 
 use crate::{
-    poly::query::CommitmentLabel,
+    poly::{commitment::Labelable, query::PolynomialLabel},
     transcript::{Hashable, TranscriptHash},
     utils::helpers::{ProcessedSerdeObject, SerdeFormat},
 };
@@ -15,7 +15,7 @@ use crate::{
 /// A KZG commitment: either a single curve point, or a lazy linear combination
 /// of curve points kept unevaluated for MSM batching.
 ///
-/// Each point carries a [`CommitmentLabel`] that identifies its role in the
+/// Each point carries a [`PolynomialLabel`] that identifies its role in the
 /// protocol (e.g. `Fixed(i)`, `Advice(i)`).  Labels are protocol-level
 /// metadata; they are not included in serialization or hashing.
 ///
@@ -32,11 +32,11 @@ use crate::{
 #[derive(Clone, Debug)]
 pub enum KZGCommitment<E: MultiMillerLoop> {
     /// A single committed point with its label.
-    Simple(E::G1, CommitmentLabel),
+    Simple(E::G1, PolynomialLabel),
     /// A lazy linear combination `∑ scalars[i] * points[i]` with per-term
     /// labels, accumulated during verification for MSM batching.  Never
     /// serialized or hashed directly.
-    Linear(Vec<E::G1>, Vec<E::Fr>, Vec<CommitmentLabel>),
+    Linear(Vec<E::G1>, Vec<E::Fr>, Vec<PolynomialLabel>),
 }
 
 impl<E: MultiMillerLoop> PartialEq for KZGCommitment<E>
@@ -78,15 +78,30 @@ where
     E::G1: Default,
 {
     fn default() -> Self {
-        Self::Simple(E::G1::default(), CommitmentLabel::NoLabel)
+        Self::Simple(E::G1::default(), PolynomialLabel::Collapsed)
+    }
+}
+
+impl<E: MultiMillerLoop> Labelable for KZGCommitment<E> {
+    /// Adds a label to the KZG commitment.
+    ///
+    /// # Panics
+    ///
+    /// If the commitment is not `Simple` or if it was already labeled.
+    fn label(self, label: PolynomialLabel) -> Self {
+        match self {
+            Self::Simple(p, PolynomialLabel::NoLabel) => Self::Simple(p, label),
+            Self::Simple(_, existing) => panic!("commitment is already labeled: {existing:?}"),
+            Self::Linear(_, _, _) => panic!("KZGCommitment::Linear cannot be labeled"),
+        }
     }
 }
 
 /// Only `Simple` commitments are serialized; see the type-level doc for why
 /// `Linear` is never written to or read from a proof directly.
 ///
-/// Labels are not part of the serialized form; deserialized commitments always
-/// receive [`CommitmentLabel::NoLabel`].
+/// Labels are not part of the serialized form; deserialized commitments receive
+/// [`PolynomialLabel::NoLabel`] and must be labeled at the call site.
 impl<E: MultiMillerLoop> ProcessedSerdeObject for KZGCommitment<E>
 where
     E::G1: Default + ProcessedSerdeObject,
@@ -94,7 +109,7 @@ where
     fn read<R: io::Read>(reader: &mut R, format: SerdeFormat) -> io::Result<Self> {
         Ok(Self::Simple(
             E::G1::read(reader, format)?,
-            CommitmentLabel::NoLabel,
+            PolynomialLabel::NoLabel,
         ))
     }
 
@@ -135,7 +150,7 @@ where
     }
 
     fn read(buffer: &mut impl Read) -> io::Result<Self> {
-        Ok(Self::Simple(E::G1::read(buffer)?, CommitmentLabel::NoLabel))
+        Ok(Self::Simple(E::G1::read(buffer)?, PolynomialLabel::NoLabel))
     }
 }
 

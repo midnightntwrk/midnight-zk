@@ -11,7 +11,10 @@ use crate::{
         linearization::verifier::compute_linearization_commitment, partially_evaluate_identities,
         traces::VerifierTrace,
     },
-    poly::{commitment::PolynomialCommitmentScheme, VerifierQuery},
+    poly::{
+        commitment::{Labelable, PolynomialCommitmentScheme},
+        PolynomialLabel, VerifierQuery,
+    },
     transcript::{read_n, Hashable, Sampleable, Transcript},
     utils::arithmetic::compute_inner_product,
 };
@@ -65,7 +68,7 @@ where
     // Hash the prover's advice commitments into the transcript and squeeze
     // challenges
     let advice_commitments: Vec<_> = (0..vk.cs.num_advice_columns)
-        .map(|_| transcript.read())
+        .map(|i| transcript.read().map(|c: CS::Commitment| c.label(PolynomialLabel::Advice(i))))
         .collect::<Result<_, _>>()?;
 
     // Sample theta challenge for keeping lookup columns linearly independent
@@ -90,7 +93,7 @@ where
     let lookups_committed: Vec<_> = lookup_multiplicities
         .into_iter()
         .zip(vk.cs.lookups.iter().map(|l| l.chunk_by_degree(vk.cs_degree)))
-        .map(|(m, batch)| m.read_commitment(batch.num_chunks(), transcript))
+        .map(|(m, batch)| m.read_commitment(&batch.name, batch.num_chunks(), transcript))
         .collect::<Result<Vec<_>, _>>()?;
 
     let trash_challenge: F = transcript.squeeze_challenge();
@@ -169,7 +172,19 @@ where
     let nb_quotient_coms = vk.domain.get_quotient_poly_degree();
     #[cfg(feature = "single-h-commitment")]
     let nb_quotient_coms = 1;
-    let quotient_limb_coms = read_n(transcript, nb_quotient_coms)?;
+    let quotient_limb_coms = {
+        let raw = read_n::<CS::Commitment, _>(transcript, nb_quotient_coms)?;
+        #[cfg(not(feature = "single-h-commitment"))]
+        let labeled = raw
+            .into_iter()
+            .enumerate()
+            .map(|(i, c)| c.label(PolynomialLabel::QuotientPiece(i)))
+            .collect::<Vec<_>>();
+        #[cfg(feature = "single-h-commitment")]
+        let labeled =
+            raw.into_iter().map(|c| c.label(PolynomialLabel::Quotient)).collect::<Vec<_>>();
+        labeled
+    };
 
     // Sample x challenge, which is used to ensure the circuit is
     // satisfied with high probability.

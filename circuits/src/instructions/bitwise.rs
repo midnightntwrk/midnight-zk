@@ -78,7 +78,7 @@ where
         let y_bits = self.assigned_to_le_bits(layouter, y, Some(n), true)?;
         let res_bits = x_bits
             .into_iter()
-            .zip(y_bits.into_iter())
+            .zip(y_bits)
             .map(|(bx, by)| self.and(layouter, &[bx, by]))
             .collect::<Result<Vec<_>, Error>>()?;
         self.assigned_from_le_bits(layouter, &res_bits)
@@ -112,7 +112,7 @@ where
         let y_bits = self.assigned_to_le_bits(layouter, y, Some(n), true)?;
         let res_bits = x_bits
             .into_iter()
-            .zip(y_bits.into_iter())
+            .zip(y_bits)
             .map(|(bx, by)| self.or(layouter, &[bx, by]))
             .collect::<Result<Vec<_>, Error>>()?;
         self.assigned_from_le_bits(layouter, &res_bits)
@@ -146,7 +146,7 @@ where
         let y_bits = self.assigned_to_le_bits(layouter, y, Some(n), true)?;
         let res_bits = x_bits
             .into_iter()
-            .zip(y_bits.into_iter())
+            .zip(y_bits)
             .map(|(bx, by)| self.xor(layouter, &[bx, by]))
             .collect::<Result<Vec<_>, Error>>()?;
         self.assigned_from_le_bits(layouter, &res_bits)

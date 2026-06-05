@@ -24,7 +24,10 @@ use crate::{
         self,
         permutation::{keygen::compute_polys_and_cosets, verifier::CommonEvaluated},
     },
-    poly::{commitment::PolynomialCommitmentScheme, EvaluationDomain},
+    poly::{
+        commitment::{Labelable, PolynomialCommitmentScheme},
+        EvaluationDomain, PolynomialLabel,
+    },
     utils::helpers::ProcessedSerdeObject,
 };
 
@@ -121,7 +124,10 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> VerifyingKey<F, CS> {
         CS::Commitment: ProcessedSerdeObject,
     {
         let commitments = (0..argument.columns.len())
-            .map(|_| CS::Commitment::read(reader, format))
+            .map(|i| {
+                CS::Commitment::read(reader, format)
+                    .map(|c| c.label(PolynomialLabel::PermutationFixed(i)))
+            })
             .collect::<Result<Vec<_>, _>>()?;
         Ok(VerifyingKey { commitments })
     }

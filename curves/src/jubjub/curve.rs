@@ -1876,7 +1876,7 @@ fn test_serialization_consistency() {
 
     let batched = JubjubAffine::batch_from_bytes(v.iter().cloned());
 
-    for (expected_serialized, batch_deserialized) in v.into_iter().zip(batched.into_iter()) {
+    for (expected_serialized, batch_deserialized) in v.into_iter().zip(batched) {
         assert!(p.is_on_curve_vartime());
         let affine = JubjubAffine::from(p);
         let serialized = affine.to_bytes();

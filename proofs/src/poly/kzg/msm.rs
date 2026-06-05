@@ -15,7 +15,7 @@ use crate::{
     poly::{
         commitment::{Guard, PolynomialCommitmentScheme},
         kzg::KZGCommitmentScheme,
-        CommitmentLabel, Error,
+        Error, PolynomialLabel,
     },
     utils::{
         arithmetic::{CurveExt, MSM},
@@ -30,7 +30,7 @@ use crate::{
 pub struct MSMKZG<E: Engine> {
     pub(crate) scalars: Vec<E::Fr>,
     pub(crate) bases: Vec<E::G1>,
-    pub(crate) labels: Vec<CommitmentLabel>,
+    pub(crate) labels: Vec<PolynomialLabel>,
 }
 
 impl<E: Engine> MSMKZG<E> {
@@ -69,7 +69,7 @@ impl<E: Engine> MSMKZG<E> {
         MSMKZG {
             scalars: vec![E::Fr::ONE],
             bases: vec![*base],
-            labels: vec![CommitmentLabel::NoLabel],
+            labels: vec![PolynomialLabel::Collapsed],
         }
     }
 }
@@ -79,30 +79,28 @@ where
     E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
 {
     /// Evaluates the MSM to a single point and replaces all terms with that
-    /// single point (scalar = 1, label = `NoLabel`).
+    /// single point (scalar = 1, label = `Collapsed`).
     ///
     /// This mirrors `AssignedMsm::collapse` in the circuits crate.
     ///
     /// # Panics (in debug mode)
     ///
-    /// If any term carries a label other than `NoLabel` or `Advice`.
-    //
-    // We only allow `NoLabel` or `Advice` because these types of labels are
-    // not relevant for the `verifier_gadget` in `midnight-circuits` (at least for
-    // now). Other types of labels may carry information that we do not want to lose
-    // when "collapsing".
+    /// If a term carries a `Fixed` or `PermutationFixed` label.
+    //  This is because these "fixed" labels carry information that we do not want
+    //  to lose when collapsing, since it is relevant for the `verifier_gadget`.
     pub fn collapse(&mut self) {
         debug_assert!(
-            self.labels
-                .iter()
-                .all(|l| matches!(l, CommitmentLabel::NoLabel | CommitmentLabel::Advice(_))),
-            "collapse: all labels must be NoLabel or Advice, found: {:?}",
+            !self.labels.iter().any(|l| matches!(
+                l,
+                PolynomialLabel::Fixed(_) | PolynomialLabel::PermutationFixed(_)
+            )),
+            "collapse: all labels must be Collapsed, Advice or Instance, found: {:?}",
             self.labels,
         );
         let point = self.eval();
         self.scalars = vec![E::Fr::ONE];
         self.bases = vec![point];
-        self.labels = vec![CommitmentLabel::NoLabel];
+        self.labels = vec![PolynomialLabel::Collapsed];
     }
 }
 
@@ -110,7 +108,7 @@ impl<E: Engine + Debug> MSM<E::G1Affine> for MSMKZG<E>
 where
     E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
 {
-    fn append_term(&mut self, scalar: E::Fr, point: E::G1, label: CommitmentLabel) {
+    fn append_term(&mut self, scalar: E::Fr, point: E::G1, label: PolynomialLabel) {
         self.scalars.push(scalar);
         self.bases.push(point);
         self.labels.push(label);
@@ -155,7 +153,7 @@ where
         self.scalars.clone()
     }
 
-    fn labels(&self) -> Vec<CommitmentLabel> {
+    fn labels(&self) -> Vec<PolynomialLabel> {
         self.labels.clone()
     }
 }
@@ -202,12 +200,12 @@ pub struct DualMSM<E: Engine> {
 /// A [DualMSM] split into left and right vectors of `(Scalar, Point)` tuples
 pub type SplitDualMSM<'a, E> = (
     Vec<(
-        &'a CommitmentLabel,
+        &'a PolynomialLabel,
         &'a <E as Engine>::Fr,
         &'a <E as Engine>::G1,
     )>,
     Vec<(
-        &'a CommitmentLabel,
+        &'a PolynomialLabel,
         &'a <E as Engine>::Fr,
         &'a <E as Engine>::G1,
     )>,

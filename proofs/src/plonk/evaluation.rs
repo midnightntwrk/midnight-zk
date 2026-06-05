@@ -742,10 +742,8 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                     let mut product =
                         graph.add_calculation(Calculation::Store(compressed_inputs_cosets[0]));
                     // Compute ∏ⱼ(fⱼ + β) and Σⱼ ∏_{k≠j}(fₖ + β)
-                    for (calculation, partial_prod) in compressed_inputs_cosets
-                        .into_iter()
-                        .zip(partial_products.into_iter())
-                        .skip(1)
+                    for (calculation, partial_prod) in
+                        compressed_inputs_cosets.into_iter().zip(partial_products).skip(1)
                     {
                         sum_partial_products = graph
                             .add_calculation(Calculation::Add(sum_partial_products, partial_prod));

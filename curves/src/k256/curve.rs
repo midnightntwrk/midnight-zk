@@ -166,7 +166,7 @@ impl Curve for K256 {
         let affine_points: Vec<AffinePoint> =
             <ProjectivePoint as BatchNormalize<[ProjectivePoint]>>::batch_normalize(&inner);
 
-        for (dst, src) in q.iter_mut().zip(affine_points.into_iter()) {
+        for (dst, src) in q.iter_mut().zip(affine_points) {
             *dst = K256Affine(src);
         }
     }

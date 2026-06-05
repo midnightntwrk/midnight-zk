@@ -25,7 +25,7 @@ use midnight_proofs::{
     poly::{
         commitment::Guard,
         kzg::{commitment::KZGCommitment, params::ParamsKZG, KZGCommitmentScheme},
-        CommitmentLabel,
+        PolynomialLabel,
     },
     transcript::{CircuitTranscript, Transcript},
 };
@@ -288,7 +288,7 @@ fn bench_zswap_output(c: &mut Criterion) {
                     pk.get_vk(),
                     &[KZGCommitment::Simple(
                         C::identity(),
-                        CommitmentLabel::NoLabel,
+                        PolynomialLabel::Instance(0),
                     )],
                     &[&instance],
                     &mut t,
@@ -308,7 +308,7 @@ fn bench_zswap_output(c: &mut Criterion) {
                         pk.get_vk(),
                         &[KZGCommitment::Simple(
                             C::identity(),
-                            CommitmentLabel::NoLabel,
+                            PolynomialLabel::Instance(0),
                         )],
                         &[&instance],
                         &mut t,
@@ -323,7 +323,7 @@ fn bench_zswap_output(c: &mut Criterion) {
                     trace,
                     &[KZGCommitment::Simple(
                         C::identity(),
-                        CommitmentLabel::NoLabel,
+                        PolynomialLabel::Instance(0),
                     )],
                     &[&instance],
                     &mut t,
@@ -341,7 +341,7 @@ fn bench_zswap_output(c: &mut Criterion) {
                     pk.get_vk(),
                     &[KZGCommitment::Simple(
                         C::identity(),
-                        CommitmentLabel::NoLabel,
+                        PolynomialLabel::Instance(0),
                     )],
                     &[&instance],
                     &mut t,
@@ -352,7 +352,7 @@ fn bench_zswap_output(c: &mut Criterion) {
                     trace,
                     &[KZGCommitment::Simple(
                         C::identity(),
-                        CommitmentLabel::NoLabel,
+                        PolynomialLabel::Instance(0),
                     )],
                     &[&instance],
                     &mut t,

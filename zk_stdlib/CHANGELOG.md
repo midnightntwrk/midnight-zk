@@ -1,14 +1,10 @@
 # Changelog
 
-We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html). To capture
-the changes that do not affect the API, do not add any new functionality, but
-are breaking changes, we increment the `MAJOR` version. This happens when the
-circuit is modified for performance or bug fixes; the modification of the
-verification keys break backwards compatibility.
+We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-* MAJOR: Incremented when you make incompatible API or VK changes
-* MINOR: Incremented when you add functionality in a backward-compatible manner
-* PATCH: Incremented when you make backward-compatible bug fixes
+* MAJOR: Incremented on incompatible API changes
+* MINOR: Incremented on backward-compatible API changes that may affect the VKs
+* PATCH: Incremented on minor changes and bug fixes that do not alter the VKs
 
 ## [Unreleased]
 ### Added
@@ -34,6 +30,10 @@ verification keys break backwards compatibility.
 * Parallelise batch_verifier [#236](https://github.com/midnightntwrk/midnight-zk/pull/236)
 
 ### Removed
+
+## [2.2.0]
+### Changed
+* Update verification keys following Weierstrass chip public input update [#398](https://github.com/midnightntwrk/midnight-zk/pull/398)
 
 ## [2.1.0]
 ### Added
