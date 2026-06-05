@@ -311,7 +311,7 @@ where
                 vs_cells.into_iter().zip(vs_max.collect::<Vec<_>>()).collect::<Vec<_>>();
 
             // Assert all range-checks
-            Ok([u_range_check].into_iter().chain(vs_range_checks.into_iter()))
+            Ok([u_range_check].into_iter().chain(vs_range_checks))
         },
     )?;
     range_checks.try_for_each(|(cell, ubound)| {
