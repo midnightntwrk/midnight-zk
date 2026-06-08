@@ -1,3 +1,10 @@
+#[macro_use]
+mod macro_curve;
+#[macro_use]
+mod macro_pairing;
+#[macro_use]
+mod macro_tower;
+
 mod curve;
 mod engine;
 mod fq;

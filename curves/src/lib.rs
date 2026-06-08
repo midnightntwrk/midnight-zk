@@ -14,7 +14,7 @@ compile_error!("blstrs is only supported on little endian architectures");
 mod arithmetic;
 
 #[macro_use]
-mod derive;
+mod macros;
 
 mod curve;
 pub mod ff_ext;
