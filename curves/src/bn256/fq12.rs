@@ -34,7 +34,37 @@ crate::impl_binops_additive!(Fq12, Fq12);
 crate::impl_binops_multiplicative!(Fq12, Fq12);
 crate::impl_binops_calls!(Fq12);
 crate::impl_sum_prod!(Fq12);
-crate::impl_cyclotomic_square!(Fq2, Fq12);
+
+impl Fq12 {
+    pub fn cyclotomic_square(&mut self) {
+        fn fp4_square(c0: &mut Fq2, c1: &mut Fq2, a0: &Fq2, a1: &Fq2) {
+            use ff::Field;
+            let t0 = a0.square();
+            let t1 = a1.square();
+            *c0 = t1.mul_by_nonresidue() + t0;
+            *c1 = (a0 + a1).square() - t0 - t1;
+        }
+
+        let mut t3 = Fq2::zero();
+        let mut t4 = Fq2::zero();
+        let mut t5 = Fq2::zero();
+        let mut t6 = Fq2::zero();
+        fp4_square(&mut t3, &mut t4, &self.c0.c0, &self.c1.c1);
+
+        self.c0.c0 = (t3 - self.c0.c0).double() + t3;
+        self.c1.c1 = (t4 + self.c1.c1).double() + t4;
+
+        fp4_square(&mut t3, &mut t4, &self.c1.c0, &self.c0.c2);
+        fp4_square(&mut t5, &mut t6, &self.c0.c1, &self.c1.c2);
+
+        self.c0.c1 = (t3 - self.c0.c1).double() + t3;
+        self.c1.c2 = (t4 + self.c1.c2).double() + t4;
+
+        let t3 = t6.mul_by_nonresidue();
+        self.c1.c0 = (t3 + self.c1.c0).double() + t3;
+        self.c0.c2 = (t5 - self.c0.c2).double() + t5;
+    }
+}
 
 // non_residue^((modulus^i-1)/6) for i=0,...,11
 pub const FROBENIUS_COEFF_FQ12_C1: [Fq2; 12] = [
