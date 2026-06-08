@@ -14,7 +14,7 @@ use std::{
 };
 
 use blst::*;
-use ff::{Field, PrimeField, WithSmallOrderMulGroup};
+use ff::{Field, PrimeField};
 use group::{
     prime::{PrimeCurve, PrimeCurveAffine, PrimeGroup},
     Curve, Group, GroupEncoding, UncompressedEncoding, WnafGroup,
@@ -1008,24 +1008,6 @@ impl CurveExt for G2Projective {
     type Base = Fp2;
     type AffineExt = G2Affine;
     const CURVE_ID: &'static str = "";
-
-    fn endo(&self) -> Self {
-        let x_zeta = self.x() * Fp2::ZETA;
-        let raw = blst_p2 {
-            x: x_zeta.0,
-            y: self.y().0,
-            z: self.z().0,
-        };
-
-        G2Projective(raw)
-    }
-
-    fn jacobian_coordinates(&self) -> (Self::Base, Self::Base, Self::Base) {
-        // Homogeneous to Jacobian
-        let x = self.x() * self.z();
-        let y = self.y() * self.z().square();
-        (x, y, self.z())
-    }
 
     fn hash_to_curve<'a>(domain_prefix: &'a str) -> Box<dyn Fn(&[u8]) -> Self + 'a> {
         unimplemented!()

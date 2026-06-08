@@ -31,13 +31,6 @@ pub trait CurveExt:
     /// CURVE_ID used for hash-to-curve.
     const CURVE_ID: &'static str;
 
-    /// Apply the curve endomorphism by multiplying the x-coordinate
-    /// by an element of multiplicative order 3.
-    fn endo(&self) -> Self;
-
-    /// Return the Jacobian coordinates of this point.
-    fn jacobian_coordinates(&self) -> (Self::Base, Self::Base, Self::Base);
-
     /// Requests a hasher that accepts messages and returns near-uniformly
     /// distributed elements in the group, given domain prefix `domain_prefix`.
     ///
@@ -118,29 +111,12 @@ impl<C: CurveAffine> Coordinates<C> {
     }
     /// Returns the x-coordinate.
     ///
-    /// Equivalent to `Coordinates::u`.
     pub fn x(&self) -> &C::Base {
         &self.x
     }
 
     /// Returns the y-coordinate.
-    ///
-    /// Equivalent to `Coordinates::v`.
     pub fn y(&self) -> &C::Base {
-        &self.y
-    }
-
-    /// Returns the u-coordinate.
-    ///
-    /// Equivalent to `Coordinates::x`.
-    pub fn u(&self) -> &C::Base {
-        &self.x
-    }
-
-    /// Returns the v-coordinate.
-    ///
-    /// Equivalent to `Coordinates::y`.
-    pub fn v(&self) -> &C::Base {
         &self.y
     }
 }

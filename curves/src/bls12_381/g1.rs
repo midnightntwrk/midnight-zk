@@ -20,7 +20,7 @@ use rand_core::RngCore;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
 use super::{
-    fp::{Fp, ZETA_BASE},
+    fp::Fp,
     Bls12, Fq, G2Affine, Gt,
 };
 use crate::{
@@ -937,17 +937,6 @@ impl CurveExt for G1Projective {
     type Base = Fp;
     type AffineExt = G1Affine;
     const CURVE_ID: &'static str = "";
-
-    fn endo(&self) -> Self {
-        G1Projective::from_raw_unchecked(self.x() * ZETA_BASE, self.y(), self.z())
-    }
-
-    fn jacobian_coordinates(&self) -> (Self::Base, Self::Base, Self::Base) {
-        // Homogeneous to Jacobian
-        let x = self.x() * self.z();
-        let y = self.y() * self.z().square();
-        (x, y, self.z())
-    }
 
     fn hash_to_curve<'a>(domain_prefix: &'a str) -> Box<dyn Fn(&[u8]) -> Self + 'a> {
         Box::new(move |message| {

@@ -353,23 +353,6 @@ macro_rules! new_curve_impl {
 
             const CURVE_ID: &'static str = $curve_id;
 
-            fn endo(&self) -> Self {
-                use ff::WithSmallOrderMulGroup;
-                Self {
-                    x: self.x * Self::Base::ZETA,
-                    y: self.y,
-                    z: self.z,
-                }
-            }
-
-            fn jacobian_coordinates(&self) -> ($base, $base, $base) {
-                // Homogeneous to Jacobian
-                let x = self.x * self.z;
-                let y = self.y * self.z.square();
-                (x, y, self.z)
-            }
-
-
             #[allow(clippy::redundant_closure_call)]
             fn hash_to_curve<'a>(domain_prefix: &'a str) -> Box<dyn Fn(&[u8]) -> Self + 'a> {
                 $hash_to_curve(domain_prefix)
