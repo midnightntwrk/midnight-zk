@@ -39,8 +39,8 @@ pub mod bn256;
 
 // Re-exports for production curves
 pub use bls12_381::{
-    unique_messages, Bls12, Fp, Fq, G1Affine, G1Projective, G2Affine, G2Prepared, G2Projective, Gt,
-    MillerLoopResult, PairingG1G2, PairingG2G1, A, B,
+    Bls12, Fp, Fq, G1Affine, G1Projective, G2Affine, G2Prepared, G2Projective, Gt,
+    MillerLoopResult, A, B,
 };
 pub use curve::{Coordinates, CurveAffine, CurveExt};
 pub use jubjub::*;
