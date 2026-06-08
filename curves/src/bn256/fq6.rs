@@ -2,7 +2,7 @@ use ff::Field;
 
 use super::{fq::Fq, fq2::Fq2};
 use super::{
-    cubic::{CubicExtField, CubicExtFieldArith, CubicSparseMul},
+    ext_field::cubic::{CubicExtField, CubicExtFieldArith, CubicSparseMul},
     ExtField,
 };
 

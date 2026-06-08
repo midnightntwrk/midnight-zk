@@ -1,4 +1,10 @@
-//! Extension field trait used by the bn256 tower.
+//! Generic extension-field building blocks for the bn256 tower.
+//!
+//! These are the reusable layers the concrete tower is built from:
+//! `Fq2 = QuadExtField<Fq>`, `Fq6 = CubicExtField<Fq2>`, `Fq12 = QuadExtField<Fq6>`.
+
+pub mod cubic;
+pub mod quadratic;
 
 /// Extension field trait.
 pub trait ExtField: ff::Field {

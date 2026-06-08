@@ -6,7 +6,7 @@ use subtle::{Choice, CtOption};
 
 use super::fq::Fq;
 use super::{
-    quadratic::{QuadExtField, QuadExtFieldArith, SQRT},
+    ext_field::quadratic::{QuadExtField, QuadExtFieldArith, SQRT},
     ExtField,
 };
 use crate::ff_ext::Legendre;

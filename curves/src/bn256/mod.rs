@@ -1,14 +1,12 @@
 #[macro_use]
-mod macro_curve;
+mod curve_impl;
 #[macro_use]
 mod macro_pairing;
 #[macro_use]
 mod macro_tower;
 
-pub mod cubic;
-pub mod quadratic;
 mod compressed;
-mod ext_field;
+pub mod ext_field;
 
 pub use ext_field::ExtField;
 

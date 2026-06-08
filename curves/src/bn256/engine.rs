@@ -12,7 +12,7 @@ use rand_core::RngCore;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq};
 
 use crate::bn256::{
-    curve::*, fq::*, fq12::*, fq2::*, fq6::FROBENIUS_COEFF_FQ6_C1, fr::*, quadratic::QuadSparseMul,
+    curve::*, fq::*, fq12::*, fq2::*, fq6::FROBENIUS_COEFF_FQ6_C1, fr::*, ext_field::quadratic::QuadSparseMul,
     ExtField,
 };
 

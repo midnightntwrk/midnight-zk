@@ -1,6 +1,6 @@
 use super::{fq::Fq, fq2::Fq2, fq6::Fq6};
 use super::{
-    quadratic::{QuadExtField, QuadExtFieldArith, QuadSparseMul},
+    ext_field::quadratic::{QuadExtField, QuadExtFieldArith, QuadSparseMul},
     ExtField,
 };
 
