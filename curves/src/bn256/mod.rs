@@ -7,6 +7,7 @@ mod macro_tower;
 
 pub mod cubic;
 pub mod quadratic;
+mod compressed;
 mod ext_field;
 
 pub use ext_field::ExtField;

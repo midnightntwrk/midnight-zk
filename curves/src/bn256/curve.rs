@@ -32,7 +32,6 @@ new_curve_impl!(
     G1_A,
     G1_B,
     "bn256_g1",
-    crate::serde::CompressedFlagConfig::TwoSpare,
     standard_sign
 );
 
@@ -46,7 +45,6 @@ new_curve_impl!(
     G2_A,
     G2_B,
     "bn256_g2",
-    crate::serde::CompressedFlagConfig::TwoSpare,
     standard_sign
 );
 

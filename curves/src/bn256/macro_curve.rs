@@ -9,13 +9,11 @@ macro_rules! new_curve_impl {
     $constant_a:expr,
     $constant_b:expr,
     $curve_id:literal,
-    $flag_config:expr,
     standard_sign
     ) => {
 
         paste::paste! {
-            impl $crate::serde::Compressed<$name_affine> for [<$name:upper Compressed >] {
-                const CONFIG: $crate::serde::CompressedFlagConfig = $flag_config;
+            impl $crate::bn256::compressed::Compressed<$name_affine> for [<$name:upper Compressed >] {
                 fn sign(c: &$name_affine) -> subtle::Choice {
                     Choice::from(c.y.to_repr()[0] as u8 & 1) & !c.is_identity()
                 }
@@ -29,7 +27,7 @@ macro_rules! new_curve_impl {
         }
 
 
-        new_curve_impl!(($($privacy)*), $name, $name_affine, $base, $scalar, $generator, $constant_a, $constant_b, $curve_id, $flag_config);
+        new_curve_impl!(($($privacy)*), $name, $name_affine, $base, $scalar, $generator, $constant_a, $constant_b, $curve_id);
     };
 
     (($($privacy:tt)*),
@@ -40,13 +38,12 @@ macro_rules! new_curve_impl {
     $generator:expr,
     $constant_a:expr,
     $constant_b:expr,
-    $curve_id:literal,
-    $flag_config:expr
+    $curve_id:literal
     ) => {
 
 
         paste::paste! {
-            const [< $name:upper _COMPRESSED_SIZE >]: usize = $base::SIZE + if $flag_config.has_extra_byte() { 1 } else { 0 };
+            const [< $name:upper _COMPRESSED_SIZE >]: usize = $base::SIZE;
 
             pub type [<$name:upper Compressed >] = $crate::serde::Repr<[< $name:upper _COMPRESSED_SIZE >]>;
             pub type [<$name Uncompressed >] = $crate::serde::Repr<{ 2*$base::SIZE }>;
@@ -55,15 +52,15 @@ macro_rules! new_curve_impl {
                 type Repr = [<$name:upper Compressed >];
 
                 fn from_bytes(bytes: &Self::Repr) -> CtOption<Self> {
-                    <Self::Repr as $crate::serde::Compressed<$name_affine>>::decode(bytes.clone())
+                    <Self::Repr as $crate::bn256::compressed::Compressed<$name_affine>>::decode(bytes.clone())
                 }
 
                 fn from_bytes_unchecked(bytes: &Self::Repr) -> CtOption<Self> {
-                    <Self::Repr as $crate::serde::Compressed<$name_affine>>::decode(bytes.clone())
+                    <Self::Repr as $crate::bn256::compressed::Compressed<$name_affine>>::decode(bytes.clone())
                 }
 
                 fn to_bytes(&self) -> Self::Repr {
-                    <Self::Repr as $crate::serde::Compressed<$name_affine>>::encode(&self)
+                    <Self::Repr as $crate::bn256::compressed::Compressed<$name_affine>>::encode(&self)
                 }
             }
 
@@ -71,15 +68,15 @@ macro_rules! new_curve_impl {
                 type Repr = [<$name:upper Compressed >];
 
                 fn from_bytes(bytes: &Self::Repr) -> CtOption<Self> {
-                    <Self::Repr as $crate::serde::Compressed<$name_affine>>::decode(bytes.clone()).map(Self::from)
+                    <Self::Repr as $crate::bn256::compressed::Compressed<$name_affine>>::decode(bytes.clone()).map(Self::from)
                 }
 
                 fn from_bytes_unchecked(bytes: &Self::Repr) -> CtOption<Self> {
-                    <Self::Repr as $crate::serde::Compressed<$name_affine>>::decode(bytes.clone()).map(Self::from)
+                    <Self::Repr as $crate::bn256::compressed::Compressed<$name_affine>>::decode(bytes.clone()).map(Self::from)
                 }
 
                 fn to_bytes(&self) -> Self::Repr {
-                    <Self::Repr as $crate::serde::Compressed<$name_affine>>::encode(&self.to_affine())
+                    <Self::Repr as $crate::bn256::compressed::Compressed<$name_affine>>::encode(&self.to_affine())
                 }
             }
 
