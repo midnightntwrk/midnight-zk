@@ -375,31 +375,6 @@ macro_rules! curve_testing_suite {
         }
     };
 
-    ($($curve: ident),*, "hash_to_curve") => {
-        macro_rules! hash_to_curve_test {
-            ($c: ident) => {
-                let hasher = $c::hash_to_curve("test");
-                let mut rng = OsRng;
-                for _ in 0..1000 {
-                    let message = iter::repeat_with(|| rng.next_u32().to_be_bytes())
-                        .take(32)
-                        .flatten()
-                        .collect::<Vec<_>>();
-                    assert!(bool::from(hasher(&message).is_on_curve()));
-                }
-            }
-        }
-
-        #[test]
-        fn test_hash_to_curve() {
-            use rand_core::{OsRng, RngCore};
-            use std::iter;
-            $(
-                hash_to_curve_test!($curve);
-            )*
-        }
-    };
-
     ($($curve: ident),*, "clear_cofactor") => {
         #[test]
         fn test_cofactor_clearing() {
@@ -497,22 +472,3 @@ macro_rules! curve_testing_suite {
     };
 }
 
-use group::Curve;
-
-use crate::{CurveAffine, CurveExt};
-
-pub(crate) struct TestH2C<C: CurveAffine> {
-    msg: &'static [u8],
-    expect: C,
-}
-
-impl<C: CurveAffine> TestH2C<C> {
-    pub(crate) fn new(msg: &'static [u8], expect: C) -> Self {
-        Self { msg, expect }
-    }
-
-    pub(crate) fn run(&self, domain_prefix: &str) {
-        let r0 = C::CurveExt::hash_to_curve(domain_prefix)(self.msg);
-        assert_eq!(r0.to_affine(), self.expect);
-    }
-}

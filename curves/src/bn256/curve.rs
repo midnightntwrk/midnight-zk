@@ -32,7 +32,6 @@ new_curve_impl!(
     G1_A,
     G1_B,
     "bn256_g1",
-    |domain_prefix| crate::hash_to_curve::hash_to_curve(domain_prefix, G1::default_hash_to_curve_suite()),
     crate::serde::CompressedFlagConfig::TwoSpare,
     standard_sign
 );
@@ -47,19 +46,9 @@ new_curve_impl!(
     G2_A,
     G2_B,
     "bn256_g2",
-    |domain_prefix| hash_to_curve_g2(domain_prefix),
     crate::serde::CompressedFlagConfig::TwoSpare,
     standard_sign
 );
-
-#[allow(clippy::type_complexity)]
-pub(crate) fn hash_to_curve_g2<'a>(domain_prefix: &'a str) -> Box<dyn Fn(&[u8]) -> G2 + 'a> {
-    let suite = G2::default_hash_to_curve_suite();
-    Box::new(move |message| {
-        let r0 = suite.hash_to_curve(domain_prefix, message);
-        r0.clear_cofactor()
-    })
-}
 
 const G1_GENERATOR_X: Fq = Fq::ONE;
 const G1_GENERATOR_Y: Fq = Fq::from_raw([2, 0, 0, 0]);
@@ -224,36 +213,11 @@ impl CofactorGroup for G2 {
     }
 }
 
-impl G1 {
-    const SVDW_Z: Fq = Fq::ONE;
-
-    fn default_hash_to_curve_suite() -> crate::hash_to_curve::Suite<Self, sha2::Sha256, 48> {
-        crate::hash_to_curve::Suite::<G1, sha2::Sha256, 48>::new(
-            b"BN254G1_XMD:SHA-256_SVDW_RO_",
-            Self::SVDW_Z,
-            crate::hash_to_curve::Method::SVDW,
-        )
-    }
-}
-
-impl G2 {
-    const SVDW_Z: Fq2 = Fq2::ONE;
-
-    fn default_hash_to_curve_suite() -> crate::hash_to_curve::Suite<Self, sha2::Sha256, 96> {
-        crate::hash_to_curve::Suite::<G2, sha2::Sha256, 96>::new(
-            b"BN254G2_XMD:SHA-256_SVDW_RO_",
-            Self::SVDW_Z,
-            crate::hash_to_curve::Method::SVDW,
-        )
-    }
-}
-
 #[cfg(test)]
 mod test {
     use group::UncompressedEncoding;
 
     use super::*;
-    use crate::tests::curve::TestH2C;
 
     crate::curve_testing_suite!(G2, "clear_cofactor");
     crate::curve_testing_suite!(G1, G2);
@@ -280,111 +244,4 @@ mod test {
         Fr::MODULUS
     );
 
-    #[test]
-    fn test_hash_to_curve_g1() {
-        // Test vectors are taken from gnark-crypto/ecc/bn254/hash_vectors_test.go
-        [
-            TestH2C::<G1Affine>::new(
-                b"",
-                crate::tests::point_from_hex(
-                    "0a976ab906170db1f9638d376514dbf8c42aef256a54bbd48521f20749e59e86",
-                    "02925ead66b9e68bfc309b014398640ab55f6619ab59bc1fab2210ad4c4d53d5",
-                ),
-            ),
-            TestH2C::<G1Affine>::new(
-                b"abc",
-                crate::tests::point_from_hex(
-                    "23f717bee89b1003957139f193e6be7da1df5f1374b26a4643b0378b5baf53d1",
-                    "04142f826b71ee574452dbc47e05bc3e1a647478403a7ba38b7b93948f4e151d",
-                ),
-            ),
-            TestH2C::<G1Affine>::new(
-                b"abcdef0123456789",
-                crate::tests::point_from_hex(
-                    "187dbf1c3c89aceceef254d6548d7163fdfa43084145f92c4c91c85c21442d4a",
-                    "0abd99d5b0000910b56058f9cc3b0ab0a22d47cf27615f588924fac1e5c63b4d",
-                ),
-            ),
-            TestH2C::<G1Affine>::new(
-                b"q128_qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq",
-                crate::tests::point_from_hex(
-                    "00fe2b0743575324fc452d590d217390ad48e5a16cf051bee5c40a2eba233f5c",
-                    "0794211e0cc72d3cbbdf8e4e5cd6e7d7e78d101ff94862caae8acbe63e9fdc78",
-                ),
-            ),
-            TestH2C::<G1Affine>::new(
-                b"a512_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-                crate::tests::point_from_hex(
-                    "01b05dc540bd79fd0fea4fbb07de08e94fc2e7bd171fe025c479dc212a2173ce",
-                    "1bf028afc00c0f843d113758968f580640541728cfc6d32ced9779aa613cd9b0",
-                ),
-            ),
-        ].iter().for_each(|test| {
-            test.run("QUUX-V01-CS02-with-");
-        });
-    }
-
-    #[test]
-    fn test_hash_to_curve_g2() {
-        pub(crate) fn point_from_hex(x0: &str, x1: &str, y0: &str, y1: &str) -> G2Affine {
-            let x0: Fq = crate::tests::hex_to_field(x0);
-            let x1: Fq = crate::tests::hex_to_field(x1);
-            let x = Fq2 { c0: x0, c1: x1 };
-            let y0: Fq = crate::tests::hex_to_field(y0);
-            let y1: Fq = crate::tests::hex_to_field(y1);
-            let y = Fq2 { c0: y0, c1: y1 };
-            G2Affine::from_xy(x, y).unwrap()
-        }
-
-        // Test vectors are taken from gnark-crypto/ecc/bn254/hash_vectors_test.go
-        [
-            TestH2C::<G2Affine>::new(
-                b"",
-                point_from_hex(
-                    "1192005a0f121921a6d5629946199e4b27ff8ee4d6dd4f9581dc550ade851300",
-                    "1747d950a6f23c16156e2171bce95d1189b04148ad12628869ed21c96a8c9335",
-                    "0498f6bb5ac309a07d9a8b88e6ff4b8de0d5f27a075830e1eb0e68ea318201d8",
-                    "2c9755350ca363ef2cf541005437221c5740086c2e909b71d075152484e845f4",
-                ),
-            ),
-            TestH2C::<G2Affine>::new(
-                b"abc",
-                point_from_hex(
-                    "16c88b54eec9af86a41569608cd0f60aab43464e52ce7e6e298bf584b94fccd2",
-                    "0b5db3ca7e8ef5edf3a33dfc3242357fbccead98099c3eb564b3d9d13cba4efd",
-                    "1c42ba524cb74db8e2c680449746c028f7bea923f245e69f89256af2d6c5f3ac",
-                    "22d02d2da7f288545ff8789e789902245ab08c6b1d253561eec789ec2c1bd630",
-                ),
-            ),
-            TestH2C::<G2Affine>::new(
-                b"abcdef0123456789",
-                point_from_hex(
-                    "1435fd84aa43c699230e371f6fea3545ce7e053cbbb06a320296a2b81efddc70",
-                    "2a8a360585b6b05996ef69c3c09b2c6fb17afe2b1e944f07559c53178eabf171",
-                    "2820188dcdc13ffdca31694942418afa1d6dfaaf259d012fab4da52b0f592e38",
-                    "142f08e2441ec431defc24621b73cfe0252d19b243cb55b84bdeb85de039207a",
-                ),
-            ),
-            TestH2C::<G2Affine>::new(
-                b"q128_qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq",
-                point_from_hex(
-                    "2cffc213fb63d00d923cb22cda5a2904837bb93a2fe6e875c532c51744388341",
-                    "2718ef38d1bc4347f0266c774c8ef4ee5fa7056cc27a4bd7ecf7a888efb95b26",
-                    "232553f728341afa64ce66d00535764557a052e38657594e10074ad28728c584",
-                    "2206ec0a9288f31ed78531c37295df3b56c42a1284443ee9893adb1521779001",
-                ),
-            ),
-            TestH2C::<G2Affine>::new(
-                b"a512_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-                point_from_hex(
-                    "242a0a159f36f87065e7c5170426012087023165ce47a486e53d6e2845ca625a",
-                    "17f9f6292998cf18ccc155903c1fe6b6465d40c794a3e1ed644a4182ad639f4a",
-                    "2dc5b7b65c9c79e6ef4afab8fbe3083c66d4ce31c78f6621ece17ecc892cf4b3",
-                    "18ef4886c818f01fdf309bc9a46dd904273917f85e74ecd0de62460a68122037",
-                ),
-            ),
-        ].iter().for_each(|test| {
-            test.run("QUUX-V01-CS02-with-");
-        });
-    }
 }

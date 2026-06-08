@@ -9,7 +9,6 @@ macro_rules! new_curve_impl {
     $constant_a:expr,
     $constant_b:expr,
     $curve_id:literal,
-    $hash_to_curve:expr,
     $flag_config:expr,
     standard_sign
     ) => {
@@ -30,7 +29,7 @@ macro_rules! new_curve_impl {
         }
 
 
-        new_curve_impl!(($($privacy)*), $name, $name_affine, $base, $scalar, $generator, $constant_a, $constant_b, $curve_id, $hash_to_curve, $flag_config);
+        new_curve_impl!(($($privacy)*), $name, $name_affine, $base, $scalar, $generator, $constant_a, $constant_b, $curve_id, $flag_config);
     };
 
     (($($privacy:tt)*),
@@ -42,7 +41,6 @@ macro_rules! new_curve_impl {
     $constant_a:expr,
     $constant_b:expr,
     $curve_id:literal,
-    $hash_to_curve:expr,
     $flag_config:expr
     ) => {
 
@@ -353,11 +351,6 @@ macro_rules! new_curve_impl {
 
             const CURVE_ID: &'static str = $curve_id;
 
-            #[allow(clippy::redundant_closure_call)]
-            fn hash_to_curve<'a>(domain_prefix: &'a str) -> Box<dyn Fn(&[u8]) -> Self + 'a> {
-                $hash_to_curve(domain_prefix)
-            }
-
             fn is_on_curve(&self) -> Choice {
                 if $constant_a == $base::ZERO {
                     // Check (Y/Z)^2 = (X/Z)^3 + b
@@ -383,19 +376,6 @@ macro_rules! new_curve_impl {
 
             fn a() -> Self::Base {
                 $constant_a
-            }
-
-            fn new_jacobian(x: Self::Base, y: Self::Base, z: Self::Base) -> CtOption<Self> {
-                // Jacobian to homogeneous
-                let z_inv = z.invert().unwrap_or($base::zero());
-                let p_x = x * z_inv;
-                let p_y = y * z_inv.square();
-                let p = $name {
-                    x:p_x,
-                    y:$base::conditional_select(&p_y, &$base::one(), z.is_zero()),
-                    z
-                };
-                CtOption::new(p, p.is_on_curve())
             }
         }
 

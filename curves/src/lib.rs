@@ -19,8 +19,6 @@ mod derive;
 mod curve;
 pub mod ff_ext;
 pub mod fft;
-#[cfg(any(test, feature = "dev-curves"))]
-pub mod hash_to_curve;
 pub mod msm;
 pub mod serde;
 pub mod serde_traits;
