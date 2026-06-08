@@ -1,7 +1,7 @@
 use ff::Field;
 
 use super::{fq::Fq, fq2::Fq2};
-use crate::ff_ext::{
+use super::{
     cubic::{CubicExtField, CubicExtFieldArith, CubicSparseMul},
     ExtField,
 };

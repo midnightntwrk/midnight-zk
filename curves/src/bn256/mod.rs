@@ -5,6 +5,12 @@ mod macro_pairing;
 #[macro_use]
 mod macro_tower;
 
+pub mod cubic;
+pub mod quadratic;
+mod ext_field;
+
+pub use ext_field::ExtField;
+
 mod curve;
 mod engine;
 mod fq;

@@ -5,10 +5,11 @@ use ff::{Field, FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
 use subtle::{Choice, CtOption};
 
 use super::fq::Fq;
-use crate::ff_ext::{
+use super::{
     quadratic::{QuadExtField, QuadExtFieldArith, SQRT},
-    ExtField, Legendre,
+    ExtField,
 };
+use crate::ff_ext::Legendre;
 
 crate::impl_binops_additive!(Fq2, Fq2);
 crate::impl_binops_multiplicative!(Fq2, Fq2);

@@ -4,7 +4,7 @@ use halo2derive::impl_field;
 use rand_core::RngCore;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
-use crate::ff_ext::ExtField;
+use super::ExtField;
 
 impl_field!(
     bn256_base,

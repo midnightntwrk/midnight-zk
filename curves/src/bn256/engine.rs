@@ -11,9 +11,9 @@ use pairing::{Engine, MillerLoopResult, MultiMillerLoop, PairingCurveAffine};
 use rand_core::RngCore;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq};
 
-use crate::{
-    bn256::{curve::*, fq::*, fq12::*, fq2::*, fq6::FROBENIUS_COEFF_FQ6_C1, fr::*},
-    ff_ext::{quadratic::QuadSparseMul, ExtField},
+use crate::bn256::{
+    curve::*, fq::*, fq12::*, fq2::*, fq6::FROBENIUS_COEFF_FQ6_C1, fr::*, quadratic::QuadSparseMul,
+    ExtField,
 };
 
 crate::impl_gt!(Gt, Fq12, Fr);
