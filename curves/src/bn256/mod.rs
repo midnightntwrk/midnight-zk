@@ -1,7 +1,5 @@
 #[macro_use]
 mod curve_impl;
-#[macro_use]
-mod macro_pairing;
 
 mod compressed;
 pub mod ext_field;
