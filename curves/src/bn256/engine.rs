@@ -449,14 +449,10 @@ fn ell(f: &mut Fq12, coeffs: &(Fq2, Fq2, Fq2), p: &G1Affine) {
 
 #[cfg(test)]
 mod test {
-    use ff::Field;
-    use group::{prime::PrimeCurveAffine, Curve, Group};
-    use pairing::{Engine, MillerLoopResult, PairingCurveAffine};
-    use rand_core::OsRng;
+    use super::super::Bn256;
 
-    use super::{
-        super::{Bn256, Fr, G1, G2},
-        multi_miller_loop, Fq12, G1Affine, G2Affine, Gt,
-    };
-    crate::test_pairing!(Bn256, G1, G1Affine, G2, G2Affine, Fq12, Gt, Fr);
+    #[test]
+    fn bn256_engine_tests() {
+        crate::tests::engine::engine_tests::<Bn256>();
+    }
 }
