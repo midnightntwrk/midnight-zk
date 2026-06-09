@@ -6,7 +6,7 @@ members = ["proofs", "curves", "circuits", "aggregation", "zk_stdlib"]
 package = { license-file = "LICENSE" }
 
 [workspace.dependencies]
-ff = "0.13"
+ff = "0.14"
 group = "0.13"
 halo2curves = { version = "0.7.0", default-features = false }
 rand = { version = "0.8" }
