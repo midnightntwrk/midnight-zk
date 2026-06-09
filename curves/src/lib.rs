@@ -50,6 +50,3 @@ mod serde_impl;
 
 #[cfg(test)]
 pub mod tests;
-
-#[cfg(feature = "__private_bench")]
-pub use bls12_381::{Fp12, Fp2};

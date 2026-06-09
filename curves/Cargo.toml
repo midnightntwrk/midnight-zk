@@ -65,7 +65,6 @@ default = ["serde", "std"]
 std = []
 serde = ["dep:serde", "dep:serde_arrays", "dep:hex"]
 portable = ["blst/portable"]
-__private_bench = []
 dev-curves = ["dep:halo2derive"]
 
 [[bench]]
