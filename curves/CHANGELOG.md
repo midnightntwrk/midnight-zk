@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 * Add `k256` module [#189](https://github.com/midnightntwrk/midnight-zk/pull/189), [#191](https://github.com/midnightntwrk/midnight-zk/pull/191)
 
 ### Changed
+* Update `README.md` [#410](https://github.com/midnightntwrk/midnight-zk/pull/410)
 
 ### Removed
 
