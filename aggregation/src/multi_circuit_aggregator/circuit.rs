@@ -65,8 +65,8 @@ impl State {
 
 /// In-circuit counterpart of [`State`] (constant size).
 ///
-/// Contains only the vk from the last claim, the claims hash and the accumulator, the full list of
-/// claims is not represented in-circuit.
+/// Contains only the vk from the last claim, the claims hash and the
+/// accumulator, the full list of claims is not represented in-circuit.
 #[derive(Clone, Debug)]
 pub struct AssignedState {
     last_vk_repr: AssignedNative<F>,
@@ -180,9 +180,9 @@ impl IvcIO for ProofAggregation {
     ) -> Result<AssignedState, Error> {
         let last_vk_repr = self.std_lib.assign(
             layouter,
-            value.as_ref().map(|s| {
-                s.claims.last().map(|c| c.vk.vk().transcript_repr()).unwrap_or(F::ZERO)
-            }),
+            value
+                .as_ref()
+                .map(|s| s.claims.last().map(|c| c.vk.vk().transcript_repr()).unwrap_or(F::ZERO)),
         )?;
         let claims_hash = self.std_lib.assign(layouter, value.as_ref().map(|s| s.claims_hash))?;
 
@@ -222,11 +222,8 @@ impl IvcIO for ProofAggregation {
     }
 
     fn format_public_input(state: &State) -> Vec<F> {
-        let last_vk_repr = state
-            .claims
-            .last()
-            .map(|c| c.vk.vk().transcript_repr())
-            .unwrap_or(F::ZERO);
+        let last_vk_repr =
+            state.claims.last().map(|c| c.vk.vk().transcript_repr()).unwrap_or(F::ZERO);
         [
             vec![last_vk_repr],
             vec![state.claims_hash],
@@ -337,7 +334,7 @@ impl IvcTransition for ProofAggregation {
                 layouter,
                 &assigned_vk,
                 &[id_point],
-                &[&[statement.clone()]],
+                &[std::slice::from_ref(&statement)],
                 witness.map(|w| w.inner_proof.clone()),
             )?;
 
