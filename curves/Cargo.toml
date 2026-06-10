@@ -1,6 +1,6 @@
 [package]
 name = "midnight-curves"
-description = "Implementation of BLS12 381 and Jubjub curves."
+description = "Implementation of the BLS12-381, JubJub, secp256k1, secp256r1 and Curve25519 curves."
 version = "0.3.0"
 authors = ["dignifiedquire <me@dignifiedquire.com>", "Midnight team"]
 edition = "2018"
