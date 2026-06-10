@@ -116,6 +116,11 @@ pub fn perm_commitment_name(prefix: &str, i: usize) -> String {
 }
 
 impl<S: SelfEmulation> AssignedVk<S> {
+    /// The assigned `transcript_repr` cell of this verifying key.
+    pub fn transcript_repr(&self) -> &AssignedNative<S::F> {
+        &self.transcript_repr
+    }
+
     /// Canonical name for the i-th fixed commitment of this AssignedVk.
     fn fixed_commitment_name(&self, i: usize) -> String {
         fixed_commitment_name(&self.vk_name, i)

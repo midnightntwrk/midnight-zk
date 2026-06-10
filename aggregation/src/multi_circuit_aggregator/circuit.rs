@@ -39,7 +39,7 @@ use super::aggregator::AggregationWitness;
 use crate::{
     ivc::{IvcContext, IvcIO, IvcState, IvcTransition, C, E, F, S},
     multi_circuit_aggregator::{
-        utils::{assign_and_hash_vk, compute_vk_hash},
+        utils::{assign_as_public_inputs_and_hash_vk, compute_vk_hash},
         Claim,
     },
 };
@@ -65,10 +65,11 @@ impl State {
 
 /// In-circuit counterpart of [`State`] (constant size).
 ///
-/// Contains only the claims hash and the accumulator, the full list of
+/// Contains only the vk from the last claim, the claims hash and the accumulator, the full list of
 /// claims is not represented in-circuit.
 #[derive(Clone, Debug)]
 pub struct AssignedState {
+    last_vk_repr: AssignedNative<F>,
     claims_hash: AssignedNative<F>,
     inner_acc: AssignedAccumulator<S>,
 }
@@ -177,6 +178,12 @@ impl IvcIO for ProofAggregation {
         layouter: &mut impl Layouter<F>,
         value: Value<State>,
     ) -> Result<AssignedState, Error> {
+        let last_vk_repr = self.std_lib.assign(
+            layouter,
+            value.as_ref().map(|s| {
+                s.claims.last().map(|c| c.vk.vk().transcript_repr()).unwrap_or(F::ZERO)
+            }),
+        )?;
         let claims_hash = self.std_lib.assign(layouter, value.as_ref().map(|s| s.claims_hash))?;
 
         let inner_acc = self.std_lib.verifier().assign_collapsed_accumulator(
@@ -186,6 +193,7 @@ impl IvcIO for ProofAggregation {
         )?;
 
         Ok(AssignedState {
+            last_vk_repr,
             claims_hash,
             inner_acc,
         })
@@ -206,6 +214,7 @@ impl IvcIO for ProofAggregation {
         state: &AssignedState,
     ) -> Result<Vec<AssignedNative<F>>, Error> {
         Ok([
+            self.std_lib.as_public_input(layouter, &state.last_vk_repr)?,
             self.std_lib.as_public_input(layouter, &state.claims_hash)?,
             self.std_lib.verifier().as_public_input(layouter, &state.inner_acc)?,
         ]
@@ -213,7 +222,13 @@ impl IvcIO for ProofAggregation {
     }
 
     fn format_public_input(state: &State) -> Vec<F> {
+        let last_vk_repr = state
+            .claims
+            .last()
+            .map(|c| c.vk.vk().transcript_repr())
+            .unwrap_or(F::ZERO);
         [
+            vec![last_vk_repr],
             vec![state.claims_hash],
             AssignedAccumulator::<S>::as_public_input(&state.inner_acc),
         ]
@@ -299,52 +314,41 @@ impl IvcTransition for ProofAggregation {
         state: &Self::AssignedState,
         witness: Value<Self::Witness>,
     ) -> Result<Self::AssignedState, Error> {
-        // 1. Witness VK bases and compute their hash in-circuit.
-        let (vk_hash, fixed_bases_map) = assign_and_hash_vk(
+        // 1. Witness the VK and its bases, and compute their hash in-circuit.
+        let (assigned_vk, vk_hash, fixed_bases_map) = assign_as_public_inputs_and_hash_vk(
             layouter,
             &self.std_lib,
+            &self.inner_ctx.domain,
             &self.inner_ctx.cs,
             witness.as_ref().map(|w| &w.claim.vk),
         )?;
 
         // 2. Witness the statement.
-        let statement = self.std_lib.assign(
+        let statement: AssignedNative<F> = self.std_lib.assign(
             layouter,
             witness.as_ref().map(|w| w.claim.statement.format_instance()),
         )?;
 
-        // 3. Prepare inner proof into an accumulator, resolve fixed bases.
+        // 3. Verify the inner proof in-circuit against the witnessed VK and statement.
         let inner_proof_acc = {
-            let acc_value = witness.map(|w| {
-                let mut transcript =
-                    CircuitTranscript::<PoseidonState<F>>::init_from_bytes(&w.inner_proof);
-                let dual_msm = plonk::prepare::<
-                    F,
-                    KZGCommitmentScheme<E>,
-                    CircuitTranscript<PoseidonState<F>>,
-                >(
-                    w.claim.vk.vk(),
-                    &[KZGCommitment::Simple(
-                        C::identity(),
-                        PolynomialLabel::Instance(0),
-                    )],
-                    &[&[w.claim.statement.format_instance()]],
-                    &mut transcript,
-                )
-                .expect("off-circuit prepare should succeed");
+            let id_point = self.std_lib.bls12_381().assign_fixed(layouter, C::identity())?;
 
-                let vk_bases = verifier::fixed_bases::<S>("inner_vk", w.claim.vk.vk());
-                let mut acc = Accumulator::from_dual_msm(dual_msm, "inner_vk", &vk_bases);
-                acc.collapse();
-                acc
-            });
-
-            let mut acc = self.std_lib.verifier().assign_collapsed_accumulator(
+            let mut acc = self.std_lib.verifier().prepare(
                 layouter,
-                &fixed_bases_map.keys().cloned().collect::<Vec<_>>(),
-                acc_value,
+                &assigned_vk,
+                &[id_point],
+                &[&[statement.clone()]],
+                witness.map(|w| w.inner_proof.clone()),
             )?;
 
+            // Collapse before resolving, mirroring the off-circuit `transition`
+            // exactly so both feed an identically-shaped accumulator into the
+            // accumulation step (otherwise the batching challenge diverges).
+            acc.collapse(
+                layouter,
+                self.std_lib.bls12_381(),
+                self.std_lib.bls12_381().scalar_field_chip(),
+            )?;
             acc.resolve_fixed_bases(&fixed_bases_map);
             acc
         };
@@ -370,6 +374,7 @@ impl IvcTransition for ProofAggregation {
             .poseidon(layouter, &[vk_hash, statement, state.claims_hash.clone()])?;
 
         Ok(AssignedState {
+            last_vk_repr: assigned_vk.transcript_repr().clone(),
             claims_hash,
             inner_acc,
         })
