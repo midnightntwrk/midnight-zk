@@ -28,6 +28,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Changed logup to use the selector variant [#220](https://github.com/midnightntwrk/midnight-zk/pull/220)
 * Replace `secp256k1` with `k256`  [#192](https://github.com/midnightntwrk/midnight-zk/pull/192)
 * Parallelise batch_verifier [#236](https://github.com/midnightntwrk/midnight-zk/pull/236)
+* Bumped `blake2b_halo2`, `sha3-circuit` deps [#417](https://github.com/midnightntwrk/midnight-zk/pull/417)
 
 ### Removed
 
@@ -85,7 +86,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 * Update `prove` to accept `impl RngCore + CryptoRng` by value [#307](https://github.com/midnightntwrk/midnight-zk/pull/307)
 
-## [1.0.0] 
+## [1.0.0]
 ### Added
 - Initial release of zk_stdlib extracted from circuits crate
 
