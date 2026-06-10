@@ -45,8 +45,5 @@ pub use jubjub::*;
 // // Re-export pairing library for compatibility with halo2 ecosystem
 pub use pairing;
 
-#[cfg(feature = "serde")]
-mod serde_impl;
-
 #[cfg(test)]
 pub mod tests;

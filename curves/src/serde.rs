@@ -1,13 +1,7 @@
 use std::{convert::TryInto, fmt::Debug};
 
-#[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
-
 #[derive(Clone, Copy, Debug)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct Repr<const T: usize>(
-    #[cfg_attr(feature = "serde", serde(with = "serde_arrays"))] [u8; T],
-);
+pub struct Repr<const T: usize>([u8; T]);
 
 impl<const T: usize> Repr<T> {
     pub fn inner(&self) -> &[u8; T] {
