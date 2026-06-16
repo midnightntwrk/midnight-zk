@@ -311,7 +311,8 @@ impl IvcTransition for ProofAggregation {
         state: &Self::AssignedState,
         witness: Value<Self::Witness>,
     ) -> Result<Self::AssignedState, Error> {
-        // 1. Witness the VK and its bases, and compute their hash in-circuit.
+        // 1. Assign the VK as a public input, witness its bases, and compute their hash
+        //    in-circuit.
         let (assigned_vk, vk_hash, fixed_bases_map) = assign_as_public_inputs_and_hash_vk(
             layouter,
             &self.std_lib,

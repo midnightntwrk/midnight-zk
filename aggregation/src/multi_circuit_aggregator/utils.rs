@@ -28,9 +28,9 @@ use midnight_zk_stdlib::{MidnightVK, ZkStdLib};
 use crate::ivc::{C, F, S};
 
 /// Result of [`assign_as_public_inputs_and_hash_vk`]: the assigned VK (whose
-/// `transcript_repr` is the very cell folded into the hash, so the in-circuit
-/// verifier checks the proof against the same VK that was hashed), its VK hash,
-/// and a named map of assigned base points for resolving fixed-base scalars.
+/// `transcript_repr` is added to the hash chain, enforcing that the inner proof
+/// is verified against the same VK that was hashed), its VK hash, and a named
+/// map of assigned base points for resolving fixed-base scalars.
 pub type VkHashAndBases = (
     AssignedVk<S>,
     AssignedNative<F>,
