@@ -1,0 +1,20 @@
+name: Apply priority label from form
+
+# Dispatcher — calls the reusable workflow in midnightntwrk/.github.
+# Applies the priority:p* label from the bug-report form's priority dropdown.
+on:
+  issues:
+    types: [opened, edited]
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: apply-priority-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  apply:
+    name: Apply priority label from form dropdown
+    uses: midnightntwrk/.github/.github/workflows/apply-priority-from-form.yml@812cef985f54ef792f81ed053aa202ad0a62d0e3
