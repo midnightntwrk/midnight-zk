@@ -17,4 +17,4 @@ concurrency:
 jobs:
   apply:
     name: Apply priority label from form dropdown
-    uses: midnightntwrk/.github/.github/workflows/apply-priority-from-form.yml@812cef985f54ef792f81ed053aa202ad0a62d0e3
+    uses: midnightntwrk/.github/.github/workflows/apply-priority-from-form.yml@d8e32733ba86a400227f4cca84e4285d1f072928
