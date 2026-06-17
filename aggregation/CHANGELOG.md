@@ -48,6 +48,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 * `CircuitField` refactor [#201](https://github.com/midnightntwrk/midnight-zk/pull/201)
 
 ### Removed
+* Remove `LightAggregator` module, not in use and hard to maintain [#427](https://github.com/midnightntwrk/midnight-zk/pull/427)
 * Halo2curves dependency [#139](https://github.com/midnightntwrk/midnight-zk/pull/139)
 
 [0.1.2]
