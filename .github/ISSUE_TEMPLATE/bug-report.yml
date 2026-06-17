@@ -25,21 +25,6 @@ body:
     validations:
       required: true
 
-  - type: dropdown
-    id: priority
-    attributes:
-      label: Priority (triage hint)
-      description: Engineering urgency. Triage confirms and applies the priority label.
-      options:
-        - priority:p3-medium
-        - priority:p2-high
-        - priority:p1-critical
-        - priority:p0-blocking
-        - priority:p4-low
-      default: 0
-    validations:
-      required: true
-
   - type: textarea
     id: steps
     attributes:
