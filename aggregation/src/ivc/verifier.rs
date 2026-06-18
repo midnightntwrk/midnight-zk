@@ -57,7 +57,7 @@ impl<T: Ivc> IvcVerifier<T> {
             return Err(IvcError::DeciderFailed);
         }
 
-        let fixed_bases = midnight_circuits::verifier::fixed_bases::<S>("self_vk", self.vk.vk());
+        let fixed_bases = midnight_circuits::verifier::fixed_bases::<S>(self.vk.vk());
 
         let pi =
             IvcCircuit::<T>::format_instance(instance).map_err(|_| IvcError::InvalidInstance)?;
@@ -77,7 +77,7 @@ impl<T: Ivc> IvcVerifier<T> {
 
         transcript.assert_empty().map_err(|_| IvcError::TranscriptNotEmpty)?;
 
-        let proof_acc = Accumulator::from_dual_msm(dual_msm, "self_vk", &fixed_bases);
+        let proof_acc = Accumulator::from_dual_msm(dual_msm, &fixed_bases);
 
         // Verify that both `proof_acc` and `instance.acc` satisfy the pairing
         // invariant, with a single pairing, by accumulating them first.
