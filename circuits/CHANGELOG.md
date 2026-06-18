@@ -8,6 +8,8 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 ### Added
+* `Point`/`AssignedPoint` enums and flat-triple `Msm`/`AssignedMsm` representation to distinguish variable-base from globally-fixed bases [#430](https://github.com/midnightntwrk/midnight-zk/pull/430)
+* `AssignedKZGCommitment` enum as the in-circuit analog of `KZGCommitment` [#430](https://github.com/midnightntwrk/midnight-zk/pull/430)
 
 ### Fixed
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
@@ -25,9 +27,11 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Sort point sets deterministically in KZG multiopen for in-circuit verification [#256](https://github.com/midnightntwrk/midnight-zk/pull/256)
 * Move advice queries before instance queries in verifier gadget [#256](https://github.com/midnightntwrk/midnight-zk/pull/256)
 * Share the `z` and `m` polynomials across all logup instances [#279](https://github.com/midnightntwrk/midnight-zk/pull/279)
+* Replace string-based VK-name keys with `PolynomialLabel`-keyed `fixed_bases` maps throughout the verifier gadget [#430](https://github.com/midnightntwrk/midnight-zk/pull/430)
 
 ### Removed
 * Remove `Expression::Challenge` variant and phase-parameterized `Any::Advice`; multi-phase advice columns are no longer supported [#376](https://github.com/midnightntwrk/midnight-zk/pull/376)
+* Remove `LabeledPoint`, `fixed_commitment_name`, `perm_commitment_name`, and `vk_name` helpers from the verifier module [#430](https://github.com/midnightntwrk/midnight-zk/pull/430)
 
 ## [7.1.0]
 ### Changed

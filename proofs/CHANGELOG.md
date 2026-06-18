@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `LagrangeDelta` / `LagrangeDoubleDelta` commit bases [#379](https://github.com/midnightntwrk/midnight-zk/pull/379)
 * `FloorPlanner` region-layout caching API (`synthesize_capturing_regions`, `synthesize_with_cached_regions`) and implementation in `SimpleFloorPlanner` to skip the shape pass during proving [#380](https://github.com/midnightntwrk/midnight-zk/pull/380)
 * Add test for `FlatGraphEvaluator` [#394](https://github.com/midnightntwrk/midnight-zk/pull/394)
+* `MSMKZG::new` constructor taking parallel slices of scalars, bases, and labels [#430](https://github.com/midnightntwrk/midnight-zk/pull/430)
+* `KZGCommitment::collapse()` method and `From<KZGCommitment>` impl for `MSMKZG` [#430](https://github.com/midnightntwrk/midnight-zk/pull/430)
+* Derive `Ord` on `PolynomialLabel`, making it usable as a `BTreeMap` key [#430](https://github.com/midnightntwrk/midnight-zk/pull/430)
 
 ### Fixed
 * Fix verifier evals bug [#356](https://github.com/midnightntwrk/midnight-zk/pull/356)
@@ -40,11 +43,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Move advice queries before instance queries in prover and verifier [#256](https://github.com/midnightntwrk/midnight-zk/pull/256)
 * `Circuit::Params` extended to carry `max_bit_len` [#251](https://github.com/midnightntwrk/midnight-zk/pull/251)
 * unifying `commit` and `commit_lagrange` [#368](https://github.com/midnightntwrk/midnight-zk/pull/368)
+* Simplify KZG multiopen verifier to use `KZGCommitment` directly [#430](https://github.com/midnightntwrk/midnight-zk/pull/430)
 
 ### Removed
 * Remove `Query<F>` trait; `construct_intermediate_sets` now accepts `&[(T, F, F)]` (commitment reference, point, eval) tuples with `T: PartialEq + Copy` [#411](https://github.com/midnightntwrk/midnight-zk/pull/411)
 * Remove multi-phase PLONK support: `Phase`, `Challenge`, `FirstPhase`, and `Layouter::get_challenge()` are removed; `Any::Advice` is no longer phase-parameterized; the prover and dev tools synthesize in a single pass [#376](https://github.com/midnightntwrk/midnight-zk/pull/376)
 * Remove multi-proof support; `create_proof` and `prepare` now operate on a single circuit and take `instances: &[&[F]]` instead of `&[&[&[F]]]` [#375](https://github.com/midnightntwrk/midnight-zk/pull/375)
+* Remove `msm_inner_product` from `utils::arithmetic`; superseded by the generic `inner_product` [#430](https://github.com/midnightntwrk/midnight-zk/pull/430)
 
 ## [0.8.0]
 ### Added
