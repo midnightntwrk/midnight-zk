@@ -137,12 +137,15 @@ where
         let queries = &{
             let mut queries = queries.to_vec();
             let pairs: Vec<_> = queries.iter().map(|q| (q.poly_ref, q.point)).collect();
-            for (idx, point) in compute_dummy_queries(&pairs) {
+            for (idx, dummy_point) in compute_dummy_queries(&pairs) {
                 let poly_ref = queries[idx].poly_ref;
                 transcript
-                    .write(&eval_polynomial(&poly_ref.0[..], queries[idx].point))
+                    .write(&eval_polynomial(&poly_ref.0[..], dummy_point))
                     .map_err(|_| Error::OpeningError)?;
-                queries.push(ProverQuery { point, poly_ref });
+                queries.push(ProverQuery {
+                    point: dummy_point,
+                    poly_ref,
+                });
             }
             queries
         };
@@ -278,11 +281,11 @@ where
         let queries = &{
             let mut queries = queries.to_vec();
             let pairs: Vec<_> = queries.iter().map(|q| (q.commitment_ref, q.point)).collect();
-            for (idx, point) in compute_dummy_queries(&pairs) {
+            for (idx, dummy_point) in compute_dummy_queries(&pairs) {
                 let commitment_ref = queries[idx].commitment_ref;
                 let eval = transcript.read().map_err(|_| Error::SamplingError)?;
                 queries.push(VerifierQuery {
-                    point,
+                    point: dummy_point,
                     commitment_ref,
                     eval,
                 });

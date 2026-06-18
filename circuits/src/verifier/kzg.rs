@@ -448,9 +448,9 @@ pub(crate) fn multi_prepare<S: SelfEmulation>(
         let pairs: Vec<_> = queries.iter().map(|q| (q.commitment_ref, q.point.clone())).collect();
         let dummy_openings = midnight_proofs::poly::kzg::compute_dummy_queries(&pairs);
         let mut queries = queries.to_vec();
-        for (idx, point) in dummy_openings {
+        for (idx, dummy_point) in dummy_openings {
             queries.push(VerifierQuery {
-                point,
+                point: dummy_point,
                 commitment_ref: queries[idx].commitment_ref,
                 eval: transcript_gadget.read_scalar(layouter)?,
             });
