@@ -1,0 +1,59 @@
+name: Aggregation Examples
+
+on:
+  push:
+    branches:
+      - main
+      - next
+  pull_request:
+    branches:
+      - main
+      - next
+
+jobs:
+  ivc-example:
+    if: github.event.pull_request.draft == false
+    name: Run IVC Example
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        features:
+          - truncated-challenges,fewer-point-sets,single-h-commitment
+
+    steps:
+      - name: Add github.com credentials to netrc
+        uses: extractions/netrc@c3879108aae6b4ed5c4eb60854ae04f06d2f2f68
+        with:
+          machine: github.com
+          username: ${{ secrets.GH_USERNAME }}
+          password: ${{ secrets.GH_PASSWORD }}
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+      - name: Install rust-toolchain.toml
+        run: rustup toolchain install
+      - name: Restore Cargo Cache
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Create directory
+        run: mkdir -p ./examples/assets
+      - name: Download SRS
+        run: |
+          curl -L -o ./examples/assets/midnight-srs-2p17 https://srs.midnight.network/midnight-srs-2p17
+          curl -L -o ./examples/assets/midnight-srs-2p19 https://srs.midnight.network/midnight-srs-2p19
+
+      - name: Run IVC example (${{ matrix.features }})
+        run: cargo run --release -p midnight-aggregation --example ivc --features ${{ matrix.features }}
+
+      - name: Save Cargo Cache
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
