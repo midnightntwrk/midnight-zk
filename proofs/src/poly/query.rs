@@ -5,7 +5,7 @@ use ff::PrimeField;
 use crate::poly::{commitment::PolynomialCommitmentScheme, Coeff, Polynomial};
 
 /// A structured label for polynomial commitments in verifier queries.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum PolynomialLabel {
     /// Fixed column commitment (column index).
     Fixed(usize),
