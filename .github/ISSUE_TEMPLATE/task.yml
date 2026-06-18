@@ -1,0 +1,28 @@
+name: Task
+description: A unit of work that isn't a bug or a new feature
+title: "[Task] "
+type: Task
+labels:
+  - type:task
+  - status:untriaged
+  - component:zk
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What needs to be done?
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria / done when
+      description: Concrete, verifiable outcomes.
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context / notes
+      description: Links to related issues, PRs, docs, or dependencies.
