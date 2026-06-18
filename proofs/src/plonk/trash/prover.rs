@@ -89,10 +89,6 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
 
 impl<F: WithSmallOrderMulGroup<3>> Evaluated<F> {
     pub(crate) fn open(&self, x: F) -> impl Iterator<Item = ProverQuery<'_, F>> + Clone {
-        vec![ProverQuery {
-            point: x,
-            poly: &self.committed.trash_poly,
-        }]
-        .into_iter()
+        vec![ProverQuery::new(x, &self.committed.trash_poly)].into_iter()
     }
 }

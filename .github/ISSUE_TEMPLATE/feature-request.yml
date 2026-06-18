@@ -1,0 +1,37 @@
+name: Feature request
+description: Propose a new feature or capability for midnight-zk
+title: "[Feature] "
+type: Feature
+labels:
+  - type:feature
+  - status:untriaged
+  - component:zk
+  - audience:public
+body:
+  - type: textarea
+    id: feature
+    attributes:
+      label: Proposed feature
+      description: Clearly describe the feature, its benefits, and the expected outcome.
+    validations:
+      required: true
+
+  - type: textarea
+    id: need
+    attributes:
+      label: User need
+      description: What user need does this address? Include use cases / user stories.
+    validations:
+      required: true
+
+  - type: textarea
+    id: benefit
+    attributes:
+      label: Expected benefit
+      description: What benefit does this provide to users and the platform?
+
+  - type: textarea
+    id: details
+    attributes:
+      label: Details
+      description: Implementation ideas, alternatives considered, dependencies, anything else.
