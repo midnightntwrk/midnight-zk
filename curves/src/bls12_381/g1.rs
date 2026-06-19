@@ -1589,7 +1589,7 @@ mod tests {
             let rhs = x.square() * x + b;
             if let Some(y) = Option::<Fp>::from(rhs.sqrt()) {
                 let p = G1Affine::from_raw_unchecked(x, y, false);
-                if bool::from(p.is_on_curve()) && !bool::from(p.is_torsion_free()) {
+                if !bool::from(p.is_torsion_free()) {
                     return p;
                 }
             }
