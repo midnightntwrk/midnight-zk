@@ -997,7 +997,7 @@ impl CurveAffine for G1Affine {
 
     fn from_xy(x: Self::Base, y: Self::Base) -> CtOption<Self> {
         let p = Self::from_raw_unchecked(x, y, false);
-        CtOption::new(p, p.is_on_curve())
+        CtOption::new(p, p.is_torsion_free())
     }
 
     fn is_on_curve(&self) -> Choice {
