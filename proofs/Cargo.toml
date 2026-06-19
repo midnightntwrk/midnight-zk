@@ -1,6 +1,6 @@
 [package]
 name = "midnight-proofs"
-version = "0.8.0"
+version = "0.8.1"
 edition = "2021"
 rust-version = "1.76.0"
 description = """
@@ -31,7 +31,7 @@ harness = false
 [dependencies]
 ff = { workspace = true }
 group = { workspace = true }
-midnight-curves = "0.3.0"
+midnight-curves = "0.3.1"
 rand_core = { workspace = true, features = ["getrandom"] }
 tracing = { workspace = true }
 blake2b_simd = { workspace = true }
