@@ -17,6 +17,10 @@ verification keys break backwards compatibility.
 
 ### Removed
 
+## [6.2.1]
+### Fixed
+* Bug fix in midnight-curves [#433](https://github.com/midnightntwrk/midnight-zk/pull/433)
+
 ## [6.2.0]
 ### Added
 * `EccChip::scalar_from_reduced_le_bytes`: convert little-endian bytes to a scalar bounded to `NUM_BITS_SUBGROUP` bits [#407](https://github.com/midnightntwrk/midnight-zk/pull/407)

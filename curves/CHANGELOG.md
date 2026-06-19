@@ -11,9 +11,12 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 ### Changed
 
 ### Fixed
-* Add prime-order subgroup check in `G1Affine::from_uncompressed` [#425](https://github.com/midnightntwrk/midnight-zk/pull/425)
 
 ### Removed
+
+## 0.2.1
+### Fixed
+* Bug fix in midnight-curves [#433](https://github.com/midnightntwrk/midnight-zk/pull/433)
 
 ## 0.2.0
 ### Added
