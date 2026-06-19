@@ -14,7 +14,7 @@ use std::{
 };
 
 use blst::*;
-use ff::{Field, PrimeField, WithSmallOrderMulGroup};
+use ff::{Field, PrimeField};
 use group::{
     prime::{PrimeCurve, PrimeCurveAffine, PrimeGroup},
     Curve, Group, GroupEncoding, UncompressedEncoding, WnafGroup,
@@ -583,6 +583,7 @@ impl G2Projective {
         G2Projective(out)
     }
 
+    #[cfg(test)]
     fn from_raw_unchecked(x: Fp2, y: Fp2, z: Fp2) -> Self {
         let raw = blst_p2 {
             x: x.0,
@@ -605,23 +606,6 @@ impl G2Projective {
     /// Returns the z coordinate.
     pub fn z(&self) -> Fp2 {
         Fp2(self.0.z)
-    }
-
-    /// Hash to curve algorithm.
-    pub fn hash_to_curve(msg: &[u8], dst: &[u8], aug: &[u8]) -> Self {
-        let mut res = Self::identity();
-        unsafe {
-            blst_hash_to_g2(
-                &mut res.0,
-                msg.as_ptr(),
-                msg.len(),
-                dst.as_ptr(),
-                dst.len(),
-                aug.as_ptr(),
-                aug.len(),
-            );
-        }
-        res
     }
 
     /// Perform a multi-exponentiation, aka "multi-scalar-multiplication" (MSM)
@@ -1009,28 +993,6 @@ impl CurveExt for G2Projective {
     type AffineExt = G2Affine;
     const CURVE_ID: &'static str = "";
 
-    fn endo(&self) -> Self {
-        let x_zeta = self.x() * Fp2::ZETA;
-        let raw = blst_p2 {
-            x: x_zeta.0,
-            y: self.y().0,
-            z: self.z().0,
-        };
-
-        G2Projective(raw)
-    }
-
-    fn jacobian_coordinates(&self) -> (Self::Base, Self::Base, Self::Base) {
-        // Homogeneous to Jacobian
-        let x = self.x() * self.z();
-        let y = self.y() * self.z().square();
-        (x, y, self.z())
-    }
-
-    fn hash_to_curve<'a>(domain_prefix: &'a str) -> Box<dyn Fn(&[u8]) -> Self + 'a> {
-        unimplemented!()
-    }
-
     fn is_on_curve(&self) -> Choice {
         let is_on_curve = unsafe { Choice::from(blst_p2_on_curve(&self.0) as u8) };
         is_on_curve | self.is_identity()
@@ -1042,19 +1004,6 @@ impl CurveExt for G2Projective {
 
     fn b() -> Self::Base {
         G2_B
-    }
-
-    fn new_jacobian(x: Self::Base, y: Self::Base, z: Self::Base) -> CtOption<Self> {
-        // Jacobian to homogeneous
-        let z_inv = z.invert().unwrap_or(Fp2::ZERO);
-        let p_x = x * z_inv;
-        let p_y = y * z_inv.square();
-        let p = G2Projective::from_raw_unchecked(
-            p_x,
-            Fp2::conditional_select(&p_y, &Fp2::ONE, z.is_zero()),
-            z,
-        );
-        CtOption::new(p, p.is_on_curve())
     }
 }
 

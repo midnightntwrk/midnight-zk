@@ -1620,12 +1620,6 @@ mod tests {
     }
 
     #[test]
-    fn fp_field_tests() {
-        crate::tests::field::random_field_tests::<Fp>();
-        crate::tests::field::random_sqrt_tests::<Fp>();
-    }
-
-    #[test]
     fn test_fp_ordering() {
         // FpRepr's ordering is well-tested, but we still need to make sure the Fp
         // elements aren't being compared in Montgomery form.

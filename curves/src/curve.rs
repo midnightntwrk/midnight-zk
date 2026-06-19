@@ -9,8 +9,6 @@ use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 /// This trait is a common interface for dealing with elements of an elliptic
 /// curve group in a "projective" form, where that arithmetic is usually more
 /// efficient.
-///
-/// Requires the `alloc` feature flag because of `hash_to_curve`.
 pub trait CurveExt:
     PrimeCurve<Affine = <Self as CurveExt>::AffineExt>
     + group::Group<Scalar = <Self as CurveExt>::ScalarExt>
@@ -28,22 +26,8 @@ pub trait CurveExt:
         + Mul<Self::ScalarExt, Output = Self>
         + for<'r> Mul<Self::ScalarExt, Output = Self>;
 
-    /// CURVE_ID used for hash-to-curve.
+    /// Identifier used to distinguish curves, e.g. for arithmetic fast paths.
     const CURVE_ID: &'static str;
-
-    /// Apply the curve endomorphism by multiplying the x-coordinate
-    /// by an element of multiplicative order 3.
-    fn endo(&self) -> Self;
-
-    /// Return the Jacobian coordinates of this point.
-    fn jacobian_coordinates(&self) -> (Self::Base, Self::Base, Self::Base);
-
-    /// Requests a hasher that accepts messages and returns near-uniformly
-    /// distributed elements in the group, given domain prefix `domain_prefix`.
-    ///
-    /// This method is suitable for use as a random oracle.
-    #[allow(clippy::type_complexity)]
-    fn hash_to_curve<'a>(domain_prefix: &'a str) -> Box<dyn Fn(&[u8]) -> Self + 'a>;
 
     /// Returns whether or not this element is on the curve; should
     /// always be true unless an "unchecked" API was used.
@@ -54,16 +38,9 @@ pub trait CurveExt:
 
     /// Returns the curve constant b.
     fn b() -> Self::Base;
-
-    /// Obtains a point given Jacobian coordinates $X : Y : Z$, failing
-    /// if the coordinates are not on the curve.
-    fn new_jacobian(x: Self::Base, y: Self::Base, z: Self::Base) -> CtOption<Self>;
 }
 /// This trait is the affine counterpart to `Curve` and is used for
 /// serialization, storage in memory, and inspection of $x$ and $y$ coordinates.
-///
-/// Requires the `alloc` feature flag because of `hash_to_curve` on
-/// [`CurveExt`].
 pub trait CurveAffine:
     PrimeCurveAffine<
         Scalar = <Self as CurveAffine>::ScalarExt,
@@ -118,29 +95,12 @@ impl<C: CurveAffine> Coordinates<C> {
     }
     /// Returns the x-coordinate.
     ///
-    /// Equivalent to `Coordinates::u`.
     pub fn x(&self) -> &C::Base {
         &self.x
     }
 
     /// Returns the y-coordinate.
-    ///
-    /// Equivalent to `Coordinates::v`.
     pub fn y(&self) -> &C::Base {
-        &self.y
-    }
-
-    /// Returns the u-coordinate.
-    ///
-    /// Equivalent to `Coordinates::x`.
-    pub fn u(&self) -> &C::Base {
-        &self.x
-    }
-
-    /// Returns the v-coordinate.
-    ///
-    /// Equivalent to `Coordinates::y`.
-    pub fn v(&self) -> &C::Base {
         &self.y
     }
 }

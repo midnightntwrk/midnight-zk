@@ -20,7 +20,7 @@ use rand_core::RngCore;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
 use super::{
-    fp::{Fp, ZETA_BASE},
+    fp::Fp,
     Bls12, Fq, G2Affine, Gt,
 };
 use crate::{
@@ -607,6 +607,7 @@ impl G1Projective {
         G1Projective(out)
     }
 
+    #[cfg(test)]
     fn from_raw_unchecked(x: Fp, y: Fp, z: Fp) -> Self {
         let raw = blst_p1 {
             x: x.0,
@@ -630,23 +631,6 @@ impl G1Projective {
     /// Returns the z coordinate.
     pub fn z(&self) -> Fp {
         Fp(self.0.z)
-    }
-
-    /// Hash to curve algorithm.
-    pub fn hash_to_curve(msg: &[u8], dst: &[u8], aug: &[u8]) -> Self {
-        let mut res = Self::identity();
-        unsafe {
-            blst_hash_to_g1(
-                &mut res.0,
-                msg.as_ptr(),
-                msg.len(),
-                dst.as_ptr(),
-                dst.len(),
-                aug.as_ptr(),
-                aug.len(),
-            );
-        }
-        res
     }
 
     /// Perform a multi-exponentiation, aka "multi-scalar-multiplication" (MSM)
@@ -938,27 +922,6 @@ impl CurveExt for G1Projective {
     type AffineExt = G1Affine;
     const CURVE_ID: &'static str = "";
 
-    fn endo(&self) -> Self {
-        G1Projective::from_raw_unchecked(self.x() * ZETA_BASE, self.y(), self.z())
-    }
-
-    fn jacobian_coordinates(&self) -> (Self::Base, Self::Base, Self::Base) {
-        // Homogeneous to Jacobian
-        let x = self.x() * self.z();
-        let y = self.y() * self.z().square();
-        (x, y, self.z())
-    }
-
-    fn hash_to_curve<'a>(domain_prefix: &'a str) -> Box<dyn Fn(&[u8]) -> Self + 'a> {
-        Box::new(move |message| {
-            Self::hash_to_curve(
-                message,
-                domain_prefix.as_ref(),
-                b"BLS12381G1_XMD:SHA-256_SSWU_RO_",
-            )
-        })
-    }
-
     fn is_on_curve(&self) -> Choice {
         self.is_on_curve()
     }
@@ -969,19 +932,6 @@ impl CurveExt for G1Projective {
 
     fn b() -> Self::Base {
         B
-    }
-
-    fn new_jacobian(x: Self::Base, y: Self::Base, z: Self::Base) -> CtOption<Self> {
-        // Jacobian to homogeneous
-        let z_inv = z.invert().unwrap_or(Fp::ZERO);
-        let p_x = x * z_inv;
-        let p_y = y * z_inv.square();
-        let p = G1Projective::from_raw_unchecked(
-            p_x,
-            Fp::conditional_select(&p_y, &Fp::ONE, z.is_zero()),
-            z,
-        );
-        CtOption::new(p, p.is_on_curve())
     }
 }
 

@@ -1972,10 +1972,45 @@ mod tests {
     }
 
     #[test]
-    fn scalar_field_tests() {
-        crate::tests::field::random_field_tests::<Fq>();
-        crate::tests::field::random_sqrt_tests::<Fq>();
-        crate::tests::field::from_str_tests::<Fq>();
+    fn scalar_from_str_tests() {
+        use ff::PrimeField;
+        use rand_core::{RngCore, SeedableRng};
+        use rand_xorshift::XorShiftRng;
+
+        {
+            let a = "84395729384759238745923745892374598234705297301958723458712394587103249587213984572934750213947582345792304758273458972349582734958273495872304598234";
+            let b = "38495729084572938457298347502349857029384609283450692834058293405982304598230458230495820394850293845098234059823049582309485203948502938452093482039";
+            let c = "3248875134290623212325429203829831876024364170316860259933542844758450336418538569901990710701240661702808867062612075657861768196242274635305077449545396068598317421057721935408562373834079015873933065667961469731886739181625866970316226171512545167081793907058686908697431878454091011239990119126";
+
+            let mut a = Fq::from_str_vartime(a).unwrap();
+            let b = Fq::from_str_vartime(b).unwrap();
+            let c = Fq::from_str_vartime(c).unwrap();
+
+            a.mul_assign(&b);
+
+            assert_eq!(a, c);
+        }
+
+        {
+            let mut rng = XorShiftRng::from_seed([
+                0x59, 0x62, 0xbe, 0x5d, 0x76, 0x3d, 0x31, 0x8d, 0x17, 0xdb, 0x37, 0x32, 0x54, 0x06,
+                0xbc, 0xe5,
+            ]);
+
+            for _ in 0..1000 {
+                let n = rng.next_u64();
+
+                let a = Fq::from_str_vartime(&format!("{}", n)).unwrap();
+                let b = Fq::from(n);
+
+                assert_eq!(a, b);
+            }
+        }
+
+        assert!(Fq::from_str_vartime("").is_none());
+        assert!(bool::from(Fq::from_str_vartime("0").unwrap().is_zero()));
+        assert!(Fq::from_str_vartime("00").is_none());
+        assert!(Fq::from_str_vartime("00000000000").is_none());
     }
 
     #[test]

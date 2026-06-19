@@ -11,13 +11,255 @@ use pairing::{Engine, MillerLoopResult, MultiMillerLoop, PairingCurveAffine};
 use rand_core::RngCore;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq};
 
-use crate::{
-    bn256::{curve::*, fq::*, fq12::*, fq2::*, fq6::FROBENIUS_COEFF_FQ6_C1, fr::*},
-    ff_ext::{quadratic::QuadSparseMul, ExtField},
+use crate::bn256::{
+    curve::*, ext_field::quadratic::QuadSparseMul, fq::*, fq12::*, fq2::*,
+    fq6::FROBENIUS_COEFF_FQ6_C1, fr::*, ExtField,
 };
 
-crate::impl_gt!(Gt, Fq12, Fr);
-crate::impl_miller_loop_components!(Bn256, G1, G1Affine, G2, G2Affine, Fq12, Gt, Fr);
+#[derive(Copy, Clone, Debug, Default)]
+pub struct Gt(pub(crate) Fq12);
+
+impl ConstantTimeEq for Gt {
+    fn ct_eq(&self, other: &Self) -> Choice {
+        self.0.ct_eq(&other.0)
+    }
+}
+
+impl ConditionallySelectable for Gt {
+    fn conditional_select(a: &Self, b: &Self, choice: Choice) -> Self {
+        Gt(Fq12::conditional_select(&a.0, &b.0, choice))
+    }
+}
+
+impl Eq for Gt {}
+impl PartialEq for Gt {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        bool::from(self.ct_eq(other))
+    }
+}
+
+impl Gt {
+    /// Returns the group identity, which is $1$.
+    pub fn identity() -> Gt {
+        Gt(Fq12::one())
+    }
+
+    /// Doubles this group element.
+    pub fn double(&self) -> Gt {
+        use ff::Field;
+        Gt(self.0.square())
+    }
+}
+
+impl<'a> Neg for &'a Gt {
+    type Output = Gt;
+
+    #[inline]
+    fn neg(self) -> Gt {
+        // The element is unitary, so we just conjugate.
+        let mut u = self.0;
+        u.conjugate();
+        Gt(u)
+    }
+}
+
+impl Neg for Gt {
+    type Output = Gt;
+
+    #[inline]
+    fn neg(self) -> Gt {
+        -&self
+    }
+}
+
+impl<'a, 'b> Add<&'b Gt> for &'a Gt {
+    type Output = Gt;
+
+    #[inline]
+    #[allow(clippy::suspicious_arithmetic_impl)]
+    fn add(self, rhs: &'b Gt) -> Gt {
+        Gt(self.0 * rhs.0)
+    }
+}
+
+impl<'a, 'b> Sub<&'b Gt> for &'a Gt {
+    type Output = Gt;
+
+    #[inline]
+    fn sub(self, rhs: &'b Gt) -> Gt {
+        self + (-rhs)
+    }
+}
+
+#[allow(clippy::suspicious_arithmetic_impl)]
+impl<'a, 'b> Mul<&'b Fr> for &'a Gt {
+    type Output = Gt;
+
+    fn mul(self, other: &'b Fr) -> Self::Output {
+        let mut acc = Gt::identity();
+
+        for bit in other
+            .to_repr()
+            .as_ref()
+            .iter()
+            .rev()
+            .flat_map(|byte| (0..8).rev().map(move |i| Choice::from((byte >> i) & 1u8)))
+            .skip(1)
+        {
+            acc = acc.double();
+            acc = Gt::conditional_select(&acc, &(acc + self), bit);
+        }
+
+        acc
+    }
+}
+
+crate::impl_binops_additive!(Gt, Gt);
+crate::impl_binops_multiplicative!(Gt, Fr);
+
+impl<T> Sum<T> for Gt
+where
+    T: Borrow<Gt>,
+{
+    fn sum<I>(iter: I) -> Self
+    where
+        I: Iterator<Item = T>,
+    {
+        iter.fold(Self::identity(), |acc, item| acc + item.borrow())
+    }
+}
+
+impl Group for Gt {
+    type Scalar = Fr;
+
+    fn random(rng: impl RngCore) -> Self {
+        use ff::Field;
+        Fq12::random(rng).final_exponentiation()
+    }
+
+    fn identity() -> Self {
+        Self::identity()
+    }
+
+    fn generator() -> Self {
+        unimplemented!()
+    }
+
+    fn is_identity(&self) -> Choice {
+        self.ct_eq(&Self::identity())
+    }
+
+    fn double(&self) -> Self {
+        self.double()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Bn256;
+
+impl Engine for Bn256 {
+    type Fr = Fr;
+    type G1 = G1;
+    type G1Affine = G1Affine;
+    type G2 = G2;
+    type G2Affine = G2Affine;
+    type Gt = Gt;
+
+    fn pairing(p: &Self::G1Affine, q: &Self::G2Affine) -> Self::Gt {
+        Bn256::multi_miller_loop(&[(p, q)]).final_exponentiation()
+    }
+}
+
+impl MultiMillerLoop for Bn256 {
+    type G2Prepared = G2Affine;
+    type Result = Fq12;
+
+    fn multi_miller_loop(terms: &[(&Self::G1Affine, &Self::G2Prepared)]) -> Self::Result {
+        multi_miller_loop(terms)
+    }
+}
+
+impl PairingCurveAffine for G1Affine {
+    type Pair = G2Affine;
+    type PairingResult = Gt;
+
+    fn pairing_with(&self, other: &Self::Pair) -> Self::PairingResult {
+        Bn256::pairing(self, other)
+    }
+}
+
+impl PairingCurveAffine for G2Affine {
+    type Pair = G1Affine;
+    type PairingResult = Gt;
+
+    fn pairing_with(&self, other: &Self::Pair) -> Self::PairingResult {
+        Bn256::pairing(other, self)
+    }
+}
+
+fn double(f: &mut Fq12, r: &mut G2, p: &G1Affine) {
+    use ff::Field;
+    let t0 = r.x.square();
+    let t1 = r.y.square();
+    let t2 = t1.square();
+    let t3 = (t1 + r.x).square() - t0 - t2;
+    let t3 = t3 + t3;
+    let t4 = t0 + t0 + t0;
+    let t6 = r.x + t4;
+    let t5 = t4.square();
+    let zsquared = r.z.square();
+    r.x = t5 - t3 - t3;
+    r.z = (r.z + r.y).square() - t1 - zsquared;
+    r.y = (t3 - r.x) * t4;
+    let t2 = t2 + t2;
+    let t2 = t2 + t2;
+    let t2 = t2 + t2;
+    r.y -= t2;
+    let t3 = t4 * zsquared;
+    let t3 = t3 + t3;
+    let t3 = -t3;
+    let t6 = t6.square() - t0 - t5;
+    let t1 = t1 + t1;
+    let t1 = t1 + t1;
+    let t6 = t6 - t1;
+    let t0 = r.z * zsquared;
+    let t0 = t0 + t0;
+
+    ell(f, &(t0, t3, t6), p);
+}
+
+fn add(f: &mut Fq12, r: &mut G2, q: &G2Affine, p: &G1Affine) {
+    use ff::Field;
+    let zsquared = r.z.square();
+    let ysquared = q.y.square();
+    let t0 = zsquared * q.x;
+    let t1 = ((q.y + r.z).square() - ysquared - zsquared) * zsquared;
+    let t2 = t0 - r.x;
+    let t3 = t2.square();
+    let t4 = t3 + t3;
+    let t4 = t4 + t4;
+    let t5 = t4 * t2;
+    let t6 = t1 - r.y - r.y;
+    let t9 = t6 * q.x;
+    let t7 = t4 * r.x;
+    r.x = t6.square() - t5 - t7 - t7;
+    r.z = (r.z + t2).square() - zsquared - t3;
+    let t10 = q.y + r.z;
+    let t8 = (t7 - r.x) * t6;
+    let t0 = r.y * t5;
+    let t0 = t0 + t0;
+    r.y = t8 - t0;
+    let t10 = t10.square() - ysquared;
+    let ztsquared = r.z.square();
+    let t10 = t10 - ztsquared;
+    let t9 = t9 + t9 - t10;
+    let t10 = r.z + r.z;
+    let t6 = -t6;
+    let t1 = t6 + t6;
+
+    ell(f, &(t10, t1, t9), p);
+}
 
 impl MillerLoopResult for Fq12 {
     type Gt = Gt;
@@ -207,14 +449,10 @@ fn ell(f: &mut Fq12, coeffs: &(Fq2, Fq2, Fq2), p: &G1Affine) {
 
 #[cfg(test)]
 mod test {
-    use ff::Field;
-    use group::{prime::PrimeCurveAffine, Curve, Group};
-    use pairing::{Engine, MillerLoopResult, PairingCurveAffine};
-    use rand_core::OsRng;
+    use super::super::Bn256;
 
-    use super::{
-        super::{Bn256, Fr, G1, G2},
-        multi_miller_loop, Fq12, G1Affine, G2Affine, Gt,
-    };
-    crate::test_pairing!(Bn256, G1, G1Affine, G2, G2Affine, Fq12, Gt, Fr);
+    #[test]
+    fn bn256_engine_tests() {
+        crate::tests::engine::engine_tests::<Bn256>();
+    }
 }

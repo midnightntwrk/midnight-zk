@@ -40,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Move advice queries before instance queries in prover and verifier [#256](https://github.com/midnightntwrk/midnight-zk/pull/256)
 * `Circuit::Params` extended to carry `max_bit_len` [#251](https://github.com/midnightntwrk/midnight-zk/pull/251)
 * unifying `commit` and `commit_lagrange` [#368](https://github.com/midnightntwrk/midnight-zk/pull/368)
+* Update feature `dev-curves` dependencies [#412](https://github.com/midnightntwrk/midnight-zk/pull/412)
 
 ### Removed
 * Remove `Query<F>` trait; `construct_intermediate_sets` now accepts `&[(T, F, F)]` (commitment reference, point, eval) tuples with `T: PartialEq + Copy` [#411](https://github.com/midnightntwrk/midnight-zk/pull/411)
