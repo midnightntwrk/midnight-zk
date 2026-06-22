@@ -15,4 +15,4 @@ concurrency:
 
 jobs:
   apply:
-    uses: midnightntwrk/.github/.github/workflows/default-origin-on-open.yml@3e2720c308e44f8406657a391a12b62acc2dd3de
+    uses: midnightntwrk/.github/.github/workflows/default-origin-on-open.yml@f8dc1fe275748124b842edefa6bd863df6f33f27
