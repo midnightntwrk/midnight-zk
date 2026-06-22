@@ -1,0 +1,18 @@
+name: Default Origin on issue open
+
+# Dispatcher — calls the reusable workflow in midnightntwrk/.github.
+# Sets the Origin field to Public on new issues when unset.
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  issues: write
+
+concurrency:
+  group: default-origin-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  apply:
+    uses: midnightntwrk/.github/.github/workflows/default-origin-on-open.yml@3e2720c308e44f8406657a391a12b62acc2dd3de
