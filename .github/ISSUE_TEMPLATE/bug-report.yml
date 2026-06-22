@@ -6,7 +6,6 @@ labels:
   - type:bug
   - status:untriaged
   - component:zk
-  - audience:public
 body:
   - type: input
     id: version
