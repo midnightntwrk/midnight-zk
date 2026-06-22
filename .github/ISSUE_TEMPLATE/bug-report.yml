@@ -1,0 +1,53 @@
+name: Bug report
+description: Report a bug or incorrect behaviour in midnight-zk
+title: "[Bug] "
+type: Bug
+labels:
+  - type:bug
+  - status:untriaged
+  - component:zk
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Version affected
+      description: Crate version, tag, or commit SHA where the bug occurs.
+      placeholder: e.g. v0.3.1 / commit abc1234
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context & setup
+      description: Your environment and setup (toolchain, OS, feature flags).
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      value: |
+        1.
+        2.
+        3.
+      description: If not reproducible, describe the steps as best you recall.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      description: The (reproducible) outcome. Include errors, logs, or screenshots if relevant.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+      description: What you expected to happen instead.
+    validations:
+      required: true

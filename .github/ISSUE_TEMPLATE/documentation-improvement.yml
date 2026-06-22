@@ -1,0 +1,29 @@
+name: Documentation improvement
+description: Report a problem with the documentation or request missing docs
+title: "[Docs] "
+type: Task
+labels:
+  - type:task
+  - status:untriaged
+  - area:documentation
+  - component:zk
+body:
+  - type: input
+    id: url
+    attributes:
+      label: Documentation URL
+      description: The exact location of the documentation you are referencing.
+
+  - type: textarea
+    id: improvement
+    attributes:
+      label: Description of improvement
+      description: What is wrong or missing, and what should change?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed
+    attributes:
+      label: Proposed solution (optional)
+      description: Suggested wording, snippets, or structural changes.

@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Fix cost model to account for committed instance column evaluations [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 * Increase number of blinding factors to account for logup helper polynomials [#312](https://github.com/midnightntwrk/midnight-zk/pull/312)
 * Blind logup multiplicities polynomial on non-usable rows for ZK [#312](https://github.com/midnightntwrk/midnight-zk/pull/312)
+* Fix cost-model [#435](https://github.com/midnightntwrk/midnight-zk/pull/435)
 
 ### Changed
 * Rename `PolynomialPointer` to `PolynomialReference` in `ProverQuery`; rename `poly` field to `poly_ref`; change `poly_inner_product` to accept `&[&Polynomial<F, Coeff>]` to avoid cloning [#411](https://github.com/midnightntwrk/midnight-zk/pull/411)

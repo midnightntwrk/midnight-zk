@@ -785,7 +785,7 @@ mod tests {
                             || format!("row {row}"),
                             config.table,
                             row as usize,
-                            || Value::known(Fq::from(row + 1)),
+                            || Value::known(Fq::from(row)),
                         )?;
                     }
 
