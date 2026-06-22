@@ -6,7 +6,6 @@ labels:
   - type:feature
   - status:untriaged
   - component:zk
-  - audience:public
 body:
   - type: textarea
     id: feature

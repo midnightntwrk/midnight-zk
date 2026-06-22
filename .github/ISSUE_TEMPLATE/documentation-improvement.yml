@@ -7,7 +7,6 @@ labels:
   - status:untriaged
   - area:documentation
   - component:zk
-  - audience:public
 body:
   - type: input
     id: url
