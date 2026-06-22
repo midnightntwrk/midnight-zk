@@ -10,7 +10,13 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 
 ### Changed
 
+### Fixed
+
 ### Removed
+
+## 0.3.1
+### Fixed
+* Add prime-order subgroup check in `G1Affine::from_uncompressed` [#425](https://github.com/midnightntwrk/midnight-zk/pull/425)
 
 ## 0.3.0
 ### Added

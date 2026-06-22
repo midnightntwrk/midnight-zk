@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [0.8.1]
+### Fixed
+* Bug fix in midnight-curves [#434](https://github.com/midnightntwrk/midnight-zk/pull/434)
+
 ## [0.8.0]
 ### Added
 * Add `Blake2b256` transcript hash for on-chain verification [#322](https://github.com/midnightntwrk/midnight-zk/pull/322)

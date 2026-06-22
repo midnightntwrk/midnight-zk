@@ -13,6 +13,10 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Removed
 
+## [7.2.1]
+### Fixed
+* Bug fix in midnight-curves [#434](https://github.com/midnightntwrk/midnight-zk/pull/434)
+
 ## [7.2.0]
 ### Added
 * `Instantiable::from_public_input`: inverse of `as_public_input` for decoding values from their public input representation [#408](https://github.com/midnightntwrk/midnight-zk/pull/408)
