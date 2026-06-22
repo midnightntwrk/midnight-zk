@@ -10,10 +10,12 @@
 use std::marker::PhantomData;
 
 use midnight_curves::pairing::Engine;
+use rayon::iter::{
+    IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
+};
 
-#[cfg(feature = "fewer-point-sets")]
-use super::query::Query;
-
+/// KZG commitment type
+pub mod commitment;
 /// Multiscalar multiplication engines
 pub mod msm;
 /// KZG commitment scheme
@@ -22,6 +24,7 @@ mod utils;
 
 use std::{fmt::Debug, hash::Hash};
 
+use commitment::KZGCommitment;
 use ff::Field;
 use group::Group;
 use midnight_curves::pairing::MultiMillerLoop;
@@ -39,14 +42,15 @@ use crate::{
             params::{ParamsKZG, ParamsVerifierKZG},
             utils::construct_intermediate_sets,
         },
-        query::{CommitmentLabel, CommitmentReference, VerifierQuery},
-        Coeff, Error, LagrangeCoeff, Polynomial, ProverQuery,
+        query::{PolynomialLabel, VerifierQuery},
+        Coeff, Error, Polynomial, PolynomialRepresentation, ProverQuery,
     },
     transcript::{Hashable, Sampleable, Transcript},
     utils::{
         arithmetic::{
             eval_polynomial, evals_inner_product, inner_product, kate_division,
-            lagrange_interpolate, msm_inner_product, powers, CurveAffine, CurveExt, MSM,
+            lagrange_interpolate, msm_inner_product, parallelize, powers, CurveAffine, CurveExt,
+            MSM,
         },
         helpers::ProcessedSerdeObject,
     },
@@ -65,12 +69,8 @@ where
 {
     type Parameters = ParamsKZG<E>;
     type VerifierParameters = ParamsVerifierKZG<E>;
-    type Commitment = E::G1;
+    type Commitment = KZGCommitment<E>;
     type VerificationGuard = DualMSM<E>;
-
-    fn constant_commitment() -> Self::Commitment {
-        E::G1::generator()
-    }
 
     fn gen_params(k: u32) -> Self::Parameters {
         ParamsKZG::unsafe_setup(k, OsRng)
@@ -80,24 +80,18 @@ where
         params.verifier_params()
     }
 
-    fn commit(
+    fn commit<B: PolynomialRepresentation>(
         params: &Self::Parameters,
-        polynomial: &Polynomial<E::Fr, Coeff>,
+        polynomial: &Polynomial<E::Fr, B>,
+        label: PolynomialLabel,
     ) -> Self::Commitment {
+        let bases = params.bases::<B>();
         let size = polynomial.values.len();
-        assert!(params.g.len() >= size);
-        msm_specific::<E::G1Affine>(&polynomial.values, &params.g[..size])
-    }
-
-    fn commit_lagrange(
-        params: &Self::Parameters,
-        poly: &Polynomial<E::Fr, LagrangeCoeff>,
-    ) -> E::G1 {
-        let size = poly.values.len();
-
-        assert!(params.g_lagrange.len() >= size);
-
-        msm_specific::<E::G1Affine>(&poly.values, &params.g_lagrange[0..size])
+        assert!(bases.len() >= size);
+        KZGCommitment::Simple(
+            msm_specific::<E::G1Affine>(&polynomial.values, &bases[..size]),
+            label,
+        )
     }
 
     fn multi_open<T: Transcript>(
@@ -107,34 +101,49 @@ where
     ) -> Result<(), Error>
     where
         E::Fr: Sampleable<T::Hash> + Hash + Ord + Hashable<T::Hash>,
-        E::G1: Hashable<T::Hash>,
+        KZGCommitment<E>: Hashable<T::Hash>,
     {
         /// Like [`inner_product`] but for coefficient-form polynomials that may
-        /// have different lengths (zero-extending the shorter operands via
-        /// [`Polynomial::padded_add`]).
+        /// have different lengths (zero-extending the shorter operands).
+        ///
+        /// Fused parallel implementation: a single pass accumulates all
+        /// scaled contributions directly into the output buffer, avoiding
+        /// M intermediate allocations and the sequential reduce chain.
         fn poly_inner_product<F: ff::PrimeField>(
-            polys: &[Polynomial<F, Coeff>],
-            scalars: impl Iterator<Item = F>,
+            polys: &[&Polynomial<F, Coeff>],
+            scalars: impl IntoIterator<Item = F>,
         ) -> Polynomial<F, Coeff> {
-            polys
-                .iter()
-                .zip(scalars)
-                .map(|(p, s)| p.clone() * s)
-                .reduce(|acc, p| acc.padded_add(&p))
-                .unwrap()
+            let scalars: Vec<F> = scalars.into_iter().take(polys.len()).collect();
+            let max_len = polys.iter().map(|p| p.len()).max().unwrap_or(0);
+            let mut values = vec![F::ZERO; max_len];
+            parallelize(&mut values, |chunk, start| {
+                for (poly, scalar) in polys.iter().zip(scalars.iter()) {
+                    let pv: &[F] = poly;
+                    let end = (start + chunk.len()).min(pv.len());
+                    if start < pv.len() {
+                        for (out, coeff) in chunk[..end - start].iter_mut().zip(&pv[start..end]) {
+                            *out += *coeff * scalar;
+                        }
+                    }
+                }
+            });
+            Polynomial {
+                values,
+                _marker: PhantomData,
+            }
         }
 
         // Add dummy queries to reduce the number of distinct multi-open point sets.
         #[cfg(feature = "fewer-point-sets")]
         let queries = &{
             let mut queries = queries.to_vec();
-            let pairs: Vec<_> = queries.iter().map(|q| (q.get_commitment(), q.point)).collect();
+            let pairs: Vec<_> = queries.iter().map(|q| (q.poly_ref, q.point)).collect();
             for (idx, point) in compute_dummy_queries(&pairs) {
-                let poly = queries[idx].poly;
+                let poly_ref = queries[idx].poly_ref;
                 transcript
-                    .write(&eval_polynomial(poly, point))
+                    .write(&eval_polynomial(&poly_ref.0[..], queries[idx].point))
                     .map_err(|_| Error::OpeningError)?;
-                queries.push(ProverQuery::new(point, poly));
+                queries.push(ProverQuery { point, poly_ref });
             }
             queries
         };
@@ -144,16 +153,26 @@ where
         let x1: E::Fr = transcript.squeeze_challenge();
         let x2: E::Fr = transcript.squeeze_challenge();
 
-        let (poly_map, point_sets) = construct_intermediate_sets(queries)?;
+        let kzg_queries = queries
+            .iter()
+            .map(|query| {
+                (
+                    query.poly_ref,
+                    query.point,
+                    eval_polynomial(&query.poly_ref.0[..], query.point),
+                )
+            })
+            .collect::<Vec<_>>();
+        let (poly_map, point_sets) = construct_intermediate_sets(&kzg_queries)?;
 
         let mut q_polys = vec![vec![]; point_sets.len()];
 
         for com_data in poly_map.iter() {
-            q_polys[com_data.set_index].push(com_data.commitment.poly.clone());
+            q_polys[com_data.set_index].push(com_data.commitment_ref.0);
         }
 
-        let q_polys = q_polys
-            .iter()
+        let q_polys: Vec<_> = q_polys
+            .par_iter()
             .map(|polys| {
                 #[cfg(feature = "truncated-challenges")]
                 let x1 = truncated_powers(x1);
@@ -163,7 +182,7 @@ where
 
                 poly_inner_product(polys, x1)
             })
-            .collect::<Vec<_>>();
+            .collect();
 
         // Sort point sets by ascending cardinality to ensure the first set is the one
         // that contains fixed commitments (which are evaluated at x only). This
@@ -176,17 +195,17 @@ where
         let (q_polys, point_sets) = {
             let mut order: Vec<usize> = (0..point_sets.len()).collect();
             order.sort_by_key(|&i| (point_sets[i].len(), i));
-            let q_polys: Vec<_> = order.iter().map(|&i| q_polys[i].clone()).collect();
+            let q_polys: Vec<_> = order.iter().map(|&i| &q_polys[i]).collect();
             let point_sets: Vec<_> = order.iter().map(|&i| point_sets[i].clone()).collect();
             (q_polys, point_sets)
         };
 
         let f_poly = {
-            let f_polys = point_sets
-                .iter()
-                .zip(q_polys.clone())
+            let f_polys: Vec<_> = point_sets
+                .into_par_iter()
+                .zip(q_polys.clone().into_par_iter())
                 .map(|(points, q_poly)| {
-                    let poly = points.iter().fold(q_poly.clone().values, |poly, point| {
+                    let poly = points.iter().fold(q_poly.values.clone(), |poly, point| {
                         kate_division(&poly, *point)
                     });
                     Polynomial {
@@ -194,28 +213,33 @@ where
                         _marker: PhantomData,
                     }
                 })
-                .collect::<Vec<_>>();
-            poly_inner_product(&f_polys, powers(x2))
+                .collect();
+            poly_inner_product(&f_polys.iter().collect::<Vec<_>>(), powers(x2))
         };
 
-        let f_com = Self::commit(params, &f_poly);
+        let f_com = Self::commit(
+            params,
+            &f_poly,
+            PolynomialLabel::Custom("multi_open_batch".into()),
+        );
         transcript.write(&f_com).map_err(|_| Error::OpeningError)?;
 
         let x3: E::Fr = transcript.squeeze_challenge();
         #[cfg(feature = "truncated-challenges")]
         let x3 = truncate(x3);
 
-        for q_poly in q_polys.iter() {
-            transcript
-                .write(&eval_polynomial(&q_poly.values, x3))
-                .map_err(|_| Error::OpeningError)?;
+        // Evaluate all q_polys at x3 in parallel, then write sequentially.
+        let q_evals: Vec<E::Fr> =
+            q_polys.par_iter().map(|q_poly| eval_polynomial(&q_poly.values, x3)).collect();
+        for eval in &q_evals {
+            transcript.write(eval).map_err(|_| Error::OpeningError)?;
         }
 
         let x4: E::Fr = transcript.squeeze_challenge();
 
         let final_poly = {
             let mut polys = q_polys;
-            polys.push(f_poly);
+            polys.push(&f_poly);
             #[cfg(feature = "truncated-challenges")]
             let powers = truncated_powers(x4);
 
@@ -227,11 +251,15 @@ where
         let v = eval_polynomial(&final_poly, x3);
 
         let pi = {
-            let pi_poly = Polynomial {
+            let pi_poly = Polynomial::<_, Coeff> {
                 values: kate_division(&(&final_poly - v).values, x3),
                 _marker: PhantomData,
             };
-            Self::commit(params, &pi_poly)
+            Self::commit(
+                params,
+                &pi_poly,
+                PolynomialLabel::Custom("kzg_proof".into()),
+            )
         };
 
         transcript.write(&pi).map_err(|_| Error::OpeningError)
@@ -243,19 +271,21 @@ where
     ) -> Result<DualMSM<E>, Error>
     where
         E::Fr: Sampleable<T::Hash> + Ord + Hash + Hashable<T::Hash>,
-        E::G1: 'com + Hashable<T::Hash> + CurveExt<ScalarExt = E::Fr>,
+        E::G1: CurveExt<ScalarExt = E::Fr>,
+        KZGCommitment<E>: Hashable<T::Hash> + 'com,
     {
         // Add dummy queries to reduce the number of distinct multi-open point sets.
         #[cfg(feature = "fewer-point-sets")]
         let queries = &{
             let mut queries = queries.to_vec();
-            let pairs: Vec<_> = queries.iter().map(|q| (q.commitment.clone(), q.point)).collect();
+            let pairs: Vec<_> = queries.iter().map(|q| (q.commitment_ref, q.point)).collect();
             for (idx, point) in compute_dummy_queries(&pairs) {
+                let commitment_ref = queries[idx].commitment_ref;
+                let eval = transcript.read().map_err(|_| Error::SamplingError)?;
                 queries.push(VerifierQuery {
                     point,
-                    commitment_label: queries[idx].commitment_label.clone(),
-                    commitment: queries[idx].commitment.clone(),
-                    eval: transcript.read().map_err(|_| Error::SamplingError)?,
+                    commitment_ref,
+                    eval,
                 });
             }
             queries
@@ -266,35 +296,31 @@ where
         let x1: E::Fr = transcript.squeeze_challenge();
         let x2: E::Fr = transcript.squeeze_challenge();
 
-        let (commitment_map, point_sets) = construct_intermediate_sets(queries)?;
+        let kzg_queries = queries
+            .iter()
+            .map(|query| (query.commitment_ref, query.point, query.eval))
+            .collect::<Vec<_>>();
+        let (commitment_map, point_sets) = construct_intermediate_sets(&kzg_queries)?;
 
         let mut q_coms: Vec<_> = vec![vec![]; point_sets.len()];
         let mut q_eval_sets = vec![vec![]; point_sets.len()];
 
         for com_data in commitment_map.into_iter() {
             let mut msm = MSMKZG::init();
-            let eval_point_opt = if com_data.commitment.is_chopped() {
-                // When the commitment is in chopped form, we require that it be evaluated
-                // in a single point.
-                debug_assert!(com_data.point_indices.len() == 1);
-                Some(point_sets[com_data.set_index][com_data.point_indices[0]])
-            } else {
-                None
-            };
-            let terms = com_data.commitment.as_terms(eval_point_opt);
-            let term_labels: Vec<CommitmentLabel> = match &com_data.commitment {
-                CommitmentReference::Linear(_, _, labels) => labels.clone(),
-                _ => vec![com_data.commitment_label.clone(); terms.len()],
-            };
-            for ((scalar, commitment), label) in terms.into_iter().zip(term_labels) {
-                msm.append_term(scalar, commitment, label);
+            match com_data.commitment_ref.0 {
+                KZGCommitment::Simple(p, label) => msm.append_term(E::Fr::ONE, *p, label.clone()),
+                KZGCommitment::Linear(points, scalars, labels) => {
+                    for ((p, s), label) in points.iter().zip(scalars).zip(labels) {
+                        msm.append_term(*s, *p, label.clone());
+                    }
+                }
             }
             q_coms[com_data.set_index].push(msm);
             q_eval_sets[com_data.set_index].push(com_data.evals);
         }
 
-        let nb_x1_powers = q_coms.iter().map(|v| v.len()).max().unwrap_or(0);
-        assert!(nb_x1_powers >= q_eval_sets.iter().map(|v| v.len()).max().unwrap_or(0));
+        let nb_x1_powers = q_coms.iter().map(Vec::len).max().unwrap_or(0);
+        assert!(nb_x1_powers >= q_eval_sets.iter().map(Vec::len).max().unwrap_or(0));
 
         #[cfg(feature = "truncated-challenges")]
         let powers_x1 = truncated_powers(x1).take(nb_x1_powers).collect::<Vec<_>>();
@@ -329,7 +355,10 @@ where
             (q_coms, q_eval_sets, point_sets)
         };
 
-        let f_com: E::G1 = transcript.read().map_err(|_| Error::SamplingError)?;
+        let f_com: E::G1 = transcript
+            .read::<KZGCommitment<E>>()
+            .map_err(|_| Error::SamplingError)?
+            .into_point();
 
         // Sample a challenge x_3 for checking that f(X) was committed to
         // correctly.
@@ -364,7 +393,11 @@ where
             let mut coms = q_coms;
             let mut f_com_as_msm = MSMKZG::init();
 
-            f_com_as_msm.append_term(E::Fr::ONE, f_com, CommitmentLabel::NoLabel);
+            f_com_as_msm.append_term(
+                E::Fr::ONE,
+                f_com,
+                PolynomialLabel::Custom("kzg_batch".into()),
+            );
 
             // Collapse all MSMs before combining with x4 powers, to match the
             // in-circuit verifier. Skip the first one since its x4 power is 1.
@@ -394,18 +427,21 @@ where
             inner_product(&evals, powers)
         };
 
-        let pi: E::G1 = transcript.read().map_err(|_| Error::SamplingError)?;
+        let pi: E::G1 = transcript
+            .read::<KZGCommitment<E>>()
+            .map_err(|_| Error::SamplingError)?
+            .into_point();
 
         let mut pi_msm = MSMKZG::<E>::init();
-        pi_msm.append_term(E::Fr::ONE, pi, CommitmentLabel::Custom("π".into()));
+        pi_msm.append_term(E::Fr::ONE, pi, PolynomialLabel::Custom("π".into()));
 
         // Scale zπ - vG
         let scaled_pi = MSMKZG {
             scalars: vec![x3, v],
             bases: vec![pi, -E::G1::generator()],
             labels: vec![
-                CommitmentLabel::Custom("π".into()),
-                CommitmentLabel::Custom("-G".into()),
+                PolynomialLabel::Custom("π".into()),
+                PolynomialLabel::Custom("-G".into()),
             ],
         };
 
@@ -433,11 +469,12 @@ mod tests {
         poly::{
             commitment::{Guard, PolynomialCommitmentScheme},
             kzg::{
+                commitment::KZGCommitment,
                 params::{ParamsKZG, ParamsVerifierKZG},
                 KZGCommitmentScheme,
             },
-            query::{ProverQuery, VerifierQuery},
-            CommitmentLabel, EvaluationDomain,
+            query::{PolynomialReference, ProverQuery, VerifierQuery},
+            EvaluationDomain, PolynomialLabel,
         },
         transcript::{CircuitTranscript, Hashable, Sampleable, Transcript},
         utils::arithmetic::eval_polynomial,
@@ -466,12 +503,13 @@ mod tests {
         E::Fr: Hashable<T::Hash> + Sampleable<T::Hash> + Ord + Hash,
         E::G1: Hashable<T::Hash> + CurveExt<ScalarExt = E::Fr, AffineExt = E::G1Affine>,
         E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1> + SerdeObject,
+        KZGCommitment<E>: Hashable<T::Hash>,
     {
         let mut transcript = T::init_from_bytes(proof);
 
-        let a: E::G1 = transcript.read().unwrap();
-        let b: E::G1 = transcript.read().unwrap();
-        let c: E::G1 = transcript.read().unwrap();
+        let a: KZGCommitment<E> = transcript.read().unwrap();
+        let b: KZGCommitment<E> = transcript.read().unwrap();
+        let c: KZGCommitment<E> = transcript.read().unwrap();
 
         let x: E::Fr = transcript.squeeze_challenge();
         let y: E::Fr = transcript.squeeze_challenge();
@@ -480,16 +518,15 @@ mod tests {
         let bvx: E::Fr = transcript.read().unwrap();
         let cvy: E::Fr = transcript.read().unwrap();
 
-        use CommitmentLabel::NoLabel;
         let valid_queries = std::iter::empty()
-            .chain(Some(VerifierQuery::new(x, NoLabel, &a, avx)))
-            .chain(Some(VerifierQuery::new(x, NoLabel, &b, bvx)))
-            .chain(Some(VerifierQuery::new(y, NoLabel, &c, cvy)));
+            .chain(Some(VerifierQuery::new(x, &a, avx)))
+            .chain(Some(VerifierQuery::new(x, &b, bvx)))
+            .chain(Some(VerifierQuery::new(y, &c, cvy)));
 
         let invalid_queries = std::iter::empty()
-            .chain(Some(VerifierQuery::new(x, NoLabel, &a, avx)))
-            .chain(Some(VerifierQuery::new(x, NoLabel, &b, avx)))
-            .chain(Some(VerifierQuery::new(y, NoLabel, &c, cvy)));
+            .chain(Some(VerifierQuery::new(x, &a, avx)))
+            .chain(Some(VerifierQuery::new(x, &b, avx)))
+            .chain(Some(VerifierQuery::new(y, &c, cvy)));
 
         let queries = if should_fail {
             invalid_queries
@@ -536,9 +573,9 @@ mod tests {
 
         let mut transcript = T::init();
 
-        let a = KZGCommitmentScheme::commit(kzg_params, &ax);
-        let b = KZGCommitmentScheme::commit(kzg_params, &bx);
-        let c = KZGCommitmentScheme::commit(kzg_params, &cx);
+        let a = KZGCommitmentScheme::commit(kzg_params, &ax, PolynomialLabel::Custom("a".into()));
+        let b = KZGCommitmentScheme::commit(kzg_params, &bx, PolynomialLabel::Custom("b".into()));
+        let c = KZGCommitmentScheme::commit(kzg_params, &cx, PolynomialLabel::Custom("c".into()));
 
         transcript.write(&a).unwrap();
         transcript.write(&b).unwrap();
@@ -558,15 +595,15 @@ mod tests {
         let queries = [
             ProverQuery {
                 point: x,
-                poly: &ax,
+                poly_ref: PolynomialReference(&ax),
             },
             ProverQuery {
                 point: x,
-                poly: &bx,
+                poly_ref: PolynomialReference(&bx),
             },
             ProverQuery {
                 point: y,
-                poly: &cx,
+                poly_ref: PolynomialReference(&cx),
             },
         ]
         .into_iter();

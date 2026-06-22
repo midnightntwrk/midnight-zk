@@ -8,9 +8,5 @@
 
 extern crate core;
 
-// When truncated-challenges is enabled, don't compile any of the aggregator
-// code as it's incompatible with this feature.
-#[cfg(not(feature = "truncated-challenges"))]
-pub mod light_aggregator;
-
 pub mod ivc;
+pub mod multi_circuit_aggregator;

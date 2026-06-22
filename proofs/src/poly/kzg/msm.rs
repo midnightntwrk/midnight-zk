@@ -1,12 +1,12 @@
 use std::{any::TypeId, fmt::Debug};
 
 use ff::Field;
-use group::{Curve, Group};
+use group::{prime::PrimeCurveAffine, Curve, Group};
 use itertools::izip;
 use midnight_curves::{
     msm::msm_best,
     pairing::{Engine, MillerLoopResult, MultiMillerLoop},
-    CurveAffine, Fq, G1Projective,
+    CurveAffine, Fq, G1Affine,
 };
 use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 
@@ -15,7 +15,7 @@ use crate::{
     poly::{
         commitment::{Guard, PolynomialCommitmentScheme},
         kzg::KZGCommitmentScheme,
-        CommitmentLabel, Error,
+        Error, PolynomialLabel,
     },
     utils::{
         arithmetic::{CurveExt, MSM},
@@ -30,7 +30,7 @@ use crate::{
 pub struct MSMKZG<E: Engine> {
     pub(crate) scalars: Vec<E::Fr>,
     pub(crate) bases: Vec<E::G1>,
-    pub(crate) labels: Vec<CommitmentLabel>,
+    pub(crate) labels: Vec<PolynomialLabel>,
 }
 
 impl<E: Engine> MSMKZG<E> {
@@ -69,7 +69,7 @@ impl<E: Engine> MSMKZG<E> {
         MSMKZG {
             scalars: vec![E::Fr::ONE],
             bases: vec![*base],
-            labels: vec![CommitmentLabel::NoLabel],
+            labels: vec![PolynomialLabel::Collapsed],
         }
     }
 }
@@ -79,30 +79,28 @@ where
     E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
 {
     /// Evaluates the MSM to a single point and replaces all terms with that
-    /// single point (scalar = 1, label = `NoLabel`).
+    /// single point (scalar = 1, label = `Collapsed`).
     ///
     /// This mirrors `AssignedMsm::collapse` in the circuits crate.
     ///
     /// # Panics (in debug mode)
     ///
-    /// If any term carries a label other than `NoLabel` or `Advice`.
-    //
-    // We only allow `NoLabel` or `Advice` because these types of labels are
-    // not relevant for the `verifier_gadget` in `midnight-circuits` (at least for
-    // now). Other types of labels may carry information that we do not want to lose
-    // when "collapsing".
+    /// If a term carries a `Fixed` or `PermutationFixed` label.
+    //  This is because these "fixed" labels carry information that we do not want
+    //  to lose when collapsing, since it is relevant for the `verifier_gadget`.
     pub fn collapse(&mut self) {
         debug_assert!(
-            self.labels
-                .iter()
-                .all(|l| matches!(l, CommitmentLabel::NoLabel | CommitmentLabel::Advice(_))),
-            "collapse: all labels must be NoLabel or Advice, found: {:?}",
+            !self.labels.iter().any(|l| matches!(
+                l,
+                PolynomialLabel::Fixed(_) | PolynomialLabel::PermutationFixed(_)
+            )),
+            "collapse: all labels must be Collapsed, Advice or Instance, found: {:?}",
             self.labels,
         );
         let point = self.eval();
         self.scalars = vec![E::Fr::ONE];
         self.bases = vec![point];
-        self.labels = vec![CommitmentLabel::NoLabel];
+        self.labels = vec![PolynomialLabel::Collapsed];
     }
 }
 
@@ -110,7 +108,7 @@ impl<E: Engine + Debug> MSM<E::G1Affine> for MSMKZG<E>
 where
     E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
 {
-    fn append_term(&mut self, scalar: E::Fr, point: E::G1, label: CommitmentLabel) {
+    fn append_term(&mut self, scalar: E::Fr, point: E::G1, label: PolynomialLabel) {
         self.scalars.push(scalar);
         self.bases.push(point);
         self.labels.push(label);
@@ -141,7 +139,9 @@ where
         if self.scalars == vec![E::Fr::ONE] {
             self.bases[0]
         } else {
-            msm_specific::<E::G1Affine>(&self.scalars, &self.bases)
+            let mut affine = vec![E::G1Affine::identity(); self.bases.len()];
+            E::G1::batch_normalize(&self.bases, &mut affine);
+            msm_specific::<E::G1Affine>(&self.scalars, &affine)
         }
     }
 
@@ -153,16 +153,17 @@ where
         self.scalars.clone()
     }
 
-    fn labels(&self) -> Vec<CommitmentLabel> {
+    fn labels(&self) -> Vec<PolynomialLabel> {
         self.labels.clone()
     }
 }
 
 #[allow(unsafe_code)]
-/// Wrapper over the MSM function to use the blstrs underlying function
-pub fn msm_specific<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C::Curve]) -> C::Curve {
-    // We remove zeros (keep only non-zero coefficients)
-    let (coeffs, bases): (Vec<C::Scalar>, Vec<C::Curve>) = coeffs
+/// Wrapper over the MSM function to use the blstrs underlying function.
+/// Bases are passed as affine points.
+pub fn msm_specific<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
+    // We remove zeros (keep only non-zero coefficients).
+    let (coeffs, bases): (Vec<C::Scalar>, Vec<C>) = coeffs
         .iter()
         .zip(bases)
         .filter(|(s, _)| !s.is_zero_vartime())
@@ -173,20 +174,19 @@ pub fn msm_specific<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C::Curve]) ->
         return C::Curve::identity();
     }
 
-    // We empirically checked that for MSMs larger than 2**18, the blstrs
+    // NOTE: Empirically checked that for MSMs larger than 2**18, the blstrs
     // implementation regresses.
-    if coeffs.len() <= (2 << 18) && TypeId::of::<C>() == TypeId::of::<midnight_curves::G1Affine>() {
-        // Safe: we just checked type
-        let coeffs_slice = coeffs.as_slice();
-        let bases_slice = bases.as_slice();
-        let coeffs = unsafe { &*(coeffs_slice as *const _ as *const [Fq]) };
-        let bases = unsafe { &*(bases_slice as *const _ as *const [G1Projective]) };
-        let res = G1Projective::multi_exp(bases, coeffs);
+    // TODO: Review this threshold after optimizations.
+    if coeffs.len() <= (2 << 18) && TypeId::of::<C>() == TypeId::of::<G1Affine>() {
+        // Safe: we just checked the type.
+        let coeffs = unsafe { &*(coeffs.as_slice() as *const _ as *const [Fq]) };
+        let bases = unsafe { &*(bases.as_slice() as *const _ as *const [G1Affine]) };
+        // TODO: 255 is fine because type is checked. Another option is propagating
+        // nbits as an input of msm_specific.
+        let res = G1Affine::multi_exp_affine(bases, coeffs);
         unsafe { std::mem::transmute_copy(&res) }
     } else {
-        let mut affine_bases = vec![C::identity(); coeffs.len()];
-        C::Curve::batch_normalize(&bases, &mut affine_bases);
-        msm_best(&coeffs, &affine_bases)
+        msm_best(&coeffs, &bases)
     }
 }
 
@@ -200,12 +200,12 @@ pub struct DualMSM<E: Engine> {
 /// A [DualMSM] split into left and right vectors of `(Scalar, Point)` tuples
 pub type SplitDualMSM<'a, E> = (
     Vec<(
-        &'a CommitmentLabel,
+        &'a PolynomialLabel,
         &'a <E as Engine>::Fr,
         &'a <E as Engine>::G1,
     )>,
     Vec<(
-        &'a CommitmentLabel,
+        &'a PolynomialLabel,
         &'a <E as Engine>::Fr,
         &'a <E as Engine>::G1,
     )>,

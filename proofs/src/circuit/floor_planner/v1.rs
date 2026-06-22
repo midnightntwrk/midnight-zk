@@ -9,8 +9,8 @@ use crate::{
         Cell, Layouter, Region, RegionIndex, RegionStart, Table, Value,
     },
     plonk::{
-        Advice, Any, Assignment, Challenge, Circuit, Column, Error, Fixed, FloorPlanner, Instance,
-        Selector, TableColumn,
+        Advice, Any, Assignment, Circuit, Column, Error, Fixed, FloorPlanner, Instance, Selector,
+        TableColumn,
     },
     utils::rational::Rational,
 };
@@ -121,8 +121,7 @@ impl FloorPlanner for V1 {
         if constant_positions().count() < plan.constants.len() {
             return Err(Error::NotEnoughColumnsForConstants);
         }
-        for ((fixed_column, fixed_row), (value, advice)) in
-            constant_positions().zip(plan.constants.into_iter())
+        for ((fixed_column, fixed_row), (value, advice)) in constant_positions().zip(plan.constants)
         {
             plan.cs.assign_fixed(
                 || format!("Constant({:?})", value.evaluate()),
@@ -198,13 +197,6 @@ impl<F: Field, CS: Assignment<F> + SyncDeps> Layouter<F> for V1Pass<'_, '_, F, C
         match &mut self.0 {
             Pass::Measurement(_) => Ok(()),
             Pass::Assignment(pass) => pass.constrain_instance(cell, instance, row),
-        }
-    }
-
-    fn get_challenge(&self, challenge: Challenge) -> Value<F> {
-        match &self.0 {
-            Pass::Measurement(_) => Value::unknown(),
-            Pass::Assignment(pass) => pass.plan.cs.get_challenge(challenge),
         }
     }
 
@@ -537,7 +529,7 @@ mod tests {
 
         let circuit = MyCircuit {};
         assert!(matches!(
-            MockProver::run(4, &circuit, vec![]).unwrap_err(),
+            MockProver::run(&circuit, vec![]).unwrap_err(),
             Error::NotEnoughColumnsForConstants,
         ));
     }

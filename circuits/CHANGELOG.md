@@ -1,17 +1,46 @@
 # Changelog
 
-We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html). To capture
-the changes that do not affect the API, do not add any new functionality, but
-are breaking changes, we increment the `MAJOR` version. This happens when the
-circuit is modified for performance or bug fixes; the modification of the
-verification keys break backwards compatibility.
+We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-* MAJOR: Incremented when you make incompatible API or VK changes
-* MINOR: Incremented when you add functionality in a backward-compatible manner
-* PATCH: Incremented when you make backward-compatible bug fixes
+* MAJOR: Incremented on incompatible API changes
+* MINOR: Incremented on backward-compatible API changes that may affect the VKs
+* PATCH: Incremented on minor changes and bug fixes that do not alter the VKs
 
 ## [Unreleased]
 ### Added
+
+### Fixed
+* Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
+
+### Changed
+* Panic loudly in `from_dual_msm` when a `NoLabel` commitment reaches the MSM layer [#392](https://github.com/midnightntwrk/midnight-zk/pull/392)
+* Adapt verifier gadget to single-proof prover API [#375](https://github.com/midnightntwrk/midnight-zk/pull/375)
+* Split linearization commitment into non-constant and constant parts, removing the generator point from the MSM [#313](https://github.com/midnightntwrk/midnight-zk/pull/313)
+* Make `NB_ARITH_COLS` configurable instead of a compile-time constant [#287](https://github.com/midnightntwrk/midnight-zk/pull/287)
+* Support `fewer-point-sets` feature in verifier gadget [#281](https://github.com/midnightntwrk/midnight-zk/pull/281)
+* `multi_prepare` now takes a slice instead of `IntoIterator` [#281](https://github.com/midnightntwrk/midnight-zk/pull/281)
+* Adapt verifier gadget to new `KZGCommitment` API [#381](https://github.com/midnightntwrk/midnight-zk/pull/381)
+* Support `single-h-commitment` feature in verifier gadget [#276](https://github.com/midnightntwrk/midnight-zk/pull/276)
+* Filter out compile-time identity points in MSM [#256](https://github.com/midnightntwrk/midnight-zk/pull/256)
+* Sort point sets deterministically in KZG multiopen for in-circuit verification [#256](https://github.com/midnightntwrk/midnight-zk/pull/256)
+* Move advice queries before instance queries in verifier gadget [#256](https://github.com/midnightntwrk/midnight-zk/pull/256)
+* Share the `z` and `m` polynomials across all logup instances [#279](https://github.com/midnightntwrk/midnight-zk/pull/279)
+
+### Removed
+* Remove `Expression::Challenge` variant and phase-parameterized `Any::Advice`; multi-phase advice columns are no longer supported [#376](https://github.com/midnightntwrk/midnight-zk/pull/376)
+
+## [7.1.0]
+### Changed
+* Modify `is_identity` flag encoding in Weierstrass chip: append as a dedicated public input element instead of packing into the first limb [#398](https://github.com/midnightntwrk/midnight-zk/pull/398)
+
+## [7.0.0]
+
+### Added
+* Add functions to mark the region of a circuit to be measured for cost modelling [#296](https://github.com/midnightntwrk/midnight-zk/pull/296)
+* Add `resolve_fixed_bases` to `Msm`, `AssignedMsm`, `Accumulator` and `AssignedAccumulator` [#302](https://github.com/midnightntwrk/midnight-zk/pull/302)
+* Expose `fixed_base_names`, `fixed_commitment_name` and `perm_commitment_name` helper functions [#302](https://github.com/midnightntwrk/midnight-zk/pull/302)
+* Fix redundant explicit intra-doc links in `parsing::scanner::substring` [#311](https://github.com/midnightntwrk/midnight-zk/pull/311)
+* Add `assign_without_subgroup_check` to `EccInstructions` and `SelfEmulation` traits [#284](https://github.com/midnightntwrk/midnight-zk/pull/284)
 * Add Curve25519 [#181](https://github.com/midnightntwrk/midnight-zk/pull/181)
 * Expose helper functions directly in `verifier_gadget` [#227](https://github.com/midnightntwrk/midnight-zk/pull/227)
 * `CircuitField` refactor: remove helpers, add `ScalarField` in `CircuitCurve` [#201](https://github.com/midnightntwrk/midnight-zk/pull/201)
@@ -23,19 +52,25 @@ verification keys break backwards compatibility.
 * Add `CircuitField` implementations for `k256::Fp` and `k256::Fq` [#192](https://github.com/midnightntwrk/midnight-zk/pull/192)
 * Add `square`, `mod_square` operations in `BigUintGadget` [#259](https://github.com/midnightntwrk/midnight-zk/pull/259)
 * Add `PartialEq` impl for `AssignedBigUint` [#259](https://github.com/midnightntwrk/midnight-zk/pull/259)
-
-### Fixed
-* Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
+* Update READMEs and add badges [#261](https://github.com/midnightntwrk/midnight-zk/pull/261)
+* Implementation of substring checks [#229](https://github.com/midnightntwrk/midnight-zk/pull/229)
+* Foreign arithmetic over twisted Edwards curves [#241](https://github.com/midnightntwrk/midnight-zk/pull/241)
+* Custom gate for foreign point addition over twisted Edwards curves [#242](https://github.com/midnightntwrk/midnight-zk/pull/242)
+* Add `p256` as curve dependency [#269](https://github.com/midnightntwrk/midnight-zk/pull/269)
+* Add emulations of base/scalar fields of `p256` over `bls12-381` scalar field [#270](https://github.com/midnightntwrk/midnight-zk/pull/270)
+* add MSMCompletenessFluke error [#277](https://github.com/midnightntwrk/midnight-zk/pull/277)
+* Scanner chip: dynamic regex support and lazy automaton loading [#232](https://github.com/midnightntwrk/midnight-zk/pull/232)
+* Scanner chip: ICAO 9303 TD3 DG1 passport parser [#233](https://github.com/midnightntwrk/midnight-zk/pull/233)
+* Add implementation of `p256` as foreign Weierstrass chip [#291](https://github.com/midnightntwrk/midnight-zk/pull/291)
+* Scanner chip: parallel lookups [#234](https://github.com/midnightntwrk/midnight-zk/pull/234)
+* Example for in-circuit verification of Ed25519 signatures [#310](https://github.com/midnightntwrk/midnight-zk/pull/310)
+* Implement `AssertionInstructions`, `EqualityInstructions`, `ZeroInstructions`, `ControlFlowInstructions` and `ArithInstructions` for `AssignedScalarOfNativeCurve` on `EccChip` [#383](https://github.com/midnightntwrk/midnight-zk/pull/383)
 
 ### Changed
-* Make `NB_ARITH_COLS` configurable instead of a compile-time constant [#287](https://github.com/midnightntwrk/midnight-zk/pull/287)
-* Support `fewer-point-sets` feature in verifier gadget [#281](https://github.com/midnightntwrk/midnight-zk/pull/281)
-* `multi_prepare` now takes a slice instead of `IntoIterator` [#281](https://github.com/midnightntwrk/midnight-zk/pull/281)
-* Support `single-h-commitment` feature in verifier gadget [#276](https://github.com/midnightntwrk/midnight-zk/pull/276)
+* Reorganize foreign ECC gates into `weierstrass/` and `edwards/` subdirectories [#298](https://github.com/midnightntwrk/midnight-zk/pull/298)
 * Filter out compile-time identity points in MSM [#256](https://github.com/midnightntwrk/midnight-zk/pull/256)
 * Sort point sets deterministically in KZG multiopen for in-circuit verification [#256](https://github.com/midnightntwrk/midnight-zk/pull/256)
 * Move advice queries before instance queries in verifier gadget [#256](https://github.com/midnightntwrk/midnight-zk/pull/256)
-* Share the `z` and `m` polynomials across all logup instances [#279](https://github.com/midnightntwrk/midnight-zk/pull/279)
 * Optimize assignment of collapsed accumulators [#253](https://github.com/midnightntwrk/midnight-zk/pull/253)
 * Share MSM randomness across all MSMs in foreign ECC chip [#253](https://github.com/midnightntwrk/midnight-zk/pull/253)
 * Optimize foreign-field range-check bounds [#251](https://github.com/midnightntwrk/midnight-zk/pull/251)
@@ -58,10 +93,27 @@ verification keys break backwards compatibility.
 * Optimize `mul` operation in `BigUintGadget` [#259](https://github.com/midnightntwrk/midnight-zk/pull/259)
 * Optimize `linear_combination` in `NativeChip` [#260](https://github.com/midnightntwrk/midnight-zk/pull/260)
 * Optimize `mul` and `square` in `BigUintGadget` with `F::add_and_mul` [#260](https://github.com/midnightntwrk/midnight-zk/pull/260)
+* Adapt `foreign_params_gen.py` to general Weierstrass equations [#282](https://github.com/midnightntwrk/midnight-zk/pull/282)
+* Fix `assigned_to_le` functions in field chip [#303](https://github.com/midnightntwrk/midnight-zk/pull/303)
+* Add `from/to_canonical_compressed_bytes` to foreign Edwards chip [#354](https://github.com/midnightntwrk/midnight-zk/pull/354)
+* `FromScratch::configure_from_scratch` now takes shared `advice_columns` and `fixed_columns` pools [#306](https://github.com/midnightntwrk/midnight-zk/pull/306)
+* Optimize foreign Edwards MSM: windowed scalar multiplication and improved point addition [#305](https://github.com/midnightntwrk/midnight-zk/pull/305)
+* Refactoring static specs to handle more identity-related examples [#330](https://github.com/midnightntwrk/midnight-zk/pull/330)
+* Boxing assigned vectors to assign overflows [#331](https://github.com/midnightntwrk/midnight-zk/pull/331)
+* Variable length automata and substring checks [#332](https://github.com/midnightntwrk/midnight-zk/pull/332)
+
+### Fixed
+* Fix `assign_without_subgroup_check` in Edwards chip to assert the point is on the curve [#298](https://github.com/midnightntwrk/midnight-zk/pull/298)
+* Revisit specification of `from_xy` and `coordinates()` in `CircuitCurve` and update implementations accordingly [#298](https://github.com/midnightntwrk/midnight-zk/pull/298)
 
 ### Removed
 * Move external implementations to zk-stdlib [#178](https://github.com/midnightntwrk/midnight-zk/pull/178)
 * Remove native `secp256k1` `CircuitCurve` and `WeierstrassCurve` implementations [#216](https://github.com/midnightntwrk/midnight-zk/pull/216)
+
+## [6.1.0]
+
+### Changed
+* `ForeignEccChip::new` samples the windowed-MSM blinding point at construction time [#307](https://github.com/midnightntwrk/midnight-zk/pull/307)
 
 ## [6.0.0] - 18-12-2025
 ### Added

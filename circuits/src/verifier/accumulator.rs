@@ -39,7 +39,7 @@ use midnight_proofs::{
             msm::{DualMSM, MSMKZG},
             params::ParamsVerifierKZG,
         },
-        CommitmentLabel,
+        PolynomialLabel,
     },
 };
 use num_bigint::BigUint;
@@ -94,25 +94,28 @@ impl<S: SelfEmulation> Accumulator<S> {
     ) -> Self {
         let (lhs, rhs) = dual_msm.split();
 
-        let process_msm = |msm: Vec<(&CommitmentLabel, &S::F, &S::C)>| {
+        let process_msm = |msm: Vec<(&PolynomialLabel, &S::F, &S::C)>| {
             let mut bases = Vec::with_capacity(msm.len());
             let mut scalars = Vec::with_capacity(msm.len());
             let mut fixed_base_scalars = BTreeMap::new();
             for (label, scalar, base) in msm {
                 match label {
-                    CommitmentLabel::Fixed(i) => {
+                    PolynomialLabel::Fixed(i) => {
                         let name = fixed_commitment_name(prefix, *i);
                         assert_eq!(fixed_bases.get(&name), Some(base));
                         fixed_base_scalars.insert(name, *scalar);
                     }
-                    CommitmentLabel::Permutation(i) => {
+                    PolynomialLabel::PermutationFixed(i) => {
                         let name = perm_commitment_name(prefix, *i);
                         assert_eq!(fixed_bases.get(&name), Some(base));
                         fixed_base_scalars.insert(name, *scalar);
                     }
-                    CommitmentLabel::Custom(s) if s == "-G" => {
+                    PolynomialLabel::Custom(s) if s == "-G" => {
                         assert_eq!(fixed_bases.get(s), Some(base));
                         fixed_base_scalars.insert("-G".into(), *scalar);
+                    }
+                    PolynomialLabel::NoLabel => {
+                        panic!("commitment with NoLabel reached the MSM layer; call .label() after deserialization");
                     }
                     _ => {
                         bases.push(*base);
@@ -175,6 +178,22 @@ impl<S: SelfEmulation> Accumulator<S> {
         self.rhs.clone()
     }
 
+    /// Given the actual fixed bases, resolves the fixed-base part of the
+    /// internal MSMs by pairing each named scalar with its base and moving
+    /// them to regular variable-base entries.
+    ///
+    /// After this call, `fixed_base_scalars` of each internal MSM becomes
+    /// empty.
+    ///
+    /// # Panics
+    ///
+    /// If some of the keys in `fixed_base_scalars` from the internal MSMs do
+    /// not appear in the provided `fixed_bases` map.
+    pub fn resolve_fixed_bases(&mut self, fixed_bases: &BTreeMap<String, S::C>) {
+        self.lhs.resolve_fixed_bases(fixed_bases);
+        self.rhs.resolve_fixed_bases(fixed_bases);
+    }
+
     /// Evaluates the variable part of the Accumulator collapsing each
     /// side to a single point (and a scalar of 1), leaving the fixed-base part
     /// of both sides intact.
@@ -225,6 +244,11 @@ impl<S: SelfEmulation> Instantiable<S::F> for AssignedAccumulator<S> {
         .into_iter()
         .flatten()
         .collect()
+    }
+
+    #[cfg(any(test, feature = "testing"))]
+    fn from_public_input(_fields: &[S::F]) -> Option<Accumulator<S>> {
+        unimplemented!("Size of inner MSMs cannot be known from public input format.")
     }
 }
 
@@ -329,6 +353,22 @@ impl<S: SelfEmulation> AssignedAccumulator<S> {
     ) -> Result<(), Error> {
         self.lhs.collapse(layouter, curve_chip, scalar_chip)?;
         self.rhs.collapse(layouter, curve_chip, scalar_chip)
+    }
+
+    /// Given the actual fixed bases, resolves the fixed-base part of the
+    /// internal MSMs by pairing each named scalar with its base and moving
+    /// them to regular variable-base entries.
+    ///
+    /// After this call, `fixed_base_scalars` of each internal MSM becomes
+    /// empty.
+    ///
+    /// # Panics
+    ///
+    /// If some of the keys in `fixed_base_scalars` from the internal MSMs do
+    /// not appear in the provided `fixed_bases` map.
+    pub fn resolve_fixed_bases(&mut self, fixed_bases: &BTreeMap<String, S::AssignedPoint>) {
+        self.lhs.resolve_fixed_bases(fixed_bases);
+        self.rhs.resolve_fixed_bases(fixed_bases);
     }
 
     /// Accumulates several accumulators together. The resulting acc will

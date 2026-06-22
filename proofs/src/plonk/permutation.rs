@@ -24,8 +24,11 @@ use crate::{
         self,
         permutation::{keygen::compute_polys_and_cosets, verifier::CommonEvaluated},
     },
-    poly::{commitment::PolynomialCommitmentScheme, EvaluationDomain},
-    utils::helpers::{byte_length, ProcessedSerdeObject},
+    poly::{
+        commitment::{Labelable, PolynomialCommitmentScheme},
+        EvaluationDomain, PolynomialLabel,
+    },
+    utils::helpers::ProcessedSerdeObject,
 };
 
 /// A permutation argument.
@@ -121,7 +124,10 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> VerifyingKey<F, CS> {
         CS::Commitment: ProcessedSerdeObject,
     {
         let commitments = (0..argument.columns.len())
-            .map(|_| CS::Commitment::read(reader, format))
+            .map(|i| {
+                CS::Commitment::read(reader, format)
+                    .map(|c| c.label(PolynomialLabel::PermutationFixed(i)))
+            })
             .collect::<Result<Vec<_>, _>>()?;
         Ok(VerifyingKey { commitments })
     }
@@ -130,7 +136,7 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> VerifyingKey<F, CS> {
     where
         CS::Commitment: ProcessedSerdeObject,
     {
-        self.commitments.len() * byte_length::<CS::Commitment>(format)
+        self.commitments.iter().map(|c| c.byte_length(format)).sum()
     }
 }
 
@@ -242,7 +248,7 @@ pub(in crate::plonk) fn expressions<'a, F: PrimeField, CS: PolynomialCommitmentS
                     for (eval, permutation_eval) in columns
                         .iter()
                         .map(|&column| match column.column_type() {
-                            Any::Advice(_) => {
+                            Any::Advice => {
                                 advice_evals[vk.cs.get_any_query_index(column, Rotation::cur())]
                             }
                             Any::Fixed => {
@@ -262,7 +268,7 @@ pub(in crate::plonk) fn expressions<'a, F: PrimeField, CS: PolynomialCommitmentS
                         * &(<F as PrimeField>::DELTA
                             .pow_vartime([(chunk_index * chunk_len) as u64]));
                     for eval in columns.iter().map(|&column| match column.column_type() {
-                        Any::Advice(_) => {
+                        Any::Advice => {
                             advice_evals[vk.cs.get_any_query_index(column, Rotation::cur())]
                         }
                         Any::Fixed => {

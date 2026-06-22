@@ -13,6 +13,7 @@
 
 //! Elliptic curves used in-circuit.
 
+use ff::Field;
 use group::{Curve, Group};
 #[cfg(feature = "dev-curves")]
 use midnight_curves::bn256;
@@ -43,10 +44,15 @@ pub trait CircuitCurve: Curve + Default {
     /// divided by the cofactor.
     const NUM_BITS_SUBGROUP: u32;
 
-    /// Returns the coordinates.
+    /// Returns the affine coordinates of the point, or `None` if the point
+    /// has no valid affine representation (e.g. the Weierstrass identity).
     fn coordinates(&self) -> Option<(Self::Base, Self::Base)>;
 
-    /// Constructs a point in the curve from its coordinates
+    /// Constructs a point in the curve from its coordinates.
+    /// Returns `None` if the coordinates do not satisfy the curve equation.
+    ///
+    /// NB: Edwards identity coordinates, (0, 1), satisfy the equation, whereas
+    /// Weierstrass identity coordinates, typically (0, 0), do not.
     fn from_xy(x: Self::Base, y: Self::Base) -> Option<Self>;
 
     /// Checks that the point is part of the subgroup.
@@ -54,13 +60,18 @@ pub trait CircuitCurve: Curve + Default {
 }
 
 /// A Weierstrass curve of the form `y^2 = x^3 + Ax + B`.
-/// equipped with an efficient cubic endomorphism.
 pub trait WeierstrassCurve: CircuitCurve {
     /// `A` parameter.
     const A: Self::Base;
 
     /// `B` parameter.
     const B: Self::Base;
+
+    /// Whether this curve supports the cubic endomorphism used by the GLV MSM
+    /// optimization.
+    fn has_cubic_endomorphism() -> bool {
+        true
+    }
 
     // Note:
     // There are 2 choices for each cubic root,
@@ -97,7 +108,7 @@ impl CircuitCurve for JubjubExtended {
     fn from_xy(x: Self::Base, y: Self::Base) -> Option<Self> {
         // The only way to check that the coordinates are in the curve is via
         // the `from_bytes` interface
-        // FIXME: change JubJub implementation to get a `frocm_coords_checked`
+        // FIXME: change JubJub implementation to get a `from_coords_checked`
         // https://github.com/davidnevadoc/blstrs/issues/13c
         let mut bytes = y.to_bytes_le();
         let x_sign = x.to_bytes_le()[0] << 7;
@@ -106,7 +117,7 @@ impl CircuitCurve for JubjubExtended {
         // significant bit.
         bytes[31] |= x_sign;
 
-        let point = JubjubAffine::from_bytes(bytes).into_option().expect("Failed here");
+        let point = JubjubAffine::from_bytes(bytes).into_option()?;
         if point.get_v() == y {
             Some(point.into())
         } else {
@@ -177,9 +188,8 @@ impl CircuitCurve for K256 {
     const NUM_BITS_SUBGROUP: u32 = 256;
 
     fn coordinates(&self) -> Option<(Self::Base, Self::Base)> {
-        // Identity point maps to (0, 0) by circuit convention.
-        if bool::from(self.is_identity()) {
-            return Some((K256Fp::ZERO, K256Fp::ZERO));
+        if self.is_identity().into() {
+            return None;
         }
         let affine = self.to_affine();
         Some((affine.x(), affine.y()))
@@ -207,6 +217,52 @@ impl WeierstrassCurve for K256 {
     }
 }
 
+// Implementation for P256 (secp256r1 / NIST P-256).
+use midnight_curves::p256::{
+    affine_from_xy, affine_x, affine_y, Fp as P256Fp, CURVE_A, CURVE_B, P256,
+};
+
+impl CircuitCurve for P256 {
+    type Base = P256Fp;
+    type ScalarField = <Self as Group>::Scalar;
+    type CryptographicGroup = P256;
+
+    const NUM_BITS_SUBGROUP: u32 = 256;
+
+    fn coordinates(&self) -> Option<(Self::Base, Self::Base)> {
+        if bool::from(self.is_identity()) {
+            return Some((P256Fp::ZERO, P256Fp::ZERO));
+        }
+        let affine = self.to_affine();
+        Some((affine_x(&affine), affine_y(&affine)))
+    }
+
+    fn from_xy(x: Self::Base, y: Self::Base) -> Option<Self> {
+        affine_from_xy(x, y).map(Into::into)
+    }
+
+    fn into_subgroup(self) -> Self::CryptographicGroup {
+        self
+    }
+}
+
+impl WeierstrassCurve for P256 {
+    const A: Self::Base = CURVE_A;
+    const B: Self::Base = CURVE_B;
+
+    fn has_cubic_endomorphism() -> bool {
+        false
+    }
+
+    fn base_zeta() -> Self::Base {
+        unimplemented!("P256 does not have a cubic endomorphism")
+    }
+
+    fn scalar_zeta() -> Self::ScalarField {
+        unimplemented!("P256 does not have a cubic endomorphism")
+    }
+}
+
 // Implementation for Bls12-381.
 use group::cofactor::CofactorGroup;
 use midnight_curves::{Fp as BlsBase, G1Affine, G1Projective};
@@ -216,14 +272,27 @@ impl CircuitCurve for G1Projective {
     type ScalarField = <Self as Group>::Scalar;
     type CryptographicGroup = G1Projective;
 
+    // BLS12-381 G1 cofactor.
+    const COFACTOR: u128 = 0x396c8c005555e1568c00aaab0000aaab;
     const NUM_BITS_SUBGROUP: u32 = 255;
 
     fn coordinates(&self) -> Option<(Self::Base, Self::Base)> {
+        if self.is_identity().into() {
+            return None;
+        }
         let affine = self.to_affine();
         Some((affine.x(), affine.y()))
     }
 
     fn from_xy(x: Self::Base, y: Self::Base) -> Option<Self> {
+        // Check the (short) Weierstrass curve equation: y² = x³ + Ax + B
+        // The underlying `CurveAffine::from_xy` handles the identity coordinates
+        // without errors via a short-circuit check.
+        let a = <Self as WeierstrassCurve>::A;
+        let b = <Self as WeierstrassCurve>::B;
+        if y.square() != x.square() * x + a * x + b {
+            return None;
+        }
         <G1Affine as CurveAffine>::from_xy(x, y).into_option().map(|p| p.into())
     }
 
@@ -255,11 +324,22 @@ impl CircuitCurve for bn256::G1 {
     const NUM_BITS_SUBGROUP: u32 = 254;
 
     fn coordinates(&self) -> Option<(Self::Base, Self::Base)> {
+        if self.is_identity().into() {
+            return None;
+        }
         let affine = self.to_affine();
         Some((affine.x, affine.y))
     }
 
     fn from_xy(x: Self::Base, y: Self::Base) -> Option<Self> {
+        // Check the (short) Weierstrass curve equation: y² = x³ + Ax + B
+        // The underlying `CurveAffine::from_xy` handles the identity coordinates
+        // without errors via a short-circuit check.
+        let a = <Self as WeierstrassCurve>::A;
+        let b = <Self as WeierstrassCurve>::B;
+        if y.square() != x.square() * x + a * x + b {
+            return None;
+        }
         <bn256::G1Affine as CurveAffine>::from_xy(x, y).into_option().map(|p| p.into())
     }
 
@@ -285,11 +365,49 @@ impl WeierstrassCurve for bn256::G1 {
 mod tests {
     use super::*;
 
+    /// Tests that `coordinates` on the identity returns `Some` for Edwards
+    /// curves (the identity has valid affine coordinates) and `None` for
+    /// Weierstrass curves (the identity is the point at infinity).
     #[test]
-    fn test_k256_identity_coordinates_are_zero() {
-        let identity = K256::identity();
-        let (x, y) = identity.coordinates().expect("coordinates should be Some");
-        assert_eq!(x, K256Fp::ZERO);
-        assert_eq!(y, K256Fp::ZERO);
+    fn test_identity_coordinates() {
+        fn check<C: CircuitCurve>(has_coordinates: bool) {
+            assert_eq!(C::identity().coordinates().is_some(), has_coordinates);
+        }
+
+        // Edwards curves
+        check::<JubjubExtended>(true);
+        check::<Curve25519>(true);
+
+        // Weierstrass curves
+        check::<K256>(false);
+        check::<G1Projective>(false);
+        #[cfg(feature = "dev-curves")]
+        check::<bn256::G1>(false);
+    }
+
+    /// Tests that `from_xy` on the identity coordinates returns `Some` only
+    /// when the coordinates satisfy the curve equation.
+    ///
+    /// Edwards identity coordinates, (0, 1), satisfy the equation.
+    /// Weierstrass identity coordinates, typically (0, 0), do not.
+    #[test]
+    fn test_identity_from_xy() {
+        fn check<C: CircuitCurve>(identity_on_curve: bool) {
+            let (x, y) = C::identity().coordinates().unwrap_or((C::Base::ZERO, C::Base::ZERO));
+            match C::from_xy(x, y) {
+                Some(p) => assert!(identity_on_curve && bool::from(p.is_identity())),
+                None => assert!(!identity_on_curve),
+            }
+        }
+
+        // Edwards curves
+        check::<JubjubExtended>(true);
+        check::<Curve25519>(true);
+
+        // Weierstrass curves
+        check::<K256>(false);
+        check::<G1Projective>(false);
+        #[cfg(feature = "dev-curves")]
+        check::<bn256::G1>(false);
     }
 }

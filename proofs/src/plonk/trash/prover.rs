@@ -5,7 +5,7 @@ use crate::{
     plonk::{evaluation::evaluate, trash},
     poly::{
         commitment::PolynomialCommitmentScheme, Coeff, EvaluationDomain, LagrangeCoeff, Polynomial,
-        ProverQuery,
+        PolynomialLabel, ProverQuery,
     },
     transcript::{Hashable, Transcript},
     utils::arithmetic::eval_polynomial,
@@ -32,7 +32,6 @@ impl<F: WithSmallOrderMulGroup<3> + Ord> Argument<F> {
         advice_values: &'a [Polynomial<F, LagrangeCoeff>],
         fixed_values: &'a [Polynomial<F, LagrangeCoeff>],
         instance_values: &'a [Polynomial<F, LagrangeCoeff>],
-        challenges: &'a [F],
         transcript: &mut T,
     ) -> Result<Committed<F>, Error>
     where
@@ -48,18 +47,21 @@ impl<F: WithSmallOrderMulGroup<3> + Ord> Argument<F> {
                 domain.lagrange_from_vec(evaluate(
                     expression,
                     domain.n as usize,
-                    1,
+                    0,
                     fixed_values,
                     advice_values,
                     instance_values,
-                    challenges,
                 ))
             })
             .fold(domain.empty_lagrange(), |acc, expression| {
                 acc * trash_challenge + &expression
             });
 
-        let trash_commitment = CS::commit_lagrange(params, &compressed_expression);
+        let trash_commitment = CS::commit(
+            params,
+            &compressed_expression,
+            PolynomialLabel::Trash(self.name.clone()),
+        );
         let trash_poly = domain.lagrange_to_coeff(compressed_expression);
 
         // Hash permuted input commitment
@@ -87,10 +89,6 @@ impl<F: WithSmallOrderMulGroup<3>> Committed<F> {
 
 impl<F: WithSmallOrderMulGroup<3>> Evaluated<F> {
     pub(crate) fn open(&self, x: F) -> impl Iterator<Item = ProverQuery<'_, F>> + Clone {
-        vec![ProverQuery {
-            point: x,
-            poly: &self.committed.trash_poly,
-        }]
-        .into_iter()
+        vec![ProverQuery::new(x, &self.committed.trash_poly)].into_iter()
     }
 }

@@ -23,19 +23,24 @@ use midnight_proofs::{
     plonk::{Advice, Column, ConstraintSystem, Constraints, Error, Expression, Selector},
     poly::Rotation,
 };
+use num_bigint::ToBigUint;
 #[cfg(any(test, feature = "testing"))]
 use {
     crate::field::decomposition::chip::P2RDecompositionConfig,
     crate::testing_utils::{FromScratch, Sampleable},
-    midnight_proofs::plonk::Instance,
+    midnight_proofs::plonk::{Fixed, Instance},
     rand::RngCore,
 };
 
 use crate::{
+    biguint::BigUintGadget,
     ecc::curves::{CircuitCurve, EdwardsCurve},
     field::{decomposition::chip::P2RDecompositionChip, NativeChip, NativeGadget},
     instructions::*,
-    types::{AssignedBit, AssignedByte, AssignedNative, InnerConstants, InnerValue, Instantiable},
+    types::{
+        AssignedBigUint, AssignedBit, AssignedByte, AssignedNative, InnerConstants, InnerValue,
+        Instantiable,
+    },
     utils::ComposableChip,
     CircuitField,
 };
@@ -57,14 +62,14 @@ pub const NB_EDWARDS_COLS: usize = 9;
 pub struct AssignedNativePoint<C: CircuitCurve> {
     x: AssignedNative<C::Base>,
     y: AssignedNative<C::Base>,
-    in_subgroup: bool,
+    checked_in_subgroup: bool,
 }
 
 impl<C: CircuitCurve> InnerValue for AssignedNativePoint<C> {
     type Element = C::CryptographicGroup;
 
     fn value(&self) -> Value<Self::Element> {
-        assert!(self.in_subgroup);
+        assert!(self.checked_in_subgroup);
         self.x
             .value()
             .zip(self.y.value())
@@ -90,6 +95,14 @@ impl<C: CircuitCurve> Instantiable<C::Base> for AssignedNativePoint<C> {
         let coordinates = point.coordinates().unwrap();
         vec![coordinates.0, coordinates.1]
     }
+
+    #[cfg(any(test, feature = "testing"))]
+    fn from_public_input(fields: &[C::Base]) -> Option<C::CryptographicGroup> {
+        if fields.len() != 2 {
+            return None;
+        }
+        C::from_xy(fields[0], fields[1]).map(|p| p.into_subgroup())
+    }
 }
 
 impl<C: EdwardsCurve> InnerConstants for AssignedNativePoint<C> {
@@ -104,13 +117,16 @@ impl<C: EdwardsCurve> InnerConstants for AssignedNativePoint<C> {
 
 /// Scalars are represented as a vector of assigned bits in little endian.
 #[derive(Clone, Debug)]
-pub struct AssignedScalarOfNativeCurve<C: CircuitCurve>(Vec<AssignedBit<C::Base>>);
+pub struct AssignedScalarOfNativeCurve<C: CircuitCurve> {
+    bits: Vec<AssignedBit<C::Base>>,
+    enforced_canonical: bool,
+}
 
 impl<C: CircuitCurve> InnerValue for AssignedScalarOfNativeCurve<C> {
     type Element = C::ScalarField;
 
     fn value(&self) -> Value<Self::Element> {
-        let bools = self.0.iter().map(|b| b.value());
+        let bools = self.bits.iter().map(|b| b.value());
         let value_bools: Value<Vec<bool>> = Value::from_iter(bools);
         value_bools.map(|le_bits| C::ScalarField::from_bits_le(&le_bits))
     }
@@ -125,6 +141,21 @@ impl<C: EdwardsCurve> Instantiable<C::Base> for AssignedScalarOfNativeCurve<C> {
             .chunks(nb_bits_per_batch)
             .map(C::Base::from_bits_le)
             .collect()
+    }
+
+    #[cfg(any(test, feature = "testing"))]
+    fn from_public_input(fields: &[C::Base]) -> Option<C::ScalarField> {
+        // A scalar needs at most two elements to be represented.
+        if fields.len() > 2 {
+            return None;
+        }
+        let nb_bits_per_batch = C::Base::NUM_BITS as usize - 1;
+        let bits: Vec<bool> = fields
+            .iter()
+            .flat_map(|f| f.to_bits_le(Some(nb_bits_per_batch)))
+            .take(C::NUM_BITS_SUBGROUP as usize)
+            .collect();
+        Some(C::ScalarField::from_bits_le(&bits))
     }
 }
 
@@ -141,6 +172,71 @@ impl<C: EdwardsCurve> InnerConstants for AssignedScalarOfNativeCurve<C> {
 impl<C: EdwardsCurve> Sampleable for AssignedScalarOfNativeCurve<C> {
     fn sample_inner(rng: impl RngCore) -> C::ScalarField {
         C::ScalarField::random(rng)
+    }
+}
+
+/// Reduces the given [`AssignedBigUint`] modulo the scalar field order of `C`,
+/// in-circuit. If the input is known to have fewer bits than the scalar field
+/// modulus, it is already in reduced form and is returned as-is.
+fn reduce_biguint_mod_scalar_order<C: CircuitCurve>(
+    layouter: &mut impl Layouter<C::Base>,
+    biguint_gadget: &BigUintGadget<C::Base, NG<C::Base>>,
+    input: &AssignedBigUint<C::Base>,
+) -> Result<AssignedBigUint<C::Base>, Error> {
+    if input.nb_bits() < C::ScalarField::NUM_BITS {
+        return Ok(input.clone());
+    }
+
+    let modulus = C::ScalarField::modulus().to_biguint().unwrap();
+    let m = biguint_gadget.assign_fixed_biguint(layouter, modulus)?;
+    let (_q, r) = biguint_gadget.div_rem(layouter, input, &m)?;
+    Ok(r)
+}
+
+impl<C: CircuitCurve> AssignedScalarOfNativeCurve<C> {
+    /// Converts the scalar's bits into an [`AssignedBigUint`].
+    /// The result is not guaranteed to be in canonical form (i.e. it may
+    /// represent a value greater than or equal to the scalar field order).
+    fn to_biguint(
+        &self,
+        layouter: &mut impl Layouter<C::Base>,
+        biguint_gadget: &BigUintGadget<C::Base, NG<C::Base>>,
+    ) -> Result<AssignedBigUint<C::Base>, Error> {
+        biguint_gadget.from_le_bits(layouter, &self.bits)
+    }
+
+    /// Converts the scalar's bits into an [`AssignedBigUint`].
+    /// The result is guaranteed to be in canonical form.
+    fn to_canonical_biguint(
+        &self,
+        layouter: &mut impl Layouter<C::Base>,
+        biguint_gadget: &BigUintGadget<C::Base, NG<C::Base>>,
+    ) -> Result<AssignedBigUint<C::Base>, Error> {
+        let s = biguint_gadget.from_le_bits(layouter, &self.bits)?;
+        if self.enforced_canonical {
+            return Ok(s);
+        }
+        reduce_biguint_mod_scalar_order::<C>(layouter, biguint_gadget, &s)
+    }
+
+    /// Constructs an [`AssignedScalarOfNativeCurve`] from an
+    /// [`AssignedBigUint`]. The result is not guaranteed to be canonical but is
+    /// guaranteed to have at most `C::ScalarField::NUM_BITS` bits.
+    fn from_biguint(
+        layouter: &mut impl Layouter<C::Base>,
+        biguint_gadget: &BigUintGadget<C::Base, NG<C::Base>>,
+        s: &AssignedBigUint<C::Base>,
+    ) -> Result<Self, Error> {
+        let mut s = s.clone();
+        let mut enforced_canonical = false;
+        if s.nb_bits() > C::ScalarField::NUM_BITS {
+            s = reduce_biguint_mod_scalar_order::<C>(layouter, biguint_gadget, &s)?;
+            enforced_canonical = true;
+        }
+        Ok(AssignedScalarOfNativeCurve {
+            bits: biguint_gadget.to_le_bits(layouter, &s)?,
+            enforced_canonical,
+        })
     }
 }
 
@@ -305,10 +401,10 @@ impl EccConfig {
             let one = Expression::from(1);
             let edwards_d = Expression::Constant(C::D);
 
-            let x2 = x.square();
-            let y2 = y.square();
+            let x_sq = x.square();
+            let y_sq = y.square();
 
-            let id = y2.clone() - x2.clone() - (one + edwards_d * x2 * y2);
+            let id = y_sq.clone() - x_sq.clone() - (one + edwards_d * x_sq * y_sq);
 
             Constraints::with_selector(*q_point, vec![("curve equation", id)])
         })
@@ -323,6 +419,7 @@ type NG<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
 pub struct EccChip<C: EdwardsCurve> {
     config: EccConfig,
     native_gadget: NG<C::Base>,
+    biguint_gadget: BigUintGadget<C::Base, NG<C::Base>>,
 }
 
 impl<C: EdwardsCurve> Chip<C::Base> for EccChip<C> {
@@ -342,10 +439,11 @@ impl<C: EdwardsCurve> ComposableChip<C::Base> for EccChip<C> {
     type SharedResources = [Column<Advice>; NB_EDWARDS_COLS];
     type InstructionDeps = NG<C::Base>;
 
-    fn new(config: &Self::Config, sub_chips: &Self::InstructionDeps) -> Self {
+    fn new(config: &Self::Config, native_gadget: &Self::InstructionDeps) -> Self {
         Self {
             config: config.clone(),
-            native_gadget: sub_chips.clone(),
+            native_gadget: native_gadget.clone(),
+            biguint_gadget: BigUintGadget::new(native_gadget),
         }
     }
 
@@ -408,7 +506,7 @@ impl<C: EdwardsCurve> EccChip<C> {
         config.q_cond_add.enable(region, offset)?;
 
         let (q_val, s_val) = (q.curve_value(), s.curve_value());
-        let in_subgroup = q.in_subgroup && s.in_subgroup;
+        let in_subgroup = q.checked_in_subgroup && s.checked_in_subgroup;
 
         let (xr_val, yr_val) = Self::p_plus_b_q(q_val, s_val, b.value());
         let xr = region.assign_advice(|| "xr", config.advice_cols[5], offset, || xr_val)?;
@@ -422,7 +520,7 @@ impl<C: EdwardsCurve> EccChip<C> {
         Ok(AssignedNativePoint {
             x: xr,
             y: yr,
-            in_subgroup,
+            checked_in_subgroup: in_subgroup,
         })
     }
 
@@ -452,7 +550,7 @@ impl<C: EdwardsCurve> EccChip<C> {
         config.q_double.enable(region, offset)?;
 
         let (q_val, p_val) = (q.curve_value(), p.curve_value());
-        let in_subgroup = q.in_subgroup && p.in_subgroup;
+        let in_subgroup = q.checked_in_subgroup && p.checked_in_subgroup;
 
         let (xs_val, ys_val) = Self::p_plus_b_q(p_val, q_val, b.value());
 
@@ -483,7 +581,7 @@ impl<C: EdwardsCurve> EccChip<C> {
         Ok(AssignedNativePoint {
             x: xr,
             y: yr,
-            in_subgroup,
+            checked_in_subgroup: in_subgroup,
         })
     }
 
@@ -497,7 +595,7 @@ impl<C: EdwardsCurve> EccChip<C> {
         let config = &self.config();
 
         // Convert to big-endian.
-        let scalar_be_bits = &mut scalar.0.clone();
+        let scalar_be_bits = &mut scalar.bits.clone();
         scalar_be_bits.reverse();
 
         let id_point: AssignedNativePoint<C> =
@@ -553,14 +651,19 @@ impl<C: EdwardsCurve> EccChip<C> {
         layouter: &mut impl Layouter<C::Base>,
         point: &AssignedNativePoint<C>,
     ) -> Result<AssignedNativePoint<C>, Error> {
-        if point.in_subgroup {
+        if point.checked_in_subgroup {
             return Err(Error::Synthesis("clear_cofactor() should not be called in a point that is already guaranteed to be in the prime-order subgroup.".to_owned()));
         }
-        let r = self.mul_by_constant(layouter, C::ScalarField::from_u128(C::COFACTOR), point)?;
+        let r = EccInstructions::mul_by_constant(
+            self,
+            layouter,
+            C::ScalarField::from_u128(C::COFACTOR),
+            point,
+        )?;
         Ok(AssignedNativePoint {
             x: r.x,
             y: r.y,
-            in_subgroup: true,
+            checked_in_subgroup: true,
         })
     }
 
@@ -583,7 +686,7 @@ impl<C: EdwardsCurve> EccChip<C> {
         Ok(AssignedNativePoint {
             x: x.clone(),
             y: y.clone(),
-            in_subgroup: false,
+            checked_in_subgroup: false,
         })
     }
 }
@@ -621,7 +724,7 @@ impl<C: EdwardsCurve> EccInstructions<C::Base, C> for EccChip<C> {
         layouter: &mut impl Layouter<C::Base>,
         p: &Self::Point,
     ) -> Result<Self::Point, Error> {
-        self.add(layouter, p, p)
+        EccInstructions::add(self, layouter, p, p)
     }
 
     fn negate(
@@ -632,7 +735,7 @@ impl<C: EdwardsCurve> EccInstructions<C::Base, C> for EccChip<C> {
         Ok(AssignedNativePoint {
             x: self.native_gadget.neg(layouter, &p.x)?,
             y: p.y.clone(),
-            in_subgroup: p.in_subgroup,
+            checked_in_subgroup: p.checked_in_subgroup,
         })
     }
 
@@ -649,7 +752,7 @@ impl<C: EdwardsCurve> EccInstructions<C::Base, C> for EccChip<C> {
             .collect::<Result<Vec<Self::Point>, Error>>()?;
 
         scaled_points[1..].iter().try_fold(scaled_points[0].clone(), |acc, e| {
-            self.add(layouter, &acc, e)
+            EccInstructions::add(self, layouter, &acc, e)
         })
     }
 
@@ -688,6 +791,31 @@ impl<C: EdwardsCurve> EccInstructions<C::Base, C> for EccChip<C> {
         Ok(point)
     }
 
+    fn assign_without_subgroup_check(
+        &self,
+        layouter: &mut impl Layouter<C::Base>,
+        value: Value<C::CryptographicGroup>,
+    ) -> Result<Self::Point, Error> {
+        let config = self.config();
+        let (x_val, y_val) = value
+            .map(|p| p.into().coordinates().expect("assign_without_subgroup_check: invalid point"))
+            .unzip();
+
+        layouter.assign_region(
+            || "assign point without subgroup check",
+            |mut region: Region<'_, C::Base>| {
+                config.q_mem.enable(&mut region, 0)?;
+                let x = region.assign_advice(|| "x", config.advice_cols[0], 0, || x_val)?;
+                let y = region.assign_advice(|| "y", config.advice_cols[1], 0, || y_val)?;
+                Ok(AssignedNativePoint {
+                    x,
+                    y,
+                    checked_in_subgroup: false,
+                })
+            },
+        )
+    }
+
     fn x_coordinate(&self, point: &Self::Point) -> Self::Coordinate {
         point.x.clone()
     }
@@ -707,33 +835,13 @@ impl<C: EdwardsCurve> AssignmentInstructions<C::Base, AssignedNativePoint<C>> fo
         layouter: &mut impl Layouter<C::Base>,
         value: Value<C::CryptographicGroup>,
     ) -> Result<AssignedNativePoint<C>, Error> {
-        let config = self.config();
-
         // Ensure the point lies in the correct subgroup.
         // To achieve this, we first assign the point multiplied by the inverse of the
         // cofactor. Then, we return the assigned point after multiplying it by
         // the cofactor.
         let cofactor = C::ScalarField::from_u128(C::COFACTOR);
-        let (x_val, y_val) = value
-            .map(|p| {
-                let p = p * cofactor.invert().expect("Cofactor should not be 0");
-                p.into().coordinates().unwrap()
-            })
-            .unzip();
-
-        let cf_root = layouter.assign_region(
-            || "assign point",
-            |mut region: Region<'_, C::Base>| {
-                config.q_mem.enable(&mut region, 0)?;
-                let x = region.assign_advice(|| "x", config.advice_cols[0], 0, || x_val)?;
-                let y = region.assign_advice(|| "y", config.advice_cols[1], 0, || y_val)?;
-                Ok(AssignedNativePoint {
-                    x,
-                    y,
-                    in_subgroup: false,
-                })
-            },
-        )?;
+        let cf_root_val = value.map(|p| p * cofactor.invert().expect("Cofactor must not be 0"));
+        let cf_root = self.assign_without_subgroup_check(layouter, cf_root_val)?;
 
         self.clear_cofactor(layouter, &cf_root)
     }
@@ -749,7 +857,7 @@ impl<C: EdwardsCurve> AssignmentInstructions<C::Base, AssignedNativePoint<C>> fo
         Ok(AssignedNativePoint {
             x,
             y,
-            in_subgroup: true,
+            checked_in_subgroup: true,
         })
     }
 }
@@ -765,7 +873,10 @@ impl<C: EdwardsCurve> AssignmentInstructions<C::Base, AssignedScalarOfNativeCurv
         let bits = value
             .map(|s| s.to_bits_le(Some(C::ScalarField::NUM_BITS as usize)))
             .transpose_vec(<C::ScalarField as PrimeField>::NUM_BITS as usize);
-        self.native_gadget.assign_many(layouter, &bits).map(AssignedScalarOfNativeCurve)
+        Ok(AssignedScalarOfNativeCurve {
+            bits: self.native_gadget.assign_many(layouter, &bits)?,
+            enforced_canonical: false,
+        })
     }
 
     fn assign_fixed(
@@ -773,9 +884,10 @@ impl<C: EdwardsCurve> AssignmentInstructions<C::Base, AssignedScalarOfNativeCurv
         layouter: &mut impl Layouter<C::Base>,
         constant: C::ScalarField,
     ) -> Result<AssignedScalarOfNativeCurve<C>, Error> {
-        self.native_gadget
-            .assign_many_fixed(layouter, &constant.to_bits_le(None))
-            .map(AssignedScalarOfNativeCurve)
+        Ok(AssignedScalarOfNativeCurve {
+            bits: self.native_gadget.assign_many_fixed(layouter, &constant.to_bits_le(None))?,
+            enforced_canonical: true,
+        })
     }
 }
 
@@ -822,6 +934,53 @@ impl<C: EdwardsCurve> AssertionInstructions<C::Base, AssignedNativePoint<C>> for
     }
 }
 
+impl<C: EdwardsCurve> AssertionInstructions<C::Base, AssignedScalarOfNativeCurve<C>>
+    for EccChip<C>
+{
+    fn assert_equal(
+        &self,
+        layouter: &mut impl Layouter<C::Base>,
+        r: &AssignedScalarOfNativeCurve<C>,
+        s: &AssignedScalarOfNativeCurve<C>,
+    ) -> Result<(), Error> {
+        let r = r.to_canonical_biguint(layouter, &self.biguint_gadget)?;
+        let s = s.to_canonical_biguint(layouter, &self.biguint_gadget)?;
+        self.biguint_gadget.assert_equal(layouter, &r, &s)
+    }
+
+    fn assert_not_equal(
+        &self,
+        layouter: &mut impl Layouter<C::Base>,
+        r: &AssignedScalarOfNativeCurve<C>,
+        s: &AssignedScalarOfNativeCurve<C>,
+    ) -> Result<(), Error> {
+        let r = r.to_canonical_biguint(layouter, &self.biguint_gadget)?;
+        let s = s.to_canonical_biguint(layouter, &self.biguint_gadget)?;
+        self.biguint_gadget.assert_not_equal(layouter, &r, &s)
+    }
+
+    fn assert_equal_to_fixed(
+        &self,
+        layouter: &mut impl Layouter<C::Base>,
+        s: &AssignedScalarOfNativeCurve<C>,
+        constant: C::ScalarField,
+    ) -> Result<(), Error> {
+        let s = s.to_canonical_biguint(layouter, &self.biguint_gadget)?;
+        self.biguint_gadget.assert_equal_to_fixed(layouter, &s, constant.to_biguint())
+    }
+
+    fn assert_not_equal_to_fixed(
+        &self,
+        layouter: &mut impl Layouter<C::Base>,
+        s: &AssignedScalarOfNativeCurve<C>,
+        constant: C::ScalarField,
+    ) -> Result<(), Error> {
+        let s = s.to_canonical_biguint(layouter, &self.biguint_gadget)?;
+        self.biguint_gadget
+            .assert_not_equal_to_fixed(layouter, &s, constant.to_biguint())
+    }
+}
+
 impl<C: EdwardsCurve> PublicInputInstructions<C::Base, AssignedNativePoint<C>> for EccChip<C> {
     fn as_public_input(
         &self,
@@ -856,7 +1015,7 @@ impl<C: EdwardsCurve> PublicInputInstructions<C::Base, AssignedNativePoint<C>> f
         Ok(AssignedNativePoint {
             x,
             y,
-            in_subgroup: true,
+            checked_in_subgroup: true,
         })
     }
 }
@@ -872,7 +1031,7 @@ impl<C: EdwardsCurve> PublicInputInstructions<C::Base, AssignedScalarOfNativeCur
         // We aggregate the bits while they fit in a single `AssignedNative`.
         let nb_bits_per_batch = C::Base::NUM_BITS as usize - 1;
         assigned
-            .0
+            .bits
             .chunks(nb_bits_per_batch)
             .map(|chunk| self.native_gadget.assigned_from_le_bits(layouter, chunk))
             .collect()
@@ -947,7 +1106,155 @@ impl<C: EdwardsCurve> EqualityInstructions<C::Base, AssignedNativePoint<C>> for 
     }
 }
 
+impl<C: EdwardsCurve> EqualityInstructions<C::Base, AssignedScalarOfNativeCurve<C>> for EccChip<C> {
+    fn is_equal(
+        &self,
+        layouter: &mut impl Layouter<C::Base>,
+        r: &AssignedScalarOfNativeCurve<C>,
+        s: &AssignedScalarOfNativeCurve<C>,
+    ) -> Result<AssignedBit<C::Base>, Error> {
+        let r = r.to_canonical_biguint(layouter, &self.biguint_gadget)?;
+        let s = s.to_canonical_biguint(layouter, &self.biguint_gadget)?;
+        self.biguint_gadget.is_equal(layouter, &r, &s)
+    }
+
+    fn is_not_equal(
+        &self,
+        layouter: &mut impl Layouter<C::Base>,
+        r: &AssignedScalarOfNativeCurve<C>,
+        s: &AssignedScalarOfNativeCurve<C>,
+    ) -> Result<AssignedBit<C::Base>, Error> {
+        let r = r.to_canonical_biguint(layouter, &self.biguint_gadget)?;
+        let s = s.to_canonical_biguint(layouter, &self.biguint_gadget)?;
+        self.biguint_gadget.is_not_equal(layouter, &s, &r)
+    }
+
+    fn is_equal_to_fixed(
+        &self,
+        layouter: &mut impl Layouter<C::Base>,
+        s: &AssignedScalarOfNativeCurve<C>,
+        constant: C::ScalarField,
+    ) -> Result<AssignedBit<C::Base>, Error> {
+        let s = s.to_canonical_biguint(layouter, &self.biguint_gadget)?;
+        self.biguint_gadget.is_equal_to_fixed(layouter, &s, constant.to_biguint())
+    }
+
+    fn is_not_equal_to_fixed(
+        &self,
+        layouter: &mut impl Layouter<C::Base>,
+        s: &AssignedScalarOfNativeCurve<C>,
+        constant: C::ScalarField,
+    ) -> Result<AssignedBit<C::Base>, Error> {
+        let s = s.to_canonical_biguint(layouter, &self.biguint_gadget)?;
+        self.biguint_gadget.is_not_equal_to_fixed(layouter, &s, constant.to_biguint())
+    }
+}
+
+impl<C: EdwardsCurve> ArithInstructions<C::Base, AssignedScalarOfNativeCurve<C>> for EccChip<C> {
+    fn linear_combination(
+        &self,
+        layouter: &mut impl Layouter<C::Base>,
+        terms: &[(
+            <AssignedScalarOfNativeCurve<C> as InnerValue>::Element,
+            AssignedScalarOfNativeCurve<C>,
+        )],
+        constant: <AssignedScalarOfNativeCurve<C> as InnerValue>::Element,
+    ) -> Result<AssignedScalarOfNativeCurve<C>, Error> {
+        let mut acc = self.biguint_gadget.assign_fixed_biguint(layouter, constant.to_biguint())?;
+
+        for (c, s) in terms {
+            let s = s.to_biguint(layouter, &self.biguint_gadget)?;
+            let c = self.biguint_gadget.assign_fixed_biguint(layouter, c.to_biguint())?;
+            let c_times_s = self.biguint_gadget.mul(layouter, &c, &s)?;
+            acc = self.biguint_gadget.add(layouter, &acc, &c_times_s)?;
+        }
+
+        AssignedScalarOfNativeCurve::from_biguint(layouter, &self.biguint_gadget, &acc)
+    }
+
+    fn add(
+        &self,
+        layouter: &mut impl Layouter<C::Base>,
+        r: &AssignedScalarOfNativeCurve<C>,
+        s: &AssignedScalarOfNativeCurve<C>,
+    ) -> Result<AssignedScalarOfNativeCurve<C>, Error> {
+        let r = r.to_biguint(layouter, &self.biguint_gadget)?;
+        let s = s.to_biguint(layouter, &self.biguint_gadget)?;
+        let res = self.biguint_gadget.add(layouter, &r, &s)?;
+        AssignedScalarOfNativeCurve::from_biguint(layouter, &self.biguint_gadget, &res)
+    }
+
+    fn mul(
+        &self,
+        layouter: &mut impl Layouter<C::Base>,
+        r: &AssignedScalarOfNativeCurve<C>,
+        s: &AssignedScalarOfNativeCurve<C>,
+        multiplying_constant: Option<C::ScalarField>,
+    ) -> Result<AssignedScalarOfNativeCurve<C>, Error> {
+        let r = r.to_biguint(layouter, &self.biguint_gadget)?;
+        let s = s.to_biguint(layouter, &self.biguint_gadget)?;
+        let mut res = self.biguint_gadget.mul(layouter, &r, &s)?;
+
+        if let Some(c) = multiplying_constant {
+            let c = self.biguint_gadget.assign_fixed_biguint(layouter, c.to_biguint())?;
+            res = self.biguint_gadget.mul(layouter, &res, &c)?;
+        }
+
+        AssignedScalarOfNativeCurve::from_biguint(layouter, &self.biguint_gadget, &res)
+    }
+
+    fn div(
+        &self,
+        layouter: &mut impl Layouter<C::Base>,
+        r: &AssignedScalarOfNativeCurve<C>,
+        s: &AssignedScalarOfNativeCurve<C>,
+    ) -> Result<AssignedScalarOfNativeCurve<C>, Error> {
+        s.value().error_if_known_and(|s| s.is_zero_vartime())?;
+
+        let res_val = r.value().zip(s.value()).map(|(r, s)| r * s.invert().unwrap());
+        let res = self.biguint_gadget.assign_biguint(
+            layouter,
+            res_val.map(|a| a.to_biguint()),
+            C::ScalarField::NUM_BITS,
+        )?;
+
+        let r = r.to_biguint(layouter, &self.biguint_gadget)?;
+        let s = s.to_biguint(layouter, &self.biguint_gadget)?;
+        let res_times_s = self.biguint_gadget.mul(layouter, &res, &s)?;
+        let reduced_res_times_s =
+            reduce_biguint_mod_scalar_order::<C>(layouter, &self.biguint_gadget, &res_times_s)?;
+
+        self.biguint_gadget.assert_equal(layouter, &r, &reduced_res_times_s)?;
+
+        AssignedScalarOfNativeCurve::from_biguint(layouter, &self.biguint_gadget, &res)
+    }
+
+    fn inv(
+        &self,
+        layouter: &mut impl Layouter<C::Base>,
+        s: &AssignedScalarOfNativeCurve<C>,
+    ) -> Result<AssignedScalarOfNativeCurve<C>, Error> {
+        let one = self.assign_fixed(layouter, C::ScalarField::ONE)?;
+        self.div(layouter, &one, s)
+    }
+
+    fn inv0(
+        &self,
+        layouter: &mut impl Layouter<C::Base>,
+        x: &AssignedScalarOfNativeCurve<C>,
+    ) -> Result<AssignedScalarOfNativeCurve<C>, Error> {
+        let is_zero = self.is_zero(layouter, x)?;
+        let zero = self.assign_fixed(layouter, C::ScalarField::ZERO)?;
+        let one = self.assign_fixed(layouter, C::ScalarField::ONE)?;
+        let invertible = self.select(layouter, &is_zero, &one, x)?;
+        let inverse = self.inv(layouter, &invertible)?;
+        self.select(layouter, &is_zero, &zero, &inverse)
+    }
+}
+
 impl<C: EdwardsCurve> ZeroInstructions<C::Base, AssignedNativePoint<C>> for EccChip<C> {}
+
+impl<C: EdwardsCurve> ZeroInstructions<C::Base, AssignedScalarOfNativeCurve<C>> for EccChip<C> {}
 
 impl<C: EdwardsCurve> ControlFlowInstructions<C::Base, AssignedNativePoint<C>> for EccChip<C> {
     fn select(
@@ -959,8 +1266,32 @@ impl<C: EdwardsCurve> ControlFlowInstructions<C::Base, AssignedNativePoint<C>> f
     ) -> Result<AssignedNativePoint<C>, Error> {
         let x = self.native_gadget.select(layouter, cond, &a.x, &b.x)?;
         let y = self.native_gadget.select(layouter, cond, &a.y, &b.y)?;
-        let in_subgroup = a.in_subgroup && b.in_subgroup;
-        Ok(AssignedNativePoint { x, y, in_subgroup })
+        let in_subgroup = a.checked_in_subgroup && b.checked_in_subgroup;
+        Ok(AssignedNativePoint {
+            x,
+            y,
+            checked_in_subgroup: in_subgroup,
+        })
+    }
+}
+
+impl<C: EdwardsCurve> ControlFlowInstructions<C::Base, AssignedScalarOfNativeCurve<C>>
+    for EccChip<C>
+{
+    fn select(
+        &self,
+        layouter: &mut impl Layouter<C::Base>,
+        cond: &AssignedBit<C::Base>,
+        a: &AssignedScalarOfNativeCurve<C>,
+        b: &AssignedScalarOfNativeCurve<C>,
+    ) -> Result<AssignedScalarOfNativeCurve<C>, Error> {
+        let a_as_big = a.to_biguint(layouter, &self.biguint_gadget)?;
+        let b_as_big = b.to_biguint(layouter, &self.biguint_gadget)?;
+        let selected = self.biguint_gadget.select(layouter, cond, &a_as_big, &b_as_big)?;
+        Ok(AssignedScalarOfNativeCurve {
+            bits: self.biguint_gadget.to_le_bits(layouter, &selected)?,
+            enforced_canonical: a.enforced_canonical && b.enforced_canonical,
+        })
     }
 }
 
@@ -974,20 +1305,31 @@ impl<C: EdwardsCurve> FromScratch<C::Base> for EccChip<C> {
         let native_chip = NativeChip::new_from_scratch(&p2r_decomp_config.native_config);
         let core_decomposition_chip = P2RDecompositionChip::new(p2r_decomp_config, &max_bit_len);
         let native_gadget = NativeGadget::new(core_decomposition_chip, native_chip);
+        let biguint_gadget = BigUintGadget::new(&native_gadget);
         Self {
-            native_gadget,
             config: config.0.clone(),
+            native_gadget,
+            biguint_gadget,
         }
     }
 
     fn configure_from_scratch(
         meta: &mut ConstraintSystem<C::Base>,
+        advice_columns: &mut Vec<Column<Advice>>,
+        fixed_columns: &mut Vec<Column<Fixed>>,
         instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
-        let native_gadget_config =
-            <NG<C::Base> as FromScratch<C::Base>>::configure_from_scratch(meta, instance_columns);
-        let advice_cols: [Column<Advice>; NB_EDWARDS_COLS] =
-            core::array::from_fn(|_| meta.advice_column());
+        let native_gadget_config = <NG<C::Base> as FromScratch<C::Base>>::configure_from_scratch(
+            meta,
+            advice_columns,
+            fixed_columns,
+            instance_columns,
+        );
+        while advice_columns.len() < NB_EDWARDS_COLS {
+            advice_columns.push(meta.advice_column());
+        }
+        let advice_cols: [_; NB_EDWARDS_COLS] =
+            advice_columns[..NB_EDWARDS_COLS].try_into().unwrap();
         let ecc_config = EccChip::<C>::configure(meta, &advice_cols);
 
         (ecc_config, native_gadget_config)
@@ -1023,7 +1365,10 @@ impl<C: EdwardsCurve> EccChip<C> {
                 true,
             )?)
         }
-        Ok(AssignedScalarOfNativeCurve(bits))
+        Ok(AssignedScalarOfNativeCurve {
+            bits,
+            enforced_canonical: false,
+        })
     }
 }
 
@@ -1043,9 +1388,10 @@ impl<C: EdwardsCurve>
         layouter: &mut impl Layouter<C::Base>,
         x: &AssignedNative<C::Base>,
     ) -> Result<AssignedScalarOfNativeCurve<C>, Error> {
-        Ok(AssignedScalarOfNativeCurve(
-            self.native_gadget.assigned_to_le_bits(layouter, x, None, true)?,
-        ))
+        Ok(AssignedScalarOfNativeCurve {
+            bits: self.native_gadget.assigned_to_le_bits(layouter, x, None, true)?,
+            enforced_canonical: false,
+        })
     }
 }
 
@@ -1079,15 +1425,6 @@ mod tests {
 
     test!(public_input, test_public_inputs);
 
-    #[test]
-    fn test_scalarvar_public_inputs() {
-        public_input::tests::test_public_inputs::<
-            JubjubBase,
-            AssignedScalarOfNativeCurve<JubjubExtended>,
-            EccChip<JubjubExtended>,
-        >("public_inputs_scalar_var");
-    }
-
     test!(equality, test_is_equal);
 
     test!(zero, test_zero_assertions);
@@ -1096,6 +1433,46 @@ mod tests {
     test!(control_flow, test_select);
     test!(control_flow, test_cond_assert_equal);
     test!(control_flow, test_cond_swap);
+
+    macro_rules! test_scalar {
+        ($mod:ident, $op:ident, $name:ident) => {
+            #[test]
+            fn $name() {
+                $mod::tests::$op::<
+                    JubjubBase,
+                    AssignedScalarOfNativeCurve<JubjubExtended>,
+                    EccChip<JubjubExtended>,
+                >("native_ecc_scalar");
+            }
+        };
+    }
+
+    test_scalar!(assertions, test_assertions, scalar_assertions);
+
+    test_scalar!(public_input, test_public_inputs, scalar_public_inputs);
+
+    test_scalar!(equality, test_is_equal, scalar_is_equal);
+
+    test_scalar!(zero, test_zero_assertions, scalar_zero_assertions);
+    test_scalar!(zero, test_is_zero, scalar_is_zero);
+
+    test_scalar!(control_flow, test_select, scalar_select);
+    test_scalar!(control_flow, test_cond_assert_equal, scalar_cond_assert_eq);
+    test_scalar!(control_flow, test_cond_swap, scalar_test_cond_swap);
+
+    test_scalar!(arithmetic, test_add, scalar_add);
+    test_scalar!(arithmetic, test_sub, scalar_sub);
+    test_scalar!(arithmetic, test_mul, scalar_mul);
+    test_scalar!(arithmetic, test_div, scalar_div);
+    test_scalar!(arithmetic, test_neg, scalar_neg);
+    test_scalar!(arithmetic, test_inv, scalar_inv);
+    test_scalar!(arithmetic, test_pow, scalar_pow);
+    test_scalar!(
+        arithmetic,
+        test_linear_combination,
+        scalar_linear_combination
+    );
+    test_scalar!(arithmetic, test_add_and_mul, scalar_add_and_mul);
 
     macro_rules! ecc_tests {
         ($op:ident) => {
@@ -1108,13 +1485,15 @@ mod tests {
         };
     }
 
+    ecc_tests!(test_assign);
+    ecc_tests!(test_assign_without_subgroup_check);
     ecc_tests!(test_add);
     ecc_tests!(test_double);
     ecc_tests!(test_negate);
     ecc_tests!(test_msm);
     ecc_tests!(test_msm_by_bounded_scalars);
     ecc_tests!(test_mul_by_constant);
-    ecc_tests!(test_coordinates_edwards);
+    ecc_tests!(test_coordinates);
 
     #[test]
     fn test_htc() {

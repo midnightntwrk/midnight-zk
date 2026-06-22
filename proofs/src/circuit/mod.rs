@@ -4,7 +4,7 @@ use std::{fmt, marker::PhantomData};
 
 use ff::Field;
 
-use crate::plonk::{Advice, Any, Challenge, Column, Error, Fixed, Instance, Selector, TableColumn};
+use crate::plonk::{Advice, Any, Column, Error, Fixed, Instance, Selector, TableColumn};
 
 mod value;
 pub use value::Value;
@@ -522,12 +522,6 @@ pub trait Layouter<F: Field> {
         row: usize,
     ) -> Result<(), Error>;
 
-    /// Queries the value of the given challenge.
-    ///
-    /// Returns `Value::unknown()` if the current synthesis phase is before the
-    /// challenge can be queried.
-    fn get_challenge(&self, challenge: Challenge) -> Value<F>;
-
     /// Gets the "root" of this assignment, bypassing the namespacing.
     ///
     /// Not intended for downstream consumption; use [`Layouter::namespace`]
@@ -594,10 +588,6 @@ impl<'a, F: Field, L: Layouter<F> + 'a> Layouter<F> for NamespacedLayouter<'a, F
         row: usize,
     ) -> Result<(), Error> {
         self.0.constrain_instance(cell, column, row)
-    }
-
-    fn get_challenge(&self, challenge: Challenge) -> Value<F> {
-        self.0.get_challenge(challenge)
     }
 
     fn get_root(&mut self) -> &mut Self::Root {

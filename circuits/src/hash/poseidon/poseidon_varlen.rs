@@ -96,7 +96,7 @@ impl<F: PoseidonField> VarLenPoseidonGadget<F> {
 
     /// Format the last chunk of data so it is zeroed after the effective
     /// payload. Given chunk = [x1, x2, ..., xn], with n = RATE, returns
-    /// [x1, ..., x_{offset-1}, 0, ..., 0]. If offset = 0, the chunk is
+    /// [x1, ..., x_{offset}, 0, ..., 0]. If offset = 0, the chunk is
     /// returned intact.
     fn constrain_last_chunk(
         &self,
@@ -124,7 +124,7 @@ impl<F: PoseidonField> VarLenPoseidonGadget<F> {
     /// # Panics
     ///
     /// If `MAX_LEN` is not a multiple of `RATE`.
-    pub(crate) fn poseidon_varlen<const MAX_LEN: usize>(
+    pub fn poseidon_varlen<const MAX_LEN: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
         input: &AssignedVector<F, AssignedNative<F>, MAX_LEN, RATE>,
@@ -165,20 +165,19 @@ impl<F: PoseidonField> VarLenPoseidonGadget<F> {
             )?;
             updating = ng.xor(layouter, &[b, updating])?;
 
-            register = if i == MAX_LEN / RATE {
-                // Constrain vector filler values in the last chunk.
+            register = if i == MAX_LEN / RATE - 1 {
                 let last_chunk = self.constrain_last_chunk(layouter, chunk, &last_chunk_len)?;
                 self.cond_update(layouter, &register, &last_chunk, &updating)?
             } else {
                 self.cond_update(layouter, &register, chunk, &updating)?
-            }
+            };
         }
         Ok(register[0].clone())
     }
 }
 
 #[cfg(any(test, feature = "testing"))]
-use midnight_proofs::plonk::{Column, ConstraintSystem, Instance};
+use midnight_proofs::plonk::{Advice, Column, ConstraintSystem, Fixed, Instance};
 
 #[cfg(any(test, feature = "testing"))]
 use crate::field::decomposition::chip::P2RDecompositionConfig;
@@ -201,10 +200,18 @@ impl<F: PoseidonField> FromScratch<F> for VarLenPoseidonGadget<F> {
 
     fn configure_from_scratch(
         meta: &mut ConstraintSystem<F>,
+        advice_columns: &mut Vec<Column<Advice>>,
+        fixed_columns: &mut Vec<Column<Fixed>>,
         instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
-        let native_config = NG::<F>::configure_from_scratch(meta, instance_columns);
-        let poseidon_config = PoseidonChip::configure_from_scratch(meta, instance_columns);
+        let native_config =
+            NG::<F>::configure_from_scratch(meta, advice_columns, fixed_columns, instance_columns);
+        let poseidon_config = PoseidonChip::configure_from_scratch(
+            meta,
+            advice_columns,
+            fixed_columns,
+            instance_columns,
+        );
         (native_config, poseidon_config)
     }
 

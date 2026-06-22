@@ -62,7 +62,6 @@ impl<F: PrimeField> Evaluated<F> {
         advice_evals: &[F],
         fixed_evals: &[F],
         instance_evals: &[F],
-        challenges: &[F],
     ) -> impl Iterator<Item = F> + 'a {
         let evaluate_expression = |expr: &Expression<F>| {
             expr.evaluate(
@@ -71,7 +70,6 @@ impl<F: PrimeField> Evaluated<F> {
                 &|query| fixed_evals[query.index.unwrap()],
                 &|query| advice_evals[query.index.unwrap()],
                 &|query| instance_evals[query.index.unwrap()],
-                &|challenge| challenges[challenge.index()],
                 &|a| -a,
                 &|a, b| a + &b,
                 &|a, b| a * &b,

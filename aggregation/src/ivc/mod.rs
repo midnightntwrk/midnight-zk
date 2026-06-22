@@ -22,6 +22,7 @@
 pub use circuit::{IvcCircuit, IvcInstance, IvcWitness};
 pub use error::IvcError;
 use midnight_circuits::{
+    instructions::{BinaryInstructions, EqualityInstructions},
     types::{AssignedBit, AssignedNative},
     verifier::{BlstrsEmulation, SelfEmulation},
 };
@@ -110,13 +111,6 @@ pub trait IvcState: IvcContext {
     /// The genesis (initial) state of the IVC chain.
     fn genesis(ctx: &Self::Context) -> Self::State;
 
-    /// Returns true (in-circuit) if the given state is genesis.
-    fn is_genesis(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        state: &Self::AssignedState,
-    ) -> Result<AssignedBit<F>, Error>;
-
     /// Off-circuit check that the state meets the required invariants.
     ///
     /// Automatically called by [`IvcVerifier::verify`] to check any
@@ -163,6 +157,11 @@ pub trait IvcIO: IvcState {
     /// Returns the cells of the assigned state formatted as public input
     /// (in-circuit analog of
     /// [`format_public_input`](Self::format_public_input)).
+    ///
+    /// This function must be injective or at least *computationally binding*,
+    /// i.e. it must be impossible to find two distinct states whose
+    /// [`AssignedState`](IvcState::AssignedState) counterpart maps to the same
+    /// vector after `as_public_input`.
     fn as_public_input(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -171,6 +170,10 @@ pub trait IvcIO: IvcState {
 
     /// Formats a [`State`](IvcState::State) as raw native field elements
     /// (off-circuit analog of [`as_public_input`](Self::as_public_input)).
+    ///
+    /// This function must be injective or at least *computationally binding*,
+    /// i.e. it must be impossible to find two distinct states that map to the
+    /// same vector after `format_public_input`.
     fn format_public_input(state: &Self::State) -> Vec<F>;
 }
 
@@ -209,5 +212,47 @@ pub trait IvcTransition: IvcState {
 /// Automatically implemented for any type that implements both. This is the
 /// bound required by the IVC machinery ([`IvcCircuit`], [`IvcProver`],
 /// [`IvcVerifier`], [`setup()`]).
-pub trait Ivc: IvcTransition + IvcIO {}
+///
+/// Provides genesis-detection helpers used by the IVC circuit and prover.
+pub trait Ivc: IvcTransition + IvcIO {
+    /// Off-circuit genesis check: returns `true` if `state` is genesis.
+    ///
+    /// Compares via [`format_public_input`](IvcIO::format_public_input) to
+    /// mirror the in-circuit check
+    /// ([`circuit_is_genesis`](Self::circuit_is_genesis)). This is sound
+    /// because `format_public_input` is computationally binding
+    /// ("injective"): distinct states produce distinct public-input vectors, so
+    /// equality of the public-input representation implies equality of the
+    /// state.
+    fn is_genesis(ctx: &Self::Context, state: &Self::State) -> bool {
+        Self::format_public_input(state) == Self::format_public_input(&Self::genesis(ctx))
+    }
+
+    /// In-circuit genesis check: returns a bit that is `true` iff the state
+    /// represented by the given `AssignedState` is genesis.
+    ///
+    /// Compares [`as_public_input`](IvcIO::as_public_input) element-wise
+    /// against the known genesis public-input constants. This is sound because
+    /// `format_public_input` (and its in-circuit counterpart `as_public_input`)
+    /// are computationally binding ("injective"): distinct states produce
+    /// distinct public-input vectors, so equality of the public-input
+    /// representation implies equality of the state.
+    ///
+    /// A malicious prover cannot craft a non-genesis state whose public-input
+    /// cells match the genesis constants.
+    fn circuit_is_genesis(
+        &self,
+        std_lib: &ZkStdLib,
+        layouter: &mut impl Layouter<F>,
+        ctx: &Self::Context,
+        state: &Self::AssignedState,
+    ) -> Result<AssignedBit<F>, Error> {
+        let bits = (self.as_public_input(layouter, state)?.iter())
+            .zip(Self::format_public_input(&Self::genesis(ctx)))
+            .map(|(x, c)| std_lib.is_equal_to_fixed(layouter, x, c))
+            .collect::<Result<Vec<_>, _>>()?;
+        std_lib.and(layouter, &bits)
+    }
+}
+
 impl<I: IvcTransition + IvcIO> Ivc for I {}

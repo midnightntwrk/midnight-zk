@@ -16,6 +16,7 @@ use midnight_curves::k256::{Fp as K256Base, Fq as K256Scalar, K256};
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
+    transcript::Blake2b256,
 };
 use midnight_zk_stdlib::{utils::plonk_api::srs_for_test, Relation, ZkStdLib, ZkStdLibArch};
 use rand::rngs::OsRng;
@@ -44,6 +45,8 @@ impl Relation for BitcoinSigExample {
 
     type Witness = Signature;
 
+    type Error = Error;
+
     fn format_instance((pk, msg_bytes): &Self::Instance) -> Result<Vec<F>, Error> {
         Ok([
             AssignedForeignPoint::<F, K256, MultiEmulationParams>::as_public_input(pk),
@@ -64,8 +67,8 @@ impl Relation for BitcoinSigExample {
         instance: Value<Self::Instance>,
         witness: Value<Self::Witness>,
     ) -> Result<(), Error> {
-        let secp256k1_curve = std_lib.secp256k1_curve();
-        let secp256k1_scalar = std_lib.secp256k1_scalar();
+        let secp256k1_curve = std_lib.secp256k1();
+        let secp256k1_scalar = secp256k1_curve.scalar_field_chip();
         let secp256k1_base = secp256k1_curve.base_field_chip();
 
         // Assign the PK as public input.
@@ -185,21 +188,19 @@ fn main() {
         K256Scalar::from_bytes_be(&sig_bytes[32..]).expect("Secp scalar"),
     );
 
-    let proof = midnight_zk_stdlib::prove::<BitcoinSigExample, blake2b_simd::State>(
+    let proof = midnight_zk_stdlib::prove::<BitcoinSigExample, Blake2b256>(
         &srs, &pk, &relation, &instance, witness, OsRng,
     )
     .expect("Proof generation should not fail");
 
-    assert!(
-        midnight_zk_stdlib::verify::<BitcoinSigExample, blake2b_simd::State>(
-            &srs.verifier_params(),
-            &vk,
-            &instance,
-            None,
-            &proof
-        )
-        .is_ok()
+    assert!(midnight_zk_stdlib::verify::<BitcoinSigExample, Blake2b256>(
+        &srs.verifier_params(),
+        &vk,
+        &instance,
+        None,
+        &proof
     )
+    .is_ok())
 }
 
 // Bitcoin uses points that only have even y coordinates. The input x_coord is

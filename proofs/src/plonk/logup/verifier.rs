@@ -19,10 +19,13 @@ use ff::{PrimeField, WithSmallOrderMulGroup};
 
 use crate::{
     plonk::{
-        logup::{self, FlattenedArgument},
+        logup::{self, ChunkedArgument},
         Error, VerifyingKey,
     },
-    poly::{commitment::PolynomialCommitmentScheme, CommitmentLabel, Rotation, VerifierQuery},
+    poly::{
+        commitment::{Labelable, PolynomialCommitmentScheme},
+        PolynomialLabel, Rotation, VerifierQuery,
+    },
     transcript::{Hashable, Transcript},
 };
 
@@ -31,24 +34,24 @@ pub struct CommittedMultiplicities<F: PrimeField, CS: PolynomialCommitmentScheme
     multiplicities: CS::Commitment,
 }
 
-/// Commitments to all LogUp polynomials for a [`FlattenedArgument`].
+/// Commitments to all LogUp polynomials for a [`ChunkedArgument`].
 ///
 /// One shared `m` and `Z`, plus one `hᵢ` per chunk.
 #[derive(Debug)]
 pub struct Committed<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
     multiplicities: CS::Commitment,
-    /// One commitment per flattened argument.
+    /// One commitment per chunk of the batched argument.
     helper_polys: Vec<CS::Commitment>,
     accumulator: CS::Commitment,
 }
 
-/// Commitments plus evaluations at challenge point.
+/// Commitments plus evaluations at the challenge point.
 pub struct Evaluated<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
     committed: Committed<F, CS>,
     pub(crate) evaluated: logup::Evaluated<F>,
 }
 
-impl<F: WithSmallOrderMulGroup<3>> FlattenedArgument<F> {
+impl<F: WithSmallOrderMulGroup<3>> ChunkedArgument<F> {
     /// Reads the multiplicities commitment from the transcript.
     pub(in crate::plonk) fn read_multiplicities<T: Transcript, CS: PolynomialCommitmentScheme<F>>(
         &self,
@@ -57,7 +60,9 @@ impl<F: WithSmallOrderMulGroup<3>> FlattenedArgument<F> {
     where
         CS::Commitment: Hashable<T::Hash>,
     {
-        let multiplicities = transcript.read()?;
+        let multiplicities = transcript.read().map(|c: CS::Commitment| {
+            c.label(PolynomialLabel::LogupMultiplicities(self.name.clone()))
+        })?;
         Ok(CommittedMultiplicities { multiplicities })
     }
 }
@@ -65,19 +70,27 @@ impl<F: WithSmallOrderMulGroup<3>> FlattenedArgument<F> {
 impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>>
     CommittedMultiplicities<F, CS>
 {
-    /// Reads `nb_flattened` helper commitments and one accumulator commitment
+    /// Reads `nb_chunks` helper commitments and one accumulator commitment
     /// from the transcript.
     pub(in crate::plonk) fn read_commitment<T: Transcript>(
         self,
-        nb_flattened: usize,
+        name: &str,
+        nb_chunks: usize,
         transcript: &mut T,
     ) -> Result<Committed<F, CS>, Error>
     where
         CS::Commitment: Hashable<T::Hash>,
     {
-        let helper_polys =
-            (0..nb_flattened).map(|_| transcript.read()).collect::<Result<Vec<_>, _>>()?;
-        let accumulator = transcript.read()?;
+        let helper_polys = (0..nb_chunks)
+            .map(|_| {
+                transcript
+                    .read()
+                    .map(|c: CS::Commitment| c.label(PolynomialLabel::LogupHelper(name.to_owned())))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let accumulator = transcript
+            .read()
+            .map(|c: CS::Commitment| c.label(PolynomialLabel::LogupAggregator(name.to_owned())))?;
 
         Ok(Committed {
             multiplicities: self.multiplicities,
@@ -88,9 +101,9 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>>
 }
 
 impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> Committed<F, CS> {
-    /// Reads polynomial evaluations from the transcript.
+    /// Reads the polynomial evaluations from the transcript.
     ///
-    /// Order: `m_eval`, then `hᵢ_eval` for each flattened arg, then `Z_eval`,
+    /// Order: `m_eval`, then `hᵢ_eval` for each batched chunk, then `Z_eval`,
     /// `Z(ωx)_eval`.
     pub(crate) fn evaluate<T: Transcript>(
         self,
@@ -99,11 +112,11 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> Committed<F, CS> {
     where
         F: Hashable<T::Hash>,
     {
-        let nb_flattened = self.helper_polys.len();
+        let nb_chunks = self.helper_polys.len();
 
         let multiplicities_eval = transcript.read()?;
         let helper_evals =
-            (0..nb_flattened).map(|_| transcript.read()).collect::<Result<Vec<_>, _>>()?;
+            (0..nb_chunks).map(|_| transcript.read()).collect::<Result<Vec<_>, _>>()?;
         let accumulator_eval = transcript.read()?;
         let accumulator_next_eval = transcript.read()?;
 
@@ -130,7 +143,6 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
 
         let m_query = iter::once(VerifierQuery::new(
             x,
-            CommitmentLabel::NoLabel,
             &self.committed.multiplicities,
             self.evaluated.multiplicities_eval,
         ));
@@ -140,19 +152,17 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
             .helper_polys
             .iter()
             .zip(self.evaluated.helper_evals.iter())
-            .map(move |(com, &eval)| VerifierQuery::new(x, CommitmentLabel::NoLabel, com, eval))
+            .map(move |(com, &eval)| VerifierQuery::new(x, com, eval))
             .collect::<Vec<_>>();
 
         let z_queries = [
             VerifierQuery::new(
                 x,
-                CommitmentLabel::NoLabel,
                 &self.committed.accumulator,
                 self.evaluated.accumulator_eval,
             ),
             VerifierQuery::new(
                 x_next,
-                CommitmentLabel::NoLabel,
                 &self.committed.accumulator,
                 self.evaluated.accumulator_next_eval,
             ),

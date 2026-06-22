@@ -16,20 +16,20 @@
 //! This is the in-circuit analog of `proofs/src/plonk/logup/verifier.rs`.
 //! The constraint expressions are implemented in `expressions/lookup.rs`.
 
-use midnight_proofs::{circuit::Layouter, plonk::Error, poly::CommitmentLabel};
+use midnight_proofs::{circuit::Layouter, plonk::Error, poly::PolynomialLabel};
 
 use crate::{
     field::AssignedNative,
     verifier::{
         kzg::VerifierQuery, transcript_gadget::TranscriptGadget, utils::AssignedBoundedScalar,
-        SelfEmulation,
+        LabeledPoint, SelfEmulation,
     },
 };
 
 /// Commitment to the multiplicity columns, read from the transcript.
 #[derive(Clone, Debug)]
 pub(crate) struct CommittedMultiplicities<S: SelfEmulation> {
-    multiplicities: S::AssignedPoint,
+    multiplicities: LabeledPoint<S>,
 }
 
 #[derive(Clone, Debug)]
@@ -43,9 +43,9 @@ pub(crate) struct LookupEvaluated<S: SelfEmulation> {
 /// Commitments to the LogUp polynomials, read from the transcript.
 #[derive(Clone, Debug)]
 pub(crate) struct Committed<S: SelfEmulation> {
-    multiplicities: S::AssignedPoint,
-    helper_polys: Vec<S::AssignedPoint>,
-    accumulator: S::AssignedPoint,
+    multiplicities: LabeledPoint<S>,
+    helper_polys: Vec<LabeledPoint<S>>,
+    accumulator: LabeledPoint<S>,
 }
 
 /// Commitments plus evaluations at challenge point.
@@ -55,27 +55,38 @@ pub(crate) struct Evaluated<S: SelfEmulation> {
     pub(crate) evaluated: LookupEvaluated<S>,
 }
 
-/// Reads the prover's commitments from the transcript.
+/// Reads the prover's multiplicities commitment from the transcript.
 pub(crate) fn read_multiplicities<S: SelfEmulation>(
+    name: &str,
     layouter: &mut impl Layouter<S::F>,
     transcript_gadget: &mut TranscriptGadget<S>,
 ) -> Result<CommittedMultiplicities<S>, Error> {
-    let multiplicities = transcript_gadget.read_point(layouter)?;
-
+    let multiplicities = LabeledPoint::new(
+        transcript_gadget.read_point(layouter)?,
+        PolynomialLabel::LogupMultiplicities(name.to_owned()),
+    );
     Ok(CommittedMultiplicities { multiplicities })
 }
 
 impl<S: SelfEmulation> CommittedMultiplicities<S> {
     pub(crate) fn read_commitment(
         self,
+        name: &str,
         nb_flattened: usize,
         layouter: &mut impl Layouter<S::F>,
         transcript_gadget: &mut TranscriptGadget<S>,
     ) -> Result<Committed<S>, Error> {
         let helper_polys = (0..nb_flattened)
-            .map(|_| transcript_gadget.read_point(layouter))
+            .map(|_| {
+                transcript_gadget
+                    .read_point(layouter)
+                    .map(|p| LabeledPoint::new(p, PolynomialLabel::LogupHelper(name.to_owned())))
+            })
             .collect::<Result<Vec<_>, Error>>()?;
-        let accumulator = transcript_gadget.read_point(layouter)?;
+        let accumulator = LabeledPoint::new(
+            transcript_gadget.read_point(layouter)?,
+            PolynomialLabel::LogupAggregator(name.to_owned()),
+        );
 
         Ok(Committed {
             multiplicities: self.multiplicities,
@@ -125,8 +136,7 @@ impl<S: SelfEmulation> Evaluated<S> {
             VerifierQuery::new(
                 one,
                 x,
-                CommitmentLabel::NoLabel,
-                &self.committed.multiplicities,
+                &self.committed.multiplicities.point,
                 &self.evaluated.multiplicities_eval,
             ),
         ];
@@ -134,28 +144,20 @@ impl<S: SelfEmulation> Evaluated<S> {
         for (h_commit, h_eval) in
             self.committed.helper_polys.iter().zip(self.evaluated.helper_evals.iter())
         {
-            queries.push(VerifierQuery::new(
-                one,
-                x,
-                CommitmentLabel::NoLabel,
-                h_commit,
-                h_eval,
-            ));
+            queries.push(VerifierQuery::new(one, x, &h_commit.point, h_eval));
         }
         // Open lookup table commitments at x
         queries.push(VerifierQuery::new(
             one,
             x,
-            CommitmentLabel::NoLabel,
-            &self.committed.accumulator,
+            &self.committed.accumulator.point,
             &self.evaluated.accumulator_eval,
         ));
         // Open lookup product commitment at \omega x
         queries.push(VerifierQuery::new(
             one,
             x_next,
-            CommitmentLabel::NoLabel,
-            &self.committed.accumulator,
+            &self.committed.accumulator.point,
             &self.evaluated.accumulator_next_eval,
         ));
         queries

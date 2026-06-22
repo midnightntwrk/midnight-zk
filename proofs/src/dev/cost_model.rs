@@ -18,11 +18,9 @@ use super::Region;
 use crate::{
     circuit::{self, Value},
     plonk::{
-        sealed::{self, SealedPhase},
         Advice,
         Any::{self, Fixed},
-        Assignment, Challenge, Circuit, Column, ConstraintSystem, Error, FirstPhase, FloorPlanner,
-        Instance, Phase, Selector,
+        Assignment, Circuit, Column, ConstraintSystem, Error, FloorPlanner, Instance, Selector,
     },
     utils::rational::Rational,
 };
@@ -311,6 +309,20 @@ pub fn circuit_model<
     options.into_circuit_model::<COMM, SCALAR>()
 }
 
+/// Namespace marker that signals the start of the region to measure.
+///
+/// Place this marker in `synthesize` (via `layouter.namespace(||
+/// COST_MEASURE_START)`) immediately before the operation whose cost you want
+/// to isolate.  Pair it with [`COST_MEASURE_END`].  When both markers are
+/// present, `cost_model_options` reports `rows` as the span of the rows
+/// assigned between the two markers rather than the full circuit row count.
+pub const COST_MEASURE_START: &str = "__cost_model_measure_start__";
+
+/// Namespace marker that signals the end of the region to measure.
+///
+/// See [`COST_MEASURE_START`].
+pub const COST_MEASURE_END: &str = "__cost_model_measure_end__";
+
 /// Given a circuit, this function returns [CostOptions]. If no upper bound for
 /// `k` is provided, we iterate until a valid `k` is found (this might delay the
 /// computation).
@@ -374,26 +386,42 @@ pub(crate) fn cost_model_options<F: Ord + Field + FromUniformBytes<64>, C: Circu
     // Note that this computation does't assume that `regions` is already in
     // order of increasing row indices.
     let (table_rows_count, rows_count) = {
-        let mut rows_count = 0;
-        let mut table_rows_count = 0;
-        for region in prover.regions {
-            // If `region.rows == None`, then that region has no rows.
-            if let Some((_start, end)) = region.rows {
-                // Note that `end` is the index of the last column, so when
-                // counting rows this last column needs to be counted via `end +
-                // 1`.
+        let mut rows_count = 0usize;
+        let mut table_rows_count = 0usize;
 
+        // When the circuit uses COST_MEASURE_START / COST_MEASURE_END markers,
+        // report only the row span covered by the marked regions. Table rows
+        // are always counted in full (they are a global cost).
+        let mut min_measured_row = usize::MAX;
+        let mut max_measured_row = 0usize;
+        let mut has_any_measured = false;
+
+        for region in &prover.regions {
+            if let Some((start, end)) = region.rows {
                 // A region is a _table region_ if all of its columns are `Fixed`
                 // columns (see that [`plonk::circuit::TableColumn` is a wrapper
                 // around `Column<Fixed>`]). All of a table region's rows are
                 // counted towards `table_rows_count.`
                 if region.columns.iter().all(|c| *c.column_type() == Fixed) {
                     table_rows_count = std::cmp::max(table_rows_count, end + 1);
+                } else if prover.has_measured_regions {
+                    if region.is_measured {
+                        min_measured_row = std::cmp::min(min_measured_row, start);
+                        max_measured_row = std::cmp::max(max_measured_row, end);
+                        has_any_measured = true;
+                    }
                 } else {
+                    // Note that `end` is the index of the last row, so when
+                    // counting rows this last row needs to be counted via `end + 1`.
                     rows_count = std::cmp::max(rows_count, end + 1);
                 }
             }
         }
+
+        if has_any_measured {
+            rows_count = max_measured_row - min_measured_row + 1;
+        }
+
         (table_rows_count, rows_count)
     };
 
@@ -432,15 +460,20 @@ pub(crate) fn cost_model_options<F: Ord + Field + FromUniformBytes<64>, C: Circu
 
 // DevAssembly is only used to compute the cost model, meaning that we only care
 // about the number of assignments and not the assignments themselves.
-// Therefore, we only keep track of the number of rows, the regions and the
-// phases, and ignore we values of the trace.
+// Therefore, we only keep track of the number of rows, the regions and ignore
+// we values of the trace.
 struct DevAssembly<F: Field> {
     cs: ConstraintSystem<F>,
     instance_rows: RefCell<usize>,
     /// The regions in the circuit.
     regions: Vec<Region>,
     current_region: Option<Region>,
-    current_phase: sealed::Phase,
+    /// Set to `true` while the synthesizer is between a
+    /// [`COST_MEASURE_START`] and a [`COST_MEASURE_END`] namespace marker.
+    in_measured_region: bool,
+    /// Set to `true` once a [`COST_MEASURE_START`] marker has been seen.
+    /// Used to switch [`cost_model_options`] into "measured-only" mode.
+    has_measured_regions: bool,
 }
 
 impl<F: FromUniformBytes<64> + Ord> DevAssembly<F> {
@@ -460,18 +493,16 @@ impl<F: FromUniformBytes<64> + Ord> DevAssembly<F> {
             instance_rows: RefCell::new(0),
             regions: vec![],
             current_region: None,
-            current_phase: FirstPhase.to_sealed(),
+            in_measured_region: false,
+            has_measured_regions: false,
         };
 
-        for current_phase in prover.cs.phases() {
-            prover.current_phase = current_phase;
-            ConcreteCircuit::FloorPlanner::synthesize(
-                &mut prover,
-                circuit,
-                config.clone(),
-                constants.clone(),
-            )?;
-        }
+        ConcreteCircuit::FloorPlanner::synthesize(
+            &mut prover,
+            circuit,
+            config.clone(),
+            constants.clone(),
+        )?;
 
         let selectors = vec![vec![]; prover.cs.num_selectors];
         let (cs, _selector_polys) = prover.cs.directly_convert_selectors_to_fixed(selectors);
@@ -481,22 +512,12 @@ impl<F: FromUniformBytes<64> + Ord> DevAssembly<F> {
     }
 }
 
-impl<F: Field> DevAssembly<F> {
-    fn in_phase<P: Phase>(&self, phase: P) -> bool {
-        self.current_phase == phase.to_sealed()
-    }
-}
-
 impl<F: Field> Assignment<F> for DevAssembly<F> {
     fn enter_region<NR, N>(&mut self, name: N)
     where
         NR: Into<String>,
         N: FnOnce() -> NR,
     {
-        if !self.in_phase(FirstPhase) {
-            return;
-        }
-
         assert!(self.current_region.is_none());
         self.current_region = Some(Region {
             name: name().into(),
@@ -505,6 +526,7 @@ impl<F: Field> Assignment<F> for DevAssembly<F> {
             annotations: HashMap::default(),
             enabled_selectors: HashMap::default(),
             cells: HashMap::default(),
+            is_measured: self.in_measured_region,
         });
     }
 
@@ -517,10 +539,6 @@ impl<F: Field> Assignment<F> for DevAssembly<F> {
     }
 
     fn exit_region(&mut self) {
-        if !self.in_phase(FirstPhase) {
-            return;
-        }
-
         self.regions.push(self.current_region.take().unwrap());
     }
 
@@ -559,15 +577,13 @@ impl<F: Field> Assignment<F> for DevAssembly<F> {
         A: FnOnce() -> AR,
         AR: Into<String>,
     {
-        if self.in_phase(FirstPhase) {
-            if let Some(region) = self.current_region.as_mut() {
-                region.update_extent(column.into(), row);
-                region
-                    .cells
-                    .entry((column.into(), row))
-                    .and_modify(|count| *count += 1)
-                    .or_default();
-            }
+        if let Some(region) = self.current_region.as_mut() {
+            region.update_extent(column.into(), row);
+            region
+                .cells
+                .entry((column.into(), row))
+                .and_modify(|count| *count += 1)
+                .or_default();
         }
 
         Ok(())
@@ -586,10 +602,6 @@ impl<F: Field> Assignment<F> for DevAssembly<F> {
         A: FnOnce() -> AR,
         AR: Into<String>,
     {
-        if !self.in_phase(FirstPhase) {
-            return Ok(());
-        }
-
         if let Some(region) = self.current_region.as_mut() {
             region.update_extent(column.into(), row);
             region
@@ -629,16 +641,18 @@ impl<F: Field> Assignment<F> for DevAssembly<F> {
         Ok(())
     }
 
-    fn get_challenge(&self, _challenge: Challenge) -> circuit::Value<F> {
-        Value::unknown()
-    }
-
-    fn push_namespace<NR, N>(&mut self, _: N)
+    fn push_namespace<NR, N>(&mut self, name_fn: N)
     where
         NR: Into<String>,
         N: FnOnce() -> NR,
     {
-        // Do nothing; we don't care about namespaces in this context.
+        let name: String = name_fn().into();
+        if name == COST_MEASURE_START {
+            self.in_measured_region = true;
+            self.has_measured_regions = true;
+        } else if name == COST_MEASURE_END {
+            self.in_measured_region = false;
+        }
     }
 
     fn pop_namespace(&mut self, _: Option<String>) {
@@ -771,7 +785,7 @@ mod tests {
                             || format!("row {row}"),
                             config.table,
                             row as usize,
-                            || Value::known(Fq::from(row + 1)),
+                            || Value::known(Fq::from(row)),
                         )?;
                     }
 
@@ -842,12 +856,12 @@ mod tests {
         create_proof::<Fq, KZGCommitmentScheme<Bls12>, _, _>(
             &params,
             &pk,
-            std::slice::from_ref(&circuit),
+            &circuit,
             #[cfg(feature = "committed-instances")]
             0,
-            &[instances],
-            OsRng,
+            instances,
             &mut transcript,
+            OsRng,
         )
         .expect("proof generation should not fail");
 
@@ -875,11 +889,11 @@ mod tests {
         create_proof::<Fq, KZGCommitmentScheme<Bls12>, _, _>(
             &params,
             &pk,
-            std::slice::from_ref(&circuit),
+            &circuit,
             1,
-            &[instances],
-            OsRng,
+            instances,
             &mut transcript,
+            OsRng,
         )
         .expect("proof generation should not fail");
 
@@ -901,8 +915,8 @@ mod tests {
                         let circuit = StandardPlonk::<NB_PI>(Fq::from(random_byte[0] as u64));
                         let cost_model = cost_model_options(&circuit, 0);
 
-                        // nb of unusable rows for this circuit is 7.
-                        let pi_k = (NB_PI + 7).next_power_of_two().ilog2();
+                        // nb of unusable rows for this circuit is 8.
+                        let pi_k = (NB_PI + 8).next_power_of_two().ilog2();
                         assert_eq!(cost_model.min_k, max(9, pi_k));
                     }
                 )*

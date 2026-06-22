@@ -28,7 +28,7 @@ use {
     crate::field::native::NB_EXTRA_ARITH_FIXED_COLS,
     crate::testing_utils::{FromScratch, Sampleable},
     crate::utils::ComposableChip,
-    midnight_proofs::plonk::{Column, ConstraintSystem, Instance},
+    midnight_proofs::plonk::{Advice, Column, ConstraintSystem, Fixed, Instance},
     rand::{Rng, RngCore},
 };
 
@@ -103,6 +103,12 @@ where
 impl<F: CircuitField> Instantiable<F> for AssignedByte<F> {
     fn as_public_input(element: &u8) -> Vec<F> {
         vec![F::from(*element as u64)]
+    }
+
+    #[cfg(any(test, feature = "testing"))]
+    fn from_public_input(fields: &[F]) -> Option<u8> {
+        let [f] = fields else { return None };
+        u8::try_from(f.to_biguint()).ok()
     }
 }
 
@@ -1729,19 +1735,25 @@ impl<F: CircuitField> FromScratch<F> for NativeGadget<F, P2RDecompositionChip<F>
 
     fn configure_from_scratch(
         meta: &mut ConstraintSystem<F>,
+        advice_columns: &mut Vec<Column<Advice>>,
+        fixed_columns: &mut Vec<Column<Fixed>>,
         instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
         const NB_ARITH_COLS: usize = 5;
         const NB_ARITH_FIXED_COLS: usize = NB_ARITH_COLS + NB_EXTRA_ARITH_FIXED_COLS;
 
-        let advice_columns: [_; NB_ARITH_COLS] = core::array::from_fn(|_| meta.advice_column());
-        let fixed_columns: [_; NB_ARITH_FIXED_COLS] = core::array::from_fn(|_| meta.fixed_column());
+        while advice_columns.len() < NB_ARITH_COLS {
+            advice_columns.push(meta.advice_column());
+        }
+        while fixed_columns.len() < NB_ARITH_FIXED_COLS {
+            fixed_columns.push(meta.fixed_column());
+        }
 
         let native_config = NativeChip::configure(
             meta,
             &(
-                advice_columns.to_vec(),
-                fixed_columns.to_vec(),
+                advice_columns[..NB_ARITH_COLS].to_vec(),
+                fixed_columns[..NB_ARITH_FIXED_COLS].to_vec(),
                 *instance_columns,
             ),
         );

@@ -348,7 +348,8 @@ impl G1Affine {
 
     /// Attempts to deserialize an uncompressed element.
     fn from_uncompressed(bytes: &[u8; UNCOMPRESSED_SIZE]) -> CtOption<Self> {
-        G1Affine::from_uncompressed_unchecked(bytes).and_then(|p| CtOption::new(p, p.is_on_curve()))
+        G1Affine::from_uncompressed_unchecked(bytes)
+            .and_then(|p| CtOption::new(p, p.is_torsion_free()))
     }
 
     /// Attempts to deserialize an uncompressed element, not checking if the
@@ -368,7 +369,7 @@ impl G1Affine {
     /// Attempts to deserialize a compressed element.
     fn from_compressed(bytes: &[u8; COMPRESSED_SIZE]) -> CtOption<Self> {
         G1Affine::from_compressed_unchecked(bytes)
-            .and_then(|p| CtOption::new(p, p.is_on_curve() & p.is_torsion_free()))
+            .and_then(|p| CtOption::new(p, p.is_torsion_free()))
     }
 
     /// Attempts to deserialize an uncompressed element, not checking if the
@@ -416,6 +417,34 @@ impl G1Affine {
         // FIXME: what about infinity?
         let raw = blst_p1_affine { x: x.0, y: y.0 };
         G1Affine(raw)
+    }
+}
+
+impl G1Affine {
+    /// Perform a multi-exponentiation on affine points.
+    ///
+    /// # Panics
+    ///
+    /// If |points| != |scalars|.
+    /// If |scalars| == 0 due to internal blst `mult` call.
+    pub fn multi_exp_affine(points: &[Self], scalars: &[Fq]) -> G1Projective {
+        use blst::MultiPoint;
+
+        let n = points.len();
+        assert_eq!(n, scalars.len());
+
+        // G1Affine is #[repr(transparent)] over blst_p1_affine.
+        let affine_slice =
+            unsafe { std::slice::from_raw_parts(points.as_ptr() as *const blst_p1_affine, n) };
+
+        let mut scalar_bytes: Vec<u8> = Vec::with_capacity(n * 32);
+        for a in scalars.iter().map(|s| s.to_bytes_le()) {
+            scalar_bytes.extend_from_slice(&a);
+        }
+
+        // Blst Pippenger MSM over affine points.
+        let res = affine_slice.mult(scalar_bytes.as_slice(), 255);
+        G1Projective(res)
     }
 }
 
@@ -625,11 +654,8 @@ impl G1Projective {
     /// using `blst`'s implementation of Pippenger's algorithm.
     /// Note: `scalars` is cloned in this method.
     pub fn multi_exp(points: &[Self], scalars: &[Fq]) -> Self {
-        let n = if points.len() < scalars.len() {
-            points.len()
-        } else {
-            scalars.len()
-        };
+        let n = points.len();
+        assert_eq!(n, scalars.len());
         let points =
             unsafe { std::slice::from_raw_parts(points.as_ptr() as *const blst_p1, points.len()) };
 
@@ -971,7 +997,7 @@ impl CurveAffine for G1Affine {
 
     fn from_xy(x: Self::Base, y: Self::Base) -> CtOption<Self> {
         let p = Self::from_raw_unchecked(x, y, false);
-        CtOption::new(p, p.is_on_curve())
+        CtOption::new(p, p.is_torsion_free())
     }
 
     fn is_on_curve(&self) -> Choice {
@@ -1548,6 +1574,61 @@ mod tests {
             assert_eq!(G1Projective::from_bytes(&c).unwrap(), el);
             assert_eq!(G1Projective::from_bytes_unchecked(&c).unwrap(), el);
         }
+    }
+
+    /// An on-curve G1 point that is NOT in the prime-order subgroup.
+    ///
+    /// G1 is `y² = x³ + 4` with a large cofactor, so the first on-curve point
+    /// found by scanning `x` is, with overwhelming probability, outside the
+    /// prime-order subgroup. The explicit `is_torsion_free` guard makes the
+    /// helper correct even in the astronomically unlikely case it lands in it.
+    fn g1_non_torsion_point() -> G1Affine {
+        let b = Fp::from(4u64);
+        let mut x = Fp::ONE;
+        loop {
+            let rhs = x.square() * x + b;
+            if let Some(y) = Option::<Fp>::from(rhs.sqrt()) {
+                let p = G1Affine::from_raw_unchecked(x, y, false);
+                if !bool::from(p.is_torsion_free()) {
+                    return p;
+                }
+            }
+            x += Fp::ONE;
+        }
+    }
+
+    // Deserialization of an on-curve point that is outside the prime-order
+    // subgroup must be rejected by every checked path, while the `_unchecked`
+    // variants accept it.
+    #[test]
+    fn test_g1_deserialize_rejects_non_subgroup() {
+        let p = g1_non_torsion_point();
+        // Precondition: on the curve, but not in the prime-order subgroup.
+        assert_eq!(p.is_on_curve().unwrap_u8(), 1);
+        assert_eq!(p.is_torsion_free().unwrap_u8(), 0);
+
+        // Uncompressed: checked rejects, unchecked accepts.
+        let u = p.to_uncompressed();
+        assert!(bool::from(G1Affine::from_uncompressed(&u).is_none()));
+        assert_eq!(G1Affine::from_uncompressed_unchecked(&u).unwrap(), p);
+
+        // Compressed: checked rejects, unchecked accepts.
+        let c = p.to_compressed();
+        assert!(bool::from(G1Affine::from_compressed(&c).is_none()));
+        assert_eq!(G1Affine::from_compressed_unchecked(&c).unwrap(), p);
+
+        // SerdeObject raw-bytes paths route through `from_uncompressed`, so they
+        // must reject too; the `_unchecked` counterpart accepts.
+        let raw = p.to_raw_bytes();
+        assert!(G1Affine::from_raw_bytes(&raw).is_none());
+        assert_eq!(G1Affine::from_raw_bytes_unchecked(&raw), p);
+        assert!(G1Affine::read_raw(&mut raw.as_slice()).is_err());
+
+        // The `UncompressedEncoding` forwarder is the same checked path.
+        let enc = <G1Affine as UncompressedEncoding>::to_uncompressed(&p);
+        assert!(bool::from(
+            <G1Affine as UncompressedEncoding>::from_uncompressed(&enc).is_none()
+        ));
     }
 
     #[test]

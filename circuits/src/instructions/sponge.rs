@@ -94,7 +94,7 @@ pub(crate) mod tests {
     use crate::{
         instructions::{AssertionInstructions, AssignmentInstructions},
         testing_utils::{FromScratch, Sampleable},
-        utils::circuit_modeling::circuit_to_json,
+        utils::circuit_modeling::{circuit_to_json, cost_measure_end, cost_measure_start},
     };
 
     #[derive(Clone, Debug, Default)]
@@ -133,9 +133,21 @@ pub(crate) mod tests {
             let committed_instance_column = meta.instance_column();
             let instance_column = meta.instance_column();
             let instance_columns = [committed_instance_column, instance_column];
+            let mut advice_columns = vec![];
+            let mut fixed_columns = vec![];
             (
-                SpongeChip::configure_from_scratch(meta, &instance_columns),
-                AssignChip::configure_from_scratch(meta, &instance_columns),
+                SpongeChip::configure_from_scratch(
+                    meta,
+                    &mut advice_columns,
+                    &mut fixed_columns,
+                    &instance_columns,
+                ),
+                AssignChip::configure_from_scratch(
+                    meta,
+                    &mut advice_columns,
+                    &mut fixed_columns,
+                    &instance_columns,
+                ),
             )
         }
 
@@ -152,6 +164,7 @@ pub(crate) mod tests {
             let mut cpu_state =
                 <SpongeChip as SpongeCPU<Input::Element, Output::Element>>::init(None);
 
+            cost_measure_start(&mut layouter);
             for step in self.sequence.iter() {
                 for _nr_absorb in 0..step.0 {
                     let input_vec = self.inputs[input_idx]
@@ -178,17 +191,15 @@ pub(crate) mod tests {
                     assign_chip.assert_equal_to_fixed(&mut layouter, &out, expected_out)?;
                 }
             }
+            cost_measure_end(&mut layouter);
 
             chip.load_from_scratch(&mut layouter)?;
             assign_chip.load_from_scratch(&mut layouter)
         }
     }
 
-    pub fn test_sponge<F, Input, Output, SpongeChip, AssignChip>(
-        cost_model: bool,
-        chip_name: &str,
-        k: u32,
-    ) where
+    pub fn test_sponge<F, Input, Output, SpongeChip, AssignChip>(cost_model: bool, chip_name: &str)
+    where
         F: CircuitField + ff::FromUniformBytes<64> + Ord,
         Input: InnerValue + Sampleable,
         Output: InnerValue,
@@ -215,7 +226,7 @@ pub(crate) mod tests {
             _marker: PhantomData,
         };
 
-        MockProver::run(k, &circuit, vec![vec![], vec![]]).unwrap().assert_satisfied();
+        MockProver::run(&circuit, vec![vec![], vec![]]).unwrap().assert_satisfied();
 
         if cost_model {
             circuit_to_json(chip_name, "sponge", circuit);

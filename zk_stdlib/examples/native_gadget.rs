@@ -23,6 +23,8 @@ impl Relation for NativeGadgetExample {
 
     type Witness = (F, F);
 
+    type Error = Error;
+
     fn format_instance(instance: &Self::Instance) -> Result<Vec<F>, Error> {
         Ok(vec![*instance])
     }

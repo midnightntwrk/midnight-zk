@@ -6,7 +6,10 @@ use ff::{FromUniformBytes, PrimeField};
 
 use crate::{
     plonk::{k_from_circuit, Circuit},
-    poly::{Coeff, Error, LagrangeCoeff, Polynomial, ProverQuery, VerifierQuery},
+    poly::{
+        query::PolynomialLabel, Error, Polynomial, PolynomialRepresentation, ProverQuery,
+        VerifierQuery,
+    },
     transcript::{Hashable, Sampleable, Transcript},
     utils::helpers::ProcessedSerdeObject,
 };
@@ -26,6 +29,7 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
         + Default
         + PartialEq
         + ProcessedSerdeObject
+        + Labelable
         + Send
         + Sync
         + Add<Output = Self::Commitment>
@@ -34,23 +38,18 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
     /// Verification guard. Allows for batch verification
     type VerificationGuard: Guard<F, Self>;
 
-    /// Returns the commitment to the constant polynomial `P(X) = 1`.
-    fn constant_commitment() -> Self::Commitment;
-
     /// Generates the parameters of the polynomial commitment scheme
     fn gen_params(k: u32) -> Self::Parameters;
 
     /// Extract the `VerifierParameters` from `Parameters`
     fn get_verifier_params(params: &Self::Parameters) -> Self::VerifierParameters;
 
-    /// Commit to a polynomial in coefficient form
-    fn commit(params: &Self::Parameters, polynomial: &Polynomial<F, Coeff>) -> Self::Commitment;
-
-    /// Commit to a polynomial expressed in Lagrange evaluations form (over the
-    /// underlying domain specified in params).
-    fn commit_lagrange(
+    /// Commit to a polynomial in coefficient form, tagging the result with
+    /// `label` for identification during multi-open accumulation.
+    fn commit<B: PolynomialRepresentation>(
         params: &Self::Parameters,
-        poly: &Polynomial<F, LagrangeCoeff>,
+        polynomial: &Polynomial<F, B>,
+        label: PolynomialLabel,
     ) -> Self::Commitment;
 
     /// Create a multi-opening proof at a set of [ProverQuery]'s.
@@ -71,7 +70,17 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
     ) -> Result<Self::VerificationGuard, Error>
     where
         F: Sampleable<T::Hash> + Hash + Ord + Hashable<T::Hash>,
-        Self::Commitment: 'com + Hashable<T::Hash>;
+        Self::Commitment: Hashable<T::Hash> + 'com;
+}
+
+/// A commitment that can be assigned a [`PolynomialLabel`].
+///
+/// Deserialized commitments start with [`PolynomialLabel::NoLabel`]; call sites
+/// must attach the correct label before the commitment reaches the MSM layer.
+pub trait Labelable {
+    /// Attaches the given [`PolynomialLabel`] to this commitment, replacing any
+    /// existing label (including [`PolynomialLabel::NoLabel`]).
+    fn label(self, label: PolynomialLabel) -> Self;
 }
 
 /// Interface for verifier finalizer
@@ -95,7 +104,7 @@ pub trait Guard<F: PrimeField, CS: PolynomialCommitmentScheme<F>>: Sized {
 }
 
 /// Interface for PCS params
-pub trait Params {
+pub trait Params: Send + Sync {
     /// Returns the size of the Lagrange basis, expressed as the exponent `k`
     /// such that the Lagrange domain has `2^k` elements. This equals the
     /// circuit domain size and is used by keygen to validate the SRS.

@@ -20,7 +20,7 @@ use midnight_proofs::{
     circuit::Value,
     plonk,
     plonk::ConstraintSystem,
-    poly::{kzg::KZGCommitmentScheme, EvaluationDomain},
+    poly::{kzg::KZGCommitmentScheme, EvaluationDomain, PolynomialLabel},
 };
 
 use crate::{
@@ -42,6 +42,20 @@ mod utils;
 mod verifier_gadget;
 
 pub use accumulator::{Accumulator, AssignedAccumulator};
+
+/// An in-circuit commitment point tagged with its polynomial label.
+#[derive(Clone, Debug)]
+pub(crate) struct LabeledPoint<S: SelfEmulation> {
+    pub(crate) point: S::AssignedPoint,
+    #[allow(dead_code)]
+    pub(crate) label: PolynomialLabel,
+}
+
+impl<S: SelfEmulation> LabeledPoint<S> {
+    pub(crate) fn new(point: S::AssignedPoint, label: PolynomialLabel) -> Self {
+        Self { point, label }
+    }
+}
 pub use msm::{AssignedMsm, Msm};
 #[cfg(feature = "dev-curves")]
 pub use types::BnEmulation;
@@ -84,19 +98,29 @@ impl<S: SelfEmulation> Instantiable<S::F> for AssignedVk<S> {
     fn as_public_input(vk: &VerifyingKey<S>) -> Vec<S::F> {
         AssignedNative::<S::F>::as_public_input(&vk.transcript_repr())
     }
+
+    #[cfg(any(test, feature = "testing"))]
+    fn from_public_input(_fields: &[S::F]) -> Option<VerifyingKey<S>> {
+        unimplemented!("as_public_input encodes the VK as its transcript_repr() — not invertible")
+    }
 }
 
 /// Canonical name for the i-th verifying-key fixed commitment.
-fn fixed_commitment_name(prefix: &str, i: usize) -> String {
+pub fn fixed_commitment_name(prefix: &str, i: usize) -> String {
     format!("{prefix}_fixed_com_{i}")
 }
 
 /// Canonical name for the i-th verifying-key permutation commitment.
-fn perm_commitment_name(prefix: &str, i: usize) -> String {
+pub fn perm_commitment_name(prefix: &str, i: usize) -> String {
     format!("{prefix}_perm_com_{i}")
 }
 
 impl<S: SelfEmulation> AssignedVk<S> {
+    /// The assigned `transcript_repr` cell of this verifying key.
+    pub fn transcript_repr(&self) -> &AssignedNative<S::F> {
+        &self.transcript_repr
+    }
+
     /// Canonical name for the i-th fixed commitment of this AssignedVk.
     fn fixed_commitment_name(&self, i: usize) -> String {
         fixed_commitment_name(&self.vk_name, i)
@@ -122,11 +146,11 @@ pub fn fixed_bases<S: SelfEmulation>(
     let perm_commitments = vk.permutation().commitments();
 
     for (i, com) in fixed_commitments.iter().enumerate() {
-        fixed_bases.insert(fixed_commitment_name(vk_name, i), *com);
+        fixed_bases.insert(fixed_commitment_name(vk_name, i), *com.as_point());
     }
 
     for (i, com) in perm_commitments.iter().enumerate() {
-        fixed_bases.insert(perm_commitment_name(vk_name, i), *com);
+        fixed_bases.insert(perm_commitment_name(vk_name, i), *com.as_point());
     }
 
     fixed_bases

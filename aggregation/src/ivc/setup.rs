@@ -21,7 +21,11 @@ use super::{Ivc, IvcCircuit, IvcProver, IvcVerifier, E, S};
 /// The returned [`IvcVerifier`] holds the self-verifying key. A verifier only
 /// needs to run this function once; the resulting [`IvcVerifier`] can then be
 /// reused to check any [`super::IvcInstance`].
-pub fn setup<T: Ivc>(params: ParamsKZG<E>, k: u32, ctx: T::Context) -> (IvcProver<T>, IvcVerifier) {
+pub fn setup<T: Ivc>(
+    params: ParamsKZG<E>,
+    k: u32,
+    ctx: T::Context,
+) -> (IvcProver<T>, IvcVerifier<T>) {
     let mut cs = ConstraintSystem::default();
     ZkStdLib::configure(&mut cs, (IvcCircuit::<T>::arch(), (k - 1) as u8));
     let domain = EvaluationDomain::new(cs.degree() as u32, k);
@@ -37,6 +41,7 @@ pub fn setup<T: Ivc>(params: ParamsKZG<E>, k: u32, ctx: T::Context) -> (IvcProve
         fixed_bases::<S>("self_vk", vk.vk()).keys().cloned().collect();
 
     let verifier = IvcVerifier {
+        ctx: ctx.clone(),
         vk,
         params_verifier: params.verifier_params(),
     };

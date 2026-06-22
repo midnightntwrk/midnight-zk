@@ -2,6 +2,7 @@
 
 [![CI checks](https://github.com/midnightntwrk/midnight-circuits/actions/workflows/ci.yml/badge.svg)](https://github.com/midnightntwrk/midnight-circuits/actions/workflows/ci.yml)
 [![Examples](https://github.com/midnightntwrk/midnight-circuits/actions/workflows/examples.yml/badge.svg)](https://github.com/midnightntwrk/midnight-circuits/actions/workflows/examples.yml)
+[![Crates.io Version](https://img.shields.io/crates/v/midnight-circuits?label=midnight-circuits)](https://crates.io/crates/midnight-circuits)
 
 *Midnight Circuits* is a library designed for implementing circuits with [Halo2](https://github.com/zcash/halo2). It is built on the [PSE v0.4.0 release](https://github.com/privacy-scaling-explorations/halo2/releases/tag/v0.4.0) of Halo2, incorporating a few [minor additions](https://github.com/midnightntwrk/halo2/commits/dev/) required to support *Midnight Circuits*.
 
@@ -39,17 +40,12 @@ is conditionally selected to reflect the operation applied only to the actual el
 ## Usage
 
 *Midnight Circuits* provides low-level building blocks for constructing zero-knowledge circuits.
-For a higher-level abstraction that simplifies circuit development, see the [`midnight-zk-stdlib`](../zk_stdlib)
-crate.
+For a higher-level abstraction that simplifies circuit development, see the [`midnight-zk-stdlib`](https://crates.io/crates/midnight-zk-stdlib) crate.
 
 ## Versioning
 
-We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html). To capture
-the changes that do not affect the API, do not add any new functionality, but
-are breaking changes, we increment the `MAJOR` version. This happens when the
-circuit is modified for performance or bug fixes; the modification of the
-verification keys break backwards compatibility.
+We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-* MAJOR: Incremented when you make incompatible API or VK changes
-* MINOR: Incremented when you add functionality in a backward-compatible manner
-* PATCH: Incremented when you make backward-compatible bug fixes
+* MAJOR: Incremented on incompatible API changes
+* MINOR: Incremented on backward-compatible API changes that may affect the VKs
+* PATCH: Incremented on minor changes and bug fixes that do not alter the VKs

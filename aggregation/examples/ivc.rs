@@ -12,7 +12,7 @@ use midnight_aggregation::ivc::{self, IvcCircuit, IvcContext, IvcIO, IvcState, I
 use midnight_circuits::{
     hash::poseidon::PoseidonChip,
     instructions::{hash::HashCPU, *},
-    types::{AssignedBit, AssignedNative},
+    types::AssignedNative,
     verifier::{BlstrsEmulation, SelfEmulation},
 };
 use midnight_proofs::{
@@ -78,16 +78,6 @@ impl<const N: usize> IvcState for PoseidonChain<N> {
         }
     }
 
-    fn is_genesis(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        state: &Self::AssignedState,
-    ) -> Result<AssignedBit<F>, Error> {
-        let cnt_is_zero = self.std_lib.bls12_381_scalar().is_zero(layouter, &state.cnt)?;
-        let val_is_zero = self.std_lib.bls12_381_scalar().is_zero(layouter, &state.val)?;
-        self.std_lib.and(layouter, &[cnt_is_zero, val_is_zero])
-    }
-
     fn decider(_ctx: &Self::Context, _state: &Self::State) -> bool {
         true
     }
@@ -99,7 +89,7 @@ impl<const N: usize> IvcIO for PoseidonChain<N> {
         layouter: &mut impl Layouter<F>,
         value: Value<State>,
     ) -> Result<AssignedState, Error> {
-        let scalar_chip = self.std_lib.bls12_381_scalar();
+        let scalar_chip = self.std_lib.bls12_381().scalar_field_chip();
         Ok(AssignedState {
             cnt: scalar_chip.assign(layouter, value.as_ref().map(|s| s.cnt))?,
             val: scalar_chip.assign(layouter, value.as_ref().map(|s| s.val))?,
@@ -111,7 +101,7 @@ impl<const N: usize> IvcIO for PoseidonChain<N> {
         layouter: &mut impl Layouter<F>,
         state: &AssignedState,
     ) -> Result<(), Error> {
-        let scalar_chip = self.std_lib.bls12_381_scalar();
+        let scalar_chip = self.std_lib.bls12_381().scalar_field_chip();
         scalar_chip.constrain_as_public_input(layouter, &state.cnt)?;
         scalar_chip.constrain_as_public_input(layouter, &state.val)
     }
@@ -158,7 +148,7 @@ impl<const N: usize> IvcTransition for PoseidonChain<N> {
         state: &Self::AssignedState,
         _witness: Value<Self::Witness>,
     ) -> Result<Self::AssignedState, Error> {
-        let scalar_chip = self.std_lib.bls12_381_scalar();
+        let scalar_chip = self.std_lib.bls12_381().scalar_field_chip();
 
         let mut val = state.val.clone();
         for _ in 0..N {
@@ -199,7 +189,7 @@ fn main() {
         let instance = prover.instance();
 
         let start = Instant::now();
-        verifier.verify(&(), &instance, &proof).unwrap();
+        verifier.verify(&instance, &proof).unwrap();
         let verify_time = start.elapsed();
 
         println!("Step {i}: prove {prove_time:.2?}, verify {verify_time:.2?}");

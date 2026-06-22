@@ -157,12 +157,12 @@ fn main() {
     create_proof::<Scalar, KZGCommitmentScheme<Bls12>, _, _>(
         &params,
         &pk,
-        &[circuit],
+        &circuit,
         #[cfg(feature = "committed-instances")]
         0,
-        &[instances],
-        OsRng,
+        instances,
         &mut transcript,
+        OsRng,
     )
     .expect("proof generation should not fail");
 
@@ -173,8 +173,8 @@ fn main() {
     assert!(prepare::<Scalar, KZGCommitmentScheme<Bls12>, _>(
         pk.get_vk(),
         #[cfg(feature = "committed-instances")]
-        &[&[]],
-        &[instances],
+        &[],
+        instances,
         &mut transcript,
     )
     .unwrap()

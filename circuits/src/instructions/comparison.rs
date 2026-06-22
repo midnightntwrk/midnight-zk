@@ -175,7 +175,7 @@ pub(crate) mod tests {
         instructions::{AssertionInstructions, AssignmentInstructions, DecompositionInstructions},
         testing_utils::FromScratch,
         types::{InnerConstants, Instantiable},
-        utils::circuit_modeling::circuit_to_json,
+        utils::circuit_modeling::{circuit_to_json, cost_measure_end, cost_measure_start},
     };
 
     #[derive(Clone, Debug)]
@@ -227,7 +227,12 @@ pub(crate) mod tests {
         fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
             let committed_instance_column = meta.instance_column();
             let instance_column = meta.instance_column();
-            Chip::configure_from_scratch(meta, &[committed_instance_column, instance_column])
+            Chip::configure_from_scratch(
+                meta,
+                &mut vec![],
+                &mut vec![],
+                &[committed_instance_column, instance_column],
+            )
         }
 
         fn synthesize(
@@ -239,6 +244,7 @@ pub(crate) mod tests {
 
             let x = chip.assign(&mut layouter, Value::known(self.x))?;
 
+            cost_measure_start(&mut layouter);
             match self.operation {
                 Op::BoundedOfElement => {
                     chip.bounded_of_element(&mut layouter, self.n, &x)?;
@@ -271,6 +277,7 @@ pub(crate) mod tests {
                     chip.assert_equal(&mut layouter, &b, &expected)
                 }
             }?;
+            cost_measure_end(&mut layouter);
 
             chip.load_from_scratch(&mut layouter)
         }
@@ -306,9 +313,8 @@ pub(crate) mod tests {
             operation,
             _marker: PhantomData,
         };
-        let log2_nb_rows = 10;
         let public_inputs = vec![vec![], vec![]];
-        match MockProver::run(log2_nb_rows, &circuit, public_inputs) {
+        match MockProver::run(&circuit, public_inputs) {
             Ok(prover) => match prover.verify() {
                 Ok(()) => assert!(must_pass),
                 Err(e) => assert!(!must_pass, "Failed verifier with error {e:?}"),

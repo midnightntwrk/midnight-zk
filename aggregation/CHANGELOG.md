@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 ### Added
 * `fewer-point-sets` feature [#281](https://github.com/midnightntwrk/midnight-zk/pull/281)
 * `single-h-commitment` feature [#276](https://github.com/midnightntwrk/midnight-zk/pull/276)
+* Multi-circuit proof aggregation module and example [#311](https://github.com/midnightntwrk/midnight-zk/pull/311)
+* Add `IvcError::InvalidWitness` variant [#311](https://github.com/midnightntwrk/midnight-zk/pull/311)
+* Add `assign_without_subgroup_check` to `SelfEmulation` trait [#284](https://github.com/midnightntwrk/midnight-zk/pull/284)
+### Changed
+* Adapt to single-proof prover API [#375](https://github.com/midnightntwrk/midnight-zk/pull/375)
+* Adapt to new `ZkStdLib` curve accessors [#335](https://github.com/midnightntwrk/midnight-zk/pull/335)
+* `IvcCircuit`'s `Relation::Error` is now `IvcError` instead of `plonk::Error` [#311](https://github.com/midnightntwrk/midnight-zk/pull/311)
+* `IvcVerifier` is now generic over `T: Ivc` and stores the context internally; `verify` no longer takes a `ctx` parameter [#302](https://github.com/midnightntwrk/midnight-zk/pull/302)
+* Add `IvcVerifier::with_deserialized_vk` and `IvcProver::with_deserialized_pk` for testing label correctness after a VK/PK roundtrip [#392](https://github.com/midnightntwrk/midnight-zk/pull/392)
+* Adapt to new `KZGCommitment` API [#381](https://github.com/midnightntwrk/midnight-zk/pull/381)
 * Introduce `IvcIO` trait and `Ivc` convenience trait [#264](https://github.com/midnightntwrk/midnight-zk/pull/264)
 * Proof aggregation example [#258](https://github.com/midnightntwrk/midnight-zk/pull/258)
 * Introduce `IvcContext` [#258](https://github.com/midnightntwrk/midnight-zk/pull/258)
@@ -20,20 +30,25 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 * Rebase to new `circuits/` with `keccak` and `blake2b` [#135](https://github.com/midnightntwrk/midnight-zk/pull/135)
 ### Fixed
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
+* Run 'prepare' function in-circuit for the multi-circuit aggregator [416](https://github.com/midnightntwrk/midnight-zk/pull/416)
 
 ### Changed
+* Adapt `LightAggregator` to affine SRS storage [#350](https://github.com/midnightntwrk/midnight-zk/pull/350)
 * Adapt to configurable `NB_ARITH_COLS` [#287](https://github.com/midnightntwrk/midnight-zk/pull/287)
+* Remove `is_genesis` from `IvcState` trait; genesis detection is now derived generically from `format_public_input` [#272](https://github.com/midnightntwrk/midnight-zk/pull/272)
 * Rename `proof_aggregation` example to `single_circuit_aggregation` [#264](https://github.com/midnightntwrk/midnight-zk/pull/264)
 * Remove `InnerValue` and `Instantiable` requirements from IVC `AssignedState` [#264](https://github.com/midnightntwrk/midnight-zk/pull/264)
 * Decouple `IvcTransition` from `IvcIO` [#264](https://github.com/midnightntwrk/midnight-zk/pull/264)
 * Rename `assert_transition` to `circuit_transition` in `IvcTransition` [#258](https://github.com/midnightntwrk/midnight-zk/pull/258)
 * Pass `max_bit_len` to IVC circuit configuration [#251](https://github.com/midnightntwrk/midnight-zk/pull/251)
+* Adapt `Relation` impls to new associated type `Error` [#252](https://github.com/midnightntwrk/midnight-zk/pull/252)
 * Rename crate from `aggregator` to `aggregation` [#227](https://github.com/midnightntwrk/midnight-zk/pull/227)
 * Adapt light aggregator to support non-fixed input commitments and improved fixed_bases handling [#212](https://github.com/midnightntwrk/midnight-zk/pull/212)
 * Updated Rust toolchain to 1.90.0 [#210](https://github.com/midnightntwrk/midnight-zk/pull/210)
 * `CircuitField` refactor [#201](https://github.com/midnightntwrk/midnight-zk/pull/201)
 
 ### Removed
+* Remove `LightAggregator` module, not in use and hard to maintain [#427](https://github.com/midnightntwrk/midnight-zk/pull/427)
 * Halo2curves dependency [#139](https://github.com/midnightntwrk/midnight-zk/pull/139)
 
 [0.1.2]

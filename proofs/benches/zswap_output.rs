@@ -24,7 +24,8 @@ use midnight_proofs::{
     },
     poly::{
         commitment::Guard,
-        kzg::{params::ParamsKZG, KZGCommitmentScheme},
+        kzg::{commitment::KZGCommitment, params::ParamsKZG, KZGCommitmentScheme},
+        PolynomialLabel,
     },
     transcript::{CircuitTranscript, Transcript},
 };
@@ -75,6 +76,8 @@ impl Relation for ZSwapOutputCircuit {
     type Instance = (CoinCom, ValueCom);
 
     type Witness = (PK, CoinInfo, JubjubScalar);
+
+    type Error = Error;
 
     fn format_instance(instance: &Self::Instance) -> Result<Vec<F>, Error> {
         let mut pi: Vec<F> =
@@ -263,11 +266,11 @@ fn bench_zswap_output(c: &mut Criterion) {
     benchmark_create_proof(
         &srs,
         &pk,
-        std::slice::from_ref(&circuit),
+        &circuit,
         1,
-        &[&[&[], &instance]],
-        OsRng,
+        &[&[], &instance],
         &mut transcript,
+        &mut OsRng,
         &mut group,
     )
     .expect("Failed to generate proof");
@@ -280,7 +283,18 @@ fn bench_zswap_output(c: &mut Criterion) {
     group.bench_function("Parse trace", |b| {
         b.iter_batched(
             || transcript.clone(),
-            |mut t| parse_trace(pk.get_vk(), &[&[C::identity()]], &[&[&instance]], &mut t).unwrap(),
+            |mut t| {
+                parse_trace(
+                    pk.get_vk(),
+                    &[KZGCommitment::Simple(
+                        C::identity(),
+                        PolynomialLabel::Instance(0),
+                    )],
+                    &[&instance],
+                    &mut t,
+                )
+                .unwrap()
+            },
             BatchSize::SmallInput,
         )
     });
@@ -290,7 +304,16 @@ fn bench_zswap_output(c: &mut Criterion) {
             || {
                 let mut t = transcript.clone();
                 (
-                    parse_trace(pk.get_vk(), &[&[C::identity()]], &[&[&instance]], &mut t).unwrap(),
+                    parse_trace(
+                        pk.get_vk(),
+                        &[KZGCommitment::Simple(
+                            C::identity(),
+                            PolynomialLabel::Instance(0),
+                        )],
+                        &[&instance],
+                        &mut t,
+                    )
+                    .unwrap(),
                     t,
                 )
             },
@@ -298,8 +321,11 @@ fn bench_zswap_output(c: &mut Criterion) {
                 verify_algebraic_constraints(
                     pk.get_vk(),
                     trace,
-                    &[&[C::identity()]],
-                    &[&[&instance]],
+                    &[KZGCommitment::Simple(
+                        C::identity(),
+                        PolynomialLabel::Instance(0),
+                    )],
+                    &[&instance],
                     &mut t,
                 )
             },
@@ -311,13 +337,24 @@ fn bench_zswap_output(c: &mut Criterion) {
         b.iter_batched(
             || {
                 let mut t = transcript.clone();
-                let trace =
-                    parse_trace(pk.get_vk(), &[&[C::identity()]], &[&[&instance]], &mut t).unwrap();
+                let trace = parse_trace(
+                    pk.get_vk(),
+                    &[KZGCommitment::Simple(
+                        C::identity(),
+                        PolynomialLabel::Instance(0),
+                    )],
+                    &[&instance],
+                    &mut t,
+                )
+                .unwrap();
                 let guard = verify_algebraic_constraints(
                     pk.get_vk(),
                     trace,
-                    &[&[C::identity()]],
-                    &[&[&instance]],
+                    &[KZGCommitment::Simple(
+                        C::identity(),
+                        PolynomialLabel::Instance(0),
+                    )],
+                    &[&instance],
                     &mut t,
                 )
                 .unwrap();

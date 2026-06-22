@@ -30,7 +30,7 @@ use super::{
     NB_POSEIDON_ADVICE_COLS, NB_POSEIDON_FIXED_COLS,
 };
 #[cfg(any(test, feature = "testing"))]
-use crate::field::NativeConfig;
+use crate::field::{native::NB_EXTRA_ARITH_FIXED_COLS, NativeConfig};
 use crate::{
     field::NativeChip,
     instructions::{ArithInstructions, AssignmentInstructions, SpongeInstructions},
@@ -554,25 +554,36 @@ impl<F: PoseidonField> FromScratch<F> for PoseidonChip<F> {
 
     fn configure_from_scratch(
         meta: &mut ConstraintSystem<F>,
+        advice_columns: &mut Vec<Column<Advice>>,
+        fixed_columns: &mut Vec<Column<Fixed>>,
         instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
-        let native_config = NativeChip::configure_from_scratch(meta, instance_columns);
+        const NB_ARITH_COLS: usize = 5;
+        const NB_ARITH_FIXED_COLS: usize = NB_ARITH_COLS + NB_EXTRA_ARITH_FIXED_COLS;
 
-        let mut advice_cols = native_config.advice_columns().to_vec();
-        let mut fixed_cols = native_config.fixed_columns();
+        let nb_advice_needed = std::cmp::max(NB_POSEIDON_ADVICE_COLS, NB_ARITH_COLS);
+        let nb_fixed_needed = std::cmp::max(NB_POSEIDON_FIXED_COLS, NB_ARITH_FIXED_COLS);
 
-        while advice_cols.len() < NB_POSEIDON_ADVICE_COLS {
-            advice_cols.push(meta.advice_column());
+        while advice_columns.len() < nb_advice_needed {
+            advice_columns.push(meta.advice_column());
         }
-        while fixed_cols.len() < NB_POSEIDON_FIXED_COLS {
-            fixed_cols.push(meta.fixed_column());
+        while fixed_columns.len() < nb_fixed_needed {
+            fixed_columns.push(meta.fixed_column());
         }
 
+        let native_config = NativeChip::configure(
+            meta,
+            &(
+                advice_columns[..NB_ARITH_COLS].to_vec(),
+                fixed_columns[..NB_ARITH_FIXED_COLS].to_vec(),
+                *instance_columns,
+            ),
+        );
         let poseidon_config = PoseidonChip::configure(
             meta,
             &(
-                advice_cols[..NB_POSEIDON_ADVICE_COLS].try_into().unwrap(),
-                fixed_cols[..NB_POSEIDON_FIXED_COLS].try_into().unwrap(),
+                advice_columns[..NB_POSEIDON_ADVICE_COLS].try_into().unwrap(),
+                fixed_columns[..NB_POSEIDON_FIXED_COLS].try_into().unwrap(),
             ),
         );
 
@@ -593,7 +604,7 @@ mod tests {
         field::NativeGadget,
         hash::poseidon::{permutation_cpu, round_skips::PreComputedRoundCPU},
         instructions::{sponge::tests::test_sponge, AssertionInstructions},
-        utils::circuit_modeling::circuit_to_json,
+        utils::circuit_modeling::{circuit_to_json, cost_measure_end, cost_measure_start},
     };
 
     #[derive(Clone, Debug, Default)]
@@ -624,6 +635,8 @@ mod tests {
             let instance_column = meta.instance_column();
             PoseidonChip::configure_from_scratch(
                 meta,
+                &mut vec![],
+                &mut vec![],
                 &[committed_instance_column, instance_column],
             )
         }
@@ -640,16 +653,13 @@ mod tests {
                 .assign_many(&mut layouter, &self.inputs)?
                 .try_into()
                 .unwrap();
+            cost_measure_start(&mut layouter);
             let outputs = poseidon_chip.permutation(&mut layouter, &inputs)?;
+            cost_measure_end(&mut layouter);
 
             for (out, expected) in outputs.iter().zip(self.expected.iter()) {
                 poseidon_chip.native_chip.assert_equal_to_fixed(&mut layouter, out, *expected)?;
             }
-
-            // Comment or uncomment the below to get +N rows in the circuit, where N is the
-            // number of rows of a single permutation.
-
-            // let _ = poseidon_chip.permutation(&mut layouter, &inputs)?;
 
             poseidon_chip.load_from_scratch(&mut layouter)
         }
@@ -668,9 +678,7 @@ mod tests {
             expected,
         };
 
-        let k = 10;
-
-        MockProver::run(k, &circuit, vec![vec![], vec![]]).unwrap().assert_satisfied();
+        MockProver::run(&circuit, vec![vec![], vec![]]).unwrap().assert_satisfied();
 
         if cost_model {
             circuit_to_json("Poseidon", "one_permutation", circuit);
@@ -691,7 +699,7 @@ mod tests {
             AssignedNative<F>,
             PoseidonChip<F>,
             NativeGadget<F, _, _>,
-        >(cost_model, "Poseidon", 10);
+        >(cost_model, "Poseidon");
         println!("=> Done.\n")
     }
 

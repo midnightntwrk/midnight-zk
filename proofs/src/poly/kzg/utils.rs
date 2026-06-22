@@ -6,22 +6,20 @@ use std::{
 
 use ff::Field;
 
-use crate::poly::{query::Query, CommitmentLabel, Error};
+use crate::poly::Error;
 
 #[derive(Clone, Debug)]
 pub(super) struct CommitmentData<F, T: PartialEq> {
-    pub(super) commitment_label: CommitmentLabel,
-    pub(super) commitment: T,
+    pub(super) commitment_ref: T,
     pub(super) set_index: usize,
     pub(super) point_indices: Vec<usize>,
     pub(super) evals: Vec<F>,
 }
 
 impl<F, T: PartialEq> CommitmentData<F, T> {
-    fn new(commitment: T, commitment_label: CommitmentLabel) -> Self {
+    fn new(commitment_ref: T) -> Self {
         CommitmentData {
-            commitment_label,
-            commitment,
+            commitment_ref,
             set_index: 0,
             point_indices: vec![],
             evals: vec![],
@@ -29,17 +27,24 @@ impl<F, T: PartialEq> CommitmentData<F, T> {
     }
 }
 
-pub(super) type IntermediateSets<F, Q> = (
-    Vec<CommitmentData<<Q as Query<F>>::Eval, <Q as Query<F>>::Commitment>>,
-    Vec<Vec<F>>,
-);
+pub(super) type IntermediateSets<F, T> = (Vec<CommitmentData<F, T>>, Vec<Vec<F>>);
 
-pub fn construct_intermediate_sets<F: Field + Hash + Ord, Q: Query<F>>(
-    queries: &[Q],
-) -> Result<IntermediateSets<F, Q>, Error> {
+/// Groups a list of `(commitment_ref, point, eval)` queries into per-commitment
+/// data and point sets for multi-open batching.
+///
+/// `T` is a commitment reference (a reference to a polynomial in the prover,
+/// a reference to a curve point in the verifier); its [`PartialEq`] must
+/// reflect equality between references.
+/// Queries are grouped by commitment reference and point set.
+///
+/// Returns [`Error::DuplicatedQuery`] if the same `(commitment_ref, point)`
+/// pair appears more than once.
+pub fn construct_intermediate_sets<F: Field + Hash + Ord, T: PartialEq + Copy>(
+    queries: &[(T, F, F)],
+) -> Result<IntermediateSets<F, T>, Error> {
     // Construct sets of unique commitments and corresponding information about
     // their queries.
-    let mut commitment_map: Vec<CommitmentData<Q::Eval, Q::Commitment>> = vec![];
+    let mut commitment_map: Vec<CommitmentData<F, T>> = vec![];
 
     // Also construct mapping from a unique point to a point_index. This defines
     // an ordering on the points.
@@ -47,19 +52,19 @@ pub fn construct_intermediate_sets<F: Field + Hash + Ord, Q: Query<F>>(
 
     // Iterate over all of the queries, computing the ordering of the points
     // while also creating new commitment data.
-    for query in queries {
+    for (query_com_ref, query_point, _query_eval) in queries {
         let num_points = point_index_map.len();
-        let point_idx = point_index_map.entry(query.get_point()).or_insert(num_points);
+        let point_idx = point_index_map.entry(*query_point).or_insert(num_points);
 
         if let Some(pos) =
-            commitment_map.iter().position(|comm| comm.commitment == query.get_commitment())
+            commitment_map.iter().position(|comm| &comm.commitment_ref == query_com_ref)
         {
             if commitment_map[pos].point_indices.contains(point_idx) {
                 return Err(Error::DuplicatedQuery);
             }
             commitment_map[pos].point_indices.push(*point_idx);
         } else {
-            let mut tmp = CommitmentData::new(query.get_commitment(), query.get_commitment_label());
+            let mut tmp = CommitmentData::new(*query_com_ref);
             tmp.point_indices.push(*point_idx);
             commitment_map.push(tmp);
         }
@@ -78,7 +83,7 @@ pub fn construct_intermediate_sets<F: Field + Hash + Ord, Q: Query<F>>(
         let point_index_set: BTreeSet<_> = commitment_data.point_indices.iter().cloned().collect();
 
         // Push point_index_set to CommitmentData for the relevant commitment
-        commitment_set_map.push((commitment_data.commitment.clone(), point_index_set.clone()));
+        commitment_set_map.push((commitment_data.commitment_ref, point_index_set.clone()));
 
         let num_sets = point_idx_sets.len();
         point_idx_sets.entry(point_index_set).or_insert(num_sets);
@@ -87,18 +92,18 @@ pub fn construct_intermediate_sets<F: Field + Hash + Ord, Q: Query<F>>(
     // Initialise empty evals vec for each unique commitment
     for commitment_data in commitment_map.iter_mut() {
         let len = commitment_data.point_indices.len();
-        commitment_data.evals = vec![Q::Eval::default(); len];
+        commitment_data.evals = vec![F::default(); len];
     }
 
     // Populate set_index, evals and points for each commitment using point_idx_sets
-    for query in queries {
+    for (query_com_ref, query_point, query_eval) in queries {
         // The index of the point at which the commitment is queried
-        let point_index = point_index_map.get(&query.get_point()).unwrap();
+        let point_index = point_index_map.get(query_point).unwrap();
 
         // The point_index_set at which the commitment was queried
         let point_index_set = commitment_set_map
             .iter()
-            .find(|(c, _)| *c == query.get_commitment())
+            .find(|(c, _)| c == query_com_ref)
             .map(|(_, s)| s)
             .unwrap();
         assert!(!point_index_set.is_empty());
@@ -112,10 +117,10 @@ pub fn construct_intermediate_sets<F: Field + Hash + Ord, Q: Query<F>>(
         let point_index_in_set = point_index_set.iter().position(|i| i == point_index).unwrap();
 
         for commitment_data in commitment_map.iter_mut() {
-            if query.get_commitment() == commitment_data.commitment {
+            if *query_com_ref == commitment_data.commitment_ref {
                 commitment_data.set_index = *set_index;
                 // Insert the eval using the ordering of the point_index_set
-                commitment_data.evals[point_index_in_set] = query.get_eval();
+                commitment_data.evals[point_index_in_set] = *query_eval;
             }
         }
     }

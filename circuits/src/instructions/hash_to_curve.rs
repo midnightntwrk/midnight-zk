@@ -70,7 +70,7 @@ pub(crate) mod tests {
         instructions::{AssignmentInstructions, EccInstructions},
         testing_utils::{FromScratch, Sampleable},
         types::{InnerConstants, InnerValue},
-        utils::circuit_modeling::circuit_to_json,
+        utils::circuit_modeling::{circuit_to_json, cost_measure_end, cost_measure_start},
         CircuitField,
     };
 
@@ -111,9 +111,21 @@ pub(crate) mod tests {
             let committed_instance_column = meta.instance_column();
             let instance_column = meta.instance_column();
             let instance_columns = [committed_instance_column, instance_column];
+            let mut advice_columns = vec![];
+            let mut fixed_columns = vec![];
             (
-                InputsChip::configure_from_scratch(meta, &instance_columns),
-                HashToCurveChip::configure_from_scratch(meta, &instance_columns),
+                InputsChip::configure_from_scratch(
+                    meta,
+                    &mut advice_columns,
+                    &mut fixed_columns,
+                    &instance_columns,
+                ),
+                HashToCurveChip::configure_from_scratch(
+                    meta,
+                    &mut advice_columns,
+                    &mut fixed_columns,
+                    &instance_columns,
+                ),
             )
         }
 
@@ -126,7 +138,9 @@ pub(crate) mod tests {
             let htc_chip = HashToCurveChip::new_from_scratch(&config.1);
 
             let input = inputs_chip.assign(&mut layouter, self.input.clone())?;
+            cost_measure_start(&mut layouter);
             let res = htc_chip.hash_to_curve(&mut layouter, &[input])?;
+            cost_measure_end(&mut layouter);
             htc_chip.ecc_chip().assert_equal_to_fixed(&mut layouter, &res, self.expected)?;
 
             inputs_chip.load_from_scratch(&mut layouter)?;
@@ -154,9 +168,8 @@ pub(crate) mod tests {
             expected,
             _marker: PhantomData,
         };
-        let log2_nb_rows = 11;
         let public_inputs = vec![vec![], vec![]];
-        match MockProver::run(log2_nb_rows, &circuit, public_inputs) {
+        match MockProver::run(&circuit, public_inputs) {
             Ok(prover) => match prover.verify() {
                 Ok(()) => assert!(must_pass),
                 Err(e) => assert!(!must_pass, "Failed verifier with error {e:?}"),

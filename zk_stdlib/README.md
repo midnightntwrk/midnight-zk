@@ -1,9 +1,8 @@
 # Midnight ZK Standard Library
 
-The Midnight ZK Standard Library (`midnight-zk-stdlib`) provides a 
-high-level abstraction for building zero-knowledge circuits using the 
-[Midnight Circuits](../circuits) library and the [Midnight Proofs](../proofs)
-proving system.
+[![Crates.io Version](https://img.shields.io/crates/v/midnight-zk-stdlib?label=midnight-zk-stdlib)](https://crates.io/crates/midnight-zk-stdlib)
+
+The *Midnight ZK Standard Library* (`midnight-zk-stdlib`) provides a high-level abstraction for building zero-knowledge circuits using the [midnight-circuits](https://crates.io/crates/midnight-circuits) and [midnight-proofs](https://crates.io/crates/midnight-proofs) crates.
 
 > **WARNING**: This library has not been audited. Use it at your own risk.
 
@@ -64,6 +63,7 @@ impl Relation for ShaPreImageCircuit {
     // of the underlying NP-relation.
     type Instance = [u8; 32]; // x ∈ {0, 1}^256
     type Witness = [u8; 24];  // w ∈ {0, 1}^192  (192 = 24 * 8)
+    type Error = Error;
 
     // We must specify how the instance, which can be any Rust type, is converted
     // into raw field elements to be processed by the prover/verifier. The order 
@@ -149,8 +149,8 @@ You can find more examples in the [examples directory](examples/).
 
 ## Versioning
 
-We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html). To capture the changes that do not affect the API, do not add any new functionality, but are breaking changes, we increment the `MAJOR` version. This happens when the circuit is modified for performance or bug fixes; the modification of the verification keys break backwards compatibility.
+We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-* MAJOR: Incremented when you make incompatible API or VK changes
-* MINOR: Incremented when you add functionality in a backward-compatible manner
-* PATCH: Incremented when you make backward-compatible bug fixes
+* MAJOR: Incremented on incompatible API changes
+* MINOR: Incremented on backward-compatible API changes that may affect the VKs
+* PATCH: Incremented on minor changes and bug fixes that do not alter the VKs

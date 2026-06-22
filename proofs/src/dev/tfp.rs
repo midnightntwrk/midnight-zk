@@ -9,8 +9,8 @@ use crate::{
         AssignedCell, Cell, Layouter, Region, Table, Value,
     },
     plonk::{
-        Advice, Any, Assignment, Challenge, Circuit, Column, ConstraintSystem, Error, Fixed,
-        FloorPlanner, Instance, Selector,
+        Advice, Any, Assignment, Circuit, Column, ConstraintSystem, Error, Fixed, FloorPlanner,
+        Instance, Selector,
     },
     utils::rational::Rational,
 };
@@ -206,10 +206,6 @@ impl<F: Field, L: Layouter<F>> Layouter<F> for TracingLayouter<F, L> {
         row: usize,
     ) -> Result<(), Error> {
         self.layouter.constrain_instance(cell, column, row)
-    }
-
-    fn get_challenge(&self, _: Challenge) -> Value<F> {
-        Value::unknown()
     }
 
     fn get_root(&mut self) -> &mut Self::Root {
@@ -496,10 +492,6 @@ impl<F: Field, CS: Assignment<F>> Assignment<F> for TracingAssignment<'_, F, CS>
         let _guard = debug_span!("positioned").entered();
         debug!(target: "fill_from_row", column = ?column, row = row);
         self.cs.fill_from_row(column, row, to)
-    }
-
-    fn get_challenge(&self, _: Challenge) -> Value<F> {
-        Value::unknown()
     }
 
     fn push_namespace<NR, N>(&mut self, name_fn: N)

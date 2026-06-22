@@ -12,16 +12,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `padded_add` and `padded_sub` polynomial operations [#276](https://github.com/midnightntwrk/midnight-zk/pull/276)
 * `single-h-commitment` feature to commit the quotient polynomial in one piece [#276](https://github.com/midnightntwrk/midnight-zk/pull/276)
 * `fewer-point-sets` feature to reduce the number of distinct multi-open point sets [#281](https://github.com/midnightntwrk/midnight-zk/pull/281)
+* `LagrangeDelta` / `LagrangeDoubleDelta` commit bases [#379](https://github.com/midnightntwrk/midnight-zk/pull/379)
+* `FloorPlanner` region-layout caching API (`synthesize_capturing_regions`, `synthesize_with_cached_regions`) and implementation in `SimpleFloorPlanner` to skip the shape pass during proving [#380](https://github.com/midnightntwrk/midnight-zk/pull/380)
+* Add test for `FlatGraphEvaluator` [#394](https://github.com/midnightntwrk/midnight-zk/pull/394)
 
 ### Fixed
+* Fix verifier evals bug [#356](https://github.com/midnightntwrk/midnight-zk/pull/356)
 * Fix broken intra-doc links to private `Polynomial::padded_add` and `padded_sub` [#287](https://github.com/midnightntwrk/midnight-zk/pull/287)
 * Fix cost model to account for committed instance column evaluations [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
+* Increase number of blinding factors to account for logup helper polynomials [#312](https://github.com/midnightntwrk/midnight-zk/pull/312)
+* Blind logup multiplicities polynomial on non-usable rows for ZK [#312](https://github.com/midnightntwrk/midnight-zk/pull/312)
+* Fix cost-model [#435](https://github.com/midnightntwrk/midnight-zk/pull/435)
 
 ### Changed
+* Rename `PolynomialPointer` to `PolynomialReference` in `ProverQuery`; rename `poly` field to `poly_ref`; change `poly_inner_product` to accept `&[&Polynomial<F, Coeff>]` to avoid cloning [#411](https://github.com/midnightntwrk/midnight-zk/pull/411)
+* Rename `CommitmentLabel` to `PolynomialLabel`; add `NoLabel` variant for freshly deserialized commitments; introduce `Labelable` trait so every call site attaches the correct label after deserialization [#392](https://github.com/midnightntwrk/midnight-zk/pull/392)
+* Introduce `KZGCommitment` enum with `Simple` and `Linear` variants; attach `CommitmentLabel` at `commit` time and propagate it homomorphically through arithmetic [#381](https://github.com/midnightntwrk/midnight-zk/pull/381)
+* Simplify `CommitmentReference` to a pointer wrapper with identity-based equality; remove `commitment_label` from `VerifierQuery` [#381](https://github.com/midnightntwrk/midnight-zk/pull/381)
+* Store SRS as affine and use an affine MSM path in KZG [#350](https://github.com/midnightntwrk/midnight-zk/pull/350)
+* Cache twiddle factors in `EvaluationDomain` and use a pruned DIF FFT for `coeff_to_extended` [#352](https://github.com/midnightntwrk/midnight-zk/pull/352)
+* Flatten and batch the graph evaluator for custom gates, lookups, and trash [#351](https://github.com/midnightntwrk/midnight-zk/pull/351)
+* Parallelize logup, permutation, and SHPLONK [#353](https://github.com/midnightntwrk/midnight-zk/pull/353)
+* Commit `perm_z` and `logup_multiplicities` in `LagrangeDelta`, `logup_aggregator` in `LagrangeDoubleDelta` [#379](https://github.com/midnightntwrk/midnight-zk/pull/379)
+* Simplify `CommitmentReference` by removing unused `Chopped` variant [#314](https://github.com/midnightntwrk/midnight-zk/pull/314)
+* Split linearization polynomial into non-constant and constant parts, removing the generator point from the MSM [#313](https://github.com/midnightntwrk/midnight-zk/pull/313)
 * Remove unnecessary polynomial padding in KZG multi-open [#276](https://github.com/midnightntwrk/midnight-zk/pull/276)
 * Sort point sets deterministically in KZG multiopen for in-circuit verification [#256](https://github.com/midnightntwrk/midnight-zk/pull/256)
 * Move advice queries before instance queries in prover and verifier [#256](https://github.com/midnightntwrk/midnight-zk/pull/256)
 * `Circuit::Params` extended to carry `max_bit_len` [#251](https://github.com/midnightntwrk/midnight-zk/pull/251)
+* unifying `commit` and `commit_lagrange` [#368](https://github.com/midnightntwrk/midnight-zk/pull/368)
+
+### Removed
+* Remove `Query<F>` trait; `construct_intermediate_sets` now accepts `&[(T, F, F)]` (commitment reference, point, eval) tuples with `T: PartialEq + Copy` [#411](https://github.com/midnightntwrk/midnight-zk/pull/411)
+* Remove multi-phase PLONK support: `Phase`, `Challenge`, `FirstPhase`, and `Layouter::get_challenge()` are removed; `Any::Advice` is no longer phase-parameterized; the prover and dev tools synthesize in a single pass [#376](https://github.com/midnightntwrk/midnight-zk/pull/376)
+* Remove multi-proof support; `create_proof` and `prepare` now operate on a single circuit and take `instances: &[&[F]]` instead of `&[&[&[F]]]` [#375](https://github.com/midnightntwrk/midnight-zk/pull/375)
+
+## [0.8.0]
+### Added
+* Add `Blake2b256` transcript hash for on-chain verification [#322](https://github.com/midnightntwrk/midnight-zk/pull/322)
+* Add functions to mark the region of a circuit to be measured for cost modelling [#296](https://github.com/midnightntwrk/midnight-zk/pull/296)
+* changed `sha256` name in benches to account for the change of naming convention in `circuits` [#135](https://github.com/midnightntwrk/midnight-zk/pull/135)
+* optional names on VerifierQuery commitments [#205](https://github.com/midnightntwrk/midnight-zk/pull/205)
+* Update READMEs and add badges [#261](https://github.com/midnightntwrk/midnight-zk/pull/261)
+* add MSMCompletenessFluke error [#277](https://github.com/midnightntwrk/midnight-zk/pull/277)
+
+### Changed
+* `MockProver::run` no longer takes a `k` parameter; the minimum required `k` is determined automatically [#293](https://github.com/midnightntwrk/midnight-zk/pull/293)
+* Sort point sets deterministically in KZG multiopen for in-circuit verification [#256](https://github.com/midnightntwrk/midnight-zk/pull/256)
+* Move advice queries before instance queries in prover and verifier [#256](https://github.com/midnightntwrk/midnight-zk/pull/256)
+* `Circuit::Params` extended to carry `max_bit_len` [#251](https://github.com/midnightntwrk/midnight-zk/pull/251)
+* (Benchmarks) Adapt `Relation` impl to new associated type `Error` [#252](https://github.com/midnightntwrk/midnight-zk/pull/252)
 * Collapse MSMs during `multi_prepare` to match in-circuit verifier [#227](https://github.com/midnightntwrk/midnight-zk/pull/227)
 * Improve MSM handling for fixed bases [#212](https://github.com/midnightntwrk/midnight-zk/pull/212)
 * Filtered 0s from MSM [#185](https://github.com/midnightntwrk/midnight-zk/pull/185).
@@ -33,12 +73,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [0.7.1]
+### Changed
+* Thread the prover RNG explicitly [#307](https://github.com/midnightntwrk/midnight-zk/pull/307)
+* Add `s_g2()` accessor on `ParamsVerifierKZG` [#307](https://github.com/midnightntwrk/midnight-zk/pull/307)
+
 ## [0.7.0]
 ### Added
 * changed `sha256` name in benches to account for the change of naming convention in `circuits` [#135](https://github.com/midnightntwrk/midnight-zk/pull/135)
 
 ### Changed
-* Interface of `ParamsKZG::from_parts` 
+* Interface of `ParamsKZG::from_parts`
 
 ### Removed
 

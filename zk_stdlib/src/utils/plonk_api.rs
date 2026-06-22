@@ -31,9 +31,11 @@ use midnight_proofs::{
     poly::{
         commitment::Guard,
         kzg::{
+            commitment::KZGCommitment,
             params::{ParamsKZG, ParamsVerifierKZG},
             KZGCommitmentScheme,
         },
+        PolynomialLabel,
     },
     transcript::{CircuitTranscript, Hashable, Sampleable, Transcript, TranscriptHash},
     utils::SerdeFormat,
@@ -53,7 +55,7 @@ macro_rules! plonk_api {
 
         impl<Relation> $name<Relation>
         where
-            Relation: Circuit<$native> + Clone,
+            Relation: Circuit<$native>,
         {
             /// PLONK VK setup for the given circuit. Downsizes the parameters to match
             /// the size of the circuit.
@@ -110,11 +112,11 @@ macro_rules! plonk_api {
                     >(
                         params,
                         pk,
-                        std::slice::from_ref(circuit),
+                        circuit,
                         nb_instance_commitments,
-                        &[pi],
-                        rng,
+                        pi,
                         &mut transcript,
+                        rng,
                     )?;
                     transcript.finalize()
                 };
@@ -147,8 +149,14 @@ macro_rules! plonk_api {
                 let start = Instant::now();
                 let res = prepare::<$native, KZGCommitmentScheme<$engine>, CircuitTranscript<H>>(
                     vk,
-                    &[&instance_commitments.iter().map(|c| c.into()).collect::<Vec<_>>()],
-                    &[pi],
+                    &instance_commitments
+                        .iter()
+                        .enumerate()
+                        .map(|(i, c)| {
+                            KZGCommitment::Simple((*c).into(), PolynomialLabel::Instance(i))
+                        })
+                        .collect::<Vec<_>>(),
+                    pi,
                     &mut transcript,
                 )?;
                 transcript.assert_empty().map_err(|_| Error::Opening)?;

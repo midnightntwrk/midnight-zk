@@ -485,17 +485,17 @@ fn plonk_api() {
         create_plonk_proof::<F, Scheme, _, _>(
             params,
             pk,
-            &[circuit.clone(), circuit.clone()],
+            &circuit,
             #[cfg(feature = "committed-instances")]
             0,
-            &[&[&[instance]], &[&[instance]]],
-            rng,
+            &[&[instance]],
             &mut transcript,
+            rng,
         )
         .expect("proof generation should not fail");
 
         // Check this circuit is satisfied.
-        let prover = match MockProver::run(K, &circuit, vec![vec![instance]]) {
+        let prover = match MockProver::run(&circuit, vec![vec![instance]]) {
             Ok(prover) => prover,
             Err(e) => panic!("{e:?}"),
         };
@@ -526,8 +526,8 @@ fn plonk_api() {
         let verifier = prepare_plonk_proof(
             vk,
             #[cfg(feature = "committed-instances")]
-            &[&[], &[]],
-            &[&[&pubinputs[..]], &[&pubinputs[..]]],
+            &[],
+            &[&pubinputs[..]],
             &mut transcript,
         )
         .unwrap();

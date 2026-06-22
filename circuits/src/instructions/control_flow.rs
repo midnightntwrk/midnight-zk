@@ -96,7 +96,7 @@ pub(crate) mod tests {
         instructions::{AssertionInstructions, AssignmentInstructions},
         testing_utils::{FromScratch, Sampleable},
         types::InnerValue,
-        utils::circuit_modeling::circuit_to_json,
+        utils::circuit_modeling::{circuit_to_json, cost_measure_end, cost_measure_start},
     };
 
     #[derive(Clone, Debug)]
@@ -146,6 +146,8 @@ pub(crate) mod tests {
             (
                 ControlFlowChip::configure_from_scratch(
                     meta,
+                    &mut vec![],
+                    &mut vec![fixed_column],
                     &[committed_instance_column, instance_column],
                 ),
                 fixed_column,
@@ -175,6 +177,7 @@ pub(crate) mod tests {
 
             let cond = AssignedBit(cond_value);
 
+            cost_measure_start(&mut layouter);
             match self.operation {
                 Operation::Select => {
                     let res = chip.select(&mut layouter, &cond, &x, &y)?;
@@ -191,6 +194,7 @@ pub(crate) mod tests {
                     )
                 }
             }?;
+            cost_measure_end(&mut layouter);
 
             chip.load_from_scratch(&mut layouter)
         }
@@ -227,9 +231,8 @@ pub(crate) mod tests {
             _marker: PhantomData,
         };
 
-        let log2_nb_rows = 10;
         let public_inputs = vec![vec![], vec![]];
-        match MockProver::run(log2_nb_rows, &circuit, public_inputs) {
+        match MockProver::run(&circuit, public_inputs) {
             Ok(prover) => match prover.verify() {
                 Ok(()) => assert!(must_pass),
                 Err(e) => assert!(!must_pass, "Failed verifier with error {e:?}"),

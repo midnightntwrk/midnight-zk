@@ -3,7 +3,10 @@ use ff::{PrimeField, WithSmallOrderMulGroup};
 use super::Argument;
 use crate::{
     plonk::{trash, Error},
-    poly::{commitment::PolynomialCommitmentScheme, CommitmentLabel, VerifierQuery},
+    poly::{
+        commitment::{Labelable, PolynomialCommitmentScheme},
+        PolynomialLabel, VerifierQuery,
+    },
     transcript::{Hashable, Transcript},
 };
 
@@ -26,7 +29,9 @@ impl<F: PrimeField> Argument<F> {
     where
         CS::Commitment: Hashable<T::Hash>,
     {
-        let trash_commitment = transcript.read()?;
+        let trash_commitment = transcript
+            .read()
+            .map(|c: CS::Commitment| c.label(PolynomialLabel::Trash(self.name.clone())))?;
         Ok(Committed { trash_commitment })
     }
 }
@@ -52,7 +57,6 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
     pub(crate) fn queries(&self, x: F) -> impl Iterator<Item = VerifierQuery<'_, F, CS>> + Clone {
         vec![VerifierQuery::new(
             x,
-            CommitmentLabel::NoLabel,
             &self.committed.trash_commitment,
             self.evaluated.trash_eval,
         )]

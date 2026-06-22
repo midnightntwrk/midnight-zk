@@ -12,8 +12,8 @@
 // limitations under the License.
 
 // This module implements a type of regular expressions. As in `automaton.rs`,
-// regex include a notion of markers, that allow to identify some parts of the
-// expression by integers (one marker maximum per byte).
+// regex include a notion of outputs, that allow to identify some parts of the
+// expression by integers (one output maximum per byte).
 //
 // The `Regex` type is opaque so that functions outside of this module only use
 // the dedicated set of public methods (`RegexInstructions`) to construct
@@ -28,13 +28,13 @@ use super::automaton::{Automaton, Letter, RawAutomaton};
 use crate::parsing::scanner::ALPHABET_MAX_SIZE;
 
 /// A type for formal languages described as regular expressions.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Regex {
     /// The acutal regular expression.
     content: RegexInternal,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 enum RegexInternal {
     // A language accepting a word of one arbitrary marked byte from the range (`Vec`) taken as an
     // argument. Working with ranges instead of single bytes allows to precompute some single-byte
@@ -45,19 +45,19 @@ enum RegexInternal {
     // Union of a vector of languages.
     Union(Vec<Regex>),
     // Intersection of a vector of languages. Similarly as for `automaton::inter`, letters with
-    // different markers are always treated as different letters, except when one of the markers
-    // is 0 (in which case they are unified into the non-zero marker).
+    // different outputs are always treated as different letters, except when one of the outputs
+    // is 0 (in which case they are unified into the non-zero output).
     Inter(Vec<Regex>),
     // Iteration of a given language. The boolean indicates whether the iteration is strict, that
     // is, the boolean being true means that the empty word is not accepted.
     Star(bool, Box<Regex>),
-    // Complement of a language. The code enforces that its argument does not contain markers
+    // Complement of a language. The code enforces that its argument does not contain outputs
     // (panics if attempted to put any).
     Complement(Box<Regex>),
 }
 
 // Conversion from the internal representation of a regex to an actual one,
-// without marker at toplevel. The `other_marker` field is computed consistently
+// without output at toplevel. The `other_output` field is computed consistently
 // with the internal data.
 impl From<RegexInternal> for Regex {
     fn from(value: RegexInternal) -> Self {
@@ -73,22 +73,22 @@ pub trait RegexInstructions
 where
     Self: Sized + Clone,
 {
-    /// For all bytes `b` of `self`, overwrites its marker with `m` if `f(b) ==
+    /// For all bytes `b` of `self`, overwrites its output with `m` if `f(b) ==
     /// Some(m)`, and leave it unchanged if `f(b) == None`. Note in particular
-    /// that `f(b) == Some(0)` removes the marker on `b`, which is different
+    /// that `f(b) == Some(0)` removes the output on `b`, which is different
     /// from `f(b) == None`.
-    fn mark(&self, f: &impl Fn(u8) -> Option<usize>) -> Self;
+    fn output(&self, f: &impl Fn(u8) -> Option<usize>) -> Self;
 
-    /// Specific (more efficient) implementation of `RegexInstructions::mark`
-    /// that marks a given slice of bytes with a fixed marker. Overwrites
-    /// previous markers. Also note that choosing `marker` to be `0` means
-    /// erasing any markers present on `bytes`.
-    fn mark_bytes(&self, bytes: impl IntoIterator<Item = u8>, marker: usize) -> Self;
+    /// Specific (more efficient) implementation of `RegexInstructions::output`
+    /// that outputs a given slice of bytes with a fixed output. Overwrites
+    /// previous outputs. Also note that choosing `output` to be `0` means
+    /// erasing any outputs present on `bytes`.
+    fn output_bytes(&self, bytes: impl IntoIterator<Item = u8>, output: usize) -> Self;
 
-    /// Takes the markers of `self` and replace them accordingly to the `upd`
-    /// function (`upd(m) == None` meaning that the marker `m` is left
+    /// Takes the outputs of `self` and replace them accordingly to the `upd`
+    /// function (`upd(m) == None` meaning that the output `m` is left
     /// unchanged).
-    fn replace_markers(&self, upd: &impl Fn(usize) -> Option<usize>) -> Self;
+    fn replace_outputs(&self, upd: &impl Fn(usize) -> Option<usize>) -> Self;
 
     /// A regular expression matching any single unmarked byte from a
     /// collection.
@@ -157,7 +157,7 @@ where
 
     /// The complement of a regular expression, that is, it characterises any
     /// sequence of bytes that does not match the regular expression. Fails if
-    /// any marker is under an odd number of negations.
+    /// any output is under an odd number of negations.
     fn neg(self) -> Self;
 
     /// Union of the languages of a finite sequence of regular expressions.
@@ -167,9 +167,9 @@ where
     /// Intersection of the languages of a finite sequence of regular
     /// expressions. Yields the universal language for empty iterators.
     ///
-    /// Two identical bytes with different markers are considered different when
-    /// intersecting, except when one of the two markers is 0 (in which case
-    /// the intersection yields the letter with the non-zero marker).
+    /// Two identical bytes with different outputs are considered different when
+    /// intersecting, except when one of the two outputs is 0 (in which case
+    /// the intersection yields the letter with the non-zero output).
     fn inter<S: IntoIterator<Item = Self>>(l: S) -> Self;
 
     /// Concatenates a finite sequence of regular expressions. This is the n-ary
@@ -244,9 +244,9 @@ where
     }
 
     /// Accepts any word accepted by `self` but not `other`. Is equivalent to
-    /// `and([self, other.neg()])`, in particular regarding markers being
-    /// forbidden in `other`, and markers of `self` not being erased because of
-    /// the absence of markers in `other`.
+    /// `and([self, other.neg()])`, in particular regarding outputs being
+    /// forbidden in `other`, and outputs of `self` not being erased because of
+    /// the absence of outputs in `other`.
     fn minus(self, other: Self) -> Self {
         self.and(other.neg())
     }
@@ -460,19 +460,19 @@ where
         let unicode_escape = Self::word("\\u").terminated(hex.repeat(4));
 
         let content = Self::union([unescaped_utf8_cps, simple_escape, unicode_escape]).list();
-        content.mark(&|_| Some(1)).delimited(Self::word("\""), Self::word("\""))
+        content.output(&|_| Some(1)).delimited(Self::word("\""), Self::word("\""))
     }
 }
 
 impl Regex {
-    /// Checks if `self` contains a non-0 marker.
-    fn contains_markers(&self) -> bool {
+    /// Checks if `self` contains a non-0 output.
+    fn contains_outputs(&self) -> bool {
         match &self.content {
-            RegexInternal::Single(bytes) => bytes.iter().any(|b| b.marker != 0),
+            RegexInternal::Single(bytes) => bytes.iter().any(|b| b.output != 0),
             RegexInternal::Concat(v) | RegexInternal::Union(v) | RegexInternal::Inter(v) => {
-                v.iter().any(|r| r.contains_markers())
+                v.iter().any(|r| r.contains_outputs())
             }
-            RegexInternal::Star(_, r) | RegexInternal::Complement(r) => r.contains_markers(),
+            RegexInternal::Star(_, r) | RegexInternal::Complement(r) => r.contains_outputs(),
         }
     }
 }
@@ -513,25 +513,25 @@ impl Regex {
 // efficiency purposes:
 // - non_empty_list
 impl RegexInstructions for Regex {
-    fn mark(&self, f: &impl Fn(u8) -> Option<usize>) -> Self {
+    fn output(&self, f: &impl Fn(u8) -> Option<usize>) -> Self {
         self.map(&|&letter| Letter {
             char: letter.char,
-            marker: f(letter.char).unwrap_or(letter.marker),
+            output: f(letter.char).unwrap_or(letter.output),
         })
     }
 
-    fn mark_bytes(&self, bytes: impl IntoIterator<Item = u8>, marker: usize) -> Self {
-        let mut marker_update = [None; ALPHABET_MAX_SIZE];
+    fn output_bytes(&self, bytes: impl IntoIterator<Item = u8>, output: usize) -> Self {
+        let mut output_update = [None; ALPHABET_MAX_SIZE];
         for b in bytes {
-            marker_update[b as usize] = Some(marker)
+            output_update[b as usize] = Some(output)
         }
-        self.mark(&|b| marker_update[b as usize])
+        self.output(&|b| output_update[b as usize])
     }
 
-    fn replace_markers(&self, upd: &impl Fn(usize) -> Option<usize>) -> Self {
+    fn replace_outputs(&self, upd: &impl Fn(usize) -> Option<usize>) -> Self {
         self.map(&|&letter| Letter {
             char: letter.char,
-            marker: upd(letter.marker).unwrap_or(letter.marker),
+            output: upd(letter.output).unwrap_or(letter.output),
         })
     }
 
@@ -552,11 +552,11 @@ impl RegexInstructions for Regex {
     }
 
     fn neg(self) -> Self {
-        // Checks that no markers appear, so that the semantic of negation is properly
+        // Checks that no outputs appear, so that the semantic of negation is properly
         // defined.
         assert!(
-            !self.contains_markers(),
-            "in regular expressions, markers are not allowed under complement/negation ({:?})",
+            !self.contains_outputs(),
+            "in regular expressions, outputs are not allowed under complement/negation ({:?})",
             self
         );
         RegexInternal::Complement(Box::new(self)).into()
@@ -606,7 +606,7 @@ impl Regex {
             FxHashSet::with_capacity_and_hasher(ALPHABET_MAX_SIZE, FxBuildHasher);
         let mut contains_epsilon = false;
         // Main loop flattening the `Union` structure of `pending` into a single
-        // vector, and gathers all `Single` bytes and markers into `singles`.
+        // vector, and gathers all `Single` bytes and outputs into `singles`.
         while let Some(r) = pending.pop() {
             match r.content {
                 RegexInternal::Union(v) => pending.extend(v),
@@ -817,7 +817,7 @@ mod tests {
 
         // [{(hello)*}{(test)*}], with arbitrary blank characters between all words and
         // delimiters (and at least one space between each word). All lowercase letters
-        // are marked as 1.
+        // are outputted as 1.
         fn bracket_list(r: Regex) -> Regex {
             r.separated_list(Regex::blanks_strict())
                 .delimited(Regex::blanks(), Regex::blanks())
@@ -833,7 +833,7 @@ mod tests {
             ],
             Regex::blanks(),
         )
-        .mark(&|b| {
+        .output(&|b| {
             if b.is_ascii_lowercase() {
                 Some(1)
             } else {
@@ -895,8 +895,8 @@ mod tests {
             "[ { { hello hello hello } } { test test test test } ]",
         ];
 
-        // A regex that accepts any string, and outputs its blank spaces with marker 1.
-        let regex2 = Regex::any_byte().mark_bytes(*b" \n\t", 1).list();
+        // A regex that accepts any string, and outputs its blank spaces with output 1.
+        let regex2 = Regex::any_byte().output_bytes(*b" \n\t", 1).list();
 
         let accepted2: Vec<(&str, &[usize])> = vec![
             ("", &[]),
@@ -943,9 +943,9 @@ mod tests {
         let rejected2: Vec<&str> = vec![];
 
         // Same as regex2, but outputs spaces, newlines, and tabs with a different
-        // marker (1,2,3 respectively).
+        // output (1,2,3 respectively).
         let regex3 = Regex::any_byte()
-            .mark(&|b| match b {
+            .output(&|b| match b {
                 b' ' => Some(1),
                 b'\n' => Some(2),
                 b'\t' => Some(3),

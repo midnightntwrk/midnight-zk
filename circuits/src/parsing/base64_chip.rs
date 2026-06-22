@@ -173,7 +173,7 @@ impl<F: CircuitField, const M: usize, const A: usize> Base64VarInstructions<F, M
         let ng = &self.native_gadget;
         let vg = &self.vector_gadget;
         let filler = ng.assign_fixed(layouter, ALT_PAD as u8)?;
-        let flags = vg.padding_flag(layouter, vec)?;
+        let (flags, _limits) = vg.padding_flag(layouter, vec)?;
         let result = vec
             .buffer
             .iter()
@@ -193,10 +193,10 @@ impl<F: CircuitField, const M: usize, const A: usize> Base64VarInstructions<F, M
         layouter: &mut impl Layouter<F>,
         b64url_input: &Base64Vec<F, M, A>,
     ) -> Result<AssignedVector<F, AssignedByte<F>, M_OUT, A_OUT>, Error> {
-        let vec = self.url_to_standard(layouter, &b64url_input.0.buffer)?;
+        let vec = self.url_to_standard(layouter, &*b64url_input.0.buffer)?;
 
         let b64_input = Base64Vec::<F, M, A>(AssignedVector {
-            buffer: vec.try_into().unwrap(),
+            buffer: Box::new(vec.try_into().unwrap()),
             len: b64url_input.0.len.clone(),
         });
 
@@ -233,10 +233,10 @@ impl<F: CircuitField, const M: usize, const A: usize> Base64VarInstructions<F, M
         self.native_gadget.assert_zero(layouter, &check)?;
 
         // Compute decoded buffer.
-        let out_buffer = self.decode_base64(layouter, &b64_input.0.buffer, true)?;
+        let out_buffer = self.decode_base64(layouter, &*b64_input.0.buffer, true)?;
 
         Ok(AssignedVector::<_, _, M_OUT, A_OUT> {
-            buffer: out_buffer.try_into().unwrap(),
+            buffer: Box::new(out_buffer.try_into().unwrap()),
             len: new_len,
         })
     }
@@ -551,6 +551,8 @@ mod tests {
             let instance_column = meta.instance_column();
             let ng_config = NativeGadget::configure_from_scratch(
                 meta,
+                &mut vec![],
+                &mut vec![],
                 &[committed_instance_column, instance_column],
             );
             let sr =
@@ -612,8 +614,6 @@ mod tests {
 
     #[test]
     fn test_b64chip() {
-        let k = 13;
-
         let b64_input: &[u8] = b"QWxsIHRoYXQgaXMgZ29sZCBkb2VzIG5vdCBnbGl0dGVyLApOb3QgYWxsIHRob3NlIHdobyB3YW5kZXIgYXJlIGxvc3Q7ClRoZSBvbGQgdGhhdCBpcyBzdHJvbmcgZG9lcyBub3Qgd2l0aGVyLApEZWVwIHJvb3RzIGFyZSBub3QgcmVhY2hlZCBieSB0aGUgZnJvc3QuCiAtIEouUi5SLiBUb2xraWVuLCAxOTU0";
         #[rustfmt::skip]
         let output: &[u8] =
@@ -632,7 +632,7 @@ Deep roots are not reached by the frost.
         let circuit = TestCircuit::<Fp>::new(b64_input, output, options);
 
         let public_inputs = vec![vec![], vec![]];
-        let prover = match MockProver::run(k, &circuit, public_inputs) {
+        let prover = match MockProver::run(&circuit, public_inputs) {
             Ok(prover) => prover,
             Err(e) => panic!("{e:#?}"),
         };
@@ -642,8 +642,6 @@ Deep roots are not reached by the frost.
 
     #[test]
     fn test_urlsafe_b64chip() {
-        let k = 13;
-
         let b64_input: &[u8] = b"VVJMU2FmZSB0ZXN0OiA_Pz8gPz8-Lg==";
         let output: &[u8] = b"URLSafe test: ??? ??>.";
 
@@ -656,7 +654,7 @@ Deep roots are not reached by the frost.
         let circuit = TestCircuit::<Fp>::new(b64_input, output, options);
 
         let public_inputs = vec![vec![], vec![]];
-        let prover = match MockProver::run(k, &circuit, public_inputs) {
+        let prover = match MockProver::run(&circuit, public_inputs) {
             Ok(prover) => prover,
             Err(e) => panic!("{e:#?}"),
         };
@@ -666,8 +664,6 @@ Deep roots are not reached by the frost.
 
     #[test]
     fn test_b64chip_w_padding() {
-        let k = 13;
-
         let b64_input: &[u8] = b"QWxsIHRoYXQgaXMgZ29sZCBkb2VzIG5vdCBnbGl0dGVyLA==";
         let b64_input_bad: &[u8] = b"QWxsIHRoYXQgaXMgZ29sZCBkb2VzIG5vdCBnbGl0dGVyLA=A";
         let output: &[u8] = b"All that is gold does not glitter,";
@@ -682,7 +678,7 @@ Deep roots are not reached by the frost.
         let circuit_bad = TestCircuit::<Fp>::new(b64_input_bad, output, options);
 
         let public_inputs = vec![vec![], vec![]];
-        let prover = match MockProver::run(k, &circuit, public_inputs) {
+        let prover = match MockProver::run(&circuit, public_inputs) {
             Ok(prover) => prover,
             Err(e) => panic!("{e:#?}"),
         };
@@ -690,7 +686,7 @@ Deep roots are not reached by the frost.
         assert_eq!(prover.verify(), Ok(()));
 
         let public_inputs = vec![vec![], vec![]];
-        let prover = match MockProver::run(k, &circuit_bad, public_inputs) {
+        let prover = match MockProver::run(&circuit_bad, public_inputs) {
             Ok(prover) => prover,
             Err(e) => panic!("{e:#?}"),
         };
@@ -699,8 +695,6 @@ Deep roots are not reached by the frost.
 
     #[test]
     fn test_b64chip_truncated() {
-        let k = 13;
-
         let b64_input: &[u8] = b"QWxsIHRoYXQgaXMgZ29sZCBkb2VzIG5vdCBnbGl0dGVyLA";
         let output: &[u8] = b"All that is gold does not glitter,";
 
@@ -712,7 +706,7 @@ Deep roots are not reached by the frost.
         let circuit = TestCircuit::<Fp>::new(b64_input, output, options);
 
         let public_inputs = vec![vec![], vec![]];
-        let prover = match MockProver::run(k, &circuit, public_inputs) {
+        let prover = match MockProver::run(&circuit, public_inputs) {
             Ok(prover) => prover,
             Err(e) => panic!("{e:#?}"),
         };
@@ -722,8 +716,6 @@ Deep roots are not reached by the frost.
 
     #[test]
     fn test_b64chip_variable() {
-        let k = 13;
-
         let b64_input: &[u8] = b"QWxsIHRoYXQgaXMgZ29sZCBkb2VzIG5vdCBnbGl0dGVyLApOb3QgYWxsIHRob3NlIHdobyB3YW5kZXIgYXJlIGxvc3Q7ClRoZSBvbGQgdGhhdCBpcyBzdHJvbmcgZG9lcyBub3Qgd2l0aGVyLApEZWVwIHJvb3RzIGFyZSBub3QgcmVhY2hlZCBieSB0aGUgZnJvc3QuCiAtIEouUi5SLiBUb2xraWVuLCAxOTU0";
         #[rustfmt::skip]
         let output: &[u8] =
@@ -742,7 +734,7 @@ Deep roots are not reached by the frost.
         let circuit = TestCircuit::<Fp>::new(b64_input, output, options);
 
         let public_inputs = vec![vec![], vec![]];
-        let prover = match MockProver::run(k, &circuit, public_inputs) {
+        let prover = match MockProver::run(&circuit, public_inputs) {
             Ok(prover) => prover,
             Err(e) => panic!("{e:#?}"),
         };
@@ -752,8 +744,6 @@ Deep roots are not reached by the frost.
 
     #[test]
     fn test_urlsafe_b64chip_variable() {
-        let k = 14;
-
         let b64_input: &[u8] = b"VVJMU2FmZSB0ZXN0OiA_Pz8gPz8-Lg==";
         let output: &[u8] = b"URLSafe test: ??? ??>.";
 
@@ -766,7 +756,7 @@ Deep roots are not reached by the frost.
         let circuit = TestCircuit::<Fp>::new(b64_input, output, options);
 
         let public_inputs = vec![vec![], vec![]];
-        let prover = match MockProver::run(k, &circuit, public_inputs) {
+        let prover = match MockProver::run(&circuit, public_inputs) {
             Ok(prover) => prover,
             Err(e) => panic!("{e:#?}"),
         };

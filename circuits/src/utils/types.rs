@@ -28,6 +28,12 @@ pub trait Instantiable<F: CircuitField>: InnerValue {
     /// This function is the off-circuit analog of
     /// [crate::instructions::PublicInputInstructions::as_public_input].
     fn as_public_input(element: &<Self as InnerValue>::Element) -> Vec<F>;
+
+    /// Inverse of [Self::as_public_input]: reconstructs the element from
+    /// its public input representation. Returns `None` if `fields` does not
+    /// encode a valid element.
+    #[cfg(any(test, feature = "testing"))]
+    fn from_public_input(fields: &[F]) -> Option<<Self as InnerValue>::Element>;
 }
 
 /// Trait for accessing the value inside assigned circuit elements.
@@ -64,6 +70,14 @@ pub trait InnerConstants: InnerValue {
 impl<F: CircuitField> Instantiable<F> for AssignedNative<F> {
     fn as_public_input(element: &F) -> Vec<F> {
         vec![*element]
+    }
+
+    #[cfg(any(test, feature = "testing"))]
+    fn from_public_input(fields: &[F]) -> Option<F> {
+        match fields {
+            [f] => Some(*f),
+            _ => None,
+        }
     }
 }
 

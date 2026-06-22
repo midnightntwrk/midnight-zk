@@ -1,0 +1,31 @@
+{
+    "iss" : "",
+    "sub" : "",
+    "nbf" : 0,
+    "exp" : 1,
+    "vc" : {
+       "credentialSubject" : {
+          "nationalId" : "id",
+          "familyName" : "fn",
+          "givenName" : "gn",
+          "publicKeyJwk" : {
+             "kty" : "",
+             "crv" : "",
+             "x" : "x",
+             "y" : "y"
+          },
+          "id" : "",
+          "birthDate" : "bd"
+       },
+       "type" : [],
+       "@context" : [],
+       "issuer" : "",
+       "credentialStatus" : {
+          "statusPurpose" : "",
+          "statusListIndex" : 3,
+          "id" : "",
+          "type" : "",
+          "statusListCredential" : ""
+       }
+    }
+}

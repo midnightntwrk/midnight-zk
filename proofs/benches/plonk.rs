@@ -3,6 +3,7 @@ extern crate criterion;
 
 use std::marker::PhantomData;
 
+use blake2b_simd::State as Blake2bState;
 use criterion::{BenchmarkId, Criterion};
 use group::ff::Field;
 use midnight_curves::{Bls12, Fq as Scalar};
@@ -233,7 +234,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         ) -> Result<(), Error> {
             let cs = StandardPlonk::new(config);
 
-            for _ in 0..((1 << (self.k - 1)) - 3) {
+            for _ in 0..((1 << (self.k - 1)) - 4) {
                 let a: Value<Rational<_>> = self.a.into();
                 let mut a_squared = Value::unknown();
                 let (a0, _, c0) = cs.raw_multiply(&mut layouter, || {
@@ -280,17 +281,17 @@ fn criterion_benchmark(c: &mut Criterion) {
             k,
         };
 
-        let mut transcript = CircuitTranscript::init();
+        let mut transcript: CircuitTranscript<Blake2bState> = CircuitTranscript::init();
 
         create_proof::<Scalar, KZGCommitmentScheme<Bls12>, _, _>(
             params,
             pk,
-            &[circuit],
+            &circuit,
             #[cfg(feature = "committed-instances")]
             0,
-            &[&[]],
-            rng,
+            &[],
             &mut transcript,
+            rng,
         )
         .expect("proof generation should not fail");
         transcript.finalize()
@@ -301,12 +302,13 @@ fn criterion_benchmark(c: &mut Criterion) {
         vk: &VerifyingKey<Scalar, KZGCommitmentScheme<Bls12>>,
         proof: &[u8],
     ) {
-        let mut transcript = CircuitTranscript::init_from_bytes(proof);
+        let mut transcript: CircuitTranscript<Blake2bState> =
+            CircuitTranscript::init_from_bytes(proof);
         assert!(prepare::<Scalar, KZGCommitmentScheme<Bls12>, _>(
             vk,
             #[cfg(feature = "committed-instances")]
-            &[&[]],
-            &[&[]],
+            &[],
+            &[],
             &mut transcript
         )
         .unwrap()
