@@ -10,7 +10,13 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 
 ### Changed
 
+### Fixed
+
 ### Removed
+
+## 0.2.1
+### Fixed
+* Bug fix in midnight-curves [#433](https://github.com/midnightntwrk/midnight-zk/pull/433)
 
 ## 0.2.0
 ### Added

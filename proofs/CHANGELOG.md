@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [0.7.2]
+### Fixed
+* Bug fix in midnight-curves [#433](https://github.com/midnightntwrk/midnight-zk/pull/433)
+
 ## [0.7.1]
 ### Changed
 * Thread the prover RNG explicitly [#307](https://github.com/midnightntwrk/midnight-zk/pull/307)

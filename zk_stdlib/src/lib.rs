@@ -1806,7 +1806,7 @@ where
 /// in raw format (`Vec<F>`).
 ///
 /// Returns `Ok(())` if all proofs are valid.
-pub fn batch_verify<H: TranscriptHash>(
+pub fn batch_verify<H: TranscriptHash + Send + Sync>(
     params_verifier: &ParamsVerifierKZG<midnight_curves::Bls12>,
     vks: &[MidnightVK],
     pis: &[Vec<F>],
@@ -1816,6 +1816,8 @@ where
     G1Projective: Hashable<H>,
     F: Hashable<H> + Sampleable<H>,
 {
+    use rayon::prelude::*;
+
     // TODO: For the moment, committed instances are not supported.
     let n = vks.len();
     if pis.len() != n || proofs.len() != n {
@@ -1823,12 +1825,10 @@ where
         return Err(Error::InvalidInstances);
     }
 
-    let mut r_transcript = CircuitTranscript::init();
-
-    let guards = vks
-        .iter()
-        .zip(pis.iter())
-        .zip(proofs.iter())
+    let prepared: Vec<(_, F)> = vks
+        .par_iter()
+        .zip(pis.par_iter())
+        .zip(proofs.par_iter())
         .map(|((vk, pi), proof)| {
             if pi.len() != vk.nb_public_inputs {
                 return Err(Error::InvalidInstances);
@@ -1847,17 +1847,28 @@ where
                 &mut transcript,
             )?;
             let summary: F = transcript.squeeze_challenge();
-            r_transcript.common(&summary)?;
             transcript.assert_empty().map_err(|_| Error::Opening)?;
-            Ok(dual_msm)
+            Ok((dual_msm, summary))
         })
         .collect::<Result<Vec<_>, Error>>()?;
 
-    let r = r_transcript.squeeze_challenge();
+    let mut r_transcript = CircuitTranscript::init();
+    let mut guards = Vec::with_capacity(n);
+    for (guard, summary) in prepared {
+        r_transcript.common(&summary)?;
+        guards.push(guard);
+    }
+    let r: F = r_transcript.squeeze_challenge();
 
-    let mut acc_guard = guards[0].clone();
-    for guard in guards.into_iter().skip(1) {
-        acc_guard.scale(r);
+    let powers: Vec<F> = std::iter::successors(Some(<F as ff::Field>::ONE), |p| Some(*p * r))
+        .take(guards.len())
+        .collect();
+    guards.par_iter_mut().enumerate().for_each(|(i, guard)| guard.scale(powers[i]));
+
+    let Some(mut acc_guard) = guards.pop() else {
+        return Ok(());
+    };
+    for guard in guards {
         acc_guard.add_msm(guard);
     }
     // TODO: Have richer error types

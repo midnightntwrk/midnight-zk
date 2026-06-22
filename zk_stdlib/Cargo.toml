@@ -1,6 +1,6 @@
 [package]
 name = "midnight-zk-stdlib"
-version = "1.2.0"
+version = "1.2.1"
 edition = "2021"
 license-file.workspace = true
 description = "Standard library of circuits and utilities for Midnight zero-knowledge proofs"
@@ -11,9 +11,9 @@ description = "Standard library of circuits and utilities for Midnight zero-know
 group = { workspace = true }
 ff = { workspace = true }
 blake2b_simd = { workspace = true }
-midnight-circuits = { version = "6.2.0" }
-midnight-curves = { version = "0.2.0" }
-midnight-proofs = { version = "0.7.1", default-features = false, features = [
+midnight-circuits = { version = "6.2.1" }
+midnight-curves = { version = "0.2.1" }
+midnight-proofs = { version = "0.7.2", default-features = false, features = [
     "circuit-params",
     "committed-instances",
 ] }
@@ -24,6 +24,7 @@ blake2b = { package = "blake2b_halo2", version = "0.1.0" }
 serde = { workspace = true, optional = true }
 sha2 = { workspace = true }
 rand = { workspace = true }
+rayon = { workspace = true }
 
 num-bigint = { version = "0.4" }
 num-traits = "0.2"
