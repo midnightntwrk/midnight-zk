@@ -11,7 +11,8 @@ use crate::{
         Error, VerifyingKey,
     },
     poly::{
-        commitment::PolynomialCommitmentScheme, CommitmentLabel, EvaluationDomain, VerifierQuery,
+        commitment::{Labelable, PolynomialCommitmentScheme},
+        EvaluationDomain, PolynomialLabel, VerifierQuery,
     },
     transcript::{read_n, Hashable, Sampleable, Transcript},
     utils::arithmetic::{compute_inner_product, eval_polynomial},
@@ -26,7 +27,6 @@ struct VerifierFoldingTrace<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
     lookup_agg_commitments: Vec<CS::Commitment>,
     trash_commitments: Vec<CS::Commitment>,
     perm_commitments: Vec<CS::Commitment>,
-    challenges: Vec<F>,
     beta: F,
     gamma: F,
     theta: Vec<F>,
@@ -56,7 +56,6 @@ fn into_verifier_folding_trace<F: PrimeField, CS: PolynomialCommitmentScheme<F>>
         lookup_agg_commitments,
         trash_commitments,
         perm_commitments,
-        challenges: trace.challenges,
         beta: trace.beta,
         gamma: trace.gamma,
         theta: trace.theta,
@@ -75,7 +74,7 @@ where
     F: PrimeField + WithSmallOrderMulGroup<3>,
     CS: PolynomialCommitmentScheme<F>,
     CS::Commitment: Clone
-        + for<'a> std::ops::Add<&'a CS::Commitment, Output = CS::Commitment>
+        + std::ops::Add<CS::Commitment, Output = CS::Commitment>
         + std::ops::Mul<F, Output = CS::Commitment>
         + Default,
 {
@@ -100,7 +99,7 @@ where
                     .iter()
                     .zip(lagrange_at_gamma.iter())
                     .fold(CS::Commitment::default(), |acc, (t, &li)| {
-                        acc + &(get(t)[j].clone() * li)
+                        acc + (get(t)[j].clone() * li)
                     })
             })
             .collect::<Vec<_>>()
@@ -128,7 +127,7 @@ where
                             .iter()
                             .zip(lagrange_at_gamma.iter())
                             .fold(CS::Commitment::default(), |acc, (t, &li)| {
-                                acc + &(t.lookup_helper_commitments[i][j].clone() * li)
+                                acc + (t.lookup_helper_commitments[i][j].clone() * li)
                             })
                     })
                     .collect()
@@ -184,7 +183,6 @@ where
         lookup_agg_commitments,
         trash_commitments,
         perm_commitments,
-        challenges: lc_vec(&|t| t.challenges.clone()),
         beta: lc_scalar(&|t| t.beta),
         gamma: lc_scalar(&|t| t.gamma),
         theta: lc_vec(&|t| t.theta.clone()),
@@ -217,7 +215,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const NB_F
         CS::Commitment: Hashable<T::Hash>
             + Clone
             + Default
-            + for<'a> std::ops::Add<&'a CS::Commitment, Output = CS::Commitment>
+            + std::ops::Add<CS::Commitment, Output = CS::Commitment>
             + std::ops::Mul<F, Output = CS::Commitment>,
         F: WithSmallOrderMulGroup<3>
             + Sampleable<T::Hash>
@@ -308,7 +306,7 @@ where
     CS::Commitment: Hashable<T::Hash>
         + Clone
         + Default
-        + for<'a> std::ops::Add<&'a CS::Commitment, Output = CS::Commitment>
+        + std::ops::Add<CS::Commitment, Output = CS::Commitment>
         + std::ops::Mul<F, Output = CS::Commitment>,
 {
     // Read quotient commitments (h limbs).
@@ -412,7 +410,6 @@ where
         folded.gamma,
         &folded.theta,
         folded.trash_challenge,
-        &folded.challenges,
     );
 
     let mut lin_com = compute_linearization_commitment(
@@ -425,13 +422,15 @@ where
         &quotient_limb_coms,
     );
     // In protogalaxy, h(X)*Z_n(X) = nu(X) - E(X), so L(x) = expected + E(x).
-    lin_com.eval += error_at_x;
+    lin_com.1 += error_at_x;
 
     // ── Build verifier queries (must match compute_queries order in prover) ───
     // Order: advice, perm-products, lookups, trash, fixed, perm-sigmas, lin,
     //        error@x, error@beta_pg.
     let e_at_beta_pg = folding_gamma.pow([dk_domain.n]) - F::ONE;
     let e_at_beta_pg = e_at_beta_pg * k_at_gamma;
+    let error_commitment =
+        error_commitment.label(PolynomialLabel::Custom("protogalaxy_error".into()));
     let queries: Vec<VerifierQuery<F, CS>> = iter::empty()
         .chain(
             vk.cs
@@ -441,7 +440,6 @@ where
                 .map(|(qi, &(col, at))| {
                     VerifierQuery::new(
                         vk.domain.rotate_omega(x, at),
-                        CommitmentLabel::Advice(col.index()),
                         &folded.advice_commitments[col.index()],
                         advice_evals[qi],
                     )
@@ -459,26 +457,15 @@ where
                 .map(|(qi, &(col, at))| {
                     VerifierQuery::new(
                         vk.domain.rotate_omega(x, at),
-                        CommitmentLabel::Fixed(col.index()),
                         &vk.fixed_commitments[col.index()],
                         fixed_evals[qi],
                     )
                 }),
         )
         .chain(permutations_common.queries(&vk.permutation, x))
-        .chain(iter::once(lin_com))
-        .chain(iter::once(VerifierQuery::new(
-            x,
-            CommitmentLabel::NoLabel,
-            &error_commitment,
-            error_at_x,
-        )))
-        .chain(iter::once(VerifierQuery::new(
-            beta_pg,
-            CommitmentLabel::NoLabel,
-            &error_commitment,
-            e_at_beta_pg,
-        )))
+        .chain(iter::once(VerifierQuery::new(x, &lin_com.0, lin_com.1)))
+        .chain(iter::once(VerifierQuery::new(x, &error_commitment, error_at_x)))
+        .chain(iter::once(VerifierQuery::new(beta_pg, &error_commitment, e_at_beta_pg)))
         .collect();
 
     CS::multi_prepare(&queries, transcript).map_err(|_| Error::Opening)

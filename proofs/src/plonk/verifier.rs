@@ -313,6 +313,7 @@ where
     let (lin_commitment, lin_eval) = compute_linearization_commitment(
         expressions,
         vk,
+        x,
         &y,
         &xn,
         &splitting_factor,

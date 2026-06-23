@@ -19,7 +19,7 @@ use crate::{
     },
     poly::{
         commitment::PolynomialCommitmentScheme, Coeff, EvaluationDomain, ExtendedLagrangeCoeff,
-        LagrangeCoeff, Polynomial, ProverQuery,
+        LagrangeCoeff, Polynomial, PolynomialLabel, ProverQuery,
     },
     transcript::{Hashable, Sampleable, Transcript},
     utils::arithmetic::eval_polynomial,
@@ -94,7 +94,6 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const NB_F
                     trash_polys: raw.trashcans.into_iter().map(|t| t.trash_poly).collect(),
                     perm_polys: raw.permutations.sets.into_iter()
                         .map(|s| s.permutation_product_poly).collect(),
-                    challenges: raw.challenges,
                     beta: raw.beta,
                     gamma: raw.gamma,
                     theta: raw.theta,
@@ -169,7 +168,6 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const NB_F
                 &trace_t.advice_polys,
                 &trace_t.instance_polys,
                 &pk.fixed_values,
-                &trace_t.challenges,
                 &trace_t.y,
                 trace_t.beta,
                 trace_t.gamma,
@@ -207,7 +205,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const NB_F
             _marker: PhantomData,
         };
 
-        let k_commitment = CS::commit(params, &k_poly);
+        let k_commitment = CS::commit(params, &k_poly, PolynomialLabel::Custom("protogalaxy_K".into()));
         transcript.write(&k_commitment)?;
 
         let gamma: F = transcript.squeeze_challenge();
@@ -247,7 +245,6 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const NB_F
             &folded.advice_polys,
             &folded.instance_polys,
             &pk.fixed_values,
-            &folded.challenges,
             &folded.y,
             folded.beta,
             folded.gamma,
@@ -280,7 +277,8 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>, const NB_F
             _marker: PhantomData,
         };
         let error_coeff = domain.lagrange_to_coeff(error_lagrange.clone());
-        let error_commitment = CS::commit(params, &error_lagrange);
+        let error_commitment =
+            CS::commit(params, &error_lagrange, PolynomialLabel::Custom("protogalaxy_error".into()));
         transcript.write(&error_commitment)?;
         eprintln!("[protogalaxy] step10 error_commit:      {:>8.2?}", t5.elapsed());
 
@@ -348,7 +346,6 @@ fn into_prover_trace<F: PrimeField + WithSmallOrderMulGroup<3>>(
         lookups,
         trashcans,
         permutations,
-        challenges: folded.challenges,
         beta: folded.beta,
         gamma: folded.gamma,
         theta: folded.theta,
@@ -395,7 +392,6 @@ where
         lookups,
         trashcans,
         permutations,
-        challenges,
         beta,
         gamma,
         theta,
@@ -446,7 +442,6 @@ where
         gamma,
         &theta,
         trash_challenge,
-        &challenges,
     );
 
     let (lin_poly_non_constant_part, _) =
@@ -465,8 +460,8 @@ where
     );
 
     // Extra queries for the error polynomial.
-    queries.push(ProverQuery { point: x, poly: &error_coeff });
-    queries.push(ProverQuery { point: beta_pg, poly: &error_coeff });
+    queries.push(ProverQuery::new(x, &error_coeff));
+    queries.push(ProverQuery::new(beta_pg, &error_coeff));
 
     CS::multi_open(params, &queries, transcript).map_err(|_| Error::ConstraintSystemFailure)
 }

@@ -34,7 +34,6 @@ pub(crate) struct FoldingProverTrace<F: PrimeField> {
     pub trash_polys: Vec<Polynomial<F, Coeff>>,
     /// Flattened permutation product polynomials (one per set).
     pub perm_polys: Vec<Polynomial<F, Coeff>>,
-    pub challenges: Vec<F>,
     pub beta: F,
     pub gamma: F,
     pub theta: Vec<F>,
@@ -76,7 +75,6 @@ impl<F: PrimeField> FoldingProverTrace<F> {
             lookups,
             trash_polys: (0..other.trash_polys.len()).map(|_| zero_coeff()).collect(),
             perm_polys: (0..other.perm_polys.len()).map(|_| zero_coeff()).collect(),
-            challenges: vec![F::ZERO; other.challenges.len()],
             beta: F::ZERO,
             gamma: F::ZERO,
             theta: vec![F::ZERO; other.theta.len()],
@@ -114,10 +112,6 @@ impl<F: PrimeField> Add<&FoldingProverTrace<F>> for FoldingProverTrace<F> {
             .par_iter_mut()
             .zip(rhs.perm_polys.par_iter())
             .for_each(|(a, b)| *a = a.clone() + b);
-        self.challenges
-            .iter_mut()
-            .zip(rhs.challenges.iter())
-            .for_each(|(a, b)| *a += b);
         self.beta += rhs.beta;
         self.gamma += rhs.gamma;
         self.theta
@@ -156,7 +150,6 @@ impl<F: PrimeField> Mul<F> for FoldingProverTrace<F> {
         self.perm_polys
             .par_iter_mut()
             .for_each(|p| *p = p.clone() * scalar);
-        self.challenges.iter_mut().for_each(|c| *c *= scalar);
         self.beta *= scalar;
         self.gamma *= scalar;
         self.theta.iter_mut().for_each(|c| *c *= scalar);
