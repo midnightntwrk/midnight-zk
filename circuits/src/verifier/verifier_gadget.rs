@@ -38,8 +38,8 @@ use crate::{
             eval_expression, lookup::lookup_expressions, permutation::permutation_expressions,
             trash::trash_expressions,
         },
-        kzg::{self, AssignedKZGCommitment, VerifierQuery},
         lookup,
+        pcs::{InCircuitHomomorphicCommitment, InCircuitPCS, VerifierQuery},
         permutation::{self, evaluate_permutation_common},
         traces::VerifierTrace,
         transcript_gadget::TranscriptGadget,
@@ -86,11 +86,13 @@ impl<S: SelfEmulation> VerifierGadget<S> {
     }
 }
 
-impl<S: SelfEmulation> PublicInputInstructions<S::F, AssignedVk<S>> for VerifierGadget<S> {
+impl<S: SelfEmulation, PCS: InCircuitPCS<S>> PublicInputInstructions<S::F, AssignedVk<S, PCS>>
+    for VerifierGadget<S>
+{
     fn as_public_input(
         &self,
         layouter: &mut impl Layouter<S::F>,
-        assigned_vk: &AssignedVk<S>,
+        assigned_vk: &AssignedVk<S, PCS>,
     ) -> Result<Vec<AssignedNative<S::F>>, Error> {
         self.scalar_chip.as_public_input(layouter, &assigned_vk.transcript_repr)
     }
@@ -98,10 +100,10 @@ impl<S: SelfEmulation> PublicInputInstructions<S::F, AssignedVk<S>> for Verifier
     fn constrain_as_public_input(
         &self,
         _layouter: &mut impl Layouter<S::F>,
-        _assigned_vk: &AssignedVk<S>,
+        _assigned_vk: &AssignedVk<S, PCS>,
     ) -> Result<(), Error> {
         unimplemented!(
-            "We intend [assign_vk_as_public_input] to be the only entry point 
+            "We intend [assign_vk_as_public_input] to be the only entry point
              for assigned verifying keys."
         )
     }
@@ -110,7 +112,7 @@ impl<S: SelfEmulation> PublicInputInstructions<S::F, AssignedVk<S>> for Verifier
         &self,
         _layouter: &mut impl Layouter<S::F>,
         _value: Value<VerifyingKey<S>>,
-    ) -> Result<AssignedVk<S>, Error> {
+    ) -> Result<AssignedVk<S, PCS>, Error> {
         unimplemented!(
             "We intend [assign_vk_as_public_input] to be the only entry point
             for assigned verifying keys. (Note that its signature is more complex
@@ -226,13 +228,13 @@ impl<S: SelfEmulation> VerifierGadget<S> {
 impl<S: SelfEmulation> VerifierGadget<S> {
     /// Assigns a verifying key as a public input. All the necessary information
     /// is required off-circuit, except for the `transcript_repr` value.
-    pub fn assign_vk_as_public_input(
+    pub fn assign_vk_as_public_input<PCS: InCircuitPCS<S>>(
         &self,
         layouter: &mut impl Layouter<S::F>,
         domain: &EvaluationDomain<S::F>,
         cs: &ConstraintSystem<S::F>,
         transcript_repr_value: Value<S::F>,
-    ) -> Result<AssignedVk<S>, Error> {
+    ) -> Result<AssignedVk<S, PCS>, Error> {
         let transcript_repr: AssignedNative<S::F> =
             self.scalar_chip.assign_as_public_input(layouter, transcript_repr_value)?;
 
@@ -247,11 +249,11 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         };
 
         let fixed_commitments = (0..cs.num_fixed_columns() + cs.num_selectors())
-            .map(|i| AssignedKZGCommitment::fixed(PolynomialLabel::Fixed(i)))
+            .map(|i| PCS::fixed_commitment(PolynomialLabel::Fixed(i)))
             .collect();
 
         let perm_commitments = (0..cs.permutation().columns.len())
-            .map(|i| AssignedKZGCommitment::fixed(PolynomialLabel::PermutationFixed(i)))
+            .map(|i| PCS::fixed_commitment(PolynomialLabel::PermutationFixed(i)))
             .collect();
 
         let assigned_vk = AssignedVk {
@@ -269,21 +271,21 @@ impl<S: SelfEmulation> VerifierGadget<S> {
     /// Assigns a verifying key as a constant. All the necessary information is
     /// available off-circuit, except for the `transcript_repr` which is
     /// "assigned fixed".
-    pub fn assign_fixed_vk(
+    pub fn assign_fixed_vk<PCS: InCircuitPCS<S>>(
         &self,
         layouter: &mut impl Layouter<S::F>,
         domain: &EvaluationDomain<S::F>,
         cs: &ConstraintSystem<S::F>,
         transcript_repr_constant: S::F,
-    ) -> Result<AssignedVk<S>, Error> {
+    ) -> Result<AssignedVk<S, PCS>, Error> {
         let transcript_repr = self.scalar_chip.assign_fixed(layouter, transcript_repr_constant)?;
 
         let fixed_commitments = (0..cs.num_fixed_columns() + cs.num_selectors())
-            .map(|i| AssignedKZGCommitment::fixed(PolynomialLabel::Fixed(i)))
+            .map(|i| PCS::fixed_commitment(PolynomialLabel::Fixed(i)))
             .collect();
 
         let perm_commitments = (0..cs.permutation().columns.len())
-            .map(|i| AssignedKZGCommitment::fixed(PolynomialLabel::PermutationFixed(i)))
+            .map(|i| PCS::fixed_commitment(PolynomialLabel::PermutationFixed(i)))
             .collect();
 
         let assigned_vk = AssignedVk {
@@ -312,14 +314,14 @@ impl<S: SelfEmulation> VerifierGadget<S> {
     /// constraints](crate::verifier::VerifierGadget::verify_algebraic_constraints),
     /// and the resulting accumulator satisfies the
     /// [invariant](crate::verifier::Accumulator::check).
-    pub fn parse_trace(
+    pub fn parse_trace<PCS: InCircuitPCS<S>>(
         &self,
         layouter: &mut impl Layouter<S::F>,
-        assigned_vk: &AssignedVk<S>,
-        assigned_committed_instances: &[AssignedKZGCommitment<S>],
+        assigned_vk: &AssignedVk<S, PCS>,
+        assigned_committed_instances: &[PCS::AssignedCommitment],
         assigned_instances: &[&[AssignedNative<S::F>]],
         proof: Value<Vec<u8>>,
-    ) -> Result<(VerifierTrace<S>, TranscriptGadget<S>), Error> {
+    ) -> Result<(VerifierTrace<S, PCS>, TranscriptGadget<S>), Error> {
         let cs = &assigned_vk.cs;
 
         // Check that instances matches the expected number of instance columns
@@ -338,7 +340,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
 
         assigned_committed_instances
             .iter()
-            .try_for_each(|com| transcript.common_commitment(layouter, com))?;
+            .try_for_each(|com| PCS::common_commitment(&mut transcript, layouter, com))?;
 
         for instance in assigned_instances {
             let n = self.scalar_chip.assign_fixed(layouter, (instance.len() as u64).into())?;
@@ -350,8 +352,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         // challenges
         let advice_commitments = (0..cs.num_advice_columns())
             .map(|i| {
-                transcript
-                    .read_commitment(layouter)
+                PCS::read_commitment(&mut transcript, layouter)
                     .map(|c| c.label(PolynomialLabel::Advice(i)))
             })
             .collect::<Result<Vec<_>, Error>>()?;
@@ -431,16 +432,16 @@ impl<S: SelfEmulation> VerifierGadget<S> {
     /// polynomial is expected to open to `expected_eval` at `x`.
     #[allow(clippy::too_many_arguments)]
     #[allow(clippy::type_complexity)]
-    fn compute_linearization_commitment<'com>(
+    fn compute_linearization_commitment<'com, PCS: InCircuitPCS<S>>(
         layouter: &mut impl Layouter<S::F>,
         scalar_chip: &S::ScalarChip,
         expressions: Vec<(Option<usize>, AssignedNative<S::F>)>,
-        vk: &'com AssignedVk<S>,
+        vk: &'com AssignedVk<S, PCS>,
         y: AssignedNative<S::F>,
         xn: AssignedNative<S::F>,
         splitting_factor: AssignedNative<S::F>,
-        quotient_limb_commitments: &'com [AssignedKZGCommitment<S>],
-    ) -> Result<(AssignedKZGCommitment<S>, AssignedNative<S::F>), Error> {
+        quotient_limb_commitments: &'com [PCS::AssignedCommitment],
+    ) -> Result<(PCS::AssignedCommitment, AssignedNative<S::F>), Error> {
         let zero: AssignedNative<S::F> = scalar_chip.assign_fixed(layouter, S::F::ZERO)?;
         let one: AssignedNative<S::F> = scalar_chip.assign_fixed(layouter, S::F::ONE)?;
 
@@ -506,12 +507,12 @@ impl<S: SelfEmulation> VerifierGadget<S> {
     /// The proof is considered to be valid if the resulting accumulator
     /// satisfies the [invariant](crate::verifier::Accumulator::check)
     /// with respect to the relevant `tau_in_g2`.
-    pub fn verify_algebraic_constraints(
+    pub fn verify_algebraic_constraints<PCS: InCircuitPCS<S>>(
         &self,
         layouter: &mut impl Layouter<S::F>,
-        assigned_vk: &AssignedVk<S>,
-        trace: VerifierTrace<S>,
-        assigned_committed_instances: &[AssignedKZGCommitment<S>],
+        assigned_vk: &AssignedVk<S, PCS>,
+        trace: VerifierTrace<S, PCS>,
+        assigned_committed_instances: &[PCS::AssignedCommitment],
         assigned_instances: &[&[AssignedNative<S::F>]],
         mut transcript: TranscriptGadget<S>,
     ) -> Result<AssignedAccumulator<S>, Error> {
@@ -541,7 +542,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         let nb_quotient_coms = 1;
         let limb_commitments = {
             let raw = (0..nb_quotient_coms)
-                .map(|_| transcript.read_commitment(layouter))
+                .map(|_| PCS::read_commitment(&mut transcript, layouter))
                 .collect::<Result<Vec<_>, Error>>()?;
             #[cfg(not(feature = "single-h-commitment"))]
             let labeled = raw
@@ -784,7 +785,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         let queries = iter::empty()
             .chain(
                 cs.advice_queries().iter().enumerate().map(|(query_index, &(column, rot))| {
-                    VerifierQuery::<S>::new(
+                    VerifierQuery::<S, PCS>::new(
                         get_point(&rot),
                         &advice_commitments[column.index()],
                         &advice_evals[query_index],
@@ -794,7 +795,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             .chain(cs.instance_queries().iter().enumerate().filter_map(
                 |(query_index, &(column, rot))| {
                     if column.index() < nb_committed_instances {
-                        Some(VerifierQuery::<S>::new(
+                        Some(VerifierQuery::<S, PCS>::new(
                             get_point(&rot),
                             &assigned_committed_instances[column.index()],
                             &instance_evals[query_index],
@@ -835,9 +836,8 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         // We are now convinced the circuit is satisfied so long as the
         // polynomial commitments open to the correct values, which is true as long
         // as the following accumulator passes the invariant.
-        kzg::multi_prepare::<S>(
+        PCS::multi_prepare(
             layouter,
-            #[cfg(feature = "truncated-challenges")]
             &self.curve_chip,
             &self.scalar_chip,
             &mut transcript,
@@ -853,11 +853,11 @@ impl<S: SelfEmulation> VerifierGadget<S> {
     /// The proof is considered to be valid if the resulting accumulator
     /// satisfies the [invariant](crate::verifier::Accumulator::check)
     /// with respect to the relevant `tau_in_g2`.
-    pub fn prepare(
+    pub fn prepare<PCS: InCircuitPCS<S>>(
         &self,
         layouter: &mut impl Layouter<S::F>,
-        assigned_vk: &AssignedVk<S>,
-        assigned_committed_instances: &[AssignedKZGCommitment<S>],
+        assigned_vk: &AssignedVk<S, PCS>,
+        assigned_committed_instances: &[PCS::AssignedCommitment],
         assigned_instances: &[&[AssignedNative<S::F>]],
         proof: Value<Vec<u8>>,
     ) -> Result<AssignedAccumulator<S>, Error> {
@@ -924,7 +924,9 @@ pub(crate) mod tests {
         },
         testing_utils::FromScratch,
         types::{ComposableChip, Instantiable},
-        verifier::{accumulator::Accumulator, BlstrsEmulation},
+        verifier::{
+            accumulator::Accumulator, AssignedKZGCommitment, BlstrsEmulation, InCircuitKZG,
+        },
     };
 
     type S = BlstrsEmulation;
@@ -1090,12 +1092,13 @@ pub(crate) mod tests {
             let verifier_chip =
                 VerifierGadget::<S>::new(&curve_chip, &native_gadget, &poseidon_chip);
 
-            let assigned_inner_vk: AssignedVk<S> = verifier_chip.assign_vk_as_public_input(
-                &mut layouter,
-                &self.inner_vk.0,
-                &self.inner_vk.1,
-                self.inner_vk.2,
-            )?;
+            let assigned_inner_vk: AssignedVk<S, InCircuitKZG<S>> = verifier_chip
+                .assign_vk_as_public_input(
+                    &mut layouter,
+                    &self.inner_vk.0,
+                    &self.inner_vk.1,
+                    self.inner_vk.2,
+                )?;
 
             let assigned_committed_instance = AssignedKZGCommitment::assign(
                 &mut layouter,
@@ -1195,7 +1198,7 @@ pub(crate) mod tests {
         // The inner proof is ready.
         // Now, let us make a proof that we know an inner proof.
 
-        let mut public_inputs = AssignedVk::<S>::as_public_input(&inner_vk);
+        let mut public_inputs = AssignedVk::<S, InCircuitKZG<S>>::as_public_input(&inner_vk);
         public_inputs.extend(AssignedAccumulator::as_public_input(&inner_acc));
 
         let circuit = TestCircuit {
