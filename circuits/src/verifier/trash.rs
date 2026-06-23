@@ -25,7 +25,7 @@ use midnight_proofs::{
 use crate::{
     field::AssignedNative,
     verifier::{
-        kzg::{AssignedKZGCommitment, VerifierQuery},
+        pcs::{InCircuitPCS, VerifierQuery},
         transcript_gadget::TranscriptGadget,
         SelfEmulation,
     },
@@ -37,34 +37,33 @@ pub(crate) struct TrashEvaluated<S: SelfEmulation> {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct Committed<S: SelfEmulation> {
-    trash_commitment: AssignedKZGCommitment<S>,
+pub(crate) struct Committed<S: SelfEmulation, PCS: InCircuitPCS<S>> {
+    trash_commitment: PCS::AssignedCommitment,
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct Evaluated<S: SelfEmulation> {
-    committed: Committed<S>,
+pub(crate) struct Evaluated<S: SelfEmulation, PCS: InCircuitPCS<S>> {
+    committed: Committed<S, PCS>,
     pub(crate) evaluated: TrashEvaluated<S>,
 }
 
-pub(crate) fn read_committed<S: SelfEmulation>(
+pub(crate) fn read_committed<S: SelfEmulation, PCS: InCircuitPCS<S>>(
     argument_name: &str,
     layouter: &mut impl Layouter<S::F>,
     transcript_gadget: &mut TranscriptGadget<S>,
-) -> Result<Committed<S>, Error> {
-    let trash_commitment = transcript_gadget
-        .read_commitment(layouter)
+) -> Result<Committed<S, PCS>, Error> {
+    let trash_commitment = PCS::read_commitment(transcript_gadget, layouter)
         .map(|c| c.label(PolynomialLabel::Trash(argument_name.to_owned())))?;
 
     Ok(Committed { trash_commitment })
 }
 
-impl<S: SelfEmulation> Committed<S> {
+impl<S: SelfEmulation, PCS: InCircuitPCS<S>> Committed<S, PCS> {
     pub(crate) fn evaluate(
         self,
         layouter: &mut impl Layouter<S::F>,
         transcript_gadget: &mut TranscriptGadget<S>,
-    ) -> Result<Evaluated<S>, Error> {
+    ) -> Result<Evaluated<S, PCS>, Error> {
         let trash_eval = transcript_gadget.read_scalar(layouter)?;
 
         Ok(Evaluated {
@@ -76,11 +75,11 @@ impl<S: SelfEmulation> Committed<S> {
 
 // "expressions" is implemented in `expressions/trash.rs`
 
-impl<'a, S: SelfEmulation> Evaluated<S> {
+impl<'a, S: SelfEmulation, PCS: InCircuitPCS<S>> Evaluated<S, PCS> {
     pub(crate) fn queries(
         &'a self,
         x: &AssignedNative<S::F>, // evaluation point x
-    ) -> Vec<VerifierQuery<'a, S>> {
+    ) -> Vec<VerifierQuery<'a, S, PCS>> {
         vec![VerifierQuery::new(
             x,
             &self.committed.trash_commitment,

@@ -25,7 +25,7 @@ use midnight_proofs::{
 use crate::{
     field::AssignedNative,
     verifier::{
-        kzg::{AssignedKZGCommitment, VerifierQuery},
+        pcs::{InCircuitPCS, VerifierQuery},
         transcript_gadget::TranscriptGadget,
         SelfEmulation,
     },
@@ -33,8 +33,8 @@ use crate::{
 
 /// Commitment to the multiplicity columns, read from the transcript.
 #[derive(Clone, Debug)]
-pub(crate) struct CommittedMultiplicities<S: SelfEmulation> {
-    multiplicities: AssignedKZGCommitment<S>,
+pub(crate) struct CommittedMultiplicities<S: SelfEmulation, PCS: InCircuitPCS<S>> {
+    multiplicities: PCS::AssignedCommitment,
 }
 
 #[derive(Clone, Debug)]
@@ -47,49 +47,45 @@ pub(crate) struct LookupEvaluated<S: SelfEmulation> {
 
 /// Commitments to the LogUp polynomials, read from the transcript.
 #[derive(Clone, Debug)]
-pub(crate) struct Committed<S: SelfEmulation> {
-    multiplicities: AssignedKZGCommitment<S>,
-    helper_polys: Vec<AssignedKZGCommitment<S>>,
-    accumulator: AssignedKZGCommitment<S>,
+pub(crate) struct Committed<S: SelfEmulation, PCS: InCircuitPCS<S>> {
+    multiplicities: PCS::AssignedCommitment,
+    helper_polys: Vec<PCS::AssignedCommitment>,
+    accumulator: PCS::AssignedCommitment,
 }
 
 /// Commitments plus evaluations at challenge point.
 #[derive(Clone, Debug)]
-pub(crate) struct Evaluated<S: SelfEmulation> {
-    committed: Committed<S>,
+pub(crate) struct Evaluated<S: SelfEmulation, PCS: InCircuitPCS<S>> {
+    committed: Committed<S, PCS>,
     pub(crate) evaluated: LookupEvaluated<S>,
 }
 
 /// Reads the prover's multiplicities commitment from the transcript.
-pub(crate) fn read_multiplicities<S: SelfEmulation>(
+pub(crate) fn read_multiplicities<S: SelfEmulation, PCS: InCircuitPCS<S>>(
     name: &str,
     layouter: &mut impl Layouter<S::F>,
     transcript_gadget: &mut TranscriptGadget<S>,
-) -> Result<CommittedMultiplicities<S>, Error> {
-    let multiplicities =
-        transcript_gadget.read_commitment(layouter).map(|c: AssignedKZGCommitment<S>| {
-            c.label(PolynomialLabel::LogupMultiplicities(name.to_owned()))
-        })?;
+) -> Result<CommittedMultiplicities<S, PCS>, Error> {
+    let multiplicities = PCS::read_commitment(transcript_gadget, layouter)
+        .map(|c| c.label(PolynomialLabel::LogupMultiplicities(name.to_owned())))?;
     Ok(CommittedMultiplicities { multiplicities })
 }
 
-impl<S: SelfEmulation> CommittedMultiplicities<S> {
+impl<S: SelfEmulation, PCS: InCircuitPCS<S>> CommittedMultiplicities<S, PCS> {
     pub(crate) fn read_commitment(
         self,
         name: &str,
         nb_flattened: usize,
         layouter: &mut impl Layouter<S::F>,
         transcript_gadget: &mut TranscriptGadget<S>,
-    ) -> Result<Committed<S>, Error> {
+    ) -> Result<Committed<S, PCS>, Error> {
         let helper_polys = (0..nb_flattened)
             .map(|_| {
-                transcript_gadget
-                    .read_commitment(layouter)
+                PCS::read_commitment(transcript_gadget, layouter)
                     .map(|c| c.label(PolynomialLabel::LogupHelper(name.to_owned())))
             })
             .collect::<Result<Vec<_>, Error>>()?;
-        let accumulator = transcript_gadget
-            .read_commitment(layouter)
+        let accumulator = PCS::read_commitment(transcript_gadget, layouter)
             .map(|c| c.label(PolynomialLabel::LogupAggregator(name.to_owned())))?;
 
         Ok(Committed {
@@ -100,12 +96,12 @@ impl<S: SelfEmulation> CommittedMultiplicities<S> {
     }
 }
 
-impl<S: SelfEmulation> Committed<S> {
+impl<S: SelfEmulation, PCS: InCircuitPCS<S>> Committed<S, PCS> {
     pub(crate) fn evaluate(
         self,
         layouter: &mut impl Layouter<S::F>,
         transcript_gadget: &mut TranscriptGadget<S>,
-    ) -> Result<Evaluated<S>, Error> {
+    ) -> Result<Evaluated<S, PCS>, Error> {
         let nb_flattened = self.helper_polys.len();
         let multiplicities_eval = transcript_gadget.read_scalar(layouter)?;
         let helper_evals = (0..nb_flattened)
@@ -128,12 +124,12 @@ impl<S: SelfEmulation> Committed<S> {
 
 // "expressions" is implemented in `expressions/lookup.rs`
 
-impl<'a, S: SelfEmulation> Evaluated<S> {
+impl<'a, S: SelfEmulation, PCS: InCircuitPCS<S>> Evaluated<S, PCS> {
     pub(crate) fn queries(
         &'a self,
         x: &AssignedNative<S::F>,      // evaluation point x
         x_next: &AssignedNative<S::F>, // ωx
-    ) -> Vec<VerifierQuery<'a, S>> {
+    ) -> Vec<VerifierQuery<'a, S, PCS>> {
         let mut queries = vec![
             // Open lookup product commitment at x
             VerifierQuery::new(
