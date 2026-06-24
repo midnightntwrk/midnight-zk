@@ -386,7 +386,7 @@ where
             // Collapse all MSMs before combining with x4 powers, to match the
             // in-circuit verifier. Skip the first one since its x4 power is 1.
             #[cfg(feature = "truncated-challenges")]
-            coms.iter_mut().skip(1).for_each(|c| c.collapse());
+            coms.iter_mut().skip(1).for_each(|c| c.collapse(PolynomialLabel::NoLabel));
             coms.push(f_com);
 
             #[cfg(feature = "truncated-challenges")]
