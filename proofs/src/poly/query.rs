@@ -19,18 +19,18 @@ pub enum PolynomialLabel {
     PermutationFixed(usize),
     /// Permutation accumulator polynomial z(X) (chain index).
     PermutationAccumulator(usize),
-    /// LogUp helper polynomial h_j(X) = 1/(f_j(X) + β), for a named argument.
-    LogupHelper(String),
-    /// LogUp multiplicities polynomial m(X), for a named argument.
-    LogupMultiplicities(String),
-    /// LogUp accumulator polynomial Z(X), for a named argument.
-    LogupAggregator(String),
+    /// LogUp helper polynomial h_j(X) = 1/(f_j(X) + β) (argument index).
+    LogupHelper(usize),
+    /// LogUp multiplicities polynomial m(X) (argument index).
+    LogupMultiplicities(usize),
+    /// LogUp accumulator polynomial Z(X) (argument index).
+    LogupAggregator(usize),
     /// PLONK quotient polynomial h(X), committed as a single piece.
     Quotient,
     /// PLONK quotient polynomial h(X), committed in pieces (piece index).
     QuotientPiece(usize),
-    /// Trash compressed polynomial, for a named argument.
-    Trash(String),
+    /// Trash compressed polynomial (argument index).
+    Trash(usize),
     /// A commitment obtained by collapsing an MSM.
     Collapsed,
     /// User-defined label.
@@ -49,10 +49,10 @@ impl fmt::Display for PolynomialLabel {
             Self::CommittedInstance(i) => write!(f, "committed_instance_{i}"),
             Self::PermutationFixed(i) => write!(f, "perm_fixed_{i}"),
             Self::PermutationAccumulator(i) => write!(f, "perm_acc_{i}"),
-            Self::LogupHelper(name) => write!(f, "logup_helper({name})"),
-            Self::LogupMultiplicities(name) => write!(f, "logup_multiplicities({name})"),
-            Self::LogupAggregator(name) => write!(f, "logup_aggregator({name})"),
-            Self::Trash(name) => write!(f, "trash({name})"),
+            Self::LogupHelper(i) => write!(f, "logup_helper({i})"),
+            Self::LogupMultiplicities(i) => write!(f, "logup_multiplicities({i})"),
+            Self::LogupAggregator(i) => write!(f, "logup_aggregator({i})"),
+            Self::Trash(i) => write!(f, "trash({i})"),
             Self::Quotient => f.write_str("quotient"),
             Self::QuotientPiece(i) => write!(f, "quotient_piece_{i}"),
             Self::Collapsed => f.write_str("collapsed"),

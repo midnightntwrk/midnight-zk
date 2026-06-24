@@ -48,12 +48,12 @@ pub(crate) struct Evaluated<S: SelfEmulation, PCS: InCircuitPCS<S>> {
 }
 
 pub(crate) fn read_committed<S: SelfEmulation, PCS: InCircuitPCS<S>>(
-    argument_name: &str,
+    argument_index: usize,
     layouter: &mut impl Layouter<S::F>,
     transcript_gadget: &mut TranscriptGadget<S>,
 ) -> Result<Committed<S, PCS>, Error> {
     let trash_commitment = PCS::read_commitment(transcript_gadget, layouter)
-        .map(|c| c.label(PolynomialLabel::Trash(argument_name.to_owned())))?;
+        .map(|c| c.label(PolynomialLabel::Trash(argument_index)))?;
 
     Ok(Committed { trash_commitment })
 }

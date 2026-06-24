@@ -62,19 +62,19 @@ pub(crate) struct Evaluated<S: SelfEmulation, PCS: InCircuitPCS<S>> {
 
 /// Reads the prover's multiplicities commitment from the transcript.
 pub(crate) fn read_multiplicities<S: SelfEmulation, PCS: InCircuitPCS<S>>(
-    name: &str,
+    argument_index: usize,
     layouter: &mut impl Layouter<S::F>,
     transcript_gadget: &mut TranscriptGadget<S>,
 ) -> Result<CommittedMultiplicities<S, PCS>, Error> {
     let multiplicities = PCS::read_commitment(transcript_gadget, layouter)
-        .map(|c| c.label(PolynomialLabel::LogupMultiplicities(name.to_owned())))?;
+        .map(|c| c.label(PolynomialLabel::LogupMultiplicities(argument_index)))?;
     Ok(CommittedMultiplicities { multiplicities })
 }
 
 impl<S: SelfEmulation, PCS: InCircuitPCS<S>> CommittedMultiplicities<S, PCS> {
     pub(crate) fn read_commitment(
         self,
-        name: &str,
+        argument_index: usize,
         nb_flattened: usize,
         layouter: &mut impl Layouter<S::F>,
         transcript_gadget: &mut TranscriptGadget<S>,
@@ -82,11 +82,11 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> CommittedMultiplicities<S, PCS> {
         let helper_polys = (0..nb_flattened)
             .map(|_| {
                 PCS::read_commitment(transcript_gadget, layouter)
-                    .map(|c| c.label(PolynomialLabel::LogupHelper(name.to_owned())))
+                    .map(|c| c.label(PolynomialLabel::LogupHelper(argument_index)))
             })
             .collect::<Result<Vec<_>, Error>>()?;
         let accumulator = PCS::read_commitment(transcript_gadget, layouter)
-            .map(|c| c.label(PolynomialLabel::LogupAggregator(name.to_owned())))?;
+            .map(|c| c.label(PolynomialLabel::LogupAggregator(argument_index)))?;
 
         Ok(Committed {
             multiplicities: self.multiplicities,

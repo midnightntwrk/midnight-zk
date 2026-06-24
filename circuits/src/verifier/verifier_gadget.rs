@@ -363,7 +363,8 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         let multiplicities_committed = cs
             .lookups()
             .iter()
-            .map(|l| lookup::read_multiplicities(l.name(), layouter, &mut transcript))
+            .enumerate()
+            .map(|(i, _l)| lookup::read_multiplicities(i, layouter, &mut transcript))
             .collect::<Result<Vec<_>, Error>>()?;
 
         let beta = transcript.squeeze_challenge(layouter)?;
@@ -376,10 +377,11 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         let lookups_committed = multiplicities_committed
             .into_iter()
             .zip(cs.lookups().iter())
-            .map(|(m, batch)| {
+            .enumerate()
+            .map(|(i, (m, batch))| {
                 let nb_flat = batch.num_chunks(assigned_vk.cs_degree);
                 // Hash each lookup product commitment
-                m.read_commitment(batch.name(), nb_flat, layouter, &mut transcript)
+                m.read_commitment(i, nb_flat, layouter, &mut transcript)
             })
             .collect::<Result<Vec<_>, _>>()?;
 
@@ -388,7 +390,8 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         let trashcans_committed = cs
             .trashcans()
             .iter()
-            .map(|argument| trash::read_committed(argument.name(), layouter, &mut transcript))
+            .enumerate()
+            .map(|(i, _argument)| trash::read_committed(i, layouter, &mut transcript))
             .collect::<Result<Vec<_>, _>>()?;
 
         // Sample y challenge, which keeps the gates linearly independent
