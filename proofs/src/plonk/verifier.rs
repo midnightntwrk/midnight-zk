@@ -304,6 +304,7 @@ where
                 VerifierQuery::new(
                     vk.domain.rotate_omega(x, at),
                     &advice_commitments[column.index()],
+                    PolynomialLabel::Advice(column.index()),
                     advice_evals[query_index],
                 )
             }),
@@ -314,6 +315,7 @@ where
                     Some(VerifierQuery::new(
                         vk.domain.rotate_omega(x, at),
                         &committed_instances[column.index()],
+                        PolynomialLabel::CommittedInstance(column.index()),
                         instance_evals[query_index],
                     ))
                 } else {
@@ -335,12 +337,18 @@ where
                     VerifierQuery::new(
                         vk.domain.rotate_omega(x, at),
                         &vk.fixed_commitments[column.index()],
+                        PolynomialLabel::Fixed(column.index()),
                         fixed_evals[query_index],
                     )
                 }),
         )
         .chain(permutations_common.queries(&vk.permutation, x))
-        .chain(iter::once(VerifierQuery::new(x, &lin_commitment, lin_eval)))
+        .chain(iter::once(VerifierQuery::new(
+            x,
+            &lin_commitment,
+            PolynomialLabel::Linearization,
+            lin_eval,
+        )))
         .collect::<Vec<_>>();
 
     // We are now convinced the circuit is satisfied so long as the

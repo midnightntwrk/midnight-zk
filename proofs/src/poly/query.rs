@@ -19,8 +19,9 @@ pub enum PolynomialLabel {
     PermutationFixed(usize),
     /// Permutation accumulator polynomial z(X) (chain index).
     PermutationAccumulator(usize),
-    /// LogUp helper polynomial h_j(X) = 1/(f_j(X) + β) (argument index).
-    LogupHelper(usize),
+    /// LogUp helper polynomial h_j(X) = 1/(f_j(X) + β)
+    /// (argument index, chunk index `j`).
+    LogupHelper(usize, usize),
     /// LogUp multiplicities polynomial m(X) (argument index).
     LogupMultiplicities(usize),
     /// LogUp accumulator polynomial Z(X) (argument index).
@@ -50,7 +51,7 @@ impl fmt::Display for PolynomialLabel {
             Self::CommittedInstance(i) => write!(f, "committed_instance_{i}"),
             Self::PermutationFixed(i) => write!(f, "perm_fixed_{i}"),
             Self::PermutationAccumulator(i) => write!(f, "perm_acc_{i}"),
-            Self::LogupHelper(i) => write!(f, "logup_helper({i})"),
+            Self::LogupHelper(i, j) => write!(f, "logup_helper({i}, {j})"),
             Self::LogupMultiplicities(i) => write!(f, "logup_multiplicities({i})"),
             Self::LogupAggregator(i) => write!(f, "logup_aggregator({i})"),
             Self::Trash(i) => write!(f, "trash({i})"),
@@ -64,23 +65,26 @@ impl fmt::Display for PolynomialLabel {
 }
 
 /// A polynomial query at a point
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct ProverQuery<'com, F: PrimeField> {
     /// Point at which polynomial is queried
     pub(crate) point: F,
     /// Reference to a polynomial
     pub(crate) poly_ref: PolynomialReference<'com, F>,
+    /// Label identifying the queried polynomial.
+    pub(crate) label: PolynomialLabel,
 }
 
 impl<'com, F> ProverQuery<'com, F>
 where
     F: PrimeField,
 {
-    /// Create a new prover query based on a polynomial
-    pub fn new(point: F, poly: &'com Polynomial<F, Coeff>) -> Self {
+    /// Create a new prover query based on a polynomial and its label.
+    pub fn new(point: F, poly: &'com Polynomial<F, Coeff>, label: PolynomialLabel) -> Self {
         ProverQuery {
             point,
             poly_ref: PolynomialReference(poly),
+            label,
         }
     }
 }
@@ -125,8 +129,10 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> PartialEq
 pub struct VerifierQuery<'com, F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
     /// Point at which polynomial is queried.
     pub(crate) point: F,
-    /// Commitment to polynomial.
+    /// Commitment containing the queried polynomial.
     pub(crate) commitment_ref: CommitmentReference<'com, F, CS>,
+    /// Label identifying which polynomial within the commitment is queried.
+    pub(crate) label: PolynomialLabel,
     /// Evaluation of polynomial at query point.
     pub(crate) eval: F,
 }
@@ -137,10 +143,16 @@ where
     CS: PolynomialCommitmentScheme<F>,
 {
     /// Create a new verifier query.
-    pub fn new(point: F, commitment: &'com CS::Commitment, eval: F) -> Self {
+    pub fn new(
+        point: F,
+        commitment: &'com CS::Commitment,
+        label: PolynomialLabel,
+        eval: F,
+    ) -> Self {
         VerifierQuery {
             point,
             commitment_ref: CommitmentReference(commitment),
+            label,
             eval,
         }
     }

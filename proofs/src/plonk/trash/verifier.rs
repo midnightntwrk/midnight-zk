@@ -12,6 +12,7 @@ use crate::{
 
 #[derive(Debug)]
 pub struct Committed<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
+    argument_index: usize,
     trash_commitment: CS::Commitment,
 }
 
@@ -33,7 +34,10 @@ impl<F: PrimeField> Argument<F> {
         let trash_commitment = transcript
             .read()
             .map(|c: CS::Commitment| c.label(PolynomialLabel::Trash(argument_index)))?;
-        Ok(Committed { trash_commitment })
+        Ok(Committed {
+            argument_index,
+            trash_commitment,
+        })
     }
 }
 
@@ -59,6 +63,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
         vec![VerifierQuery::new(
             x,
             &self.committed.trash_commitment,
+            PolynomialLabel::Trash(self.committed.argument_index),
             self.evaluated.trash_eval,
         )]
         .into_iter()

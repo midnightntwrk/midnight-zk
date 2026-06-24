@@ -198,12 +198,13 @@ where
                 .map(|c| {
                     c.helper_polys_lagrange
                         .par_iter()
-                        .map(|h| {
+                        .enumerate()
+                        .map(|(j, h)| {
                             let h_poly = domain.lagrange_from_vec(h.clone());
                             CS::commit(
                                 params,
                                 &h_poly,
-                                PolynomialLabel::LogupHelper(c.argument_index),
+                                PolynomialLabel::LogupHelper(c.argument_index, j),
                             )
                         })
                         .collect()
@@ -233,6 +234,7 @@ where
                 .map(|h| domain.lagrange_to_coeff(domain.lagrange_from_vec(h)))
                 .collect();
             logup::prover::Committed {
+                argument_index: c.argument_index,
                 multiplicities: domain.lagrange_to_coeff(c.multiplicities),
                 helper_polys,
                 aggregator_poly: domain.lagrange_to_coeff(c.aggregator_poly),
@@ -884,7 +886,11 @@ pub(super) fn compute_queries<
     let domain = pk.vk.get_domain();
     iter::empty()
         .chain(pk.vk.cs.advice_queries.iter().map(move |&(column, at)| {
-            ProverQuery::new(domain.rotate_omega(x, at), &advice_polys[column.index()])
+            ProverQuery::new(
+                domain.rotate_omega(x, at),
+                &advice_polys[column.index()],
+                PolynomialLabel::Advice(column.index()),
+            )
         }))
         .chain(
             pk.vk.cs.instance_queries.iter().filter_map(move |&(column, at)| {
@@ -892,6 +898,7 @@ pub(super) fn compute_queries<
                     Some(ProverQuery::new(
                         domain.rotate_omega(x, at),
                         &instance_polys[column.index()],
+                        PolynomialLabel::CommittedInstance(column.index()),
                     ))
                 } else {
                     None
@@ -909,13 +916,18 @@ pub(super) fn compute_queries<
                 // Filter out queries for simple, multiplicative selectors
                 .filter(|(col, _)| !pk.vk.cs.has_simple_selector_col(col.index()))
                 .map(|&(column, at)| {
-                    ProverQuery::new(domain.rotate_omega(x, at), &pk.fixed_polys[column.index()])
+                    ProverQuery::new(
+                        domain.rotate_omega(x, at),
+                        &pk.fixed_polys[column.index()],
+                        PolynomialLabel::Fixed(column.index()),
+                    )
                 }),
         )
         .chain(pk.permutation.open(x))
         .chain(iter::once(ProverQuery::new(
             domain.rotate_omega(x, Rotation::cur()),
             lin_poly_non_constant_part,
+            PolynomialLabel::Linearization,
         )))
         .collect()
 }

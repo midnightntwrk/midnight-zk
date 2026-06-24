@@ -122,11 +122,13 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
             queries.push(VerifierQuery::new(
                 x,
                 &product_coms[i],
+                PolynomialLabel::PermutationAccumulator(i),
                 set.permutation_product_eval,
             ));
             queries.push(VerifierQuery::new(
                 x_next,
                 &product_coms[i],
+                PolynomialLabel::PermutationAccumulator(i),
                 set.permutation_product_next_eval,
             ));
         }
@@ -135,6 +137,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
             queries.push(VerifierQuery::new(
                 x_last,
                 &product_coms[i],
+                PolynomialLabel::PermutationAccumulator(i),
                 set.permutation_product_last_eval.unwrap(),
             ));
         }
@@ -152,6 +155,9 @@ impl<F: PrimeField> CommonEvaluated<F> {
         vkey.commitments
             .iter()
             .zip(evals)
-            .map(move |(commitment, eval)| VerifierQuery::new(x, commitment, eval))
+            .enumerate()
+            .map(move |(i, (commitment, eval))| {
+                VerifierQuery::new(x, commitment, PolynomialLabel::PermutationFixed(i), eval)
+            })
     }
 }

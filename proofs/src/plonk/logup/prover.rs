@@ -43,6 +43,7 @@ use crate::{
 #[cfg_attr(feature = "bench-internal", derive(Clone))]
 #[derive(Debug)]
 pub(crate) struct Committed<F: PrimeField> {
+    pub(crate) argument_index: usize,
     pub(crate) multiplicities: Polynomial<F, Coeff>,
     pub(crate) helper_polys: Vec<Polynomial<F, Coeff>>,
     pub(crate) aggregator_poly: Polynomial<F, Coeff>,
@@ -359,15 +360,32 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluated<F> {
         x: F,
     ) -> impl Iterator<Item = ProverQuery<'a, F>> + Clone {
         let x_next = pk.vk.domain.rotate_omega(x, Rotation::next());
+        let arg = self.constructed.argument_index;
 
-        let m_query = iter::once(ProverQuery::new(x, &self.constructed.multiplicities));
+        let m_query = iter::once(ProverQuery::new(
+            x,
+            &self.constructed.multiplicities,
+            PolynomialLabel::LogupMultiplicities(arg),
+        ));
 
-        let helper_queries =
-            self.constructed.helper_polys.iter().map(move |h| ProverQuery::new(x, h));
+        let helper_queries = self
+            .constructed
+            .helper_polys
+            .iter()
+            .enumerate()
+            .map(move |(j, h)| ProverQuery::new(x, h, PolynomialLabel::LogupHelper(arg, j)));
 
         let z_queries = [
-            ProverQuery::new(x, &self.constructed.aggregator_poly),
-            ProverQuery::new(x_next, &self.constructed.aggregator_poly),
+            ProverQuery::new(
+                x,
+                &self.constructed.aggregator_poly,
+                PolynomialLabel::LogupAggregator(arg),
+            ),
+            ProverQuery::new(
+                x_next,
+                &self.constructed.aggregator_poly,
+                PolynomialLabel::LogupAggregator(arg),
+            ),
         ];
 
         m_query.chain(helper_queries).chain(z_queries)
