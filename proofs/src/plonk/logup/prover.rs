@@ -55,7 +55,7 @@ pub(crate) struct Committed<F: PrimeField> {
 #[cfg_attr(feature = "bench-internal", derive(Clone))]
 #[derive(Debug)]
 pub(crate) struct ComputedMultiplicities<F: PrimeField> {
-    pub(crate) name: String,
+    pub(crate) argument_index: usize,
     pub(crate) selector: Polynomial<F, LagrangeCoeff>,
     pub(crate) multiplicities: Polynomial<F, LagrangeCoeff>,
     pub(crate) chunked_compressed_inputs: Vec<Vec<Polynomial<F, LagrangeCoeff>>>,
@@ -65,7 +65,7 @@ pub(crate) struct ComputedMultiplicities<F: PrimeField> {
 /// Intermediate result from logderivative computation, before transcript
 /// write and FFT conversion to coefficient form.
 pub(crate) struct ComputedLogderivative<F: PrimeField, C> {
-    pub(crate) name: String,
+    pub(crate) argument_index: usize,
     pub(crate) multiplicities: Polynomial<F, LagrangeCoeff>,
     pub(crate) helper_polys_lagrange: Vec<Vec<F>>,
     pub(crate) aggregator_poly: Polynomial<F, LagrangeCoeff>,
@@ -93,6 +93,7 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ChunkedArgument<F> {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn compute_multiplicities_parallel<'a, CS: PolynomialCommitmentScheme<F>>(
         &self,
+        argument_index: usize,
         pk: &ProvingKey<F, CS>,
         params: &CS::Parameters,
         theta: F,
@@ -166,12 +167,12 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ChunkedArgument<F> {
         let commitment = CS::commit(
             params,
             &multiplicities.to_delta(),
-            PolynomialLabel::LogupMultiplicities(self.name.clone()),
+            PolynomialLabel::LogupMultiplicities(argument_index),
         );
 
         Ok((
             ComputedMultiplicities {
-                name: self.name.clone(),
+                argument_index,
                 selector,
                 multiplicities,
                 chunked_compressed_inputs,
@@ -297,11 +298,11 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ComputedMultiplicities<F> {
         let aggregator_commitment = CS::commit(
             params,
             &aggregator_poly.to_double_delta(),
-            PolynomialLabel::LogupAggregator(self.name.clone()),
+            PolynomialLabel::LogupAggregator(self.argument_index),
         );
 
         Ok(ComputedLogderivative {
-            name: self.name,
+            argument_index: self.argument_index,
             multiplicities: self.multiplicities,
             helper_polys_lagrange,
             aggregator_poly,

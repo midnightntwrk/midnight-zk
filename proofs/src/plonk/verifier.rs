@@ -79,7 +79,8 @@ where
         .cs
         .lookups
         .iter()
-        .map(|l| l.chunk_by_degree(vk.cs_degree).read_multiplicities::<_, CS>(transcript))
+        .enumerate()
+        .map(|(i, l)| l.chunk_by_degree(vk.cs_degree).read_multiplicities::<_, CS>(i, transcript))
         .collect::<Result<Vec<_>, _>>()?;
 
     // Sample beta challenge
@@ -93,7 +94,8 @@ where
     let lookups_committed: Vec<_> = lookup_multiplicities
         .into_iter()
         .zip(vk.cs.lookups.iter().map(|l| l.chunk_by_degree(vk.cs_degree)))
-        .map(|(m, batch)| m.read_commitment(&batch.name, batch.num_chunks(), transcript))
+        .enumerate()
+        .map(|(i, (m, batch))| m.read_commitment(i, batch.num_chunks(), transcript))
         .collect::<Result<Vec<_>, _>>()?;
 
     let trash_challenge: F = transcript.squeeze_challenge();
@@ -102,7 +104,8 @@ where
         .cs
         .trashcans
         .iter()
-        .map(|argument| argument.read_committed::<CS, _>(transcript))
+        .enumerate()
+        .map(|(i, argument)| argument.read_committed::<CS, _>(i, transcript))
         .collect::<Result<Vec<_>, _>>()?;
 
     // Sample y challenge, which keeps the gates linearly independent.

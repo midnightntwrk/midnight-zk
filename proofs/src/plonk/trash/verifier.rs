@@ -24,6 +24,7 @@ pub struct Evaluated<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
 impl<F: PrimeField> Argument<F> {
     pub(crate) fn read_committed<CS: PolynomialCommitmentScheme<F>, T: Transcript>(
         &self,
+        argument_index: usize,
         transcript: &mut T,
     ) -> Result<Committed<F, CS>, Error>
     where
@@ -31,7 +32,7 @@ impl<F: PrimeField> Argument<F> {
     {
         let trash_commitment = transcript
             .read()
-            .map(|c: CS::Commitment| c.label(PolynomialLabel::Trash(self.name.clone())))?;
+            .map(|c: CS::Commitment| c.label(PolynomialLabel::Trash(argument_index)))?;
         Ok(Committed { trash_commitment })
     }
 }

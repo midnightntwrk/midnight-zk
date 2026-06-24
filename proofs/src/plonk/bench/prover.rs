@@ -148,9 +148,11 @@ where
                         .collect();
                     let results: Vec<_> = logup_args
                         .par_iter()
+                        .enumerate()
                         .zip(mult_blinds.par_iter())
-                        .map(|(logup, blinds)| {
+                        .map(|((argument_index, logup), blinds)| {
                             logup.compute_multiplicities_parallel(
+                                argument_index,
                                 pk,
                                 params,
                                 theta,
@@ -173,9 +175,11 @@ where
             pk.vk.cs.lookups.iter().map(|l| l.chunk_by_degree(pk.vk.cs.degree())).collect();
         let results: Vec<_> = logup_args
             .par_iter()
+            .enumerate()
             .zip(mult_blindings.par_iter())
-            .map(|(logup, blinds)| {
+            .map(|((argument_index, logup), blinds)| {
                 logup.compute_multiplicities_parallel(
+                    argument_index,
                     pk,
                     params,
                     theta,
@@ -285,7 +289,7 @@ where
                                     CS::commit(
                                         params,
                                         &h_poly,
-                                        PolynomialLabel::LogupHelper(c.name.clone()),
+                                        PolynomialLabel::LogupHelper(c.argument_index),
                                     )
                                 })
                                 .collect()
@@ -319,7 +323,7 @@ where
                         CS::commit(
                             params,
                             &h_poly,
-                            PolynomialLabel::LogupHelper(c.name.clone()),
+                            PolynomialLabel::LogupHelper(c.argument_index),
                         )
                     })
                     .collect()
@@ -361,8 +365,10 @@ where
                         .cs
                         .trashcans
                         .iter()
-                        .map(|trash| {
+                        .enumerate()
+                        .map(|(i, trash)| {
                             trash.commit::<CS, _>(
+                                i,
                                 params,
                                 domain,
                                 trash_challenge,
@@ -381,8 +387,10 @@ where
             .cs
             .trashcans
             .iter()
-            .map(|trash| {
+            .enumerate()
+            .map(|(i, trash)| {
                 trash.commit::<CS, _>(
+                    i,
                     params,
                     domain,
                     trash_challenge,

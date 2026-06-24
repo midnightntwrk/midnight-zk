@@ -26,6 +26,7 @@ impl<F: WithSmallOrderMulGroup<3> + Ord> Argument<F> {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn commit<'a, 'params: 'a, CS, T>(
         &self,
+        argument_index: usize,
         params: &'params CS::Parameters,
         domain: &EvaluationDomain<F>,
         trash_challenge: F,
@@ -60,7 +61,7 @@ impl<F: WithSmallOrderMulGroup<3> + Ord> Argument<F> {
         let trash_commitment = CS::commit(
             params,
             &compressed_expression,
-            PolynomialLabel::Trash(self.name.clone()),
+            PolynomialLabel::Trash(argument_index),
         );
         let trash_poly = domain.lagrange_to_coeff(compressed_expression);
 
