@@ -83,16 +83,15 @@ where
     E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
 {
     /// Collapses a `Linear` combination into a `Simple` commitment by computing
-    /// the MSM `∑ scalars[i] * points[i]`.
+    /// the MSM `∑ scalars[i] * points[i]`, labeling the result with `label`.
     ///
-    /// A `Simple` commitment is left unchanged.
-    /// After the call, the result always has scalar `1` and label `Collapsed`.
-    pub fn collapse(&mut self) {
+    /// A `Simple` commitment is left unchanged (its existing label is kept).
+    pub fn collapse(&mut self, label: PolynomialLabel) {
         match self {
             Self::Simple(_, _) => (),
             Self::Linear(points, scalars, labels) => {
                 let mut msm = MSMKZG::<E>::new(scalars, points, labels);
-                msm.collapse();
+                msm.collapse(label);
                 debug_assert_eq!(msm.bases.len(), 1);
                 debug_assert_eq!(msm.scalars, vec![E::Fr::ONE]);
                 *self = Self::Simple(msm.bases[0], msm.labels[0].clone());
@@ -117,7 +116,7 @@ where
     E::G1: Default,
 {
     fn default() -> Self {
-        Self::Simple(E::G1::default(), PolynomialLabel::Collapsed)
+        Self::Simple(E::G1::default(), PolynomialLabel::NoLabel)
     }
 }
 

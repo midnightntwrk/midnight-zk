@@ -178,9 +178,9 @@ impl<S: SelfEmulation> VerifierGadget<S> {
     /// Witnesses the "collapsed" form of a KZG accumulator.
     ///
     /// The expected shape is:
-    /// * LHS: exactly one `Variable` entry labeled `Collapsed` with scalar `1`.
+    /// * LHS: exactly one `Variable` entry labeled `NoLabel` with scalar `1`.
     /// * RHS: one `Fixed` entry per label in `fixed_base_labels` plus one
-    ///   `Variable` entry labeled `Collapsed` with scalar `1`.
+    ///   `Variable` entry labeled `NoLabel` with scalar `1`.
     ///
     /// This shape matches the invariant maintained by the KZG multiopen
     /// accumulation after `collapse()` has been called off-circuit.
@@ -198,8 +198,8 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             layouter,
             &self.curve_chip,
             &self.scalar_chip,
-            &[PolynomialLabel::Collapsed],
-            &[fixed_base_labels, &[PolynomialLabel::Collapsed]].concat(),
+            &[PolynomialLabel::NoLabel],
+            &[fixed_base_labels, &[PolynomialLabel::NoLabel]].concat(),
             &HashSet::new(),
             &fixed_base_labels.iter().cloned().collect(),
             value,
