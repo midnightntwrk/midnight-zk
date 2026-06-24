@@ -80,9 +80,9 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> CommittedMultiplicities<S, PCS> {
         transcript_gadget: &mut TranscriptGadget<S>,
     ) -> Result<Committed<S, PCS>, Error> {
         let helper_polys = (0..nb_flattened)
-            .map(|_| {
+            .map(|j| {
                 PCS::read_commitment(transcript_gadget, layouter)
-                    .map(|c| c.label(PolynomialLabel::LogupHelper(argument_index)))
+                    .map(|c| c.label(PolynomialLabel::LogupHelper(argument_index, j)))
             })
             .collect::<Result<Vec<_>, Error>>()?;
         let accumulator = PCS::read_commitment(transcript_gadget, layouter)

@@ -284,12 +284,13 @@ where
                         .map(|c| {
                             c.helper_polys_lagrange
                                 .par_iter()
-                                .map(|h| {
+                                .enumerate()
+                                .map(|(j, h)| {
                                     let h_poly = domain.lagrange_from_vec(h.clone());
                                     CS::commit(
                                         params,
                                         &h_poly,
-                                        PolynomialLabel::LogupHelper(c.argument_index),
+                                        PolynomialLabel::LogupHelper(c.argument_index, j),
                                     )
                                 })
                                 .collect()
@@ -318,12 +319,13 @@ where
             .map(|c| {
                 c.helper_polys_lagrange
                     .par_iter()
-                    .map(|h| {
+                    .enumerate()
+                    .map(|(j, h)| {
                         let h_poly = domain.lagrange_from_vec(h.clone());
                         CS::commit(
                             params,
                             &h_poly,
-                            PolynomialLabel::LogupHelper(c.argument_index),
+                            PolynomialLabel::LogupHelper(c.argument_index, j),
                         )
                     })
                     .collect()
@@ -344,6 +346,7 @@ where
                     .map(|h| domain.lagrange_to_coeff(domain.lagrange_from_vec(h)))
                     .collect();
                 logup::prover::Committed {
+                    argument_index: c.argument_index,
                     multiplicities: domain.lagrange_to_coeff(c.multiplicities),
                     helper_polys,
                     aggregator_poly: domain.lagrange_to_coeff(c.aggregator_poly),
