@@ -68,7 +68,11 @@ where
     // Hash the prover's advice commitments into the transcript and squeeze
     // challenges
     let advice_commitments: Vec<_> = (0..vk.cs.num_advice_columns)
-        .map(|i| transcript.read().map(|c: CS::Commitment| c.label(PolynomialLabel::Advice(i))))
+        .map(|i| {
+            transcript
+                .read()
+                .map(|c: CS::Commitment| c.label(&[PolynomialLabel::Advice(i)]))
+        })
         .collect::<Result<_, _>>()?;
 
     // Sample theta challenge for keeping lookup columns linearly independent
@@ -181,11 +185,13 @@ where
         let labeled = raw
             .into_iter()
             .enumerate()
-            .map(|(i, c)| c.label(PolynomialLabel::QuotientPiece(i)))
+            .map(|(i, c)| c.label(&[PolynomialLabel::QuotientPiece(i)]))
             .collect::<Vec<_>>();
         #[cfg(feature = "single-h-commitment")]
-        let labeled =
-            raw.into_iter().map(|c| c.label(PolynomialLabel::Quotient)).collect::<Vec<_>>();
+        let labeled = raw
+            .into_iter()
+            .map(|c| c.label(&[PolynomialLabel::Quotient]))
+            .collect::<Vec<_>>();
         labeled
     };
 

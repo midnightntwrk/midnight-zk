@@ -46,7 +46,7 @@ impl Argument {
             .collect::<Result<Vec<_>, _>>()?
             .into_iter()
             .enumerate()
-            .map(|(i, c)| c.label(PolynomialLabel::PermutationAccumulator(i)))
+            .map(|(i, c)| c.label(&[PolynomialLabel::PermutationAccumulator(i)]))
             .collect();
 
         Ok(Committed {

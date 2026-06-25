@@ -63,7 +63,7 @@ impl<F: WithSmallOrderMulGroup<3>> ChunkedArgument<F> {
         CS::Commitment: Hashable<T::Hash>,
     {
         let multiplicities = transcript.read().map(|c: CS::Commitment| {
-            c.label(PolynomialLabel::LogupMultiplicities(argument_index))
+            c.label(&[PolynomialLabel::LogupMultiplicities(argument_index)])
         })?;
         Ok(CommittedMultiplicities { multiplicities })
     }
@@ -86,13 +86,13 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>>
         let helper_polys = (0..nb_chunks)
             .map(|j| {
                 transcript.read().map(|c: CS::Commitment| {
-                    c.label(PolynomialLabel::LogupHelper(argument_index, j))
+                    c.label(&[PolynomialLabel::LogupHelper(argument_index, j)])
                 })
             })
             .collect::<Result<Vec<_>, _>>()?;
-        let accumulator = transcript
-            .read()
-            .map(|c: CS::Commitment| c.label(PolynomialLabel::LogupAggregator(argument_index)))?;
+        let accumulator = transcript.read().map(|c: CS::Commitment| {
+            c.label(&[PolynomialLabel::LogupAggregator(argument_index)])
+        })?;
 
         Ok(Committed {
             argument_index,

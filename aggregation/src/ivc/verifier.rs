@@ -5,19 +5,18 @@
 //! to the claimed state exists. Verification is constant-time regardless
 //! of how many steps the prover has performed.
 
-use group::Group;
 use midnight_circuits::{hash::poseidon::PoseidonState, verifier::Accumulator};
 use midnight_proofs::{
     plonk::{self},
     poly::{
-        kzg::{commitment::KZGCommitment, params::ParamsVerifierKZG, KZGCommitmentScheme},
+        kzg::{commitment::KZGMultiCommitment, params::ParamsVerifierKZG, KZGCommitmentScheme},
         PolynomialLabel,
     },
     transcript::{CircuitTranscript, Transcript},
 };
 use midnight_zk_stdlib::{MidnightVK, Relation};
 
-use super::{Ivc, IvcCircuit, IvcError, IvcInstance, C, E, F, S};
+use super::{Ivc, IvcCircuit, IvcError, IvcInstance, E, F, S};
 
 /// Lightweight IVC verifier carrying:
 /// - the application context (for the decider check),
@@ -66,8 +65,7 @@ impl<T: Ivc> IvcVerifier<T> {
         let dual_msm =
             plonk::prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<PoseidonState<F>>>(
                 self.vk.vk(),
-                &[KZGCommitment::Simple(
-                    C::identity(),
+                &[KZGMultiCommitment::commitment_to_zero(
                     PolynomialLabel::Instance(0),
                 )],
                 &[&pi],

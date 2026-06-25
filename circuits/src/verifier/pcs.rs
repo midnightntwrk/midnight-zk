@@ -64,6 +64,7 @@ impl<C> PartialEq for CommitmentReference<'_, C> {
 pub struct VerifierQuery<'a, S: SelfEmulation, PCS: InCircuitPCS<S>> {
     pub(crate) point: AssignedNative<S::F>,
     pub(crate) commitment_ref: CommitmentReference<'a, PCS::AssignedCommitment>,
+    pub(crate) label: PolynomialLabel,
     pub(crate) eval: AssignedNative<S::F>,
 }
 
@@ -71,11 +72,13 @@ impl<'a, S: SelfEmulation, PCS: InCircuitPCS<S>> VerifierQuery<'a, S, PCS> {
     pub fn new(
         point: &AssignedNative<S::F>,
         commitment: &'a PCS::AssignedCommitment,
+        label: PolynomialLabel,
         eval: &AssignedNative<S::F>,
     ) -> Self {
         Self {
             point: point.clone(),
             commitment_ref: CommitmentReference(commitment),
+            label,
             eval: eval.clone(),
         }
     }
@@ -125,10 +128,13 @@ pub trait InCircuitPCS<S: SelfEmulation>: Sized + Clone + Debug {
         label: PolynomialLabel,
     ) -> Result<Self::AssignedCommitment, Error>;
 
-    /// Reads one commitment from the proof transcript.
+    /// Reads one commitment (to `length` polynomials) from the proof
+    /// transcript. Commitments are not length-prefixed on the wire, so the
+    /// caller supplies the polynomial count (`1` unless batched).
     fn read_commitment(
         transcript: &mut TranscriptGadget<S>,
         layouter: &mut impl Layouter<S::F>,
+        length: usize,
     ) -> Result<Self::AssignedCommitment, Error>;
 
     /// Absorbs a commitment into the proof transcript.

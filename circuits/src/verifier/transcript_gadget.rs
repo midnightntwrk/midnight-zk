@@ -25,7 +25,11 @@ use midnight_proofs::{
 use crate::{
     instructions::{AssignmentInstructions, PublicInputInstructions, SpongeInstructions},
     types::AssignedNative,
-    verifier::{kzg::AssignedKZGCommitment, msm::AssignedPoint, SelfEmulation},
+    verifier::{
+        kzg::{AssignedKZGCommitment, AssignedKZGMultiCommitment},
+        msm::AssignedPoint,
+        SelfEmulation,
+    },
 };
 
 type SpongeState<S> = <<S as SelfEmulation>::SpongeChip as SpongeInstructions<
@@ -98,28 +102,33 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
         self.sponge_chip.absorb(layouter, state, std::slice::from_ref(scalar))
     }
 
-    /// Absorbs a commitment into the transcript.
+    /// Absorbs a commitment into the transcript, one inner polynomial point at
+    /// a time (the absorbed input never includes the multi-commitment's
+    /// length prefix, matching the off-circuit `Hashable::to_input`).
     pub fn common_commitment(
         &mut self,
         layouter: &mut impl Layouter<S::F>,
-        point: &AssignedKZGCommitment<S>,
+        commitment: &AssignedKZGMultiCommitment<S>,
     ) -> Result<(), Error> {
-        let pis = match point {
-            AssignedKZGCommitment::Simple(AssignedPoint::Variable(p), _label) => {
-                self.curve_chip.as_public_input(layouter, p)
-            }
-            AssignedKZGCommitment::Simple(AssignedPoint::Fixed, label) => Err(Synthesis(format!(
-                "Fixed commitments cannot be added to the transcript: {label}"
-            ))),
-            AssignedKZGCommitment::Linear(_, _, labels) => Err(Synthesis(format!(
-                "Linear commitments cannot be added to the transcript: {labels:?}"
-            ))),
-        }?;
+        for inner in commitment.0.iter() {
+            let pis = match inner {
+                AssignedKZGCommitment::Simple(AssignedPoint::Variable(p), _label) => {
+                    self.curve_chip.as_public_input(layouter, p)
+                }
+                AssignedKZGCommitment::Simple(AssignedPoint::Fixed, label) => Err(Synthesis(
+                    format!("Fixed commitments cannot be added to the transcript: {label}"),
+                )),
+                AssignedKZGCommitment::Linear(_, _, labels) => Err(Synthesis(format!(
+                    "Linear commitments cannot be added to the transcript: {labels:?}"
+                ))),
+            }?;
 
-        self.input_len += pis.len();
+            self.input_len += pis.len();
 
-        let state = self.sponge_state.as_mut().expect("You must init the transcript gadget");
-        self.sponge_chip.absorb(layouter, state, &pis)
+            let state = self.sponge_state.as_mut().expect("You must init the transcript gadget");
+            self.sponge_chip.absorb(layouter, state, &pis)?;
+        }
+        Ok(())
     }
 
     /// Derives a scalar challenge from the current transcript.
@@ -131,30 +140,44 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
         self.sponge_chip.squeeze(layouter, state)
     }
 
-    /// Reads the next curve point from the prover transcript and absorbs it
-    /// into the running hash state.
+    /// Reads `length` curve points from the prover transcript (one per
+    /// polynomial held by the commitment) and absorbs them into the running
+    /// hash state.
     ///
-    /// Returns an [`AssignedKZGCommitment::Simple`] with label
-    /// [`PolynomialLabel::NoLabel`]; callers must attach a label with
-    /// `.label(...)` before using the commitment in verifier queries.
+    /// Commitments are not length-prefixed on the wire, so the caller supplies
+    /// the number of polynomials (`1` unless the commitment is batched).
+    ///
+    /// Returns an [`AssignedKZGMultiCommitment`] whose inner commitments are
+    /// labeled [`PolynomialLabel::NoLabel`]; callers must attach labels with
+    /// `.label(...)` before using it in verifier queries.
     ///
     /// # Warning
     ///
-    /// The received point is not enforced to be in the prime-order subgroup.
+    /// The received points are not enforced to be in the prime-order subgroup.
     pub fn read_commitment(
         &mut self,
         layouter: &mut impl Layouter<S::F>,
-    ) -> Result<AssignedKZGCommitment<S>, Error> {
-        let reader = self.transcript_reader.as_mut().expect("You must init the transcript gadget");
-        // If an error, do not fail, assign a default commitment instead.
-        // (This allows us to parse dummy proofs.)
-        let point: Value<S::C> = match reader.read::<S::C>() {
-            Ok(point) => Value::known(point),
-            Err(_) => Value::known(S::C::default()),
-        };
+        length: usize,
+    ) -> Result<AssignedKZGMultiCommitment<S>, Error> {
+        let mut inners = Vec::with_capacity(length);
+        for _ in 0..length {
+            let reader =
+                self.transcript_reader.as_mut().expect("You must init the transcript gadget");
+            // If an error, do not fail, assign a default commitment instead.
+            // (This allows us to parse dummy proofs.)
+            let point: Value<S::C> = match reader.read::<S::C>() {
+                Ok(point) => Value::known(point),
+                Err(_) => Value::known(S::C::default()),
+            };
+            let assigned_point =
+                S::assign_without_subgroup_check(layouter, &self.curve_chip, point)?;
+            inners.push(AssignedKZGCommitment::simple(
+                assigned_point,
+                PolynomialLabel::NoLabel,
+            ));
+        }
 
-        let assigned_point = S::assign_without_subgroup_check(layouter, &self.curve_chip, point)?;
-        let assigned_com = AssignedKZGCommitment::simple(assigned_point, PolynomialLabel::NoLabel);
+        let assigned_com = AssignedKZGMultiCommitment(inners);
         self.common_commitment(layouter, &assigned_com)?;
 
         Ok(assigned_com)
@@ -318,10 +341,9 @@ mod tests {
                         &transcript_gadget.curve_chip,
                         *p,
                     )?;
-                    Ok(AssignedKZGCommitment::simple(
-                        assigned_p,
-                        PolynomialLabel::NoLabel,
-                    ))
+                    Ok(AssignedKZGMultiCommitment(vec![
+                        AssignedKZGCommitment::simple(assigned_p, PolynomialLabel::NoLabel),
+                    ]))
                 })
                 .collect::<Result<Vec<_>, Error>>()?;
 
