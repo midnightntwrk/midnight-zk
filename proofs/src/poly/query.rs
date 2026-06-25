@@ -69,8 +69,8 @@ impl fmt::Display for PolynomialLabel {
 pub struct ProverQuery<'com, F: PrimeField> {
     /// Point at which polynomial is queried
     pub(crate) point: F,
-    /// Reference to a polynomial
-    pub(crate) poly_ref: PolynomialReference<'com, F>,
+    /// Reference to the queried polynomial.
+    pub(crate) poly: &'com Polynomial<F, Coeff>,
     /// Label identifying the queried polynomial.
     pub(crate) label: PolynomialLabel,
 }
@@ -81,46 +81,7 @@ where
 {
     /// Create a new prover query based on a polynomial and its label.
     pub fn new(point: F, poly: &'com Polynomial<F, Coeff>, label: PolynomialLabel) -> Self {
-        ProverQuery {
-            point,
-            poly_ref: PolynomialReference(poly),
-            label,
-        }
-    }
-}
-
-#[doc(hidden)]
-#[derive(Copy, Clone, Debug)]
-pub struct PolynomialReference<'com, F: PrimeField>(pub(crate) &'com Polynomial<F, Coeff>);
-
-impl<F: PrimeField> PartialEq for PolynomialReference<'_, F> {
-    fn eq(&self, other: &Self) -> bool {
-        std::ptr::eq(self.0, other.0)
-    }
-}
-
-/// A pointer to a commitment, with pointer-based equality.
-///
-/// Two `CommitmentReference`s are equal iff they point to the same allocation,
-/// so that commitments are grouped by reference rather than by value.
-#[derive(Debug)]
-pub struct CommitmentReference<'com, F: PrimeField, CS: PolynomialCommitmentScheme<F>>(
-    pub(crate) &'com CS::Commitment,
-);
-
-impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> Copy for CommitmentReference<'_, F, CS> {}
-
-impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> Clone for CommitmentReference<'_, F, CS> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> PartialEq
-    for CommitmentReference<'_, F, CS>
-{
-    fn eq(&self, other: &Self) -> bool {
-        std::ptr::eq(self.0, other.0)
+        ProverQuery { point, poly, label }
     }
 }
 
@@ -130,7 +91,7 @@ pub struct VerifierQuery<'com, F: PrimeField, CS: PolynomialCommitmentScheme<F>>
     /// Point at which polynomial is queried.
     pub(crate) point: F,
     /// Commitment containing the queried polynomial.
-    pub(crate) commitment_ref: CommitmentReference<'com, F, CS>,
+    pub(crate) commitment: &'com CS::Commitment,
     /// Label identifying which polynomial within the commitment is queried.
     pub(crate) label: PolynomialLabel,
     /// Evaluation of polynomial at query point.
@@ -151,7 +112,7 @@ where
     ) -> Self {
         VerifierQuery {
             point,
-            commitment_ref: CommitmentReference(commitment),
+            commitment,
             label,
             eval,
         }

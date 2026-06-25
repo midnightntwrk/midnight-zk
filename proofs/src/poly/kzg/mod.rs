@@ -152,14 +152,14 @@ where
             let mut queries = queries.to_vec();
             let pairs: Vec<_> = queries.iter().map(|q| (q.label.clone(), q.point)).collect();
             for (idx, dummy_point) in compute_dummy_queries(&pairs) {
-                let poly_ref = queries[idx].poly_ref;
+                let poly = queries[idx].poly;
                 let label = queries[idx].label.clone();
                 transcript
-                    .write(&eval_polynomial(&poly_ref.0[..], dummy_point))
+                    .write(&eval_polynomial(&poly[..], dummy_point))
                     .map_err(|_| Error::OpeningError)?;
                 queries.push(ProverQuery {
                     point: dummy_point,
-                    poly_ref,
+                    poly,
                     label,
                 });
             }
@@ -174,7 +174,7 @@ where
         // Map each label to the polynomial it identifies, so the per-set
         // grouping (keyed by label) can recover the actual polynomials.
         let label_to_poly: HashMap<PolynomialLabel, &Polynomial<E::Fr, Coeff>> =
-            queries.iter().map(|q| (q.label.clone(), q.poly_ref.0)).collect();
+            queries.iter().map(|q| (q.label.clone(), q.poly)).collect();
 
         let kzg_queries = queries
             .iter()
@@ -182,7 +182,7 @@ where
                 (
                     query.label.clone(),
                     query.point,
-                    eval_polynomial(&query.poly_ref.0[..], query.point),
+                    eval_polynomial(&query.poly[..], query.point),
                 )
             })
             .collect::<Vec<_>>();
@@ -303,12 +303,12 @@ where
             let mut queries = queries.to_vec();
             let pairs: Vec<_> = queries.iter().map(|q| (q.label.clone(), q.point)).collect();
             for (idx, dummy_point) in compute_dummy_queries(&pairs) {
-                let commitment_ref = queries[idx].commitment_ref;
+                let commitment = queries[idx].commitment;
                 let label = queries[idx].label.clone();
                 let eval = transcript.read().map_err(|_| Error::SamplingError)?;
                 queries.push(VerifierQuery {
                     point: dummy_point,
-                    commitment_ref,
+                    commitment,
                     label,
                     eval,
                 });
@@ -332,7 +332,7 @@ where
         let label_to_commitment: HashMap<PolynomialLabel, &KZGCommitment<E>> = queries
             .iter()
             .map(|q| {
-                let inners = &q.commitment_ref.0 .0;
+                let inners = &q.commitment.0;
                 let inner = if inners.len() == 1 {
                     &inners[0]
                 } else {
@@ -508,7 +508,7 @@ mod tests {
                 params::{ParamsKZG, ParamsVerifierKZG},
                 KZGCommitmentScheme,
             },
-            query::{PolynomialReference, ProverQuery, VerifierQuery},
+            query::{ProverQuery, VerifierQuery},
             EvaluationDomain, PolynomialLabel,
         },
         transcript::{CircuitTranscript, Hashable, Sampleable, Transcript},
@@ -669,17 +669,17 @@ mod tests {
         let queries = [
             ProverQuery {
                 point: x,
-                poly_ref: PolynomialReference(&ax),
+                poly: &ax,
                 label: PolynomialLabel::Custom("a".into()),
             },
             ProverQuery {
                 point: x,
-                poly_ref: PolynomialReference(&bx),
+                poly: &bx,
                 label: PolynomialLabel::Custom("b".into()),
             },
             ProverQuery {
                 point: y,
-                poly_ref: PolynomialReference(&cx),
+                poly: &cx,
                 label: PolynomialLabel::Custom("c".into()),
             },
         ]

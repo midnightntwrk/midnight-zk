@@ -503,7 +503,7 @@ pub(crate) fn multi_prepare_kzg<S: SelfEmulation>(
         for (idx, dummy_point) in dummy_openings {
             queries.push(VerifierQuery {
                 point: dummy_point,
-                commitment_ref: queries[idx].commitment_ref,
+                commitment: queries[idx].commitment,
                 label: queries[idx].label.clone(),
                 eval: transcript_gadget.read_scalar(layouter)?,
             });
@@ -522,7 +522,7 @@ pub(crate) fn multi_prepare_kzg<S: SelfEmulation>(
     let label_to_commitment: HashMap<PolynomialLabel, &AssignedKZGCommitment<S>> = queries
         .iter()
         .map(|q| {
-            let inners = &q.commitment_ref.0 .0;
+            let inners = &q.commitment.0;
             let inner = if inners.len() == 1 {
                 &inners[0]
             } else {
