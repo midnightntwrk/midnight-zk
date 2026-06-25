@@ -33,7 +33,7 @@ impl<F: PrimeField> Argument<F> {
     {
         let trash_commitment = transcript
             .read()
-            .map(|c: CS::Commitment| c.label(PolynomialLabel::Trash(argument_index)))?;
+            .map(|c: CS::Commitment| c.label(&[PolynomialLabel::Trash(argument_index)]))?;
         Ok(Committed {
             argument_index,
             trash_commitment,

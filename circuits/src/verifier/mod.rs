@@ -43,7 +43,7 @@ mod utils;
 mod verifier_gadget;
 
 pub use accumulator::{Accumulator, AssignedAccumulator};
-pub use kzg::{AssignedKZGCommitment, InCircuitKZG};
+pub use kzg::{AssignedKZGCommitment, AssignedKZGMultiCommitment, InCircuitKZG};
 pub use msm::{AssignedMsm, AssignedPoint, Msm, Point};
 pub use pcs::{InCircuitHomomorphicCommitment, InCircuitPCS};
 #[cfg(feature = "dev-curves")]
@@ -120,11 +120,11 @@ pub fn fixed_bases<S: SelfEmulation>(vk: &VerifyingKey<S>) -> BTreeMap<Polynomia
     let perm_commitments = vk.permutation().commitments();
 
     for (i, com) in fixed_commitments.iter().enumerate() {
-        fixed_bases.insert(PolynomialLabel::Fixed(i), *com.as_point());
+        fixed_bases.insert(PolynomialLabel::Fixed(i), *com.0[0].as_point());
     }
 
     for (i, com) in perm_commitments.iter().enumerate() {
-        fixed_bases.insert(PolynomialLabel::PermutationFixed(i), *com.as_point());
+        fixed_bases.insert(PolynomialLabel::PermutationFixed(i), *com.0[0].as_point());
     }
 
     fixed_bases.insert(PolynomialLabel::Custom("-G".into()), -S::C::generator());

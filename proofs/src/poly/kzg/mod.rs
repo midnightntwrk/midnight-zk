@@ -24,7 +24,7 @@ mod utils;
 
 use std::{fmt::Debug, hash::Hash};
 
-use commitment::KZGCommitment;
+use commitment::{KZGCommitment, KZGMultiCommitment};
 use ff::Field;
 use group::Group;
 use midnight_curves::pairing::MultiMillerLoop;
@@ -68,7 +68,7 @@ where
 {
     type Parameters = ParamsKZG<E>;
     type VerifierParameters = ParamsVerifierKZG<E>;
-    type Commitment = KZGCommitment<E>;
+    type Commitment = KZGMultiCommitment<E>;
     type VerificationGuard = DualMSM<E>;
 
     fn gen_params(k: u32) -> Self::Parameters {
@@ -79,17 +79,31 @@ where
         params.verifier_params()
     }
 
-    fn commit<B: PolynomialRepresentation>(
+    fn commit_many<B: PolynomialRepresentation>(
         params: &Self::Parameters,
-        polynomial: &Polynomial<E::Fr, B>,
-        label: PolynomialLabel,
+        polynomials: &[&Polynomial<E::Fr, B>],
+        labels: &[PolynomialLabel],
     ) -> Self::Commitment {
+        assert_eq!(
+            polynomials.len(),
+            labels.len(),
+            "polynomials and labels must have the same length"
+        );
+        assert!(!polynomials.is_empty(), "cannot commit to zero polynomials");
         let bases = params.bases::<B>();
-        let size = polynomial.values.len();
-        assert!(bases.len() >= size);
-        KZGCommitment::Simple(
-            msm_specific::<E::G1Affine>(&polynomial.values, &bases[..size]),
-            label,
+        KZGMultiCommitment(
+            polynomials
+                .iter()
+                .zip(labels)
+                .map(|(polynomial, label)| {
+                    let size = polynomial.values.len();
+                    assert!(bases.len() >= size);
+                    KZGCommitment::Simple(
+                        msm_specific::<E::G1Affine>(&polynomial.values, &bases[..size]),
+                        label.clone(),
+                    )
+                })
+                .collect(),
         )
     }
 
@@ -100,7 +114,7 @@ where
     ) -> Result<(), Error>
     where
         E::Fr: Sampleable<T::Hash> + Hash + Ord + Hashable<T::Hash>,
-        KZGCommitment<E>: Hashable<T::Hash>,
+        KZGMultiCommitment<E>: Hashable<T::Hash>,
     {
         /// Like [`inner_product`] but for coefficient-form polynomials that may
         /// have different lengths (zero-extending the shorter operands).
@@ -281,7 +295,7 @@ where
     where
         E::Fr: Sampleable<T::Hash> + Ord + Hash + Hashable<T::Hash>,
         E::G1: CurveExt<ScalarExt = E::Fr>,
-        KZGCommitment<E>: Hashable<T::Hash> + 'com,
+        KZGMultiCommitment<E>: Hashable<T::Hash> + 'com,
     {
         // Add dummy queries to reduce the number of distinct multi-open point sets.
         #[cfg(feature = "fewer-point-sets")]
@@ -307,10 +321,29 @@ where
         let x1: E::Fr = transcript.squeeze_challenge();
         let x2: E::Fr = transcript.squeeze_challenge();
 
-        // Map each label to the commitment it identifies, so the per-set
-        // grouping (keyed by label) can recover the actual commitments.
-        let label_to_commitment: HashMap<PolynomialLabel, &KZGCommitment<E>> =
-            queries.iter().map(|q| (q.label.clone(), q.commitment_ref.0)).collect();
+        // Peel each query's multi-commitment down to the single inner
+        // `KZGCommitment` it targets, keyed by the query label. The rest of the
+        // routine then operates on individual `KZGCommitment`s as before.
+        //
+        // A length-1 commitment (the common case, including the `Linear`
+        // linearization commitment) peels to its sole inner. A batched
+        // commitment holds several `Simple`s, so we pick the one whose own label
+        // matches the query.
+        let label_to_commitment: HashMap<PolynomialLabel, &KZGCommitment<E>> = queries
+            .iter()
+            .map(|q| {
+                let inners = &q.commitment_ref.0 .0;
+                let inner = if inners.len() == 1 {
+                    &inners[0]
+                } else {
+                    inners
+                        .iter()
+                        .find(|c| matches!(c, KZGCommitment::Simple(_, label) if *label == q.label))
+                        .expect("batched commitment has no polynomial matching the query label")
+                };
+                (q.label.clone(), inner)
+            })
+            .collect();
 
         let kzg_queries = queries
             .iter()
@@ -362,8 +395,11 @@ where
             (q_coms, q_eval_sets, point_sets)
         };
 
-        let f_com = transcript.read::<KZGCommitment<E>>().map_err(|_| Error::SamplingError)?;
-        let f_com = f_com.label(PolynomialLabel::Custom("kzg_batch".into()));
+        let f_com = transcript
+            .read::<KZGMultiCommitment<E>>()
+            .map_err(|_| Error::SamplingError)?
+            .label(&[PolynomialLabel::Custom("kzg_batch".into())])
+            .into_single();
 
         // Sample a challenge x_3 for checking that f(X) was committed to
         // correctly.
@@ -426,8 +462,9 @@ where
         };
 
         let pi: E::G1 = transcript
-            .read::<KZGCommitment<E>>()
+            .read::<KZGMultiCommitment<E>>()
             .map_err(|_| Error::SamplingError)?
+            .into_single()
             .into_point();
 
         let mut pi_msm = MSMKZG::<E>::init();
@@ -467,7 +504,7 @@ mod tests {
         poly::{
             commitment::{Guard, Labelable, PolynomialCommitmentScheme},
             kzg::{
-                commitment::KZGCommitment,
+                commitment::KZGMultiCommitment,
                 params::{ParamsKZG, ParamsVerifierKZG},
                 KZGCommitmentScheme,
             },
@@ -501,22 +538,22 @@ mod tests {
         E::Fr: Hashable<T::Hash> + Sampleable<T::Hash> + Ord + Hash,
         E::G1: Hashable<T::Hash> + CurveExt<ScalarExt = E::Fr, AffineExt = E::G1Affine>,
         E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1> + SerdeObject,
-        KZGCommitment<E>: Hashable<T::Hash>,
+        KZGMultiCommitment<E>: Hashable<T::Hash>,
     {
         let mut transcript = T::init_from_bytes(proof);
 
         let a = transcript
-            .read::<KZGCommitment<E>>()
+            .read::<KZGMultiCommitment<E>>()
             .unwrap()
-            .label(PolynomialLabel::Custom("a".into()));
+            .label(&[PolynomialLabel::Custom("a".into())]);
         let b = transcript
-            .read::<KZGCommitment<E>>()
+            .read::<KZGMultiCommitment<E>>()
             .unwrap()
-            .label(PolynomialLabel::Custom("b".into()));
+            .label(&[PolynomialLabel::Custom("b".into())]);
         let c = transcript
-            .read::<KZGCommitment<E>>()
+            .read::<KZGMultiCommitment<E>>()
             .unwrap()
-            .label(PolynomialLabel::Custom("c".into()));
+            .label(&[PolynomialLabel::Custom("c".into())]);
 
         let x: E::Fr = transcript.squeeze_challenge();
         let y: E::Fr = transcript.squeeze_challenge();

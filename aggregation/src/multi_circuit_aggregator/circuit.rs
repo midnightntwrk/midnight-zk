@@ -16,18 +16,17 @@
 use std::collections::BTreeMap;
 
 use ff::Field;
-use group::Group;
 use midnight_circuits::{
     hash::poseidon::{PoseidonChip, PoseidonState},
     instructions::{hash::HashCPU, *},
     types::{AssignedNative, Instantiable},
-    verifier::{self, Accumulator, AssignedAccumulator, AssignedKZGCommitment},
+    verifier::{self, Accumulator, AssignedAccumulator, AssignedKZGMultiCommitment},
 };
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::{self, ConstraintSystem, Error},
     poly::{
-        kzg::{commitment::KZGCommitment, params::ParamsVerifierKZG, KZGCommitmentScheme},
+        kzg::{commitment::KZGMultiCommitment, params::ParamsVerifierKZG, KZGCommitmentScheme},
         EvaluationDomain, PolynomialLabel,
     },
     transcript::{CircuitTranscript, Transcript},
@@ -37,7 +36,7 @@ use midnight_zk_stdlib::{ZkStdLib, ZkStdLibArch};
 
 use super::aggregator::AggregationWitness;
 use crate::{
-    ivc::{IvcContext, IvcIO, IvcState, IvcTransition, C, E, F, S},
+    ivc::{IvcContext, IvcIO, IvcState, IvcTransition, E, F, S},
     multi_circuit_aggregator::{
         utils::{assign_as_public_inputs_and_hash_vk, compute_vk_hash},
         Claim,
@@ -262,8 +261,7 @@ impl IvcTransition for ProofAggregation {
             let dual_msm =
                 plonk::prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<PoseidonState<F>>>(
                     witness.claim.vk.vk(),
-                    &[KZGCommitment::Simple(
-                        C::identity(),
+                    &[KZGMultiCommitment::commitment_to_zero(
                         PolynomialLabel::Instance(0),
                     )],
                     &[&[statement]],
@@ -329,10 +327,11 @@ impl IvcTransition for ProofAggregation {
 
         // 3. Verify the inner proof in-circuit against the witnessed VK and statement.
         let inner_proof_acc = {
-            let instance_com = AssignedKZGCommitment::<S>::simple(
-                self.std_lib.bls12_381().assign_fixed(layouter, C::identity())?,
+            let instance_com = AssignedKZGMultiCommitment::commitment_to_zero(
+                layouter,
+                self.std_lib.bls12_381(),
                 PolynomialLabel::CommittedInstance(0),
-            );
+            )?;
             let mut acc = self.std_lib.verifier().prepare(
                 layouter,
                 &assigned_vk,

@@ -9,11 +9,12 @@
 //! there is no meaningful prior proof to verify, so the circuit substitutes a
 //! default accumulator that satisfies the verification invariant.
 
-use group::Group;
 use midnight_circuits::{
-    instructions::{AssignmentInstructions, BinaryInstructions, PublicInputInstructions},
+    instructions::{BinaryInstructions, PublicInputInstructions},
     types::Instantiable,
-    verifier::{Accumulator, AssignedAccumulator, AssignedKZGCommitment, AssignedVk, InCircuitKZG},
+    verifier::{
+        Accumulator, AssignedAccumulator, AssignedKZGMultiCommitment, AssignedVk, InCircuitKZG,
+    },
 };
 use midnight_proofs::{
     circuit::{Layouter, Value},
@@ -22,7 +23,7 @@ use midnight_proofs::{
 };
 use midnight_zk_stdlib::{Relation, ZkStdLib, ZkStdLibArch};
 
-use super::{Ivc, IvcError, C, F, S};
+use super::{Ivc, IvcError, F, S};
 
 /// The public instance (statement) of an IVC proof.
 ///
@@ -180,10 +181,11 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
         ]
         .concat();
 
-        let instance_com = AssignedKZGCommitment::<S>::simple(
-            std_lib.bls12_381().assign_fixed(layouter, C::identity())?,
+        let instance_com = AssignedKZGMultiCommitment::commitment_to_zero(
+            layouter,
+            std_lib.bls12_381(),
             PolynomialLabel::CommittedInstance(0),
-        );
+        )?;
 
         // Verify a witnessed proof that ensures the validity of `prev_state`.
         // The proof is valid iff `prev_proof_acc` satisfies the invariant.

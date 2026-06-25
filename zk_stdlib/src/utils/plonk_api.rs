@@ -31,7 +31,7 @@ use midnight_proofs::{
     poly::{
         commitment::Guard,
         kzg::{
-            commitment::KZGCommitment,
+            commitment::{KZGCommitment, KZGMultiCommitment},
             params::{ParamsKZG, ParamsVerifierKZG},
             KZGCommitmentScheme,
         },
@@ -153,7 +153,10 @@ macro_rules! plonk_api {
                         .iter()
                         .enumerate()
                         .map(|(i, c)| {
-                            KZGCommitment::Simple((*c).into(), PolynomialLabel::Instance(i))
+                            KZGMultiCommitment(vec![KZGCommitment::Simple(
+                                (*c).into(),
+                                PolynomialLabel::Instance(i),
+                            )])
                         })
                         .collect::<Vec<_>>(),
                     pi,

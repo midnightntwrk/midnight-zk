@@ -38,6 +38,7 @@ pub(crate) struct TrashEvaluated<S: SelfEmulation> {
 
 #[derive(Clone, Debug)]
 pub(crate) struct Committed<S: SelfEmulation, PCS: InCircuitPCS<S>> {
+    argument_index: usize,
     trash_commitment: PCS::AssignedCommitment,
 }
 
@@ -52,10 +53,13 @@ pub(crate) fn read_committed<S: SelfEmulation, PCS: InCircuitPCS<S>>(
     layouter: &mut impl Layouter<S::F>,
     transcript_gadget: &mut TranscriptGadget<S>,
 ) -> Result<Committed<S, PCS>, Error> {
-    let trash_commitment = PCS::read_commitment(transcript_gadget, layouter)
-        .map(|c| c.label(PolynomialLabel::Trash(argument_index)))?;
+    let trash_commitment = PCS::read_commitment(transcript_gadget, layouter, 1)
+        .map(|c| c.label(&[PolynomialLabel::Trash(argument_index)]))?;
 
-    Ok(Committed { trash_commitment })
+    Ok(Committed {
+        argument_index,
+        trash_commitment,
+    })
 }
 
 impl<S: SelfEmulation, PCS: InCircuitPCS<S>> Committed<S, PCS> {
@@ -83,6 +87,7 @@ impl<'a, S: SelfEmulation, PCS: InCircuitPCS<S>> Evaluated<S, PCS> {
         vec![VerifierQuery::new(
             x,
             &self.committed.trash_commitment,
+            PolynomialLabel::Trash(self.committed.argument_index),
             &self.evaluated.trash_eval,
         )]
     }

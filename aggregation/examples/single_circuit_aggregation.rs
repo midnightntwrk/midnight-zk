@@ -21,22 +21,21 @@ mod sha_preimage;
 use std::{collections::BTreeMap, time::Instant};
 
 use ff::Field;
-use group::Group;
 use midnight_aggregation::ivc::{self, IvcCircuit, IvcContext, IvcIO, IvcState, IvcTransition};
 use midnight_circuits::{
     hash::poseidon::{PoseidonChip, PoseidonState},
     instructions::{hash::HashCPU, *},
     types::{AssignedNative, Instantiable},
     verifier::{
-        self, Accumulator, AssignedAccumulator, AssignedKZGCommitment, AssignedVk, BlstrsEmulation,
-        InCircuitKZG, SelfEmulation,
+        self, Accumulator, AssignedAccumulator, AssignedKZGMultiCommitment, AssignedVk,
+        BlstrsEmulation, InCircuitKZG, SelfEmulation,
     },
 };
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::{self, ConstraintSystem, Error},
     poly::{
-        kzg::{commitment::KZGCommitment, params::ParamsVerifierKZG, KZGCommitmentScheme},
+        kzg::{commitment::KZGMultiCommitment, params::ParamsVerifierKZG, KZGCommitmentScheme},
         EvaluationDomain, PolynomialLabel,
     },
     transcript::{CircuitTranscript, Transcript},
@@ -240,8 +239,7 @@ impl IvcTransition for ProofAggregation {
             let dual_msm =
                 plonk::prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<PoseidonState<F>>>(
                     ctx.vk.vk(),
-                    &[KZGCommitment::Simple(
-                        C::identity(),
+                    &[KZGMultiCommitment::commitment_to_zero(
                         PolynomialLabel::Instance(0),
                     )],
                     &[&statement_pis],
@@ -305,10 +303,11 @@ impl IvcTransition for ProofAggregation {
         )?;
 
         // Verify the inner proof in-circuit.
-        let instance_com = AssignedKZGCommitment::<S>::simple(
-            self.std_lib.bls12_381().assign_fixed(layouter, C::identity())?,
+        let instance_com = AssignedKZGMultiCommitment::commitment_to_zero(
+            layouter,
+            self.std_lib.bls12_381(),
             PolynomialLabel::CommittedInstance(0),
-        );
+        )?;
 
         let inner_proof_acc = self.std_lib.verifier().prepare(
             layouter,

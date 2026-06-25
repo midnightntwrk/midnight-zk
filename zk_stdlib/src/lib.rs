@@ -37,7 +37,7 @@ use blake2b::blake2b::{
     NB_BLAKE2B_ADVICE_COLS,
 };
 use ff::{Field, PrimeField};
-use group::{prime::PrimeCurveAffine, Group};
+use group::prime::PrimeCurveAffine;
 use keccak_sha3::packed_chip::{PackedChip, PackedConfig, PACKED_ADVICE_COLS, PACKED_FIXED_COLS};
 use midnight_circuits::{
     biguint::biguint_gadget::BigUintGadget,
@@ -2072,36 +2072,33 @@ where
         return Err(Error::InvalidInstances);
     }
 
-    let prepared: Vec<(_, F)> = vks
-        .par_iter()
-        .zip(pis.par_iter())
-        .zip(proofs.par_iter())
-        .map(|((vk, pi), proof)| {
-            if pi.len() != vk.nb_public_inputs {
-                return Err(Error::InvalidInstances);
-            }
+    let prepared: Vec<(_, F)> =
+        vks.par_iter()
+            .zip(pis.par_iter())
+            .zip(proofs.par_iter())
+            .map(|((vk, pi), proof)| {
+                if pi.len() != vk.nb_public_inputs {
+                    return Err(Error::InvalidInstances);
+                }
 
-            let mut transcript = CircuitTranscript::init_from_bytes(proof);
-            let dual_msm = prepare::<
+                let mut transcript = CircuitTranscript::init_from_bytes(proof);
+                let dual_msm = prepare::<
                 midnight_curves::Fq,
                 KZGCommitmentScheme<midnight_curves::Bls12>,
                 CircuitTranscript<H>,
             >(
                 &vk.vk,
-                &[
-                    midnight_proofs::poly::kzg::commitment::KZGCommitment::Simple(
-                        midnight_curves::G1Projective::identity(),
-                        midnight_proofs::poly::PolynomialLabel::Instance(0),
-                    ),
-                ],
+                &[midnight_proofs::poly::kzg::commitment::KZGMultiCommitment::commitment_to_zero(
+                    midnight_proofs::poly::PolynomialLabel::Instance(0),
+                )],
                 &[pi],
                 &mut transcript,
             )?;
-            let summary: F = transcript.squeeze_challenge();
-            transcript.assert_empty().map_err(|_| Error::Opening)?;
-            Ok((dual_msm, summary))
-        })
-        .collect::<Result<Vec<_>, Error>>()?;
+                let summary: F = transcript.squeeze_challenge();
+                transcript.assert_empty().map_err(|_| Error::Opening)?;
+                Ok((dual_msm, summary))
+            })
+            .collect::<Result<Vec<_>, Error>>()?;
 
     let mut r_transcript = CircuitTranscript::init();
     let mut guards = Vec::with_capacity(n);
