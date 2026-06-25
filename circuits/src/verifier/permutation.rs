@@ -59,13 +59,13 @@ pub(crate) fn read_product_commitments<S: SelfEmulation>(
     cs: &ConstraintSystem<S::F>,
 ) -> Result<Committed<S>, Error> {
     let chunk_len = cs.degree() - 2;
+    let num_chunks = cs.permutation().get_columns().chunks(chunk_len).count();
+    assert!(num_chunks > 0, "permutation argument with zero columns is unsupported");
 
-    let permutation_product_commitments = cs
-        .permutation()
-        .get_columns()
-        .chunks(chunk_len)
-        .map(|_| transcript_gadget.read_commitment(layouter))
-        .collect::<Result<Vec<_>, _>>()?
+    // Mirror the off-circuit verifier: the prover writes one batched
+    // `FflonkCommitment` covering all chunks (one G1 per chunk at T=0).
+    let points = transcript_gadget.read_batched_commitment(layouter, num_chunks)?;
+    let permutation_product_commitments = points
         .into_iter()
         .enumerate()
         .map(|(i, p)| AssignedCommitment::new(p, vec![PolynomialLabel::PermutationAccumulator(i)]))

@@ -146,6 +146,21 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
         self.read_point(layouter)
     }
 
+    /// Reads a batched commitment from the proof buffer. The commitment is
+    /// serialized as `[u32 len=n][point_0 bytes]…[point_{n-1} bytes]`; this
+    /// method discards the 4-byte length prefix and reads `n` curve points
+    /// in sequence. Mirrors the off-circuit `FflonkCommitment::read` for
+    /// phases that emit one batched commitment for `n` sub-bundles (advice,
+    /// permutation accumulator, logup multiplicities, logup aggregator).
+    pub fn read_batched_commitment(
+        &mut self,
+        layouter: &mut impl Layouter<S::F>,
+        n: usize,
+    ) -> Result<Vec<S::AssignedPoint>, Error> {
+        self.skip_bytes(4);
+        (0..n).map(|_| self.read_point(layouter)).collect()
+    }
+
     /// # Warning
     ///
     /// The received points are not enforced to be part of the relevant prime

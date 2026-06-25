@@ -19,8 +19,11 @@ pub enum PolynomialLabel {
     PermutationFixed(usize),
     /// Permutation accumulator polynomial z(X) (chain index).
     PermutationAccumulator(usize),
-    /// LogUp helper polynomial h_j(X) = 1/(f_j(X) + β), for a named argument.
-    LogupHelper(String),
+    /// LogUp helper polynomial h_j(X) = 1/(f_j(X) + β), for a named argument
+    /// at chunk index `j`. The chunk index disambiguates the multiple
+    /// helpers an argument may emit (one per `input_expression_chunk`),
+    /// so each helper has a unique label and can be bundled with fflonk.
+    LogupHelper(String, usize),
     /// LogUp multiplicities polynomial m(X), for a named argument.
     LogupMultiplicities(String),
     /// LogUp accumulator polynomial Z(X), for a named argument.
@@ -49,7 +52,7 @@ impl fmt::Display for PolynomialLabel {
             Self::CommittedInstance(i) => write!(f, "committed_instance_{i}"),
             Self::PermutationFixed(i) => write!(f, "perm_fixed_{i}"),
             Self::PermutationAccumulator(i) => write!(f, "perm_acc_{i}"),
-            Self::LogupHelper(name) => write!(f, "logup_helper({name})"),
+            Self::LogupHelper(name, chunk) => write!(f, "logup_helper({name},{chunk})"),
             Self::LogupMultiplicities(name) => write!(f, "logup_multiplicities({name})"),
             Self::LogupAggregator(name) => write!(f, "logup_aggregator({name})"),
             Self::Trash(name) => write!(f, "trash({name})"),

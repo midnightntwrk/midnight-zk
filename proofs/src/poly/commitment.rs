@@ -57,6 +57,66 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
         labels: &[PolynomialLabel],
     ) -> Self::Commitment;
 
+    /// Squeeze the evaluation point used by the protocol to open committed
+    /// polynomials. The default implementation simply squeezes a challenge,
+    /// but specific PCS may require squeezing over sets of challenges
+    /// verifying certain properties — for example fflonk requires the
+    /// evaluation point to be a `t`-th power in the field so that the
+    /// verifier can compute `t`-th roots when reconstructing `g(root)` from
+    /// per-slot evaluations (Lemma 5.1).
+    ///
+    /// Protocol callers (both prover and verifier) should obtain the
+    /// evaluation point through this method rather than calling
+    /// `transcript.squeeze_challenge()` directly, so swapping in a
+    /// different PCS keeps the protocol generic. No `Parameters` argument
+    /// is taken so the method is symmetric across prover and verifier;
+    /// schemes that need to vary the transform based on SRS sizing should
+    /// encode it at the type level (e.g. as a const generic).
+    fn squeeze_evaluation_point<T: Transcript>(transcript: &mut T) -> F
+    where
+        F: Sampleable<T::Hash>,
+    {
+        transcript.squeeze_challenge()
+    }
+
+    /// Multiplicative blow-up factor by which `params.g_monomial_size()` must
+    /// exceed `2^k` (the circuit's Lagrange-domain size) for this PCS to
+    /// commit every polynomial it produces at the requested circuit size.
+    /// Returns `1` when no extension is needed.
+    ///
+    /// `cs_degree` is the constraint system's `cs.degree()`. Schemes that
+    /// commit to a single combined polynomial (e.g. `single-h-commitment`,
+    /// fflonk's bundles) factor that into their requested blow-up.
+    ///
+    /// SRS loaders consult this method to size the monomial basis. The
+    /// returned value should be a power of two (the loader translates it to
+    /// extra log-bits via `log2(blowup).ceil()`).
+    ///
+    /// Default: `1`. Standard KZG without `single-h-commitment` needs the
+    /// monomial basis only at Lagrange size, so the default fits it.
+    fn srs_monomial_blowup(cs_degree: usize) -> usize {
+        let _ = cs_degree;
+        1
+    }
+
+    /// Largest circuit `k` this PCS can support. Used by SRS loaders to
+    /// fail-fast before the proof-time panic in `commit`.
+    ///
+    /// The constraint depends on the PCS:
+    /// - Standard KZG can support any `k ≤ F::S` (the field's 2-adicity).
+    /// - fflonk additionally requires `k + T_MAX_LOG ≤ F::S` so that the
+    ///   evaluation-domain `ω_n` is a `T_MAX`-th power (rotated query
+    ///   points `ω_n^r · x` must be T_MAX-th powers for `t_th_root` to
+    ///   succeed). Returning `F::S - T_MAX_LOG` makes this surface at SRS
+    ///   load time.
+    ///
+    /// Default: `F::S` (the field's 2-adicity — 32 for BLS12 scalar).
+    /// PCS impls can tighten this further. SRS-size limits are a separate,
+    /// per-deploy concern handled by the loaders.
+    fn max_supported_k() -> u32 {
+        F::S
+    }
+
     /// Create a multi-opening proof at a set of [ProverQuery]'s.
     fn multi_open<T: Transcript>(
         params: &Self::Parameters,
@@ -69,8 +129,15 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
 
     /// Verify an multi-opening proof for a given set of [VerifierQuery]'s.
     /// The function fails if the transcript has trailing bytes.
+    ///
+    /// `k` is the log2 of the circuit's (Lagrange) domain size. Schemes whose
+    /// opening structure depends on the domain relative to the SRS capacity
+    /// (e.g. fflonk's SRS-aware bundling) need it to reconstruct and
+    /// sanity-check the prover's choices; schemes that don't (e.g. plain KZG)
+    /// ignore it.
     fn multi_prepare<'com, T: Transcript>(
         verifier_query: &[VerifierQuery<'com, F, Self>],
+        k: u32,
         transcript: &mut T,
     ) -> Result<Self::VerificationGuard, Error>
     where

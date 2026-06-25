@@ -27,11 +27,8 @@ use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::{self, ConstraintSystem, Error},
     poly::{
-        kzg::{
-            commitment::{KZGCommitment, KZGMultiCommitment},
-            params::ParamsVerifierKZG,
-            KZGCommitmentScheme,
-        },
+        fflonk::{FflonkBundle, FflonkCommitment},
+        kzg::params::ParamsVerifierKZG,
         EvaluationDomain, PolynomialLabel,
     },
     transcript::{CircuitTranscript, Transcript},
@@ -252,11 +249,11 @@ impl IvcTransition for ProofAggregation {
             let mut transcript =
                 CircuitTranscript::<PoseidonState<F>>::init_from_bytes(&witness.inner_proof);
             let dual_msm =
-                plonk::prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<PoseidonState<F>>>(
+                plonk::prepare::<F, crate::KZG<E>, CircuitTranscript<PoseidonState<F>>>(
                     witness.claim.vk.vk(),
-                    &[KZGMultiCommitment(vec![KZGCommitment::Simple(
+                    &[FflonkCommitment(vec![FflonkBundle::Bundle(
                         C::identity(),
-                        PolynomialLabel::CommittedInstance(0),
+                        vec![PolynomialLabel::CommittedInstance(0)],
                     )])],
                     &[&[statement]],
                     &mut transcript,
@@ -270,7 +267,7 @@ impl IvcTransition for ProofAggregation {
             );
 
             let vk_bases = verifier::fixed_bases::<S>("inner_vk", witness.claim.vk.vk());
-            let mut acc = Accumulator::from_dual_msm(dual_msm, "inner_vk", &vk_bases);
+            let mut acc = Accumulator::from_dual_msm(dual_msm.into_dual_msm(), "inner_vk", &vk_bases);
             acc.collapse();
             acc.resolve_fixed_bases(&vk_bases);
             acc
@@ -324,13 +321,13 @@ impl IvcTransition for ProofAggregation {
                     CircuitTranscript::<PoseidonState<F>>::init_from_bytes(&w.inner_proof);
                 let dual_msm = plonk::prepare::<
                     F,
-                    KZGCommitmentScheme<E>,
+                    crate::KZG<E>,
                     CircuitTranscript<PoseidonState<F>>,
                 >(
                     w.claim.vk.vk(),
-                    &[KZGMultiCommitment(vec![KZGCommitment::Simple(
+                    &[FflonkCommitment(vec![FflonkBundle::Bundle(
                         C::identity(),
-                        PolynomialLabel::CommittedInstance(0),
+                        vec![PolynomialLabel::CommittedInstance(0)],
                     )])],
                     &[&[w.claim.statement.format_instance()]],
                     &mut transcript,
@@ -338,7 +335,7 @@ impl IvcTransition for ProofAggregation {
                 .expect("off-circuit prepare should succeed");
 
                 let vk_bases = verifier::fixed_bases::<S>("inner_vk", w.claim.vk.vk());
-                let mut acc = Accumulator::from_dual_msm(dual_msm, "inner_vk", &vk_bases);
+                let mut acc = Accumulator::from_dual_msm(dual_msm.into_dual_msm(), "inner_vk", &vk_bases);
                 acc.collapse();
                 acc
             });

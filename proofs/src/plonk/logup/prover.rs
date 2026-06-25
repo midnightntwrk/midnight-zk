@@ -64,13 +64,15 @@ pub(crate) struct ComputedMultiplicities<F: PrimeField> {
 }
 
 /// Intermediate result from logderivative computation, before transcript
-/// write and FFT conversion to coefficient form.
-pub(crate) struct ComputedLogderivative<F: PrimeField, C> {
+/// write and FFT conversion to coefficient form. The helper and aggregator
+/// commitments are deferred to the caller so they can be batched across
+/// all logup arguments (see the batched `CS::commit` calls in
+/// `plonk/prover.rs`).
+pub(crate) struct ComputedLogderivative<F: PrimeField> {
     pub(crate) name: String,
     pub(crate) multiplicities: Polynomial<F, LagrangeCoeff>,
     pub(crate) helper_polys_lagrange: Vec<Vec<F>>,
     pub(crate) aggregator_poly: Polynomial<F, LagrangeCoeff>,
-    pub(crate) aggregator_commitment: C,
 }
 
 /// Committed polynomials after evaluation at challenge point.
@@ -80,13 +82,11 @@ pub(crate) struct Evaluated<F: PrimeField> {
 }
 
 impl<F: WithSmallOrderMulGroup<3> + Hash> ChunkedArgument<F> {
-    /// Compresses input and table expressions, computes multiplicities, and
-    /// commits — but does NOT write to the transcript. The caller is
-    /// responsible for writing `commitment` in the correct order.
-    ///
-    /// Compresses input and table expressions, computes multiplicities, and
-    /// commits — but does NOT write to the transcript. The caller is
-    /// responsible for writing `commitment` in the correct order.
+    /// Compresses input and table expressions and computes the multiplicities
+    /// polynomial. **Does not commit** — the caller batches multiplicities
+    /// across all logup arguments into a single PCS commit call (this lets
+    /// fflonk bundle them at `T_MAX_LOG > 0` and shaves a transcript-frame
+    /// overhead at `T = 0`).
     ///
     /// `blinding_values` are pre-generated random field elements for the
     /// blinding rows, so this method does not need `&mut rng` and can be
@@ -95,13 +95,12 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ChunkedArgument<F> {
     pub(crate) fn compute_multiplicities_parallel<'a, CS: PolynomialCommitmentScheme<F>>(
         &self,
         pk: &ProvingKey<F, CS>,
-        params: &CS::Parameters,
         theta: F,
         advice_values: &'a [Polynomial<F, LagrangeCoeff>],
         fixed_values: &'a [Polynomial<F, LagrangeCoeff>],
         instance_values: &'a [Polynomial<F, LagrangeCoeff>],
         blinding_values: &[F],
-    ) -> Result<(ComputedMultiplicities<F>, CS::Commitment), Error>
+    ) -> Result<ComputedMultiplicities<F>, Error>
     where
         F: WithSmallOrderMulGroup<3> + FromUniformBytes<64>,
     {
@@ -159,27 +158,19 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ChunkedArgument<F> {
 
         let multiplicities = pk.vk.domain.lagrange_from_vec(multiplicities);
 
-        // Multiplicities are produced by sorting/deduplicating into contiguous
-        // equal-value runs, which collapse to zeros in the LagrangeDelta basis.
-        // The Lagrange form is needed downstream for `eval_polynomial` and the
-        // openings, so we borrow into a transient delta buffer rather than
-        // transforming in place and prefix-summing back.
-        let commitment = CS::commit(
-            params,
-            &[&multiplicities.to_delta()],
-            &[PolynomialLabel::LogupMultiplicities(self.name.clone())],
-        );
-
-        Ok((
-            ComputedMultiplicities {
-                name: self.name.clone(),
-                selector,
-                multiplicities,
-                chunked_compressed_inputs,
-                compressed_table_expression,
-            },
-            commitment,
-        ))
+        // Note on basis: multiplicities are produced by sorting/deduplicating
+        // into contiguous equal-value runs, which collapse to zeros in the
+        // LagrangeDelta basis (PR #379). The caller commits in that basis
+        // via `multiplicities.to_delta()`; this method keeps the Lagrange
+        // form because it's what's needed downstream for `eval_polynomial`
+        // and the openings.
+        Ok(ComputedMultiplicities {
+            name: self.name.clone(),
+            selector,
+            multiplicities,
+            chunked_compressed_inputs,
+            compressed_table_expression,
+        })
     }
 }
 
@@ -194,10 +185,9 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ComputedMultiplicities<F> {
     pub(crate) fn compute_logderivative<CS: PolynomialCommitmentScheme<F>>(
         self,
         pk: &ProvingKey<F, CS>,
-        params: &CS::Parameters,
         beta: F,
         blinding_values: Vec<F>,
-    ) -> Result<ComputedLogderivative<F, CS::Commitment>, Error>
+    ) -> Result<ComputedLogderivative<F>, Error>
     where
         F: WithSmallOrderMulGroup<3> + FromUniformBytes<64>,
     {
@@ -290,23 +280,20 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ComputedMultiplicities<F> {
             assert_eq!(aggregator_poly[u], F::ZERO);
         }
 
-        // The aggregator is a running sum. When the per-row contribution
-        // (selector·h − m·(t+β)⁻¹) is locally constant (common, because
-        // multiplicities m are highly contiguous and tables are zero-padded)
-        // the aggregator is locally *linear*. Δ² converts them in zero runs,
-        // which will be filtered out.
-        let aggregator_commitment = CS::commit(
-            params,
-            &[&aggregator_poly.to_double_delta()],
-            &[PolynomialLabel::LogupAggregator(self.name.clone())],
-        );
+        // Note on basis: the aggregator is a running sum. When the per-row
+        // contribution (selector·h − m·(t+β)⁻¹) is locally constant (common,
+        // because multiplicities m are highly contiguous and tables are
+        // zero-padded) the aggregator is locally *linear*. Δ² converts those
+        // runs into zeros. The caller commits via `aggregator_poly.to_double_delta()`
+        // for the basis-sparse MSM (singleton path); the t>1 bundling path
+        // currently materialises Coeff form and loses that sparsity — see
+        // the TODO in `FflonkScheme::commit`.
 
         Ok(ComputedLogderivative {
             name: self.name,
             multiplicities: self.multiplicities,
             helper_polys_lagrange,
             aggregator_poly,
-            aggregator_commitment,
         })
     }
 }
@@ -371,7 +358,10 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluated<F> {
             .constructed
             .helper_polys
             .iter()
-            .map(move |h| ProverQuery::new(x, h, PolynomialLabel::LogupHelper(name.clone())));
+            .enumerate()
+            .map(move |(chunk_idx, h)| {
+                ProverQuery::new(x, h, PolynomialLabel::LogupHelper(name.clone(), chunk_idx))
+            });
 
         let name = self.constructed.name.clone();
         let z_queries = [

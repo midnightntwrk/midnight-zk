@@ -74,11 +74,10 @@ use midnight_proofs::{
     },
     poly::{
         commitment::{Guard, Labelable, Params},
+        fflonk::{FflonkBundle, FflonkCommitment},
         kzg::{
-            commitment::{KZGCommitment, KZGMultiCommitment},
             msm::{DualMSM, MSMKZG},
             params::{ParamsKZG, ParamsVerifierKZG},
-            KZGCommitmentScheme,
         },
         EvaluationDomain, PolynomialLabel,
     },
@@ -100,8 +99,8 @@ type F = midnight_curves::Fq;
 type C = midnight_curves::G1Projective;
 type E = midnight_curves::Bls12;
 
-type VerifyingKey = plonk::VerifyingKey<F, KZGCommitmentScheme<E>>;
-type ProvingKey = plonk::ProvingKey<F, KZGCommitmentScheme<E>>;
+type VerifyingKey = plonk::VerifyingKey<F, crate::KZG<E>>;
+type ProvingKey = plonk::ProvingKey<F, crate::KZG<E>>;
 
 /// A light aggregator of KZG-based proofs over BLS12-381.
 /// The internal Fiat-Shamir of proofs must have been performed with Poseidon.
@@ -250,7 +249,7 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
         // TODO: Remove, we are hardcoding BLS constants here.
         dbg!(midnight_proofs::dev::cost_model::circuit_model::<
             _,
-            KZGCommitmentScheme<E>,
+            crate::KZG<E>,
         >(&default_aggregator_circuit, 1,));
 
         srs.downsize_from_circuit(&default_aggregator_circuit);
@@ -311,13 +310,13 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
                     CircuitTranscript::<LightPoseidonFS<F>>::init_from_bytes(proof);
                 let dual_msm = plonk::prepare::<
                     F,
-                    KZGCommitmentScheme<E>,
+                    crate::KZG<E>,
                     CircuitTranscript<LightPoseidonFS<F>>,
                 >(
                     &self.inner_vk,
-                    &[KZGMultiCommitment(vec![KZGCommitment::Simple(
+                    &[FflonkCommitment(vec![FflonkBundle::Bundle(
                         C::identity(),
-                        PolynomialLabel::CommittedInstance(0),
+                        vec![PolynomialLabel::CommittedInstance(0)],
                     )])],
                     &[proof_instances],
                     &mut inner_transcript,
@@ -328,8 +327,11 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
                 let fixed_bases =
                     midnight_circuits::verifier::fixed_bases::<S>("inner_vk", &self.inner_vk);
 
-                let proof_acc =
-                    Accumulator::<S>::from_dual_msm(dual_msm.clone(), "inner_vk", &fixed_bases);
+                let proof_acc = Accumulator::<S>::from_dual_msm(
+                    dual_msm.clone().into_dual_msm(),
+                    "inner_vk",
+                    &fixed_bases,
+                );
 
                 Ok(proof_acc)
             })
@@ -357,7 +359,7 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
             AssignedAccumulator::as_public_input_with_committed_scalars(&acc);
         aggregator_instances.extend(acc_normal_instances);
 
-        let acc_rhs_scalars_committed = commit_to_instances::<F, KZGCommitmentScheme<E>>(
+        let acc_rhs_scalars_committed = commit_to_instances::<F, crate::KZG<E>>(
             srs,
             self.aggregator_vk.get_domain(),
             &acc_committed_instances,
@@ -377,7 +379,7 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
         transcript.write(&acc_rhs_evaluated)?;
 
         // Create a proof of having verified the native part of all inner proofs.
-        create_proof::<F, KZGCommitmentScheme<E>, T, AggregatorCircuit<NB_PROOFS>>(
+        create_proof::<F, crate::KZG<E>, T, AggregatorCircuit<NB_PROOFS>>(
             srs,
             &self.aggregator_pk,
             &aggregator_circuit,
@@ -434,8 +436,8 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
             let n: u32 = transcript.read()?;
             (0..n).map(|_| transcript.read()).collect::<Result<Vec<C>, io::Error>>()?
         };
-        let acc_rhs_scalars_committed: KZGMultiCommitment<E> = transcript
-            .read::<KZGMultiCommitment<E>>()?
+        let acc_rhs_scalars_committed: FflonkCommitment<E, 0> = transcript
+            .read::<FflonkCommitment<E, 0>>()?
             .label(vec![PolynomialLabel::CommittedInstance(0)]);
         let acc_rhs_evaluated: C = transcript.read()?;
 
@@ -451,14 +453,13 @@ impl<const NB_PROOFS: usize> LightAggregator<NB_PROOFS> {
                 .collect::<Vec<_>>(),
         );
 
-        let proof_dual_msm = {
-            prepare::<F, KZGCommitmentScheme<E>, T>(
-                &self.aggregator_vk,
-                std::slice::from_ref(&acc_rhs_scalars_committed),
-                &[&aggregator_instances],
-                transcript,
-            )?
-        };
+        let proof_dual_msm = prepare::<F, crate::KZG<E>, T>(
+            &self.aggregator_vk,
+            std::slice::from_ref(&acc_rhs_scalars_committed),
+            &[&aggregator_instances],
+            transcript,
+        )?
+        .into_dual_msm();
 
         // Now verify that the final accumulator satisfies the invariant.
         let fixed_bases = midnight_circuits::verifier::fixed_bases::<S>("inner_vk", &self.inner_vk);
@@ -610,11 +611,11 @@ mod tests {
             let mut transcript =
                 CircuitTranscript::<LightPoseidonFS<F>>::init_from_bytes(&proofs[i]);
             let dual_msm =
-                prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<LightPoseidonFS<F>>>(
+                prepare::<F, crate::KZG<E>, CircuitTranscript<LightPoseidonFS<F>>>(
                     inner_vk.vk(),
-                    &[KZGMultiCommitment(vec![KZGCommitment::Simple(
+                    &[FflonkCommitment(vec![FflonkBundle::Bundle(
                         C::identity(),
-                        PolynomialLabel::CommittedInstance(0),
+                        vec![PolynomialLabel::CommittedInstance(0)],
                     )])],
                     &[&InnerCircuit::format_instance(&instances[i]).unwrap()],
                     &mut transcript,

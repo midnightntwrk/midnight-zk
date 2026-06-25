@@ -101,24 +101,48 @@ pub fn compute_inner_product<F: Field>(a: &[F], b: &[F]) -> F {
     acc
 }
 
-/// Divides polynomial `a` in `X` by `X - b` with
-/// no remainder.
-pub fn kate_division<'a, F: Field, I: IntoIterator<Item = &'a F>>(a: I, mut b: F) -> Vec<F>
-where
-    I::IntoIter: DoubleEndedIterator + ExactSizeIterator,
-{
-    b = -b;
-    let a = a.into_iter();
+/// Divides polynomial `a(X)` by `X^t - c`, returning the quotient.
+/// Assumes the division is exact (no remainder); callers guarantee this by
+/// construction (typically by subtracting the interpolant of `a` at the
+/// roots of `X^t - c` before calling).
+///
+/// At `t = 1`, this is the classic "Kate quotient" — divide by `(X - c)`,
+/// matching the original single-point Kate division. For `t > 1`, the
+/// divisor `X^t - c` has only two non-zero coefficients, and the
+/// recurrence `q[j] = a[j+t] + c·q[j+t]` (with `q[k] = 0` for
+/// out-of-range `k`) computes the quotient in O(deg(a)) field ops — same
+/// per-coefficient cost as the linear case, instead of the `t` sequential
+/// single-point divisions a caller would otherwise loop through.
+///
+/// The `t > 1` branch is what fflonk's multi_open uses to divide by the
+/// vanishing polynomial of a t-th-root coset; KZG and other call sites
+/// pass `t = 1` and get the same singleton-division behavior as before.
+///
+/// # Panics
+/// If `t == 0`, or `t >= a.len()` (divisor degree must be < dividend
+/// length).
+pub fn kate_division<F: Field>(a: &[F], c: F, t: usize) -> Vec<F> {
+    assert!(t >= 1, "kate_division: t must be ≥ 1");
+    let n = a.len();
+    assert!(
+        t < n,
+        "kate_division: divisor degree t={t} must be < dividend length {n}"
+    );
 
-    let mut q = vec![F::ZERO; a.len() - 1];
+    // q(X) has degree n - 1 - t, so length n - t.
+    let q_len = n - t;
+    let mut q = vec![F::ZERO; q_len];
 
-    let mut tmp = F::ZERO;
-    for (q, r) in q.iter_mut().rev().zip(a.rev()) {
-        let mut lead_coeff = *r;
-        lead_coeff.sub_assign(&tmp);
-        *q = lead_coeff;
-        tmp = lead_coeff;
-        tmp.mul_assign(&b);
+    // Recurrence: q[j] = a[j+t] + c · q[j+t], with q[k] = 0 for k ≥ q_len.
+    // Iterate high → low so q[j+t] is already populated when read.
+    for j in (0..q_len).rev() {
+        let next_idx = j + t;
+        let q_contrib = if next_idx < q_len {
+            c * q[next_idx]
+        } else {
+            F::ZERO
+        };
+        q[j] = a[next_idx] + q_contrib;
     }
 
     q
@@ -281,6 +305,40 @@ pub(crate) fn inner_product<F: PrimeField, T: Mul<F, Output = T> + Add<T, Output
         .map(|(p, s)| p.clone() * s)
         .reduce(|acc, p| acc + p)
         .unwrap()
+}
+
+/// Like [`inner_product`] but specialised to coefficient-form polynomials
+/// that may have different lengths (the shorter ones are zero-extended).
+///
+/// Fused parallel implementation: a single pass accumulates all scaled
+/// contributions directly into the output buffer, avoiding `M` intermediate
+/// allocations and the sequential reduce chain.
+///
+/// Shared between KZG's and fflonk's `multi_open` (both build the GWC
+/// `f_poly` / `final_poly` this way).
+pub(crate) fn poly_inner_product<F: PrimeField>(
+    polys: &[crate::poly::Polynomial<F, crate::poly::Coeff>],
+    scalars: impl IntoIterator<Item = F>,
+) -> crate::poly::Polynomial<F, crate::poly::Coeff> {
+    use std::marker::PhantomData;
+    let scalars: Vec<F> = scalars.into_iter().take(polys.len()).collect();
+    let max_len = polys.iter().map(|p| p.len()).max().unwrap_or(0);
+    let mut values = vec![F::ZERO; max_len];
+    parallelize(&mut values, |chunk, start| {
+        for (poly, scalar) in polys.iter().zip(scalars.iter()) {
+            let pv: &[F] = poly;
+            let end = (start + chunk.len()).min(pv.len());
+            if start < pv.len() {
+                for (out, coeff) in chunk[..end - start].iter_mut().zip(&pv[start..end]) {
+                    *out += *coeff * scalar;
+                }
+            }
+        }
+    });
+    crate::poly::Polynomial {
+        values,
+        _marker: PhantomData,
+    }
 }
 
 pub(crate) fn msm_inner_product<E>(mut msms: Vec<MSMKZG<E>>, scalars: &[E::Fr]) -> MSMKZG<E>

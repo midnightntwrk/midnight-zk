@@ -68,7 +68,7 @@ single-h-commitment = [
 bench = false
 
 [[bench]]
-name = "verify"
+name = "fflonk_sha_preimage"
 harness = false
 
 [[example]]

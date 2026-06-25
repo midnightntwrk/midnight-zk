@@ -20,7 +20,7 @@ pub mod commitment;
 pub mod msm;
 /// KZG commitment scheme
 pub mod params;
-mod utils;
+pub(crate) mod utils;
 
 use std::{fmt::Debug, hash::Hash};
 
@@ -29,7 +29,6 @@ use ff::Field;
 use group::Group;
 use midnight_curves::pairing::MultiMillerLoop;
 use rand_core::OsRng;
-#[cfg(feature = "fewer-point-sets")]
 pub use utils::compute_dummy_queries;
 
 #[cfg(feature = "truncated-challenges")]
@@ -49,8 +48,8 @@ use crate::{
     utils::{
         arithmetic::{
             eval_polynomial, evals_inner_product, inner_product, kate_division,
-            lagrange_interpolate, msm_inner_product, parallelize, powers, CurveAffine, CurveExt,
-            MSM,
+            lagrange_interpolate, msm_inner_product, poly_inner_product, powers, CurveAffine,
+            CurveExt, MSM,
         },
         helpers::ProcessedSerdeObject,
     },
@@ -78,6 +77,23 @@ where
 
     fn get_verifier_params(params: &Self::Parameters) -> Self::VerifierParameters {
         params.verifier_params()
+    }
+
+    /// Standard KZG without `single-h-commitment` is happy with the monomial
+    /// basis at Lagrange size (default `1`). With `single-h-commitment`,
+    /// `compute_h_poly` writes one commitment for the full quotient
+    /// `h(X)` of degree `(n-1)*(cs_degree-1)`, so the monomial basis must
+    /// hold `(cs_degree-1).next_power_of_two() * n` elements.
+    fn srs_monomial_blowup(cs_degree: usize) -> usize {
+        #[cfg(feature = "single-h-commitment")]
+        {
+            (cs_degree - 1).next_power_of_two()
+        }
+        #[cfg(not(feature = "single-h-commitment"))]
+        {
+            let _ = cs_degree;
+            1
+        }
     }
 
     fn commit<B: PolynomialRepresentation>(
@@ -120,36 +136,6 @@ where
         E::Fr: Sampleable<T::Hash> + Hash + Ord + Hashable<T::Hash>,
         KZGMultiCommitment<E>: Hashable<T::Hash>,
     {
-        /// Like [`inner_product`] but for coefficient-form polynomials that may
-        /// have different lengths (zero-extending the shorter operands).
-        ///
-        /// Fused parallel implementation: a single pass accumulates all
-        /// scaled contributions directly into the output buffer, avoiding
-        /// M intermediate allocations and the sequential reduce chain.
-        fn poly_inner_product<F: ff::PrimeField>(
-            polys: &[Polynomial<F, Coeff>],
-            scalars: impl IntoIterator<Item = F>,
-        ) -> Polynomial<F, Coeff> {
-            let scalars: Vec<F> = scalars.into_iter().take(polys.len()).collect();
-            let max_len = polys.iter().map(|p| p.len()).max().unwrap_or(0);
-            let mut values = vec![F::ZERO; max_len];
-            parallelize(&mut values, |chunk, start| {
-                for (poly, scalar) in polys.iter().zip(scalars.iter()) {
-                    let pv: &[F] = poly;
-                    let end = (start + chunk.len()).min(pv.len());
-                    if start < pv.len() {
-                        for (out, coeff) in chunk[..end - start].iter_mut().zip(&pv[start..end]) {
-                            *out += *coeff * scalar;
-                        }
-                    }
-                }
-            });
-            Polynomial {
-                values,
-                _marker: PhantomData,
-            }
-        }
-
         // Add dummy queries to reduce the number of distinct multi-open point sets.
         #[cfg(feature = "fewer-point-sets")]
         let queries = &{
@@ -225,7 +211,7 @@ where
                 .map(|(points, q_poly)| {
                     let poly = points
                         .iter()
-                        .fold(q_poly.values, |poly, point| kate_division(&poly, *point));
+                        .fold(q_poly.values, |poly, point| kate_division(&poly, *point, 1));
                     Polynomial {
                         values: poly,
                         _marker: PhantomData,
@@ -270,7 +256,7 @@ where
 
         let pi = {
             let pi_poly = Polynomial::<_, Coeff> {
-                values: kate_division(&(&final_poly - v).values, x3),
+                values: kate_division(&(&final_poly - v).values, x3, 1),
                 _marker: PhantomData,
             };
             Self::commit(
@@ -285,6 +271,10 @@ where
 
     fn multi_prepare<'com, T: Transcript>(
         queries: &[VerifierQuery<'com, E::Fr, KZGCommitmentScheme<E>>],
+        // Plain KZG's opening does not depend on the SRS-relative domain size,
+        // so `k` is unused here (it matters only for SRS-aware schemes like
+        // fflonk).
+        _k: u32,
         transcript: &mut T,
     ) -> Result<DualMSM<E>, Error>
     where
@@ -324,7 +314,7 @@ where
 
         let (commitment_map, point_sets) = construct_intermediate_sets(&triples)?;
 
-        let mut q_coms: Vec<_> = vec![vec![]; point_sets.len()];
+        let mut q_coms: Vec<Vec<MSMKZG<_>>> = vec![vec![]; point_sets.len()];
         let mut q_eval_sets = vec![vec![]; point_sets.len()];
 
         for com_data in commitment_map.into_iter() {
@@ -617,7 +607,7 @@ mod tests {
         };
 
         let result =
-            KZGCommitmentScheme::multi_prepare(&queries.collect::<Vec<_>>(), &mut transcript)
+            KZGCommitmentScheme::multi_prepare(&queries.collect::<Vec<_>>(), 0, &mut transcript)
                 .unwrap();
 
         if should_fail {

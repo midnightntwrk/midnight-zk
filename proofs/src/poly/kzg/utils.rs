@@ -8,11 +8,11 @@ use ff::Field;
 use crate::poly::{query::PolynomialLabel, Error};
 
 #[derive(Clone, Debug)]
-pub(super) struct CommitmentData<F> {
-    pub(super) label: PolynomialLabel,
-    pub(super) set_index: usize,
-    pub(super) point_indices: Vec<usize>,
-    pub(super) evals: Vec<F>,
+pub(crate) struct CommitmentData<F> {
+    pub(crate) label: PolynomialLabel,
+    pub(crate) set_index: usize,
+    pub(crate) point_indices: Vec<usize>,
+    pub(crate) evals: Vec<F>,
 }
 
 impl<F> CommitmentData<F> {
@@ -36,7 +36,7 @@ type IntermediateSets<F> = (Vec<CommitmentData<F>>, Vec<Vec<F>>);
 ///   point-set index it belongs to and the evaluation at each point.
 /// - A vector of point sets, where each set is a `Vec<F>` of the distinct
 ///   evaluation points for all labels assigned to that set.
-pub(super) fn construct_intermediate_sets<F: Field + Hash + Ord>(
+pub(crate) fn construct_intermediate_sets<F: Field + Hash + Ord>(
     queries: &[(PolynomialLabel, F, F)],
 ) -> Result<IntermediateSets<F>, Error> {
     let mut commitment_map: Vec<CommitmentData<F>> = vec![];
@@ -120,19 +120,28 @@ pub(super) fn construct_intermediate_sets<F: Field + Hash + Ord>(
 /// Computes the dummy openings needed to reduce the number of distinct
 /// multi-open point sets. Each input `(key, point)` pair represents a query
 /// (e.g., a commitment opened at a given point). The function groups queries
-/// by key (by commitment) computes the union of all point sets that contain
-/// more than one point, and returns the missing `(index, point)` pairs that,
-/// once added, make every such point set identical. Keys with a single point
-/// are left untouched (we do this because there are many commitments opened
-/// at a single point, e.g. most selectors; we could also pad those, but the
-/// impact on the proof size would be more significant).
+/// by key, computes the union of all *multi-point* groups' points (singletons
+/// don't contribute to the union), and returns the missing `(index, point)`
+/// pairs that, once added, make every group's point set equal to the union.
+///
+/// Note: singleton groups *are* padded against the union (even though they
+/// don't contribute to it). For a typical Plonk shape — multi-point groups
+/// at `{x, ωx}`, singletons at `x` — each singleton gets one dummy at `ωx`,
+/// collapsing the verifier-side set count to one. Outlier singletons whose
+/// lone point is not in the union receive the full union as dummies; that
+/// case is rare in practice but worth knowing for cost modelling.
 ///
 /// Each returned `index` refers to the position of the key's first occurrence
 /// in the input, so callers can index back into the original query slice.
 ///
 /// The output order is deterministic (insertion order), so prover and verifier
 /// stay in sync.
-#[cfg(feature = "fewer-point-sets")]
+///
+/// Always compiled (not feature-gated): the same primitive serves both the
+/// `fewer-point-sets` heuristic (call once per batch with commitment-label
+/// keys) and fflonk's mandatory over-opening within a `t > 1` bundle (call
+/// once per bundle with slot-index keys). Treating both as one function
+/// keeps the prover/verifier transcript ordering symmetric by construction.
 pub fn compute_dummy_queries<K: PartialEq, P: PartialEq + Clone>(
     pairs: &[(K, P)],
 ) -> Vec<(usize, P)> {

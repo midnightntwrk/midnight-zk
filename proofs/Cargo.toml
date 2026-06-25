@@ -28,6 +28,10 @@ name = "zswap_output"
 required-features = ["bench-internal"]
 harness = false
 
+[[bench]]
+name = "fflonk_sweep"
+harness = false
+
 [dependencies]
 ff = { workspace = true }
 group = { workspace = true }
