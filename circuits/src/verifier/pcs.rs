@@ -29,33 +29,6 @@ use crate::{
 };
 
 // ---------------------------------------------------------------------------
-// CommitmentReference  (mirrors proofs/src/poly/query.rs)
-// ---------------------------------------------------------------------------
-
-/// A pointer to an in-circuit commitment, with pointer-based equality.
-///
-/// Two references are equal iff they point to the same allocation, so
-/// commitments are grouped by identity rather than by value.
-pub(crate) struct CommitmentReference<'a, C>(pub(crate) &'a C);
-
-impl<C> Clone for CommitmentReference<'_, C> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-impl<C> Copy for CommitmentReference<'_, C> {}
-impl<C: Debug> Debug for CommitmentReference<'_, C> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.fmt(f)
-    }
-}
-impl<C> PartialEq for CommitmentReference<'_, C> {
-    fn eq(&self, other: &Self) -> bool {
-        std::ptr::eq(self.0, other.0)
-    }
-}
-
-// ---------------------------------------------------------------------------
 // VerifierQuery  (mirrors proofs/src/poly/query.rs)
 // ---------------------------------------------------------------------------
 
@@ -63,7 +36,7 @@ impl<C> PartialEq for CommitmentReference<'_, C> {
 #[derive(Clone, Debug)]
 pub struct VerifierQuery<'a, S: SelfEmulation, PCS: InCircuitPCS<S>> {
     pub(crate) point: AssignedNative<S::F>,
-    pub(crate) commitment_ref: CommitmentReference<'a, PCS::AssignedCommitment>,
+    pub(crate) commitment: &'a PCS::AssignedCommitment,
     pub(crate) label: PolynomialLabel,
     pub(crate) eval: AssignedNative<S::F>,
 }
@@ -77,7 +50,7 @@ impl<'a, S: SelfEmulation, PCS: InCircuitPCS<S>> VerifierQuery<'a, S, PCS> {
     ) -> Self {
         Self {
             point: point.clone(),
-            commitment_ref: CommitmentReference(commitment),
+            commitment,
             label,
             eval: eval.clone(),
         }
