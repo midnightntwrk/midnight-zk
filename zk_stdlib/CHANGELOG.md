@@ -13,7 +13,11 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Removed
 
-##[2.3.1]
+## [2.3.2]
+### Changed
+* Bump `midnight-circuits` to 7.2.2 [451](https://github.com/midnightntwrk/midnight-zk/pull/451)
+
+## [2.3.1]
 ### Fixed
 * Bug fix in midnight-curves [#434](https://github.com/midnightntwrk/midnight-zk/pull/434)
 

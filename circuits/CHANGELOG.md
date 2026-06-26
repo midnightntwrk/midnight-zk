@@ -13,6 +13,10 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Removed
 
+## [7.2.2]
+### Fixed
+* Fix `InnerValue` for `AssignedScalarOfNativeCurve` [#451](https://github.com/midnightntwrk/midnight-zk/pull/451)
+
 ## [7.2.1]
 ### Fixed
 * Bug fix in midnight-curves [#434](https://github.com/midnightntwrk/midnight-zk/pull/434)
