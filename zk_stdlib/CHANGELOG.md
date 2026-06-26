@@ -8,10 +8,13 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 ### Added
+### Changed
+### Removed
+
+## [2.3.3]
 
 ### Changed
-
-### Removed
+* Display the underlying error message in `Relation::circuit` synthesis errors [#452](https://github.com/midnightntwrk/midnight-zk/pull/452)
 
 ## [2.3.2]
 ### Changed
