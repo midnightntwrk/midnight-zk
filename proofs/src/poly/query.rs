@@ -11,8 +11,6 @@ pub enum PolynomialLabel {
     Fixed(usize),
     /// Advice column commitment (column index).
     Advice(usize),
-    /// Instance column commitment (column index).
-    Instance(usize),
     /// Committed instance column commitment (column index).
     CommittedInstance(usize),
     /// Permutation verifying-key commitment (index).
@@ -47,7 +45,6 @@ impl fmt::Display for PolynomialLabel {
         match self {
             Self::Fixed(i) => write!(f, "fixed_{i}"),
             Self::Advice(i) => write!(f, "advice_{i}"),
-            Self::Instance(i) => write!(f, "instance_{i}"),
             Self::CommittedInstance(i) => write!(f, "committed_instance_{i}"),
             Self::PermutationFixed(i) => write!(f, "perm_fixed_{i}"),
             Self::PermutationAccumulator(i) => write!(f, "perm_acc_{i}"),

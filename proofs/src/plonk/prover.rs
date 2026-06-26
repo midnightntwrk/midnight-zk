@@ -54,7 +54,7 @@ where
     for (poly_eval, value) in poly.iter_mut().zip(instances.iter()) {
         *poly_eval = *value;
     }
-    CS::commit(params, &poly, PolynomialLabel::Instance(0))
+    CS::commit(params, &poly, PolynomialLabel::CommittedInstance(0))
 }
 
 /// This computes a proof trace for the provided `circuit` when given the

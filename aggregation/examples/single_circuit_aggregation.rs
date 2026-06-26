@@ -240,7 +240,7 @@ impl IvcTransition for ProofAggregation {
                 plonk::prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<PoseidonState<F>>>(
                     ctx.vk.vk(),
                     &[KZGMultiCommitment::commitment_to_zero(
-                        PolynomialLabel::Instance(0),
+                        PolynomialLabel::CommittedInstance(0),
                     )],
                     &[&statement_pis],
                     &mut transcript,

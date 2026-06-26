@@ -155,7 +155,7 @@ macro_rules! plonk_api {
                         .map(|(i, c)| {
                             KZGMultiCommitment(vec![KZGCommitment::Simple(
                                 (*c).into(),
-                                PolynomialLabel::Instance(i),
+                                PolynomialLabel::CommittedInstance(i),
                             )])
                         })
                         .collect::<Vec<_>>(),

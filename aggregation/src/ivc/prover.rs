@@ -100,7 +100,7 @@ impl<T: Ivc> IvcProver<T> {
                 plonk::prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<PoseidonState<F>>>(
                     vk,
                     &[KZGMultiCommitment::commitment_to_zero(
-                        PolynomialLabel::Instance(0),
+                        PolynomialLabel::CommittedInstance(0),
                     )],
                     &[&prev_pi],
                     &mut transcript,

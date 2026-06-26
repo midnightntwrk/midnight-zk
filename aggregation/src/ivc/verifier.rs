@@ -66,7 +66,7 @@ impl<T: Ivc> IvcVerifier<T> {
             plonk::prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<PoseidonState<F>>>(
                 self.vk.vk(),
                 &[KZGMultiCommitment::commitment_to_zero(
-                    PolynomialLabel::Instance(0),
+                    PolynomialLabel::CommittedInstance(0),
                 )],
                 &[&pi],
                 &mut transcript,
