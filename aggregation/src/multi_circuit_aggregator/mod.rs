@@ -68,7 +68,7 @@ pub trait AggregableRelation: Relation {
     ///
     /// If `format_instance` fails or does not return exactly one public input.
     fn format_statement(instance: &Self::Instance) -> F {
-        let pis = Self::format_instance(instance).ok().expect("format_instance failed");
+        let pis = Self::format_instance(instance).expect("format_instance failed");
         assert_eq!(
             pis.len(),
             1,
