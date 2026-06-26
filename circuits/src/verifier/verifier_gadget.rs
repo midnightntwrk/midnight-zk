@@ -178,9 +178,9 @@ impl<S: SelfEmulation> VerifierGadget<S> {
     /// Witnesses the "collapsed" form of a KZG accumulator.
     ///
     /// The expected shape is:
-    /// * LHS: exactly one `Variable` entry labeled `Collapsed` with scalar `1`.
+    /// * LHS: exactly one `Variable` entry labeled `NoLabel` with scalar `1`.
     /// * RHS: one `Fixed` entry per label in `fixed_base_labels` plus one
-    ///   `Variable` entry labeled `Collapsed` with scalar `1`.
+    ///   `Variable` entry labeled `NoLabel` with scalar `1`.
     ///
     /// This shape matches the invariant maintained by the KZG multiopen
     /// accumulation after `collapse()` has been called off-circuit.
@@ -194,8 +194,8 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             layouter,
             &self.curve_chip,
             &self.scalar_chip,
-            &[PolynomialLabel::Collapsed],
-            &[fixed_base_labels, &[PolynomialLabel::Collapsed]].concat(),
+            &[PolynomialLabel::NoLabel],
+            &[fixed_base_labels, &[PolynomialLabel::NoLabel]].concat(),
             &HashSet::new(),
             &fixed_base_labels.iter().cloned().collect(),
             value,
@@ -348,8 +348,8 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         // challenges
         let advice_commitments = (0..cs.num_advice_columns())
             .map(|i| {
-                PCS::read_commitment(&mut transcript, layouter)
-                    .map(|c| c.label(PolynomialLabel::Advice(i)))
+                PCS::read_commitment(&mut transcript, layouter, 1)
+                    .map(|c| c.label(&[PolynomialLabel::Advice(i)]))
             })
             .collect::<Result<Vec<_>, Error>>()?;
 
@@ -359,7 +359,8 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         let multiplicities_committed = cs
             .lookups()
             .iter()
-            .map(|l| lookup::read_multiplicities(l.name(), layouter, &mut transcript))
+            .enumerate()
+            .map(|(i, _l)| lookup::read_multiplicities(i, layouter, &mut transcript))
             .collect::<Result<Vec<_>, Error>>()?;
 
         let beta = transcript.squeeze_challenge(layouter)?;
@@ -372,10 +373,11 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         let lookups_committed = multiplicities_committed
             .into_iter()
             .zip(cs.lookups().iter())
-            .map(|(m, batch)| {
+            .enumerate()
+            .map(|(i, (m, batch))| {
                 let nb_flat = batch.num_chunks(assigned_vk.cs_degree);
                 // Hash each lookup product commitment
-                m.read_commitment(batch.name(), nb_flat, layouter, &mut transcript)
+                m.read_commitment(i, nb_flat, layouter, &mut transcript)
             })
             .collect::<Result<Vec<_>, _>>()?;
 
@@ -384,7 +386,8 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         let trashcans_committed = cs
             .trashcans()
             .iter()
-            .map(|argument| trash::read_committed(argument.name(), layouter, &mut transcript))
+            .enumerate()
+            .map(|(i, _argument)| trash::read_committed(i, layouter, &mut transcript))
             .collect::<Result<Vec<_>, _>>()?;
 
         // Sample y challenge, which keeps the gates linearly independent
@@ -538,17 +541,19 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         let nb_quotient_coms = 1;
         let limb_commitments = {
             let raw = (0..nb_quotient_coms)
-                .map(|_| PCS::read_commitment(&mut transcript, layouter))
+                .map(|_| PCS::read_commitment(&mut transcript, layouter, 1))
                 .collect::<Result<Vec<_>, Error>>()?;
             #[cfg(not(feature = "single-h-commitment"))]
             let labeled = raw
                 .into_iter()
                 .enumerate()
-                .map(|(i, c)| c.label(PolynomialLabel::QuotientPiece(i)))
+                .map(|(i, c)| c.label(&[PolynomialLabel::QuotientPiece(i)]))
                 .collect::<Vec<_>>();
             #[cfg(feature = "single-h-commitment")]
-            let labeled =
-                raw.into_iter().map(|c| c.label(PolynomialLabel::Quotient)).collect::<Vec<_>>();
+            let labeled = raw
+                .into_iter()
+                .map(|c| c.label(&[PolynomialLabel::Quotient]))
+                .collect::<Vec<_>>();
             labeled
         };
 
@@ -784,6 +789,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                     VerifierQuery::<S, PCS>::new(
                         get_point(&rot),
                         &advice_commitments[column.index()],
+                        PolynomialLabel::Advice(column.index()),
                         &advice_evals[query_index],
                     )
                 }),
@@ -794,6 +800,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                         Some(VerifierQuery::<S, PCS>::new(
                             get_point(&rot),
                             &assigned_committed_instances[column.index()],
+                            PolynomialLabel::CommittedInstance(column.index()),
                             &instance_evals[query_index],
                         ))
                     } else {
@@ -814,6 +821,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                         VerifierQuery::new(
                             get_point(&rot),
                             &assigned_vk.fixed_commitments[column.index()],
+                            PolynomialLabel::Fixed(column.index()),
                             &fixed_evals[query_index],
                         )
                     }),
@@ -825,6 +833,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             .chain(iter::once(VerifierQuery::new(
                 &x,
                 &lin_commitment,
+                PolynomialLabel::Linearization,
                 &lin_eval,
             )))
             .collect::<Vec<_>>();
@@ -887,7 +896,7 @@ pub(crate) mod tests {
         dev::MockProver,
         plonk::{create_proof, keygen_pk, keygen_vk_with_k, prepare, Circuit, Error},
         poly::{
-            kzg::{commitment::KZGCommitment, params::ParamsKZG, KZGCommitmentScheme},
+            kzg::{commitment::KZGMultiCommitment, params::ParamsKZG, KZGCommitmentScheme},
             PolynomialLabel,
         },
         transcript::{CircuitTranscript, Transcript},
@@ -923,7 +932,8 @@ pub(crate) mod tests {
         testing_utils::FromScratch,
         types::{ComposableChip, Instantiable},
         verifier::{
-            accumulator::Accumulator, AssignedKZGCommitment, BlstrsEmulation, InCircuitKZG,
+            accumulator::Accumulator, kzg::AssignedKZGMultiCommitment, AssignedKZGCommitment,
+            BlstrsEmulation, InCircuitKZG,
         },
     };
 
@@ -1098,12 +1108,13 @@ pub(crate) mod tests {
                     self.inner_vk.2,
                 )?;
 
-            let assigned_committed_instance = AssignedKZGCommitment::assign(
-                &mut layouter,
-                &curve_chip,
-                self.inner_committed_instance,
-                PolynomialLabel::CommittedInstance(0),
-            )?;
+            let assigned_committed_instance =
+                AssignedKZGMultiCommitment(vec![AssignedKZGCommitment::assign(
+                    &mut layouter,
+                    &curve_chip,
+                    self.inner_committed_instance,
+                    PolynomialLabel::CommittedInstance(0),
+                )?]);
 
             let assigned_inner_pi = native_gadget
                 .assign_many(&mut layouter, &self.inner_instances.transpose_array())?;
@@ -1173,9 +1184,8 @@ pub(crate) mod tests {
                 CircuitTranscript::<PoseidonState<F>>::init_from_bytes(&inner_proof);
             prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<PoseidonState<F>>>(
                 &inner_vk,
-                &[KZGCommitment::Simple(
-                    C::identity(),
-                    PolynomialLabel::Instance(0),
+                &[KZGMultiCommitment::commitment_to_zero(
+                    PolynomialLabel::CommittedInstance(0),
                 )],
                 &[&inner_public_inputs],
                 &mut transcript,

@@ -257,7 +257,10 @@ impl Argument {
 
 impl<F: PrimeField> super::ProvingKey<F> {
     pub(crate) fn open(&self, x: F) -> impl Iterator<Item = ProverQuery<'_, F>> + Clone {
-        self.polys.iter().map(move |poly| ProverQuery::new(x, poly))
+        self.polys
+            .iter()
+            .enumerate()
+            .map(move |(i, poly)| ProverQuery::new(x, poly, PolynomialLabel::PermutationFixed(i)))
     }
 
     pub(crate) fn evaluate<T: Transcript>(
@@ -345,22 +348,39 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluated<F> {
         let x_last = pk.vk.domain.rotate_omega(x, Rotation(-((blinding_factors + 1) as i32)));
 
         iter::empty()
-            .chain(self.constructed.sets.iter().flat_map(move |set| {
-                iter::empty()
-                    // Open permutation product commitments at x and \omega x
-                    .chain(Some(ProverQuery::new(x, &set.permutation_product_poly)))
-                    .chain(Some(ProverQuery::new(
-                        x_next,
-                        &set.permutation_product_poly,
-                    )))
-            }))
+            .chain(
+                self.constructed.sets.iter().enumerate().flat_map(move |(i, set)| {
+                    iter::empty()
+                        // Open permutation product commitments at x and \omega x
+                        .chain(Some(ProverQuery::new(
+                            x,
+                            &set.permutation_product_poly,
+                            PolynomialLabel::PermutationAccumulator(i),
+                        )))
+                        .chain(Some(ProverQuery::new(
+                            x_next,
+                            &set.permutation_product_poly,
+                            PolynomialLabel::PermutationAccumulator(i),
+                        )))
+                }),
+            )
             // Open it at \omega^{last} x for all but the last set. This rotation is only
             // sensical for the first row, but we only use this rotation in a constraint
             // that is gated on l_0.
             .chain(
-                self.constructed.sets.iter().rev().skip(1).flat_map(move |set| {
-                    Some(ProverQuery::new(x_last, &set.permutation_product_poly))
-                }),
+                self.constructed
+                    .sets
+                    .iter()
+                    .enumerate()
+                    .rev()
+                    .skip(1)
+                    .flat_map(move |(i, set)| {
+                        Some(ProverQuery::new(
+                            x_last,
+                            &set.permutation_product_poly,
+                            PolynomialLabel::PermutationAccumulator(i),
+                        ))
+                    }),
             )
     }
 }

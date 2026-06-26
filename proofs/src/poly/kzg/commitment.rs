@@ -4,6 +4,7 @@ use std::{
 };
 
 use ff::Field;
+use group::Group;
 use midnight_curves::{pairing::MultiMillerLoop, CurveAffine};
 
 use crate::{
@@ -83,16 +84,15 @@ where
     E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
 {
     /// Collapses a `Linear` combination into a `Simple` commitment by computing
-    /// the MSM `∑ scalars[i] * points[i]`.
+    /// the MSM `∑ scalars[i] * points[i]`, labeling the result with `label`.
     ///
-    /// A `Simple` commitment is left unchanged.
-    /// After the call, the result always has scalar `1` and label `Collapsed`.
-    pub fn collapse(&mut self) {
+    /// A `Simple` commitment is left unchanged (its existing label is kept).
+    pub fn collapse(&mut self, label: PolynomialLabel) {
         match self {
             Self::Simple(_, _) => (),
             Self::Linear(points, scalars, labels) => {
                 let mut msm = MSMKZG::<E>::new(scalars, points, labels);
-                msm.collapse();
+                msm.collapse(label);
                 debug_assert_eq!(msm.bases.len(), 1);
                 debug_assert_eq!(msm.scalars, vec![E::Fr::ONE]);
                 *self = Self::Simple(msm.bases[0], msm.labels[0].clone());
@@ -117,17 +117,17 @@ where
     E::G1: Default,
 {
     fn default() -> Self {
-        Self::Simple(E::G1::default(), PolynomialLabel::Collapsed)
+        Self::Simple(E::G1::default(), PolynomialLabel::NoLabel)
     }
 }
 
-impl<E: MultiMillerLoop> Labelable for KZGCommitment<E> {
-    /// Adds a label to the KZG commitment.
+impl<E: MultiMillerLoop> KZGCommitment<E> {
+    /// Attaches `label` to a freshly-deserialized (`NoLabel`) commitment.
     ///
     /// # Panics
     ///
     /// If the commitment is not `Simple` or if it was already labeled.
-    fn label(self, label: PolynomialLabel) -> Self {
+    pub(super) fn label(self, label: PolynomialLabel) -> Self {
         match self {
             Self::Simple(p, PolynomialLabel::NoLabel) => Self::Simple(p, label),
             Self::Simple(_, existing) => panic!("commitment is already labeled: {existing:?}"),
@@ -224,5 +224,154 @@ impl<E: MultiMillerLoop> Add for KZGCommitment<E> {
         scalars.extend(other_scalars);
         labels.extend(other_labels);
         Self::Linear(points, scalars, labels)
+    }
+}
+
+/// A KZG commitment to one or more polynomials.
+///
+/// Each inner [`KZGCommitment`] corresponds to one polynomial. Committing to
+/// multiple polynomials is handled sequentially with no sublinear optimization;
+/// commitments are independent curve points, one per polynomial.
+#[derive(Clone, Debug)]
+pub struct KZGMultiCommitment<E: MultiMillerLoop>(pub Vec<KZGCommitment<E>>);
+
+impl<E: MultiMillerLoop> KZGMultiCommitment<E> {
+    fn assert_single(&self) {
+        assert_eq!(
+            self.0.len(),
+            1,
+            "operation on KZGMultiCommitment requires exactly one polynomial"
+        );
+    }
+
+    /// Consumes the commitment, returning its single inner [`KZGCommitment`].
+    ///
+    /// # Panics
+    ///
+    /// If this commitment does not hold exactly one polynomial.
+    pub fn into_single(self) -> KZGCommitment<E> {
+        self.assert_single();
+        self.0.into_iter().next().unwrap()
+    }
+
+    /// A commitment to the zero polynomial (the identity point), tagged with
+    /// `label`. Used e.g. for empty committed-instance columns.
+    pub fn commitment_to_zero(label: PolynomialLabel) -> Self {
+        Self(vec![KZGCommitment::Simple(E::G1::identity(), label)])
+    }
+}
+
+impl<E: MultiMillerLoop> PartialEq for KZGMultiCommitment<E>
+where
+    E::G1: PartialEq,
+    E::Fr: PartialEq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl<E: MultiMillerLoop> Default for KZGMultiCommitment<E>
+where
+    E::G1: Default,
+{
+    fn default() -> Self {
+        Self(vec![KZGCommitment::default()])
+    }
+}
+
+impl<E: MultiMillerLoop> Labelable for KZGMultiCommitment<E> {
+    fn label(self, labels: &[PolynomialLabel]) -> Self {
+        assert_eq!(
+            labels.len(),
+            self.0.len(),
+            "label count must match polynomial count"
+        );
+        Self(self.0.into_iter().zip(labels).map(|(c, l)| c.label(l.clone())).collect())
+    }
+
+    fn length(&self) -> usize {
+        self.0.len()
+    }
+}
+
+/// The inner per-polynomial `KZGCommitment`s, concatenated with no length
+/// prefix: a single-polynomial commitment serializes exactly like its inner
+/// commitment. The number of polynomials is therefore not recoverable from the
+/// bytes alone; `read` deserializes a single polynomial (the common case), and
+/// batched commitments are read with an explicit length elsewhere.
+///
+/// Labels are not part of the serialized form; deserialized commitments receive
+/// [`PolynomialLabel::NoLabel`] and must be labeled at the call site.
+impl<E: MultiMillerLoop> ProcessedSerdeObject for KZGMultiCommitment<E>
+where
+    E::G1: Default + ProcessedSerdeObject,
+{
+    fn read<R: io::Read>(reader: &mut R, format: SerdeFormat) -> io::Result<Self> {
+        Ok(Self(vec![
+            <KZGCommitment<E> as ProcessedSerdeObject>::read(reader, format)?,
+        ]))
+    }
+
+    fn write<W: io::Write>(&self, writer: &mut W, format: SerdeFormat) -> io::Result<()> {
+        for c in &self.0 {
+            c.write(writer, format)?;
+        }
+        Ok(())
+    }
+
+    fn byte_length(&self, format: SerdeFormat) -> usize {
+        self.0.iter().map(|c| c.byte_length(format)).sum()
+    }
+}
+
+impl<H: TranscriptHash, E: MultiMillerLoop> Hashable<H> for KZGMultiCommitment<E>
+where
+    E::G1: Hashable<H>,
+{
+    fn to_input(&self) -> H::Input {
+        // Without batching every commitment holds a single polynomial, so we
+        // hash its sole inner commitment. Hashing a batched commitment (which
+        // would require concatenating per-polynomial inputs) is left for when
+        // batching is introduced.
+        assert_eq!(
+            self.0.len(),
+            1,
+            "hashing a KZGMultiCommitment with more than one polynomial is not yet supported"
+        );
+        self.0[0].to_input()
+    }
+
+    fn to_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        for c in &self.0 {
+            bytes.extend_from_slice(&c.to_bytes());
+        }
+        bytes
+    }
+
+    fn read(buffer: &mut impl Read) -> io::Result<Self> {
+        Ok(Self(vec![<KZGCommitment<E> as Hashable<H>>::read(buffer)?]))
+    }
+}
+
+impl<E: MultiMillerLoop> Mul<E::Fr> for KZGMultiCommitment<E> {
+    type Output = Self;
+
+    fn mul(self, scalar: E::Fr) -> Self {
+        self.assert_single();
+        Self(vec![self.0.into_iter().next().unwrap() * scalar])
+    }
+}
+
+impl<E: MultiMillerLoop> Add for KZGMultiCommitment<E> {
+    type Output = Self;
+
+    fn add(self, other: Self) -> Self {
+        self.assert_single();
+        other.assert_single();
+        Self(vec![
+            self.0.into_iter().next().unwrap() + other.0.into_iter().next().unwrap(),
+        ])
     }
 }

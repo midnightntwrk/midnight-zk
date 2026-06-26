@@ -113,10 +113,10 @@ impl<S: SelfEmulation> Accumulator<S> {
     /// Returns a trivial accumulator that satisfies the pairing invariant.
     ///
     /// Both sides evaluate to the identity point for any `fixed_bases` map:
-    /// * LHS: a single `Variable(identity)` with scalar `1`, label `Collapsed`.
+    /// * LHS: a single `Variable(identity)` with scalar `1`, label `NoLabel`.
     /// * RHS: one `Fixed` entry per label in `fixed_base_labels` with scalar
     ///   `0` (contributing nothing), plus one `Variable(identity)` with scalar
-    ///   `1` and label `Collapsed`.
+    ///   `1` and label `NoLabel`.
     pub fn trivial(fixed_base_labels: &[PolynomialLabel]) -> Self {
         let n = fixed_base_labels.len();
         let id = S::C::identity();
@@ -125,12 +125,12 @@ impl<S: SelfEmulation> Accumulator<S> {
             lhs: Msm::new(
                 &[Point::Variable(id)],
                 &[S::F::ONE],
-                &[PolynomialLabel::Collapsed],
+                &[PolynomialLabel::NoLabel],
             ),
             rhs: Msm::new(
                 &[vec![Point::Fixed; n], vec![Point::Variable(id)]].concat(),
                 &[vec![S::F::ZERO; n], vec![S::F::ONE]].concat(),
-                &[fixed_base_labels, &[PolynomialLabel::Collapsed]].concat(),
+                &[fixed_base_labels, &[PolynomialLabel::NoLabel]].concat(),
             ),
         }
     }
@@ -172,8 +172,8 @@ impl<S: SelfEmulation> Accumulator<S> {
     ///
     /// This function mutates self.
     pub fn collapse(&mut self) {
-        self.lhs.collapse();
-        self.rhs.collapse();
+        self.lhs.collapse(PolynomialLabel::NoLabel);
+        self.rhs.collapse(PolynomialLabel::NoLabel);
     }
 
     /// Accumulates several accumulators together. The resulting acc will
@@ -329,8 +329,8 @@ impl<S: SelfEmulation> AssignedAccumulator<S> {
         curve_chip: &S::CurveChip,
         scalar_chip: &S::ScalarChip,
     ) -> Result<(), Error> {
-        self.lhs.collapse(layouter, curve_chip, scalar_chip)?;
-        self.rhs.collapse(layouter, curve_chip, scalar_chip)
+        self.lhs.collapse(layouter, curve_chip, scalar_chip, PolynomialLabel::NoLabel)?;
+        self.rhs.collapse(layouter, curve_chip, scalar_chip, PolynomialLabel::NoLabel)
     }
 
     /// Resolves all `Fixed` bases in both internal MSMs by substituting their

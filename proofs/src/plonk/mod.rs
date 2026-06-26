@@ -182,7 +182,7 @@ where
         let fixed_commitments: Vec<_> = (0..num_fixed_columns)
             .map(|i| {
                 CS::Commitment::read(reader, format)
-                    .map(|c| c.label(PolynomialLabel::Fixed(i as usize)))
+                    .map(|c| c.label(&[PolynomialLabel::Fixed(i as usize)]))
             })
             .collect::<Result<_, _>>()?;
 

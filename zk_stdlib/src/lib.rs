@@ -37,7 +37,6 @@ use blake2b::blake2b::{
     NB_BLAKE2B_ADVICE_COLS,
 };
 use ff::{Field, PrimeField};
-use group::{prime::PrimeCurveAffine, Group};
 use keccak_sha3::packed_chip::{PackedChip, PackedConfig, PACKED_ADVICE_COLS, PACKED_FIXED_COLS};
 use midnight_circuits::{
     biguint::biguint_gadget::BigUintGadget,
@@ -96,7 +95,7 @@ use midnight_curves::{
     curve25519::{self as curve25519_mod, Curve25519},
     k256::{self as k256_mod, K256},
     p256::{self as p256_mod, P256},
-    Fq, G1Affine, G1Projective,
+    Fq, G1Projective,
 };
 use midnight_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
@@ -107,6 +106,7 @@ use midnight_proofs::{
     poly::{
         commitment::{Guard, Params},
         kzg::{
+            commitment::KZGMultiCommitment,
             params::{ParamsKZG, ParamsVerifierKZG},
             KZGCommitmentScheme,
         },
@@ -2025,7 +2025,7 @@ pub fn verify<R: Relation, H: TranscriptHash>(
     params_verifier: &ParamsVerifierKZG<midnight_curves::Bls12>,
     vk: &MidnightVK,
     instance: &R::Instance,
-    committed_instance: Option<G1Affine>,
+    committed_instance: Option<KZGMultiCommitment<midnight_curves::Bls12>>,
     proof: &[u8],
 ) -> Result<(), R::Error>
 where
@@ -2033,7 +2033,11 @@ where
     F: Hashable<H> + Sampleable<H>,
 {
     let pi = R::format_instance(instance)?;
-    let committed_pi = committed_instance.unwrap_or(G1Affine::identity());
+    let committed_pi = committed_instance.unwrap_or_else(|| {
+        KZGMultiCommitment::commitment_to_zero(
+            midnight_proofs::poly::PolynomialLabel::CommittedInstance(0),
+        )
+    });
     if pi.len() != vk.nb_public_inputs {
         return Err(Error::InvalidInstances.into());
     }
@@ -2088,12 +2092,9 @@ where
                 CircuitTranscript<H>,
             >(
                 &vk.vk,
-                &[
-                    midnight_proofs::poly::kzg::commitment::KZGCommitment::Simple(
-                        midnight_curves::G1Projective::identity(),
-                        midnight_proofs::poly::PolynomialLabel::Instance(0),
-                    ),
-                ],
+                &[KZGMultiCommitment::commitment_to_zero(
+                    midnight_proofs::poly::PolynomialLabel::CommittedInstance(0),
+                )],
                 &[pi],
                 &mut transcript,
             )?;
