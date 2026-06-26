@@ -31,11 +31,10 @@ use midnight_proofs::{
     poly::{
         commitment::Guard,
         kzg::{
-            commitment::{KZGCommitment, KZGMultiCommitment},
+            commitment::KZGMultiCommitment,
             params::{ParamsKZG, ParamsVerifierKZG},
             KZGCommitmentScheme,
         },
-        PolynomialLabel,
     },
     transcript::{CircuitTranscript, Hashable, Sampleable, Transcript, TranscriptHash},
     utils::SerdeFormat,
@@ -134,7 +133,7 @@ macro_rules! plonk_api {
             pub fn verify<H>(
                 params_verifier: &ParamsVerifierKZG<$engine>,
                 vk: &VerifyingKey<$native, KZGCommitmentScheme<$engine>>,
-                instance_commitments: &[$curve],
+                instance_commitments: &[KZGMultiCommitment<$engine>],
                 pi: &[&[$native]],
                 proof: &[u8],
             ) -> Result<(), Error>
@@ -149,16 +148,7 @@ macro_rules! plonk_api {
                 let start = Instant::now();
                 let res = prepare::<$native, KZGCommitmentScheme<$engine>, CircuitTranscript<H>>(
                     vk,
-                    &instance_commitments
-                        .iter()
-                        .enumerate()
-                        .map(|(i, c)| {
-                            KZGMultiCommitment(vec![KZGCommitment::Simple(
-                                (*c).into(),
-                                PolynomialLabel::CommittedInstance(i),
-                            )])
-                        })
-                        .collect::<Vec<_>>(),
+                    instance_commitments,
                     pi,
                     &mut transcript,
                 )?;

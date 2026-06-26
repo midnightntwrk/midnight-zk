@@ -12,7 +12,7 @@ use midnight_circuits::{
     testing_utils::ecdsa::{ECDSASig, FromBase64, PublicKey},
     types::{AssignedByte, AssignedForeignPoint, Instantiable},
 };
-use midnight_curves::{k256::K256, G1Affine};
+use midnight_curves::k256::K256;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::{commit_to_instances, Error},
@@ -198,12 +198,9 @@ fn main() {
         let w = CredentialEnrollment::witness_from_blob(credential_blob.as_slice());
         (w.0, w.1)
     };
-    let committed_credential: G1Affine = {
+    let committed_credential = {
         let instance = CredentialEnrollment::format_committed_instances(&witness);
         commit_to_instances::<_, KZGCommitmentScheme<_>>(&srs, vk.vk().get_domain(), &instance)
-            .into_single()
-            .into_point()
-            .into()
     };
     println!("... done\n{:?}", wit.elapsed());
 
