@@ -23,7 +23,7 @@ use midnight_proofs::{
     plonk::{Advice, Column, ConstraintSystem, Constraints, Error, Expression, Selector},
     poly::Rotation,
 };
-use num_bigint::ToBigUint;
+use num_bigint::{BigUint, ToBigUint};
 #[cfg(any(test, feature = "testing"))]
 use {
     crate::field::decomposition::chip::P2RDecompositionConfig,
@@ -127,7 +127,15 @@ impl<C: CircuitCurve> InnerValue for AssignedScalarOfNativeCurve<C> {
     fn value(&self) -> Value<Self::Element> {
         let bools = self.bits.iter().map(|b| b.value());
         let value_bools: Value<Vec<bool>> = Value::from_iter(bools);
-        value_bools.map(|le_bits| C::ScalarField::from_bits_le(&le_bits))
+        value_bools.map(|le_bits| {
+            let bytes: Vec<u8> = le_bits
+                .chunks(8)
+                .map(|chunk| chunk.iter().rev().fold(0u8, |acc, &b| (acc << 1) | (b as u8)))
+                .collect();
+            let n = BigUint::from_bytes_le(&bytes);
+            let modulus = C::ScalarField::modulus();
+            C::ScalarField::from_biguint(&(n % modulus)).unwrap()
+        })
     }
 }
 
