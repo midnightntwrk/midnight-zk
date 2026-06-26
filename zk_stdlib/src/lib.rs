@@ -37,7 +37,6 @@ use blake2b::blake2b::{
     NB_BLAKE2B_ADVICE_COLS,
 };
 use ff::{Field, PrimeField};
-use group::prime::PrimeCurveAffine;
 use keccak_sha3::packed_chip::{PackedChip, PackedConfig, PACKED_ADVICE_COLS, PACKED_FIXED_COLS};
 use midnight_circuits::{
     biguint::biguint_gadget::BigUintGadget,
@@ -96,7 +95,7 @@ use midnight_curves::{
     curve25519::{self as curve25519_mod, Curve25519},
     k256::{self as k256_mod, K256},
     p256::{self as p256_mod, P256},
-    Fq, G1Affine, G1Projective,
+    Fq, G1Projective,
 };
 use midnight_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
@@ -107,6 +106,7 @@ use midnight_proofs::{
     poly::{
         commitment::{Guard, Params},
         kzg::{
+            commitment::KZGMultiCommitment,
             params::{ParamsKZG, ParamsVerifierKZG},
             KZGCommitmentScheme,
         },
@@ -2025,7 +2025,7 @@ pub fn verify<R: Relation, H: TranscriptHash>(
     params_verifier: &ParamsVerifierKZG<midnight_curves::Bls12>,
     vk: &MidnightVK,
     instance: &R::Instance,
-    committed_instance: Option<G1Affine>,
+    committed_instance: Option<KZGMultiCommitment<midnight_curves::Bls12>>,
     proof: &[u8],
 ) -> Result<(), R::Error>
 where
@@ -2033,7 +2033,11 @@ where
     F: Hashable<H> + Sampleable<H>,
 {
     let pi = R::format_instance(instance)?;
-    let committed_pi = committed_instance.unwrap_or(G1Affine::identity());
+    let committed_pi = committed_instance.unwrap_or_else(|| {
+        KZGMultiCommitment::commitment_to_zero(
+            midnight_proofs::poly::PolynomialLabel::CommittedInstance(0),
+        )
+    });
     if pi.len() != vk.nb_public_inputs {
         return Err(Error::InvalidInstances.into());
     }
@@ -2072,33 +2076,33 @@ where
         return Err(Error::InvalidInstances);
     }
 
-    let prepared: Vec<(_, F)> =
-        vks.par_iter()
-            .zip(pis.par_iter())
-            .zip(proofs.par_iter())
-            .map(|((vk, pi), proof)| {
-                if pi.len() != vk.nb_public_inputs {
-                    return Err(Error::InvalidInstances);
-                }
+    let prepared: Vec<(_, F)> = vks
+        .par_iter()
+        .zip(pis.par_iter())
+        .zip(proofs.par_iter())
+        .map(|((vk, pi), proof)| {
+            if pi.len() != vk.nb_public_inputs {
+                return Err(Error::InvalidInstances);
+            }
 
-                let mut transcript = CircuitTranscript::init_from_bytes(proof);
-                let dual_msm = prepare::<
+            let mut transcript = CircuitTranscript::init_from_bytes(proof);
+            let dual_msm = prepare::<
                 midnight_curves::Fq,
                 KZGCommitmentScheme<midnight_curves::Bls12>,
                 CircuitTranscript<H>,
             >(
                 &vk.vk,
-                &[midnight_proofs::poly::kzg::commitment::KZGMultiCommitment::commitment_to_zero(
+                &[KZGMultiCommitment::commitment_to_zero(
                     midnight_proofs::poly::PolynomialLabel::CommittedInstance(0),
                 )],
                 &[pi],
                 &mut transcript,
             )?;
-                let summary: F = transcript.squeeze_challenge();
-                transcript.assert_empty().map_err(|_| Error::Opening)?;
-                Ok((dual_msm, summary))
-            })
-            .collect::<Result<Vec<_>, Error>>()?;
+            let summary: F = transcript.squeeze_challenge();
+            transcript.assert_empty().map_err(|_| Error::Opening)?;
+            Ok((dual_msm, summary))
+        })
+        .collect::<Result<Vec<_>, Error>>()?;
 
     let mut r_transcript = CircuitTranscript::init();
     let mut guards = Vec::with_capacity(n);

@@ -25,10 +25,7 @@ use midnight_circuits::{
     types::{AssignedByte, AssignedForeignPoint, AssignedNative},
     CircuitField,
 };
-use midnight_curves::{
-    k256::{Fq as K256Scalar, K256},
-    G1Affine,
-};
+use midnight_curves::k256::{Fq as K256Scalar, K256};
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::{commit_to_instances, Error},
@@ -338,12 +335,9 @@ fn main() {
     let holder_sk = K256Scalar::from_bytes_be(&HOLDER_SK_BYTES).expect("Valid scalar");
     let witness = (witness.0, holder_sk);
 
-    let committed_credential: G1Affine = {
+    let committed_credential = {
         let instance = CredentialProperty::format_committed_instances(&witness);
         commit_to_instances::<_, KZGCommitmentScheme<_>>(&srs, vk.vk().get_domain(), &instance)
-            .into_single()
-            .into_point()
-            .into()
     };
     println!("... done ({:?})", wit.elapsed());
 
