@@ -50,6 +50,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Remove multi-phase PLONK support: `Phase`, `Challenge`, `FirstPhase`, and `Layouter::get_challenge()` are removed; `Any::Advice` is no longer phase-parameterized; the prover and dev tools synthesize in a single pass [#376](https://github.com/midnightntwrk/midnight-zk/pull/376)
 * Remove multi-proof support; `create_proof` and `prepare` now operate on a single circuit and take `instances: &[&[F]]` instead of `&[&[&[F]]]` [#375](https://github.com/midnightntwrk/midnight-zk/pull/375)
 * Remove `msm_inner_product` from `utils::arithmetic`; superseded by the generic `inner_product` [#430](https://github.com/midnightntwrk/midnight-zk/pull/430)
+* Remove redundant `PolynomialLabel::Instance` variant; use `CommittedInstance` [#450](https://github.com/midnightntwrk/midnight-zk/pull/450)
 
 ## [0.8.0]
 ### Added

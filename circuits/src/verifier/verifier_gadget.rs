@@ -1185,7 +1185,7 @@ pub(crate) mod tests {
             prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<PoseidonState<F>>>(
                 &inner_vk,
                 &[KZGMultiCommitment::commitment_to_zero(
-                    PolynomialLabel::Instance(0),
+                    PolynomialLabel::CommittedInstance(0),
                 )],
                 &[&inner_public_inputs],
                 &mut transcript,

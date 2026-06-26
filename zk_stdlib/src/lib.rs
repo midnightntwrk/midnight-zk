@@ -2089,7 +2089,7 @@ where
             >(
                 &vk.vk,
                 &[midnight_proofs::poly::kzg::commitment::KZGMultiCommitment::commitment_to_zero(
-                    midnight_proofs::poly::PolynomialLabel::Instance(0),
+                    midnight_proofs::poly::PolynomialLabel::CommittedInstance(0),
                 )],
                 &[pi],
                 &mut transcript,
