@@ -52,7 +52,7 @@ impl Gt {
     }
 }
 
-impl<'a> Neg for &'a Gt {
+impl Neg for &Gt {
     type Output = Gt;
 
     #[inline]
@@ -73,7 +73,7 @@ impl Neg for Gt {
     }
 }
 
-impl<'a, 'b> Add<&'b Gt> for &'a Gt {
+impl<'b> Add<&'b Gt> for &Gt {
     type Output = Gt;
 
     #[inline]
@@ -83,7 +83,7 @@ impl<'a, 'b> Add<&'b Gt> for &'a Gt {
     }
 }
 
-impl<'a, 'b> Sub<&'b Gt> for &'a Gt {
+impl<'b> Sub<&'b Gt> for &Gt {
     type Output = Gt;
 
     #[inline]
@@ -93,7 +93,7 @@ impl<'a, 'b> Sub<&'b Gt> for &'a Gt {
 }
 
 #[allow(clippy::suspicious_arithmetic_impl)]
-impl<'a, 'b> Mul<&'b Fr> for &'a Gt {
+impl<'b> Mul<&'b Fr> for &Gt {
     type Output = Gt;
 
     fn mul(self, other: &'b Fr) -> Self::Output {

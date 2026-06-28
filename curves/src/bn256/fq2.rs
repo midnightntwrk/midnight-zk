@@ -53,15 +53,11 @@ impl Fq2 {
     /// Attempts to convert a little-endian byte representation of
     /// a scalar into a `Fq`, failing if the input is not canonical.
     pub fn from_bytes(bytes: &[u8; Fq::SIZE * 2]) -> CtOption<Fq2> {
-        let c0 = Fq::from_bytes(bytes[0..Fq::SIZE].try_into().unwrap());
-        let c1 = Fq::from_bytes(bytes[Fq::SIZE..Fq::SIZE * 2].try_into().unwrap());
-        CtOption::new(
-            Fq2 {
-                c0: c0.unwrap(),
-                c1: c1.unwrap(),
-            },
-            c0.is_some() & c1.is_some(),
-        )
+        let (c0, c1) = bytes.split_at(Fq::SIZE);
+        let c0 = Fq::from_bytes(c0.try_into().unwrap());
+        let c1 = Fq::from_bytes(c1.try_into().unwrap());
+
+        c0.and_then(|c0| c1.map(|c1| Fq2::new(c0, c1)))
     }
 
     /// Converts an element of `Fq` into a byte representation in
@@ -69,10 +65,9 @@ impl Fq2 {
     #[allow(clippy::wrong_self_convention)]
     pub fn to_bytes(&self) -> [u8; Fq::SIZE * 2] {
         let mut res = [0u8; Fq::SIZE * 2];
-        let c0_bytes = self.c0.to_bytes();
-        let c1_bytes = self.c1.to_bytes();
-        res[0..Fq::SIZE].copy_from_slice(&c0_bytes[..]);
-        res[Fq::SIZE..Fq::SIZE * 2].copy_from_slice(&c1_bytes[..]);
+        let (c0, c1) = res.split_at_mut(Fq::SIZE);
+        c0.copy_from_slice(&self.c0.to_bytes());
+        c1.copy_from_slice(&self.c1.to_bytes());
         res
     }
 
@@ -126,43 +121,37 @@ impl PrimeField for Fq2 {
     };
 
     fn from_repr(repr: Self::Repr) -> CtOption<Self> {
-        let c0: [u8; Fq::SIZE] = repr[..Fq::SIZE].try_into().unwrap();
-        let c0: <Fq as PrimeField>::Repr = c0.into();
-        let c0 = Fq::from_repr(c0);
-
-        let c1: [u8; Fq::SIZE] = repr[Fq::SIZE..].try_into().unwrap();
-        let c1: <Fq as PrimeField>::Repr = c1.into();
-        let c1 = Fq::from_repr(c1);
-
-        CtOption::new(Fq2::new(c0.unwrap(), c1.unwrap()), Choice::from(1))
+        Self::from_bytes(&repr.into())
     }
 
     fn to_repr(&self) -> Self::Repr {
-        let mut res = Self::Repr::default();
-        let c0 = self.c0.to_repr();
-        let c1 = self.c1.to_repr();
-        res[0..Fq::SIZE].copy_from_slice(&c0.as_ref()[..]);
-        res[Fq::SIZE..Fq::SIZE * 2].copy_from_slice(&c1.as_ref()[..]);
-        res
+        self.to_bytes().into()
     }
 
     fn is_odd(&self) -> Choice {
-        Choice::from(self.to_repr().as_ref()[0] & 1)
+        // The little-endian representation places `c0` first, so the parity of
+        // the whole element is the parity of `c0`.
+        self.c0.is_odd()
     }
 }
 
 impl crate::serde::SerdeObject for Fq2 {
     fn from_raw_bytes_unchecked(bytes: &[u8]) -> Self {
         debug_assert_eq!(bytes.len(), Fq::SIZE * 2);
-        let [c0, c1] = [0, Fq::SIZE].map(|i| Fq::from_raw_bytes_unchecked(&bytes[i..i + Fq::SIZE]));
-        Self { c0, c1 }
+        let (c0, c1) = bytes.split_at(Fq::SIZE);
+        Self {
+            c0: Fq::from_raw_bytes_unchecked(c0),
+            c1: Fq::from_raw_bytes_unchecked(c1),
+        }
     }
     fn from_raw_bytes(bytes: &[u8]) -> Option<Self> {
         if bytes.len() != Fq::SIZE * 2 {
             return None;
         }
-        let [c0, c1] = [0, Fq::SIZE].map(|i| Fq::from_raw_bytes(&bytes[i..i + Fq::SIZE]));
-        c0.zip(c1).map(|(c0, c1)| Self { c0, c1 })
+        let (c0, c1) = bytes.split_at(Fq::SIZE);
+        let c0 = Fq::from_raw_bytes(c0)?;
+        let c1 = Fq::from_raw_bytes(c1)?;
+        Some(Self { c0, c1 })
     }
     fn to_raw_bytes(&self) -> Vec<u8> {
         let mut res = Vec::with_capacity(Fq::SIZE * 2);
