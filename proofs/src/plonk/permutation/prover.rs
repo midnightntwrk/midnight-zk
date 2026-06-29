@@ -34,16 +34,24 @@ pub(crate) struct Committed<F: PrimeField> {
 }
 
 /// Intermediate result from the computation stage of the permutation argument.
-/// Holds commitments and Lagrange-form z polynomials, ready to be written to
-/// the transcript and converted to coefficient form.
+/// Holds the single batched commitment to all chunks' accumulator polynomials
+/// and the Lagrange-form z polynomials, ready to be written to the transcript
+/// and converted to coefficient form.
+///
+/// `commitment` is one [`FflonkCommitment`] covering *all* chunks; at
+/// `T_MAX_LOG = 0` it carries one singleton sub-bundle per chunk (one G1
+/// each), at `T > 0` chunks share bundles and fewer G1 points reach the
+/// wire. The number of chunks is reconstructible from the verifying key,
+/// so the verifier rebuilds the same partition without extra transcript
+/// data.
 pub(crate) struct Computed<F: PrimeField, C> {
-    pub(crate) commitments: Vec<C>,
+    pub(crate) commitment: C,
     z_polys: Vec<Polynomial<F, LagrangeCoeff>>,
 }
 
 impl<F: WithSmallOrderMulGroup<3>, C> Computed<F, C> {
-    /// Write commitments to the transcript in order, then convert z polynomials
-    /// to coefficient form.
+    /// Write the batched commitment to the transcript, then convert z
+    /// polynomials to coefficient form.
     pub(crate) fn write_and_convert<T: Transcript>(
         self,
         domain: &EvaluationDomain<F>,
@@ -52,9 +60,7 @@ impl<F: WithSmallOrderMulGroup<3>, C> Computed<F, C> {
     where
         C: Hashable<T::Hash>,
     {
-        for commitment in &self.commitments {
-            transcript.write(commitment)?;
-        }
+        transcript.write(&self.commitment)?;
 
         let sets: Vec<_> = self
             .z_polys
@@ -217,14 +223,11 @@ impl Argument {
             corrections.push(prev);
         }
 
-        // Step C: Apply corrections and commit.
-        //
-        let committed: Vec<(CS::Commitment, Polynomial<F, LagrangeCoeff>)> = z_and_uncorrected
+        // Step C: Apply corrections in parallel.
+        let z_polys: Vec<Polynomial<F, LagrangeCoeff>> = z_and_uncorrected
             .into_par_iter()
             .zip(corrections.par_iter())
-            .enumerate()
-            .map(|(i, ((mut z, _), &correction))| {
-                // Multiply every z value by the correction factor.
+            .map(|((mut z, _), &correction)| {
                 if correction != F::ONE {
                     parallelize(&mut z, |z, _| {
                         for elem in z.iter_mut() {
@@ -232,24 +235,35 @@ impl Argument {
                         }
                     });
                 }
-
-                // perm_z has long contiguous-constant runs (the identity-permutation
-                // tail and interior gaps), so we commit in the LagrangeDelta basis.
-                // The Lagrange form is needed downstream for the linearization step,
-                // so we borrow into a transient delta buffer rather than transforming
-                // in place and prefix-summing back.
-                let commitment = CS::commit(
-                    params,
-                    &[&z.to_delta()],
-                    &[PolynomialLabel::PermutationAccumulator(i)],
-                );
-                (commitment, z)
+                z
             })
             .collect();
 
-        let (commitments, z_polys) = committed.into_iter().unzip();
+        // Step D: Batch-commit every chunk's accumulator polynomial in one
+        // PCS commit call. We commit in the LagrangeDelta basis because
+        // perm_z has long contiguous-constant runs (the identity-permutation
+        // tail and interior gaps), so the Δ transform is sparse and the
+        // singleton MSM path exploits that via
+        // `params.bases::<LagrangeDeltaCoeff>()`. The Lagrange form is needed
+        // downstream for the linearization step, so we borrow into a
+        // transient delta buffer rather than transforming in place and
+        // prefix-summing back.
+        //
+        // At T_MAX_LOG = 0 the partition produces one singleton bundle per
+        // chunk — semantically identical to the per-chunk commit calls this
+        // replaced (modulo a single `u32` length prefix on the wire). At T > 0
+        // chunks share bundles via fflonk's `combine_t`, dropping G1 points
+        // from the proof; the in-tree conversion to Coeff for bundling
+        // erases Δ-sparsity (see the TODO at `FflonkScheme::commit`'s
+        // `t > 1` branch).
+        let delta_polys: Vec<_> = z_polys.par_iter().map(|z| z.to_delta()).collect();
+        let delta_refs: Vec<_> = delta_polys.iter().collect();
+        let labels: Vec<_> =
+            (0..z_polys.len()).map(PolynomialLabel::PermutationAccumulator).collect();
+        let commitment = CS::commit(params, &delta_refs, &labels);
+
         Computed {
-            commitments,
+            commitment,
             z_polys,
         }
     }

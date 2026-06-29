@@ -119,12 +119,6 @@ impl Lookup {
             .chain(iter::once(aggregator))
     }
 
-    /// Number of commitments:
-    /// 1 (multiplicities) + num_chunks (helpers) + 1 (Z).
-    fn num_commitments(&self) -> usize {
-        self.num_chunks + 2
-    }
-
     /// Number of evaluations:
     /// 1 (multiplicities) + num_chunks (helpers) + 1 (Z at x) + 1 (Z at ωx).
     fn num_evaluations(&self) -> usize {
@@ -241,11 +235,18 @@ pub fn circuit_model_with<F: Ord + Field + FromUniformBytes<64>>(
     // - SCALAR bytes per committed instance column per query
     // - SCALAR bytes per fixed column per query
     // - SCALAR bytes per permutation column
-    // - Per permutation chunk: commit1 + 3 SCALAR (last chunk has 2 SCALAR)
-    // - Per lookup argument: num_commitments commits + (num_chunks + 3) SCALAR
+    // - One batched commit for all permutation accumulator chunks
+    //   + 3 SCALAR per chunk (last chunk has 2 SCALAR)
+    // - For logup: one batched commit for all multiplicities (cross-arg),
+    //   one batched commit for all helpers (cross-arg + within-arg — each
+    //   helper carries a unique `LogupHelper(name, chunk)` label),
+    //   one batched commit for all aggregators (cross-arg);
+    //   + (num_chunks + 3) SCALAR per arg.
     // - Per trash argument: commit1 + 1 SCALAR
     let nb_perm_chunks =
         (o.permutation.columns.saturating_sub(1) / o.max_degree.saturating_sub(2)) + 1;
+    let nb_lookups = o.lookup.len();
+    let total_helper_chunks: usize = o.lookup.iter().map(|l| l.num_chunks).sum();
     let plonk = commit(o.advice.len())
         + o.advice.iter().map(|p| p.rotations.len() * scalar).sum::<usize>()
         + o.instance
@@ -255,11 +256,12 @@ pub fn circuit_model_with<F: Ord + Field + FromUniformBytes<64>>(
             .sum::<usize>()
         + o.fixed.iter().map(|p| p.rotations.len() * scalar).sum::<usize>()
         + scalar * o.permutation.columns
-        + (commit1 * nb_perm_chunks + scalar * 3 * nb_perm_chunks).saturating_sub(scalar) // last chunk has 2 evals
-        + o.lookup
-            .iter()
-            .map(|l| commit1 * l.num_commitments() + scalar * l.num_evaluations())
-            .sum::<usize>()
+        + commit(nb_perm_chunks)
+        + (scalar * 3 * nb_perm_chunks).saturating_sub(scalar) // last chunk has 2 evals
+        + commit(nb_lookups)                  // batched multiplicities
+        + commit(total_helper_chunks)         // batched helpers (cross-arg + within-arg)
+        + commit(nb_lookups)                  // batched aggregators
+        + o.lookup.iter().map(|l| scalar * l.num_evaluations()).sum::<usize>()
         + (commit1 + scalar) * o.trash.len();
 
     // Commitments to quotient limbs: one commitment per limb.
@@ -685,11 +687,9 @@ mod tests {
         plonk::{
             create_proof, keygen_pk, keygen_vk_with_k, Constraints, Expression, Fixed, TableColumn,
         },
-        poly::{
-            kzg::{params::ParamsKZG, KZGCommitmentScheme},
-            Rotation,
-        },
+        poly::{kzg::params::ParamsKZG, Rotation},
         transcript::{CircuitTranscript, Transcript},
+        MidnightPCS,
     };
 
     #[derive(Clone, Copy)]
@@ -848,14 +848,14 @@ mod tests {
         let circuit = StandardPlonk::<1>(Fq::from(random_byte[0] as u64));
 
         let params = ParamsKZG::<Bls12>::unsafe_setup(k, OsRng);
-        let vk = keygen_vk_with_k::<_, KZGCommitmentScheme<Bls12>, _>(&params, &circuit, k)
+        let vk = keygen_vk_with_k::<_, MidnightPCS, _>(&params, &circuit, k)
             .expect("vk should not fail");
         let pk = keygen_pk(vk, &circuit).expect("pk should not fail");
 
         let instances: &[&[Fq]] = &[&[circuit.0]];
         let mut transcript = CircuitTranscript::<State>::init();
 
-        create_proof::<Fq, KZGCommitmentScheme<Bls12>, _, _>(
+        create_proof::<Fq, MidnightPCS, _, _>(
             &params,
             &pk,
             &circuit,
@@ -870,7 +870,7 @@ mod tests {
         let proof = transcript.finalize();
 
         assert_eq!(
-            circuit_model::<_, KZGCommitmentScheme<Bls12>>(&circuit, 0).size,
+            circuit_model::<_, MidnightPCS>(&circuit, 0).size,
             proof.len()
         );
     }
@@ -884,14 +884,14 @@ mod tests {
         let circuit = StandardPlonk::<1>(Fq::from(random_byte[0] as u64));
 
         let params = ParamsKZG::<Bls12>::unsafe_setup(k, OsRng);
-        let vk = keygen_vk_with_k::<_, KZGCommitmentScheme<Bls12>, _>(&params, &circuit, k)
+        let vk = keygen_vk_with_k::<_, MidnightPCS, _>(&params, &circuit, k)
             .expect("vk should not fail");
         let pk = keygen_pk(vk, &circuit).expect("pk should not fail");
 
         let instances: &[&[Fq]] = &[&[circuit.0]];
         let mut transcript = CircuitTranscript::<State>::init();
 
-        create_proof::<Fq, KZGCommitmentScheme<Bls12>, _, _>(
+        create_proof::<Fq, MidnightPCS, _, _>(
             &params,
             &pk,
             &circuit,
@@ -905,7 +905,7 @@ mod tests {
         let proof = transcript.finalize();
 
         assert_eq!(
-            circuit_model::<_, KZGCommitmentScheme<Bls12>>(&circuit, 1).size,
+            circuit_model::<_, MidnightPCS>(&circuit, 1).size,
             proof.len()
         );
     }

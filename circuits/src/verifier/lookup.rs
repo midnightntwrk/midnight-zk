@@ -55,45 +55,107 @@ pub(crate) struct Evaluated<S: SelfEmulation> {
     pub(crate) evaluated: LookupEvaluated<S>,
 }
 
-/// Reads the prover's multiplicities commitment from the transcript.
-pub(crate) fn read_multiplicities<S: SelfEmulation>(
-    name: &str,
+/// Reads the **batched** multiplicities commitment for all logup arguments.
+/// Mirrors the off-circuit `logup::verifier::read_all_multiplicities`: one
+/// `[u32 len=n][n points]` blob, where each point is the multiplicities
+/// commitment for one arg.
+pub(crate) fn read_all_multiplicities<S: SelfEmulation>(
+    names: &[String],
     layouter: &mut impl Layouter<S::F>,
     transcript_gadget: &mut TranscriptGadget<S>,
-) -> Result<CommittedMultiplicities<S>, Error> {
-    let multiplicities = AssignedCommitment::new(
-        transcript_gadget.read_commitment(layouter)?,
-        vec![PolynomialLabel::LogupMultiplicities(name.to_owned())],
-    );
-    Ok(CommittedMultiplicities { multiplicities })
+) -> Result<Vec<CommittedMultiplicities<S>>, Error> {
+    if names.is_empty() {
+        return Ok(Vec::new());
+    }
+    let points = transcript_gadget.read_batched_commitment(layouter, names.len())?;
+    Ok(points
+        .into_iter()
+        .zip(names.iter())
+        .map(|(p, name)| CommittedMultiplicities {
+            multiplicities: AssignedCommitment::new(
+                p,
+                vec![PolynomialLabel::LogupMultiplicities(name.clone())],
+            ),
+        })
+        .collect())
 }
 
-impl<S: SelfEmulation> CommittedMultiplicities<S> {
-    pub(crate) fn read_commitment(
-        self,
-        name: &str,
-        nb_flattened: usize,
-        layouter: &mut impl Layouter<S::F>,
-        transcript_gadget: &mut TranscriptGadget<S>,
-    ) -> Result<Committed<S>, Error> {
-        let helper_polys = (0..nb_flattened)
-            .map(|_| {
-                transcript_gadget.read_commitment(layouter).map(|p| {
-                    AssignedCommitment::new(p, vec![PolynomialLabel::LogupHelper(name.to_owned())])
-                })
-            })
-            .collect::<Result<Vec<_>, Error>>()?;
-        let accumulator = AssignedCommitment::new(
-            transcript_gadget.read_commitment(layouter)?,
-            vec![PolynomialLabel::LogupAggregator(name.to_owned())],
-        );
+/// Partial state between per-arg helper reads and the batched aggregator
+/// read.
+#[derive(Clone, Debug)]
+pub(crate) struct HelpersOnly<S: SelfEmulation> {
+    name: String,
+    multiplicities: AssignedCommitment<S>,
+    helper_polys: Vec<AssignedCommitment<S>>,
+}
 
-        Ok(Committed {
-            multiplicities: self.multiplicities,
-            helper_polys,
-            accumulator,
-        })
+/// Reads the **batched** helper commitments for all logup arguments in one
+/// transcript entry, one point per (arg, chunk). Each point is labeled with
+/// its unique `LogupHelper(name, chunk_idx)`; per-arg views are
+/// reconstructed by walking the `(name, num_chunks)` pairs in input order.
+/// Mirrors the off-circuit `logup::verifier::read_all_helpers`.
+pub(crate) fn read_all_helpers<S: SelfEmulation>(
+    args_with_multiplicities: Vec<(String, usize, CommittedMultiplicities<S>)>,
+    layouter: &mut impl Layouter<S::F>,
+    transcript_gadget: &mut TranscriptGadget<S>,
+) -> Result<Vec<HelpersOnly<S>>, Error> {
+    let total: usize = args_with_multiplicities.iter().map(|(_, n, _)| *n).sum();
+    if total == 0 {
+        // No helpers anywhere — prover skipped the write.
+        return Ok(args_with_multiplicities
+            .into_iter()
+            .map(|(name, _, m)| HelpersOnly {
+                name,
+                multiplicities: m.multiplicities,
+                helper_polys: Vec::new(),
+            })
+            .collect());
     }
+    let points = transcript_gadget.read_batched_commitment(layouter, total)?;
+    // Distribute the points across args in input order.
+    let mut points_iter = points.into_iter();
+    Ok(args_with_multiplicities
+        .into_iter()
+        .map(|(name, nb_chunks, m)| {
+            let helper_polys: Vec<_> = (0..nb_chunks)
+                .map(|chunk_idx| {
+                    let p = points_iter.next().expect("helper point count mismatch");
+                    AssignedCommitment::new(
+                        p,
+                        vec![PolynomialLabel::LogupHelper(name.clone(), chunk_idx)],
+                    )
+                })
+                .collect();
+            HelpersOnly {
+                name,
+                multiplicities: m.multiplicities,
+                helper_polys,
+            }
+        })
+        .collect())
+}
+
+/// Reads the **batched** aggregator commitment for all logup arguments
+/// and assembles one [`Committed`] per arg. Mirrors the off-circuit
+/// `logup::verifier::read_all_aggregators`.
+pub(crate) fn read_all_aggregators<S: SelfEmulation>(
+    helpers: Vec<HelpersOnly<S>>,
+    layouter: &mut impl Layouter<S::F>,
+    transcript_gadget: &mut TranscriptGadget<S>,
+) -> Result<Vec<Committed<S>>, Error> {
+    if helpers.is_empty() {
+        return Ok(Vec::new());
+    }
+    let points = transcript_gadget.read_batched_commitment(layouter, helpers.len())?;
+    Ok(points
+        .into_iter()
+        .zip(helpers)
+        .map(|(p, h)| Committed {
+            multiplicities: h.multiplicities,
+            helper_polys: h.helper_polys,
+            accumulator: AssignedCommitment::new(p, vec![PolynomialLabel::LogupAggregator(h.name)]),
+        })
+        .collect())
 }
 
 impl<S: SelfEmulation> Committed<S> {

@@ -61,8 +61,18 @@ where
     E::G1Affine: CurveAffine,
 {
     fn max_k(&self) -> u32 {
-        #[cfg(not(feature = "single-h-commitment"))]
-        assert_eq!(self.g.len(), self.g_lagrange.len());
+        // The asymmetric case `g.len() > g_lagrange.len()` is valid under
+        // any PCS that extends the monomial basis past the Lagrange domain:
+        // `single-h-commitment` was the original consumer, fflonk's
+        // `T_MAX_LOG > 0` bundles are the new one. `max_k` is the
+        // Lagrange-domain `k`, which is what the protocol consumes
+        // regardless of how far `g` extends.
+        debug_assert!(
+            self.g.len() >= self.g_lagrange.len(),
+            "ParamsKZG invariant: g.len() ({}) must be ≥ g_lagrange.len() ({})",
+            self.g.len(),
+            self.g_lagrange.len(),
+        );
         self.g_lagrange.len().ilog2()
     }
 
@@ -109,13 +119,12 @@ where
     /// Recompute the Lagrange basis for a smaller circuit domain `new_k` while
     /// keeping the full monomial basis `g` intact.
     ///
-    /// Use this when the `single-h-commitment` feature is enabled: generate an
-    /// SRS large enough for the whole quotient polynomial (i.e. with `k'`
-    /// such that `2^{k'} ≥ (n-1) * quotient_poly_degree`), then call
-    /// `downsize_lagrange(k)` so that `max_k()` equals the circuit domain size
-    /// `k` while `g` retains its original length for the H-polynomial
-    /// commitment.
-    #[cfg(feature = "single-h-commitment")]
+    /// Used whenever the PCS needs a monomial basis larger than the Lagrange
+    /// domain — `single-h-commitment` for KZG's one-shot quotient commit,
+    /// and fflonk for its bundled-commitment basis. Generate an SRS large
+    /// enough for the larger of the two needs, then call
+    /// `downsize_lagrange(k)` so that `max_k()` equals the circuit domain
+    /// size `k` while `g` retains its original length.
     pub fn downsize_lagrange(&mut self, new_k: u32) {
         let n = 1usize << new_k;
         assert!(
@@ -135,7 +144,6 @@ where
     ///
     /// If `extended.g` is not strictly larger than `self.g`, or if the shared
     /// prefix of the monomial bases does not match.
-    #[cfg(feature = "single-h-commitment")]
     pub fn with_extended_monomial(mut self, extended: Self) -> Self {
         assert!(
             extended.g.len() > self.g.len(),
