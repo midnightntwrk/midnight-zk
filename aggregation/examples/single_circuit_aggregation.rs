@@ -27,7 +27,10 @@ use midnight_circuits::{
     hash::poseidon::{PoseidonChip, PoseidonState},
     instructions::{hash::HashCPU, *},
     types::{AssignedNative, Instantiable},
-    verifier::{self, Accumulator, AssignedAccumulator, BlstrsEmulation, SelfEmulation},
+    verifier::{
+        self, Accumulator, AssignedAccumulator, AssignedKZGCommitment, BlstrsEmulation,
+        SelfEmulation,
+    },
 };
 use midnight_proofs::{
     circuit::{Layouter, Value},
@@ -67,8 +70,8 @@ pub struct InnerCircuitContext {
 }
 
 impl InnerCircuitContext {
-    fn fixed_bases(&self) -> BTreeMap<String, C> {
-        verifier::fixed_bases::<S>("inner_vk", self.vk.vk())
+    fn fixed_bases(&self) -> BTreeMap<PolynomialLabel, C> {
+        verifier::fixed_bases::<S>(self.vk.vk())
     }
 }
 
@@ -252,7 +255,7 @@ impl IvcTransition for ProofAggregation {
                 "invalid inner proof"
             );
 
-            Accumulator::from_dual_msm(dual_msm, "inner_vk", &ctx.fixed_bases())
+            Accumulator::from_dual_msm(dual_msm, &ctx.fixed_bases())
         };
 
         // Accumulate and collapse.
@@ -287,7 +290,6 @@ impl IvcTransition for ProofAggregation {
         // Assign inner VK as a hard-coded constant.
         let inner_vk = self.std_lib.verifier().assign_fixed_vk(
             layouter,
-            "inner_vk",
             &self.inner_ctx.domain,
             &self.inner_ctx.cs,
             self.inner_ctx.vk.vk().transcript_repr(),
@@ -303,12 +305,15 @@ impl IvcTransition for ProofAggregation {
         )?;
 
         // Verify the inner proof in-circuit.
-        let id_point = self.std_lib.bls12_381().assign_fixed(layouter, C::identity())?;
+        let instance_com = AssignedKZGCommitment::simple(
+            self.std_lib.bls12_381().assign_fixed(layouter, C::identity())?,
+            PolynomialLabel::CommittedInstance(0),
+        );
 
         let inner_proof_acc = self.std_lib.verifier().prepare(
             layouter,
             &inner_vk,
-            &[id_point],
+            &[instance_com],
             &[&statement_pis],
             witness.map(|w| w.inner_proof),
         )?;

@@ -1317,6 +1317,19 @@ where
         self.native_chip.add_and_mul(layouter, a_and_x, b_and_y, c_and_z, k, m)
     }
 
+    fn add_and_double_mul(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        a_and_x: (F, &AssignedNative<F>),
+        b_and_y: (F, &AssignedNative<F>),
+        c_and_z: (F, &AssignedNative<F>),
+        k: F,
+        (m1, m2): (F, F),
+    ) -> Result<AssignedNative<F>, Error> {
+        self.native_chip
+            .add_and_double_mul(layouter, a_and_x, b_and_y, c_and_z, k, (m1, m2))
+    }
+
     fn add_constants(
         &self,
         layouter: &mut impl Layouter<F>,

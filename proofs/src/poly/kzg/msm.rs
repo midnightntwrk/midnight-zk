@@ -43,6 +43,16 @@ impl<E: Engine> MSMKZG<E> {
         }
     }
 
+    /// Creates an MSM instance from parallel slices of scalars, bases, and
+    /// labels.
+    pub fn new(scalars: &[E::Fr], bases: &[E::G1], labels: &[PolynomialLabel]) -> Self {
+        Self {
+            scalars: scalars.to_vec(),
+            bases: bases.to_vec(),
+            labels: labels.to_vec(),
+        }
+    }
+
     /// Create an MSM from various MSMs
     pub fn from_many(msms: Vec<Self>) -> Self {
         let len = msms.iter().map(|m| m.scalars.len()).sum();
