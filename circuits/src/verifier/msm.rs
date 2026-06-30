@@ -16,13 +16,14 @@
 //! scalars only.
 //! (The bases are assumed to be fixed and globally known.)
 
-use std::collections::{btree_map::Entry, BTreeMap};
+use std::collections::{btree_map::Entry, BTreeMap, HashSet};
 
 use ff::Field;
 use midnight_curves::msm::msm_best;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
+    poly::PolynomialLabel,
 };
 
 use crate::{
@@ -37,146 +38,280 @@ use crate::{
     },
 };
 
-/// Type for off-circuit multi-scalar multiplications.
+/// An off-circuit base in a multi-scalar multiplication.
 ///
-/// This structure represents the following computation:
-/// `<scalars, bases> + <fixed_bases, fixed_base_scalars>`
+/// `Variable` stores the concrete curve point inline.
+/// `Fixed` indicates that the point is a globally-known constant (e.g. a
+/// verifying-key commitment, an SRS element, or the negated generator `-G`)
+/// identified by its `PolynomialLabel`; the actual value is not stored here
+/// and must be supplied when the MSM is evaluated or resolved.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Point<S: SelfEmulation> {
+    /// A concrete curve point whose value is known at this stage.
+    Variable(S::C),
+    /// A globally-known constant point, identified by its label.
+    Fixed,
+}
+
+/// The in-circuit analog of [`Point`].
 ///
-/// Note that the `fixed_bases` are not part of this structure, they are
-/// supposed to be globally known and will be provided when evaluating the MSM.
+/// `Variable` holds an explicitly-assigned circuit cell.
+/// `Fixed` means the base is a known constant (e.g. a VK-committed point, an
+/// SRS element, or the negated generator); no cell is allocated for it in the
+/// layout.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum AssignedPoint<S: SelfEmulation> {
+    /// A circuit-assigned variable-base point.
+    Variable(S::AssignedPoint),
+    /// A globally-known constant point that lives outside the circuit witness.
+    Fixed,
+}
+
+impl<S: SelfEmulation> Point<S> {
+    /// Returns a reference to the inner curve point.
+    ///
+    /// # Panics
+    ///
+    /// If this is a `Fixed` point whose value has not yet been resolved.
+    /// Call `resolve_fixed_bases` before accessing the point.
+    pub fn get_point(&self) -> &S::C {
+        match self {
+            Self::Variable(p) => p,
+            Self::Fixed => {
+                panic!("attempted to read an unresolved Fixed base; call resolve_fixed_bases first")
+            }
+        }
+    }
+}
+
+impl<S: SelfEmulation> InnerValue for AssignedPoint<S> {
+    type Element = Point<S>;
+
+    fn value(&self) -> Value<Self::Element> {
+        match self {
+            AssignedPoint::Variable(p) => p.value().map(|v| Point::Variable(v)),
+            AssignedPoint::Fixed => Value::known(Point::Fixed),
+        }
+    }
+}
+
+impl<S: SelfEmulation> Instantiable<S::F> for AssignedPoint<S> {
+    fn as_public_input(point: &Point<S>) -> Vec<S::F> {
+        match point {
+            Point::Variable(p) => S::AssignedPoint::as_public_input(p),
+            Point::Fixed => vec![],
+        }
+    }
+
+    #[cfg(any(test, feature = "testing"))]
+    fn from_public_input(fields: &[S::F]) -> Option<Point<S>> {
+        match fields {
+            [] => Some(Point::Fixed),
+            fs => S::AssignedPoint::from_public_input(fs).map(Point::Variable),
+        }
+    }
+}
+
+impl<S: SelfEmulation> AssignedPoint<S> {
+    pub(crate) fn in_circuit_as_public_input(
+        &self,
+        layouter: &mut impl Layouter<S::F>,
+        curve_chip: &S::CurveChip,
+    ) -> Result<Vec<AssignedNative<S::F>>, Error> {
+        match self {
+            AssignedPoint::Variable(p) => curve_chip.as_public_input(layouter, p),
+            AssignedPoint::Fixed => Ok(vec![]),
+        }
+    }
+
+    pub(crate) fn constrain_as_public_input(
+        &self,
+        layouter: &mut impl Layouter<S::F>,
+        curve_chip: &S::CurveChip,
+    ) -> Result<(), Error> {
+        match self {
+            AssignedPoint::Variable(p) => curve_chip.constrain_as_public_input(layouter, p),
+            AssignedPoint::Fixed => Ok(()),
+        }
+    }
+}
+
+/// Off-circuit multi-scalar multiplication with mixed fixed and variable bases.
 ///
-/// (`scalars` and `bases` are guaranteed to have the same length.)
+/// This is the off-circuit analog of [`AssignedMsm`] and a generalization of
+/// `MSMKZG` that can refer to some bases as "fixed" (globally-known constants).
+/// The triple `(scalars, bases, labels)` is flat and parallel:
+/// `scalars[i]` multiplies `bases[i]`, which is identified by `labels[i]`.
+///
+/// A `Fixed` base is not stored inline; its actual curve point is supplied
+/// later via `resolve_fixed_bases` or `eval`.
+///
+/// Invariant: `scalars.len() == bases.len() == labels.len()`.
 #[derive(Clone, Debug)]
 pub struct Msm<S: SelfEmulation> {
-    bases: Vec<S::C>,
     scalars: Vec<S::F>,
-    fixed_base_scalars: BTreeMap<String, S::F>,
+    bases: Vec<Point<S>>,
+    labels: Vec<PolynomialLabel>,
 }
 
 /// Type for in-circuit multi-scalar multiplications.
 ///
 /// This is the in-circuit analog of `Msm<C>`.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AssignedMsm<S: SelfEmulation> {
-    bases: Vec<S::AssignedPoint>,
-    pub(crate) scalars: Vec<AssignedBoundedScalar<S::F>>,
-    fixed_base_scalars: BTreeMap<String, AssignedBoundedScalar<S::F>>,
+    scalars: Vec<AssignedBoundedScalar<S::F>>,
+    bases: Vec<AssignedPoint<S>>,
+    labels: Vec<PolynomialLabel>,
 }
-
-impl<S: SelfEmulation> PartialEq for AssignedMsm<S> {
-    fn eq(&self, other: &Self) -> bool {
-        self.bases == other.bases
-            && self.scalars == other.scalars
-            && self.fixed_base_scalars == other.fixed_base_scalars
-    }
-}
-
-impl<S: SelfEmulation> Eq for AssignedMsm<S> {}
 
 impl<S: SelfEmulation> Msm<S> {
-    /// Creates a new MSM from the given slice of bases, scalars and a BTreeMap
-    /// of fixed_base_scalars.
+    /// Creates a new MSM from the given slice of bases, scalars and labels.
     ///
     /// # Panics
     ///
-    /// If `|bases| != |scalars|`.
-    pub fn new(
-        bases: &[S::C],
-        scalars: &[S::F],
-        fixed_base_scalars: &BTreeMap<String, S::F>,
-    ) -> Self {
+    /// If `bases`, `scalars` and `labels` do not all have the same length.
+    pub fn new(bases: &[Point<S>], scalars: &[S::F], labels: &[PolynomialLabel]) -> Self {
         assert_eq!(bases.len(), scalars.len());
+        assert_eq!(bases.len(), labels.len());
         Msm {
             bases: bases.to_vec(),
             scalars: scalars.to_vec(),
-            fixed_base_scalars: fixed_base_scalars.clone(),
+            labels: labels.to_vec(),
         }
     }
 
+    /// Builds an `Msm` from a slice of `(label, scalar, base)` triples, as
+    /// returned by [`midnight_proofs::poly::kzg::msm::DualMSM::split`].
+    ///
+    /// Each base is classified as `Fixed` if its label appears in
+    /// `fixed_bases` (with a sanity-check that the point matches the expected
+    /// value), or `Variable` otherwise.
+    pub fn from_terms(
+        terms: &[(&PolynomialLabel, &S::F, &S::C)],
+        fixed_bases: &BTreeMap<PolynomialLabel, S::C>,
+    ) -> Self {
+        let mut bases = Vec::with_capacity(terms.len());
+        let mut scalars = Vec::with_capacity(terms.len());
+        let mut labels = Vec::with_capacity(terms.len());
+
+        for (label, scalar, &base) in terms {
+            scalars.push(**scalar);
+            labels.push((*label).clone());
+            match fixed_bases.get(*label) {
+                Some(expected) => {
+                    assert_eq!(base, *expected);
+                    bases.push(Point::Fixed);
+                }
+                None => bases.push(Point::Variable(base)),
+            }
+        }
+        Msm::new(&bases, &scalars, &labels)
+    }
+
     /// The bases of this MSM.
-    pub fn bases(&self) -> Vec<S::C> {
+    pub fn bases(&self) -> Vec<Point<S>> {
         self.bases.clone()
     }
 
-    /// The (non-fixed-base) scalars of this MSM.
+    /// The scalars of this MSM.
     pub fn scalars(&self) -> Vec<S::F> {
         self.scalars.clone()
     }
 
-    /// The fixed-base scalars of this MSM.
-    pub fn fixed_base_scalars(&self) -> BTreeMap<String, S::F> {
-        self.fixed_base_scalars.clone()
+    /// The labels of this MSM.
+    pub fn labels(&self) -> Vec<PolynomialLabel> {
+        self.labels.clone()
     }
 
-    /// Creates a new MSM from the given base-scalar pairs, with an empty tree
-    /// of fixed_base_scalars.
+    /// Collapses the variable-base part into a single `(collapsed-point, 1)`
+    /// term.
     ///
-    /// # Panics
+    /// All `Variable` entries are accumulated into one curve point via MSM and
+    /// stored with scalar `1` and label `PolynomialLabel::Collapsed`.
+    /// `Fixed` entries are preserved: terms sharing the same label have their
+    /// scalars summed. After the call the MSM has exactly one `Variable` entry
+    /// (the collapsed result) plus one `Fixed` entry per distinct fixed label.
     ///
-    /// If `|bases| != |scalars|`.
-    pub fn from_terms(bases: &[S::C], scalars: &[S::F]) -> Self {
-        assert_eq!(bases.len(), scalars.len());
-        Msm {
-            bases: bases.to_vec(),
-            scalars: scalars.to_vec(),
-            fixed_base_scalars: BTreeMap::new(),
-        }
-    }
-
-    /// Evaluates the variable part of the AssignedMsm (the scalar-base pairs)
-    /// collapsing it to a single point (and a scalar of 1), leaving the
-    /// fixed-base part intact.
-    ///
-    /// This function mutates self.
+    /// This function mutates `self`.
     pub fn collapse(&mut self) {
-        let affine_bases: Vec<S::G1Affine> = self.bases.iter().map(|&b| b.into()).collect();
-        let collapsed_base = msm_best(&self.scalars, &affine_bases);
+        // We allocate max capacity but we may not fill it.
+        let n = self.bases.len();
+        let mut variable_bases = Vec::<S::G1Affine>::with_capacity(n);
+        let mut variable_scalars = Vec::<S::F>::with_capacity(n);
 
-        self.bases = vec![collapsed_base];
-        self.scalars = vec![S::F::ONE];
+        let mut fixed_base_scalars = BTreeMap::<PolynomialLabel, S::F>::new();
+
+        for i in 0..n {
+            match self.bases[i] {
+                Point::Variable(p) => {
+                    variable_bases.push(p.into());
+                    variable_scalars.push(self.scalars[i]);
+                }
+                Point::Fixed => {
+                    fixed_base_scalars
+                        .entry(self.labels[i].clone())
+                        .and_modify(|s| *s += self.scalars[i])
+                        .or_insert(self.scalars[i]);
+                }
+            }
+        }
+
+        let mut bases = vec![Point::Fixed; fixed_base_scalars.len()];
+        let mut scalars: Vec<_> = fixed_base_scalars.values().copied().collect();
+        let mut labels: Vec<_> = fixed_base_scalars.keys().cloned().collect();
+
+        let collapsed_base = msm_best(&variable_scalars, &variable_bases);
+        bases.push(Point::Variable(collapsed_base));
+        scalars.push(S::F::ONE);
+        labels.push(PolynomialLabel::Collapsed);
+
+        self.bases = bases;
+        self.scalars = scalars;
+        self.labels = labels;
     }
 
-    /// Given the actual fixed bases, resolves the fixed-base part of the MSM
-    /// by pairing each named scalar with its base and moving them to regular
-    /// variable-base entries.
+    /// Resolves all `Fixed` bases by looking up their curve points in the map.
     ///
-    /// After this call, `fixed_base_scalars` becomes empty.
+    /// Each `Fixed` entry is replaced with `Variable(fixed_bases[label])`.
+    /// After this call, no `Fixed` entries remain.
     ///
     /// # Panics
     ///
-    /// If some of the keys in `fixed_base_scalars` do not appear in the
-    /// provided `fixed_bases` map.
-    pub fn resolve_fixed_bases(&mut self, fixed_bases: &BTreeMap<String, S::C>) {
-        for (name, scalar) in &self.fixed_base_scalars {
-            let base = fixed_bases.get(name).unwrap_or_else(|| panic!("Base not provided: {name}"));
-            self.bases.push(*base);
-            self.scalars.push(*scalar);
+    /// If any `Fixed` label is absent from `fixed_bases`.
+    pub fn resolve_fixed_bases(&mut self, fixed_bases: &BTreeMap<PolynomialLabel, S::C>) {
+        for (i, base) in self.bases.iter_mut().enumerate() {
+            match base {
+                Point::Variable(..) => (),
+                Point::Fixed => {
+                    let l = &self.labels[i];
+                    let p = fixed_bases.get(l).unwrap_or_else(|| panic!("Base not provided: {l}"));
+                    *base = Point::Variable(*p)
+                }
+            }
         }
-        self.fixed_base_scalars.clear();
     }
 
-    /// Evaluates the MSM with the provided fixed_bases.
-    /// I.e. it computes `<scalars, bases> + <fixed_bases, fixed_base_scalars>`.
+    /// Fully evaluates the MSM to a single curve point.
+    ///
+    /// Equivalent to calling `resolve_fixed_bases(fixed_bases)` followed by
+    /// `collapse()`. Returns `∑ scalars[i] * bases[i]`, with all fixed bases
+    /// substituted from the map.
     ///
     /// # Panics
     ///
-    /// If some of the keys in the `fixed_base_scalars` of the MSM do not appear
-    /// in the tree of `fixed_bases`.
-    ///
-    /// Note that the converse is not a problem, i.e., the keys of `fixed_bases`
-    /// can be a superset of the keys of `fixed_base_scalars`.
-    pub fn eval(&self, fixed_bases: &BTreeMap<String, S::C>) -> S::C {
-        let mut bases = self.bases.clone();
-        let mut scalars = self.scalars.clone();
+    /// If any `Fixed` label is absent from `fixed_bases`.
+    pub fn eval(&self, fixed_bases: &BTreeMap<PolynomialLabel, S::C>) -> S::C {
+        let mut msm = self.clone();
+        msm.resolve_fixed_bases(fixed_bases);
+        msm.collapse();
 
-        for (key, scalar) in self.fixed_base_scalars.iter() {
-            let base = fixed_bases.get(key).unwrap_or_else(|| panic!("Base not provided: {key}"));
-            bases.push(*base);
-            scalars.push(*scalar);
+        debug_assert_eq!(msm.scalars, vec![S::F::ONE]);
+        debug_assert_eq!(msm.labels, vec![PolynomialLabel::Collapsed]);
+
+        match msm.bases.as_slice() {
+            [Point::Variable(p)] => *p,
+            _ => unreachable!(),
         }
-
-        let affine_bases: Vec<S::G1Affine> = bases.iter().map(|&b| b.into()).collect();
-        msm_best(&scalars, &affine_bases)
     }
 
     /// Accumulates two MSMs with the given scalar r.
@@ -187,14 +322,7 @@ impl<S: SelfEmulation> Msm<S> {
 
         acc.bases.extend(other.bases.clone());
         acc.scalars.extend(other.scalars.iter().map(|s| *s * r));
-
-        for (key, value) in other.fixed_base_scalars.clone() {
-            let r_times_value = r * value;
-            acc.fixed_base_scalars
-                .entry(key)
-                .and_modify(|e| *e += r_times_value)
-                .or_insert(r_times_value);
-        }
+        acc.labels.extend(other.labels.clone());
 
         acc
     }
@@ -204,34 +332,30 @@ impl<S: SelfEmulation> InnerValue for AssignedMsm<S> {
     type Element = Msm<S>;
 
     fn value(&self) -> Value<Self::Element> {
-        let bases: Value<Vec<S::C>> = Value::from_iter(self.bases.iter().map(|base| base.value()));
+        let bases: Value<Vec<Point<S>>> =
+            Value::from_iter(self.bases.iter().map(|base| base.value()));
 
         let scalars: Value<Vec<S::F>> =
             Value::from_iter(self.scalars.iter().map(|s| s.scalar.value().copied()));
 
-        let fixed_based_scalars: Value<BTreeMap<String, S::F>> = Value::from_iter(
-            self.fixed_base_scalars
-                .iter()
-                .map(|(name, s)| s.scalar.value().map(|s| (name.clone(), *s))),
-        );
+        let labels = self.labels.clone();
 
-        scalars
-            .zip(bases)
-            .zip(fixed_based_scalars)
-            .map(|((scalars, bases), fixed_base_scalars)| Msm {
-                bases,
-                scalars,
-                fixed_base_scalars,
-            })
+        scalars.zip(bases).map(|(scalars, bases)| Msm {
+            bases,
+            scalars,
+            labels,
+        })
     }
 }
 
 impl<S: SelfEmulation> Instantiable<S::F> for AssignedMsm<S> {
     fn as_public_input(msm: &Msm<S>) -> Vec<S::F> {
         [
-            msm.bases.iter().flat_map(S::AssignedPoint::as_public_input).collect::<Vec<_>>(),
+            msm.bases
+                .iter()
+                .flat_map(AssignedPoint::<S>::as_public_input)
+                .collect::<Vec<_>>(),
             msm.scalars.clone(),
-            msm.fixed_base_scalars.values().copied().collect::<Vec<_>>(),
         ]
         .into_iter()
         .flatten()
@@ -245,21 +369,67 @@ impl<S: SelfEmulation> Instantiable<S::F> for AssignedMsm<S> {
 }
 
 impl<S: SelfEmulation> AssignedMsm<S> {
+    /// Creates a new in-circuit MSM from parallel slices of scalars, bases,
+    /// and labels.
+    ///
+    /// # Panics
+    ///
+    /// If `bases`, `scalars` and `labels` do not all have the same length.
+    pub fn new(
+        scalars: &[AssignedBoundedScalar<S::F>],
+        bases: &[AssignedPoint<S>],
+        labels: &[PolynomialLabel],
+    ) -> Self {
+        assert_eq!(bases.len(), scalars.len());
+        assert_eq!(bases.len(), labels.len());
+        Self {
+            bases: bases.to_vec(),
+            scalars: scalars.to_vec(),
+            labels: labels.to_vec(),
+        }
+    }
+
+    /// The bases of this assigned MSM.
+    pub fn bases(&self) -> Vec<AssignedPoint<S>> {
+        self.bases.clone()
+    }
+
+    /// The scalars of this assigned MSM.
+    pub fn scalars(&self) -> Vec<AssignedBoundedScalar<S::F>> {
+        self.scalars.clone()
+    }
+
+    /// The labels of this assigned MSM.
+    pub fn labels(&self) -> Vec<PolynomialLabel> {
+        self.labels.clone()
+    }
+
+    /// Creates a single-term MSM from the given scalar, base, and label.
+    pub fn from_term(
+        scalar: AssignedBoundedScalar<S::F>,
+        base: AssignedPoint<S>,
+        label: PolynomialLabel,
+    ) -> Self {
+        Self::new(&[scalar], &[base], &[label])
+    }
+
+    /// Creates a single fixed-base term MSM with the given scalar and label.
+    pub fn from_fixed_term(scalar: AssignedBoundedScalar<S::F>, label: PolynomialLabel) -> Self {
+        Self::from_term(scalar, AssignedPoint::Fixed, label)
+    }
+}
+
+impl<S: SelfEmulation> AssignedMsm<S> {
     /// Converts the off-circuit MSM into two vectors of scalars. The first
     /// will be used as a normal instance, whereas the second will be plugged-in
     /// in as a committed instance.
     ///
-    /// The committed instance part corresponds to the (fixed and non-fixed)
-    /// scalars of the MSM.
+    /// The committed instance part corresponds to the scalars of the MSM.
     pub fn as_public_input_with_committed_scalars(msm: &Msm<S>) -> (Vec<S::F>, Vec<S::F>) {
         let normal_instance =
-            msm.bases.iter().flat_map(S::AssignedPoint::as_public_input).collect();
+            msm.bases.iter().flat_map(AssignedPoint::<S>::as_public_input).collect();
 
-        let committed_instance = [
-            msm.scalars.clone(),
-            msm.fixed_base_scalars.values().copied().collect(),
-        ]
-        .concat();
+        let committed_instance = msm.scalars.clone();
 
         (normal_instance, committed_instance)
     }
@@ -274,17 +444,12 @@ impl<S: SelfEmulation> AssignedMsm<S> {
         Ok([
             self.bases
                 .iter()
-                .map(|base| curve_chip.as_public_input(layouter, base))
+                .map(|base| base.in_circuit_as_public_input(layouter, curve_chip))
                 .collect::<Result<Vec<_>, Error>>()?
-                .into_iter()
-                .flatten()
-                .collect::<Vec<_>>(),
+                .concat(),
             self.scalars.iter().map(|s| s.clone().scalar).collect::<Vec<_>>(),
-            self.fixed_base_scalars.values().map(|s| s.clone().scalar).collect::<Vec<_>>(),
         ]
-        .into_iter()
-        .flatten()
-        .collect())
+        .concat())
     }
 
     pub(crate) fn constrain_as_public_input(
@@ -295,14 +460,10 @@ impl<S: SelfEmulation> AssignedMsm<S> {
     ) -> Result<(), Error> {
         self.bases
             .iter()
-            .try_for_each(|base| curve_chip.constrain_as_public_input(layouter, base))?;
+            .try_for_each(|base| base.constrain_as_public_input(layouter, curve_chip))?;
 
         self.scalars
             .iter()
-            .try_for_each(|s| scalar_chip.constrain_as_public_input(layouter, &s.clone().scalar))?;
-
-        self.fixed_base_scalars
-            .values()
             .try_for_each(|s| scalar_chip.constrain_as_public_input(layouter, &s.clone().scalar))
     }
 
@@ -314,73 +475,68 @@ impl<S: SelfEmulation> AssignedMsm<S> {
     ) -> Result<(), Error> {
         self.bases
             .iter()
-            .try_for_each(|base| curve_chip.constrain_as_public_input(layouter, base))?;
+            .try_for_each(|base| base.constrain_as_public_input(layouter, curve_chip))?;
 
         self.scalars.iter().try_for_each(|s| {
             let mut a = S::F::ZERO;
             s.scalar.clone().value().map(|v| a = *v);
-            S::constrain_scalar_as_committed_public_input(layouter, scalar_chip, &s.scalar)
-        })?;
-
-        self.fixed_base_scalars.values().try_for_each(|s| {
             S::constrain_scalar_as_committed_public_input(layouter, scalar_chip, &s.scalar)
         })
     }
 }
 
 impl<S: SelfEmulation> AssignedMsm<S> {
-    /// Witnesses an MSM computation of `len` bases/scalars and a `BTreeMap` of
-    /// fixed_base_scalars indexed by the given `fixed_base_names`.
+    /// Witnesses all scalar cells and variable-base point cells for this MSM.
+    ///
+    /// The `labels` slice determines the shape: entries whose label is in
+    /// `fixed_base_labels` are represented as `AssignedPoint::Fixed` (no cell
+    /// allocated for the point); all other entries are assigned as
+    /// `AssignedPoint::Variable`.
     ///
     /// # Warning
     ///
-    /// The points of the MSM are not enforced to be part of the relevant prime
-    /// order subgroup.
+    /// Variable-base points are not checked for subgroup membership.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// If `msm_value` is known and its number of variable bases differs from
-    /// `len`, or its number of fixed-base scalars differs from
-    /// `fixed_base_names.len()`.
+    /// If `msm_value` is known and its label list differs from `labels`.
     pub fn assign(
         layouter: &mut impl Layouter<S::F>,
         curve_chip: &S::CurveChip,
         scalar_chip: &S::ScalarChip,
-        len: usize,
-        fixed_base_names: &[String],
+        labels: &[PolynomialLabel],
+        fixed_base_labels: &HashSet<PolynomialLabel>,
         msm_value: Value<Msm<S>>,
     ) -> Result<Self, Error> {
-        let bases_val = msm_value.as_ref().map(|msm| msm.bases.clone()).transpose_vec(len);
+        let len = labels.len();
+        assert!(fixed_base_labels.len() <= len);
+        msm_value.error_if_known_and(|msm| msm.labels != labels)?;
 
         let scalars_val = msm_value.as_ref().map(|msm| msm.scalars.clone()).transpose_vec(len);
+        let bases_val = msm_value.as_ref().map(|msm| msm.bases.clone()).transpose_vec(len);
 
-        let fixed_base_scalars_val = msm_value
-            .as_ref()
-            .map(|msm| {
-                // We only use the keys inside the Value to iterate over it in the right order,
-                // these are then discarded.
-                msm.fixed_base_scalars.iter().map(|s| *s.1).collect::<Vec<_>>()
-            })
-            .transpose_vec(fixed_base_names.len());
-
-        // Sort the fixed_base_names to ensure consistency with the BTreeMap.
-        let mut fixed_base_names = fixed_base_names.to_vec();
-        fixed_base_names.sort();
-
-        let bases = bases_val
-            .iter()
-            .map(|p| S::assign_without_subgroup_check(layouter, curve_chip, *p))
-            .collect::<Result<Vec<_>, Error>>()?;
         let scalars = assign_bounded_scalars(layouter, scalar_chip, &scalars_val)?;
-        let fixed_base_scalars: BTreeMap<String, AssignedBoundedScalar<S::F>> = {
-            let scalars = assign_bounded_scalars(layouter, scalar_chip, &fixed_base_scalars_val)?;
-            fixed_base_names.iter().cloned().zip(scalars).collect()
-        };
+        let mut bases = Vec::<AssignedPoint<S>>::with_capacity(len);
+
+        for i in 0..len {
+            if fixed_base_labels.contains(&labels[i]) {
+                bases_val[i].error_if_known_and(|p| matches!(p, Point::Variable(..)))?;
+                bases.push(AssignedPoint::Fixed);
+            } else {
+                bases_val[i].error_if_known_and(|p| matches!(p, Point::Fixed))?;
+                let p_val = bases_val[i].clone().map(|p| match p {
+                    Point::Variable(p) => p,
+                    Point::Fixed => unreachable!(),
+                });
+                let p = S::assign_without_subgroup_check(layouter, curve_chip, p_val)?;
+                bases.push(AssignedPoint::Variable(p));
+            }
+        }
 
         Ok(AssignedMsm {
             scalars,
             bases,
-            fixed_base_scalars,
+            labels: labels.to_vec(),
         })
     }
 
@@ -390,102 +546,117 @@ impl<S: SelfEmulation> AssignedMsm<S> {
         Self {
             scalars: vec![],
             bases: vec![],
-            fixed_base_scalars: BTreeMap::new(),
+            labels: vec![],
         }
     }
 
-    /// Creates a new MSM from the given base (with a scalar of 1).
-    pub fn from_term(scalar: &AssignedBoundedScalar<S::F>, base: &S::AssignedPoint) -> Self {
-        Self {
-            scalars: vec![scalar.clone()],
-            bases: vec![base.clone()],
-            fixed_base_scalars: BTreeMap::new(),
-        }
-    }
-
-    /// Creates a new MSM from the given fixed base name (with a scalar of 1).
-    pub fn from_fixed_term(scalar: &AssignedBoundedScalar<S::F>, base_name: &str) -> Self {
-        Self {
-            scalars: vec![],
-            bases: vec![],
-            fixed_base_scalars: [(base_name.to_string(), scalar.clone())].into_iter().collect(),
-        }
-    }
-
-    /// Adds a `(scalar, base)` term to the AssignedMsm.
-    pub fn add_term(&mut self, scalar: &AssignedBoundedScalar<S::F>, base: &S::AssignedPoint) {
+    /// Appends a `(scalar, base, label)` term to this MSM.
+    pub fn add_term(
+        &mut self,
+        scalar: &AssignedBoundedScalar<S::F>,
+        base: &AssignedPoint<S>,
+        label: &PolynomialLabel,
+    ) {
         self.scalars.push(scalar.clone());
         self.bases.push(base.clone());
+        self.labels.push(label.clone());
     }
 
     /// Adds two AssignedMsm.
-    pub fn add_msm(
-        &mut self,
-        layouter: &mut impl Layouter<S::F>,
-        scalar_chip: &S::ScalarChip,
-        other: &Self,
-    ) -> Result<(), Error> {
+    pub fn add_msm(&mut self, other: &Self) -> Result<(), Error> {
         self.scalars.extend(other.scalars.clone());
         self.bases.extend(other.bases.clone());
-
-        for (key, value) in other.fixed_base_scalars.clone() {
-            match self.fixed_base_scalars.entry(key) {
-                Entry::Occupied(mut occ) => {
-                    *occ.get_mut() = add_bounded_scalars(layouter, scalar_chip, occ.get(), &value)?;
-                }
-                Entry::Vacant(vac) => {
-                    vac.insert(value);
-                }
-            }
-        }
-
+        self.labels.extend(other.labels.clone());
         Ok(())
     }
 
-    /// Evaluates the variable part of the AssignedMsm (the scalar-base pairs)
-    /// collapsing it to a single point (and a scalar of 1), leaving the
-    /// fixed-base part intact.
+    /// In-circuit analog of [`Msm::collapse`].
     ///
-    /// This function mutates self.
+    /// Reduces the variable-base part to a single MSM point via the circuit's
+    /// MSM chip. Fixed-base terms sharing the same label have their scalars
+    /// added in-circuit. After the call, the MSM has one `Variable` entry
+    /// (label `Collapsed`) and one `Fixed` entry per distinct fixed label.
+    ///
+    /// This function mutates `self`.
     pub fn collapse(
         &mut self,
         layouter: &mut impl Layouter<S::F>,
         curve_chip: &S::CurveChip,
         scalar_chip: &S::ScalarChip,
     ) -> Result<(), Error> {
-        let scalars = self
-            .scalars
-            .iter()
-            .map(|s| (s.scalar.clone(), s.bound.bits() as usize))
-            .collect::<Vec<_>>();
+        // We allocate max capacity but we may not fill it.
+        let n = self.bases.len();
+        let mut variable_bases = Vec::with_capacity(n);
+        let mut variable_scalars = Vec::with_capacity(n);
 
-        let collapsed_base = S::msm(layouter, curve_chip, &scalars, &self.bases)?;
+        let mut fixed_base_scalars =
+            BTreeMap::<PolynomialLabel, AssignedBoundedScalar<S::F>>::new();
 
-        self.bases = vec![collapsed_base];
-        self.scalars = vec![AssignedBoundedScalar::one(layouter, scalar_chip)?];
+        for i in 0..n {
+            match self.bases[i].clone() {
+                AssignedPoint::Variable(p) => {
+                    let s = self.scalars[i].clone();
+                    variable_bases.push(p.clone());
+                    variable_scalars.push((s.scalar, s.bound.bits() as usize));
+                }
+                AssignedPoint::Fixed => match fixed_base_scalars.entry(self.labels[i].clone()) {
+                    Entry::Occupied(mut occ) => {
+                        let s = add_bounded_scalars(
+                            layouter,
+                            scalar_chip,
+                            occ.get(),
+                            &self.scalars[i],
+                        )?;
+                        *occ.get_mut() = s;
+                    }
+                    Entry::Vacant(vac) => {
+                        vac.insert(self.scalars[i].clone());
+                    }
+                },
+            }
+        }
+
+        let mut bases = vec![AssignedPoint::Fixed; fixed_base_scalars.len()];
+        let mut scalars: Vec<_> = fixed_base_scalars.values().cloned().collect();
+        let mut labels: Vec<_> = fixed_base_scalars.keys().cloned().collect();
+
+        let collapsed_base = S::msm(layouter, curve_chip, &variable_scalars, &variable_bases)?;
+        bases.push(AssignedPoint::Variable(collapsed_base));
+        scalars.push(AssignedBoundedScalar::one(layouter, scalar_chip)?);
+        labels.push(PolynomialLabel::Collapsed);
+
+        self.bases = bases;
+        self.scalars = scalars;
+        self.labels = labels;
 
         Ok(())
     }
 
-    /// Given the actual fixed bases, resolves the fixed-base part of the MSM
-    /// by pairing each named scalar with its base and moving them to regular
-    /// variable-base entries.
+    /// Resolves all `Fixed` bases by substituting their assigned circuit
+    /// points.
     ///
-    /// After this call, `fixed_base_scalars` becomes empty.
+    /// Each `Fixed` entry is replaced with `Variable(fixed_bases[label])`.
+    /// After this call, no `Fixed` entries remain.
+    ///
+    /// This is the in-circuit analog of [Msm::resolve_fixed_bases].
     ///
     /// # Panics
     ///
-    /// If some of the keys in `fixed_base_scalars` do not appear in the
-    /// provided `fixed_bases` map.
-    pub fn resolve_fixed_bases(&mut self, fixed_bases: &BTreeMap<String, S::AssignedPoint>) {
-        for (name, scalar) in &self.fixed_base_scalars {
-            let base = fixed_bases
-                .get(name)
-                .unwrap_or_else(|| panic!("Fixed base not provided: {name}"));
-            self.bases.push(base.clone());
-            self.scalars.push(scalar.clone());
+    /// If any `Fixed` label is absent from `fixed_bases`.
+    pub fn resolve_fixed_bases(
+        &mut self,
+        fixed_bases: &BTreeMap<PolynomialLabel, S::AssignedPoint>,
+    ) {
+        for (i, base) in self.bases.iter_mut().enumerate() {
+            match base {
+                AssignedPoint::Variable(..) => (),
+                AssignedPoint::Fixed => {
+                    let l = &self.labels[i];
+                    let p = fixed_bases.get(l).unwrap_or_else(|| panic!("Base not provided: {l}"));
+                    *base = AssignedPoint::Variable(p.clone())
+                }
+            }
         }
-        self.fixed_base_scalars.clear();
     }
 
     /// Scales all the scalars of the AssignedMsm by the given factor r.
@@ -500,10 +671,6 @@ impl<S: SelfEmulation> AssignedMsm<S> {
         self.scalars = (self.scalars.iter())
             .map(|s| mul_bounded_scalars(layouter, scalar_chip, s, r))
             .collect::<Result<Vec<_>, Error>>()?;
-
-        for s in self.fixed_base_scalars.values_mut() {
-            *s = mul_bounded_scalars(layouter, scalar_chip, s, r)?;
-        }
 
         Ok(())
     }
@@ -522,7 +689,7 @@ impl<S: SelfEmulation> AssignedMsm<S> {
         other.scale(layouter, scalar_chip, r)?;
 
         let mut acc = self.clone();
-        acc.add_msm(layouter, scalar_chip, &other)?;
+        acc.add_msm(&other)?;
 
         Ok(acc)
     }

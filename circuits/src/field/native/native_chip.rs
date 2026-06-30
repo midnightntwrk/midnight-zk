@@ -368,40 +368,6 @@ impl<F: CircuitField> NativeChip<F> {
         Ok(())
     }
 
-    /// Computes `a*x + b*y + c*z + k + m1*x*y + m2*x*z`.
-    fn add_and_double_mul(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        (a, x): (F, &AssignedNative<F>),
-        (b, y): (F, &AssignedNative<F>),
-        (c, z): (F, &AssignedNative<F>),
-        k: F,
-        (m1, m2): (F, F),
-    ) -> Result<AssignedNative<F>, Error> {
-        let res_value = x
-            .value()
-            .zip(y.value())
-            .zip(z.value())
-            .map(|((x, y), z)| a * x + b * y + c * z + k + m1 * x * y + m2 * x * z);
-        layouter.assign_region(
-            || "add and double mul",
-            |mut region| {
-                self.copy_in_row(&mut region, x, &self.config.value_cols[0], 0)?;
-                self.copy_in_row(&mut region, y, &self.config.value_cols[1], 0)?;
-                self.copy_in_row(&mut region, z, &self.config.value_cols[2], 0)?;
-                let res =
-                    region.assign_advice(|| "res", self.config.value_cols[4], 0, || res_value)?;
-                let mut coeffs = vec![F::ZERO; self.config.coeff_cols.len()];
-                coeffs[0] = a; // coeff of x
-                coeffs[1] = b; // coeff of y
-                coeffs[2] = c; // coeff of z
-                coeffs[4] = -F::ONE; // coeff of res
-                self.custom(&mut region, &coeffs, F::ZERO, (m1, m2), k, 0)?;
-                Ok(res)
-            },
-        )
-    }
-
     /// Assigns the given value into a variable `x`, and returns `(x, r)`, where
     /// `r` is such that `(x - shift) * r = 1`.
     ///
@@ -1034,6 +1000,40 @@ where
         m: F,
     ) -> Result<AssignedNative<F>, Error> {
         self.add_and_double_mul(layouter, (a, x), (b, y), (c, z), k, (m, F::ZERO))
+    }
+
+    /// Computes `a*x + b*y + c*z + k + m1*x*y + m2*x*z`.
+    fn add_and_double_mul(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        (a, x): (F, &AssignedNative<F>),
+        (b, y): (F, &AssignedNative<F>),
+        (c, z): (F, &AssignedNative<F>),
+        k: F,
+        (m1, m2): (F, F),
+    ) -> Result<AssignedNative<F>, Error> {
+        let res_value = x
+            .value()
+            .zip(y.value())
+            .zip(z.value())
+            .map(|((x, y), z)| a * x + b * y + c * z + k + m1 * x * y + m2 * x * z);
+        layouter.assign_region(
+            || "add and double mul",
+            |mut region| {
+                self.copy_in_row(&mut region, x, &self.config.value_cols[0], 0)?;
+                self.copy_in_row(&mut region, y, &self.config.value_cols[1], 0)?;
+                self.copy_in_row(&mut region, z, &self.config.value_cols[2], 0)?;
+                let res =
+                    region.assign_advice(|| "res", self.config.value_cols[4], 0, || res_value)?;
+                let mut coeffs = vec![F::ZERO; self.config.coeff_cols.len()];
+                coeffs[0] = a; // coeff of x
+                coeffs[1] = b; // coeff of y
+                coeffs[2] = c; // coeff of z
+                coeffs[4] = -F::ONE; // coeff of res
+                self.custom(&mut region, &coeffs, F::ZERO, (m1, m2), k, 0)?;
+                Ok(res)
+            },
+        )
     }
 
     fn add_constants(

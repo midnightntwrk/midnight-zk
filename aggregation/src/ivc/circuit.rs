@@ -13,12 +13,12 @@ use group::Group;
 use midnight_circuits::{
     instructions::{AssignmentInstructions, BinaryInstructions, PublicInputInstructions},
     types::Instantiable,
-    verifier::{Accumulator, AssignedAccumulator, AssignedVk},
+    verifier::{Accumulator, AssignedAccumulator, AssignedKZGCommitment, AssignedVk},
 };
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::ConstraintSystem,
-    poly::EvaluationDomain,
+    poly::{EvaluationDomain, PolynomialLabel},
 };
 use midnight_zk_stdlib::{Relation, ZkStdLib, ZkStdLibArch};
 
@@ -145,7 +145,6 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
 
         let assigned_self_vk: AssignedVk<S> = verifier_gadget.assign_vk_as_public_input(
             layouter,
-            "self_vk",
             &self.domain,
             &self.cs,
             instance.as_ref().map(|x| x.vk_repr),
@@ -161,8 +160,7 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
         )?;
         ivc_gadget.constrain_as_public_input(layouter, &next_state)?;
 
-        let fixed_base_names = midnight_circuits::verifier::fixed_base_names::<S>(
-            "self_vk",
+        let fixed_base_labels = midnight_circuits::verifier::fixed_base_labels::<S>(
             self.cs.num_fixed_columns() + self.cs.num_selectors(),
             self.cs.permutation().columns.len(),
         );
@@ -170,7 +168,7 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
         let prev_acc_value = witness.as_ref().map(|w| w.prev_acc.clone());
         let prev_acc = verifier_gadget.assign_collapsed_accumulator(
             layouter,
-            &fixed_base_names,
+            &fixed_base_labels,
             prev_acc_value,
         )?;
 
@@ -181,14 +179,17 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
         ]
         .concat();
 
-        let id_point = std_lib.bls12_381().assign_fixed(layouter, C::identity())?;
+        let instance_com = AssignedKZGCommitment::simple(
+            std_lib.bls12_381().assign_fixed(layouter, C::identity())?,
+            PolynomialLabel::CommittedInstance(0),
+        );
 
         // Verify a witnessed proof that ensures the validity of `prev_state`.
         // The proof is valid iff `prev_proof_acc` satisfies the invariant.
         let mut prev_proof_acc = verifier_gadget.prepare(
             layouter,
             &assigned_self_vk,
-            &[id_point],
+            &[instance_com],
             &[&prev_proof_pi],
             witness.map(|w| w.prev_proof),
         )?;

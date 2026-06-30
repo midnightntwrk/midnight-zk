@@ -2399,13 +2399,9 @@ impl<'a, F: Field> VirtualCells<'a, F> {
             }
             SelectorType::Additive(s) => {
                 let q = self.query_selector(s);
-                let names: Vec<_> = c.constraints.iter().map(|c| c.name.clone()).collect();
                 let polys: Vec<_> = c.constraints.into_iter().map(|c| c.poly).collect();
-
-                // Append the ordinal to guarantee uniqueness even when the caller supplies
-                // the same name twice (e.g. the same chip configured more than once).
                 let index = self.meta.trashcans.len();
-                let name = format!("trash #{}: {}", index + 1, names.join("&"));
+                let name = format!("trash #{}", index + 1);
                 (self.meta.trashcans).push(Argument::new(name, q, polys));
 
                 vec![]

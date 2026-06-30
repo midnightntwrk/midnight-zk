@@ -36,7 +36,7 @@ pub use utils::compute_dummy_queries;
 use crate::utils::arithmetic::{truncate, truncated_powers};
 use crate::{
     poly::{
-        commitment::PolynomialCommitmentScheme,
+        commitment::{Labelable, PolynomialCommitmentScheme},
         kzg::{
             msm::{msm_specific, DualMSM, MSMKZG},
             params::{ParamsKZG, ParamsVerifierKZG},
@@ -49,8 +49,7 @@ use crate::{
     utils::{
         arithmetic::{
             eval_polynomial, evals_inner_product, inner_product, kate_division,
-            lagrange_interpolate, msm_inner_product, parallelize, powers, CurveAffine, CurveExt,
-            MSM,
+            lagrange_interpolate, parallelize, powers, CurveAffine, CurveExt, MSM,
         },
         helpers::ProcessedSerdeObject,
     },
@@ -138,12 +137,15 @@ where
         let queries = &{
             let mut queries = queries.to_vec();
             let pairs: Vec<_> = queries.iter().map(|q| (q.poly_ref, q.point)).collect();
-            for (idx, point) in compute_dummy_queries(&pairs) {
+            for (idx, dummy_point) in compute_dummy_queries(&pairs) {
                 let poly_ref = queries[idx].poly_ref;
                 transcript
-                    .write(&eval_polynomial(&poly_ref.0[..], queries[idx].point))
+                    .write(&eval_polynomial(&poly_ref.0[..], dummy_point))
                     .map_err(|_| Error::OpeningError)?;
-                queries.push(ProverQuery { point, poly_ref });
+                queries.push(ProverQuery {
+                    point: dummy_point,
+                    poly_ref,
+                });
             }
             queries
         };
@@ -279,11 +281,11 @@ where
         let queries = &{
             let mut queries = queries.to_vec();
             let pairs: Vec<_> = queries.iter().map(|q| (q.commitment_ref, q.point)).collect();
-            for (idx, point) in compute_dummy_queries(&pairs) {
+            for (idx, dummy_point) in compute_dummy_queries(&pairs) {
                 let commitment_ref = queries[idx].commitment_ref;
                 let eval = transcript.read().map_err(|_| Error::SamplingError)?;
                 queries.push(VerifierQuery {
-                    point,
+                    point: dummy_point,
                     commitment_ref,
                     eval,
                 });
@@ -306,16 +308,7 @@ where
         let mut q_eval_sets = vec![vec![]; point_sets.len()];
 
         for com_data in commitment_map.into_iter() {
-            let mut msm = MSMKZG::init();
-            match com_data.commitment_ref.0 {
-                KZGCommitment::Simple(p, label) => msm.append_term(E::Fr::ONE, *p, label.clone()),
-                KZGCommitment::Linear(points, scalars, labels) => {
-                    for ((p, s), label) in points.iter().zip(scalars).zip(labels) {
-                        msm.append_term(*s, *p, label.clone());
-                    }
-                }
-            }
-            q_coms[com_data.set_index].push(msm);
+            q_coms[com_data.set_index].push(com_data.commitment_ref.0.clone());
             q_eval_sets[com_data.set_index].push(com_data.evals);
         }
 
@@ -330,7 +323,7 @@ where
 
         let q_coms = q_coms
             .into_iter()
-            .map(|msms| msm_inner_product(msms, &powers_x1))
+            .map(|coms| inner_product(&coms, powers_x1.clone().into_iter()))
             .collect::<Vec<_>>();
 
         let q_eval_sets = q_eval_sets
@@ -355,10 +348,8 @@ where
             (q_coms, q_eval_sets, point_sets)
         };
 
-        let f_com: E::G1 = transcript
-            .read::<KZGCommitment<E>>()
-            .map_err(|_| Error::SamplingError)?
-            .into_point();
+        let f_com = transcript.read::<KZGCommitment<E>>().map_err(|_| Error::SamplingError)?;
+        let f_com = f_com.label(PolynomialLabel::Custom("kzg_batch".into()));
 
         // Sample a challenge x_3 for checking that f(X) was committed to
         // correctly.
@@ -391,19 +382,12 @@ where
         let final_com = {
             let size = q_coms.len() + 1;
             let mut coms = q_coms;
-            let mut f_com_as_msm = MSMKZG::init();
-
-            f_com_as_msm.append_term(
-                E::Fr::ONE,
-                f_com,
-                PolynomialLabel::Custom("kzg_batch".into()),
-            );
 
             // Collapse all MSMs before combining with x4 powers, to match the
             // in-circuit verifier. Skip the first one since its x4 power is 1.
             #[cfg(feature = "truncated-challenges")]
-            coms.iter_mut().skip(1).for_each(MSMKZG::collapse);
-            coms.push(f_com_as_msm);
+            coms.iter_mut().skip(1).for_each(|c| c.collapse());
+            coms.push(f_com);
 
             #[cfg(feature = "truncated-challenges")]
             let powers = truncated_powers(x4);
@@ -411,7 +395,7 @@ where
             #[cfg(not(feature = "truncated-challenges"))]
             let powers = powers(x4);
 
-            msm_inner_product(coms, &powers.take(size).collect::<Vec<_>>())
+            inner_product(&coms, powers.take(size))
         };
 
         let v = {
@@ -435,22 +419,22 @@ where
         let mut pi_msm = MSMKZG::<E>::init();
         pi_msm.append_term(E::Fr::ONE, pi, PolynomialLabel::Custom("π".into()));
 
-        // Scale zπ - vG
-        let scaled_pi = MSMKZG {
-            scalars: vec![x3, v],
-            bases: vec![pi, -E::G1::generator()],
-            labels: vec![
-                PolynomialLabel::Custom("π".into()),
+        // - vG + zπ
+        let extra_rhs = MSMKZG::new(
+            &[v, x3],
+            &[-E::G1::generator(), pi],
+            &[
                 PolynomialLabel::Custom("-G".into()),
+                PolynomialLabel::Custom("π".into()),
             ],
-        };
+        );
 
         // (π, C − vG + zπ)
         let mut msm_accumulator = DualMSM {
             left: pi_msm,
-            right: final_com,
+            right: final_com.into(),
         };
-        msm_accumulator.right.add_msm(&scaled_pi);
+        msm_accumulator.right.add_msm(&extra_rhs);
 
         Ok(msm_accumulator)
     }

@@ -20,7 +20,7 @@ use midnight_circuits::{
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::{ConstraintSystem, Error},
-    poly::EvaluationDomain,
+    poly::{EvaluationDomain, PolynomialLabel},
     transcript::Hashable,
 };
 use midnight_zk_stdlib::{MidnightVK, ZkStdLib};
@@ -34,7 +34,7 @@ use crate::ivc::{C, F, S};
 pub type VkHashAndBases = (
     AssignedVk<S>,
     AssignedNative<F>,
-    BTreeMap<String, <S as SelfEmulation>::AssignedPoint>,
+    BTreeMap<PolynomialLabel, <S as SelfEmulation>::AssignedPoint>,
 );
 
 /// Computes the VK hash off-circuit: `Poseidon(transcript_repr || bases)`.
@@ -88,7 +88,6 @@ pub fn assign_as_public_inputs_and_hash_vk(
     // into the hash below, binding the verified VK to the hashed one.
     let assigned_vk = std_lib.verifier().assign_vk_as_public_input(
         layouter,
-        "inner_vk",
         domain,
         cs,
         vk.map(|vk| vk.vk().transcript_repr()),
@@ -102,21 +101,21 @@ pub fn assign_as_public_inputs_and_hash_vk(
     let hash = std_lib.poseidon(layouter, &input)?;
 
     // Build the named fixed-bases map (including -G).
-    let mut named_map: BTreeMap<String, _> = assigned_bases
+    let mut labels_map: BTreeMap<PolynomialLabel, _> = assigned_bases
         .iter()
         .enumerate()
         .map(|(i, base)| {
-            let name = if i < nb_fixed {
-                midnight_circuits::verifier::fixed_commitment_name("inner_vk", i)
+            let label = if i < nb_fixed {
+                PolynomialLabel::Fixed(i)
             } else {
-                midnight_circuits::verifier::perm_commitment_name("inner_vk", i - nb_fixed)
+                PolynomialLabel::PermutationFixed(i - nb_fixed)
             };
-            (name, base.clone())
+            (label, base.clone())
         })
         .collect();
 
     let neg_g = curve_chip.assign_fixed(layouter, -C::generator())?;
-    named_map.insert("-G".into(), neg_g);
+    labels_map.insert(PolynomialLabel::Custom("-G".into()), neg_g);
 
-    Ok((assigned_vk, hash, named_map))
+    Ok((assigned_vk, hash, labels_map))
 }
