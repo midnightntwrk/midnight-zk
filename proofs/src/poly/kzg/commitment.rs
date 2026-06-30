@@ -4,10 +4,10 @@ use std::{
 };
 
 use ff::Field;
-use midnight_curves::pairing::MultiMillerLoop;
+use midnight_curves::{pairing::MultiMillerLoop, CurveAffine};
 
 use crate::{
-    poly::{commitment::Labelable, query::PolynomialLabel},
+    poly::{commitment::Labelable, kzg::msm::MSMKZG, query::PolynomialLabel},
     transcript::{Hashable, TranscriptHash},
     utils::helpers::{ProcessedSerdeObject, SerdeFormat},
 };
@@ -34,11 +34,14 @@ pub enum KZGCommitment<E: MultiMillerLoop> {
     /// A single committed point with its label.
     Simple(E::G1, PolynomialLabel),
     /// A lazy linear combination `∑ scalars[i] * points[i]` with per-term
-    /// labels, accumulated during verification for MSM batching.  Never
-    /// serialized or hashed directly.
+    /// labels, accumulated during verification for MSM batching.
+    /// Never serialized or hashed directly.
     Linear(Vec<E::G1>, Vec<E::Fr>, Vec<PolynomialLabel>),
 }
 
+// We implement `PartialEq` manually because its derivation would require
+// `E: PartialEq`. In practice, only `E::G1` and `E::Fr` need it;
+// `E` itself never appears directly in a comparison.
 impl<E: MultiMillerLoop> PartialEq for KZGCommitment<E>
 where
     E::G1: PartialEq,
@@ -46,9 +49,11 @@ where
 {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::Simple(p, _), Self::Simple(q, _)) => p == q,
-            (Self::Linear(ps, rs, _), Self::Linear(qs, ss, _)) => ps == qs && rs == ss,
-            _ => false,
+            (Self::Simple(p, l), Self::Simple(q, m)) => p == q && l == m,
+            (Self::Linear(ps, rs, ls), Self::Linear(qs, ss, ms)) => {
+                ps == qs && rs == ss && ls == ms
+            }
+            (Self::Simple(..), Self::Linear(..)) | (Self::Linear(..), Self::Simple(..)) => false,
         }
     }
 }
@@ -69,6 +74,40 @@ impl<E: MultiMillerLoop> KZGCommitment<E> {
         match self {
             Self::Simple(p, _) => p,
             Self::Linear(..) => panic!("expected KZGCommitment::Simple"),
+        }
+    }
+}
+
+impl<E: MultiMillerLoop> KZGCommitment<E>
+where
+    E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
+{
+    /// Collapses a `Linear` combination into a `Simple` commitment by computing
+    /// the MSM `∑ scalars[i] * points[i]`.
+    ///
+    /// A `Simple` commitment is left unchanged.
+    /// After the call, the result always has scalar `1` and label `Collapsed`.
+    pub fn collapse(&mut self) {
+        match self {
+            Self::Simple(_, _) => (),
+            Self::Linear(points, scalars, labels) => {
+                let mut msm = MSMKZG::<E>::new(scalars, points, labels);
+                msm.collapse();
+                debug_assert_eq!(msm.bases.len(), 1);
+                debug_assert_eq!(msm.scalars, vec![E::Fr::ONE]);
+                *self = Self::Simple(msm.bases[0], msm.labels[0].clone());
+            }
+        }
+    }
+}
+
+impl<E: MultiMillerLoop> From<KZGCommitment<E>> for MSMKZG<E> {
+    fn from(commitment: KZGCommitment<E>) -> Self {
+        match commitment {
+            KZGCommitment::Simple(p, label) => MSMKZG::new(&[E::Fr::ONE], &[p], &[label]),
+            KZGCommitment::Linear(points, scalars, labels) => {
+                MSMKZG::new(&scalars, &points, &labels)
+            }
         }
     }
 }

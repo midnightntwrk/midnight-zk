@@ -96,10 +96,15 @@ pub(crate) fn permutation_expressions<S: SelfEmulation>(
             let z_i = &set.permutation_product_eval;
             let z_i_prev = &prev_set.permutation_product_last_eval.clone().unwrap();
 
-            // TODO: Optimize with add_and_double_mul
             // l_0 * (z_i - z_i_prev)
-            let aux = scalar_chip.sub(layouter, z_i, z_i_prev)?;
-            scalar_chip.mul(layouter, l_0, &aux, None)
+            scalar_chip.add_and_double_mul(
+                layouter,
+                (S::F::ZERO, l_0),
+                (S::F::ZERO, z_i),
+                (S::F::ZERO, z_i_prev),
+                S::F::ZERO,
+                (S::F::ONE, -S::F::ONE),
+            )
         })
         .collect::<Result<Vec<AssignedNative<S::F>>, Error>>()?;
 
