@@ -252,7 +252,7 @@ impl<S: SelfEmulation> AssignedAccumulator<S> {
     /// there become `AssignedPoint::Fixed`; the rest are assigned as
     /// variable-base points).
     ///
-    /// # Panics
+    /// # Errors
     ///
     /// If the known accumulator value's label list does not match the supplied
     /// `lhs_labels` / `rhs_labels`.

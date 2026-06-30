@@ -548,12 +548,20 @@ pub(crate) fn multi_prepare<S: SelfEmulation>(
                 evaluate_interpolated_polynomial(layouter, scalar_chip, points, evals, &x3.scalar)?;
 
             // eval = (proof_eval - r_eval) / prod_i (x3 - point_i)
-            let mut den = scalar_chip.sub(layouter, &x3.scalar, &points[0])?;
-            for point in points.iter().skip(1) {
-                // TODO: This can be optimized with add_and_double_mul
-                let x3_minus_point = scalar_chip.sub(layouter, &x3.scalar, point)?;
-                den = scalar_chip.mul(layouter, &den, &x3_minus_point, None)?;
-            }
+            let den = points.iter().skip(1).try_fold(
+                scalar_chip.sub(layouter, &x3.scalar, &points[0])?,
+                |acc, point| {
+                    // acc * (x3 - point) computed as acc * x3 - acc * point
+                    scalar_chip.add_and_double_mul(
+                        layouter,
+                        (S::F::ZERO, &acc),
+                        (S::F::ZERO, &x3.scalar),
+                        (S::F::ZERO, point),
+                        S::F::ZERO,
+                        (S::F::ONE, -S::F::ONE),
+                    )
+                },
+            )?;
             let mut eval = scalar_chip.sub(layouter, proof_eval, &r_eval)?;
             eval = scalar_chip.div(layouter, &eval, &den)?;
 

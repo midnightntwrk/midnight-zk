@@ -497,7 +497,7 @@ impl<S: SelfEmulation> AssignedMsm<S> {
     ///
     /// Variable-base points are not checked for subgroup membership.
     ///
-    /// # Panics
+    /// # Errors
     ///
     /// If `msm_value` is known and its label list differs from `labels`.
     pub fn assign(
@@ -637,6 +637,8 @@ impl<S: SelfEmulation> AssignedMsm<S> {
     ///
     /// Each `Fixed` entry is replaced with `Variable(fixed_bases[label])`.
     /// After this call, no `Fixed` entries remain.
+    ///
+    /// This is the in-circuit analog of [Msm::resolve_fixed_bases].
     ///
     /// # Panics
     ///

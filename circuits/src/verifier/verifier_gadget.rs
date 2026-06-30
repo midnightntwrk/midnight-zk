@@ -182,6 +182,10 @@ impl<S: SelfEmulation> VerifierGadget<S> {
     ///
     /// This shape matches the invariant maintained by the KZG multiopen
     /// accumulation after `collapse()` has been called off-circuit.
+    ///
+    /// # Errors
+    ///
+    /// If the expected shape is not satisfied.
     pub fn assign_collapsed_accumulator(
         &self,
         layouter: &mut impl Layouter<S::F>,
@@ -831,16 +835,14 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         // We are now convinced the circuit is satisfied so long as the
         // polynomial commitments open to the correct values, which is true as long
         // as the following accumulator passes the invariant.
-        let multiopen_check = kzg::multi_prepare::<S>(
+        kzg::multi_prepare::<S>(
             layouter,
             #[cfg(feature = "truncated-challenges")]
             &self.curve_chip,
             &self.scalar_chip,
             &mut transcript,
             &queries,
-        )?;
-
-        Ok(multiopen_check)
+        )
     }
 
     /// Prepares a plonk proof into a PCS instance that can be finalized or
