@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `MSMKZG::new` constructor taking parallel slices of scalars, bases, and labels [#430](https://github.com/midnightntwrk/midnight-zk/pull/430)
 * `KZGCommitment::collapse()` method and `From<KZGCommitment>` impl for `MSMKZG` [#430](https://github.com/midnightntwrk/midnight-zk/pull/430)
 * Derive `Ord` on `PolynomialLabel`, making it usable as a `BTreeMap` key [#430](https://github.com/midnightntwrk/midnight-zk/pull/430)
+* `commitment_byte_length` method on the `PolynomialCommitmentScheme` trait, defaulting to the per-commitment size times `n` and overridable for schemes that fold polynomials into a single proof element [#440](https://github.com/midnightntwrk/midnight-zk/pull/440)
+* `circuit_model_with` taking an explicit commitment-size closure [#440](https://github.com/midnightntwrk/midnight-zk/pull/440)
 
 ### Fixed
 * Fix verifier evals bug [#356](https://github.com/midnightntwrk/midnight-zk/pull/356)
@@ -28,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Fix cost-model [#435](https://github.com/midnightntwrk/midnight-zk/pull/435)
 
 ### Changed
+* `circuit_model` is now parameterized by a `PolynomialCommitmentScheme` (`circuit_model::<_, CS>`) instead of const `COMM`/`SCALAR` byte-size generics [#440](https://github.com/midnightntwrk/midnight-zk/pull/440)
 * Rename `PolynomialPointer` to `PolynomialReference` in `ProverQuery`; rename `poly` field to `poly_ref`; change `poly_inner_product` to accept `&[&Polynomial<F, Coeff>]` to avoid cloning [#411](https://github.com/midnightntwrk/midnight-zk/pull/411)
 * Rename `CommitmentLabel` to `PolynomialLabel`; add `NoLabel` variant for freshly deserialized commitments; introduce `Labelable` trait so every call site attaches the correct label after deserialization [#392](https://github.com/midnightntwrk/midnight-zk/pull/392)
 * Introduce `KZGCommitment` enum with `Simple` and `Linear` variants; attach `CommitmentLabel` at `commit` time and propagate it homomorphically through arithmetic [#381](https://github.com/midnightntwrk/midnight-zk/pull/381)
