@@ -27,7 +27,7 @@
 //! Note that implication <= holds unconditionally, whereas implication => holds
 //! "computationally".
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 
 use ff::Field;
 use group::Group;
@@ -53,9 +53,7 @@ use crate::{
     instructions::{hash::HashCPU, HashInstructions, PublicInputInstructions},
     types::{AssignedBit, InnerValue, Instantiable},
     verifier::{
-        fixed_commitment_name,
-        msm::{AssignedMsm, Msm},
-        perm_commitment_name,
+        msm::{AssignedMsm, Msm, Point},
         utils::AssignedBoundedScalar,
         SelfEmulation,
     },
@@ -80,58 +78,22 @@ pub struct AssignedAccumulator<C: SelfEmulation> {
 }
 
 impl<S: SelfEmulation> Accumulator<S> {
-    /// Converts the off-circuit dual MSM into an `Accumulator<S>` by separating
-    /// the fixed-base scalars aside in a BTreeMap indexed by the base name with
-    /// a custom prefix.
+    /// Converts an off-circuit [`DualMSM`] produced by the KZG verifier into an
+    /// [`Accumulator`].
     ///
-    /// This function also takes a map of fixed bases indexed by their name,
-    /// which is used to perform a sanity check on the fixed-base scalars of the
-    /// dual MSM.
+    /// For each term in the dual MSM, the label is looked up in `fixed_bases`:
+    /// * if found, the term is recorded as `Point::Fixed` and the expected base
+    ///   value is asserted to match (sanity check);
+    /// * otherwise, the term is recorded as `Point::Variable` with the base
+    ///   stored inline.
     pub fn from_dual_msm(
         dual_msm: DualMSM<S::Engine>,
-        prefix: &str,
-        fixed_bases: &BTreeMap<String, S::C>,
+        fixed_bases: &BTreeMap<PolynomialLabel, S::C>,
     ) -> Self {
         let (lhs, rhs) = dual_msm.split();
-
-        let process_msm = |msm: Vec<(&PolynomialLabel, &S::F, &S::C)>| {
-            let mut bases = Vec::with_capacity(msm.len());
-            let mut scalars = Vec::with_capacity(msm.len());
-            let mut fixed_base_scalars = BTreeMap::new();
-            for (label, scalar, base) in msm {
-                match label {
-                    PolynomialLabel::Fixed(i) => {
-                        let name = fixed_commitment_name(prefix, *i);
-                        assert_eq!(fixed_bases.get(&name), Some(base));
-                        fixed_base_scalars.insert(name, *scalar);
-                    }
-                    PolynomialLabel::PermutationFixed(i) => {
-                        let name = perm_commitment_name(prefix, *i);
-                        assert_eq!(fixed_bases.get(&name), Some(base));
-                        fixed_base_scalars.insert(name, *scalar);
-                    }
-                    PolynomialLabel::Custom(s) if s == "-G" => {
-                        assert_eq!(fixed_bases.get(s), Some(base));
-                        fixed_base_scalars.insert("-G".into(), *scalar);
-                    }
-                    PolynomialLabel::NoLabel => {
-                        panic!("commitment with NoLabel reached the MSM layer; call .label() after deserialization");
-                    }
-                    _ => {
-                        bases.push(*base);
-                        scalars.push(*scalar);
-                    }
-                }
-            }
-            (bases, scalars, fixed_base_scalars)
-        };
-
-        let (lhs_bases, lhs_scalars, lhs_fixed_base_scalars) = process_msm(lhs);
-        let (rhs_bases, rhs_scalars, rhs_fixed_base_scalars) = process_msm(rhs);
-
         Accumulator {
-            lhs: Msm::new(&lhs_bases, &lhs_scalars, &lhs_fixed_base_scalars),
-            rhs: Msm::new(&rhs_bases, &rhs_scalars, &rhs_fixed_base_scalars),
+            lhs: Msm::from_terms(&lhs, fixed_bases),
+            rhs: Msm::from_terms(&rhs, fixed_bases),
         }
     }
 
@@ -141,7 +103,7 @@ impl<S: SelfEmulation> Accumulator<S> {
     pub fn check(
         &self,
         params: &ParamsVerifierKZG<S::Engine>,
-        fixed_bases: &BTreeMap<String, S::C>,
+        fixed_bases: &BTreeMap<PolynomialLabel, S::C>,
     ) -> bool {
         let lhs = MSMKZG::<S::Engine>::from_base(&self.lhs.eval(fixed_bases));
         let rhs = MSMKZG::<S::Engine>::from_base(&self.rhs.eval(fixed_bases));
@@ -150,16 +112,26 @@ impl<S: SelfEmulation> Accumulator<S> {
 
     /// Returns a trivial accumulator that satisfies the pairing invariant.
     ///
-    /// The variable-base scalar is 1 (matching the invariant of collapsed
-    /// accumulators, where the variable part has been collapsed to a single
-    /// base with scalar 1). The base is the identity point and all
-    /// fixed-base scalars are zero, so both sides evaluate to the identity
-    /// regardless.
-    pub fn trivial(fixed_base_names: &[String]) -> Self {
-        let zero_fixed = fixed_base_names.iter().map(|n| (n.clone(), S::F::ZERO)).collect();
+    /// Both sides evaluate to the identity point for any `fixed_bases` map:
+    /// * LHS: a single `Variable(identity)` with scalar `1`, label `Collapsed`.
+    /// * RHS: one `Fixed` entry per label in `fixed_base_labels` with scalar
+    ///   `0` (contributing nothing), plus one `Variable(identity)` with scalar
+    ///   `1` and label `Collapsed`.
+    pub fn trivial(fixed_base_labels: &[PolynomialLabel]) -> Self {
+        let n = fixed_base_labels.len();
+        let id = S::C::identity();
+
         Accumulator {
-            lhs: Msm::new(&[S::C::identity()], &[S::F::ONE], &BTreeMap::new()),
-            rhs: Msm::new(&[S::C::identity()], &[S::F::ONE], &zero_fixed),
+            lhs: Msm::new(
+                &[Point::Variable(id)],
+                &[S::F::ONE],
+                &[PolynomialLabel::Collapsed],
+            ),
+            rhs: Msm::new(
+                &[vec![Point::Fixed; n], vec![Point::Variable(id)]].concat(),
+                &[vec![S::F::ZERO; n], vec![S::F::ONE]].concat(),
+                &[fixed_base_labels, &[PolynomialLabel::Collapsed]].concat(),
+            ),
         }
     }
 
@@ -189,7 +161,7 @@ impl<S: SelfEmulation> Accumulator<S> {
     ///
     /// If some of the keys in `fixed_base_scalars` from the internal MSMs do
     /// not appear in the provided `fixed_bases` map.
-    pub fn resolve_fixed_bases(&mut self, fixed_bases: &BTreeMap<String, S::C>) {
+    pub fn resolve_fixed_bases(&mut self, fixed_bases: &BTreeMap<PolynomialLabel, S::C>) {
         self.lhs.resolve_fixed_bases(fixed_bases);
         self.rhs.resolve_fixed_bases(fixed_bases);
     }
@@ -260,33 +232,39 @@ impl<S: SelfEmulation> AssignedAccumulator<S> {
     /// The committed instance part corresponds to the MSM (fixed and non-fixed)
     /// scalars of the accumulator RHS.
     pub fn as_public_input_with_committed_scalars(acc: &Accumulator<S>) -> (Vec<S::F>, Vec<S::F>) {
-        let (rhs_scalars, rhs_committed_scalars) =
+        let (rhs_normal_pi, rhs_committed_pi) =
             AssignedMsm::as_public_input_with_committed_scalars(&acc.rhs);
 
-        let normal_instance = [AssignedMsm::as_public_input(&acc.lhs), rhs_scalars]
+        let normal_instance = [AssignedMsm::as_public_input(&acc.lhs), rhs_normal_pi]
             .into_iter()
             .flatten()
             .collect();
 
-        (normal_instance, rhs_committed_scalars)
+        (normal_instance, rhs_committed_pi)
     }
 }
 
 impl<S: SelfEmulation> AssignedAccumulator<S> {
-    /// Witnesses an accumulator of `lhs_len` bases/scalars and a `BTreeMap` of
-    /// fixed_base_scalars indexed by the given `lhs_fixed_base_names`.
+    /// Witnesses both sides of a KZG accumulator in the circuit.
     ///
-    /// Similar arguments determine the size and shape of the accumulator
-    /// right-hand side.
+    /// Each side is shaped by its `labels` slice (one entry per scalar/base
+    /// pair) and its `fixed_base_labels` set (entries whose label appears
+    /// there become `AssignedPoint::Fixed`; the rest are assigned as
+    /// variable-base points).
+    ///
+    /// # Errors
+    ///
+    /// If the known accumulator value's label list does not match the supplied
+    /// `lhs_labels` / `rhs_labels`.
     #[allow(clippy::too_many_arguments)]
     pub fn assign(
         layouter: &mut impl Layouter<S::F>,
         curve_chip: &S::CurveChip,
         scalar_chip: &S::ScalarChip,
-        lhs_len: usize,
-        rhs_len: usize,
-        lhs_fixed_base_names: &[String],
-        rhs_fixed_base_names: &[String],
+        lhs_labels: &[PolynomialLabel],
+        rhs_labels: &[PolynomialLabel],
+        lhs_fixed_base_labels: &HashSet<PolynomialLabel>,
+        rhs_fixed_base_labels: &HashSet<PolynomialLabel>,
         acc_val: Value<Accumulator<S>>,
     ) -> Result<Self, Error> {
         let (acc_lhs_val, acc_rhs_val) = acc_val.map(|acc| (acc.lhs, acc.rhs)).unzip();
@@ -295,16 +273,16 @@ impl<S: SelfEmulation> AssignedAccumulator<S> {
                 layouter,
                 curve_chip,
                 scalar_chip,
-                lhs_len,
-                lhs_fixed_base_names,
+                lhs_labels,
+                lhs_fixed_base_labels,
                 acc_lhs_val,
             )?,
             AssignedMsm::<S>::assign(
                 layouter,
                 curve_chip,
                 scalar_chip,
-                rhs_len,
-                rhs_fixed_base_names,
+                rhs_labels,
+                rhs_fixed_base_labels,
                 acc_rhs_val,
             )?,
         ))
@@ -355,18 +333,19 @@ impl<S: SelfEmulation> AssignedAccumulator<S> {
         self.rhs.collapse(layouter, curve_chip, scalar_chip)
     }
 
-    /// Given the actual fixed bases, resolves the fixed-base part of the
-    /// internal MSMs by pairing each named scalar with its base and moving
-    /// them to regular variable-base entries.
+    /// Resolves all `Fixed` bases in both internal MSMs by substituting their
+    /// assigned circuit points from `fixed_bases`.
     ///
-    /// After this call, `fixed_base_scalars` of each internal MSM becomes
-    /// empty.
+    /// After this call, `lhs` and `rhs` contain no `Fixed` entries; every base
+    /// has been materialized into an `AssignedPoint::Variable` circuit cell.
     ///
     /// # Panics
     ///
-    /// If some of the keys in `fixed_base_scalars` from the internal MSMs do
-    /// not appear in the provided `fixed_bases` map.
-    pub fn resolve_fixed_bases(&mut self, fixed_bases: &BTreeMap<String, S::AssignedPoint>) {
+    /// If any `Fixed` label in either MSM is absent from `fixed_bases`.
+    pub fn resolve_fixed_bases(
+        &mut self,
+        fixed_bases: &BTreeMap<PolynomialLabel, S::AssignedPoint>,
+    ) {
         self.lhs.resolve_fixed_bases(fixed_bases);
         self.rhs.resolve_fixed_bases(fixed_bases);
     }

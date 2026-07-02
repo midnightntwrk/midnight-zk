@@ -341,7 +341,8 @@ where
         .collect::<Vec<_>>();
 
     // We are now convinced the circuit is satisfied so long as the
-    // polynomial commitments open to the correct values.
+    // polynomial commitments open to the correct values, which is true as long
+    // as the following accumulator passes the invariant.
     CS::multi_prepare(&queries, transcript).map_err(|_| Error::Opening)
 }
 

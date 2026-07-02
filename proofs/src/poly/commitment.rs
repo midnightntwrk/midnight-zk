@@ -11,7 +11,7 @@ use crate::{
         VerifierQuery,
     },
     transcript::{Hashable, Sampleable, Transcript},
-    utils::helpers::ProcessedSerdeObject,
+    utils::helpers::{ProcessedSerdeObject, SerdeFormat},
 };
 
 /// Public interface for a additively homomorphic Polynomial Commitment Scheme
@@ -61,6 +61,15 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
     where
         F: Sampleable<T::Hash> + Hash + Ord + Hashable<T::Hash>,
         Self::Commitment: Hashable<T::Hash>;
+
+    /// Total byte length when committing to `n` polynomials.
+    ///
+    /// For schemes that commit each polynomial independently (e.g. KZG), this
+    /// equals `n` times the per-commitment size. Override for schemes that fold
+    /// `n` polynomials into a single proof element (e.g. fflonk).
+    fn commitment_byte_length(n: usize) -> usize {
+        n * Self::Commitment::default().byte_length(SerdeFormat::Processed)
+    }
 
     /// Verify an multi-opening proof for a given set of [VerifierQuery]'s.
     /// The function fails if the transcript has trailing bytes.
