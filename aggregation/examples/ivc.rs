@@ -126,7 +126,8 @@ impl<const N: usize> IvcTransition for PoseidonChain<N> {
     fn arch() -> ZkStdLibArch {
         ZkStdLibArch {
             poseidon: true,
-            nr_pow2range_cols: 4,
+            nb_arith_cols: 9,
+            nr_pow2range_cols: 8,
             ..ZkStdLibArch::default()
         }
     }
@@ -166,7 +167,7 @@ fn main() {
     // message will hint at a valid (but not necessarily optimal) value, e.g.
     // `keygen_vk should not fail: SrsError(14, 19)` means K = 19 works, but a
     // smaller K might too. Binary-search to find it.
-    const K: u32 = 18;
+    const K: u32 = 17;
 
     const N: usize = 1_000; // Number of Poseidon iteration per IVC step.
     const STEPS: usize = 3; // Number of IVC steps to run.

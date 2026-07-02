@@ -3,7 +3,7 @@
 use midnight_circuits::verifier::{fixed_bases, Accumulator};
 use midnight_proofs::{
     plonk::ConstraintSystem,
-    poly::{kzg::params::ParamsKZG, EvaluationDomain},
+    poly::{kzg::params::ParamsKZG, EvaluationDomain, PolynomialLabel},
 };
 use midnight_zk_stdlib::ZkStdLib;
 
@@ -37,8 +37,8 @@ pub fn setup<T: Ivc>(
     let vk = midnight_zk_stdlib::setup_vk(&params, &relation);
     let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
 
-    let fixed_base_names: Vec<String> =
-        fixed_bases::<S>("self_vk", vk.vk()).keys().cloned().collect();
+    let fixed_base_labels: Vec<PolynomialLabel> =
+        fixed_bases::<S>(vk.vk()).keys().cloned().collect();
 
     let verifier = IvcVerifier {
         ctx: ctx.clone(),
@@ -52,7 +52,7 @@ pub fn setup<T: Ivc>(
         pk,
         state: T::genesis(&ctx),
         proof: vec![],
-        acc: Accumulator::<S>::trivial(&fixed_base_names),
+        acc: Accumulator::<S>::trivial(&fixed_base_labels),
     };
 
     (prover, verifier)

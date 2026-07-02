@@ -19,20 +19,21 @@
 use midnight_proofs::{
     circuit::Layouter,
     plonk::{ConstraintSystem, Error},
-    poly::PolynomialLabel,
+    poly::{commitment::Labelable, PolynomialLabel},
 };
 
 use crate::{
     field::AssignedNative,
     verifier::{
-        kzg::VerifierQuery, transcript_gadget::TranscriptGadget, utils::AssignedBoundedScalar,
-        LabeledPoint, SelfEmulation,
+        kzg::{AssignedKZGCommitment, VerifierQuery},
+        transcript_gadget::TranscriptGadget,
+        SelfEmulation,
     },
 };
 
 #[derive(Clone, Debug)]
 pub(crate) struct Committed<S: SelfEmulation> {
-    permutation_product_commitments: Vec<LabeledPoint<S>>,
+    permutation_product_commitments: Vec<AssignedKZGCommitment<S>>,
 }
 
 #[derive(Clone, Debug)]
@@ -64,11 +65,11 @@ pub(crate) fn read_product_commitments<S: SelfEmulation>(
         .permutation()
         .get_columns()
         .chunks(chunk_len)
-        .map(|_| transcript_gadget.read_point(layouter))
+        .map(|_| transcript_gadget.read_commitment(layouter))
         .collect::<Result<Vec<_>, _>>()?
         .into_iter()
         .enumerate()
-        .map(|(i, p)| LabeledPoint::new(p, PolynomialLabel::PermutationAccumulator(i)))
+        .map(|(i, c)| c.label(PolynomialLabel::PermutationAccumulator(i)))
         .collect();
 
     Ok(Committed {
@@ -101,7 +102,7 @@ impl<S: SelfEmulation> Committed<S> {
     ) -> Result<Evaluated<S>, Error> {
         let mut sets = vec![];
 
-        let mut iter = self.permutation_product_commitments.iter().map(|lp| &lp.point);
+        let mut iter = self.permutation_product_commitments.iter();
 
         while iter.next().is_some() {
             let permutation_product_eval = transcript_gadget.read_scalar(layouter)?;
@@ -125,27 +126,24 @@ impl<S: SelfEmulation> Committed<S> {
 
 // "expressions" is implemented in `expressions/permutation.rs`
 
-impl<S: SelfEmulation> Evaluated<S> {
+impl<'a, S: SelfEmulation> Evaluated<S> {
     pub(crate) fn queries(
-        &self,
-        one: &AssignedBoundedScalar<S::F>, // 1
-        x: &AssignedNative<S::F>,          // evaluation point x
-        x_next: &AssignedNative<S::F>,     // x * \omega
-        x_last: &AssignedNative<S::F>,     // x * \omega^(-blinding_factors + 1)
-    ) -> Vec<VerifierQuery<S>> {
+        &'a self,
+        x: &AssignedNative<S::F>,      // evaluation point x
+        x_next: &AssignedNative<S::F>, // x * \omega
+        x_last: &AssignedNative<S::F>, // x * \omega^(-blinding_factors + 1)
+    ) -> Vec<VerifierQuery<'a, S>> {
         let mut queries = vec![];
         for (i, set) in self.sets.iter().enumerate() {
             // Open permutation product commitments at x and \omega x
             queries.push(VerifierQuery::new(
-                one,
                 x,
-                &self.coms.permutation_product_commitments[i].point,
+                &self.coms.permutation_product_commitments[i],
                 &set.permutation_product_eval,
             ));
             queries.push(VerifierQuery::new(
-                one,
                 x_next,
-                &self.coms.permutation_product_commitments[i].point,
+                &self.coms.permutation_product_commitments[i],
                 &set.permutation_product_next_eval,
             ));
         }
@@ -153,9 +151,8 @@ impl<S: SelfEmulation> Evaluated<S> {
         // Open it at \omega^{last} x for all but the last set
         for (i, set) in self.sets.iter().enumerate().rev().skip(1) {
             queries.push(VerifierQuery::new(
-                one,
                 x_last,
-                &self.coms.permutation_product_commitments[i].point,
+                &self.coms.permutation_product_commitments[i],
                 set.permutation_product_last_eval.as_ref().unwrap(),
             ));
         }
@@ -164,22 +161,18 @@ impl<S: SelfEmulation> Evaluated<S> {
     }
 }
 
-impl<S: SelfEmulation> CommonEvaluated<S> {
-    /// This function differs from the halo2 one because we deal with fixed
-    /// commitments off-circuit. Thus, we do not require the actual permutation
-    /// common commitments, but their names.
+impl<'a, S: SelfEmulation> CommonEvaluated<S> {
     pub(crate) fn queries(
         &self,
-        commitment_names: &[String],
-        one: &AssignedBoundedScalar<S::F>, // 1
-        x: &AssignedNative<S::F>,          // evaluation point x
-    ) -> Vec<VerifierQuery<S>> {
-        assert_eq!(commitment_names.len(), self.permutation_evals.len());
+        vkey_commitments: &[&'a AssignedKZGCommitment<S>],
+        x: &AssignedNative<S::F>, // evaluation point x
+    ) -> Vec<VerifierQuery<'a, S>> {
+        assert_eq!(vkey_commitments.len(), self.permutation_evals.len());
 
-        commitment_names
+        vkey_commitments
             .iter()
             .zip(self.permutation_evals.iter())
-            .map(|(com_name, eval)| VerifierQuery::new_fixed(one, x, com_name, eval))
+            .map(|(commitment, eval)| VerifierQuery::new(x, commitment, eval))
             .collect()
     }
 }

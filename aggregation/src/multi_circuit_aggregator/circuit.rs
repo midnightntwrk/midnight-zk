@@ -21,7 +21,7 @@ use midnight_circuits::{
     hash::poseidon::{PoseidonChip, PoseidonState},
     instructions::{hash::HashCPU, *},
     types::{AssignedNative, Instantiable},
-    verifier::{self, Accumulator, AssignedAccumulator},
+    verifier::{self, Accumulator, AssignedAccumulator, AssignedKZGCommitment},
 };
 use midnight_proofs::{
     circuit::{Layouter, Value},
@@ -277,8 +277,8 @@ impl IvcTransition for ProofAggregation {
                 "invalid inner proof"
             );
 
-            let vk_bases = verifier::fixed_bases::<S>("inner_vk", witness.claim.vk.vk());
-            let mut acc = Accumulator::from_dual_msm(dual_msm, "inner_vk", &vk_bases);
+            let vk_bases = verifier::fixed_bases::<S>(witness.claim.vk.vk());
+            let mut acc = Accumulator::from_dual_msm(dual_msm, &vk_bases);
             acc.collapse();
             acc.resolve_fixed_bases(&vk_bases);
             acc
@@ -329,12 +329,14 @@ impl IvcTransition for ProofAggregation {
 
         // 3. Verify the inner proof in-circuit against the witnessed VK and statement.
         let inner_proof_acc = {
-            let id_point = self.std_lib.bls12_381().assign_fixed(layouter, C::identity())?;
-
+            let instance_com = AssignedKZGCommitment::simple(
+                self.std_lib.bls12_381().assign_fixed(layouter, C::identity())?,
+                PolynomialLabel::CommittedInstance(0),
+            );
             let mut acc = self.std_lib.verifier().prepare(
                 layouter,
                 &assigned_vk,
-                &[id_point],
+                &[instance_com],
                 &[std::slice::from_ref(&statement)],
                 witness.map(|w| w.inner_proof.clone()),
             )?;

@@ -20,6 +20,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Fix cost model proof size check to account for committed instance columns [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 
 ### Changed
+* `cost_model` passes `KZGCommitmentScheme<Bls12>` to `circuit_model`, removing the `COMMITMENT_BYTE_SIZE`/`SCALAR_BYTE_SIZE` constants [#440](https://github.com/midnightntwrk/midnight-zk/pull/440)
 * Adapt to new `KZGCommitment` API [#381](https://github.com/midnightntwrk/midnight-zk/pull/381)
 * Adapt to single-proof prover API [#375](https://github.com/midnightntwrk/midnight-zk/pull/375)
 * Add `nb_arith_cols` field to `ZkStdLibArch` for configurable arithmetic columns (requires `ZKSTD_VERSION` bump before release) [#287](https://github.com/midnightntwrk/midnight-zk/pull/287)
