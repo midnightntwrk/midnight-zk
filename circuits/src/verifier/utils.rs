@@ -20,13 +20,11 @@ use midnight_proofs::{
 use num_bigint::BigUint;
 use num_traits::One;
 
-#[cfg(not(feature = "truncated-challenges"))]
-use crate::instructions::FieldInstructions;
 #[cfg(feature = "truncated-challenges")]
 use crate::instructions::NativeInstructions;
 use crate::{
     field::AssignedNative,
-    instructions::{ArithInstructions, AssignmentInstructions},
+    instructions::{ArithInstructions, AssignmentInstructions, FieldInstructions},
     CircuitField,
 };
 
@@ -140,36 +138,40 @@ pub(crate) fn truncate<F: CircuitField>(
     Ok(AssignedBoundedScalar::new(&scalar, Some(bound)))
 }
 
-/// Evaluates the i-th Lagrange polynomial (with respect to n-root of unity w)
-/// at the given point x, for all the given i. That is, for every i, computes
-/// Li(x) where Li(X) is the degree-n polynomial such that Li(w^i) = 1 and
-/// Li(w^j) = 0 for all j in {1, ..., n} \ {i}.
+/// Evaluates the i-th Lagrange polynomial (with respect to the `n`-th root of unity `ω`)
+/// at the given point `x`, for all the given `i_indices`. That is, for every `i ∈ i_indices`, computes
+/// `L_i(x)` where `L_i(X)` is the degree-`n` polynomial such that `L_i(ωⁱ) = 1` and
+/// `L_i(ωʲ) = 0` for all `j ∈ {1, ..., n} \ {i}`.
 ///
 /// # Unsatisfiable Circuit
 ///
 /// If x^n = 1.
 pub fn evaluate_lagrange_polynomials<F: CircuitField>(
     layouter: &mut impl Layouter<F>,
-    scalar_chip: &impl ArithInstructions<F, AssignedNative<F>>,
-    n: u64,
-    w: F,
-    i_indices: Range<i32>,
+    scalar_chip: &impl FieldInstructions<F, AssignedNative<F>>,
+    w: &AssignedNative<F>,
+    n: &AssignedNative<F>,
     x: &AssignedNative<F>,
+    xn: &AssignedNative<F>,
+    i_indices: Range<i32>,
 ) -> Result<Vec<AssignedNative<F>>, Error> {
-    // For every i, Li(X) := (w^i / n) * (X^n - 1) / (X - w^i).
-
-    let n_inv = F::from(n).invert().unwrap();
-    let xn = scalar_chip.pow(layouter, x, n)?;
-    let xn_minus_one = scalar_chip.add_constant(layouter, &xn, -F::ONE)?;
+    // For every i, L_i(X) := (ωⁱ / n) · (Xⁿ - 1) / (X - ωⁱ).
+    let w_inv = scalar_chip.inv(layouter, w)?;
+    let n_inv = scalar_chip.inv(layouter, n)?;
+    let xn_minus_one = scalar_chip.add_constant(layouter, xn, -F::ONE)?;
 
     i_indices
         .map(|i| {
-            assert!(-(n as i32) <= i);
-            let i = if i < 0 { n as i32 + i } else { i };
-            let wi = w.pow([i as u64, 0, 0, 0]);
-            let x_minus_wi = scalar_chip.add_constant(layouter, x, -wi)?;
+            let wi = if i >= 0 {
+                scalar_chip.pow(layouter, w, i as u64)?
+            } else {
+                scalar_chip.pow(layouter, &w_inv, (-i) as u64)?
+            };
+            let x_minus_wi = scalar_chip.sub(layouter, x, &wi)?;
             let quotient = scalar_chip.div(layouter, &xn_minus_one, &x_minus_wi)?;
-            scalar_chip.mul_by_constant(layouter, &quotient, wi * n_inv)
+            // quotient * w^i / n
+            let wi_over_n = scalar_chip.mul(layouter, &wi, &n_inv, None)?;
+            scalar_chip.mul(layouter, &quotient, &wi_over_n, None)
         })
         .collect()
 }
@@ -264,6 +266,46 @@ pub(crate) fn inner_product<F: CircuitField>(
     iter.try_fold(init, |acc, (xi, yi)| {
         mul_add(layouter, scalar_chip, xi, yi, &acc)
     })
+}
+
+/// Computes `2^k` in-circuit, where `k` is an assigned value known to lie in
+/// the range `[0, F::S]` (`F::S` is the field's 2-adicity).
+pub(crate) fn pow_of_two<F: CircuitField>(
+    layouter: &mut impl Layouter<F>,
+    scalar_chip: &impl FieldInstructions<F, AssignedNative<F>>,
+    k: &AssignedNative<F>,
+) -> Result<AssignedNative<F>, Error> {
+    let mut acc: AssignedNative<F> = scalar_chip.assign_fixed(layouter, F::ONE)?;
+    let mut result = acc.clone();
+
+    for i in 1..=F::S as usize {
+        acc = scalar_chip.add(layouter, &acc, &acc)?;
+        let is_k = scalar_chip.is_equal_to_fixed(layouter, k, F::from(i as u64))?;
+        result = scalar_chip.select(layouter, &is_k, &acc, &result)?;
+    }
+
+    Ok(result)
+}
+
+/// Computes `x^(2^k)` in-circuit by repeated squaring, where `k` is an
+/// assigned value known to lie in the range `[0, F::S]` (the field's
+/// 2-adicity).
+pub(crate) fn pow_2_pow_k<F: CircuitField>(
+    layouter: &mut impl Layouter<F>,
+    scalar_chip: &impl FieldInstructions<F, AssignedNative<F>>,
+    x: &AssignedNative<F>,
+    k: &AssignedNative<F>,
+) -> Result<AssignedNative<F>, Error> {
+    let mut acc = x.clone();
+    let mut result = acc.clone();
+
+    for i in 1..=F::S as usize {
+        acc = scalar_chip.mul(layouter, &acc, &acc, None)?;
+        let is_k = scalar_chip.is_equal_to_fixed(layouter, k, F::from(i as u64))?;
+        result = scalar_chip.select(layouter, &is_k, &acc, &result)?;
+    }
+
+    Ok(result)
 }
 
 /// Computes n powers of the given scalar x, starting from the 0-th power: 1.
