@@ -31,7 +31,7 @@ use midnight_proofs::{
 use crate::{
     field::AssignedNative,
     instructions::{
-        ArithInstructions, PublicInputInstructions, assignments::AssignmentInstructions
+        assignments::AssignmentInstructions, ArithInstructions, PublicInputInstructions,
     },
     verifier::{
         Accumulator, AssignedAccumulator, AssignedEvaluationDomain, AssignedVk, SelfEmulation,
@@ -247,7 +247,8 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         let transcript_repr =
             self.scalar_chip.assign_as_public_input(layouter, transcript_repr_value)?;
 
-        let [k, omega] = domain.map(|d| [S::F::from(d.k()as u64), d.get_omega()]).transpose_array();
+        let [k, omega] =
+            domain.map(|d| [S::F::from(d.k() as u64), d.get_omega()]).transpose_array();
         let k = self.scalar_chip.assign_as_public_input(layouter, k)?;
         let omega = self.scalar_chip.assign_as_public_input(layouter, omega)?;
         let domain = self.derive_domain(layouter, k, omega)?;
@@ -282,7 +283,12 @@ impl<S: SelfEmulation> VerifierGadget<S> {
     ) -> Result<AssignedEvaluationDomain<S>, Error> {
         let omega_inv = self.scalar_chip.inv(layouter, &omega)?;
         let n = pow_of_two(layouter, &self.scalar_chip, &k)?;
-        Ok(AssignedEvaluationDomain { k, omega, omega_inv, n })
+        Ok(AssignedEvaluationDomain {
+            k,
+            omega,
+            omega_inv,
+            n,
+        })
     }
 
     /// Builds the `AssignedVk`.
@@ -1031,7 +1037,8 @@ pub(crate) mod tests {
 
     #[derive(Clone, Debug)]
     pub struct TestCircuit {
-        inner_vk: (Value<EvaluationDomain<F>>, ConstraintSystem<F>, Value<F>), // (domain, cs, vk_repr)
+        // (domain, cs, vk_repr)
+        inner_vk: (Value<EvaluationDomain<F>>, ConstraintSystem<F>, Value<F>),
         inner_committed_instance: Value<C>,
         inner_instances: Value<[F; NB_INNER_INSTANCES]>,
         inner_proof: Value<Vec<u8>>,
