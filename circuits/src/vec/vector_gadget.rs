@@ -771,6 +771,18 @@ mod tests {
         run_padding_flags_test::<_, 128, 64>(&inputs, false);
         run_padding_flags_test::<F, 128, 64>(&[], false);
         run_padding_flags_test::<F, 64, 16>(&inputs[..64], false);
+
+        // Edge cases: payload starts in the last chunk
+        // 1. Starts and ends in the last chunk, with back padding.
+        run_padding_flags_test::<_, 128, 64>(&inputs[..30], false);
+        // 2. exactly fills the last chunk, with no back padding.
+        run_padding_flags_test::<_, 128, 64>(&inputs[..64], false);
+        // 3. Same with small A (many front chunks before the last one).
+        run_padding_flags_test::<_, 128, 2>(&inputs[..1], false);
+        // 4. Single-chunk buffer (A == M): empty, partial (back padding), and full.
+        run_padding_flags_test::<F, 64, 64>(&[], false);
+        run_padding_flags_test::<_, 64, 64>(&inputs[..30], false);
+        run_padding_flags_test::<_, 64, 64>(&inputs[..64], false);
     }
 
     #[test]
