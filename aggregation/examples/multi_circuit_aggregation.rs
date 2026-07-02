@@ -12,12 +12,15 @@
 //! The requirements for an inner circuit to be aggregatable are:
 //! - It must use the [`ZkStdLibArch`] chosen at IVC setup time.
 //! - It must encode its statement as a single formatted public input.
-//! - It must be padded to the common circuit size `K`.
+//!
+//! Inner circuits may have *different* sizes `K`: the verifier gadget
+//! witnesses each VK's evaluation domain (`k`, `omega`), so a single shared
+//! constraint system (whose shape is independent of `K`) suffices. This
+//! example aggregates a SHA-256 circuit and a Poseidon circuit of different
+//! sizes.
 //!
 //! The single-public-input restriction is not a real limitation: any circuit
-//! can hash its statement into a single field element. On the other hand, the
-//! shared-`K` constraint can be removed by extending the verifier gadget to
-//! accept dynamic domain parameters.
+//! can hash its statement into a single field element.
 //!
 //! DO NOT add this example to the CI as it is slow.
 
@@ -60,14 +63,19 @@ fn main() {
     // Circuit size parameters (log2 of rows).
     const IVC_K: u32 = 19;
 
-    // Shared K for all inner circuits (must accommodate the largest one).
-    const INNER_K: u32 = 13;
+    // Inner circuits may have different sizes.
+    const SHA_K: u32 = 13;
+    const POSEIDON_K: u32 = 14;
 
     // The IVC aggregator only requires a shared SRS and architecture. It does
     // not need to know which circuits will be aggregated. Inner circuits can be
     // introduced, proved and folded in on-the-fly, after IVC initialization.
-    let inner_srs = load_srs(SrsSource::Filecoin, INNER_K, cs_degree(inner_arch()));
-    let inner_ctx = InnerCircuitsContext::new(inner_arch(), INNER_K, inner_srs.verifier_params());
+    // Each circuit is proved against an SRS of its own size.
+    let sha_srs = load_srs(SrsSource::Filecoin, SHA_K, cs_degree(inner_arch()));
+    let poseidon_srs = load_srs(SrsSource::Filecoin, POSEIDON_K, cs_degree(inner_arch()));
+    // Note: verifier params from the SRS do not depend on `k`.
+    let inner_ctx =
+        InnerCircuitsContext::new(inner_arch(), POSEIDON_K, poseidon_srs.verifier_params());
 
     let aggregator_srs = load_srs(
         SrsSource::Midnight,
@@ -79,19 +87,13 @@ fn main() {
     println!("Aggregator setup completed in {:.2?}\n", start.elapsed());
 
     // --- Aggregate a SHA-256 preimage proof (circuit introduced just now) ---
-    let sha_vk = setup_vk(&inner_srs, &ShaCircuit);
+    let sha_vk = setup_vk(&sha_srs, &ShaCircuit);
     let sha_pk = setup_pk(&ShaCircuit, &sha_vk);
 
     let (sha_x, sha_w) = aggregatable_sha_preimage::random_instance();
-    let inner_proof = prove::<ShaCircuit, PoseidonState<F>>(
-        &inner_srs,
-        &sha_pk,
-        &ShaCircuit,
-        &sha_x,
-        sha_w,
-        OsRng,
-    )
-    .expect("SHA-256 proof generation should not fail");
+    let inner_proof =
+        prove::<ShaCircuit, PoseidonState<F>>(&sha_srs, &sha_pk, &ShaCircuit, &sha_x, sha_w, OsRng)
+            .expect("SHA-256 proof generation should not fail");
     let witness = AggregationWitness::new::<ShaCircuit>(sha_vk.clone(), sha_x, inner_proof);
 
     let start = Instant::now();
@@ -99,12 +101,12 @@ fn main() {
     println!("Aggregate a SHA2-256 proof: {:.2?}", start.elapsed());
 
     // --- Aggregate a Poseidon preimage proof (circuit introduced just now) ---
-    let poseidon_vk = setup_vk(&inner_srs, &PoseidonCircuit);
+    let poseidon_vk = setup_vk(&poseidon_srs, &PoseidonCircuit);
     let poseidon_pk = setup_pk(&PoseidonCircuit, &poseidon_vk);
 
     let (poseidon_x, poseidon_w) = aggregatable_poseidon_preimage::random_instance();
     let inner_proof = prove::<PoseidonCircuit, PoseidonState<F>>(
-        &inner_srs,
+        &poseidon_srs,
         &poseidon_pk,
         &PoseidonCircuit,
         &poseidon_x,
@@ -121,15 +123,9 @@ fn main() {
 
     // --- Aggregate another SHA-256 preimage proof ---
     let (sha_x, sha_w) = aggregatable_sha_preimage::random_instance();
-    let inner_proof = prove::<ShaCircuit, PoseidonState<F>>(
-        &inner_srs,
-        &sha_pk,
-        &ShaCircuit,
-        &sha_x,
-        sha_w,
-        OsRng,
-    )
-    .expect("SHA-256 proof generation should not fail");
+    let inner_proof =
+        prove::<ShaCircuit, PoseidonState<F>>(&sha_srs, &sha_pk, &ShaCircuit, &sha_x, sha_w, OsRng)
+            .expect("SHA-256 proof generation should not fail");
     let witness = AggregationWitness::new::<ShaCircuit>(sha_vk, sha_x, inner_proof);
 
     let start = Instant::now();
