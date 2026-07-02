@@ -145,7 +145,7 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
 
         let assigned_self_vk: AssignedVk<S> = verifier_gadget.assign_vk_as_public_input(
             layouter,
-            &self.domain,
+            Value::known(self.domain.clone()),
             &self.cs,
             instance.as_ref().map(|x| x.vk_repr),
         )?;

@@ -20,7 +20,7 @@ use midnight_circuits::{
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::{ConstraintSystem, Error},
-    poly::{EvaluationDomain, PolynomialLabel},
+    poly::PolynomialLabel,
     transcript::Hashable,
 };
 use midnight_zk_stdlib::{MidnightVK, ZkStdLib};
@@ -46,7 +46,12 @@ pub fn compute_vk_hash(vk: &MidnightVK) -> F {
     let vk = vk.vk();
     let to_raw = Hashable::<PoseidonState<F>>::to_input;
 
-    let vk_repr = vec![vk.transcript_repr()];
+    let domain = vk.get_domain();
+    let vk_repr = vec![
+        vk.transcript_repr(),
+        F::from(domain.k() as u64),
+        domain.get_omega(),
+    ];
     let fixed_coms: Vec<F> = vk.fixed_commitments().iter().flat_map(to_raw).collect();
     let perm_coms: Vec<F> = vk.permutation().commitments().iter().flat_map(to_raw).collect();
 
@@ -61,7 +66,6 @@ pub fn compute_vk_hash(vk: &MidnightVK) -> F {
 pub fn assign_as_public_inputs_and_hash_vk(
     layouter: &mut impl Layouter<F>,
     std_lib: &ZkStdLib,
-    domain: &EvaluationDomain<F>,
     cs: &ConstraintSystem<F>,
     vk: Value<&MidnightVK>,
 ) -> Result<VkHashAndBases, Error> {
@@ -86,6 +90,7 @@ pub fn assign_as_public_inputs_and_hash_vk(
 
     // Assign the VK, witnessing its transcript_repr. The same repr cell is folded
     // into the hash below, binding the verified VK to the hashed one.
+    let domain = vk.map(|vk| vk.vk().get_domain().clone());
     let assigned_vk = std_lib.verifier().assign_vk_as_public_input(
         layouter,
         domain,
@@ -93,8 +98,12 @@ pub fn assign_as_public_inputs_and_hash_vk(
         vk.map(|vk| vk.vk().transcript_repr()),
     )?;
 
-    // Compute the hash: Poseidon(transcript_repr || bases...).
-    let mut input = vec![assigned_vk.transcript_repr().clone()];
+    // Compute the hash: Poseidon(transcript_repr || k || omega || bases...).
+    let mut input = vec![
+        assigned_vk.transcript_repr().clone(),
+        assigned_vk.k().clone(),
+        assigned_vk.omega().clone(),
+    ];
     for base in &assigned_bases {
         input.extend(curve_chip.as_public_input(layouter, base)?);
     }
