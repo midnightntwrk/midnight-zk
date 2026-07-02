@@ -70,6 +70,8 @@ impl State {
 #[derive(Clone, Debug)]
 pub struct AssignedState {
     last_vk_repr: AssignedNative<F>,
+    last_vk_k: AssignedNative<F>,
+    last_vk_omega: AssignedNative<F>,
     claims_hash: AssignedNative<F>,
     inner_acc: AssignedAccumulator<S>,
 }
@@ -184,6 +186,21 @@ impl IvcIO for ProofAggregation {
                 .as_ref()
                 .map(|s| s.claims.last().map(|c| c.vk.vk().transcript_repr()).unwrap_or(F::ZERO)),
         )?;
+        let last_vk_k = self.std_lib.assign(
+            layouter,
+            value.as_ref().map(|s| {
+                s.claims
+                    .last()
+                    .map(|c| F::from(c.vk.vk().get_domain().k() as u64))
+                    .unwrap_or(F::ZERO)
+            }),
+        )?;
+        let last_vk_omega = self.std_lib.assign(
+            layouter,
+            value.as_ref().map(|s| {
+                s.claims.last().map(|c| c.vk.vk().get_domain().get_omega()).unwrap_or(F::ZERO)
+            }),
+        )?;
         let claims_hash = self.std_lib.assign(layouter, value.as_ref().map(|s| s.claims_hash))?;
 
         let inner_acc = self.std_lib.verifier().assign_collapsed_accumulator(
@@ -194,6 +211,8 @@ impl IvcIO for ProofAggregation {
 
         Ok(AssignedState {
             last_vk_repr,
+            last_vk_k,
+            last_vk_omega,
             claims_hash,
             inner_acc,
         })
@@ -215,6 +234,8 @@ impl IvcIO for ProofAggregation {
     ) -> Result<Vec<AssignedNative<F>>, Error> {
         Ok([
             self.std_lib.as_public_input(layouter, &state.last_vk_repr)?,
+            self.std_lib.as_public_input(layouter, &state.last_vk_k)?,
+            self.std_lib.as_public_input(layouter, &state.last_vk_omega)?,
             self.std_lib.as_public_input(layouter, &state.claims_hash)?,
             self.std_lib.verifier().as_public_input(layouter, &state.inner_acc)?,
         ]
@@ -222,10 +243,16 @@ impl IvcIO for ProofAggregation {
     }
 
     fn format_public_input(state: &State) -> Vec<F> {
-        let last_vk_repr =
-            state.claims.last().map(|c| c.vk.vk().transcript_repr()).unwrap_or(F::ZERO);
+        let last_claim = state.claims.last();
+        let last_vk_repr = last_claim.map(|c| c.vk.vk().transcript_repr()).unwrap_or(F::ZERO);
+        let (last_vk_k, last_vk_omega) = last_claim
+            .map(|c| {
+                let d = c.vk.vk().get_domain();
+                (F::from(d.k() as u64), d.get_omega())
+            })
+            .unwrap_or((F::ZERO, F::ZERO));
         [
-            vec![last_vk_repr],
+            vec![last_vk_repr, last_vk_k, last_vk_omega],
             vec![state.claims_hash],
             AssignedAccumulator::<S>::as_public_input(&state.inner_acc),
         ]
@@ -316,7 +343,6 @@ impl IvcTransition for ProofAggregation {
         let (assigned_vk, vk_hash, fixed_bases_map) = assign_as_public_inputs_and_hash_vk(
             layouter,
             &self.std_lib,
-            &self.inner_ctx.domain,
             &self.inner_ctx.cs,
             witness.as_ref().map(|w| &w.claim.vk),
         )?;
@@ -375,6 +401,8 @@ impl IvcTransition for ProofAggregation {
 
         Ok(AssignedState {
             last_vk_repr: assigned_vk.transcript_repr().clone(),
+            last_vk_k: assigned_vk.k().clone(),
+            last_vk_omega: assigned_vk.omega().clone(),
             claims_hash,
             inner_acc,
         })
