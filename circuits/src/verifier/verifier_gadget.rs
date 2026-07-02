@@ -84,7 +84,12 @@ impl<S: SelfEmulation> PublicInputInstructions<S::F, AssignedVk<S>> for Verifier
         layouter: &mut impl Layouter<S::F>,
         assigned_vk: &AssignedVk<S>,
     ) -> Result<Vec<AssignedNative<S::F>>, Error> {
-        self.scalar_chip.as_public_input(layouter, &assigned_vk.transcript_repr)
+        Ok([
+            self.scalar_chip.as_public_input(layouter, &assigned_vk.transcript_repr)?,
+            self.scalar_chip.as_public_input(layouter, assigned_vk.k())?,
+            self.scalar_chip.as_public_input(layouter, assigned_vk.omega())?,
+        ]
+        .concat())
     }
 
     fn constrain_as_public_input(

@@ -38,6 +38,11 @@ use super::{Ivc, IvcError, C, F, S};
 #[derive(Clone, Debug)]
 pub struct IvcInstance<T: Ivc> {
     pub(crate) vk_repr: F,
+    // Evaluation domain (`k`, `omega`) of the IVC vk. It is a compile-time
+    // constant, but the circuit emits it as a public input (alongside
+    // `vk_repr`). See [IvcCircuit::format_instance].
+    pub(crate) domain_k: F,
+    pub(crate) domain_omega: F,
     pub(crate) state: T::State,
     pub(crate) acc: Accumulator<S>,
 }
@@ -126,7 +131,7 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
 
     fn format_instance(instance: &Self::Instance) -> Result<Vec<F>, IvcError> {
         Ok([
-            vec![instance.vk_repr],
+            vec![instance.vk_repr, instance.domain_k, instance.domain_omega],
             T::format_public_input(&instance.state),
             AssignedAccumulator::<S>::as_public_input(&instance.acc),
         ]

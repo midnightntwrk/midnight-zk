@@ -169,7 +169,7 @@ fn main() {
     // smaller K might too. Binary-search to find it.
     const K: u32 = 17;
 
-    const N: usize = 1_000; // Number of Poseidon iteration per IVC step.
+    const N: usize = 500; // Number of Poseidon iteration per IVC step.
     const STEPS: usize = 3; // Number of IVC steps to run.
 
     let srs = load_srs(
