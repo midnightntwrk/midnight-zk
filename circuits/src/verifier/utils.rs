@@ -169,7 +169,6 @@ pub fn evaluate_lagrange_polynomials<F: CircuitField>(
             };
             let x_minus_wi = scalar_chip.sub(layouter, x, &wi)?;
             let quotient = scalar_chip.div(layouter, &xn_minus_one, &x_minus_wi)?;
-            // quotient * w^i / n
             let wi_over_n = scalar_chip.mul(layouter, &wi, &n_inv, None)?;
             scalar_chip.mul(layouter, &quotient, &wi_over_n, None)
         })
