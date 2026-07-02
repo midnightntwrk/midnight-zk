@@ -144,13 +144,12 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
         let verifier_gadget = std_lib.verifier();
         let ivc_gadget = T::new(std_lib.clone(), &self.ctx);
 
-        let assigned_self_vk: AssignedVk<S, InCircuitKZG<S>> = verifier_gadget
-            .assign_vk_as_public_input(
-                layouter,
-                &self.domain,
-                &self.cs,
-                instance.as_ref().map(|x| x.vk_repr),
-            )?;
+        let assigned_self_vk:AssignedVk<S, InCircuitKZG<S>> = verifier_gadget.assign_vk_as_public_input(
+            layouter,
+            Value::known(self.domain.clone()),
+            &self.cs,
+            instance.as_ref().map(|x| x.vk_repr),
+        )?;
 
         let prev_state_val = witness.as_ref().map(|w| w.prev_state.clone());
         let prev_state = ivc_gadget.assign(layouter, prev_state_val)?;
