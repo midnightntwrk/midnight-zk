@@ -37,7 +37,7 @@ midnight-circuits = { path = "circuits" }
 midnight-proofs = { path = "proofs" }
 midnight-curves = { path = "curves" }
 midnight-circuits = { path = "circuits" }
-midnight-zk-stdlib = { path = "zk-stdlib" }
+midnight-zk-stdlib = { path = "zk_stdlib" }
 
 ## Benchmarks
 
