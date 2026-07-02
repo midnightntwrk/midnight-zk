@@ -942,7 +942,8 @@ pub(crate) mod tests {
 
     #[derive(Clone, Debug)]
     pub struct TestCircuit {
-        inner_vk: (Value<EvaluationDomain<F>>, ConstraintSystem<F>, Value<F>), // (domain, cs, vk_repr)
+        // (domain, cs, vk_repr)
+        inner_vk: (Value<EvaluationDomain<F>>, ConstraintSystem<F>, Value<F>),
         inner_committed_instance: Value<C>,
         inner_instances: Value<[F; NB_INNER_INSTANCES]>,
         inner_proof: Value<Vec<u8>>,

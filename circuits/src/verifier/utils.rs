@@ -138,10 +138,11 @@ pub(crate) fn truncate<F: CircuitField>(
     Ok(AssignedBoundedScalar::new(&scalar, Some(bound)))
 }
 
-/// Evaluates the i-th Lagrange polynomial (with respect to the `n`-th root of unity `ω`)
-/// at the given point `x`, for all the given `i_indices`. That is, for every `i ∈ i_indices`, computes
-/// `L_i(x)` where `L_i(X)` is the degree-`n` polynomial such that `L_i(ωⁱ) = 1` and
-/// `L_i(ωʲ) = 0` for all `j ∈ {1, ..., n} \ {i}`.
+/// Evaluates the i-th Lagrange polynomial (with respect to the `n`-th root of
+/// unity `ω`) at the given point `x`, for all the given `i_indices`. That is,
+/// for every `i ∈ i_indices`, computes `L_i(x)` where `L_i(X)` is the
+/// degree-`n` polynomial such that `L_i(ωⁱ) = 1` and `L_i(ωʲ) = 0` for all
+/// `j ∈ {1, ..., n} \ {i}`.
 ///
 /// # Unsatisfiable Circuit
 ///
