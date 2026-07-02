@@ -18,9 +18,8 @@ use std::collections::BTreeMap;
 use group::Group;
 use midnight_proofs::{
     circuit::Value,
-    plonk,
-    plonk::ConstraintSystem,
-    poly::{kzg::KZGCommitmentScheme, EvaluationDomain, PolynomialLabel},
+    plonk::{self, ConstraintSystem},
+    poly::{kzg::KZGCommitmentScheme, PolynomialLabel},
 };
 
 use crate::{
@@ -52,10 +51,25 @@ pub use verifier_gadget::VerifierGadget;
 type VerifyingKey<S> =
     plonk::VerifyingKey<<S as SelfEmulation>::F, KZGCommitmentScheme<<S as SelfEmulation>::Engine>>;
 
+/// Type for in-circuit Evaluation Domain.
+///
+/// This type carries only the information needed for the verifier, `k`
+/// and `omega`, and values `omega^{-1}` and `n = 2^k`, computed in-circuit.
+///
+/// The only entry points are via the assignment functions of Verifying Keys.
+#[derive(Clone, Debug)]
+struct AssignedEvaluationDomain<S: SelfEmulation> {
+    k: AssignedNative<S::F>,
+    omega: AssignedNative<S::F>,
+    omega_inv: AssignedNative<S::F>,
+    n: AssignedNative<S::F>,
+}
+
 /// Type for in-circuit verifying keys.
 ///
-/// This type carries off-circuit a lot of the information about the vk.
-/// The only in-circuit field is the `transcript_repr`.
+/// This type carries off-circuit the information about the constraint system.
+/// The in-circuit fields are the transcript representation, the fixed
+/// commitments, permutation commitments, and the evaluation domain.
 ///
 /// The only entry-point for this function is intended to be
 /// [VerifierGadget::assign_vk_as_public_input]. This is possible because fixed
@@ -64,7 +78,7 @@ type VerifyingKey<S> =
 /// fixed-commitments, in the `fixed_base_scalars` field (of its RHS).
 #[derive(Clone, Debug)]
 pub struct AssignedVk<S: SelfEmulation> {
-    domain: EvaluationDomain<S::F>,
+    domain: AssignedEvaluationDomain<S>,
     fixed_commitments: Vec<AssignedKZGCommitment<S>>,
     perm_commitments: Vec<AssignedKZGCommitment<S>>,
     cs: ConstraintSystem<S::F>,
@@ -85,7 +99,13 @@ impl<S: SelfEmulation> InnerValue for AssignedVk<S> {
 
 impl<S: SelfEmulation> Instantiable<S::F> for AssignedVk<S> {
     fn as_public_input(vk: &VerifyingKey<S>) -> Vec<S::F> {
-        AssignedNative::<S::F>::as_public_input(&vk.transcript_repr())
+        let domain = vk.get_domain();
+        [
+            AssignedNative::<S::F>::as_public_input(&vk.transcript_repr()),
+            AssignedNative::<S::F>::as_public_input(&S::F::from(domain.k() as u64)),
+            AssignedNative::<S::F>::as_public_input(&domain.get_omega()),
+        ]
+        .concat()
     }
 
     #[cfg(any(test, feature = "testing"))]
@@ -98,6 +118,16 @@ impl<S: SelfEmulation> AssignedVk<S> {
     /// The assigned `transcript_repr` cell of this verifying key.
     pub fn transcript_repr(&self) -> &AssignedNative<S::F> {
         &self.transcript_repr
+    }
+
+    /// The assigned `k` cell.
+    pub fn k(&self) -> &AssignedNative<S::F> {
+        &self.domain.k
+    }
+
+    /// The assigned `omega` cell.
+    pub fn omega(&self) -> &AssignedNative<S::F> {
+        &self.domain.omega
     }
 }
 
