@@ -19,7 +19,7 @@ use group::Group;
 use midnight_proofs::{
     circuit::Value,
     plonk::{self, ConstraintSystem},
-    poly::{PolynomialLabel, kzg::KZGCommitmentScheme},
+    poly::{kzg::KZGCommitmentScheme, PolynomialLabel},
 };
 
 use crate::{
@@ -51,12 +51,12 @@ pub use verifier_gadget::VerifierGadget;
 type VerifyingKey<S> =
     plonk::VerifyingKey<<S as SelfEmulation>::F, KZGCommitmentScheme<<S as SelfEmulation>::Engine>>;
 
-/// Type for in-circuit Evaluation Domain. 
-/// 
-/// This type carries only the information needed for the verifier, `k` 
+/// Type for in-circuit Evaluation Domain.
+///
+/// This type carries only the information needed for the verifier, `k`
 /// and `omega`, and values `omega^{-1}` and `n = 2^k`, computed in-circuit.
-/// 
-/// The only entry points are via the assignment functions of Verifying Keys. 
+///
+/// The only entry points are via the assignment functions of Verifying Keys.
 #[derive(Clone, Debug)]
 struct AssignedEvaluationDomain<S: SelfEmulation> {
     k: AssignedNative<S::F>,
@@ -68,8 +68,8 @@ struct AssignedEvaluationDomain<S: SelfEmulation> {
 /// Type for in-circuit verifying keys.
 ///
 /// This type carries off-circuit the information about the constraint system.
-/// The in-circuit fields are the transcript representation, the fixed 
-/// commitments, permutation commitments, and the evaluation domain. 
+/// The in-circuit fields are the transcript representation, the fixed
+/// commitments, permutation commitments, and the evaluation domain.
 ///
 /// The only entry-point for this function is intended to be
 /// [VerifierGadget::assign_vk_as_public_input]. This is possible because fixed
