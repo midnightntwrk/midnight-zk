@@ -31,21 +31,13 @@ use midnight_proofs::{
 use crate::{
     field::AssignedNative,
     instructions::{
-        assignments::AssignmentInstructions, ArithInstructions, PublicInputInstructions,
+        ArithInstructions, PublicInputInstructions, assignments::AssignmentInstructions
     },
     verifier::{
-        expressions::{
+        Accumulator, AssignedAccumulator, AssignedEvaluationDomain, AssignedVk, SelfEmulation, VerifyingKey, expressions::{
             eval_expression, lookup::lookup_expressions, permutation::permutation_expressions,
             trash::trash_expressions,
-        },
-        kzg::{self, AssignedKZGCommitment, VerifierQuery},
-        lookup,
-        permutation::{self, evaluate_permutation_common},
-        traces::VerifierTrace,
-        transcript_gadget::TranscriptGadget,
-        trash,
-        utils::{evaluate_lagrange_polynomials, inner_product, sum},
-        Accumulator, AssignedAccumulator, AssignedVk, SelfEmulation, VerifyingKey,
+        }, kzg::{self, AssignedKZGCommitment, VerifierQuery}, lookup, permutation::{self, evaluate_permutation_common}, traces::VerifierTrace, transcript_gadget::TranscriptGadget, trash, utils::{evaluate_lagrange_polynomials, inner_product, pow_2_pow_k, pow_of_two, sum}
     },
 };
 
@@ -221,17 +213,63 @@ impl<S: SelfEmulation> VerifierGadget<S> {
 
 impl<S: SelfEmulation> VerifierGadget<S> {
     /// Assigns a verifying key as a public input. All the necessary information
-    /// is required off-circuit, except for the `transcript_repr` value.
+    /// is required off-circuit, except for the `transcript_repr` and the
+    /// evaluation domain.
     pub fn assign_vk_as_public_input(
+        &self,
+        layouter: &mut impl Layouter<S::F>,
+        domain: Value<EvaluationDomain<S::F>>,
+        cs: &ConstraintSystem<S::F>,
+        transcript_repr_value: Value<S::F>,
+    ) -> Result<AssignedVk<S>, Error> {
+        let transcript_repr =
+            self.scalar_chip.assign_as_public_input(layouter, transcript_repr_value)?;
+
+        let [k, omega] = domain.map(|d| [S::F::from(d.k()as u64), d.get_omega()]).transpose_array();
+        let k = self.scalar_chip.assign_as_public_input(layouter, k)?;
+        let omega = self.scalar_chip.assign_as_public_input(layouter, omega)?;
+        let domain = self.derive_domain(layouter, k, omega)?;
+
+        self.assemble_vk(cs, domain, transcript_repr)
+    }
+
+    /// Assigns a verifying key as a constant. All the necessary information is
+    /// available off-circuit, except for the `transcript_repr` which is
+    /// "assigned fixed".
+    pub fn assign_fixed_vk(
         &self,
         layouter: &mut impl Layouter<S::F>,
         domain: &EvaluationDomain<S::F>,
         cs: &ConstraintSystem<S::F>,
-        transcript_repr_value: Value<S::F>,
+        transcript_repr_constant: S::F,
     ) -> Result<AssignedVk<S>, Error> {
-        let transcript_repr: AssignedNative<S::F> =
-            self.scalar_chip.assign_as_public_input(layouter, transcript_repr_value)?;
+        let transcript_repr = self.scalar_chip.assign_fixed(layouter, transcript_repr_constant)?;
+        let k = self.scalar_chip.assign_fixed(layouter, S::F::from(domain.k() as u64))?;
+        let omega = self.scalar_chip.assign_fixed(layouter, domain.get_omega())?;
+        let domain = self.derive_domain(layouter, k, omega)?;
+        self.assemble_vk(cs, domain, transcript_repr)
+    }
 
+    /// Completes the assigned domain by deriving `omega_inv` and `n = 2^k` from
+    /// assigned `k` and `omega` cells (in-circuit).
+    fn derive_domain(
+        &self,
+        layouter: &mut impl Layouter<S::F>,
+        k: AssignedNative<S::F>,
+        omega: AssignedNative<S::F>,
+    ) -> Result<AssignedEvaluationDomain<S>, Error> {
+        let omega_inv = self.scalar_chip.inv(layouter, &omega)?;
+        let n = pow_of_two(layouter, &self.scalar_chip, &k)?;
+        Ok(AssignedEvaluationDomain { k, omega, omega_inv, n })
+    }
+
+    /// Builds the `AssignedVk`.
+    fn assemble_vk(
+        &self,
+        cs: &ConstraintSystem<S::F>,
+        domain: AssignedEvaluationDomain<S>,
+        transcript_repr: AssignedNative<S::F>,
+    ) -> Result<AssignedVk<S>, Error> {
         // We expect a finalized cs with no selectors, i.e. whose selectors have been
         // converted into fixed columns. In the context of IVC, the constraint system
         // might still contain selectors.
@@ -250,48 +288,14 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             .map(|i| AssignedKZGCommitment::fixed(PolynomialLabel::PermutationFixed(i)))
             .collect();
 
-        let assigned_vk = AssignedVk {
-            domain: domain.clone(),
+        Ok(AssignedVk {
+            domain,
             fixed_commitments,
             perm_commitments,
-            cs: cs.clone(),
             cs_degree: cs.degree(),
+            cs,
             transcript_repr,
-        };
-
-        Ok(assigned_vk)
-    }
-
-    /// Assigns a verifying key as a constant. All the necessary information is
-    /// available off-circuit, except for the `transcript_repr` which is
-    /// "assigned fixed".
-    pub fn assign_fixed_vk(
-        &self,
-        layouter: &mut impl Layouter<S::F>,
-        domain: &EvaluationDomain<S::F>,
-        cs: &ConstraintSystem<S::F>,
-        transcript_repr_constant: S::F,
-    ) -> Result<AssignedVk<S>, Error> {
-        let transcript_repr = self.scalar_chip.assign_fixed(layouter, transcript_repr_constant)?;
-
-        let fixed_commitments = (0..cs.num_fixed_columns() + cs.num_selectors())
-            .map(|i| AssignedKZGCommitment::fixed(PolynomialLabel::Fixed(i)))
-            .collect();
-
-        let perm_commitments = (0..cs.permutation().columns.len())
-            .map(|i| AssignedKZGCommitment::fixed(PolynomialLabel::PermutationFixed(i)))
-            .collect();
-
-        let assigned_vk = AssignedVk {
-            domain: domain.clone(),
-            fixed_commitments,
-            perm_commitments,
-            cs: cs.clone(),
-            cs_degree: cs.degree(),
-            transcript_repr,
-        };
-
-        Ok(assigned_vk)
+        })
     }
 }
 
@@ -512,7 +516,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         mut transcript: TranscriptGadget<S>,
     ) -> Result<AssignedAccumulator<S>, Error> {
         let cs = &assigned_vk.cs;
-        let k = assigned_vk.domain.k();
+        let k = &assigned_vk.domain.k;
         let nb_committed_instances = assigned_committed_instances.len();
 
         let VerifierTrace {
@@ -532,7 +536,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         // commits to h(X) as a single polynomial (one commitment); otherwise it
         // splits h(X) into `quotient_poly_degree` limbs (one commitment each).
         #[cfg(not(feature = "single-h-commitment"))]
-        let nb_quotient_coms = assigned_vk.domain.get_quotient_poly_degree();
+        let nb_quotient_coms = assigned_vk.cs_degree - 1;
         #[cfg(feature = "single-h-commitment")]
         let nb_quotient_coms = 1;
         let limb_commitments = {
@@ -555,6 +559,11 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         // high probability
         let x = transcript.squeeze_challenge(layouter)?;
 
+        let omega = &assigned_vk.domain.omega;
+        let omega_inv = &assigned_vk.domain.omega_inv;
+        let n = &assigned_vk.domain.n;
+        let xn = pow_2_pow_k(layouter, &self.scalar_chip, &x, k)?;
+
         let instance_evals = {
             let instance_queries = cs.instance_queries();
             let min_rotation = instance_queries.iter().map(|(_, rot)| rot.0).min().unwrap();
@@ -566,10 +575,11 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             let l_i_s = evaluate_lagrange_polynomials(
                 layouter,
                 &self.scalar_chip,
-                1 << k,
-                assigned_vk.domain.get_omega(),
-                (-max_rotation)..(max_instance_len as i32 + min_rotation.abs()),
+                omega,
+                n,
                 &x,
+                &xn,
+                (-max_rotation)..(max_instance_len as i32 + min_rotation.abs()),
             )?;
 
             instance_queries
@@ -632,10 +642,11 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         let l_evals = evaluate_lagrange_polynomials(
             layouter,
             &self.scalar_chip,
-            1 << k,
-            assigned_vk.domain.get_omega(),
-            (-((nr_blinding_factors + 1) as i32))..1,
+            omega,
+            n,
             &x,
+            &xn,
+            (-((nr_blinding_factors + 1) as i32))..1,
         )?;
         assert_eq!(l_evals.len(), 2 + nr_blinding_factors);
         let l_last = l_evals[0].clone();
@@ -741,9 +752,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             .into_iter()
             .for_each(|trash_id| expressions.push((None, trash_id)));
 
-        let splitting_factor =
-            ArithInstructions::pow(&self.scalar_chip, layouter, &x, (1 << k) - 1)?;
-        let xn = self.scalar_chip.mul(layouter, &x, &splitting_factor, None)?;
+        let splitting_factor = self.scalar_chip.div(layouter, &xn, &x)?;
 
         let (lin_commitment, lin_eval) = Self::compute_linearization_commitment(
             layouter,
@@ -756,12 +765,11 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             &limb_commitments,
         )?;
 
-        let omega = assigned_vk.domain.get_omega();
-        let omega_inv = omega.invert().unwrap();
-        let omega_last = omega_inv.pow([cs.blinding_factors() as u64 + 1]);
-        let x_next = self.scalar_chip.mul_by_constant(layouter, &x, omega)?;
-        let x_prev = self.scalar_chip.mul_by_constant(layouter, &x, omega_inv)?;
-        let x_last = self.scalar_chip.mul_by_constant(layouter, &x, omega_last)?;
+        let omega_last =
+            self.scalar_chip.pow(layouter, omega_inv, cs.blinding_factors() as u64 + 1)?;
+        let x_next = self.scalar_chip.mul(layouter, &x, omega, None)?;
+        let x_prev = self.scalar_chip.mul(layouter, &x, omega_inv, None)?;
+        let x_last = self.scalar_chip.mul(layouter, &x, &omega_last, None)?;
 
         // Gets the evaluation point for a query at the given rotation.
         let get_point = |rotation: &Rotation| -> &AssignedNative<S::F> {
@@ -993,7 +1001,7 @@ pub(crate) mod tests {
 
     #[derive(Clone, Debug)]
     pub struct TestCircuit {
-        inner_vk: (EvaluationDomain<F>, ConstraintSystem<F>, Value<F>), // (domain, cs, vk_repr)
+        inner_vk: (Value<EvaluationDomain<F>>, ConstraintSystem<F>, Value<F>), // (domain, cs, vk_repr)
         inner_committed_instance: Value<C>,
         inner_instances: Value<[F; NB_INNER_INSTANCES]>,
         inner_proof: Value<Vec<u8>>,
@@ -1090,7 +1098,7 @@ pub(crate) mod tests {
 
             let assigned_inner_vk: AssignedVk<S> = verifier_chip.assign_vk_as_public_input(
                 &mut layouter,
-                &self.inner_vk.0,
+                self.inner_vk.0.clone(),
                 &self.inner_vk.1,
                 self.inner_vk.2,
             )?;
@@ -1198,7 +1206,7 @@ pub(crate) mod tests {
 
         let circuit = TestCircuit {
             inner_vk: (
-                inner_vk.get_domain().clone(),
+                Value::known(inner_vk.get_domain().clone()),
                 inner_vk.cs().clone(),
                 Value::known(inner_vk.transcript_repr()),
             ),
