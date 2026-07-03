@@ -612,6 +612,66 @@ mod tests {
         }
     }
 
+    // Dedicated circuit for `resize`, which changes the size const generic `M -> L`.
+    struct ResizeTestCircuit<F: CircuitField, const M: usize, const A: usize, const L: usize> {
+        input: Vec<F>,
+    }
+
+    impl<F: CircuitField, const M: usize, const A: usize, const L: usize> Circuit<F>
+        for ResizeTestCircuit<F, M, A, L>
+    {
+        type Config = P2RDecompositionConfig;
+
+        type FloorPlanner = SimpleFloorPlanner;
+
+        type Params = ();
+
+        fn without_witnesses(&self) -> Self {
+            unreachable!();
+        }
+
+        fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+            let comm_ic = meta.instance_column();
+            let instance_column = meta.instance_column();
+            NativeGadget::configure_from_scratch(
+                meta,
+                &mut vec![],
+                &mut vec![],
+                &[comm_ic, instance_column],
+            )
+        }
+
+        fn synthesize(
+            &self,
+            config: Self::Config,
+            mut layouter: impl Layouter<F>,
+        ) -> Result<(), Error> {
+            let ng = NG::<F>::new_from_scratch(&config);
+            let vg = VectorGadget::new(&ng);
+
+            let vec_m: AssignedVector<F, AssignedNative<F>, M, A> =
+                vg.assign(&mut layouter, Value::known(self.input.clone()))?;
+            let vec_l: AssignedVector<F, AssignedNative<F>, L, A> =
+                vg.resize::<L>(&mut layouter, vec_m)?;
+
+            // The resized vector must have the same logical value (data and length)
+            // as the input, now placed in an `L`-sized, `A`-aligned buffer.
+            vg.assert_equal_to_fixed(&mut layouter, &vec_l, self.input.clone())?;
+
+            ng.load_from_scratch(&mut layouter)
+        }
+    }
+
+    fn run_resize_vec_test<F, const M: usize, const A: usize, const L: usize>(input: &[F])
+    where
+        F: CircuitField + FromUniformBytes<64> + Ord,
+    {
+        let circuit = ResizeTestCircuit::<F, M, A, L> {
+            input: input.to_vec(),
+        };
+        MockProver::run(&circuit, vec![vec![], vec![]]).unwrap().assert_satisfied();
+    }
+
     fn run_eq_vec_test<F, const M: usize, const A: usize>(
         input_1: &[F],
         input_2: &[F],
@@ -825,5 +885,22 @@ mod tests {
 
         // The particular case of the credentials:
         run_trim_vec_test::<_, 128, 64>(&inputs, 39, false);
+    }
+
+    #[test]
+    fn vector_resize() {
+        type F = midnight_curves::Fq;
+
+        // Create a random number generator
+        let mut rng = ChaCha12Rng::seed_from_u64(0xdeadcafe);
+        let inputs = (0..100).map(|_| F::random(&mut rng)).collect::<Vec<_>>();
+
+        // Grow with different source lengths and alignments.
+        run_resize_vec_test::<_, 64, 2, 128>(&inputs[..40]); // partial, back padding
+        run_resize_vec_test::<_, 64, 2, 128>(&inputs[..64]); // full source vector
+        run_resize_vec_test::<F, 64, 2, 128>(&[]); // empty source vector
+        run_resize_vec_test::<_, 66, 3, 126>(&inputs[..50]); // A = 3
+        run_resize_vec_test::<_, 64, 64, 128>(&inputs[..30]); // single-chunk source (A = M)
+        run_resize_vec_test::<_, 64, 16, 256>(&inputs[..48]); // larger growth
     }
 }
