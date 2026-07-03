@@ -61,7 +61,7 @@ impl<F: CircuitField, T: Vectorizable, const M: usize, const A: usize> AssignedV
     pub(crate) fn new(buffer: Box<[T; M]>, len: AssignedNative<F>) -> Self {
         const {
             assert!(
-                A > 0 && M >= A && M % A == 0,
+                A > 0 && M >= A && M.is_multiple_of(A),
                 "AssignedVector requires 0 < A <= M and A | M."
             )
         };
@@ -73,7 +73,7 @@ impl<F: CircuitField, T: Vectorizable, const M: usize, const A: usize> AssignedV
 pub fn get_lims<const M: usize, const A: usize>(len: usize) -> Range<usize> {
     const {
         assert!(
-            A > 0 && M >= A && M % A == 0,
+            A > 0 && M >= A && M.is_multiple_of(A),
             "AssignedVector requires 0 < A <= M and A | M."
         )
     };

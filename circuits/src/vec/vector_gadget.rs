@@ -79,7 +79,7 @@ where
         layouter: &mut impl Layouter<F>,
         input: AssignedVector<F, T, M, A>,
     ) -> Result<AssignedVector<F, T, L, A>, Error> {
-        assert_eq!(L % A, 0);
+        assert!(L.is_multiple_of(A));
         assert!(L > M);
 
         let extra_pad = self
@@ -159,7 +159,7 @@ where
     ) -> Result<(AssignedNative<F>, AssignedNative<F>), Error> {
         const {
             assert!(
-                A > 0 && M >= A && M % A == 0,
+                A > 0 && M >= A && M.is_multiple_of(A),
                 "AssignedVector requires 0 < A <= M and A | M."
             )
         };
@@ -608,7 +608,8 @@ mod tests {
         }
     }
 
-    // Dedicated circuit for `resize`, which changes the size const generic `M -> L`.
+    // Dedicated circuit for `resize`, which changes the size const generic `M ->
+    // L`.
     struct ResizeTestCircuit<F: CircuitField, const M: usize, const A: usize, const L: usize> {
         input: Vec<F>,
     }
