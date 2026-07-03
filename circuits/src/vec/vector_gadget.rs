@@ -89,10 +89,7 @@ where
         let buffer: Box<[T; L]> =
             Box::new([extra_pad.as_slice(), input.buffer.as_slice()].concat().try_into().unwrap());
 
-        Ok(AssignedVector {
-            buffer,
-            len: input.len.clone(),
-        })
+        Ok(AssignedVector::new(buffer, input.len.clone()))
     }
 
     fn assign_with_filler(
@@ -101,18 +98,11 @@ where
         value: Value<Vec<T::Element>>,
         filler: Option<T::Element>,
     ) -> Result<AssignedVector<F, T, M, A>, Error> {
-        assert!(M >= A, "AssignedVector requires M >= A (got M={M}, A={A})");
-        assert!(A > 0, "AssignedVector requires A positive (A={A})");
-        assert!(
-            M.is_multiple_of(A),
-            "AssignedVector requires M % A == 0 (got M={M}, A={A})"
-        );
         let ng = &self.native_gadget;
         let filler = filler.unwrap_or(T::FILLER);
         let (data_val, len_val) = value
             .map(|v| {
-                // `v` needs to be at most `M - M % A`, i.e., `M` since we require above that it
-                // is a multiple of `A`.
+                // `v` needs to be at most `M`, which is a multiple of `A` by invariant.
                 assert!(v.len() <= M);
                 let len = F::from(v.len() as u64);
                 let mut buffer = [filler; M];
@@ -127,7 +117,7 @@ where
                 .expect("Length mismatch in AssignedVector."),
         );
         let len = ng.assign_lower_than_fixed(layouter, len_val, &(M + 1).into())?;
-        Ok(AssignedVector { buffer: data, len })
+        Ok(AssignedVector::new(data, len))
     }
 
     fn padding_flag(
@@ -167,6 +157,12 @@ where
         layouter: &mut impl Layouter<F>,
         input: &AssignedVector<F, T, M, A>,
     ) -> Result<(AssignedNative<F>, AssignedNative<F>), Error> {
+        const {
+            assert!(
+                A > 0 && M >= A && M % A == 0,
+                "AssignedVector requires 0 < A <= M and A | M."
+            )
+        };
         let ng = &self.native_gadget;
         let end: AssignedNative<F> = {
             // The last data position within the last chunk. Value in [0, A);
@@ -252,7 +248,7 @@ where
         // Compute final length.
         let len = ng.add_constant(layouter, &input.len, -F::from(n_elems as u64))?;
 
-        Ok(AssignedVector { buffer, len })
+        Ok(AssignedVector::new(buffer, len))
     }
 }
 

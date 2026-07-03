@@ -35,13 +35,13 @@ use crate::{
 /// sized chunks. The padding at the end of the payload will have a size in
 /// [0, A) such that | front_pad | + | payload | + | back_pad | = M.
 ///
-/// **Invariant: `M` must be a multiple of `A`** (and `A > 0`, `M >= A`).
-/// Several operations (`padding_flag`, `get_limits`, hashing, …) rely on this
-/// to guarantee that the buffer decomposes into exactly `M / A` full chunks
-/// and that a full-capacity vector (`len == M`) can always be placed without
-/// overflow. This is enforced by the entry points
-/// [`assign_with_filler`](crate::instructions::VectorInstructions::assign_with_filler) and
-/// [`assign`](crate::instructions::AssignmentInstructions::assign).
+/// **Invariant: `A > 0`, `A <= M`, and `M` is a multiple of `A`.** Several
+/// operations (`padding_flag`, `get_limits`, hashing, …) rely on this to
+/// guarantee that the buffer decomposes into exactly `M / A` full chunks and
+/// that a full-capacity vector (`len == M`) can always be placed without
+/// overflow.
+/// The invariant is checked at compile time  by [`AssignedVector::new`],
+/// which is the constructor every `AssignedVector` should be built through.
 #[derive(Clone, Debug)]
 pub struct AssignedVector<F: CircuitField, T: Vectorizable, const M: usize, const A: usize> {
     /// Padded payload of the vector. Boxed to keep large buffers
@@ -52,8 +52,31 @@ pub struct AssignedVector<F: CircuitField, T: Vectorizable, const M: usize, cons
     pub(crate) len: AssignedNative<F>,
 }
 
+impl<F: CircuitField, T: Vectorizable, const M: usize, const A: usize> AssignedVector<F, T, M, A> {
+    /// Construct an `AssignedVector` from an already-assigned `buffer` and
+    /// `len`.
+    ///
+    /// This is the single entry point for building an `AssignedVector`; it
+    /// enforces the type invariant `0 < A <= M` and `A | M` at compile time.
+    pub(crate) fn new(buffer: Box<[T; M]>, len: AssignedNative<F>) -> Self {
+        const {
+            assert!(
+                A > 0 && M >= A && M % A == 0,
+                "AssignedVector requires 0 < A <= M and A | M."
+            )
+        };
+        Self { buffer, len }
+    }
+}
+
 /// Returns the range where the data should be placed in the buffer.
 pub fn get_lims<const M: usize, const A: usize>(len: usize) -> Range<usize> {
+    const {
+        assert!(
+            A > 0 && M >= A && M % A == 0,
+            "AssignedVector requires 0 < A <= M and A | M."
+        )
+    };
     let final_pad_len = (A - (len % A)) % A;
     M - len - final_pad_len..M - final_pad_len
 }

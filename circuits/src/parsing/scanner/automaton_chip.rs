@@ -449,10 +449,10 @@ where
         // and hit the self-loop transitions (added during NativeAutomaton
         // construction), outputting marker 0.
         let buffer = self.parse_automaton(layouter, &automaton, &*input.buffer)?;
-        Ok(AssignedVector {
-            buffer: Box::new(buffer.try_into().unwrap()),
-            len: input.len().clone(),
-        })
+        Ok(AssignedVector::new(
+            Box::new(buffer.try_into().unwrap()),
+            input.len().clone(),
+        ))
     }
 }
 
