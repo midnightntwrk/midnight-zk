@@ -12,19 +12,6 @@
 // limitations under the License.
 
 #![doc = include_str!("../README.md")]
-//!
-//! ## Implementation Details
-//!
-//! This library uses a fixed configuration, meaning that regardless of what one
-//! uses, it will always consist of the same columns, lookups, permutation
-//! enabled columns, or gates. The motivation for this is twofold:
-//!
-//! * It facilitates recursion (we always aggregate circuits that have the same
-//!   verification logic).
-//!
-//! * We could optimise the verifier, who can store part of the circuit
-//!   description in memory and does not need to reproduce it everytime it
-//!   receives a new proof.
 
 mod external;
 pub mod utils;
