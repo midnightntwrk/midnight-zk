@@ -25,6 +25,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Sort point sets deterministically in KZG multiopen for in-circuit verification [#256](https://github.com/midnightntwrk/midnight-zk/pull/256)
 * Move advice queries before instance queries in verifier gadget [#256](https://github.com/midnightntwrk/midnight-zk/pull/256)
 * Share the `z` and `m` polynomials across all logup instances [#279](https://github.com/midnightntwrk/midnight-zk/pull/279)
+* Optimize the vector gadget's `padding_flag` to only check `A`-aligned chunk boundaries [#462](https://github.com/midnightntwrk/midnight-zk/pull/462)
 
 ### Removed
 * Remove `Expression::Challenge` variant and phase-parameterized `Any::Advice`; multi-phase advice columns are no longer supported [#376](https://github.com/midnightntwrk/midnight-zk/pull/376)
