@@ -65,13 +65,11 @@ impl<F: CircuitField, const M: usize, T: Vectorizable, const A: usize> InnerValu
 
     fn value(&self) -> Value<Self::Element> {
         let data = Value::<Vec<T::Element>>::from_iter(self.buffer.iter().map(|v| v.value()));
-        let idxs: Value<_> = self.len.value().map(|len| {
+        let range = self.len.value().map(|len| {
             let len: usize = len.to_biguint().try_into().unwrap();
-
-            let end_pad = (A - (len % A)) % A;
-            (M - len - end_pad, M - end_pad)
+            get_lims::<M, A>(len)
         });
-        data.zip(idxs).map(|(data, idxs)| data[idxs.0..idxs.1].to_vec())
+        data.zip(range).map(|(data, range)| data[range].to_vec())
     }
 }
 
