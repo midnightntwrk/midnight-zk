@@ -28,6 +28,9 @@
 
 mod external;
 pub mod utils;
+pub mod instructions;
+pub mod interface;
+pub use interface::*;
 
 use std::{cell::RefCell, cmp::max, convert::TryInto, fmt::Debug, io, rc::Rc};
 
@@ -36,8 +39,6 @@ use blake2b::blake2b::{
     blake2b_chip::{Blake2bChip, Blake2bConfig},
     NB_BLAKE2B_ADVICE_COLS,
 };
-use ff::{Field, PrimeField};
-use group::{prime::PrimeCurveAffine, Group};
 use keccak_sha3::packed_chip::{PackedChip, PackedConfig, PACKED_ADVICE_COLS, PACKED_FIXED_COLS};
 use midnight_circuits::{
     biguint::biguint_gadget::BigUintGadget,
@@ -75,52 +76,29 @@ use midnight_circuits::{
         },
         sha512::{Sha512Chip, Sha512Config, NB_SHA512_ADVICE_COLS, NB_SHA512_FIXED_COLS},
     },
-    instructions::{
-        hash::VarHashInstructions, public_input::CommittedInstanceInstructions,
-        vector::VectorBounds, *,
-    },
+    instructions::{hash::VarHashInstructions, *},
     map::map_gadget::MapGadget,
     parsing::{
         self,
         scanner::{ScannerChip, ScannerConfig, NB_SCANNER_ADVICE_COLS, NB_SCANNER_FIXED_COLS},
         Base64Chip, Base64Config, ParserGadget, NB_BASE64_ADVICE_COLS,
     },
-    types::{
-        AssignedBit, AssignedByte, AssignedNative, AssignedNativePoint, ComposableChip, InnerValue,
-        Instantiable,
-    },
-    vec::{vector_gadget::VectorGadget, AssignedVector, Vectorizable},
+    types::{AssignedBit, AssignedByte, AssignedNative, AssignedNativePoint, ComposableChip},
+    vec::{vector_gadget::VectorGadget, AssignedVector},
     verifier::{BlstrsEmulation, VerifierGadget},
 };
 use midnight_curves::{
     curve25519::{self as curve25519_mod, Curve25519},
     k256::{self as k256_mod, K256},
     p256::{self as p256_mod, P256},
-    Fq, G1Affine, G1Projective,
+    Fq,
 };
 use midnight_proofs::{
-    circuit::{Layouter, SimpleFloorPlanner, Value},
-    dev::cost_model::{circuit_model, CircuitModel},
-    plonk::{
-        self, keygen_vk_with_k, prepare, Circuit, ConstraintSystem, Error, ProvingKey, VerifyingKey,
-    },
-    poly::{
-        commitment::{Guard, Params},
-        kzg::{
-            params::{ParamsKZG, ParamsVerifierKZG},
-            KZGCommitmentScheme,
-        },
-    },
-    transcript::{CircuitTranscript, Hashable, Sampleable, Transcript, TranscriptHash},
-    utils::SerdeFormat,
+    circuit::Layouter,
+    plonk::{ConstraintSystem, Error},
 };
-use num_bigint::BigUint;
-use rand::{CryptoRng, RngCore};
 
-use crate::{
-    external::{blake2b::Blake2bWrapper, keccak_sha3::KeccakSha3Wrapper},
-    utils::plonk_api::BlstPLONK,
-};
+use crate::external::{blake2b::Blake2bWrapper, keccak_sha3::KeccakSha3Wrapper};
 
 type C = midnight_curves::JubjubExtended;
 type F = midnight_curves::Fq;
