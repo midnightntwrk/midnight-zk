@@ -81,10 +81,7 @@ impl<F: CircuitField, const M: usize, const A: usize> From<ScannerVec<F, M, A>>
     for AssignedVector<F, AssignedNative<F>, M, A>
 {
     fn from(value: ScannerVec<F, M, A>) -> Self {
-        AssignedVector {
-            buffer: value.buffer,
-            len: value.length,
-        }
+        AssignedVector::new(value.buffer, value.length)
     }
 }
 
@@ -118,10 +115,10 @@ where
             })
             .collect::<Result<Vec<_>, Error>>()?;
 
-        Ok(AssignedVector {
-            buffer: Box::new(byte_buffer.try_into().unwrap()),
-            len: sv.length.clone(),
-        })
+        Ok(AssignedVector::new(
+            Box::new(byte_buffer.try_into().unwrap()),
+            sv.length.clone(),
+        ))
     }
 
     /// Assigns a variable-length byte vector as a `ScannerVec`.
