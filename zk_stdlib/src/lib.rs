@@ -14,10 +14,9 @@
 #![doc = include_str!("../README.md")]
 
 mod external;
-pub mod utils;
-pub mod instructions;
+mod instructions;
 pub mod interface;
-pub use interface::*;
+pub mod utils;
 
 use std::{cell::RefCell, cmp::max, convert::TryInto, fmt::Debug, io, rc::Rc};
 
@@ -26,6 +25,7 @@ use blake2b::blake2b::{
     blake2b_chip::{Blake2bChip, Blake2bConfig},
     NB_BLAKE2B_ADVICE_COLS,
 };
+pub use interface::*;
 use keccak_sha3::packed_chip::{PackedChip, PackedConfig, PACKED_ADVICE_COLS, PACKED_FIXED_COLS};
 use midnight_circuits::{
     biguint::biguint_gadget::BigUintGadget,

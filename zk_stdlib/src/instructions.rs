@@ -1,4 +1,4 @@
-//! Instructions implemented over ZkStdLib. 
+//! Instructions implemented over ZkStdLib.
 
 use ff::PrimeField;
 use midnight_circuits::{
