@@ -1,0 +1,17 @@
+name: Drop status:untriaged once an issue is assigned
+
+on:
+  issues:
+    types: [assigned, labeled]
+
+permissions:
+  issues: write
+
+concurrency:
+  group: drop-untriaged-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  drop-untriaged:
+    name: Remove status:untriaged from assigned issues
+    uses: midnightntwrk/.github/.github/workflows/drop-untriaged-on-assign.yml@2703a25b1b9d634fffa23f4f7dbc9da73cd5f7fb

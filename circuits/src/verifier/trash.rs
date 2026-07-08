@@ -16,13 +16,18 @@
 //!
 //! The "expressions" part is dealt with in our `expressions/` directory.
 
-use midnight_proofs::{circuit::Layouter, plonk::Error, poly::PolynomialLabel};
+use midnight_proofs::{
+    circuit::Layouter,
+    plonk::Error,
+    poly::{commitment::Labelable, PolynomialLabel},
+};
 
 use crate::{
     field::AssignedNative,
     verifier::{
-        kzg::VerifierQuery, transcript_gadget::TranscriptGadget, utils::AssignedBoundedScalar,
-        LabeledPoint, SelfEmulation,
+        kzg::{AssignedKZGCommitment, VerifierQuery},
+        transcript_gadget::TranscriptGadget,
+        SelfEmulation,
     },
 };
 
@@ -33,7 +38,7 @@ pub(crate) struct TrashEvaluated<S: SelfEmulation> {
 
 #[derive(Clone, Debug)]
 pub(crate) struct Committed<S: SelfEmulation> {
-    trash_commitment: LabeledPoint<S>,
+    trash_commitment: AssignedKZGCommitment<S>,
 }
 
 #[derive(Clone, Debug)]
@@ -43,14 +48,14 @@ pub(crate) struct Evaluated<S: SelfEmulation> {
 }
 
 pub(crate) fn read_committed<S: SelfEmulation>(
-    name: &str,
+    argument_name: &str,
     layouter: &mut impl Layouter<S::F>,
     transcript_gadget: &mut TranscriptGadget<S>,
 ) -> Result<Committed<S>, Error> {
-    let trash_commitment = LabeledPoint::new(
-        transcript_gadget.read_point(layouter)?,
-        PolynomialLabel::Trash(name.to_owned()),
-    );
+    let trash_commitment = transcript_gadget
+        .read_commitment(layouter)
+        .map(|c| c.label(PolynomialLabel::Trash(argument_name.to_owned())))?;
+
     Ok(Committed { trash_commitment })
 }
 
@@ -71,16 +76,14 @@ impl<S: SelfEmulation> Committed<S> {
 
 // "expressions" is implemented in `expressions/trash.rs`
 
-impl<S: SelfEmulation> Evaluated<S> {
+impl<'a, S: SelfEmulation> Evaluated<S> {
     pub(crate) fn queries(
-        &self,
-        one: &AssignedBoundedScalar<S::F>, // 1
-        x: &AssignedNative<S::F>,          // evaluation point x
-    ) -> Vec<VerifierQuery<S>> {
+        &'a self,
+        x: &AssignedNative<S::F>, // evaluation point x
+    ) -> Vec<VerifierQuery<'a, S>> {
         vec![VerifierQuery::new(
-            one,
             x,
-            &self.committed.trash_commitment.point,
+            &self.committed.trash_commitment,
             &self.evaluated.trash_eval,
         )]
     }

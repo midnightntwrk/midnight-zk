@@ -879,19 +879,16 @@ pub(super) fn compute_queries<
 ) -> Vec<ProverQuery<'a, F>> {
     let domain = pk.vk.get_domain();
     iter::empty()
-        .chain(
-            pk.vk.cs.advice_queries.iter().map(move |&(column, at)| ProverQuery {
-                point: domain.rotate_omega(x, at),
-                poly: &advice_polys[column.index()],
-            }),
-        )
+        .chain(pk.vk.cs.advice_queries.iter().map(move |&(column, at)| {
+            ProverQuery::new(domain.rotate_omega(x, at), &advice_polys[column.index()])
+        }))
         .chain(
             pk.vk.cs.instance_queries.iter().filter_map(move |&(column, at)| {
                 if column.index() < nb_committed_instances {
-                    Some(ProverQuery {
-                        point: domain.rotate_omega(x, at),
-                        poly: &instance_polys[column.index()],
-                    })
+                    Some(ProverQuery::new(
+                        domain.rotate_omega(x, at),
+                        &instance_polys[column.index()],
+                    ))
                 } else {
                     None
                 }
@@ -907,16 +904,15 @@ pub(super) fn compute_queries<
                 .iter()
                 // Filter out queries for simple, multiplicative selectors
                 .filter(|(col, _)| !pk.vk.cs.has_simple_selector_col(col.index()))
-                .map(|&(column, at)| ProverQuery {
-                    point: domain.rotate_omega(x, at),
-                    poly: &pk.fixed_polys[column.index()],
+                .map(|&(column, at)| {
+                    ProverQuery::new(domain.rotate_omega(x, at), &pk.fixed_polys[column.index()])
                 }),
         )
         .chain(pk.permutation.open(x))
-        .chain(iter::once(ProverQuery {
-            point: domain.rotate_omega(x, Rotation::cur()),
-            poly: lin_poly_non_constant_part,
-        }))
+        .chain(iter::once(ProverQuery::new(
+            domain.rotate_omega(x, Rotation::cur()),
+            lin_poly_non_constant_part,
+        )))
         .collect()
 }
 

@@ -67,7 +67,7 @@ impl<T: Ivc> IvcProver<T> {
         let vk = self.pk.pk().get_vk();
         let vk_repr = vk.transcript_repr();
 
-        let fixed_bases = midnight_circuits::verifier::fixed_bases::<S>("self_vk", vk);
+        let fixed_bases = midnight_circuits::verifier::fixed_bases::<S>(vk);
 
         // Off-circuit verification of the previous proof.
         let proof_acc = if T::is_genesis(self.relation.ctx(), &self.state) {
@@ -112,7 +112,7 @@ impl<T: Ivc> IvcProver<T> {
                 return Err(IvcError::InvalidProof);
             }
 
-            Accumulator::from_dual_msm(dual_msm, "self_vk", &fixed_bases)
+            Accumulator::from_dual_msm(dual_msm, &fixed_bases)
         };
 
         // Accumulate the proof accumulator with the previous accumulator.

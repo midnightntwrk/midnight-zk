@@ -14,9 +14,6 @@ use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
 
-#[cfg(feature = "fewer-point-sets")]
-use super::query::Query;
-
 /// KZG commitment type
 pub mod commitment;
 /// Multiscalar multiplication engines
@@ -39,7 +36,7 @@ pub use utils::compute_dummy_queries;
 use crate::utils::arithmetic::{truncate, truncated_powers};
 use crate::{
     poly::{
-        commitment::PolynomialCommitmentScheme,
+        commitment::{Labelable, PolynomialCommitmentScheme},
         kzg::{
             msm::{msm_specific, DualMSM, MSMKZG},
             params::{ParamsKZG, ParamsVerifierKZG},
@@ -52,8 +49,7 @@ use crate::{
     utils::{
         arithmetic::{
             eval_polynomial, evals_inner_product, inner_product, kate_division,
-            lagrange_interpolate, msm_inner_product, parallelize, powers, CurveAffine, CurveExt,
-            MSM,
+            lagrange_interpolate, parallelize, powers, CurveAffine, CurveExt, MSM,
         },
         helpers::ProcessedSerdeObject,
     },
@@ -113,7 +109,7 @@ where
         /// scaled contributions directly into the output buffer, avoiding
         /// M intermediate allocations and the sequential reduce chain.
         fn poly_inner_product<F: ff::PrimeField>(
-            polys: &[Polynomial<F, Coeff>],
+            polys: &[&Polynomial<F, Coeff>],
             scalars: impl IntoIterator<Item = F>,
         ) -> Polynomial<F, Coeff> {
             let scalars: Vec<F> = scalars.into_iter().take(polys.len()).collect();
@@ -140,13 +136,16 @@ where
         #[cfg(feature = "fewer-point-sets")]
         let queries = &{
             let mut queries = queries.to_vec();
-            let pairs: Vec<_> = queries.iter().map(|q| (q.get_commitment(), q.point)).collect();
-            for (idx, point) in compute_dummy_queries(&pairs) {
-                let poly = queries[idx].poly;
+            let pairs: Vec<_> = queries.iter().map(|q| (q.poly_ref, q.point)).collect();
+            for (idx, dummy_point) in compute_dummy_queries(&pairs) {
+                let poly_ref = queries[idx].poly_ref;
                 transcript
-                    .write(&eval_polynomial(poly, point))
+                    .write(&eval_polynomial(&poly_ref.0[..], dummy_point))
                     .map_err(|_| Error::OpeningError)?;
-                queries.push(ProverQuery::new(point, poly));
+                queries.push(ProverQuery {
+                    point: dummy_point,
+                    poly_ref,
+                });
             }
             queries
         };
@@ -156,12 +155,22 @@ where
         let x1: E::Fr = transcript.squeeze_challenge();
         let x2: E::Fr = transcript.squeeze_challenge();
 
-        let (poly_map, point_sets) = construct_intermediate_sets(queries)?;
+        let kzg_queries = queries
+            .iter()
+            .map(|query| {
+                (
+                    query.poly_ref,
+                    query.point,
+                    eval_polynomial(&query.poly_ref.0[..], query.point),
+                )
+            })
+            .collect::<Vec<_>>();
+        let (poly_map, point_sets) = construct_intermediate_sets(&kzg_queries)?;
 
         let mut q_polys = vec![vec![]; point_sets.len()];
 
         for com_data in poly_map.iter() {
-            q_polys[com_data.set_index].push(com_data.commitment.poly.clone());
+            q_polys[com_data.set_index].push(com_data.commitment_ref.0);
         }
 
         let q_polys: Vec<_> = q_polys
@@ -188,7 +197,7 @@ where
         let (q_polys, point_sets) = {
             let mut order: Vec<usize> = (0..point_sets.len()).collect();
             order.sort_by_key(|&i| (point_sets[i].len(), i));
-            let q_polys: Vec<_> = order.iter().map(|&i| q_polys[i].clone()).collect();
+            let q_polys: Vec<_> = order.iter().map(|&i| &q_polys[i]).collect();
             let point_sets: Vec<_> = order.iter().map(|&i| point_sets[i].clone()).collect();
             (q_polys, point_sets)
         };
@@ -198,16 +207,16 @@ where
                 .into_par_iter()
                 .zip(q_polys.clone().into_par_iter())
                 .map(|(points, q_poly)| {
-                    let poly = points
-                        .iter()
-                        .fold(q_poly.values, |poly, point| kate_division(&poly, *point));
+                    let poly = points.iter().fold(q_poly.values.clone(), |poly, point| {
+                        kate_division(&poly, *point)
+                    });
                     Polynomial {
                         values: poly,
                         _marker: PhantomData,
                     }
                 })
                 .collect();
-            poly_inner_product(&f_polys, powers(x2))
+            poly_inner_product(&f_polys.iter().collect::<Vec<_>>(), powers(x2))
         };
 
         let f_com = Self::commit(
@@ -232,7 +241,7 @@ where
 
         let final_poly = {
             let mut polys = q_polys;
-            polys.push(f_poly);
+            polys.push(&f_poly);
             #[cfg(feature = "truncated-challenges")]
             let powers = truncated_powers(x4);
 
@@ -271,14 +280,15 @@ where
         #[cfg(feature = "fewer-point-sets")]
         let queries = &{
             let mut queries = queries.to_vec();
-            let pairs: Vec<_> =
-                queries.iter().map(|q| (q.get_commitment(), q.get_point())).collect();
-            for (idx, point) in compute_dummy_queries(&pairs) {
-                queries.push(VerifierQuery::new(
-                    point,
-                    queries[idx].commitment.0,
-                    transcript.read().map_err(|_| Error::SamplingError)?,
-                ));
+            let pairs: Vec<_> = queries.iter().map(|q| (q.commitment_ref, q.point)).collect();
+            for (idx, dummy_point) in compute_dummy_queries(&pairs) {
+                let commitment_ref = queries[idx].commitment_ref;
+                let eval = transcript.read().map_err(|_| Error::SamplingError)?;
+                queries.push(VerifierQuery {
+                    point: dummy_point,
+                    commitment_ref,
+                    eval,
+                });
             }
             queries
         };
@@ -288,22 +298,17 @@ where
         let x1: E::Fr = transcript.squeeze_challenge();
         let x2: E::Fr = transcript.squeeze_challenge();
 
-        let (commitment_map, point_sets) = construct_intermediate_sets(queries)?;
+        let kzg_queries = queries
+            .iter()
+            .map(|query| (query.commitment_ref, query.point, query.eval))
+            .collect::<Vec<_>>();
+        let (commitment_map, point_sets) = construct_intermediate_sets(&kzg_queries)?;
 
         let mut q_coms: Vec<_> = vec![vec![]; point_sets.len()];
         let mut q_eval_sets = vec![vec![]; point_sets.len()];
 
         for com_data in commitment_map.into_iter() {
-            let mut msm = MSMKZG::init();
-            match com_data.commitment.0 {
-                KZGCommitment::Simple(p, label) => msm.append_term(E::Fr::ONE, *p, label.clone()),
-                KZGCommitment::Linear(points, scalars, labels) => {
-                    for ((p, s), label) in points.iter().zip(scalars).zip(labels) {
-                        msm.append_term(*s, *p, label.clone());
-                    }
-                }
-            }
-            q_coms[com_data.set_index].push(msm);
+            q_coms[com_data.set_index].push(com_data.commitment_ref.0.clone());
             q_eval_sets[com_data.set_index].push(com_data.evals);
         }
 
@@ -318,7 +323,7 @@ where
 
         let q_coms = q_coms
             .into_iter()
-            .map(|msms| msm_inner_product(msms, &powers_x1))
+            .map(|coms| inner_product(&coms, powers_x1.clone().into_iter()))
             .collect::<Vec<_>>();
 
         let q_eval_sets = q_eval_sets
@@ -343,10 +348,8 @@ where
             (q_coms, q_eval_sets, point_sets)
         };
 
-        let f_com: E::G1 = transcript
-            .read::<KZGCommitment<E>>()
-            .map_err(|_| Error::SamplingError)?
-            .into_point();
+        let f_com = transcript.read::<KZGCommitment<E>>().map_err(|_| Error::SamplingError)?;
+        let f_com = f_com.label(PolynomialLabel::Custom("kzg_batch".into()));
 
         // Sample a challenge x_3 for checking that f(X) was committed to
         // correctly.
@@ -379,19 +382,12 @@ where
         let final_com = {
             let size = q_coms.len() + 1;
             let mut coms = q_coms;
-            let mut f_com_as_msm = MSMKZG::init();
-
-            f_com_as_msm.append_term(
-                E::Fr::ONE,
-                f_com,
-                PolynomialLabel::Custom("kzg_batch".into()),
-            );
 
             // Collapse all MSMs before combining with x4 powers, to match the
             // in-circuit verifier. Skip the first one since its x4 power is 1.
             #[cfg(feature = "truncated-challenges")]
-            coms.iter_mut().skip(1).for_each(MSMKZG::collapse);
-            coms.push(f_com_as_msm);
+            coms.iter_mut().skip(1).for_each(|c| c.collapse());
+            coms.push(f_com);
 
             #[cfg(feature = "truncated-challenges")]
             let powers = truncated_powers(x4);
@@ -399,7 +395,7 @@ where
             #[cfg(not(feature = "truncated-challenges"))]
             let powers = powers(x4);
 
-            msm_inner_product(coms, &powers.take(size).collect::<Vec<_>>())
+            inner_product(&coms, powers.take(size))
         };
 
         let v = {
@@ -423,22 +419,22 @@ where
         let mut pi_msm = MSMKZG::<E>::init();
         pi_msm.append_term(E::Fr::ONE, pi, PolynomialLabel::Custom("π".into()));
 
-        // Scale zπ - vG
-        let scaled_pi = MSMKZG {
-            scalars: vec![x3, v],
-            bases: vec![pi, -E::G1::generator()],
-            labels: vec![
-                PolynomialLabel::Custom("π".into()),
+        // - vG + zπ
+        let extra_rhs = MSMKZG::new(
+            &[v, x3],
+            &[-E::G1::generator(), pi],
+            &[
                 PolynomialLabel::Custom("-G".into()),
+                PolynomialLabel::Custom("π".into()),
             ],
-        };
+        );
 
         // (π, C − vG + zπ)
         let mut msm_accumulator = DualMSM {
             left: pi_msm,
-            right: final_com,
+            right: final_com.into(),
         };
-        msm_accumulator.right.add_msm(&scaled_pi);
+        msm_accumulator.right.add_msm(&extra_rhs);
 
         Ok(msm_accumulator)
     }
@@ -461,7 +457,7 @@ mod tests {
                 params::{ParamsKZG, ParamsVerifierKZG},
                 KZGCommitmentScheme,
             },
-            query::{ProverQuery, VerifierQuery},
+            query::{PolynomialReference, ProverQuery, VerifierQuery},
             EvaluationDomain, PolynomialLabel,
         },
         transcript::{CircuitTranscript, Hashable, Sampleable, Transcript},
@@ -583,15 +579,15 @@ mod tests {
         let queries = [
             ProverQuery {
                 point: x,
-                poly: &ax,
+                poly_ref: PolynomialReference(&ax),
             },
             ProverQuery {
                 point: x,
-                poly: &bx,
+                poly_ref: PolynomialReference(&bx),
             },
             ProverQuery {
                 point: y,
-                poly: &cx,
+                poly_ref: PolynomialReference(&cx),
             },
         ]
         .into_iter();

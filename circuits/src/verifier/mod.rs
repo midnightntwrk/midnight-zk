@@ -42,21 +42,8 @@ mod utils;
 mod verifier_gadget;
 
 pub use accumulator::{Accumulator, AssignedAccumulator};
-
-/// An in-circuit commitment point tagged with its polynomial label.
-#[derive(Clone, Debug)]
-pub(crate) struct LabeledPoint<S: SelfEmulation> {
-    pub(crate) point: S::AssignedPoint,
-    #[allow(dead_code)]
-    pub(crate) label: PolynomialLabel,
-}
-
-impl<S: SelfEmulation> LabeledPoint<S> {
-    pub(crate) fn new(point: S::AssignedPoint, label: PolynomialLabel) -> Self {
-        Self { point, label }
-    }
-}
-pub use msm::{AssignedMsm, Msm};
+pub use kzg::AssignedKZGCommitment;
+pub use msm::{AssignedMsm, AssignedPoint, Msm, Point};
 #[cfg(feature = "dev-curves")]
 pub use types::BnEmulation;
 pub use types::{BlstrsEmulation, SelfEmulation};
@@ -77,9 +64,11 @@ type VerifyingKey<S> =
 /// fixed-commitments, in the `fixed_base_scalars` field (of its RHS).
 #[derive(Clone, Debug)]
 pub struct AssignedVk<S: SelfEmulation> {
-    vk_name: String,
     domain: EvaluationDomain<S::F>,
+    fixed_commitments: Vec<AssignedKZGCommitment<S>>,
+    perm_commitments: Vec<AssignedKZGCommitment<S>>,
     cs: ConstraintSystem<S::F>,
+    cs_degree: usize,
     transcript_repr: AssignedNative<S::F>,
 }
 
@@ -105,75 +94,67 @@ impl<S: SelfEmulation> Instantiable<S::F> for AssignedVk<S> {
     }
 }
 
-/// Canonical name for the i-th verifying-key fixed commitment.
-pub fn fixed_commitment_name(prefix: &str, i: usize) -> String {
-    format!("{prefix}_fixed_com_{i}")
-}
-
-/// Canonical name for the i-th verifying-key permutation commitment.
-pub fn perm_commitment_name(prefix: &str, i: usize) -> String {
-    format!("{prefix}_perm_com_{i}")
-}
-
 impl<S: SelfEmulation> AssignedVk<S> {
-    /// Canonical name for the i-th fixed commitment of this AssignedVk.
-    fn fixed_commitment_name(&self, i: usize) -> String {
-        fixed_commitment_name(&self.vk_name, i)
-    }
-
-    /// Canonical name for the i-th perm commitment of this AssignedVk.
-    fn perm_commitment_name(&self, i: usize) -> String {
-        perm_commitment_name(&self.vk_name, i)
+    /// The assigned `transcript_repr` cell of this verifying key.
+    pub fn transcript_repr(&self) -> &AssignedNative<S::F> {
+        &self.transcript_repr
     }
 }
 
-/// Extracts the fixed bases from the verifying key, indexed by their
-/// canonical name.
-pub fn fixed_bases<S: SelfEmulation>(
-    vk_name: &str,
-    vk: &VerifyingKey<S>,
-) -> BTreeMap<String, S::C> {
+/// Builds the map from [`PolynomialLabel`] to curve point for all
+/// circuit-constant bases of a verifying key.
+///
+/// The map contains:
+/// * `Fixed(i)`: the i-th fixed-column commitment,
+/// * `PermutationFixed(i)`: the i-th permutation commitment,
+/// * `Custom("-G")`: the negated designated generator used in the KZG opening
+///   proof.
+///
+/// Pass this map to [`Accumulator::check`] or [`Msm::eval`].
+pub fn fixed_bases<S: SelfEmulation>(vk: &VerifyingKey<S>) -> BTreeMap<PolynomialLabel, S::C> {
     let mut fixed_bases = BTreeMap::new();
-
-    fixed_bases.insert(String::from("-G"), -S::C::generator());
 
     let fixed_commitments = vk.fixed_commitments();
     let perm_commitments = vk.permutation().commitments();
 
     for (i, com) in fixed_commitments.iter().enumerate() {
-        fixed_bases.insert(fixed_commitment_name(vk_name, i), *com.as_point());
+        fixed_bases.insert(PolynomialLabel::Fixed(i), *com.as_point());
     }
 
     for (i, com) in perm_commitments.iter().enumerate() {
-        fixed_bases.insert(perm_commitment_name(vk_name, i), *com.as_point());
+        fixed_bases.insert(PolynomialLabel::PermutationFixed(i), *com.as_point());
     }
+
+    fixed_bases.insert(PolynomialLabel::Custom("-G".into()), -S::C::generator());
 
     fixed_bases
 }
 
-/// The names of the fixed bases of a verifying key. This function is designed
-/// to be called before having an actual verifying key. Only the number of fixed
-/// and permutation commitments is necessary, not their actual values.
-pub fn fixed_base_names<S: SelfEmulation>(
-    vk_name: &str,
+/// Returns the ordered list of [`PolynomialLabel`]s for the fixed bases of a
+/// circuit with the given number of fixed and permutation commitments.
+///
+/// The order matches [`fixed_bases`]: fixed columns first, then permutation
+/// columns, then `Custom("-G")`. Call this before having an actual verifying
+/// key (e.g. during setup) to size an accumulator correctly.
+pub fn fixed_base_labels<S: SelfEmulation>(
     nb_fixed_commitments: usize,
     nb_perm_commitments: usize,
-) -> Vec<String> {
-    let mut names = Vec::with_capacity(nb_fixed_commitments + nb_perm_commitments + 1);
+) -> Vec<PolynomialLabel> {
+    let mut labels = Vec::with_capacity(nb_fixed_commitments + nb_perm_commitments + 1);
+
+    for i in 0..nb_fixed_commitments {
+        labels.push(PolynomialLabel::Fixed(i));
+    }
+
+    for i in 0..nb_perm_commitments {
+        labels.push(PolynomialLabel::PermutationFixed(i));
+    }
 
     // This term will be introduced by the KZG multiopen argument as a fixed base.
     // It corresponds to the negated designated generator. It is not proper of the
     // verifying key, but there is no harm in having it here (it needs to be
     // introduced at some point anyway and this is a good place).
-    names.push("-G".into());
+    labels.push(PolynomialLabel::Custom("-G".into()));
 
-    for i in 0..nb_fixed_commitments {
-        names.push(fixed_commitment_name(vk_name, i));
-    }
-
-    for i in 0..nb_perm_commitments {
-        names.push(perm_commitment_name(vk_name, i));
-    }
-
-    names
+    labels
 }

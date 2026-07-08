@@ -359,26 +359,14 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluated<F> {
     ) -> impl Iterator<Item = ProverQuery<'a, F>> + Clone {
         let x_next = pk.vk.domain.rotate_omega(x, Rotation::next());
 
-        let m_query = iter::once(ProverQuery {
-            point: x,
-            poly: &self.constructed.multiplicities,
-        });
+        let m_query = iter::once(ProverQuery::new(x, &self.constructed.multiplicities));
 
-        let helper_queries = self
-            .constructed
-            .helper_polys
-            .iter()
-            .map(move |h| ProverQuery { point: x, poly: h });
+        let helper_queries =
+            self.constructed.helper_polys.iter().map(move |h| ProverQuery::new(x, h));
 
         let z_queries = [
-            ProverQuery {
-                point: x,
-                poly: &self.constructed.aggregator_poly,
-            },
-            ProverQuery {
-                point: x_next,
-                poly: &self.constructed.aggregator_poly,
-            },
+            ProverQuery::new(x, &self.constructed.aggregator_poly),
+            ProverQuery::new(x_next, &self.constructed.aggregator_poly),
         ];
 
         m_query.chain(helper_queries).chain(z_queries)
