@@ -66,6 +66,8 @@ impl<T: Ivc> IvcProver<T> {
 
         let vk = self.pk.pk().get_vk();
         let vk_repr = vk.transcript_repr();
+        let domain_k = F::from(vk.get_domain().k() as u64);
+        let domain_omega = vk.get_domain().get_omega();
 
         let fixed_bases = midnight_circuits::verifier::fixed_bases::<S>(vk);
 
@@ -121,6 +123,8 @@ impl<T: Ivc> IvcProver<T> {
 
         let instance = IvcInstance {
             vk_repr,
+            domain_k,
+            domain_omega,
             state: next_state.clone(),
             acc: next_acc.clone(),
         };
@@ -155,8 +159,11 @@ impl<T: Ivc> IvcProver<T> {
     /// existence of a valid chain of transitions from genesis to the
     /// current state.
     pub fn instance(&self) -> IvcInstance<T> {
+        let vk = self.pk.pk().get_vk();
         IvcInstance {
-            vk_repr: self.pk.pk().get_vk().transcript_repr(),
+            vk_repr: vk.transcript_repr(),
+            domain_k: F::from(vk.get_domain().k() as u64),
+            domain_omega: vk.get_domain().get_omega(),
             state: self.state.clone(),
             acc: self.acc.clone(),
         }
