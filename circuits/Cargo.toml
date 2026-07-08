@@ -38,7 +38,7 @@ rand_chacha = "0.3.1"
 goldenfile = "=1.8.0"
 num-bigint = { workspace = true, features = ["rand"] }
 serde_json = { workspace = true }
-itertools = "0.14"
+itertools = "0.15"
 dhat = "0.3"
 
 [target.'cfg(ci_build)'.dependencies]
