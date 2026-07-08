@@ -12,7 +12,7 @@ use group::{
     prime::PrimeCurveAffine,
     Curve, GroupOpsOwned, ScalarMulOwned,
 };
-use midnight_curves::{fft::best_fft, pairing::MultiMillerLoop};
+use midnight_curves::fft::best_fft;
 pub use midnight_curves::{CurveAffine, CurveExt};
 
 /// This represents an element of a group with basic operations that can be
@@ -279,32 +279,6 @@ pub(crate) fn inner_product<F: PrimeField, T: Mul<F, Output = T> + Add<T, Output
         .unwrap()
 }
 
-pub(crate) fn msm_inner_product<E>(mut msms: Vec<MSMKZG<E>>, scalars: &[E::Fr]) -> MSMKZG<E>
-where
-    E: MultiMillerLoop + Debug,
-    E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
-    E::Fr: Ord,
-{
-    let len: usize = msms.iter().map(|m| m.scalars.len()).sum();
-
-    let mut new_scalars = Vec::with_capacity(len);
-    let mut new_bases = Vec::with_capacity(len);
-    let mut new_labels = Vec::with_capacity(len);
-
-    msms.iter_mut().zip(scalars.iter()).for_each(|(msm, s)| {
-        msm.scale(*s);
-        new_scalars.extend(&msm.scalars);
-        new_bases.extend(&msm.bases);
-        new_labels.extend(msm.labels.clone());
-    });
-
-    MSMKZG {
-        scalars: new_scalars,
-        bases: new_bases,
-        labels: new_labels,
-    }
-}
-
 /// Computes the inner product of a set of polynomial evaluations and a set of
 /// scalar values. This function computes the weighted sum of polynomial
 /// evaluations. Each vector in `evals_set` is multiplied element-wise by a
@@ -355,7 +329,7 @@ use midnight_curves::Fq as Scalar;
 #[cfg(test)]
 use rand_core::OsRng;
 
-use crate::poly::{kzg::msm::MSMKZG, PolynomialLabel};
+use crate::poly::PolynomialLabel;
 
 #[test]
 fn test_lagrange_interpolate() {
