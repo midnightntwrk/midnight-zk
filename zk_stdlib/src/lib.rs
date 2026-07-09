@@ -13,6 +13,7 @@
 
 #![doc = include_str!("../README.md")]
 
+pub mod decidable;
 mod external;
 mod instructions;
 pub mod interface;
