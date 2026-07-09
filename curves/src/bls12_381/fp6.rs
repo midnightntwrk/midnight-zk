@@ -440,9 +440,9 @@ mod tests {
         }
     }
 
-    #[test]
-    fn fp6_random_field_tests() {
-        crate::tests::field::random_field_tests::<Fp6>();
+    mod field_arithmetic_suite {
+        use super::super::Fp6;
+        crate::field_testing_suite!(Fp6, "field_arithmetic");
     }
 
     #[test]

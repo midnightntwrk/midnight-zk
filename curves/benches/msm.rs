@@ -4,10 +4,6 @@
 //! To run this benchmark:
 //!
 //!     cargo bench --bench msm
-//!
-//! To run the benchmark on halo2curve MSM version as well:
-//!
-//!     cargo bench --bench msm --features=h2c_compare
 
 #[macro_use]
 extern crate criterion;
