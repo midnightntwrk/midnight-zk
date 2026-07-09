@@ -18,22 +18,24 @@ use std::collections::BTreeMap;
 use ff::Field;
 use group::Group;
 use midnight_circuits::{
-    hash::poseidon::{PoseidonChip, PoseidonState},
+    hash::poseidon::PoseidonChip,
     instructions::{hash::HashCPU, *},
     types::{AssignedNative, Instantiable},
-    verifier::{self, Accumulator, AssignedAccumulator, AssignedKZGCommitment},
+    verifier::{Accumulator, AssignedAccumulator, AssignedKZGCommitment},
 };
 use midnight_proofs::{
     circuit::{Layouter, Value},
-    plonk::{self, ConstraintSystem, Error},
+    plonk::{ConstraintSystem, Error},
     poly::{
-        kzg::{commitment::KZGCommitment, params::ParamsVerifierKZG, KZGCommitmentScheme},
+        kzg::{commitment::KZGCommitment, params::ParamsVerifierKZG},
         EvaluationDomain, PolynomialLabel,
     },
-    transcript::{CircuitTranscript, Transcript},
     utils::SerdeFormat,
 };
-use midnight_zk_stdlib::{ZkStdLib, ZkStdLibArch};
+use midnight_zk_stdlib::{
+    decidable::{Decidable, StandardAssignedVk, StandardDecider},
+    ZkStdLib, ZkStdLibArch,
+};
 
 use super::aggregator::AggregationWitness;
 use crate::{
@@ -245,7 +247,7 @@ impl IvcTransition for ProofAggregation {
     }
 
     fn transition(
-        ctx: &InnerCircuitsContext,
+        _ctx: &InnerCircuitsContext,
         state: &Self::State,
         witness: Self::Witness,
     ) -> Self::State {
@@ -255,34 +257,17 @@ impl IvcTransition for ProofAggregation {
         // 2. Extract the statement.
         let statement = witness.claim.statement.format_instance();
 
-        // 3. Prepare inner proof into an accumulator, resolve fixed bases.
-        let inner_proof_acc = {
-            let mut transcript =
-                CircuitTranscript::<PoseidonState<F>>::init_from_bytes(&witness.inner_proof);
-            let dual_msm =
-                plonk::prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<PoseidonState<F>>>(
-                    witness.claim.vk.vk(),
-                    &[KZGCommitment::Simple(
-                        C::identity(),
-                        PolynomialLabel::Instance(0),
-                    )],
-                    &[&[statement]],
-                    &mut transcript,
-                )
-                .expect("off-circuit prepare should succeed");
+        // 3. Verify the inner proof into a collapsed accumulator via the
+        //    circuit's decider.
+        let inner_proof_acc = StandardDecider::decide(
+            witness.claim.vk.vk(),
+            &[KZGCommitment::Simple(C::identity(), PolynomialLabel::Instance(0))],
+            &[&[statement]],
+            &witness.inner_proof,
+        )
+        .expect("Invalid inner proof.")
+        .expect("StandardDecider always yields an accumulator");
 
-            // Sanity check (also validated in Aggregator::aggregate).
-            assert!(
-                dual_msm.clone().check(&ctx.params_verifier),
-                "invalid inner proof"
-            );
-
-            let vk_bases = verifier::fixed_bases::<S>(witness.claim.vk.vk());
-            let mut acc = Accumulator::from_dual_msm(dual_msm, &vk_bases);
-            acc.collapse();
-            acc.resolve_fixed_bases(&vk_bases);
-            acc
-        };
 
         // 4. Accumulate with the running accumulator and collapse.
         let inner_acc = {
@@ -327,31 +312,23 @@ impl IvcTransition for ProofAggregation {
             witness.as_ref().map(|w| w.claim.statement.format_instance()),
         )?;
 
-        // 3. Verify the inner proof in-circuit against the witnessed VK and statement.
-        let inner_proof_acc = {
-            let instance_com = AssignedKZGCommitment::simple(
-                self.std_lib.bls12_381().assign_fixed(layouter, C::identity())?,
-                PolynomialLabel::CommittedInstance(0),
-            );
-            let mut acc = self.std_lib.verifier().prepare(
-                layouter,
-                &assigned_vk,
-                &[instance_com],
-                &[std::slice::from_ref(&statement)],
-                witness.map(|w| w.inner_proof.clone()),
-            )?;
-
-            // Collapse before resolving, mirroring the off-circuit `transition`
-            // exactly so both feed an identically-shaped accumulator into the
-            // accumulation step (otherwise the batching challenge diverges).
-            acc.collapse(
-                layouter,
-                self.std_lib.bls12_381(),
-                self.std_lib.bls12_381().scalar_field_chip(),
-            )?;
-            acc.resolve_fixed_bases(&fixed_bases_map);
-            acc
-        };
+        // 3. Verify the inner proof in-circuit against the witnessed VK and
+        //    statement, via the circuit's decider.
+        let instance_com = AssignedKZGCommitment::simple(
+            self.std_lib.bls12_381().assign_fixed(layouter, C::identity())?,
+            PolynomialLabel::CommittedInstance(0),
+        );
+        let std_vk =
+            StandardAssignedVk { vk: assigned_vk.clone(), fixed_bases: fixed_bases_map };
+        let inner_proof_acc = StandardDecider::in_circuit_decide(
+            &self.std_lib,
+            layouter,
+            &std_vk,
+            &[instance_com],
+            &[std::slice::from_ref(&statement)],
+            witness.map(|w| w.inner_proof.clone()),
+        )?
+        .expect("StandardDecider always yields an accumulator");
 
         // 4. Accumulate with the running accumulator and collapse.
         let inner_acc = {

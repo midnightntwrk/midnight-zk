@@ -172,16 +172,21 @@ impl Decidable for IvcDecider {
 /// inputs.
 #[derive(Clone, Debug)]
 pub struct IvcFinalVk {
-    vk: PlonkVk,
-    carried_acc: Accumulator<S>,
+    /// Circuit VK
+    pub vk: PlonkVk,
+    /// Accumulator from the IVC instance
+    pub accumulator: Accumulator<S>,
 }
 
 /// In-circuit analog of [`IvcFinalVk`].
 #[derive(Clone, Debug)]
 pub struct IvcAssignedFinalVk {
-    vk: AssignedVk<S>,
-    carried_acc: AssignedAccumulator<S>,
-    fixed_bases: BTreeMap<PolynomialLabel, <S as SelfEmulation>::AssignedPoint>,
+    /// Assigned VK.
+    pub vk: AssignedVk<S>,
+    /// Assigned accumulator from the IVC instance.
+    pub carried_acc: AssignedAccumulator<S>,
+    /// Assigned fixed bases map.
+    pub fixed_bases: BTreeMap<PolynomialLabel, <S as SelfEmulation>::AssignedPoint>,
 }
 
 /// IVC final decider. Updates the state (as per the step function) once, and
@@ -201,7 +206,7 @@ impl Decidable for IvcFinalDecider {
     ) -> Result<Option<Accumulator<S>>, Error> {
         let proof_acc = IvcDecider::decide(&vk.vk, committed_instance, instance, proof)?
             .expect("IvcDecider always yields an accumulator");
-        let mut next_acc = Accumulator::accumulate(&[proof_acc, vk.carried_acc.clone()]);
+        let mut next_acc = Accumulator::accumulate(&[proof_acc, vk.accumulator.clone()]);
         next_acc.collapse();
         next_acc.resolve_fixed_bases(&fixed_bases::<S>(&vk.vk));
         Ok(Some(next_acc))
