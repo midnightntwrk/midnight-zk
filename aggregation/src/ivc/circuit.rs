@@ -22,8 +22,8 @@ use midnight_circuits::{
 };
 use midnight_curves::Bls12;
 use midnight_proofs::{
-    circuit::{Layouter, Value}, plonk::{ConstraintSystem, Error, VerifyingKey}, poly::{
-        EvaluationDomain, PolynomialLabel, kzg::{KZGCommitmentScheme, commitment::KZGCommitment},
+    circuit::{Layouter, Value}, plonk::{ConstraintSystem, Error}, poly::{
+        EvaluationDomain, PolynomialLabel, kzg::commitment::KZGCommitment,
     }, utils::helpers::ProcessedSerdeObject,
 };
 use midnight_zk_stdlib::{
