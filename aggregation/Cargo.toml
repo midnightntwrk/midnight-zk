@@ -44,6 +44,10 @@ required-features = ["truncated-challenges"]
 name = "multi_circuit_aggregation"
 required-features = ["truncated-challenges"]
 
+[[example]]
+name = "final_ivc_verification"
+required-features = ["truncated-challenges"]
+
 [features]
 truncated-challenges = [
     "midnight-proofs/truncated-challenges",
