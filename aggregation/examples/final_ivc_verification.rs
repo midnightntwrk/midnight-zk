@@ -18,7 +18,8 @@ use std::collections::BTreeMap;
 use ff::Field;
 use group::Group;
 use midnight_aggregation::ivc::{
-    self, IvcAssignedFinalVk, IvcCircuit, IvcContext, IvcFinalVk, IvcIO, IvcState, IvcTransition, circuit::IvcFinalDecider,
+    self, circuit::IvcFinalDecider, IvcAssignedFinalVk, IvcCircuit, IvcContext, IvcFinalVk, IvcIO,
+    IvcState, IvcTransition,
 };
 use midnight_circuits::{
     hash::poseidon::{PoseidonChip, PoseidonState},
@@ -85,7 +86,10 @@ impl<const N: usize> IvcState for PoseidonChain<N> {
     type State = State;
     type AssignedState = AssignedState;
     fn genesis(_ctx: &()) -> Self::State {
-        State { cnt: F::ZERO, val: F::ZERO }
+        State {
+            cnt: F::ZERO,
+            val: F::ZERO,
+        }
     }
     fn decider(_ctx: &Self::Context, _state: &Self::State) -> bool {
         true
@@ -140,7 +144,10 @@ impl<const N: usize> IvcTransition for PoseidonChain<N> {
         for _ in 0..N {
             val = <PoseidonChip<F> as HashCPU<F, F>>::hash(&[val]);
         }
-        State { cnt: state.cnt + F::from(N as u64), val }
+        State {
+            cnt: state.cnt + F::from(N as u64),
+            val,
+        }
     }
     fn circuit_transition(
         &self,
@@ -157,7 +164,6 @@ impl<const N: usize> IvcTransition for PoseidonChain<N> {
         Ok(AssignedState { cnt, val })
     }
 }
-
 
 #[derive(Clone, Debug)]
 struct FinalIvcWitness {
@@ -228,9 +234,9 @@ impl<const N: usize> Relation for FinalIvcVerifier<N> {
             witness.as_ref().map(|w| w.carried_acc.clone()),
         )?;
 
-        // 4. Reconstruct the IVC proof's public inputs: vk_repr ++ state ++ acc.
-        //    Using the *same* assigned `carried` for both the PI and the fold is
-        //    what binds it to the proof.
+        // 4. Reconstruct the IVC proof's public inputs: vk_repr ++ state ++ acc. Using
+        //    the *same* assigned `carried` for both the PI and the fold is what binds
+        //    it to the proof.
         let proof_pi = [
             verifier.as_public_input(layouter, &assigned_vk)?,
             vec![cnt, val],
@@ -290,10 +296,16 @@ fn final_accumulator<const N: usize>(
     full_pi.extend(AssignedAccumulator::<S>::as_public_input(carried_acc));
 
     // Verify + fold + collapse + resolve, via IvcCircuit's decider (final step).
-    let final_vk = IvcFinalVk { vk: ivc_vk.vk().clone(), accumulator: carried_acc.clone() };
+    let final_vk = IvcFinalVk {
+        vk: ivc_vk.vk().clone(),
+        accumulator: carried_acc.clone(),
+    };
     IvcFinalDecider::decide(
         &final_vk,
-        &[KZGCommitment::Simple(C::identity(), PolynomialLabel::Instance(0))],
+        &[KZGCommitment::Simple(
+            C::identity(),
+            PolynomialLabel::Instance(0),
+        )],
         &[&full_pi],
         proof,
     )
@@ -307,7 +319,11 @@ fn main() {
     const STEPS: usize = 2;
 
     // 1. Run a short IVC chain.
-    let srs = load_srs(SrsSource::Midnight, K, IvcCircuit::<PoseidonChain<N>>::cs_degree());
+    let srs = load_srs(
+        SrsSource::Midnight,
+        K,
+        IvcCircuit::<PoseidonChain<N>>::cs_degree(),
+    );
     let (mut prover, verifier) = ivc::setup::<PoseidonChain<N>>(srs, K, ());
     let mut ivc_proof = Vec::new();
     for _ in 0..STEPS {
@@ -317,8 +333,8 @@ fn main() {
     verifier.verify(&ivc_instance, &ivc_proof).unwrap();
     println!("IVC chain of {STEPS} steps produced and natively verified.");
 
-    // 2. Assemble the final circuit's inputs (the same triple an IVC step
-    //    consumes: the final state, the carried accumulator and the proof).
+    // 2. Assemble the final circuit's inputs (the same triple an IVC step consumes:
+    //    the final state, the carried accumulator and the proof).
     let ivc_vk = verifier.vk().clone();
     let state = *ivc_instance.state();
     let carried_acc = ivc_instance.acc().clone();
@@ -330,12 +346,19 @@ fn main() {
 
     // Sanity: the merged accumulator satisfies the pairing (the decider check).
     assert!(
-        merged.check(verifier.params_verifier(), &std::collections::BTreeMap::new()),
+        merged.check(
+            verifier.params_verifier(),
+            &std::collections::BTreeMap::new()
+        ),
         "decider pairing on the compressed accumulator failed"
     );
     println!("Off-circuit decider check on the compressed accumulator passed.");
 
-    let witness = FinalIvcWitness { state, carried_acc, proof: ivc_proof };
+    let witness = FinalIvcWitness {
+        state,
+        carried_acc,
+        proof: ivc_proof,
+    };
     let relation = FinalIvcVerifier::<N> { ivc_vk };
 
     // 3. Prove & verify the final circuit in-circuit.

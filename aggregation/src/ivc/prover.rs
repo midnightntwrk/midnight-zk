@@ -13,7 +13,10 @@ use midnight_circuits::{
     types::Instantiable,
     verifier::{Accumulator, AssignedAccumulator, AssignedVk},
 };
-use midnight_proofs::poly::{kzg::{commitment::KZGCommitment, params::ParamsKZG}, PolynomialLabel};
+use midnight_proofs::poly::{
+    kzg::{commitment::KZGCommitment, params::ParamsKZG},
+    PolynomialLabel,
+};
 use midnight_zk_stdlib::{decidable::Decidable, MidnightPK};
 use rand::rngs::OsRng;
 
@@ -92,7 +95,10 @@ impl<T: Ivc> IvcProver<T> {
             // IVC circuit's decider (prepare-only, mirroring the in-circuit path).
             IvcDecider::decide(
                 vk,
-                &[KZGCommitment::Simple(C::identity(), PolynomialLabel::Instance(0))],
+                &[KZGCommitment::Simple(
+                    C::identity(),
+                    PolynomialLabel::Instance(0),
+                )],
                 &[&prev_pi],
                 &self.proof,
             )?

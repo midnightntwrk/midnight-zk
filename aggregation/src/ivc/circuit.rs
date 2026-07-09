@@ -22,9 +22,13 @@ use midnight_circuits::{
     },
 };
 use midnight_proofs::{
-    circuit::{Layouter, Value}, plonk::{self, ConstraintSystem, Error, VerifyingKey}, poly::{
-        EvaluationDomain, PolynomialLabel, kzg::{KZGCommitmentScheme, commitment::KZGCommitment},
-    }, transcript::{CircuitTranscript, Transcript},
+    circuit::{Layouter, Value},
+    plonk::{self, ConstraintSystem, Error, VerifyingKey},
+    poly::{
+        kzg::{commitment::KZGCommitment, KZGCommitmentScheme},
+        EvaluationDomain, PolynomialLabel,
+    },
+    transcript::{CircuitTranscript, Transcript},
 };
 use midnight_zk_stdlib::{decidable::Decidable, Relation, ZkStdLib, ZkStdLibArch};
 
@@ -126,8 +130,8 @@ impl<T: Ivc> IvcCircuit<T> {
 
 type PlonkVk = VerifyingKey<midnight_curves::Fq, KZGCommitmentScheme<midnight_curves::Bls12>>;
 
-/// The IVC circuit's per-step decider: **prepare-only** partial verification of a
-/// step's proof.
+/// The IVC circuit's per-step decider: **prepare-only** partial verification of
+/// a step's proof.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct IvcDecider;
 
@@ -143,14 +147,12 @@ impl Decidable for IvcDecider {
     ) -> Result<Option<Accumulator<S>>, Error> {
         let fixed_bases = fixed_bases::<S>(vk);
         let mut transcript = CircuitTranscript::<PoseidonState<F>>::init_from_bytes(proof);
-        let dual_msm =
-            plonk::prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<PoseidonState<F>>>(
-                vk,
-                committed_instance,
-                instance,
-                &mut transcript,
-            )?;
-            
+        let dual_msm = plonk::prepare::<
+            F,
+            KZGCommitmentScheme<E>,
+            CircuitTranscript<PoseidonState<F>>,
+        >(vk, committed_instance, instance, &mut transcript)?;
+
         Ok(Some(Accumulator::from_dual_msm(dual_msm, &fixed_bases)))
     }
 
@@ -168,8 +170,8 @@ impl Decidable for IvcDecider {
 }
 
 /// Off-circuit verifying context for *finalizing* an IVC chain: the IVC PLONK
-/// verifying key plus the (structured) accumulator carried in the proof's public
-/// inputs.
+/// verifying key plus the (structured) accumulator carried in the proof's
+/// public inputs.
 #[derive(Clone, Debug)]
 pub struct IvcFinalVk {
     /// Circuit VK
@@ -190,7 +192,7 @@ pub struct IvcAssignedFinalVk {
 }
 
 /// IVC final decider. Updates the state (as per the step function) once, and
-/// collapses the MSM (including the fixed bases) into a collapsed MSM. 
+/// collapses the MSM (including the fixed bases) into a collapsed MSM.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct IvcFinalDecider {}
 
@@ -222,10 +224,17 @@ impl Decidable for IvcFinalDecider {
     ) -> Result<Option<AssignedAccumulator<S>>, Error> {
         let bls = std_lib.bls12_381();
 
-        let proof_acc =
-            IvcDecider::in_circuit_decide(std_lib, layouter, &vk.vk, committed_instance, instance, proof)?
-                .expect("IvcDecider always yields an accumulator");
-        let mut next_acc = std_lib.verifier().accumulate(layouter, &[proof_acc, vk.carried_acc.clone()])?;
+        let proof_acc = IvcDecider::in_circuit_decide(
+            std_lib,
+            layouter,
+            &vk.vk,
+            committed_instance,
+            instance,
+            proof,
+        )?
+        .expect("IvcDecider always yields an accumulator");
+        let mut next_acc =
+            std_lib.verifier().accumulate(layouter, &[proof_acc, vk.carried_acc.clone()])?;
         next_acc.collapse(layouter, bls, bls.scalar_field_chip())?;
         next_acc.resolve_fixed_bases(&vk.fixed_bases);
 
