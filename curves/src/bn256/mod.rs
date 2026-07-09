@@ -1,3 +1,11 @@
+#[macro_use]
+mod curve_impl;
+
+mod compressed;
+pub mod ext_field;
+
+pub use ext_field::ExtField;
+
 mod curve;
 mod engine;
 mod fq;

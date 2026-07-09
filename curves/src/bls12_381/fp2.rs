@@ -1067,10 +1067,26 @@ mod tests {
         }
     }
 
+    mod field_arithmetic_suite {
+        use super::super::Fp2;
+        crate::field_testing_suite!(Fp2, "field_arithmetic");
+    }
+
     #[test]
-    fn fp2_field_tests() {
-        crate::tests::field::random_field_tests::<Fp2>();
-        crate::tests::field::random_sqrt_tests::<Fp2>();
+    fn fp2_sqrt() {
+        use ff::Field;
+
+        let mut rng = XorShiftRng::from_seed([
+            0x59, 0x62, 0xbe, 0x5d, 0x76, 0x3d, 0x31, 0x8d, 0x17, 0xdb, 0x37, 0x32, 0x54, 0x06,
+            0xbc, 0xe5,
+        ]);
+
+        for _ in 0..10000 {
+            let a = Fp2::random(&mut rng);
+            let a_sq = a.square();
+            let a_again = a_sq.sqrt().unwrap();
+            assert!(a == a_again || a == -a_again);
+        }
     }
 
     #[test]

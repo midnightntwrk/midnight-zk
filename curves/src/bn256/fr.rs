@@ -19,7 +19,6 @@ crate::impl_binops_calls!(Fr);
 crate::impl_binops_additive!(Fr, Fr);
 crate::impl_binops_multiplicative!(Fr, Fr);
 crate::field_bits!(Fr);
-crate::serialize_deserialize_primefield!(Fr);
 
 crate::impl_from_u64!(Fr);
 crate::impl_from_bool!(Fr);

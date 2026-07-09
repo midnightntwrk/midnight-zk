@@ -2,17 +2,31 @@
 
 [![Crates.io Version](https://img.shields.io/crates/v/midnight-curves?label=midnight-curves)](https://crates.io/crates/midnight-curves)
 
-This crate provides implementations of the **BLS12-381** and **JubJub** curves.
+This crate provides implementations of several elliptic curves and their
+associated fields.
+
+**Production curves** (always available):
+- **BLS12-381** — pairing-friendly curve, backed by `blst`.
+- **JubJub** — twisted Edwards curve embedded in the BLS12-381 scalar field.
+- **secp256k1** — exposed through the `k256` module (wrappers around the `k256` crate).
+- **secp256r1 / NIST P-256** — exposed through the `p256` module (aliases over the `p256` crate).
+- **Curve25519** — twisted Edwards curve, backed by `curve25519-dalek`.
+
+**Development/testing curves** (gated behind the `dev-curves` feature):
+- **BN256** (a.k.a. BN254) — pairing-friendly curve, available via the `bn256` module.
 
 **Acknowledgments**
 - [Supranational](https://github.com/supranational) for their highly optimized implementation of BLS12-381.
 - The [Filecoin team](https://github.com/filecoin-project) for the Rust wrappers around Supranational’s library.
 - The [Zcash team](https://github.com/zcash) for the implementation of the JubJub curve.
+- The [RustCrypto team](https://github.com/RustCrypto) for the `k256` and `p256` crates underlying the secp256k1 and secp256r1 modules.
+- The [dalek-cryptography team](https://github.com/dalek-cryptography) for the `curve25519-dalek` crate underlying the Curve25519 module.
+- The [Privacy & Scaling Explorations team](https://github.com/privacy-scaling-explorations) for the `halo2curves` derivation macros used by the BN256 module.
 
 ## BLS12-381
 
-> Implementation of BLS12-381 pairing-friendly elliptic curve construction, using the [blst](https://github.com/supranational/blst) library as backend,
-> based on the 'blasters' wrapper, [bltsrs](https://github.com/filecoin-project/blstrs).
+> Implementation of the BLS12-381 pairing-friendly elliptic curve construction, using the [blst](https://github.com/supranational/blst) library as backend,
+> based on the [blstrs](https://github.com/filecoin-project/blstrs) wrapper.
 
 ### Supported Platforms
 
@@ -28,8 +42,14 @@ To enable portable features when building the blst dependency, use the 'portable
 
 ### Benchmarking
 
+The crate ships Criterion benchmarks for field arithmetic, elliptic-curve operations, multi-scalar multiplication, and pairings:
+
 ```
-$ cargo bench --features __private_bench
+$ cargo bench                      # run all benchmarks
+$ cargo bench --bench field_arith  # field arithmetic
+$ cargo bench --bench ec           # elliptic-curve operations
+$ cargo bench --bench msm          # multi-scalar multiplication
+$ cargo bench --bench pairing      # pairings
 ```
 
 
@@ -87,13 +107,10 @@ x = 3059144344244213709971259814753781636986470325476647558659373206291635324768
 y = 927553665492332455747201965776037880757740193453592970025027978793976877002675564980949289727957565575433344219582*u + 1985150602287291935568054521177171638300868978215655730859378665066344726373823718423869104263333984641494340347905
 ```
 
-## jubjub
-This is a pure Rust implementation of the Jubjub elliptic curve group and its associated fields.
+## JubJub
+This is a pure Rust implementation of the JubJub elliptic curve group and its associated fields, originally derived from the [Zcash implementation](https://github.com/zkcrypto/jubjub).
 
-* **This implementation has not been reviewed or audited. Use at your own risk.**
-* This implementation targets Rust `1.56` or later.
 * All operations are constant time unless explicitly noted.
-* This implementation does not require the Rust standard library.
 
 ### Curve Description
 
@@ -109,7 +126,25 @@ The choice of `GF(q)` is made to be the scalar field of the BLS12-381 elliptic c
 
 Jubjub is birationally equivalent to a [Montgomery curve](https://en.wikipedia.org/wiki/Montgomery_curve) `y^2 = x^3 + Ax^2 + x` over the same field with `A = 40962`. This value of `A` is the smallest integer such that `(A - 2) / 4` is a small integer, `A^2 - 4` is nonsquare in `GF(q)`, and the Montgomery curve and its quadratic twist have small cofactors `8` and `4`, respectively. This is identical to the relationship between Curve25519 and ed25519.
 
-Please see [./doc/evidence/](./doc/evidence/) for supporting evidence that Jubjub meets the [SafeCurves](https://safecurves.cr.yp.to/index.html) criteria. The tool in [./doc/derive/](./doc/derive/) will derive the curve parameters via the above criteria to demonstrate rigidity.
+JubJub meets the [SafeCurves](https://safecurves.cr.yp.to/index.html) criteria; see the original [zkcrypto/jubjub](https://github.com/zkcrypto/jubjub) repository for the supporting evidence and parameter-derivation tooling.
+
+## Other curves
+
+### secp256k1 (`k256` module)
+
+secp256k1 support is provided by the `k256` module, which wraps the [`k256`](https://crates.io/crates/k256) crate (`K256`, `K256Affine`, base field `Fp`). The base-field wrapper normalizes operands before comparisons to paper over the underlying crate's lazy-reduction strategy.
+
+### secp256r1 / NIST P-256 (`p256` module)
+
+NIST P-256 support is provided by the `p256` module, which exposes type aliases over the [`p256`](https://crates.io/crates/p256) crate (`P256`, `P256Affine`, base field `Fp`, scalar field `Fq`) together with the curve constants and affine-coordinate helpers.
+
+### Curve25519 (`curve25519` module)
+
+Curve25519 is provided as a twisted Edwards curve backed by [`curve25519-dalek`](https://crates.io/crates/curve25519-dalek), exposing `Curve25519`, `Curve25519Affine`, `Curve25519Subgroup`, the base field `Fp`, and the `Scalar` type.
+
+### BN256 (`bn256` module, `dev-curves` only)
+
+The BN256 (BN254) pairing-friendly curve is available behind the `dev-curves` feature and is intended for testing rather than production use.
 
 ## License
 

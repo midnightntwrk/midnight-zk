@@ -4,7 +4,7 @@ use halo2derive::impl_field;
 use rand_core::RngCore;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
-use crate::ff_ext::ExtField;
+use super::ExtField;
 
 impl_field!(
     bn256_base,
@@ -21,7 +21,6 @@ crate::impl_binops_calls!(Fq);
 crate::impl_binops_additive!(Fq, Fq);
 crate::impl_binops_multiplicative!(Fq, Fq);
 crate::field_bits!(Fq);
-crate::serialize_deserialize_primefield!(Fq);
 crate::impl_from_u64!(Fq);
 crate::impl_from_bool!(Fq);
 
