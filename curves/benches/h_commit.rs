@@ -3,8 +3,8 @@
 //!
 //! * "chunked"      : `m` MSMs of size `n`, all reusing the SAME `n` bases
 //!   (default mode), run in parallel like the prover does.
-//! * "single_blst"  : ONE MSM of size `m*n` over `m*n` distinct bases via
-//!   blst `multi_exp_affine` (only valid when m*n <= 2^19).
+//! * "single_blst"  : ONE MSM of size `m*n` over `m*n` distinct bases via blst
+//!   `multi_exp_affine` (only valid when m*n <= 2^19).
 //! * "single_best"  : ONE MSM of size `m*n` over `m*n` distinct bases via
 //!   `msm_best` (the path `msm_specific` takes above 2^19).
 //!
@@ -41,7 +41,10 @@ fn gen_bases(n: usize) -> Vec<G1Affine> {
 fn gen_coeffs(n: usize) -> Vec<Fq> {
     (0..n)
         .into_par_iter()
-        .map_init(|| XorShiftRng::from_seed(SEED), |rng, _| Fq::random(&mut *rng))
+        .map_init(
+            || XorShiftRng::from_seed(SEED),
+            |rng, _| Fq::random(&mut *rng),
+        )
         .collect()
 }
 

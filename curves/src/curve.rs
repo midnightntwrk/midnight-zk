@@ -94,7 +94,6 @@ impl<C: CurveAffine> Coordinates<C> {
         C::from_xy(x, y).map(|_| Coordinates { x, y })
     }
     /// Returns the x-coordinate.
-    ///
     pub fn x(&self) -> &C::Base {
         &self.x
     }

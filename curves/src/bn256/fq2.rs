@@ -4,9 +4,9 @@ use std::cmp::Ordering;
 use ff::{Field, FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
 use subtle::{Choice, CtOption};
 
-use super::fq::Fq;
 use super::{
     ext_field::quadratic::{QuadExtField, QuadExtFieldArith, SQRT},
+    fq::Fq,
     ExtField,
 };
 use crate::ff_ext::Legendre;

@@ -434,4 +434,3 @@ macro_rules! curve_testing_suite {
         }
     };
 }
-

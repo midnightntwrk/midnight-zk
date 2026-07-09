@@ -1,8 +1,9 @@
 use ff::Field;
 
-use super::{fq::Fq, fq2::Fq2};
 use super::{
     ext_field::cubic::{CubicExtField, CubicExtFieldArith, CubicSparseMul},
+    fq::Fq,
+    fq2::Fq2,
     ExtField,
 };
 

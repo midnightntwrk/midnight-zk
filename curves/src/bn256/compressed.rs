@@ -31,8 +31,8 @@ impl Flag {
     }
 }
 
-/// A compressed representation of an affine point, using the two-spare-bits flag
-/// layout (sign at bit 0, identity at bit 1).
+/// A compressed representation of an affine point, using the two-spare-bits
+/// flag layout (sign at bit 0, identity at bit 1).
 pub(crate) trait Compressed<C: CurveAffine>:
     Debug + Copy + Default + AsRef<[u8]> + AsMut<[u8]> + Send + Sync + 'static
 where

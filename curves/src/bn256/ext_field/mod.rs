@@ -1,7 +1,8 @@
 //! Generic extension-field building blocks for the bn256 tower.
 //!
 //! These are the reusable layers the concrete tower is built from:
-//! `Fq2 = QuadExtField<Fq>`, `Fq6 = CubicExtField<Fq2>`, `Fq12 = QuadExtField<Fq6>`.
+//! `Fq2 = QuadExtField<Fq>`, `Fq6 = CubicExtField<Fq2>`, `Fq12 =
+//! QuadExtField<Fq6>`.
 
 pub mod cubic;
 pub mod quadratic;

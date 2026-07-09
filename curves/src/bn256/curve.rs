@@ -241,5 +241,4 @@ mod test {
         G2_GENERATOR_Y,
         Fr::MODULUS
     );
-
 }

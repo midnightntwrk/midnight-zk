@@ -19,10 +19,7 @@ use pairing::{Engine, PairingCurveAffine};
 use rand_core::RngCore;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
-use super::{
-    fp::Fp,
-    Bls12, Fq, G2Affine, Gt,
-};
+use super::{fp::Fp, Bls12, Fq, G2Affine, Gt};
 use crate::{
     curve::{Coordinates, CurveAffine, CurveExt},
     serde_traits::SerdeObject,
