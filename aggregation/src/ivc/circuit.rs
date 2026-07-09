@@ -9,20 +9,26 @@
 //! there is no meaningful prior proof to verify, so the circuit substitutes a
 //! default accumulator that satisfies the verification invariant.
 
+use std::collections::BTreeMap;
+
 use group::Group;
 use midnight_circuits::{
+    hash::poseidon::PoseidonState,
     instructions::{AssignmentInstructions, BinaryInstructions, PublicInputInstructions},
-    types::Instantiable,
-    verifier::{Accumulator, AssignedAccumulator, AssignedKZGCommitment, AssignedVk},
+    types::{AssignedNative, Instantiable},
+    verifier::{
+        fixed_bases, Accumulator, AssignedAccumulator, AssignedKZGCommitment, AssignedVk,
+        SelfEmulation,
+    },
 };
 use midnight_proofs::{
-    circuit::{Layouter, Value},
-    plonk::ConstraintSystem,
-    poly::{EvaluationDomain, PolynomialLabel},
+    circuit::{Layouter, Value}, plonk::{self, ConstraintSystem, Error, VerifyingKey}, poly::{
+        EvaluationDomain, PolynomialLabel, kzg::{KZGCommitmentScheme, commitment::KZGCommitment},
+    }, transcript::{CircuitTranscript, Transcript},
 };
-use midnight_zk_stdlib::{Relation, ZkStdLib, ZkStdLibArch};
+use midnight_zk_stdlib::{decidable::Decidable, Relation, ZkStdLib, ZkStdLibArch};
 
-use super::{Ivc, IvcError, C, F, S};
+use super::{Ivc, IvcError, C, E, F, S};
 
 /// The public instance (statement) of an IVC proof.
 ///
@@ -46,6 +52,11 @@ impl<T: Ivc> IvcInstance<T> {
     /// Returns the current state.
     pub fn state(&self) -> &T::State {
         &self.state
+    }
+
+    /// Returns the accumulator carried by this instance.
+    pub fn acc(&self) -> &Accumulator<S> {
+        &self.acc
     }
 }
 
@@ -110,6 +121,110 @@ impl<T: Ivc> IvcCircuit<T> {
     /// Returns the constraint-system degree of the IVC circuit.
     pub fn cs_degree() -> usize {
         midnight_zk_stdlib::cs_degree(Self::arch())
+    }
+}
+
+type PlonkVk = VerifyingKey<midnight_curves::Fq, KZGCommitmentScheme<midnight_curves::Bls12>>;
+
+/// The IVC circuit's per-step decider: **prepare-only** partial verification of a
+/// step's proof.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct IvcDecider;
+
+impl Decidable for IvcDecider {
+    type Vk = PlonkVk;
+    type AssignedVk = AssignedVk<S>;
+
+    fn decide(
+        vk: &Self::Vk,
+        committed_instance: &[KZGCommitment<midnight_curves::Bls12>],
+        instance: &[&[F]],
+        proof: &[u8],
+    ) -> Result<Option<Accumulator<S>>, Error> {
+        let fixed_bases = fixed_bases::<S>(vk);
+        let mut transcript = CircuitTranscript::<PoseidonState<F>>::init_from_bytes(proof);
+        let dual_msm =
+            plonk::prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<PoseidonState<F>>>(
+                vk,
+                committed_instance,
+                instance,
+                &mut transcript,
+            )?;
+            
+        Ok(Some(Accumulator::from_dual_msm(dual_msm, &fixed_bases)))
+    }
+
+    fn in_circuit_decide(
+        std_lib: &ZkStdLib,
+        layouter: &mut impl Layouter<F>,
+        vk: &Self::AssignedVk,
+        committed_instance: &[AssignedKZGCommitment<S>],
+        instance: &[&[AssignedNative<F>]],
+        proof: Value<Vec<u8>>,
+    ) -> Result<Option<AssignedAccumulator<S>>, Error> {
+        let acc = std_lib.verifier().prepare(layouter, vk, committed_instance, instance, proof)?;
+        Ok(Some(acc))
+    }
+}
+
+/// Off-circuit verifying context for *finalizing* an IVC chain: the IVC PLONK
+/// verifying key plus the (structured) accumulator carried in the proof's public
+/// inputs.
+#[derive(Clone, Debug)]
+pub struct IvcFinalVk {
+    vk: PlonkVk,
+    carried_acc: Accumulator<S>,
+}
+
+/// In-circuit analog of [`IvcFinalVk`].
+#[derive(Clone, Debug)]
+pub struct IvcAssignedFinalVk {
+    vk: AssignedVk<S>,
+    carried_acc: AssignedAccumulator<S>,
+    fixed_bases: BTreeMap<PolynomialLabel, <S as SelfEmulation>::AssignedPoint>,
+}
+
+/// IVC final decider. Updates the state (as per the step function) once, and
+/// collapses the MSM (including the fixed bases) into a collapsed MSM. 
+#[derive(Clone, Copy, Debug, Default)]
+pub struct IvcFinalDecider {}
+
+impl Decidable for IvcFinalDecider {
+    type Vk = IvcFinalVk;
+    type AssignedVk = IvcAssignedFinalVk;
+
+    fn decide(
+        vk: &Self::Vk,
+        committed_instance: &[KZGCommitment<midnight_curves::Bls12>],
+        instance: &[&[F]],
+        proof: &[u8],
+    ) -> Result<Option<Accumulator<S>>, Error> {
+        let proof_acc = IvcDecider::decide(&vk.vk, committed_instance, instance, proof)?
+            .expect("IvcDecider always yields an accumulator");
+        let mut next_acc = Accumulator::accumulate(&[proof_acc, vk.carried_acc.clone()]);
+        next_acc.collapse();
+        next_acc.resolve_fixed_bases(&fixed_bases::<S>(&vk.vk));
+        Ok(Some(next_acc))
+    }
+
+    fn in_circuit_decide(
+        std_lib: &ZkStdLib,
+        layouter: &mut impl Layouter<F>,
+        vk: &Self::AssignedVk,
+        committed_instance: &[AssignedKZGCommitment<S>],
+        instance: &[&[AssignedNative<F>]],
+        proof: Value<Vec<u8>>,
+    ) -> Result<Option<AssignedAccumulator<S>>, Error> {
+        let bls = std_lib.bls12_381();
+
+        let proof_acc =
+            IvcDecider::in_circuit_decide(std_lib, layouter, &vk.vk, committed_instance, instance, proof)?
+                .expect("IvcDecider always yields an accumulator");
+        let mut next_acc = std_lib.verifier().accumulate(layouter, &[proof_acc, vk.carried_acc.clone()])?;
+        next_acc.collapse(layouter, bls, bls.scalar_field_chip())?;
+        next_acc.resolve_fixed_bases(&vk.fixed_bases);
+
+        Ok(Some(next_acc))
     }
 }
 
@@ -186,13 +301,15 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
 
         // Verify a witnessed proof that ensures the validity of `prev_state`.
         // The proof is valid iff `prev_proof_acc` satisfies the invariant.
-        let mut prev_proof_acc = verifier_gadget.prepare(
+        let mut prev_proof_acc = IvcDecider::in_circuit_decide(
+            std_lib,
             layouter,
             &assigned_self_vk,
             &[instance_com],
             &[&prev_proof_pi],
             witness.map(|w| w.prev_proof),
-        )?;
+        )?
+        .expect("IvcDecider always yields an accumulator");
 
         // If `prev_state` is genesis, the provided accumulator is discarded/multiplied
         // by 0 so that it trivially satisfies the invariant.

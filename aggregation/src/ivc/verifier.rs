@@ -33,6 +33,16 @@ pub struct IvcVerifier<T: Ivc> {
 }
 
 impl<T: Ivc> IvcVerifier<T> {
+    /// The verifying key of the IVC circuit.
+    pub fn vk(&self) -> &MidnightVK {
+        &self.vk
+    }
+
+    /// The SRS verifier parameters.
+    pub fn params_verifier(&self) -> &ParamsVerifierKZG<E> {
+        &self.params_verifier
+    }
+
     /// Verifies an IVC proof against the given instance.
     ///
     /// Checks that the proof is valid with respect to the given instance by:

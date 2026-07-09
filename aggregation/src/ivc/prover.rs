@@ -13,18 +13,11 @@ use midnight_circuits::{
     types::Instantiable,
     verifier::{Accumulator, AssignedAccumulator, AssignedVk},
 };
-use midnight_proofs::{
-    plonk::{self},
-    poly::{
-        kzg::{commitment::KZGCommitment, params::ParamsKZG, KZGCommitmentScheme},
-        PolynomialLabel,
-    },
-    transcript::{CircuitTranscript, Transcript},
-};
-use midnight_zk_stdlib::MidnightPK;
+use midnight_proofs::poly::{kzg::{commitment::KZGCommitment, params::ParamsKZG}, PolynomialLabel};
+use midnight_zk_stdlib::{decidable::Decidable, MidnightPK};
 use rand::rngs::OsRng;
 
-use super::{Ivc, IvcCircuit, IvcError, IvcInstance, IvcWitness, C, E, F, S};
+use super::{circuit::IvcDecider, Ivc, IvcCircuit, IvcError, IvcInstance, IvcWitness, C, E, F, S};
 
 /// Stateful IVC prover holding:
 /// - the SRS (params),
@@ -95,24 +88,15 @@ impl<T: Ivc> IvcProver<T> {
             ]
             .concat();
 
-            let mut transcript =
-                CircuitTranscript::<PoseidonState<F>>::init_from_bytes(&self.proof);
-            let dual_msm =
-                plonk::prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<PoseidonState<F>>>(
-                    vk,
-                    &[KZGCommitment::Simple(
-                        C::identity(),
-                        PolynomialLabel::Instance(0),
-                    )],
-                    &[&prev_pi],
-                    &mut transcript,
-                )?;
-
-            if !dual_msm.clone().check(&self.params.verifier_params()) {
-                return Err(IvcError::InvalidProof);
-            }
-
-            Accumulator::from_dual_msm(dual_msm, &fixed_bases)
+            // Off-circuit partial verification of the previous proof, via the
+            // IVC circuit's decider (prepare-only, mirroring the in-circuit path).
+            IvcDecider::decide(
+                vk,
+                &[KZGCommitment::Simple(C::identity(), PolynomialLabel::Instance(0))],
+                &[&prev_pi],
+                &self.proof,
+            )?
+            .expect("IvcDecider always yields an accumulator")
         };
 
         // Accumulate the proof accumulator with the previous accumulator.
