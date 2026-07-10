@@ -9,14 +9,11 @@ macro_rules! new_curve_impl {
     $constant_a:expr,
     $constant_b:expr,
     $curve_id:literal,
-    $hash_to_curve:expr,
-    $flag_config:expr,
     standard_sign
     ) => {
 
         paste::paste! {
-            impl $crate::serde::Compressed<$name_affine> for [<$name:upper Compressed >] {
-                const CONFIG: $crate::serde::CompressedFlagConfig = $flag_config;
+            impl $crate::bn256::compressed::Compressed<$name_affine> for [<$name:upper Compressed >] {
                 fn sign(c: &$name_affine) -> subtle::Choice {
                     Choice::from(c.y.to_repr()[0] as u8 & 1) & !c.is_identity()
                 }
@@ -30,7 +27,7 @@ macro_rules! new_curve_impl {
         }
 
 
-        new_curve_impl!(($($privacy)*), $name, $name_affine, $base, $scalar, $generator, $constant_a, $constant_b, $curve_id, $hash_to_curve, $flag_config);
+        new_curve_impl!(($($privacy)*), $name, $name_affine, $base, $scalar, $generator, $constant_a, $constant_b, $curve_id);
     };
 
     (($($privacy:tt)*),
@@ -41,14 +38,12 @@ macro_rules! new_curve_impl {
     $generator:expr,
     $constant_a:expr,
     $constant_b:expr,
-    $curve_id:literal,
-    $hash_to_curve:expr,
-    $flag_config:expr
+    $curve_id:literal
     ) => {
 
 
         paste::paste! {
-            const [< $name:upper _COMPRESSED_SIZE >]: usize = $base::SIZE + if $flag_config.has_extra_byte() { 1 } else { 0 };
+            const [< $name:upper _COMPRESSED_SIZE >]: usize = $base::SIZE;
 
             pub type [<$name:upper Compressed >] = $crate::serde::Repr<[< $name:upper _COMPRESSED_SIZE >]>;
             pub type [<$name Uncompressed >] = $crate::serde::Repr<{ 2*$base::SIZE }>;
@@ -57,15 +52,15 @@ macro_rules! new_curve_impl {
                 type Repr = [<$name:upper Compressed >];
 
                 fn from_bytes(bytes: &Self::Repr) -> CtOption<Self> {
-                    <Self::Repr as $crate::serde::Compressed<$name_affine>>::decode(bytes.clone())
+                    <Self::Repr as $crate::bn256::compressed::Compressed<$name_affine>>::decode(bytes.clone())
                 }
 
                 fn from_bytes_unchecked(bytes: &Self::Repr) -> CtOption<Self> {
-                    <Self::Repr as $crate::serde::Compressed<$name_affine>>::decode(bytes.clone())
+                    <Self::Repr as $crate::bn256::compressed::Compressed<$name_affine>>::decode(bytes.clone())
                 }
 
                 fn to_bytes(&self) -> Self::Repr {
-                    <Self::Repr as $crate::serde::Compressed<$name_affine>>::encode(&self)
+                    <Self::Repr as $crate::bn256::compressed::Compressed<$name_affine>>::encode(&self)
                 }
             }
 
@@ -73,15 +68,15 @@ macro_rules! new_curve_impl {
                 type Repr = [<$name:upper Compressed >];
 
                 fn from_bytes(bytes: &Self::Repr) -> CtOption<Self> {
-                    <Self::Repr as $crate::serde::Compressed<$name_affine>>::decode(bytes.clone()).map(Self::from)
+                    <Self::Repr as $crate::bn256::compressed::Compressed<$name_affine>>::decode(bytes.clone()).map(Self::from)
                 }
 
                 fn from_bytes_unchecked(bytes: &Self::Repr) -> CtOption<Self> {
-                    <Self::Repr as $crate::serde::Compressed<$name_affine>>::decode(bytes.clone()).map(Self::from)
+                    <Self::Repr as $crate::bn256::compressed::Compressed<$name_affine>>::decode(bytes.clone()).map(Self::from)
                 }
 
                 fn to_bytes(&self) -> Self::Repr {
-                    <Self::Repr as $crate::serde::Compressed<$name_affine>>::encode(&self.to_affine())
+                    <Self::Repr as $crate::bn256::compressed::Compressed<$name_affine>>::encode(&self.to_affine())
                 }
             }
 
@@ -131,71 +126,6 @@ macro_rules! new_curve_impl {
             }
         }
 
-        /// A macro to help define point serialization using the [`group::GroupEncoding`] trait
-        /// This assumes both point types ($name, $nameaffine) implement [`group::GroupEncoding`].
-        #[cfg(feature = "serde")]
-        macro_rules! serialize_deserialize_to_from_bytes {
-            () => {
-                impl ::serde::Serialize for $name {
-                    fn serialize<S: ::serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-                        let bytes = &self.to_bytes();
-                        if serializer.is_human_readable() {
-                            ::hex::serde::serialize(&bytes, serializer)
-                        } else {
-                            ::serde_arrays::serialize(bytes.inner(), serializer)
-                        }
-                    }
-                }
-
-                paste::paste! {
-                    impl<'de> ::serde::Deserialize<'de> for $name {
-                        fn deserialize<D: ::serde::Deserializer<'de>>(
-                            deserializer: D,
-                        ) -> Result<Self, D::Error> {
-                            use ::serde::de::Error as _;
-                            let bytes = if deserializer.is_human_readable() {
-                                ::hex::serde::deserialize(deserializer)?
-                            } else {
-                                ::serde_arrays::deserialize::<_, u8, [< $name:upper _COMPRESSED_SIZE >]>(deserializer)?
-                            };
-                            Option::from(Self::from_bytes(&bytes.into())).ok_or_else(|| {
-                                D::Error::custom("deserialized bytes don't encode a valid field element")
-                            })
-                        }
-                    }
-                }
-
-                impl ::serde::Serialize for $name_affine {
-                    fn serialize<S: ::serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-                        let bytes = &self.to_bytes();
-                        if serializer.is_human_readable() {
-                            ::hex::serde::serialize(&bytes, serializer)
-                        } else {
-                            ::serde_arrays::serialize(bytes.inner(), serializer)
-                        }
-                    }
-                }
-
-                paste::paste! {
-                    impl<'de> ::serde::Deserialize<'de> for $name_affine {
-                        fn deserialize<D: ::serde::Deserializer<'de>>(
-                            deserializer: D,
-                        ) -> Result<Self, D::Error> {
-                            use ::serde::de::Error as _;
-                            let bytes = if deserializer.is_human_readable() {
-                                ::hex::serde::deserialize(deserializer)?
-                            } else {
-                                ::serde_arrays::deserialize::<_, u8, [< $name:upper _COMPRESSED_SIZE >]>(deserializer)?
-                            };
-                            Option::from(Self::from_bytes(&bytes.into())).ok_or_else(|| {
-                                D::Error::custom("deserialized bytes don't encode a valid field element")
-                            })
-                        }
-                    }
-                }
-            };
-        }
-
         #[derive(Copy, Clone, Debug)]
         $($privacy)* struct $name {
             pub x: $base,
@@ -208,11 +138,6 @@ macro_rules! new_curve_impl {
             pub x: $base,
             pub y: $base,
         }
-
-        #[cfg(feature = "serde")]
-        serialize_deserialize_to_from_bytes!();
-
-
 
         impl $name {
             pub fn generator() -> Self {
@@ -353,28 +278,6 @@ macro_rules! new_curve_impl {
 
             const CURVE_ID: &'static str = $curve_id;
 
-            fn endo(&self) -> Self {
-                use ff::WithSmallOrderMulGroup;
-                Self {
-                    x: self.x * Self::Base::ZETA,
-                    y: self.y,
-                    z: self.z,
-                }
-            }
-
-            fn jacobian_coordinates(&self) -> ($base, $base, $base) {
-                // Homogeneous to Jacobian
-                let x = self.x * self.z;
-                let y = self.y * self.z.square();
-                (x, y, self.z)
-            }
-
-
-            #[allow(clippy::redundant_closure_call)]
-            fn hash_to_curve<'a>(domain_prefix: &'a str) -> Box<dyn Fn(&[u8]) -> Self + 'a> {
-                $hash_to_curve(domain_prefix)
-            }
-
             fn is_on_curve(&self) -> Choice {
                 if $constant_a == $base::ZERO {
                     // Check (Y/Z)^2 = (X/Z)^3 + b
@@ -400,19 +303,6 @@ macro_rules! new_curve_impl {
 
             fn a() -> Self::Base {
                 $constant_a
-            }
-
-            fn new_jacobian(x: Self::Base, y: Self::Base, z: Self::Base) -> CtOption<Self> {
-                // Jacobian to homogeneous
-                let z_inv = z.invert().unwrap_or($base::zero());
-                let p_x = x * z_inv;
-                let p_y = y * z_inv.square();
-                let p = $name {
-                    x:p_x,
-                    y:$base::conditional_select(&p_y, &$base::one(), z.is_zero()),
-                    z
-                };
-                CtOption::new(p, p.is_on_curve())
             }
         }
 

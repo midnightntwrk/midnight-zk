@@ -88,12 +88,12 @@ macro_rules! curve_testing_suite {
 
                 let a = $c::identity();
                 let a = a.double();
-                assert!(bool::from(c.is_on_curve()));
+                assert!(bool::from(a.is_on_curve()));
                 assert!(bool::from(a.is_identity()));
 
                 let a = $c::generator();
                 let a = a.double();
-                assert!(bool::from(c.is_on_curve()));
+                assert!(bool::from(a.is_on_curve()));
                 assert_eq!(a, $c::generator() + $c::generator());
 
                 let a = $c::random(OsRng);
@@ -260,10 +260,10 @@ macro_rules! curve_testing_suite {
                     let affine_repr = affine_point.to_bytes();
 
                     let projective_point_rec = $c::from_bytes(&projective_repr).unwrap();
-                    let projective_point_rec_unchecked = $c::from_bytes(&projective_repr).unwrap();
+                    let projective_point_rec_unchecked = $c::from_bytes_unchecked(&projective_repr).unwrap();
 
                     let affine_point_rec = <$c as CurveExt>::AffineExt::from_bytes(&affine_repr).unwrap();
-                    let affine_point_rec_unchecked = <$c as CurveExt>::AffineExt::from_bytes(&affine_repr).unwrap();
+                    let affine_point_rec_unchecked = <$c as CurveExt>::AffineExt::from_bytes_unchecked(&affine_repr).unwrap();
 
                     assert_eq!(projective_point, projective_point_rec);
                     assert_eq!(projective_point, projective_point_rec_unchecked);
@@ -273,7 +273,7 @@ macro_rules! curve_testing_suite {
                     // Uncompressed format
                     let affine_repr = affine_point.to_uncompressed();
 
-                    let affine_point_rec = <$c as CurveExt>::AffineExt::from_uncompressed_unchecked(&affine_repr).unwrap();
+                    let affine_point_rec = <$c as CurveExt>::AffineExt::from_uncompressed(&affine_repr).unwrap();
                     let affine_point_rec_unchecked = <$c as CurveExt>::AffineExt::from_uncompressed_unchecked(&affine_repr).unwrap();
 
                     assert_eq!(affine_point, affine_point_rec);
@@ -308,41 +308,6 @@ macro_rules! curve_testing_suite {
             }
         }
 
-        #[cfg(feature = "serde")]
-        macro_rules! random_serde_test {
-            ($c: ident) => {
-                for _ in 0..100 {
-                    let projective_point = $c::random(OsRng);
-                    let affine_point: <$c as CurveExt>::AffineExt = projective_point.into();
-                    {
-                        let affine_bytes = bincode::serialize(&affine_point).unwrap();
-                        let reader = std::io::Cursor::new(affine_bytes);
-                        let affine_point_rec: <$c as CurveExt>::AffineExt = bincode::deserialize_from(reader).unwrap();
-                        assert_eq!(projective_point.to_affine(), affine_point_rec);
-                        assert_eq!(affine_point, affine_point_rec);
-                    }
-                    {
-                        let affine_json = serde_json::to_string(&affine_point).unwrap();
-                        let reader = std::io::Cursor::new(affine_json);
-                        let affine_point_rec: <$c as CurveExt>::AffineExt = serde_json::from_reader(reader).unwrap();
-                        assert_eq!(affine_point, affine_point_rec);
-                    }
-                    {
-                        let projective_bytes = bincode::serialize(&projective_point).unwrap();
-                        let reader = std::io::Cursor::new(projective_bytes);
-                        let projective_point_rec: $c = bincode::deserialize_from(reader).unwrap();
-                        assert_eq!(projective_point, projective_point_rec);
-                    }
-                    {
-                        let projective_json = serde_json::to_string(&projective_point).unwrap();
-                        let reader = std::io::Cursor::new(projective_json);
-                        let projective_point_rec: $c = serde_json::from_reader(reader).unwrap();
-                        assert_eq!(projective_point, projective_point_rec);
-                    }
-                }
-            }
-        }
-
         use ::ff::Field;
         use ::group::prime::PrimeCurveAffine;
         use group::GroupEncoding;
@@ -369,33 +334,6 @@ macro_rules! curve_testing_suite {
         fn test_serialization() {
             $(
                 random_serialization_test!($curve);
-                #[cfg(feature = "serde")]
-                random_serde_test!($curve);
-            )*
-        }
-    };
-
-    ($($curve: ident),*, "hash_to_curve") => {
-        macro_rules! hash_to_curve_test {
-            ($c: ident) => {
-                let hasher = $c::hash_to_curve("test");
-                let mut rng = OsRng;
-                for _ in 0..1000 {
-                    let message = iter::repeat_with(|| rng.next_u32().to_be_bytes())
-                        .take(32)
-                        .flatten()
-                        .collect::<Vec<_>>();
-                    assert!(bool::from(hasher(&message).is_on_curve()));
-                }
-            }
-        }
-
-        #[test]
-        fn test_hash_to_curve() {
-            use rand_core::{OsRng, RngCore};
-            use std::iter;
-            $(
-                hash_to_curve_test!($curve);
             )*
         }
     };
@@ -495,24 +433,4 @@ macro_rules! curve_testing_suite {
             assert!($order == <$curve as CurveExt>::ScalarExt::MODULUS);
         }
     };
-}
-
-use group::Curve;
-
-use crate::{CurveAffine, CurveExt};
-
-pub(crate) struct TestH2C<C: CurveAffine> {
-    msg: &'static [u8],
-    expect: C,
-}
-
-impl<C: CurveAffine> TestH2C<C> {
-    pub(crate) fn new(msg: &'static [u8], expect: C) -> Self {
-        Self { msg, expect }
-    }
-
-    pub(crate) fn run(&self, domain_prefix: &str) {
-        let r0 = C::CurveExt::hash_to_curve(domain_prefix)(self.msg);
-        assert_eq!(r0.to_affine(), self.expect);
-    }
 }

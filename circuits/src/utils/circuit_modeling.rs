@@ -20,11 +20,12 @@ use std::{
 
 use ff::{Field, FromUniformBytes, PrimeField};
 use goldenfile::Mint;
-use midnight_curves::Fq;
+use midnight_curves::{Bls12, Fq};
 use midnight_proofs::{
     circuit::Layouter,
-    dev::cost_model::{circuit_model, CircuitModel, COST_MEASURE_END, COST_MEASURE_START},
+    dev::cost_model::{circuit_model_with, CircuitModel, COST_MEASURE_END, COST_MEASURE_START},
     plonk::Circuit,
+    poly::{commitment::PolynomialCommitmentScheme, kzg::KZGCommitmentScheme},
 };
 use serde_json::{json, Map, Value};
 
@@ -76,9 +77,14 @@ where
     F: FromUniformBytes<64> + Ord,
 {
     // Store model only when tests are run in BLS12-381 (i.e. when the
-    // native scalar is BLS's scalar
+    // native scalar is BLS's scalar.  F is generic so we can't name the CS
+    // type directly; instead we derive the commitment size from it statically.
     if F::MODULUS == Fq::MODULUS {
-        let model = circuit_model::<F, 48, 32>(&circuit, 0);
+        let model = circuit_model_with::<F>(
+            &circuit,
+            0,
+            <KZGCommitmentScheme<Bls12> as PolynomialCommitmentScheme<Fq>>::commitment_byte_length,
+        );
         update_json(chip_name, op_name, model).expect("csv generation failed");
     }
 }

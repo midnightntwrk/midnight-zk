@@ -380,6 +380,31 @@ where
             k,
         )
     }
+
+    /// Computes `a*x + b*y + c*z + k + m1*x*y + m2*x*z`.
+    fn add_and_double_mul(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        (a, x): (Assigned::Element, &Assigned),
+        (b, y): (Assigned::Element, &Assigned),
+        (c, z): (Assigned::Element, &Assigned),
+        k: Assigned::Element,
+        (m1, m2): (Assigned::Element, Assigned::Element),
+    ) -> Result<Assigned, Error> {
+        let p1 = self.mul(layouter, x, y, None)?;
+        let p2 = self.mul(layouter, x, z, None)?;
+        self.linear_combination(
+            layouter,
+            &[
+                (a, x.clone()),
+                (b, y.clone()),
+                (c, z.clone()),
+                (m1, p1),
+                (m2, p2),
+            ],
+            k,
+        )
+    }
 }
 
 #[cfg(test)]
