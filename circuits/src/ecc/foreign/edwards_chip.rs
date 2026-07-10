@@ -1324,14 +1324,40 @@ where
     ///    Precomputation", CRYPTO 1994 (LNCS 839) — original comb method.
     ///  - Handbook of Applied Cryptography, §14.6.3 (fixed-base comb); Guide to
     ///    Elliptic Curve Cryptography, §3.3 — treatments in additive/ECC form.
-    #[allow(dead_code)]
+    ///
+    /// Fixed-base multi-scalar multiplication `sum_b scalars[b] * base_vals[b]`
+    /// for compile-time constant bases. This is the public entry point; it
+    /// delegates to [`Self::fixed_base_comb_msm`] with the comb width `W` fixed
+    /// to the most performant setting for full-width scalar fields.
+    ///
+    /// Each scalar is paired with a bit bound `num_bits`; passing a tight bound
+    /// (rather than the full scalar-field width) reduces the number of comb
+    /// columns and thus the in-circuit cost.
+    pub fn fixed_base_msm(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        scalars: &[(S::Scalar, usize)],
+        base_vals: &[C::CryptographicGroup],
+    ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
+        // Comb width. The in-circuit EC ops are `num_bits/W` shared doublings
+        // plus `num_bits/W` additions per base, which shrink as W grows;
+        // the per-base table has `2^W` entries, which grow exponentially.
+        // For full-width (~253-bit) scalars these balance at W = 8.
+        // Tune here if the typical scalar bit bounds change.
+        const W: usize = 8;
+        self.fixed_base_comb_msm::<W>(layouter, scalars, base_vals)
+    }
+
     fn fixed_base_comb_msm<const W: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
         scalars: &[(S::Scalar, usize)],
         base_vals: &[C::CryptographicGroup],
     ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
-        assert!(W >= 1);
+        // `W` is the comb width; the per-base table has `2^W` entries, so this
+        // must stay small. The upper bound also keeps `1u64 << W` (below) well
+        // clear of shift overflow.
+        const { assert!(W >= 1 && W <= 16, "comb width W must be in 1..=16") };
         assert_eq!(scalars.len(), base_vals.len());
         if scalars.is_empty() {
             return self.assign_fixed(layouter, C::CryptographicGroup::identity());
