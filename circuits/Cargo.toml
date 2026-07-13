@@ -23,7 +23,7 @@ sha2 = { workspace = true }
 ripemd = { workspace = true }
 rand = { workspace = true }
 
-num-bigint = { version = "0.4" }
+num-bigint = { version = "0.5" }
 num-traits = "0.2"
 num-integer = "0.1"
 subtle = "2.6"

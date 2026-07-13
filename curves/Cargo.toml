@@ -18,7 +18,7 @@ pairing = { version = "0.23" }
 subtle = "2.6"
 bitvec = "1.0.1"
 byte-slice-cast = "1.2.3"
-num-bigint = "0.4.6"
+num-bigint = "0.5.1"
 
 rand_core = { workspace = true }
 ff = { workspace = true }
