@@ -559,6 +559,58 @@ where
     .map_err(|e| circuit.take_error().unwrap_or_else(|| e.into()))
 }
 
+/// Produces proofs for a batch of instances of relation `R` in parallel.
+///
+/// All instances must use the same proving key. Each proof uses a fresh `OsRng`
+/// so the function requires no caller-supplied RNG.
+///
+/// Returns `Err` on the first failing instance; otherwise returns one proof
+/// per (instance, witness) pair in the same order as the inputs.
+///
+/// # This is parallel proving, NOT a single batched/aggregated proof
+///
+/// This function returns `Vec<Vec<u8>>` — one independent proof per instance.
+/// It runs the standard single-instance [`prove`] over a rayon parallel
+/// iterator; it does **not** fold the instances into one proof. Consequently it
+/// does not reduce total prover work or aggregate proof size versus proving each
+/// instance separately — it only exploits data parallelism across cores.
+///
+/// To obtain a *single* proof covering many statements (e.g. many instances of
+/// one circuit — the "Option A / batch proving" use case), use the IVC-based
+/// aggregator in the `midnight-aggregation` crate
+/// (`multi_circuit_aggregator::aggregate_same_circuit`), which folds many inner
+/// proofs into one succinct proof.
+pub fn batch_prove<R, H>(
+    params: &ParamsKZG<midnight_curves::Bls12>,
+    pk: &MidnightPK<R>,
+    relation: &R,
+    instances: &[R::Instance],
+    witnesses: Vec<R::Witness>,
+) -> Result<Vec<Vec<u8>>, R::Error>
+where
+    R: Relation + Sync,
+    R::Instance: Sync,
+    R::Witness: Send,
+    R::Error: Send,
+    H: TranscriptHash,
+    G1Projective: Hashable<H>,
+    F: Hashable<H> + Sampleable<H>,
+{
+    use rayon::prelude::*;
+
+    if instances.len() != witnesses.len() {
+        return Err(Error::InvalidInstances.into());
+    }
+
+    instances
+        .par_iter()
+        .zip(witnesses.into_par_iter())
+        .map(|(instance, witness)| {
+            prove::<R, H>(params, pk, relation, instance, witness, rand::rngs::OsRng)
+        })
+        .collect()
+}
+
 /// Verifies the given proof of relation `R` with respect to the given instance.
 /// Returns `Ok(())` if the proof is valid.
 pub fn verify<R: Relation, H: TranscriptHash>(

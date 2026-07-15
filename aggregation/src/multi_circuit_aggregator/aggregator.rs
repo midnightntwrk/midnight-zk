@@ -90,6 +90,68 @@ impl Aggregator {
         }
         self.prove_step(witness)
     }
+
+    /// Folds a batch of witnesses in order, returning the final aggregation
+    /// proof (the proof after the last step). This is a thin loop over
+    /// [`Aggregator::aggregate`]; the running instance is available via the
+    /// `instance()` method.
+    ///
+    /// Returns [`IvcError::InvalidWitness`] if `witnesses` is empty, or the
+    /// first per-step error otherwise.
+    pub fn aggregate_all(
+        &mut self,
+        witnesses: impl IntoIterator<Item = AggregationWitness>,
+    ) -> Result<Vec<u8>, IvcError> {
+        let mut proof = None;
+        for witness in witnesses {
+            proof = Some(self.aggregate(witness)?);
+        }
+        proof.ok_or_else(|| {
+            IvcError::InvalidWitness("aggregate_all requires at least one witness".to_string())
+        })
+    }
+}
+
+/// Aggregates many proofs of a **single** inner circuit — all sharing the same
+/// verifying key `inner_vk` — into one succinct proof.
+///
+/// This is the "batch proving via aggregation" (Option A) use case: given `K`
+/// instances of one circuit and their inner proofs, it folds them into a single
+/// IVC proof whose verification cost and size are constant in `K`. Build the
+/// `aggregator` with [`ProofAggregation::setup`], then obtain the final
+/// instance with the aggregator's `instance()` method and check it with
+/// [`Verifier::verify_aggregation`].
+///
+/// `instances` and `inner_proofs` must be parallel slices of equal length, in
+/// matching order (`inner_proofs[i]` must be a proof of `R` for `instances[i]`,
+/// produced under `inner_vk`). Inner proofs can be generated with
+/// `midnight_zk_stdlib::prove` (or, in parallel, `midnight_zk_stdlib::batch_prove`).
+///
+/// Returns [`IvcError::InvalidWitness`] if the slice lengths differ or are
+/// empty, and propagates the first aggregation error otherwise.
+pub fn aggregate_same_circuit<R>(
+    aggregator: &mut Aggregator,
+    inner_vk: &MidnightVK,
+    instances: &[R::Instance],
+    inner_proofs: &[Vec<u8>],
+) -> Result<Vec<u8>, IvcError>
+where
+    R: AggregableRelation + Default + std::fmt::Debug + 'static,
+    R::Instance: std::fmt::Debug + Clone,
+{
+    if instances.len() != inner_proofs.len() {
+        return Err(IvcError::InvalidWitness(format!(
+            "instances ({}) and inner_proofs ({}) must have equal length",
+            instances.len(),
+            inner_proofs.len(),
+        )));
+    }
+
+    let witnesses = instances.iter().zip(inner_proofs.iter()).map(|(instance, proof)| {
+        AggregationWitness::new::<R>(inner_vk.clone(), instance.clone(), proof.clone())
+    });
+
+    aggregator.aggregate_all(witnesses)
 }
 
 /// Verifier for multi-circuit proof aggregation.

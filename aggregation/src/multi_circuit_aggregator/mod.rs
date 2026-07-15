@@ -49,7 +49,7 @@ mod circuit;
 mod claims;
 mod utils;
 
-pub use aggregator::{AggregationWitness, Aggregator, Verifier};
+pub use aggregator::{aggregate_same_circuit, AggregationWitness, Aggregator, Verifier};
 pub use circuit::{InnerCircuitsContext, ProofAggregation, State};
 pub use claims::{Claim, Statement, TypedStatement};
 
