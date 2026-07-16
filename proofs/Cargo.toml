@@ -1,6 +1,6 @@
 [package]
 name = "midnight-proofs"
-version = "0.8.0"
+version = "0.8.1"
 edition = "2021"
 rust-version = "1.76.0"
 description = """
@@ -61,9 +61,7 @@ criterion = "0.8"
 getrandom = { version = "0.2", features = ["js"] }
 
 [target.'cfg(ci_build)'.dependencies]
-midnight-curves = { version = "0.3.0", features = [
-  "portable",
-] }
+midnight-curves = { version = "0.3.0", features = ["portable"] }
 
 [features]
 default = ["committed-instances"]
