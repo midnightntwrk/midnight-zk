@@ -108,7 +108,7 @@ pub trait InCircuitHomomorphicCommitment<S: SelfEmulation>:
 
 /// In-circuit abstraction over a Polynomial Commitment Scheme.
 ///
-/// Mirrors [`midnight_proofs::poly::commitment::PolynomialCommitmentScheme`]
+/// Analog of [`midnight_proofs::poly::commitment::PolynomialCommitmentScheme`]
 /// for the in-circuit verifier.
 pub trait InCircuitPCS<S: SelfEmulation>: Sized + Clone + Debug {
     /// The in-circuit type representing a committed polynomial.
