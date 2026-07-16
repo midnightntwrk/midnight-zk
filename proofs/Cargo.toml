@@ -40,7 +40,7 @@ itertools = "0.15"
 serde = { workspace = true }
 serde_derive = { workspace = true }
 rayon = { workspace = true }
-criterion = { version = "0.7", optional = true }
+criterion = { version = "0.8", optional = true }
 rustc-hash = "2"
 
 # Developer tooling dependencies
@@ -55,7 +55,7 @@ midnight-circuits = { path = "../circuits" }
 midnight-zk-stdlib = { path = "../zk_stdlib" }
 sha2 = { workspace = true }
 rand = { workspace = true }
-criterion = "0.7"
+criterion = "0.8"
 
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
 getrandom = { version = "0.2", features = ["js"] }
@@ -68,8 +68,7 @@ midnight-curves = { version = "0.3.0", features = [
 [features]
 default = ["committed-instances"]
 circuit-params = []
-derive_serde = ["midnight-curves/serde"]
-dev-curves = ["midnight-curves/serde", "midnight-curves/dev-curves"]
+dev-curves = ["midnight-curves/dev-curves"]
 
 # This feature truncates challenges to half the size of the scalar field.
 truncated-challenges = []

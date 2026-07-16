@@ -622,8 +622,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn fp12_random_field_tests() {
-        crate::tests::field::random_field_tests::<Fp12>();
+    mod field_arithmetic_suite {
+        use super::super::Fp12;
+        crate::field_testing_suite!(Fp12, "field_arithmetic");
     }
 }

@@ -1,9 +1,7 @@
 //! Field extension traits and utilities.
 
-pub mod cubic;
 pub mod inverse;
 pub mod jacobi;
-pub mod quadratic;
 
 use subtle::{Choice, ConstantTimeEq};
 
@@ -32,21 +30,6 @@ pub trait Legendre {
         // we consider 0 a square hence quadratic residue.
         self.legendre().ct_ne(&-1)
     }
-}
-
-/// Extension field trait.
-pub trait ExtField: ff::Field {
-    /// The non-residue used to construct the extension.
-    const NON_RESIDUE: Self;
-
-    /// Multiply this element by the non-residue.
-    #[must_use]
-    fn mul_by_nonresidue(&self) -> Self {
-        Self::NON_RESIDUE * self
-    }
-
-    /// Apply the Frobenius endomorphism.
-    fn frobenius_map(&mut self, power: usize);
 }
 
 #[macro_export]
