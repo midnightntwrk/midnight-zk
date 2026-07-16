@@ -11,8 +11,8 @@ description = "Circuit and gadget implementations for Midnight zero-knowledge pr
 group = { workspace = true }
 ff = { workspace = true }
 rustc-hash = "2"
-midnight-curves = "0.3.0"
-midnight-proofs = { version = "0.8.0", default-features = false, features = [
+midnight-curves = "0.3.1"
+midnight-proofs = { version = "0.8.1", default-features = false, features = [
     "circuit-params",
     "committed-instances",
 ] }
@@ -42,7 +42,7 @@ itertools = "0.15"
 dhat = "0.3"
 
 [target.'cfg(ci_build)'.dependencies]
-midnight-curves = { version = "0.3.0", features = ["portable"] }
+midnight-curves = { version = "0.3.1", features = ["portable"] }
 
 [features]
 default = []
