@@ -43,6 +43,9 @@ pub enum KZGCommitment<E: MultiMillerLoop> {
 // We implement `PartialEq` manually because its derivation would require
 // `E: PartialEq`. In practice, only `E::G1` and `E::Fr` need it;
 // `E` itself never appears directly in a comparison.
+//
+// This comparison is literal. Two equivalent commitments are considered
+// different if their representation is different.
 impl<E: MultiMillerLoop> PartialEq for KZGCommitment<E>
 where
     E::G1: PartialEq,
