@@ -13,7 +13,7 @@ use group::Group;
 use midnight_circuits::{
     instructions::{AssignmentInstructions, BinaryInstructions, PublicInputInstructions},
     types::Instantiable,
-    verifier::{Accumulator, AssignedAccumulator, AssignedKZGCommitment, AssignedVk},
+    verifier::{Accumulator, AssignedAccumulator, AssignedKZGCommitment, AssignedVk, InCircuitKZG},
 };
 use midnight_proofs::{
     circuit::{Layouter, Value},
@@ -143,12 +143,13 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
         let verifier_gadget = std_lib.verifier();
         let ivc_gadget = T::new(std_lib.clone(), &self.ctx);
 
-        let assigned_self_vk: AssignedVk<S> = verifier_gadget.assign_vk_as_public_input(
-            layouter,
-            &self.domain,
-            &self.cs,
-            instance.as_ref().map(|x| x.vk_repr),
-        )?;
+        let assigned_self_vk: AssignedVk<S, InCircuitKZG<S>> = verifier_gadget
+            .assign_vk_as_public_input(
+                layouter,
+                &self.domain,
+                &self.cs,
+                instance.as_ref().map(|x| x.vk_repr),
+            )?;
 
         let prev_state_val = witness.as_ref().map(|w| w.prev_state.clone());
         let prev_state = ivc_gadget.assign(layouter, prev_state_val)?;
@@ -179,7 +180,7 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
         ]
         .concat();
 
-        let instance_com = AssignedKZGCommitment::simple(
+        let instance_com = AssignedKZGCommitment::<S>::simple(
             std_lib.bls12_381().assign_fixed(layouter, C::identity())?,
             PolynomialLabel::CommittedInstance(0),
         );

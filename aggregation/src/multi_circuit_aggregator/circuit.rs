@@ -329,7 +329,7 @@ impl IvcTransition for ProofAggregation {
 
         // 3. Verify the inner proof in-circuit against the witnessed VK and statement.
         let inner_proof_acc = {
-            let instance_com = AssignedKZGCommitment::simple(
+            let instance_com = AssignedKZGCommitment::<S>::simple(
                 self.std_lib.bls12_381().assign_fixed(layouter, C::identity())?,
                 PolynomialLabel::CommittedInstance(0),
             );
