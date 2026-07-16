@@ -15,6 +15,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Add `square`, `mod_square` operations in `BigUintGadget` [#259](https://github.com/midnightntwrk/midnight-zk/pull/259)
 * Add `PartialEq` impl for `AssignedBigUint` [#259](https://github.com/midnightntwrk/midnight-zk/pull/259)
 * BREAKING: Implemented linearization prover [#190](https://github.com/midnightntwrk/midnight-zk/pull/190)
+* Add error identification for batch verification [#479](https://github.com/midnightntwrk/midnight-zk/pull/479)
 
 ### Fixed
 * Fix cost model proof size check to account for committed instance columns [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
