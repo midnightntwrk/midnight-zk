@@ -18,7 +18,7 @@ midnight-proofs = { version = "0.8.1", default-features = false, features = [
     "committed-instances",
 ] }
 
-keccak_sha3 = { package = "sha3-circuit", git = "https://github.com/alexandroszacharakis8/sha3-circuit", rev = "1a3ef7d" }
+keccak_sha3 = { package = "sha3-circuit", git = "https://github.com/jsidorenko/sha3-circuit", branch = "throughput-fix" }
 blake2b = { package = "blake2b_halo2", git = "https://github.com/eryxcoop/blake2b_halo2", rev = "257ae18" }
 
 serde = { workspace = true, optional = true }
