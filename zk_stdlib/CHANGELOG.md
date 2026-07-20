@@ -21,6 +21,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 * `cost_model` passes `KZGCommitmentScheme<Bls12>` to `circuit_model`, removing the `COMMITMENT_BYTE_SIZE`/`SCALAR_BYTE_SIZE` constants [#440](https://github.com/midnightntwrk/midnight-zk/pull/440)
+* Back the public proving/verifying API with the fflonk `poly::pcs` scheme [#466](https://github.com/midnightntwrk/midnight-zk/pull/466)
 * `verify` now takes `committed_instance: Option<KZGMultiCommitment<Bls12>>` instead of `Option<G1Affine>`, avoiding a commitment→point→commitment round-trip at call sites [#450](https://github.com/midnightntwrk/midnight-zk/pull/450)
 * Adapt to new `KZGCommitment` API [#381](https://github.com/midnightntwrk/midnight-zk/pull/381)
 * Adapt to single-proof prover API [#375](https://github.com/midnightntwrk/midnight-zk/pull/375)
