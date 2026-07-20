@@ -60,17 +60,20 @@ pub(crate) fn read_product_commitments<S: SelfEmulation, PCS: InCircuitPCS<S>>(
     cs: &ConstraintSystem<S::F>,
 ) -> Result<Committed<S, PCS>, Error> {
     let chunk_len = cs.degree() - 2;
+    let num_chunks = cs.permutation().get_columns().chunks(chunk_len).count();
+    assert!(
+        num_chunks > 0,
+        "permutation argument with zero columns is unsupported"
+    );
 
-    let permutation_product_commitments = cs
-        .permutation()
-        .get_columns()
-        .chunks(chunk_len)
-        .map(|_| PCS::read_commitment(transcript_gadget, layouter, 1))
-        .collect::<Result<Vec<_>, _>>()?
-        .into_iter()
-        .enumerate()
-        .map(|(i, c)| c.label(&[PolynomialLabel::PermutationAccumulator(i)]))
-        .collect();
+    // The prover writes one batched commitment covering all permutation
+    // accumulator chunks (one G1 per chunk at T=0). Read it once with all
+    // `PermutationAccumulator(i)` labels, then share it across chunks; each
+    // chunk's query routes to its sub-bundle via the label. Mirrors the
+    // off-circuit `permutation::verifier::read_product_commitments`.
+    let labels: Vec<_> = (0..num_chunks).map(PolynomialLabel::PermutationAccumulator).collect();
+    let shared = PCS::read_commitment(transcript_gadget, layouter, num_chunks)?.label(&labels);
+    let permutation_product_commitments = vec![shared; num_chunks];
 
     Ok(Committed {
         permutation_product_commitments,
