@@ -61,8 +61,18 @@ where
     E::G1Affine: CurveAffine,
 {
     fn max_k(&self) -> u32 {
-        #[cfg(not(feature = "single-h-commitment"))]
-        assert_eq!(self.g.len(), self.g_lagrange.len());
+        // The asymmetric case `g.len() > g_lagrange.len()` is valid under
+        // any PCS that extends the monomial basis past the Lagrange domain:
+        // `single-h-commitment` was the original consumer, fflonk's
+        // `FFLONK_T_MAX_LOG > 0` bundles are the new one. `max_k` is the
+        // Lagrange-domain `k`, which is what the protocol consumes
+        // regardless of how far `g` extends.
+        debug_assert!(
+            self.g.len() >= self.g_lagrange.len(),
+            "ParamsKZG invariant: g.len() ({}) must be ≥ g_lagrange.len() ({})",
+            self.g.len(),
+            self.g_lagrange.len(),
+        );
         self.g_lagrange.len().ilog2()
     }
 
@@ -109,13 +119,10 @@ where
     /// Recompute the Lagrange basis for a smaller circuit domain `new_k` while
     /// keeping the full monomial basis `g` intact.
     ///
-    /// Use this when the `single-h-commitment` feature is enabled: generate an
-    /// SRS large enough for the whole quotient polynomial (i.e. with `k'`
-    /// such that `2^{k'} ≥ (n-1) * quotient_poly_degree`), then call
-    /// `downsize_lagrange(k)` so that `max_k()` equals the circuit domain size
-    /// `k` while `g` retains its original length for the H-polynomial
-    /// commitment.
-    #[cfg(feature = "single-h-commitment")]
+    /// Used whenever the PCS needs a monomial basis larger than the Lagrange
+    /// domain: Generate an SRS large enough for the larger of the two needs,
+    /// then call `downsize_lagrange(k)` so that `max_k()` equals the
+    /// circuit domain size `k` while `g` retains its original length.
     pub fn downsize_lagrange(&mut self, new_k: u32) {
         let n = 1usize << new_k;
         assert!(
@@ -128,14 +135,13 @@ where
     }
 
     /// Combine the monomial basis from `extended` with the Lagrange basis from
-    /// `self`, consuming both. This avoids the FFT that [`downsize_lagrange`]
+    /// `self`, consuming both. This avoids the FFT that `downsize_lagrange`
     /// would otherwise require.
     ///
     /// # Panics
     ///
     /// If `extended.g` is not strictly larger than `self.g`, or if the shared
     /// prefix of the monomial bases does not match.
-    #[cfg(feature = "single-h-commitment")]
     pub fn with_extended_monomial(mut self, extended: Self) -> Self {
         assert!(
             extended.g.len() > self.g.len(),
@@ -403,17 +409,21 @@ impl<E: MultiMillerLoop + Debug> ParamsKZG<E> {
     }
 }
 
+/// Public parameters for the fflonk scheme. fflonk reuses the KZG SRS, so this
+/// is an alias for [`ParamsKZG`].
+pub type ParamsFflonk<E> = ParamsKZG<E>;
+
+/// Verifier parameters for the fflonk scheme. Alias for [`ParamsVerifierKZG`].
+pub type ParamsVerifierFflonk<E> = ParamsVerifierKZG<E>;
+
 #[cfg(test)]
 mod test {
     use rand_core::OsRng;
 
     use crate::{
-        poly::{
-            commitment::PolynomialCommitmentScheme,
-            kzg::{params::ParamsKZG, KZGCommitmentScheme},
-            PolynomialLabel,
-        },
+        poly::{commitment::PolynomialCommitmentScheme, pcs::params::ParamsKZG, PolynomialLabel},
         utils::SerdeFormat,
+        KZG,
     };
 
     #[test]
@@ -435,8 +445,8 @@ mod test {
 
         let b = domain.lagrange_to_coeff(a.clone());
 
-        let tmp = KZGCommitmentScheme::commit(&params, &a, PolynomialLabel::NoLabel);
-        let com = KZGCommitmentScheme::commit(&params, &b, PolynomialLabel::NoLabel);
+        let tmp = KZG::commit(&params, &a, PolynomialLabel::NoLabel);
+        let com = KZG::commit(&params, &b, PolynomialLabel::NoLabel);
 
         assert_eq!(tmp, com);
     }
@@ -465,8 +475,8 @@ mod test {
             };
         }
 
-        let c_lagrange = KZGCommitmentScheme::commit(&params, &a, PolynomialLabel::NoLabel);
-        let c_delta = KZGCommitmentScheme::commit(&params, &a.to_delta(), PolynomialLabel::NoLabel);
+        let c_lagrange = KZG::commit(&params, &a, PolynomialLabel::NoLabel);
+        let c_delta = KZG::commit(&params, &a.to_delta(), PolynomialLabel::NoLabel);
         assert_eq!(c_lagrange, c_delta);
 
         // Round-trip identity: to_delta then into_lagrange recovers the original.
@@ -499,12 +509,12 @@ mod test {
             };
         }
 
-        let c_lagrange = KZGCommitmentScheme::commit(&params, &a, PolynomialLabel::NoLabel);
+        let c_lagrange = KZG::commit(&params, &a, PolynomialLabel::NoLabel);
 
         // Fused single-pass conversion matches the two-step path.
         let c_double_delta_fused =
-            KZGCommitmentScheme::commit(&params, &a.to_double_delta(), PolynomialLabel::NoLabel);
-        let c_double_delta_two_step = KZGCommitmentScheme::commit(
+            KZG::commit(&params, &a.to_double_delta(), PolynomialLabel::NoLabel);
+        let c_double_delta_two_step = KZG::commit(
             &params,
             &a.to_delta().into_double_delta(),
             PolynomialLabel::NoLabel,
