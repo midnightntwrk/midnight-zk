@@ -12,14 +12,12 @@ use midnight_proofs::{
     plonk::*,
     poly::{
         commitment::Guard,
-        kzg::{
-            params::{ParamsKZG, ParamsVerifierKZG},
-            KZGCommitmentScheme,
-        },
+        pcs::params::{ParamsKZG, ParamsVerifierKZG},
         Rotation,
     },
     transcript::{CircuitTranscript, Transcript},
     utils::rational::Rational,
+    KZG,
 };
 use rand_core::OsRng;
 
@@ -253,12 +251,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         }
     }
 
-    fn keygen(
-        k: u32,
-    ) -> (
-        ParamsKZG<Bls12>,
-        ProvingKey<Scalar, KZGCommitmentScheme<Bls12>>,
-    ) {
+    fn keygen(k: u32) -> (ParamsKZG<Bls12>, ProvingKey<Scalar, KZG<Bls12>>) {
         let params: ParamsKZG<Bls12> = ParamsKZG::unsafe_setup(k, OsRng);
         let empty_circuit: MyCircuit<Scalar> = MyCircuit {
             a: Value::unknown(),
@@ -269,11 +262,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         (params, pk)
     }
 
-    fn prover(
-        k: u32,
-        params: &ParamsKZG<Bls12>,
-        pk: &ProvingKey<Scalar, KZGCommitmentScheme<Bls12>>,
-    ) -> Vec<u8> {
+    fn prover(k: u32, params: &ParamsKZG<Bls12>, pk: &ProvingKey<Scalar, KZG<Bls12>>) -> Vec<u8> {
         let rng = OsRng;
 
         let circuit: MyCircuit<Scalar> = MyCircuit {
@@ -283,7 +272,7 @@ fn criterion_benchmark(c: &mut Criterion) {
 
         let mut transcript: CircuitTranscript<Blake2bState> = CircuitTranscript::init();
 
-        create_proof::<Scalar, KZGCommitmentScheme<Bls12>, _, _>(
+        create_proof::<Scalar, KZG<Bls12>, _, _>(
             params,
             pk,
             &circuit,
@@ -299,12 +288,12 @@ fn criterion_benchmark(c: &mut Criterion) {
 
     fn verifier(
         params: &ParamsVerifierKZG<Bls12>,
-        vk: &VerifyingKey<Scalar, KZGCommitmentScheme<Bls12>>,
+        vk: &VerifyingKey<Scalar, KZG<Bls12>>,
         proof: &[u8],
     ) {
         let mut transcript: CircuitTranscript<Blake2bState> =
             CircuitTranscript::init_from_bytes(proof);
-        assert!(prepare::<Scalar, KZGCommitmentScheme<Bls12>, _>(
+        assert!(prepare::<Scalar, KZG<Bls12>, _>(
             vk,
             #[cfg(feature = "committed-instances")]
             &[],

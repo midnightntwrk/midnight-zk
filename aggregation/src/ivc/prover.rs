@@ -15,7 +15,7 @@ use midnight_circuits::{
 use midnight_proofs::{
     plonk::{self},
     poly::{
-        kzg::{commitment::KZGMultiCommitment, params::ParamsKZG, KZGCommitmentScheme},
+        pcs::{params::ParamsKZG, FflonkCommitment},
         PolynomialLabel,
     },
     transcript::{CircuitTranscript, Transcript},
@@ -96,21 +96,20 @@ impl<T: Ivc> IvcProver<T> {
 
             let mut transcript =
                 CircuitTranscript::<PoseidonState<F>>::init_from_bytes(&self.proof);
-            let dual_msm =
-                plonk::prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<PoseidonState<F>>>(
-                    vk,
-                    &[KZGMultiCommitment::commitment_to_zero(
-                        PolynomialLabel::CommittedInstance(0),
-                    )],
-                    &[&prev_pi],
-                    &mut transcript,
-                )?;
+            let dual_msm = plonk::prepare::<F, crate::KZG<E>, CircuitTranscript<PoseidonState<F>>>(
+                vk,
+                &[FflonkCommitment::commitment_to_zero(
+                    PolynomialLabel::CommittedInstance(0),
+                )],
+                &[&prev_pi],
+                &mut transcript,
+            )?;
 
             if !dual_msm.clone().check(&self.params.verifier_params()) {
                 return Err(IvcError::InvalidProof);
             }
 
-            Accumulator::from_dual_msm(dual_msm, &fixed_bases)
+            Accumulator::from_dual_msm(dual_msm.into_dual_msm(), &fixed_bases)
         };
 
         // Accumulate the proof accumulator with the previous accumulator.

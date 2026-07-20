@@ -115,6 +115,8 @@ const ZKSTD_VERSION: u32 = 2;
 /// Number of instance columns given in committed form in a ZK stdlib proof.
 const NB_COMMITTED_INSTANCES: usize = 1;
 
+pub use midnight_proofs::{MidnightPCS, FFLONK_T_MAX_LOG};
+
 /// Architecture of the standard library. Specifies what chips need to be
 /// configured.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Encode, Decode)]

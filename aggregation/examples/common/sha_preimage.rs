@@ -11,7 +11,7 @@ use midnight_circuits::{
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
-    poly::kzg::params::ParamsKZG,
+    poly::pcs::params::ParamsKZG,
 };
 use midnight_zk_stdlib::{MidnightPK, MidnightVK, Relation, ZkStdLib, ZkStdLibArch};
 use rand::{rngs::OsRng, Rng};

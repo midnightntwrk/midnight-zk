@@ -17,11 +17,12 @@ use midnight_proofs::{
     },
     poly::{
         commitment::{Guard, PolynomialCommitmentScheme},
-        kzg::{params::ParamsKZG, KZGCommitmentScheme},
+        pcs::params::ParamsKZG,
         Rotation,
     },
     transcript::{CircuitTranscript, Hashable, Sampleable, Transcript},
     utils::{arithmetic::Field, rational::Rational},
+    KZG,
 };
 use rand_core::{CryptoRng, OsRng, RngCore};
 
@@ -537,7 +538,7 @@ fn plonk_api() {
 
     use midnight_curves::{Bls12, Fq as Scalar};
 
-    type Scheme = KZGCommitmentScheme<Bls12>;
+    type Scheme = KZG<Bls12>;
     bad_keys!(Scalar, Scheme);
 
     let rng = OsRng;

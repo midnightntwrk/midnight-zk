@@ -12,7 +12,7 @@
 //! The [`Verifier`] checks the final aggregation proof. After verification,
 //! the claims can be inspected via the instance's state.
 
-use midnight_proofs::poly::kzg::params::ParamsKZG;
+use midnight_proofs::poly::pcs::params::ParamsKZG;
 use midnight_zk_stdlib::{MidnightVK, ZkStdLibArch};
 
 use super::{

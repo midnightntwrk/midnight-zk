@@ -3,7 +3,8 @@ use midnight_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
     dev::cost_model::circuit_model,
     plonk::{Advice, Circuit, Column, ConstraintSystem, Error, Expression, Selector, TableColumn},
-    poly::{kzg::KZGCommitmentScheme, Rotation},
+    poly::Rotation,
+    KZG,
 };
 
 // We use a lookup example
@@ -87,7 +88,7 @@ impl Circuit<Scalar> for TestCircuit {
 fn main() {
     let circuit = TestCircuit {};
 
-    let model = circuit_model::<_, KZGCommitmentScheme<Bls12>>(&circuit, 0);
+    let model = circuit_model::<_, KZG<Bls12>>(&circuit, 0);
     println!(
         "Cost of circuit with 8 bit lookup table: \n{}",
         serde_json::to_string_pretty(&model).unwrap()

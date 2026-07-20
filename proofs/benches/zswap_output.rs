@@ -24,10 +24,11 @@ use midnight_proofs::{
     },
     poly::{
         commitment::Guard,
-        kzg::{commitment::KZGMultiCommitment, params::ParamsKZG, KZGCommitmentScheme},
+        pcs::{params::ParamsKZG, FflonkCommitment},
         PolynomialLabel,
     },
     transcript::{CircuitTranscript, Transcript},
+    KZG,
 };
 use midnight_zk_stdlib::{MidnightCircuit, Relation, ZkStdLib, ZkStdLibArch};
 use rand::{rngs::OsRng, Rng, SeedableRng};
@@ -255,8 +256,8 @@ fn bench_zswap_output(c: &mut Criterion) {
     let srs = ParamsKZG::unsafe_setup(K, OsRng);
 
     let circuit = MidnightCircuit::from_relation(&ZSwapOutputCircuit, Some(K));
-    let vk = keygen_vk_with_k::<_, KZGCommitmentScheme<Bls12>, _>(&srs, &circuit, K)
-        .expect("Failed to generate VK");
+    let vk =
+        keygen_vk_with_k::<_, KZG<Bls12>, _>(&srs, &circuit, K).expect("Failed to generate VK");
     let pk = keygen_pk(vk, &circuit).expect("Failed to generate PK");
     let (instance, circuit) = sample_zswap_inputs();
 
@@ -267,7 +268,7 @@ fn bench_zswap_output(c: &mut Criterion) {
         &pk,
         &circuit,
         1,
-        &[&[], &instance],
+        &[&[] as &[F], &instance],
         &mut transcript,
         &mut OsRng,
         &mut group,
@@ -285,7 +286,7 @@ fn bench_zswap_output(c: &mut Criterion) {
             |mut t| {
                 parse_trace(
                     pk.get_vk(),
-                    &[KZGMultiCommitment::commitment_to_zero(
+                    &[FflonkCommitment::commitment_to_zero(
                         PolynomialLabel::CommittedInstance(0),
                     )],
                     &[&instance],
@@ -304,7 +305,7 @@ fn bench_zswap_output(c: &mut Criterion) {
                 (
                     parse_trace(
                         pk.get_vk(),
-                        &[KZGMultiCommitment::commitment_to_zero(
+                        &[FflonkCommitment::commitment_to_zero(
                             PolynomialLabel::CommittedInstance(0),
                         )],
                         &[&instance],
@@ -318,7 +319,7 @@ fn bench_zswap_output(c: &mut Criterion) {
                 verify_algebraic_constraints(
                     pk.get_vk(),
                     trace,
-                    &[KZGMultiCommitment::commitment_to_zero(
+                    &[FflonkCommitment::commitment_to_zero(
                         PolynomialLabel::CommittedInstance(0),
                     )],
                     &[&instance],
@@ -335,7 +336,7 @@ fn bench_zswap_output(c: &mut Criterion) {
                 let mut t = transcript.clone();
                 let trace = parse_trace(
                     pk.get_vk(),
-                    &[KZGMultiCommitment::commitment_to_zero(
+                    &[FflonkCommitment::commitment_to_zero(
                         PolynomialLabel::CommittedInstance(0),
                     )],
                     &[&instance],
@@ -345,7 +346,7 @@ fn bench_zswap_output(c: &mut Criterion) {
                 let guard = verify_algebraic_constraints(
                     pk.get_vk(),
                     trace,
-                    &[KZGMultiCommitment::commitment_to_zero(
+                    &[FflonkCommitment::commitment_to_zero(
                         PolynomialLabel::CommittedInstance(0),
                     )],
                     &[&instance],

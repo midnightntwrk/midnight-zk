@@ -12,13 +12,10 @@ use midnight_proofs::{
         create_proof, keygen_pk, keygen_vk_with_k, prepare, Advice, Circuit, Column,
         ConstraintSystem, Constraints, Error, Fixed, Instance, ProvingKey,
     },
-    poly::{
-        commitment::Guard,
-        kzg::{params::ParamsKZG, KZGCommitmentScheme},
-        Rotation,
-    },
+    poly::{commitment::Guard, pcs::params::ParamsKZG, Rotation},
     transcript::{CircuitTranscript, Transcript},
     utils::SerdeFormat,
+    KZG,
 };
 use rand_core::OsRng;
 
@@ -129,8 +126,8 @@ fn main() {
     let k = 4;
     let circuit = StandardPlonk(Scalar::random(OsRng));
     let params = ParamsKZG::<Bls12>::unsafe_setup(k, OsRng);
-    let vk = keygen_vk_with_k::<_, KZGCommitmentScheme<Bls12>, _>(&params, &circuit, k)
-        .expect("vk should not fail");
+    let vk =
+        keygen_vk_with_k::<_, KZG<Bls12>, _>(&params, &circuit, k).expect("vk should not fail");
     let pk = keygen_pk(vk, &circuit).expect("pk should not fail");
 
     let f = File::create("serialization-test.pk").unwrap();
@@ -141,7 +138,7 @@ fn main() {
     let f = File::open("serialization-test.pk").unwrap();
     let mut reader = BufReader::new(f);
     #[allow(clippy::unit_arg)]
-    let pk = ProvingKey::<Scalar, KZGCommitmentScheme<Bls12>>::read::<_, StandardPlonk>(
+    let pk = ProvingKey::<Scalar, KZG<Bls12>>::read::<_, StandardPlonk>(
         &mut reader,
         SerdeFormat::RawBytes,
         #[cfg(feature = "circuit-params")]
@@ -154,7 +151,7 @@ fn main() {
     let instances: &[&[Scalar]] = &[&[circuit.0]];
     let mut transcript = CircuitTranscript::<State>::init();
 
-    create_proof::<Scalar, KZGCommitmentScheme<Bls12>, _, _>(
+    create_proof::<Scalar, KZG<Bls12>, _, _>(
         &params,
         &pk,
         &circuit,
@@ -170,7 +167,7 @@ fn main() {
 
     let mut transcript = CircuitTranscript::<State>::init_from_bytes(&proof[..]);
 
-    assert!(prepare::<Scalar, KZGCommitmentScheme<Bls12>, _>(
+    assert!(prepare::<Scalar, KZG<Bls12>, _>(
         pk.get_vk(),
         #[cfg(feature = "committed-instances")]
         &[],

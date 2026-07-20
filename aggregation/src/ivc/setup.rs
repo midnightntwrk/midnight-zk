@@ -3,7 +3,7 @@
 use midnight_circuits::verifier::{fixed_bases, Accumulator};
 use midnight_proofs::{
     plonk::ConstraintSystem,
-    poly::{kzg::params::ParamsKZG, EvaluationDomain, PolynomialLabel},
+    poly::{pcs::params::ParamsKZG, EvaluationDomain, PolynomialLabel},
 };
 use midnight_zk_stdlib::ZkStdLib;
 
