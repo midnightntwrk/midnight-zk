@@ -65,12 +65,11 @@ pub(crate) struct ComputedMultiplicities<F: PrimeField> {
 
 /// Intermediate result from logderivative computation, before transcript
 /// write and FFT conversion to coefficient form.
-pub(crate) struct ComputedLogderivative<F: PrimeField, C> {
+pub(crate) struct ComputedLogderivative<F: PrimeField> {
     pub(crate) argument_index: usize,
     pub(crate) multiplicities: Polynomial<F, LagrangeCoeff>,
     pub(crate) helper_polys_lagrange: Vec<Vec<F>>,
     pub(crate) aggregator_poly: Polynomial<F, LagrangeCoeff>,
-    pub(crate) aggregator_commitment: C,
 }
 
 /// Committed polynomials after evaluation at challenge point.
@@ -80,13 +79,8 @@ pub(crate) struct Evaluated<F: PrimeField> {
 }
 
 impl<F: WithSmallOrderMulGroup<3> + Hash> ChunkedArgument<F> {
-    /// Compresses input and table expressions, computes multiplicities, and
-    /// commits — but does NOT write to the transcript. The caller is
-    /// responsible for writing `commitment` in the correct order.
-    ///
-    /// Compresses input and table expressions, computes multiplicities, and
-    /// commits — but does NOT write to the transcript. The caller is
-    /// responsible for writing `commitment` in the correct order.
+    /// Compresses input and table expressions and computes the multiplicities
+    /// polynomial. **Does not commit**.
     ///
     /// `blinding_values` are pre-generated random field elements for the
     /// blinding rows, so this method does not need `&mut rng` and can be
@@ -96,13 +90,12 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ChunkedArgument<F> {
         &self,
         argument_index: usize,
         pk: &ProvingKey<F, CS>,
-        params: &CS::Parameters,
         theta: F,
         advice_values: &'a [Polynomial<F, LagrangeCoeff>],
         fixed_values: &'a [Polynomial<F, LagrangeCoeff>],
         instance_values: &'a [Polynomial<F, LagrangeCoeff>],
         blinding_values: &[F],
-    ) -> Result<(ComputedMultiplicities<F>, CS::Commitment), Error>
+    ) -> Result<ComputedMultiplicities<F>, Error>
     where
         F: WithSmallOrderMulGroup<3> + FromUniformBytes<64>,
     {
@@ -165,22 +158,13 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ChunkedArgument<F> {
         // The Lagrange form is needed downstream for `eval_polynomial` and the
         // openings, so we borrow into a transient delta buffer rather than
         // transforming in place and prefix-summing back.
-        let commitment = CS::commit(
-            params,
-            &multiplicities.to_delta(),
-            PolynomialLabel::LogupMultiplicities(argument_index),
-        );
-
-        Ok((
-            ComputedMultiplicities {
-                argument_index,
-                selector,
-                multiplicities,
-                chunked_compressed_inputs,
-                compressed_table_expression,
-            },
-            commitment,
-        ))
+        Ok(ComputedMultiplicities {
+            argument_index,
+            selector,
+            multiplicities,
+            chunked_compressed_inputs,
+            compressed_table_expression,
+        })
     }
 }
 
@@ -195,10 +179,9 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ComputedMultiplicities<F> {
     pub(crate) fn compute_logderivative<CS: PolynomialCommitmentScheme<F>>(
         self,
         pk: &ProvingKey<F, CS>,
-        params: &CS::Parameters,
         beta: F,
         blinding_values: Vec<F>,
-    ) -> Result<ComputedLogderivative<F, CS::Commitment>, Error>
+    ) -> Result<ComputedLogderivative<F>, Error>
     where
         F: WithSmallOrderMulGroup<3> + FromUniformBytes<64>,
     {
@@ -296,18 +279,12 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ComputedMultiplicities<F> {
         // multiplicities m are highly contiguous and tables are zero-padded)
         // the aggregator is locally *linear*. Δ² converts them in zero runs,
         // which will be filtered out.
-        let aggregator_commitment = CS::commit(
-            params,
-            &aggregator_poly.to_double_delta(),
-            PolynomialLabel::LogupAggregator(self.argument_index),
-        );
 
         Ok(ComputedLogderivative {
             argument_index: self.argument_index,
             multiplicities: self.multiplicities,
             helper_polys_lagrange,
             aggregator_poly,
-            aggregator_commitment,
         })
     }
 }
