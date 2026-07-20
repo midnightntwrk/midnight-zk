@@ -2,8 +2,10 @@
 //! failure-recovery strategies, emitting a CSV so the curves can be plotted.
 //!
 //! Strategies (all return the same failing-index set):
-//! - `individual`: verify each proof on its own with `verify` (error-count
-//!   independent, so measured once and repeated across every CSV row).
+//! - `individual`: verify each proof on its own with `verify`, in parallel with
+//!   rayon so the baseline gets the same core count as the batch path (whose
+//!   `prepare` step is also parallelised). Error-count independent, so measured
+//!   once and repeated across every CSV row.
 //! - `reuse-prepare` (`BatchStrategy::ReusePrepare`): prepare once, localize by
 //!   binary search that re-evaluates each subset's combined MSM.
 //! - `reuse-prepare+msm` (`BatchStrategy::ReusePrepareMsm`): also collapse each
@@ -38,6 +40,7 @@ use midnight_zk_stdlib::{
 };
 use rand::{rngs::OsRng, RngCore, SeedableRng};
 use rand_chacha::ChaCha8Rng;
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 type F = midnight_curves::Fq;
 type H = blake2b_simd::State;
@@ -94,14 +97,18 @@ fn random_instance() -> (F, [F; 3]) {
     (instance, witness)
 }
 
-/// `individual`: verify each proof on its own, returning the failing indices.
+/// `individual`: verify each proof on its own (in parallel), returning the
+/// failing indices. Parallelised to match the batch path, whose per-proof
+/// `prepare` also runs under rayon — otherwise the baseline would be handicapped
+/// by running serially against a multi-threaded competitor.
 fn locate_individual(
     params: &ParamsVerifierKZG<midnight_curves::Bls12>,
     vks: &[MidnightVK],
     instances: &[F],
     proofs: &[Vec<u8>],
 ) -> Vec<usize> {
-    (0..proofs.len())
+    let mut failures: Vec<usize> = (0..proofs.len())
+        .into_par_iter()
         .filter(|&i| {
             midnight_zk_stdlib::verify::<PoseidonBench, H>(
                 params,
@@ -112,7 +119,9 @@ fn locate_individual(
             )
             .is_err()
         })
-        .collect()
+        .collect();
+    failures.sort_unstable();
+    failures
 }
 
 /// `reuse-prepare*`: guard-sharing binary search under the given strategy.
