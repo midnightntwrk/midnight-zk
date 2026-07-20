@@ -12,8 +12,10 @@ use group::{
     prime::PrimeCurveAffine,
     Curve, GroupOpsOwned, ScalarMulOwned,
 };
-use midnight_curves::fft::best_fft;
+use midnight_curves::{fft::best_fft, pairing::MultiMillerLoop};
 pub use midnight_curves::{CurveAffine, CurveExt};
+
+use crate::poly::pcs::msm::MSMKZG;
 
 /// This represents an element of a group with basic operations that can be
 /// performed. This allows an FFT implementation (for example) to operate
@@ -277,6 +279,63 @@ pub(crate) fn inner_product<F: PrimeField, T: Mul<F, Output = T> + Add<T, Output
         .map(|(p, s)| p.clone() * s)
         .reduce(|acc, p| acc + p)
         .unwrap()
+}
+
+/// Like [`inner_product`] but specialised to coefficient-form polynomials
+/// that may have different lengths (the shorter ones are zero-extended).
+///
+/// Fused parallel implementation: a single pass accumulates all scaled
+/// contributions directly into the output buffer, avoiding `M` intermediate
+/// allocations and the sequential reduce chain.
+pub(crate) fn poly_inner_product<F: PrimeField>(
+    polys: &[crate::poly::Polynomial<F, crate::poly::Coeff>],
+    scalars: impl IntoIterator<Item = F>,
+) -> crate::poly::Polynomial<F, crate::poly::Coeff> {
+    use std::marker::PhantomData;
+    let scalars: Vec<F> = scalars.into_iter().take(polys.len()).collect();
+    let max_len = polys.iter().map(|p| p.len()).max().unwrap_or(0);
+    let mut values = vec![F::ZERO; max_len];
+    parallelize(&mut values, |chunk, start| {
+        for (poly, scalar) in polys.iter().zip(scalars.iter()) {
+            let pv: &[F] = poly;
+            let end = (start + chunk.len()).min(pv.len());
+            if start < pv.len() {
+                for (out, coeff) in chunk[..end - start].iter_mut().zip(&pv[start..end]) {
+                    *out += *coeff * scalar;
+                }
+            }
+        }
+    });
+    crate::poly::Polynomial {
+        values,
+        _marker: PhantomData,
+    }
+}
+
+pub(crate) fn msm_inner_product<E>(mut msms: Vec<MSMKZG<E>>, scalars: &[E::Fr]) -> MSMKZG<E>
+where
+    E: MultiMillerLoop + Debug,
+    E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
+    E::Fr: Ord,
+{
+    let len: usize = msms.iter().map(|m| m.scalars.len()).sum();
+
+    let mut new_scalars = Vec::with_capacity(len);
+    let mut new_bases = Vec::with_capacity(len);
+    let mut new_labels = Vec::with_capacity(len);
+
+    msms.iter_mut().zip(scalars.iter()).for_each(|(msm, s)| {
+        msm.scale(*s);
+        new_scalars.extend(&msm.scalars);
+        new_bases.extend(&msm.bases);
+        new_labels.extend(msm.labels.clone());
+    });
+
+    MSMKZG {
+        scalars: new_scalars,
+        bases: new_bases,
+        labels: new_labels,
+    }
 }
 
 /// Computes the inner product of a set of polynomial evaluations and a set of
