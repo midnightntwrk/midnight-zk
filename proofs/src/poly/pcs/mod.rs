@@ -361,3 +361,256 @@ where
         FflonkCommitment(bundles)
     }
 
+    // TODO: at FFLONK_T_MAX_LOG = 0 the transcript is kept byte-identical to
+    // KZG (conditional t_max_log write, singletons routed through the plain
+    // multi_open path). This can be simplified once T > 0 is the norm.
+    fn multi_open<T: Transcript>(
+        params: &Self::Parameters,
+        queries: &[ProverQuery<E::Fr>],
+        transcript: &mut T,
+    ) -> Result<(), Error>
+    where
+        E::Fr: Sampleable<T::Hash> + Hash + Ord + Hashable<T::Hash>,
+        FflonkCommitment<E>: Hashable<T::Hash>,
+    {
+        // === Bundle pre-expansion (fflonk-specific) ===
+        //
+        // Replace queries that target a `t > 1` bundle with synthetic queries on
+        // the bundle's combined polynomial `g` at the `t`-th roots of each
+        // distinct logical opening point.
+
+        // Label -> polynomial map.
+        let poly_lookup: FxHashMap<PolynomialLabel, &Polynomial<E::Fr, Coeff>> =
+            queries.iter().map(|q| (q.label.clone(), q.poly)).collect();
+        let all_labels: Vec<PolynomialLabel> = poly_lookup.keys().cloned().collect();
+
+        // SRS-aware bundling ceiling.
+        let t_max_log = all_labels
+            .iter()
+            .find(|l| partition::bundle_family(l).is_some())
+            .map(|l| poly_lookup[l].values.len())
+            .map_or(0, |n| effective_t_max_log(params, FFLONK_T_MAX_LOG, n));
+        // Writing the ceiling to the transcript in case we are not in the trivial case.
+        // Note: The `FFLONK_T_MAX_LOG != 0` is necessary to keep byte equivalence with
+        // KZG, but has minor impact and could be removed once fflonk is
+        // implemented for the verifier gagdet.
+        if FFLONK_T_MAX_LOG != 0 {
+            transcript
+                .write(&E::Fr::from(t_max_log as u64))
+                .map_err(|_| Error::OpeningError)?;
+        }
+        let t_max = 1usize << t_max_log;
+
+        // Early return in a theoretically unreachable case (currently), where the code
+        // would panic later.
+        if all_labels.is_empty() {
+            return Ok(());
+        }
+        let sub_bundles = partition::partition(t_max, &all_labels);
+
+        // Materialise `g` for each `t > 1` sub-bundle. Indexed by sub-bundle position.
+        let g_polys: Vec<Option<Polynomial<E::Fr, Coeff>>> = sub_bundles
+            .iter()
+            .map(|indices| {
+                let real_count = indices.len();
+                let t = partition::bundle_t(real_count, t_max);
+                if t <= 1 {
+                    return None;
+                }
+                let n_bundle = poly_lookup[&all_labels[indices[0]]].values.len();
+                assert!(
+                    indices.iter().all(|&i| poly_lookup[&all_labels[i]].values.len() == n_bundle),
+                    "fflonk multi_open: polys within a `t > 1` sub-bundle must have equal length"
+                );
+                let slot_refs: Vec<&[E::Fr]> = indices
+                    .iter()
+                    .map(|&lbl_idx| poly_lookup[&all_labels[lbl_idx]].values.as_slice())
+                    .collect();
+                Some(Polynomial {
+                    values: combine(&slot_refs, t),
+                    _marker: PhantomData,
+                })
+            })
+            .collect();
+
+        // Per-bundle prover-side preparation: union of logical points, the (slot,
+        // point) pairs to over-open, and the synthetic label. Sorted by synth-label so
+        // prover and verifier visit bundles identically.
+        let multi_pre =
+            bundle_expansion::build_prover_multi_pre(&sub_bundles, &all_labels, t_max, queries);
+
+        // Over-opening writes, mandatory for `t > 1` bundles whenever any slot is
+        // missing an eval at a point in the bundle's logical union.
+        for pre in &multi_pre {
+            for &(slot, logical) in &pre.missing {
+                let poly_for_slot = poly_lookup[&all_labels[sub_bundles[pre.bundle_idx][slot]]];
+                let eval = eval_polynomial(&poly_for_slot[..], logical);
+                transcript.write(&eval).map_err(|_| Error::OpeningError)?;
+            }
+        }
+
+        // Build the singleton slice and the bundle-synth slice separately
+        let bundled_labels: FxHashSet<PolynomialLabel> = sub_bundles
+            .iter()
+            .filter(|indices| indices.len() > 1)
+            .flat_map(|indices| indices.iter().map(|&i| all_labels[i].clone()))
+            .collect();
+        let mut singleton_queries: Vec<ProverQuery<E::Fr>> = Vec::new();
+        for q in queries.iter() {
+            if !bundled_labels.contains(&q.label) {
+                singleton_queries.push(ProverQuery::new(q.point, q.poly, q.label.clone()));
+            }
+        }
+
+        // `fewer-point-sets` writes on the singleton slice. The same primitive as
+        // over-opening, called with commitment-label keys instead of slot-index keys,
+        // on the post-classification list.
+        #[cfg(feature = "fewer-point-sets")]
+        {
+            let pairs: Vec<(PolynomialLabel, E::Fr)> =
+                singleton_queries.iter().map(|q| (q.label.clone(), q.point)).collect();
+            let dummies = compute_dummy_queries(&pairs);
+            for (idx, point) in dummies {
+                let poly = singleton_queries[idx].poly;
+                let label = singleton_queries[idx].label.clone();
+                transcript
+                    .write(&eval_polynomial(poly, point))
+                    .map_err(|_| Error::OpeningError)?;
+                singleton_queries.push(ProverQuery::new(point, poly, label));
+            }
+        }
+
+        // Bundle-synth slice: `t` queries on `g` at the t-th roots of each
+        // logical in the union (uniform across slots after over-opening).
+        // Share a `t_th_root(logical, t)` cache across bundles — bundles
+        // typically open at the same logical points (ζ, ζ·ω, …); the sqrt
+        // chain is identical per (logical, t) and should not be recomputed.
+        let mut t_th_root_cache: FxHashMap<(E::Fr, usize), E::Fr> = FxHashMap::default();
+        let mut bundle_synth_queries: Vec<ProverQuery<E::Fr>> = Vec::new();
+        for pre in &multi_pre {
+            let g_poly =
+                g_polys[pre.bundle_idx].as_ref().expect("g_poly must be Some for t>1 bundle");
+            let omega_t = primitive_root_of_unity::<E::Fr>(pre.t);
+            for &logical in &pre.union_logicals {
+                let z = *t_th_root_cache
+                    .entry((logical, pre.t))
+                    .or_insert_with(|| t_th_root(logical, pre.t));
+                for r in t_th_roots(z, omega_t, pre.t) {
+                    bundle_synth_queries.push(ProverQuery::new(r, g_poly, pre.synth_label.clone()));
+                }
+            }
+        }
+
+        let expanded_queries: Vec<ProverQuery<E::Fr>> =
+            singleton_queries.into_iter().chain(bundle_synth_queries).collect();
+        let queries = &expanded_queries[..];
+
+        // Halo2 multi-opening argument (the standard batch-opening flow).
+        let x1: E::Fr = transcript.squeeze_challenge();
+        let x2: E::Fr = transcript.squeeze_challenge();
+
+        let mut poly_lookup: FxHashMap<PolynomialLabel, &Polynomial<E::Fr, Coeff>> =
+            FxHashMap::default();
+        let triples: Vec<(PolynomialLabel, E::Fr, E::Fr)> = queries
+            .iter()
+            .map(|q| {
+                let eval = eval_polynomial(&q.poly[..], q.point);
+                poly_lookup.entry(q.label.clone()).or_insert(q.poly);
+                (q.label.clone(), q.point, eval)
+            })
+            .collect();
+
+        let (poly_map, point_sets) = construct_intermediate_sets(&triples)?;
+
+        let mut q_polys = vec![vec![]; point_sets.len()];
+        for com_data in poly_map.iter() {
+            q_polys[com_data.set_index].push((*poly_lookup[&com_data.label]).clone());
+        }
+
+        let q_polys: Vec<_> = q_polys
+            .par_iter()
+            .map(|polys| {
+                #[cfg(feature = "truncated-challenges")]
+                let x1 = truncated_powers(x1);
+
+                #[cfg(not(feature = "truncated-challenges"))]
+                let x1 = powers(x1);
+
+                poly_inner_product(polys, x1)
+            })
+            .collect();
+
+        // Sort point sets by ascending cardinality so the in-circuit verifier
+        // sees the single-point set first (enabling a collapse).
+        let (q_polys, point_sets) = {
+            let mut order: Vec<usize> = (0..point_sets.len()).collect();
+            order.sort_by_key(|&i| (point_sets[i].len(), i));
+            let q_polys: Vec<_> = order.iter().map(|&i| q_polys[i].clone()).collect();
+            let point_sets: Vec<_> = order.iter().map(|&i| point_sets[i].clone()).collect();
+            (q_polys, point_sets)
+        };
+
+        let f_poly = {
+            let f_polys: Vec<_> = point_sets
+                .into_par_iter()
+                .zip(q_polys.clone().into_par_iter())
+                .map(|(points, q_poly)| {
+                    let poly = points
+                        .iter()
+                        .fold(q_poly.values, |poly, point| kate_division(&poly, *point));
+                    Polynomial {
+                        values: poly,
+                        _marker: PhantomData,
+                    }
+                })
+                .collect();
+            poly_inner_product(&f_polys, powers(x2))
+        };
+
+        let f_com = Self::commit_many(
+            params,
+            &[&f_poly],
+            &[PolynomialLabel::Custom("fflonk_batch".into())],
+        );
+        transcript.write(&f_com).map_err(|_| Error::OpeningError)?;
+
+        let x3: E::Fr = transcript.squeeze_challenge();
+        #[cfg(feature = "truncated-challenges")]
+        let x3 = truncate(x3);
+
+        let q_evals: Vec<E::Fr> =
+            q_polys.par_iter().map(|q_poly| eval_polynomial(&q_poly.values, x3)).collect();
+        for eval in &q_evals {
+            transcript.write(eval).map_err(|_| Error::OpeningError)?;
+        }
+
+        let x4: E::Fr = transcript.squeeze_challenge();
+
+        let final_poly = {
+            let mut polys = q_polys;
+            polys.push(f_poly);
+            #[cfg(feature = "truncated-challenges")]
+            let powers = truncated_powers(x4);
+
+            #[cfg(not(feature = "truncated-challenges"))]
+            let powers = powers(x4);
+
+            poly_inner_product(&polys, powers)
+        };
+        let v = eval_polynomial(&final_poly, x3);
+
+        let pi = {
+            let pi_poly = Polynomial::<_, Coeff> {
+                values: kate_division(&(&final_poly - v).values, x3),
+                _marker: PhantomData,
+            };
+            Self::commit_many(
+                params,
+                &[&pi_poly],
+                &[PolynomialLabel::Custom("fflonk_proof".into())],
+            )
+        };
+
+        transcript.write(&pi).map_err(|_| Error::OpeningError)
+    }
+
