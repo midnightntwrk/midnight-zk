@@ -233,3 +233,131 @@ where
         1 + n * (single - 1)
     }
 
+    fn commit_many<B: PolynomialRepresentation>(
+        params: &Self::Parameters,
+        polynomials: &[&Polynomial<E::Fr, B>],
+        labels: &[PolynomialLabel],
+    ) -> Self::Commitment {
+        assert_eq!(
+            polynomials.len(),
+            labels.len(),
+            "polynomials and labels must have the same length"
+        );
+        assert!(
+            !polynomials.is_empty(),
+            "cannot commit to an empty slice of polynomials"
+        );
+
+        // All polys in one call must share length (so partition's `n` is
+        // well-defined, and combine produces a length-`t·n` g).
+        let n = polynomials[0].values.len();
+        assert!(
+            polynomials.iter().all(|p| p.values.len() == n),
+            "fflonk commit: all polys in one call must have equal length"
+        );
+
+        // SRS-aware ceiling: shrink the bundling exponent to whatever the
+        // loaded SRS can afford for this `n` (see `effective_t_max_log`). For
+        // a tight/insufficient SRS this is `< FFLONK_T_MAX_LOG`; `multi_open` writes
+        // it to the transcript so the verifier reconstructs the same partition.
+        let t_max_log = effective_t_max_log(params, FFLONK_T_MAX_LOG, n);
+        let t_max = 1usize << t_max_log;
+        let sub_bundles = partition::partition(t_max, labels);
+
+        let bases_b = params.bases::<B>();
+        let mono_bases = &params.g;
+
+        let bundles: Vec<FflonkBundle<E>> = sub_bundles
+            .into_par_iter()
+            .map(|indices| {
+                // Effective size of the bundle, including padding.
+                let t = partition::bundle_t(indices.len(), t_max);
+                if t == 1 {
+                    // Singleton: MSM over the appropriate basis, as in KZG.
+                    let idx = indices[0];
+                    let p = polynomials[idx];
+                    let size = p.values.len();
+                    assert!(bases_b.len() >= size);
+                    let g1 = msm_specific::<E::G1Affine>(&p.values, &bases_b[..size]);
+                    FflonkBundle::Bundle(g1, vec![labels[idx].clone()])
+                } else {
+                    // Multi-poly bundle: convert to Coeff form (if needed), combine into `g` over
+                    // `t` slots (by padding with null polys), and MSM over monomial bases.
+
+                    // Note: `log_n` assumes `n` is a power of two, which may only be violated for
+                    // the h-poly. It should therefore never be fflonk-bundled (enforced in
+                    // `partition::partition`).
+                    let log_n = n.trailing_zeros();
+
+                    // Conversion to coefficient form.
+                    // TODO: multibase support to avoid having to do this.
+                    let coeff_values_per_slot: Vec<Vec<E::Fr>> = match B::BASIS {
+                        PolynomialBasis::Coeff => {
+                            indices.iter().map(|&i| polynomials[i].values.clone()).collect()
+                        }
+                        PolynomialBasis::Lagrange => {
+                            let domain = EvaluationDomain::<E::Fr>::new(1, log_n);
+                            indices
+                                .iter()
+                                .map(|&i| {
+                                    let lagrange_poly: Polynomial<E::Fr, LagrangeCoeff> =
+                                        Polynomial {
+                                            values: polynomials[i].values.clone(),
+                                            _marker: PhantomData,
+                                        };
+                                    domain.lagrange_to_coeff(lagrange_poly).values
+                                })
+                                .collect()
+                        }
+                        PolynomialBasis::LagrangeDelta => {
+                            let domain = EvaluationDomain::<E::Fr>::new(1, log_n);
+                            indices
+                                .iter()
+                                .map(|&i| {
+                                    let delta_poly: Polynomial<E::Fr, LagrangeDeltaCoeff> =
+                                        Polynomial {
+                                            values: polynomials[i].values.clone(),
+                                            _marker: PhantomData,
+                                        };
+                                    let lagrange = delta_poly.into_lagrange();
+                                    domain.lagrange_to_coeff(lagrange).values
+                                })
+                                .collect()
+                        }
+                        PolynomialBasis::LagrangeDoubleDelta => {
+                            let domain = EvaluationDomain::<E::Fr>::new(1, log_n);
+                            indices
+                                .iter()
+                                .map(|&i| {
+                                    let dd_poly: Polynomial<E::Fr, LagrangeDoubleDeltaCoeff> =
+                                        Polynomial {
+                                            values: polynomials[i].values.clone(),
+                                            _marker: PhantomData,
+                                        };
+                                    let lagrange = dd_poly.into_lagrange();
+                                    domain.lagrange_to_coeff(lagrange).values
+                                })
+                                .collect()
+                        }
+                        other => panic!(
+                            "fflonk t>1 bundling not supported for basis {other:?} \
+                             (Coeff, Lagrange, LagrangeDelta, LagrangeDoubleDelta only)"
+                        ),
+                    };
+
+                    // Interleave the (possibly padded) slots into `g` of length
+                    // `t·n` and commit via MSM over the monomial bases.
+                    let slot_refs: Vec<&[E::Fr]> =
+                        coeff_values_per_slot.iter().map(Vec::as_slice).collect();
+                    let g_values = combine(&slot_refs, t);
+                    let g1 = msm_specific::<E::G1Affine>(&g_values, &mono_bases[..t * n]);
+                    let bundle_labels: Vec<PolynomialLabel> =
+                        indices.iter().map(|&i| labels[i].clone()).collect();
+                    FflonkBundle::Bundle(g1, bundle_labels)
+                }
+            })
+            .collect();
+
+        FflonkCommitment(bundles)
+    }
+
