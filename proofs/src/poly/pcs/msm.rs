@@ -11,17 +11,7 @@ use midnight_curves::{
 use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 
 use super::params::ParamsVerifierKZG;
-use crate::{
-    poly::{
-        commitment::{Guard, PolynomialCommitmentScheme},
-        kzg::KZGCommitmentScheme,
-        Error, PolynomialLabel,
-    },
-    utils::{
-        arithmetic::{CurveExt, MSM},
-        helpers::ProcessedSerdeObject,
-    },
-};
+use crate::{poly::PolynomialLabel, utils::arithmetic::MSM};
 
 /// A multi-scalar multiplication in the polynomial commitment scheme.
 /// For every i, term (bases_i, scalars_i) may be have an optional
@@ -227,19 +217,6 @@ where
 {
     fn default() -> Self {
         Self::init()
-    }
-}
-
-impl<E: MultiMillerLoop> Guard<E::Fr, KZGCommitmentScheme<E>> for DualMSM<E>
-where
-    E::G1: Default + CurveExt<ScalarExt = E::Fr> + ProcessedSerdeObject,
-    E::G1Affine: Default + CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
-{
-    fn verify(
-        self,
-        params: &<KZGCommitmentScheme<E> as PolynomialCommitmentScheme<E::Fr>>::VerifierParameters,
-    ) -> Result<(), Error> {
-        self.check(params).then_some(()).ok_or(Error::OpeningError)
     }
 }
 

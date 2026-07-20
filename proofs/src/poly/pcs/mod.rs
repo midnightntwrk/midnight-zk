@@ -614,3 +614,255 @@ where
         transcript.write(&pi).map_err(|_| Error::OpeningError)
     }
 
+    fn multi_prepare<'com, T: Transcript>(
+        queries: &[VerifierQuery<'com, E::Fr, FflonkScheme<E>>],
+        k: u32,
+        transcript: &mut T,
+    ) -> Result<FflonkVerificationGuard<E>, Error>
+    where
+        E::Fr: Sampleable<T::Hash> + Ord + Hash + Hashable<T::Hash>,
+        E::G1: CurveExt<ScalarExt = E::Fr>,
+        FflonkCommitment<E>: Hashable<T::Hash> + 'com,
+    {
+        // SRS-aware bundling ceiling: read the prover's effective exponent
+        // (paired with the write at the top of `multi_open`) and sanity-check
+        // it.
+        let t_max_log: u32 = if FFLONK_T_MAX_LOG != 0 {
+            // `effective_t_log` is the prover's chosen bundling exponent, sent
+            // as a field element. We recover the integer and range-check it in one step by
+            // matching against the field encoding of each value in the valid
+            // band `[0, min(FFLONK_T_MAX_LOG, F::S − k)]`.
+            let claimed: E::Fr = transcript.read().map_err(|_| Error::SamplingError)?;
+            #[allow(clippy::unnecessary_min_or_max)]
+            let upper = FFLONK_T_MAX_LOG.min(<E::Fr as PrimeField>::S.saturating_sub(k));
+            (0..=upper)
+                .find(|&i| claimed == E::Fr::from(i as u64))
+                .ok_or(Error::OpeningError)?
+        } else {
+            0
+        };
+        let t_max = 1usize << t_max_log;
+
+        // === Bundle pre-expansion (fflonk-specific) ===
+        //
+        // Classify each query by its bundle (singleton vs t>1 vs Linear). For
+        // singletons and Linear, emit the original (label, point, eval) triple
+        // and register the MSM source. For t>1 bundles, defer: gather queries
+        // by logical point, then expand into synthetic triples on the bundle's
+        // `g` at the `t`-th roots of each logical, reconstructing g(root) via
+        // Lemma 5.1 (`eval_claims_as_poly`).
+
+        // `singleton_triples` is only mutated under `fewer-point-sets`;
+        // accept the unused-mut warning otherwise.
+        #[allow(unused_mut)]
+        let (mut multi_bundles_sorted, mut label_to_msm, mut singleton_triples) =
+            bundle_expansion::classify_verifier_queries::<E>(queries, t_max);
+
+        // Per-bundle over-opening reads.
+        for (_synth, acc) in multi_bundles_sorted.iter_mut() {
+            let missing = compute_dummy_queries(&acc.pairs);
+            for (pair_idx, point) in missing {
+                let slot = acc.pairs[pair_idx].0;
+                let eval: E::Fr = transcript.read().map_err(|_| Error::SamplingError)?;
+                acc.evals.insert((slot, point), eval);
+            }
+        }
+
+        // `fewer-point-sets` reads on the singleton + Linear slice.
+        #[cfg(feature = "fewer-point-sets")]
+        {
+            let pairs: Vec<(PolynomialLabel, E::Fr)> = singleton_triples
+                .iter()
+                .map(|(label, point, _)| (label.clone(), *point))
+                .collect();
+            let dummies = compute_dummy_queries(&pairs);
+            for (idx, point) in dummies {
+                let label = singleton_triples[idx].0.clone();
+                let eval: E::Fr = transcript.read().map_err(|_| Error::SamplingError)?;
+                singleton_triples.push((label, point, eval));
+                // `label_to_msm` already maps `label`, so no new entry needed.
+            }
+        }
+
+        // Now stitch the final triples list: singletons + Linear first
+        // (their MSMs/labels are already in `label_to_msm`), then the
+        // bundle-derived synthetic triples reconstructed via Lemma 5.1.
+        let mut triples = singleton_triples;
+
+        // Shared cache: `t_th_root(logical, t)` is identical across bundles
+        // sharing the same (logical point, t), so amortize the sqrt chain.
+        let mut t_th_root_cache: FxHashMap<(E::Fr, usize), E::Fr> = FxHashMap::default();
+        for (synth_label, acc) in multi_bundles_sorted.into_iter() {
+            triples.extend(bundle_expansion::synth_triples_for_bundle::<E>(
+                &synth_label,
+                &acc,
+                &mut t_th_root_cache,
+            ));
+            let mut msm = MSMKZG::init();
+            msm.append_term(E::Fr::ONE, acc.bundle_g1, synth_label.clone());
+            label_to_msm.insert(synth_label, msm);
+        }
+
+        // === GWC machinery ===
+
+        let x1: E::Fr = transcript.squeeze_challenge();
+        let x2: E::Fr = transcript.squeeze_challenge();
+
+        let (commitment_map, point_sets) = construct_intermediate_sets(&triples)?;
+
+        let mut q_coms: Vec<_> = vec![vec![]; point_sets.len()];
+        let mut q_eval_sets = vec![vec![]; point_sets.len()];
+
+        for com_data in commitment_map.into_iter() {
+            let msm = label_to_msm
+                .get(&com_data.label)
+                .cloned()
+                .expect("fflonk multi_prepare: no MSM registered for label");
+            q_coms[com_data.set_index].push(msm);
+            q_eval_sets[com_data.set_index].push(com_data.evals);
+        }
+
+        let nb_x1_powers = q_coms.iter().map(Vec::len).max().unwrap_or(0);
+        assert!(nb_x1_powers >= q_eval_sets.iter().map(Vec::len).max().unwrap_or(0));
+
+        #[cfg(feature = "truncated-challenges")]
+        let powers_x1 = truncated_powers(x1).take(nb_x1_powers).collect::<Vec<_>>();
+
+        #[cfg(not(feature = "truncated-challenges"))]
+        let powers_x1 = powers(x1).take(nb_x1_powers).collect::<Vec<_>>();
+
+        let q_coms = q_coms
+            .into_iter()
+            .map(|msms| msm_inner_product(msms, &powers_x1))
+            .collect::<Vec<_>>();
+
+        let q_eval_sets = q_eval_sets
+            .iter()
+            .map(|evals| evals_inner_product(evals, &powers_x1))
+            .collect::<Vec<_>>();
+
+        let (q_coms, q_eval_sets, point_sets) = {
+            let mut order: Vec<usize> = (0..point_sets.len()).collect();
+            order.sort_by_key(|&i| (point_sets[i].len(), i));
+            let q_coms: Vec<_> = order.iter().map(|&i| q_coms[i].clone()).collect();
+            let q_eval_sets: Vec<_> = order.iter().map(|&i| q_eval_sets[i].clone()).collect();
+            let point_sets: Vec<_> = order.iter().map(|&i| point_sets[i].clone()).collect();
+            (q_coms, q_eval_sets, point_sets)
+        };
+
+        let f_com: E::G1 = transcript
+            .read::<FflonkCommitment<E>>()
+            .map_err(|_| Error::SamplingError)?
+            .0
+            .into_iter()
+            .next()
+            .unwrap()
+            .into_point();
+
+        let x3: E::Fr = transcript.squeeze_challenge();
+        #[cfg(feature = "truncated-challenges")]
+        let x3 = truncate(x3);
+
+        let mut q_evals_on_x3 = Vec::<E::Fr>::with_capacity(q_eval_sets.len());
+        for _ in 0..q_eval_sets.len() {
+            q_evals_on_x3.push(transcript.read().map_err(|_| Error::SamplingError)?);
+        }
+
+        let f_eval =
+            point_sets.iter().zip(q_eval_sets.iter()).zip(q_evals_on_x3.iter()).rev().fold(
+                E::Fr::ZERO,
+                |acc_eval, ((points, evals), proof_eval)| {
+                    let r_poly = lagrange_interpolate(points, evals);
+                    let r_eval = eval_polynomial(&r_poly, x3);
+                    let den = points.iter().fold(E::Fr::ONE, |acc, point| acc * &(x3 - point));
+                    let eval = (*proof_eval - &r_eval) * den.invert().unwrap();
+                    acc_eval * &(x2) + &eval
+                },
+            );
+
+        let x4: E::Fr = transcript.squeeze_challenge();
+
+        let final_com = {
+            let size = q_coms.len() + 1;
+            let mut coms = q_coms;
+            let mut f_com_as_msm = MSMKZG::init();
+
+            f_com_as_msm.append_term(
+                E::Fr::ONE,
+                f_com,
+                PolynomialLabel::Custom("fflonk_batch".into()),
+            );
+
+            #[cfg(feature = "truncated-challenges")]
+            coms.iter_mut().skip(1).for_each(|c| c.collapse(PolynomialLabel::NoLabel));
+            coms.push(f_com_as_msm);
+
+            #[cfg(feature = "truncated-challenges")]
+            let powers = truncated_powers(x4);
+
+            #[cfg(not(feature = "truncated-challenges"))]
+            let powers = powers(x4);
+
+            msm_inner_product(coms, &powers.take(size).collect::<Vec<_>>())
+        };
+
+        let v = {
+            let mut evals = q_evals_on_x3;
+            evals.push(f_eval);
+
+            #[cfg(feature = "truncated-challenges")]
+            let powers = truncated_powers(x4);
+
+            #[cfg(not(feature = "truncated-challenges"))]
+            let powers = powers(x4);
+
+            inner_product(&evals, powers)
+        };
+
+        let pi: E::G1 = transcript
+            .read::<FflonkCommitment<E>>()
+            .map_err(|_| Error::SamplingError)?
+            .0
+            .into_iter()
+            .next()
+            .unwrap()
+            .into_point();
+
+        let mut pi_msm = MSMKZG::<E>::init();
+        pi_msm.append_term(E::Fr::ONE, pi, PolynomialLabel::Custom("π".into()));
+
+        let scaled_pi = MSMKZG {
+            scalars: vec![x3, v],
+            bases: vec![pi, -E::G1::generator()],
+            labels: vec![
+                PolynomialLabel::Custom("π".into()),
+                PolynomialLabel::Custom("-G".into()),
+            ],
+        };
+
+        let mut msm_accumulator = DualMSM {
+            left: pi_msm,
+            right: final_com,
+        };
+        msm_accumulator.right.add_msm(&scaled_pi);
+
+        Ok(FflonkVerificationGuard(msm_accumulator))
+    }
+}
+
+/// The final pairing check is identical to KZG's (one G1 left, one G1
+/// right, then pairing). We delegate to the inner [`DualMSM::check`].
+impl<E: MultiMillerLoop> Guard<E::Fr, FflonkScheme<E>> for FflonkVerificationGuard<E>
+where
+    E::Fr: WithSmallOrderMulGroup<3>,
+    E::G1: Default + CurveExt<ScalarExt = E::Fr> + ProcessedSerdeObject,
+    E::G1Affine: Default + CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
+{
+    fn verify(
+        self,
+        params: &<FflonkScheme<E> as PolynomialCommitmentScheme<E::Fr>>::VerifierParameters,
+    ) -> Result<(), Error> {
+        self.0.check(params).then_some(()).ok_or(Error::OpeningError)
+    }
+}
+
