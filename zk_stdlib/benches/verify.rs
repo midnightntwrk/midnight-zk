@@ -116,6 +116,7 @@ fn bench_verify(c: &mut Criterion) {
                 &vks,
                 &pis,
                 &proof_bytes,
+                false,
             )
             .expect("batch_verify failed");
         });

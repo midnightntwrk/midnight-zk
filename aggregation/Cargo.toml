@@ -15,15 +15,15 @@ rustdoc-args = ["--cfg", "docsrs", "--html-in-header", "katex-header.html"]
 [dependencies]
 group = { workspace = true }
 ff = { workspace = true }
-midnight-curves = "0.3.0"
-midnight-proofs = { version = "0.8.0", default-features = false, features = [
+midnight-curves = "0.3.1"
+midnight-proofs = { version = "0.8.1", default-features = false, features = [
     "circuit-params",
     "committed-instances",
 ] }
-midnight-circuits = { version = "7.0.0", default-features = false, features = [
+midnight-circuits = { version = "7.2.2", default-features = false, features = [
     "testing",
 ] }
-midnight-zk-stdlib = { path = "../zk_stdlib", version = "2.1.0" }
+midnight-zk-stdlib = { path = "../zk_stdlib", version = "2.3.3" }
 
 rand = { workspace = true }
 blake2b_simd = { workspace = true }

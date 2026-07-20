@@ -114,7 +114,8 @@ fn main() {
         &srs.verifier_params(),
         &vks,
         &pis,
-        &proofs
+        &proofs,
+        false
     )
     .is_ok())
 }

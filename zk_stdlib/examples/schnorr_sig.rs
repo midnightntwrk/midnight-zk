@@ -202,7 +202,8 @@ fn main() {
         &srs.verifier_params(),
         &vks,
         &instances,
-        &proofs
+        &proofs,
+        false
     )
     .is_ok())
 }
