@@ -35,7 +35,7 @@ use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
     poly::{
-        kzg::{
+        pcs::{
             msm::{DualMSM, MSMKZG},
             params::ParamsVerifierKZG,
         },

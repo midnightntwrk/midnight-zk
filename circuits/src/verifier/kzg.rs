@@ -16,10 +16,10 @@
 //! This file provides the in-circuit version of the KZG multiopen argument from
 //! halo2. In particular, we try to follow the exact same structure used in
 //! halo2, concretely in halo2 files:
-//!  - src/poly/kzg/utils.rs,
+//!  - src/poly/pcs/utils.rs,
 //!  - src/poly/query.rs
 //!  - src/utils/arithmetic.rs
-//!  - src/poly/kzg/mod.rs
+//!  - src/poly/pcs/mod.rs
 
 use std::{
     collections::{BTreeSet, HashMap},
@@ -31,7 +31,7 @@ use group::Group;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
-    poly::{commitment::Labelable, kzg::commitment::KZGCommitment, PolynomialLabel},
+    poly::{commitment::Labelable, pcs::commitment::FflonkBundle, PolynomialLabel},
 };
 
 #[cfg(feature = "truncated-challenges")]
@@ -57,8 +57,7 @@ use crate::{
 // See proofs/src/poly/kzg/commitment.rs
 // -------------------------------------
 
-/// In-circuit analog of
-/// [`KZGCommitment`](midnight_proofs::poly::kzg::commitment::KZGCommitment).
+/// In-circuit analog of [`FflonkBundle`].
 ///
 /// Carries a polynomial commitment (or a lazy linear combination of them)
 /// together with its `PolynomialLabel`(s).
@@ -76,12 +75,12 @@ pub enum AssignedKZGCommitment<S: SelfEmulation> {
 }
 
 impl<S: SelfEmulation> InnerValue for AssignedKZGCommitment<S> {
-    type Element = KZGCommitment<S::Engine>;
+    type Element = FflonkBundle<S::Engine>;
 
     fn value(&self) -> Value<Self::Element> {
         match self.clone() {
             Self::Simple(p, label) => {
-                p.value().map(|p| KZGCommitment::Simple(*p.get_point(), label))
+                p.value().map(|p| FflonkBundle::Bundle(*p.get_point(), vec![label]))
             }
             Self::Linear(points, scalars, labels) => {
                 let points: Vec<Value<S::C>> =
@@ -90,7 +89,7 @@ impl<S: SelfEmulation> InnerValue for AssignedKZGCommitment<S> {
                     scalars.iter().map(|s| s.scalar.value().copied()).collect();
                 Value::from_iter(points)
                     .zip(Value::from_iter(scalars))
-                    .map(|(ps, ss)| KZGCommitment::Linear(ps, ss, labels))
+                    .map(|(ps, ss)| FflonkBundle::Linear(ps, ss, labels))
             }
         }
     }
@@ -152,7 +151,7 @@ impl<S: SelfEmulation> AssignedKZGCommitment<S> {
         match self {
             Self::Simple(p, PolynomialLabel::NoLabel) => Self::Simple(p, label),
             Self::Simple(_, existing) => panic!("commitment is already labeled: {existing:?}"),
-            Self::Linear(_, _, _) => panic!("KZGCommitment::Linear cannot be labeled"),
+            Self::Linear(_, _, _) => panic!("FflonkBundle::Linear cannot be labeled"),
         }
     }
 
@@ -204,7 +203,7 @@ impl<S: SelfEmulation> AssignedKZGCommitment<S> {
 }
 
 /// In-circuit analog of
-/// [`KZGMultiCommitment`](midnight_proofs::poly::kzg::commitment::KZGMultiCommitment):
+/// [`FflonkCommitment`](midnight_proofs::poly::pcs::commitment::FflonkCommitment):
 /// a commitment to one or more polynomials.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AssignedKZGMultiCommitment<S: SelfEmulation>(pub Vec<AssignedKZGCommitment<S>>);
@@ -241,11 +240,11 @@ impl<S: SelfEmulation> AssignedKZGMultiCommitment<S> {
 }
 
 impl<S: SelfEmulation> InnerValue for AssignedKZGMultiCommitment<S> {
-    type Element = midnight_proofs::poly::kzg::commitment::KZGMultiCommitment<S::Engine>;
+    type Element = midnight_proofs::poly::pcs::commitment::FflonkCommitment<S::Engine>;
 
     fn value(&self) -> Value<Self::Element> {
         Value::from_iter(self.0.iter().map(|c| c.value()))
-            .map(midnight_proofs::poly::kzg::commitment::KZGMultiCommitment)
+            .map(midnight_proofs::poly::pcs::commitment::FflonkCommitment)
     }
 }
 
@@ -480,7 +479,7 @@ fn evals_inner_product<F: CircuitField>(
 }
 
 // ------------------------------
-// See proofs/src/poly/kzg/mod.rs
+// See proofs/src/poly/pcs/mod.rs
 // ------------------------------
 
 /// Verifies a bunch of KZG queries in a multi-open argument.
@@ -498,7 +497,7 @@ pub(crate) fn multi_prepare_kzg<S: SelfEmulation>(
     #[cfg(feature = "fewer-point-sets")]
     let queries = &{
         let pairs: Vec<_> = queries.iter().map(|q| (q.label.clone(), q.point.clone())).collect();
-        let dummy_openings = midnight_proofs::poly::kzg::compute_dummy_queries(&pairs);
+        let dummy_openings = midnight_proofs::poly::pcs::compute_dummy_queries(&pairs);
         let mut queries = queries.to_vec();
         for (idx, dummy_point) in dummy_openings {
             queries.push(VerifierQuery {

@@ -360,30 +360,32 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         // Sample theta challenge for keeping lookup columns linearly independent
         let theta = transcript.squeeze_challenge(layouter)?;
 
-        let multiplicities_committed = cs
-            .lookups()
-            .iter()
-            .enumerate()
-            .map(|(i, _l)| lookup::read_multiplicities(i, layouter, &mut transcript))
-            .collect::<Result<Vec<_>, Error>>()?;
+        // Read the batched multiplicities commitment (one transcript entry
+        // for all logup arguments).
+        let multiplicities_committed =
+            lookup::read_multiplicities::<S, PCS>(cs.lookups().len(), layouter, &mut transcript)?;
 
         let beta = transcript.squeeze_challenge(layouter)?;
         let gamma = transcript.squeeze_challenge(layouter)?;
 
         let permutation_committed =
-            // Hash each permutation product commitment
             permutation::read_product_commitments(layouter, &mut transcript, cs)?;
 
-        let lookups_committed = multiplicities_committed
+        // Read ONE batched helper commitment for all (arg, chunk) helpers,
+        // then ONE batched aggregator commitment.
+        let args_with_multiplicities: Vec<_> = multiplicities_committed
             .into_iter()
             .zip(cs.lookups().iter())
             .enumerate()
             .map(|(i, (m, batch))| {
                 let nb_flat = batch.num_chunks(assigned_vk.cs_degree);
-                // Hash each lookup product commitment
-                m.read_commitment(i, nb_flat, layouter, &mut transcript)
+                (i, nb_flat, m)
             })
-            .collect::<Result<Vec<_>, _>>()?;
+            .collect();
+        let helpers_only =
+            lookup::read_helpers::<S, PCS>(args_with_multiplicities, layouter, &mut transcript)?;
+        let lookups_committed =
+            lookup::read_aggregators::<S, PCS>(helpers_only, layouter, &mut transcript)?;
 
         let trash_challenge = transcript.squeeze_challenge(layouter)?;
 
@@ -898,7 +900,7 @@ pub(crate) mod tests {
         dev::MockProver,
         plonk::{create_proof, keygen_pk, keygen_vk_with_k, prepare, Circuit, Error},
         poly::{
-            kzg::{commitment::KZGMultiCommitment, params::ParamsKZG, KZGCommitmentScheme},
+            pcs::{params::ParamsKZG, FflonkCommitment, FflonkScheme},
             PolynomialLabel,
         },
         transcript::{CircuitTranscript, Transcript},
@@ -1163,12 +1165,7 @@ pub(crate) mod tests {
 
         let inner_proof = {
             let mut transcript = CircuitTranscript::<PoseidonState<F>>::init();
-            create_proof::<
-                F,
-                KZGCommitmentScheme<E>,
-                CircuitTranscript<PoseidonState<F>>,
-                InnerCircuit,
-            >(
+            create_proof::<F, FflonkScheme<E>, CircuitTranscript<PoseidonState<F>>, InnerCircuit>(
                 &inner_params,
                 &inner_pk,
                 &InnerCircuit::from_witness(preimage),
@@ -1184,9 +1181,9 @@ pub(crate) mod tests {
         let inner_dual_msm = {
             let mut transcript =
                 CircuitTranscript::<PoseidonState<F>>::init_from_bytes(&inner_proof);
-            prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<PoseidonState<F>>>(
+            prepare::<F, FflonkScheme<E>, CircuitTranscript<PoseidonState<F>>>(
                 &inner_vk,
-                &[KZGMultiCommitment::commitment_to_zero(
+                &[FflonkCommitment::commitment_to_zero(
                     PolynomialLabel::CommittedInstance(0),
                 )],
                 &[&inner_public_inputs],
@@ -1197,7 +1194,8 @@ pub(crate) mod tests {
 
         let fixed_bases = crate::verifier::fixed_bases::<S>(&inner_vk);
 
-        let mut inner_acc = Accumulator::<S>::from_dual_msm(inner_dual_msm.clone(), &fixed_bases);
+        let mut inner_acc =
+            Accumulator::<S>::from_dual_msm(inner_dual_msm.clone().into_dual_msm(), &fixed_bases);
 
         let inner_verifier_params = inner_params.verifier_params();
         assert!(inner_dual_msm.check(&inner_verifier_params));
