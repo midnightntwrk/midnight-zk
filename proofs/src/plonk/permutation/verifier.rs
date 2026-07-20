@@ -10,9 +10,14 @@ use crate::{
     transcript::{Hashable, Transcript},
 };
 
+/// Holds the single batched commitment to all permutation accumulator
+/// polynomials, together with the number of chunks (which we need at
+/// `evaluate` time and which is reconstructible from the verifying key).
 #[derive(Debug)]
 pub(crate) struct Committed<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
-    permutation_product_commitments: Vec<CS::Commitment>,
+    permutation_product_commitment: CS::Commitment,
+    num_chunks: usize,
+    _f: std::marker::PhantomData<F>,
 }
 
 pub(crate) struct CommonEvaluated<F: PrimeField> {
@@ -38,19 +43,23 @@ impl Argument {
         CS::Commitment: Hashable<T::Hash>,
     {
         let chunk_len = vk.cs_degree - 2;
+        let num_chunks = self.columns.chunks(chunk_len).count();
+        // Real circuits always have at least one chunk (the permutation
+        // argument is mandatory under PLONK as configured here); the
+        // prover-side `compute()` would panic before reaching the transcript
+        // write if there were zero columns, so we mirror that assumption.
+        assert!(
+            num_chunks > 0,
+            "permutation argument with zero columns is unsupported"
+        );
 
-        let permutation_product_commitments = self
-            .columns
-            .chunks(chunk_len)
-            .map(|_| transcript.read::<CS::Commitment>())
-            .collect::<Result<Vec<_>, _>>()?
-            .into_iter()
-            .enumerate()
-            .map(|(i, c)| c.label(&[PolynomialLabel::PermutationAccumulator(i)]))
-            .collect();
+        let labels: Vec<_> = (0..num_chunks).map(PolynomialLabel::PermutationAccumulator).collect();
+        let commitment = transcript.read::<CS::Commitment>()?.label(&labels);
 
         Ok(Committed {
-            permutation_product_commitments,
+            permutation_product_commitment: commitment,
+            num_chunks,
+            _f: std::marker::PhantomData,
         })
     }
 }
@@ -82,14 +91,13 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> Committed<F, CS> {
         CS::Commitment: Hashable<T::Hash>,
         F: Hashable<T::Hash>,
     {
-        let mut sets = vec![];
+        let mut sets = Vec::with_capacity(self.num_chunks);
 
-        let mut iter = self.permutation_product_commitments.iter();
-
-        while iter.next().is_some() {
+        for i in 0..self.num_chunks {
             let permutation_product_eval = transcript.read()?;
             let permutation_product_next_eval = transcript.read()?;
-            let permutation_product_last_eval = if iter.len() > 0 {
+            // All chunks except the last emit an additional x_last evaluation.
+            let permutation_product_last_eval = if i + 1 < self.num_chunks {
                 Some(transcript.read()?)
             } else {
                 None
@@ -116,27 +124,29 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
         let x_next = vk.domain.rotate_omega(x, Rotation::next());
         let x_last = vk.domain.rotate_omega(x, Rotation(-((blinding_factors + 1) as i32)));
 
-        let product_coms = &self.coms.permutation_product_commitments;
+        // All chunks share the same batched commitment object; fflonk's
+        // `find_bundle` (inside `multi_prepare`) routes each query to the
+        // correct sub-bundle via the label.
+        let product_com = &self.coms.permutation_product_commitment;
         let mut queries = Vec::new();
         for (i, set) in self.sets.iter().enumerate() {
             queries.push(VerifierQuery::new(
                 x,
-                &product_coms[i],
+                product_com,
                 PolynomialLabel::PermutationAccumulator(i),
                 set.permutation_product_eval,
             ));
             queries.push(VerifierQuery::new(
                 x_next,
-                &product_coms[i],
+                product_com,
                 PolynomialLabel::PermutationAccumulator(i),
                 set.permutation_product_next_eval,
             ));
         }
-        // Open at \omega^{last} x for all but the last set
         for (i, set) in self.sets.iter().enumerate().rev().skip(1) {
             queries.push(VerifierQuery::new(
                 x_last,
-                &product_coms[i],
+                product_com,
                 PolynomialLabel::PermutationAccumulator(i),
                 set.permutation_product_last_eval.unwrap(),
             ));
