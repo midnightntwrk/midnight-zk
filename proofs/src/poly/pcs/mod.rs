@@ -866,3 +866,218 @@ where
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use std::hash::Hash;
+
+    use blake2b_simd::State as Blake2bState;
+    use ff::WithSmallOrderMulGroup;
+    use midnight_curves::{pairing::MultiMillerLoop, serde::SerdeObject, CurveAffine, CurveExt};
+    use rand_core::OsRng;
+
+    use crate::{
+        poly::{
+            commitment::{Guard, Labelable, PolynomialCommitmentScheme},
+            pcs::{
+                params::{ParamsKZG, ParamsVerifierFflonk},
+                FflonkCommitment, FflonkScheme, FflonkVerificationGuard, ParamsFflonk,
+            },
+            query::{ProverQuery, VerifierQuery},
+            EvaluationDomain, PolynomialLabel,
+        },
+        transcript::{CircuitTranscript, Hashable, Sampleable, Transcript},
+        utils::arithmetic::eval_polynomial,
+    };
+
+    /// Round-trip test mirroring `kzg::tests::test_roundtrip_gwc`. Commits
+    /// three polynomials, runs `multi_open` + `multi_prepare` end-to-end,
+    /// and asserts the pairing check passes (and fails when one eval is
+    /// tampered with).
+    ///
+    /// In v1 every sub-bundle is `t=1`, so this is algebraically the same
+    /// proof KZG produces; we still run it to validate the trait wiring
+    /// (commitment serde, Hashable, Labelable, Add/Mul, Guard).
+    #[test]
+    fn test_roundtrip_gwc() {
+        use midnight_curves::Bls12;
+
+        const K: u32 = 4;
+
+        let params: ParamsFflonk<Bls12> = ParamsKZG::unsafe_setup(K, OsRng);
+
+        // `FFLONK_T_MAX_LOG = 0` => no bundling (KZG-equivalent path).
+        let proof = create_proof::<_, CircuitTranscript<Blake2bState>>(&params);
+
+        let verifier_params = params.verifier_params();
+        verify::<Bls12, CircuitTranscript<Blake2bState>>(&verifier_params, &proof[..], false, K);
+        verify::<Bls12, CircuitTranscript<Blake2bState>>(&verifier_params, &proof[..], true, K);
+    }
+
+    fn verify<E, T>(
+        verifier_params: &ParamsVerifierFflonk<E>,
+        proof: &[u8],
+        should_fail: bool,
+        k: u32,
+    ) where
+        E: MultiMillerLoop,
+        T: Transcript,
+        E::Fr: WithSmallOrderMulGroup<3> + Hashable<T::Hash> + Sampleable<T::Hash> + Ord + Hash,
+        E::G1: Hashable<T::Hash> + CurveExt<ScalarExt = E::Fr, AffineExt = E::G1Affine>,
+        E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1> + SerdeObject,
+        FflonkCommitment<E>: Hashable<T::Hash>,
+    {
+        let mut transcript = T::init_from_bytes(proof);
+
+        let a: FflonkCommitment<E> = transcript
+            .read::<FflonkCommitment<E>>()
+            .unwrap()
+            .label(&[PolynomialLabel::Custom("a".into())]);
+        let b: FflonkCommitment<E> = transcript
+            .read::<FflonkCommitment<E>>()
+            .unwrap()
+            .label(&[PolynomialLabel::Custom("b".into())]);
+        let c: FflonkCommitment<E> = transcript
+            .read::<FflonkCommitment<E>>()
+            .unwrap()
+            .label(&[PolynomialLabel::Custom("c".into())]);
+
+        let x: E::Fr = transcript.squeeze_challenge();
+        let y: E::Fr = transcript.squeeze_challenge();
+
+        let avx: E::Fr = transcript.read().unwrap();
+        let bvx: E::Fr = transcript.read().unwrap();
+        let cvy: E::Fr = transcript.read().unwrap();
+
+        let valid_queries = std::iter::empty()
+            .chain(Some(VerifierQuery::new(
+                x,
+                &a,
+                PolynomialLabel::Custom("a".into()),
+                avx,
+            )))
+            .chain(Some(VerifierQuery::new(
+                x,
+                &b,
+                PolynomialLabel::Custom("b".into()),
+                bvx,
+            )))
+            .chain(Some(VerifierQuery::new(
+                y,
+                &c,
+                PolynomialLabel::Custom("c".into()),
+                cvy,
+            )));
+
+        // Tamper: swap `bvx` for `avx` to force the pairing check to fail.
+        let invalid_queries = std::iter::empty()
+            .chain(Some(VerifierQuery::new(
+                x,
+                &a,
+                PolynomialLabel::Custom("a".into()),
+                avx,
+            )))
+            .chain(Some(VerifierQuery::new(
+                x,
+                &b,
+                PolynomialLabel::Custom("b".into()),
+                avx,
+            )))
+            .chain(Some(VerifierQuery::new(
+                y,
+                &c,
+                PolynomialLabel::Custom("c".into()),
+                cvy,
+            )));
+
+        let queries = if should_fail {
+            invalid_queries
+        } else {
+            valid_queries
+        };
+
+        let result =
+            FflonkScheme::<E>::multi_prepare(&queries.collect::<Vec<_>>(), k, &mut transcript)
+                .unwrap();
+
+        if should_fail {
+            assert!(
+                <FflonkVerificationGuard<E> as Guard<E::Fr, FflonkScheme<E>>>::verify(
+                    result,
+                    verifier_params
+                )
+                .is_err()
+            );
+        } else {
+            assert!(
+                <FflonkVerificationGuard<E> as Guard<E::Fr, FflonkScheme<E>>>::verify(
+                    result,
+                    verifier_params
+                )
+                .is_ok()
+            );
+        }
+    }
+
+    fn create_proof<E, T>(params: &ParamsFflonk<E>) -> Vec<u8>
+    where
+        E: MultiMillerLoop,
+        T: Transcript,
+        E::Fr: WithSmallOrderMulGroup<3> + Hashable<T::Hash> + Hash + Sampleable<T::Hash> + Ord,
+        E::G1: Hashable<T::Hash> + CurveExt<ScalarExt = E::Fr, AffineExt = E::G1Affine>,
+        E::G1Affine: SerdeObject + CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
+    {
+        let k = (params.g.len() - 1).ilog2() + 1;
+        let domain = EvaluationDomain::new(1, k);
+
+        let mut ax = domain.empty_coeff();
+        for (i, a) in ax.iter_mut().enumerate() {
+            *a = <E::Fr>::from(10 + i as u64);
+        }
+
+        let mut bx = domain.empty_coeff();
+        for (i, a) in bx.iter_mut().enumerate() {
+            *a = <E::Fr>::from(100 + i as u64);
+        }
+
+        let mut cx = domain.empty_coeff();
+        for (i, a) in cx.iter_mut().enumerate() {
+            *a = <E::Fr>::from(100 + i as u64);
+        }
+
+        let mut transcript = T::init();
+
+        let a =
+            FflonkScheme::<E>::commit_many(params, &[&ax], &[PolynomialLabel::Custom("a".into())]);
+        let b =
+            FflonkScheme::<E>::commit_many(params, &[&bx], &[PolynomialLabel::Custom("b".into())]);
+        let c =
+            FflonkScheme::<E>::commit_many(params, &[&cx], &[PolynomialLabel::Custom("c".into())]);
+
+        transcript.write(&a).unwrap();
+        transcript.write(&b).unwrap();
+        transcript.write(&c).unwrap();
+
+        let x: E::Fr = transcript.squeeze_challenge();
+        let y = transcript.squeeze_challenge();
+
+        let avx = eval_polynomial(&ax, x);
+        let bvx = eval_polynomial(&bx, x);
+        let cvy = eval_polynomial(&cx, y);
+
+        transcript.write(&avx).unwrap();
+        transcript.write(&bvx).unwrap();
+        transcript.write(&cvy).unwrap();
+
+        let queries = [
+            ProverQuery::new(x, &ax, PolynomialLabel::Custom("a".into())),
+            ProverQuery::new(x, &bx, PolynomialLabel::Custom("b".into())),
+            ProverQuery::new(y, &cx, PolynomialLabel::Custom("c".into())),
+        ]
+        .into_iter();
+
+        FflonkScheme::<E>::multi_open(params, &queries.collect::<Vec<_>>(), &mut transcript)
+            .unwrap();
+
+        transcript.finalize()
+    }
+}
