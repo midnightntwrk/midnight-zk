@@ -102,8 +102,9 @@ pub trait InCircuitPCS<S: SelfEmulation>: Sized + Clone + Debug {
     ) -> Result<Self::AssignedCommitment, Error>;
 
     /// Reads one commitment (to `length` polynomials) from the proof
-    /// transcript. Commitments are not length-prefixed on the wire, so the
-    /// caller supplies the polynomial count (`1` unless batched).
+    /// transcript. The on-wire count prefix is not hashed and is discarded by
+    /// the gadget, so the caller supplies the polynomial count (`1` unless
+    /// batched).
     fn read_commitment(
         transcript: &mut TranscriptGadget<S>,
         layouter: &mut impl Layouter<S::F>,
