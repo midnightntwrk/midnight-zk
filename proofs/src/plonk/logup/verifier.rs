@@ -39,6 +39,7 @@ pub struct CommittedMultiplicities<F: PrimeField, CS: PolynomialCommitmentScheme
 /// One shared `m` and `Z`, plus one `hᵢ` per chunk.
 #[derive(Debug)]
 pub struct Committed<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
+    argument_index: usize,
     multiplicities: CS::Commitment,
     /// One commitment per chunk of the batched argument.
     helper_polys: Vec<CS::Commitment>,
@@ -55,13 +56,14 @@ impl<F: WithSmallOrderMulGroup<3>> ChunkedArgument<F> {
     /// Reads the multiplicities commitment from the transcript.
     pub(in crate::plonk) fn read_multiplicities<T: Transcript, CS: PolynomialCommitmentScheme<F>>(
         &self,
+        argument_index: usize,
         transcript: &mut T,
     ) -> Result<CommittedMultiplicities<F, CS>, Error>
     where
         CS::Commitment: Hashable<T::Hash>,
     {
         let multiplicities = transcript.read().map(|c: CS::Commitment| {
-            c.label(PolynomialLabel::LogupMultiplicities(self.name.clone()))
+            c.label(&[PolynomialLabel::LogupMultiplicities(argument_index)])
         })?;
         Ok(CommittedMultiplicities { multiplicities })
     }
@@ -74,7 +76,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>>
     /// from the transcript.
     pub(in crate::plonk) fn read_commitment<T: Transcript>(
         self,
-        name: &str,
+        argument_index: usize,
         nb_chunks: usize,
         transcript: &mut T,
     ) -> Result<Committed<F, CS>, Error>
@@ -82,17 +84,18 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>>
         CS::Commitment: Hashable<T::Hash>,
     {
         let helper_polys = (0..nb_chunks)
-            .map(|_| {
-                transcript
-                    .read()
-                    .map(|c: CS::Commitment| c.label(PolynomialLabel::LogupHelper(name.to_owned())))
+            .map(|j| {
+                transcript.read().map(|c: CS::Commitment| {
+                    c.label(&[PolynomialLabel::LogupHelper(argument_index, j)])
+                })
             })
             .collect::<Result<Vec<_>, _>>()?;
-        let accumulator = transcript
-            .read()
-            .map(|c: CS::Commitment| c.label(PolynomialLabel::LogupAggregator(name.to_owned())))?;
+        let accumulator = transcript.read().map(|c: CS::Commitment| {
+            c.label(&[PolynomialLabel::LogupAggregator(argument_index)])
+        })?;
 
         Ok(Committed {
+            argument_index,
             multiplicities: self.multiplicities,
             helper_polys,
             accumulator,
@@ -140,10 +143,12 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
         x: F,
     ) -> impl Iterator<Item = VerifierQuery<'_, F, CS>> + Clone {
         let x_next = vk.domain.rotate_omega(x, Rotation::next());
+        let arg = self.committed.argument_index;
 
         let m_query = iter::once(VerifierQuery::new(
             x,
             &self.committed.multiplicities,
+            PolynomialLabel::LogupMultiplicities(arg),
             self.evaluated.multiplicities_eval,
         ));
 
@@ -152,18 +157,23 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
             .helper_polys
             .iter()
             .zip(self.evaluated.helper_evals.iter())
-            .map(move |(com, &eval)| VerifierQuery::new(x, com, eval))
+            .enumerate()
+            .map(move |(j, (com, &eval))| {
+                VerifierQuery::new(x, com, PolynomialLabel::LogupHelper(arg, j), eval)
+            })
             .collect::<Vec<_>>();
 
         let z_queries = [
             VerifierQuery::new(
                 x,
                 &self.committed.accumulator,
+                PolynomialLabel::LogupAggregator(arg),
                 self.evaluated.accumulator_eval,
             ),
             VerifierQuery::new(
                 x_next,
                 &self.committed.accumulator,
+                PolynomialLabel::LogupAggregator(arg),
                 self.evaluated.accumulator_next_eval,
             ),
         ];

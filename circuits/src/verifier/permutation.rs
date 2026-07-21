@@ -65,11 +65,11 @@ pub(crate) fn read_product_commitments<S: SelfEmulation, PCS: InCircuitPCS<S>>(
         .permutation()
         .get_columns()
         .chunks(chunk_len)
-        .map(|_| PCS::read_commitment(transcript_gadget, layouter))
+        .map(|_| PCS::read_commitment(transcript_gadget, layouter, 1))
         .collect::<Result<Vec<_>, _>>()?
         .into_iter()
         .enumerate()
-        .map(|(i, c)| c.label(PolynomialLabel::PermutationAccumulator(i)))
+        .map(|(i, c)| c.label(&[PolynomialLabel::PermutationAccumulator(i)]))
         .collect();
 
     Ok(Committed {
@@ -139,11 +139,13 @@ impl<'a, S: SelfEmulation, PCS: InCircuitPCS<S>> Evaluated<S, PCS> {
             queries.push(VerifierQuery::new(
                 x,
                 &self.coms.permutation_product_commitments[i],
+                PolynomialLabel::PermutationAccumulator(i),
                 &set.permutation_product_eval,
             ));
             queries.push(VerifierQuery::new(
                 x_next,
                 &self.coms.permutation_product_commitments[i],
+                PolynomialLabel::PermutationAccumulator(i),
                 &set.permutation_product_next_eval,
             ));
         }
@@ -153,6 +155,7 @@ impl<'a, S: SelfEmulation, PCS: InCircuitPCS<S>> Evaluated<S, PCS> {
             queries.push(VerifierQuery::new(
                 x_last,
                 &self.coms.permutation_product_commitments[i],
+                PolynomialLabel::PermutationAccumulator(i),
                 set.permutation_product_last_eval.as_ref().unwrap(),
             ));
         }
@@ -172,7 +175,10 @@ impl<S: SelfEmulation> CommonEvaluated<S> {
         vkey_commitments
             .iter()
             .zip(self.permutation_evals.iter())
-            .map(|(commitment, eval)| VerifierQuery::new(x, *commitment, eval))
+            .enumerate()
+            .map(|(i, (commitment, eval))| {
+                VerifierQuery::new(x, *commitment, PolynomialLabel::PermutationFixed(i), eval)
+            })
             .collect()
     }
 }
