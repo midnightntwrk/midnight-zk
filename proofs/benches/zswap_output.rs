@@ -24,7 +24,7 @@ use midnight_proofs::{
     },
     poly::{
         commitment::Guard,
-        kzg::{commitment::KZGCommitment, params::ParamsKZG, KZGCommitmentScheme},
+        kzg::{commitment::KZGMultiCommitment, params::ParamsKZG, KZGCommitmentScheme},
         PolynomialLabel,
     },
     transcript::{CircuitTranscript, Transcript},
@@ -35,7 +35,6 @@ use rand_chacha::ChaCha8Rng;
 use sha2::Digest;
 
 type F = midnight_curves::Fq;
-type C = midnight_curves::G1Projective;
 
 type CoinCom = [u8; 32];
 type ValueCom = JubjubSubgroup;
@@ -286,9 +285,8 @@ fn bench_zswap_output(c: &mut Criterion) {
             |mut t| {
                 parse_trace(
                     pk.get_vk(),
-                    &[KZGCommitment::Simple(
-                        C::identity(),
-                        PolynomialLabel::Instance(0),
+                    &[KZGMultiCommitment::commitment_to_zero(
+                        PolynomialLabel::CommittedInstance(0),
                     )],
                     &[&instance],
                     &mut t,
@@ -306,9 +304,8 @@ fn bench_zswap_output(c: &mut Criterion) {
                 (
                     parse_trace(
                         pk.get_vk(),
-                        &[KZGCommitment::Simple(
-                            C::identity(),
-                            PolynomialLabel::Instance(0),
+                        &[KZGMultiCommitment::commitment_to_zero(
+                            PolynomialLabel::CommittedInstance(0),
                         )],
                         &[&instance],
                         &mut t,
@@ -321,9 +318,8 @@ fn bench_zswap_output(c: &mut Criterion) {
                 verify_algebraic_constraints(
                     pk.get_vk(),
                     trace,
-                    &[KZGCommitment::Simple(
-                        C::identity(),
-                        PolynomialLabel::Instance(0),
+                    &[KZGMultiCommitment::commitment_to_zero(
+                        PolynomialLabel::CommittedInstance(0),
                     )],
                     &[&instance],
                     &mut t,
@@ -339,9 +335,8 @@ fn bench_zswap_output(c: &mut Criterion) {
                 let mut t = transcript.clone();
                 let trace = parse_trace(
                     pk.get_vk(),
-                    &[KZGCommitment::Simple(
-                        C::identity(),
-                        PolynomialLabel::Instance(0),
+                    &[KZGMultiCommitment::commitment_to_zero(
+                        PolynomialLabel::CommittedInstance(0),
                     )],
                     &[&instance],
                     &mut t,
@@ -350,9 +345,8 @@ fn bench_zswap_output(c: &mut Criterion) {
                 let guard = verify_algebraic_constraints(
                     pk.get_vk(),
                     trace,
-                    &[KZGCommitment::Simple(
-                        C::identity(),
-                        PolynomialLabel::Instance(0),
+                    &[KZGMultiCommitment::commitment_to_zero(
+                        PolynomialLabel::CommittedInstance(0),
                     )],
                     &[&instance],
                     &mut t,

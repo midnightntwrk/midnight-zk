@@ -16,9 +16,8 @@
 use std::{cell::RefCell, io, rc::Rc};
 
 use ff::Field;
-use group::{prime::PrimeCurveAffine, Group};
 use midnight_circuits::types::ComposableChip;
-use midnight_curves::{G1Affine, G1Projective};
+use midnight_curves::G1Projective;
 use midnight_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
     dev::cost_model::{circuit_model, CircuitModel},
@@ -28,9 +27,11 @@ use midnight_proofs::{
     poly::{
         commitment::{Guard, Params},
         kzg::{
+            commitment::KZGMultiCommitment,
             params::{ParamsKZG, ParamsVerifierKZG},
             KZGCommitmentScheme,
         },
+        PolynomialLabel,
     },
     transcript::{CircuitTranscript, Hashable, Sampleable, Transcript, TranscriptHash},
     utils::SerdeFormat,
@@ -565,7 +566,7 @@ pub fn verify<R: Relation, H: TranscriptHash>(
     params_verifier: &ParamsVerifierKZG<midnight_curves::Bls12>,
     vk: &MidnightVK,
     instance: &R::Instance,
-    committed_instance: Option<G1Affine>,
+    committed_instance: Option<KZGMultiCommitment<midnight_curves::Bls12>>,
     proof: &[u8],
 ) -> Result<(), R::Error>
 where
@@ -573,7 +574,9 @@ where
     F: Hashable<H> + Sampleable<H>,
 {
     let pi = R::format_instance(instance)?;
-    let committed_pi = committed_instance.unwrap_or(G1Affine::identity());
+    let committed_pi = committed_instance.unwrap_or(KZGMultiCommitment::commitment_to_zero(
+        PolynomialLabel::CommittedInstance(0),
+    ));
     if pi.len() != vk.nb_public_inputs {
         return Err(Error::InvalidInstances.into());
     }
@@ -628,12 +631,9 @@ where
                 CircuitTranscript<H>,
             >(
                 &vk.vk,
-                &[
-                    midnight_proofs::poly::kzg::commitment::KZGCommitment::Simple(
-                        midnight_curves::G1Projective::identity(),
-                        midnight_proofs::poly::PolynomialLabel::Instance(0),
-                    ),
-                ],
+                &[KZGMultiCommitment::commitment_to_zero(
+                    PolynomialLabel::CommittedInstance(0),
+                )],
                 &[pi],
                 &mut transcript,
             )?;

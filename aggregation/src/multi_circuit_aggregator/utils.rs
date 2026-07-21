@@ -15,7 +15,7 @@ use midnight_circuits::{
     hash::poseidon::{PoseidonChip, PoseidonState},
     instructions::{hash::HashCPU, *},
     types::AssignedNative,
-    verifier::{AssignedVk, SelfEmulation},
+    verifier::{AssignedVk, InCircuitKZG, SelfEmulation},
 };
 use midnight_proofs::{
     circuit::{Layouter, Value},
@@ -32,7 +32,7 @@ use crate::ivc::{C, F, S};
 /// is verified against the same VK that was hashed), its VK hash, and a named
 /// map of assigned base points for resolving fixed-base scalars.
 pub type VkHashAndBases = (
-    AssignedVk<S>,
+    AssignedVk<S, InCircuitKZG<S>>,
     AssignedNative<F>,
     BTreeMap<PolynomialLabel, <S as SelfEmulation>::AssignedPoint>,
 );
@@ -71,13 +71,13 @@ pub fn assign_as_public_inputs_and_hash_vk(
     let nb_perm = cs.permutation().columns.len();
 
     // Witness the VK commitment points.
-    let base_values: Vec<Value<C>> = (0..nb_fixed)
-        .map(|i| vk.map(|vk| vk.vk().fixed_commitments()[i].clone().into_point()))
-        .chain(
-            (0..nb_perm)
-                .map(|i| vk.map(|vk| vk.vk().permutation().commitments()[i].clone().into_point())),
-        )
-        .collect();
+    let base_values: Vec<Value<C>> =
+        (0..nb_fixed)
+            .map(|i| vk.map(|vk| vk.vk().fixed_commitments()[i].0[0].clone().into_point()))
+            .chain((0..nb_perm).map(|i| {
+                vk.map(|vk| vk.vk().permutation().commitments()[i].0[0].clone().into_point())
+            }))
+            .collect();
 
     let assigned_bases = base_values
         .into_iter()
