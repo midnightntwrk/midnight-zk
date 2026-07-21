@@ -182,10 +182,7 @@ impl<F: CircuitField, const M: usize, const A: usize> Base64VarInstructions<F, M
             .collect::<Result<Vec<_>, Error>>()?
             .try_into()
             .unwrap();
-        Ok(Base64Vec(AssignedVector {
-            buffer: result,
-            len: vec.len.clone(),
-        }))
+        Ok(Base64Vec(AssignedVector::new(result, vec.len.clone())))
     }
 
     fn var_decode_base64url<const M_OUT: usize, const A_OUT: usize>(
@@ -195,10 +192,10 @@ impl<F: CircuitField, const M: usize, const A: usize> Base64VarInstructions<F, M
     ) -> Result<AssignedVector<F, AssignedByte<F>, M_OUT, A_OUT>, Error> {
         let vec = self.url_to_standard(layouter, &*b64url_input.0.buffer)?;
 
-        let b64_input = Base64Vec::<F, M, A>(AssignedVector {
-            buffer: Box::new(vec.try_into().unwrap()),
-            len: b64url_input.0.len.clone(),
-        });
+        let b64_input = Base64Vec::<F, M, A>(AssignedVector::new(
+            Box::new(vec.try_into().unwrap()),
+            b64url_input.0.len.clone(),
+        ));
 
         self.var_decode_base64(layouter, &b64_input)
     }
