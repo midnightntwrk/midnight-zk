@@ -79,7 +79,7 @@ impl<E: Engine> MSMKZG<E> {
         MSMKZG {
             scalars: vec![E::Fr::ONE],
             bases: vec![*base],
-            labels: vec![PolynomialLabel::Collapsed],
+            labels: vec![PolynomialLabel::NoLabel],
         }
     }
 }
@@ -89,7 +89,7 @@ where
     E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
 {
     /// Evaluates the MSM to a single point and replaces all terms with that
-    /// single point (scalar = 1, label = `Collapsed`).
+    /// single point (scalar = 1), labeling the result with `label`.
     ///
     /// This mirrors `AssignedMsm::collapse` in the circuits crate.
     ///
@@ -98,19 +98,19 @@ where
     /// If a term carries a `Fixed` or `PermutationFixed` label.
     //  This is because these "fixed" labels carry information that we do not want
     //  to lose when collapsing, since it is relevant for the `verifier_gadget`.
-    pub fn collapse(&mut self) {
+    pub fn collapse(&mut self, label: PolynomialLabel) {
         debug_assert!(
             !self.labels.iter().any(|l| matches!(
                 l,
                 PolynomialLabel::Fixed(_) | PolynomialLabel::PermutationFixed(_)
             )),
-            "collapse: all labels must be Collapsed, Advice or Instance, found: {:?}",
+            "collapse: no label may be Fixed or PermutationFixed, found: {:?}",
             self.labels,
         );
         let point = self.eval();
         self.scalars = vec![E::Fr::ONE];
         self.bases = vec![point];
-        self.labels = vec![PolynomialLabel::Collapsed];
+        self.labels = vec![label];
     }
 }
 

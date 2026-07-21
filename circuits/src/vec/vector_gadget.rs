@@ -11,6 +11,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::iter::repeat_n;
+
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
@@ -136,21 +138,22 @@ where
         let ng = &self.native_gadget;
         let limits = self.get_limits(layouter, input)?;
         let (start, end) = &limits;
-        let mut is_data: AssignedBit<F> = ng.assign_fixed(layouter, true)?;
+        let mut is_padding: AssignedBit<F> = ng.assign_fixed(layouter, true)?;
 
-        let result = (0..=M - A)
-            .map(|i| {
-                let is_start = ng.is_equal_to_fixed(layouter, start, F::from(i as u64))?;
-                is_data = ng.xor(layouter, &[is_data.clone(), is_start])?;
-                Ok(is_data.clone())
-            })
-            .collect::<Result<Vec<_>, Error>>()?;
+        let mut result: Vec<AssignedBit<F>> = Vec::with_capacity(M - A + 1);
+        for i in (0..=M - A).step_by(A) {
+            let is_payload_start = ng.is_equal_to_fixed(layouter, start, F::from(i as u64))?;
+            is_padding = ng.xor(layouter, &[is_padding.clone(), is_payload_start])?;
+            // Repeat A times for all chunks except the last one.
+            let repeat = if i == M - A { 1 } else { A };
+            result.extend(repeat_n(is_padding.clone(), repeat));
+        }
 
         let last_chunk = (M - A + 1..M)
             .map(|i| {
-                let is_end = ng.is_equal_to_fixed(layouter, end, F::from(i as u64))?;
-                is_data = ng.xor(layouter, &[is_data.clone(), is_end])?;
-                Ok(is_data.clone())
+                let is_payload_end = ng.is_equal_to_fixed(layouter, end, F::from(i as u64))?;
+                is_padding = ng.xor(layouter, &[is_padding.clone(), is_payload_end])?;
+                Ok(is_padding.clone())
             })
             .collect::<Result<Vec<_>, Error>>()?;
 
@@ -768,6 +771,18 @@ mod tests {
         run_padding_flags_test::<_, 128, 64>(&inputs, false);
         run_padding_flags_test::<F, 128, 64>(&[], false);
         run_padding_flags_test::<F, 64, 16>(&inputs[..64], false);
+
+        // Edge cases: payload starts in the last chunk
+        // 1. Starts and ends in the last chunk, with back padding.
+        run_padding_flags_test::<_, 128, 64>(&inputs[..30], false);
+        // 2. exactly fills the last chunk, with no back padding.
+        run_padding_flags_test::<_, 128, 64>(&inputs[..64], false);
+        // 3. Same with small A (many front chunks before the last one).
+        run_padding_flags_test::<_, 128, 2>(&inputs[..1], false);
+        // 4. Single-chunk buffer (A == M): empty, partial (back padding), and full.
+        run_padding_flags_test::<F, 64, 64>(&[], false);
+        run_padding_flags_test::<_, 64, 64>(&inputs[..30], false);
+        run_padding_flags_test::<_, 64, 64>(&inputs[..64], false);
     }
 
     #[test]

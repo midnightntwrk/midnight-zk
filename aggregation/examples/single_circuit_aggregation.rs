@@ -21,22 +21,21 @@ mod sha_preimage;
 use std::{collections::BTreeMap, time::Instant};
 
 use ff::Field;
-use group::Group;
 use midnight_aggregation::ivc::{self, IvcCircuit, IvcContext, IvcIO, IvcState, IvcTransition};
 use midnight_circuits::{
     hash::poseidon::{PoseidonChip, PoseidonState},
     instructions::{hash::HashCPU, *},
     types::{AssignedNative, Instantiable},
     verifier::{
-        self, Accumulator, AssignedAccumulator, AssignedKZGCommitment, BlstrsEmulation,
-        SelfEmulation,
+        self, Accumulator, AssignedAccumulator, AssignedKZGMultiCommitment, AssignedVk,
+        BlstrsEmulation, InCircuitKZG, SelfEmulation,
     },
 };
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::{self, ConstraintSystem, Error},
     poly::{
-        kzg::{commitment::KZGCommitment, params::ParamsVerifierKZG, KZGCommitmentScheme},
+        kzg::{commitment::KZGMultiCommitment, params::ParamsVerifierKZG, KZGCommitmentScheme},
         EvaluationDomain, PolynomialLabel,
     },
     transcript::{CircuitTranscript, Transcript},
@@ -240,9 +239,8 @@ impl IvcTransition for ProofAggregation {
             let dual_msm =
                 plonk::prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<PoseidonState<F>>>(
                     ctx.vk.vk(),
-                    &[KZGCommitment::Simple(
-                        C::identity(),
-                        PolynomialLabel::Instance(0),
+                    &[KZGMultiCommitment::commitment_to_zero(
+                        PolynomialLabel::CommittedInstance(0),
                     )],
                     &[&statement_pis],
                     &mut transcript,
@@ -288,7 +286,7 @@ impl IvcTransition for ProofAggregation {
         witness: Value<Self::Witness>,
     ) -> Result<Self::AssignedState, Error> {
         // Assign inner VK as a hard-coded constant.
-        let inner_vk = self.std_lib.verifier().assign_fixed_vk(
+        let inner_vk: AssignedVk<S, InCircuitKZG<S>> = self.std_lib.verifier().assign_fixed_vk(
             layouter,
             &self.inner_ctx.domain,
             &self.inner_ctx.cs,
@@ -305,10 +303,11 @@ impl IvcTransition for ProofAggregation {
         )?;
 
         // Verify the inner proof in-circuit.
-        let instance_com = AssignedKZGCommitment::simple(
-            self.std_lib.bls12_381().assign_fixed(layouter, C::identity())?,
+        let instance_com = AssignedKZGMultiCommitment::commitment_to_zero(
+            layouter,
+            self.std_lib.bls12_381(),
             PolynomialLabel::CommittedInstance(0),
-        );
+        )?;
 
         let inner_proof_acc = self.std_lib.verifier().prepare(
             layouter,
