@@ -73,7 +73,7 @@ name = "verify"
 harness = false
 
 [[bench]]
-name = "batch_recovery"
+name = "batch_verify_cores"
 harness = false
 
 [[example]]

@@ -672,8 +672,9 @@ where
     }
     let r: F = r_transcript.squeeze_challenge();
 
-    let powers: Vec<F> =
-        std::iter::successors(Some(F::ONE), |p| Some(*p * r)).take(prepared.len()).collect();
+    let powers: Vec<F> = std::iter::successors(Some(F::ONE), |p| Some(*p * r))
+        .take(prepared.len())
+        .collect();
     let mut guards: Vec<_> = prepared
         .par_iter()
         .zip(powers.par_iter())
