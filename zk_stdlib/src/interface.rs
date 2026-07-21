@@ -25,7 +25,7 @@ use midnight_proofs::{
         self, keygen_vk_with_k, prepare, Circuit, ConstraintSystem, Error, ProvingKey, VerifyingKey,
     },
     poly::{
-        commitment::{Guard, Params},
+        commitment::{Guard, Params, PolynomialCommitmentScheme},
         kzg::{
             commitment::KZGMultiCommitment,
             params::{ParamsKZG, ParamsVerifierKZG},
@@ -37,6 +37,9 @@ use midnight_proofs::{
     utils::SerdeFormat,
 };
 use rand::{CryptoRng, RngCore};
+use rayon::iter::{
+    IndexedParallelIterator, IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelIterator,
+};
 
 use crate::{
     utils::plonk_api::BlstPLONK, ZkStdLib, ZkStdLibArch, ZkStdLibConfig, F, NB_COMMITTED_INSTANCES,
@@ -589,25 +592,47 @@ where
     )?)
 }
 
-/// Verifies a batch of proofs with respect to their corresponding vk.
-/// This method does not need to know the `Relation` the proofs are associated
-/// to and, indeed, it can verify proofs from different `Relation`s.
-/// For that, this function does not take `instance`s, but public inputs
-/// in raw format (`Vec<F>`).
-///
-/// Returns `Ok(())` if all proofs are valid.
-pub fn batch_verify<H: TranscriptHash + Send + Sync>(
-    params_verifier: &ParamsVerifierKZG<midnight_curves::Bls12>,
+/// Strategy used by [`batch_verify_with_strategy`] to localise the failing
+/// proofs of a batch.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BatchStrategy {
+    /// If either proof of the batch fails verification, a plain
+    /// `Error::Opening` is returned without additional search effort to
+    /// identify the invalid proofs.
+    NoRecovery,
+    /// Prepare every proof once, then localise failures by binary search over
+    /// the guards. Batch verification returns `Error::BatchOpening(v)` upon
+    /// failure, where `v` is the vector of indexes of invalid proofs in the
+    /// batch. Fastest recovery when failures are rare.
+    ReusePrepare,
+    /// Like [`ReusePrepare`], but additionally collapse each proof's guard to
+    /// a single point up front, so every search node only recombines the
+    /// per-proof points instead of all their raw terms. Slower with no/few
+    /// failures (per-proof collapse forgoes the batched MSM's efficiency),
+    /// but markedly cheaper when many proofs fail.
+    ReusePrepareMsm,
+}
+
+/// Concrete verification guard produced by [`prepare`] for the Midnight PCS (a
+/// `DualMSM` accumulator). Retained per proof so batch verification can be
+/// re-run over subsets of a batch without recomputing `prepare`.
+type BatchGuard =
+    <KZGCommitmentScheme<midnight_curves::Bls12> as PolynomialCommitmentScheme<F>>::VerificationGuard;
+
+/// Runs the expensive, per-proof preparation of a batch: replays each proof's
+/// transcript and builds its verification guard (a deferred MSM), in parallel.
+/// Also include the msm for the `BatchStrategy::ReusePrepareMsm` strategy.
+fn compute_reuseable_params<H>(
     vks: &[MidnightVK],
     pis: &[Vec<F>],
     proofs: &[Vec<u8>],
-) -> Result<(), Error>
+    strategy: BatchStrategy,
+) -> Result<Vec<(BatchGuard, F)>, Error>
 where
+    H: TranscriptHash + Send + Sync,
     G1Projective: Hashable<H>,
     F: Hashable<H> + Sampleable<H>,
 {
-    use rayon::prelude::*;
-
     // TODO: For the moment, committed instances are not supported.
     let n = vks.len();
     if pis.len() != n || proofs.len() != n {
@@ -615,7 +640,7 @@ where
         return Err(Error::InvalidInstances);
     }
 
-    let prepared: Vec<(_, F)> = vks
+    let mut prepared = vks
         .par_iter()
         .zip(pis.par_iter())
         .zip(proofs.par_iter())
@@ -642,29 +667,122 @@ where
             Ok((dual_msm, summary))
         })
         .collect::<Result<Vec<_>, Error>>()?;
+    // Collapse each proof's guard to a single point so that later subset checks
+    // recombine points rather than re-evaluating every raw MSM term.
+    if strategy == BatchStrategy::ReusePrepareMsm {
+        prepared.par_iter_mut().for_each(|(guard, _)| guard.early_collapse());
+    };
+    Ok(prepared)
+}
 
-    let mut r_transcript = CircuitTranscript::init();
-    let mut guards = Vec::with_capacity(n);
-    for (guard, summary) in prepared {
-        r_transcript.common(&summary)?;
-        guards.push(guard);
+/// Completes batch verification over an already-prepared set of guards: derives
+/// the batching challenge from their summaries, folds the guards into a single
+/// MSM and runs one pairing check. Performs no `prepare` work, so it can be
+/// called repeatedly over subsets of a batch cheaply.
+///
+/// Returns [`Error::Opening`] (without pinpointing which proof) if the combined
+/// check fails, or `Ok(())` if the (possibly empty) subset verifies.
+fn batch_verify_with_guard<H: TranscriptHash>(
+    params_verifier: &ParamsVerifierKZG<midnight_curves::Bls12>,
+    prepared: &[(BatchGuard, F)],
+) -> Result<(), Error>
+where
+    F: Hashable<H> + Sampleable<H>,
+{
+    let mut r_transcript = CircuitTranscript::<H>::init();
+    for (_, summary) in prepared {
+        r_transcript.common(summary)?;
     }
     let r: F = r_transcript.squeeze_challenge();
 
-    let n_guards = guards.len();
-    let powers: Vec<F> =
-        std::iter::successors(Some(F::ONE), |p| Some(*p * r)).take(n_guards).collect();
-    guards.par_iter_mut().enumerate().for_each(|(i, guard)| guard.scale(powers[i]));
+    let powers: Vec<F> = std::iter::successors(Some(F::ONE), |p| Some(*p * r))
+        .take(prepared.len())
+        .collect();
+
+    // Clone the guards before scaling: the same guard may take part in several
+    // subset checks during failure localization, so we must not mutate it.
+    let mut scaled: Vec<BatchGuard> = prepared
+        .par_iter()
+        .zip(powers.par_iter())
+        .map(|((guard, _), power)| {
+            let mut guard = guard.clone();
+            guard.scale(*power);
+            guard
+        })
+        .collect();
 
     // Add scaled guards sequentially.
-    let Some(mut acc_guard) = guards.pop() else {
+    let Some(mut acc_guard) = scaled.pop() else {
         return Ok(());
     };
-    for guard in guards {
+    for guard in scaled {
         acc_guard.add_msm(guard);
     }
-    // TODO: Have richer error types
     acc_guard.verify(params_verifier).map_err(|_| Error::Opening)
+}
+
+/// Verifies a batch of proofs with respect to their corresponding vk, without
+/// recovery of the invalid proofs. Use `batch_verify_with_strategy` for
+/// specifying different strategies.
+pub fn batch_verify<H: TranscriptHash + Send + Sync>(
+    params_verifier: &ParamsVerifierKZG<midnight_curves::Bls12>,
+    vks: &[MidnightVK],
+    pis: &[Vec<F>],
+    proofs: &[Vec<u8>],
+) -> Result<(), Error>
+where
+    G1Projective: Hashable<H>,
+    F: Hashable<H> + Sampleable<H>,
+{
+    batch_verify_with_strategy::<H>(params_verifier, vks, pis, proofs, BatchStrategy::NoRecovery)
+}
+
+/// Verifies a batch of proofs with respect to their corresponding vk.
+///
+/// Returns `Ok(())` if all proofs are valid, and otherwise either
+/// `Error::Opening` or `Error::BatchOpening` otherwise, depending on the
+/// `BatchStrategy` argument passed.
+pub fn batch_verify_with_strategy<H: TranscriptHash + Send + Sync>(
+    params_verifier: &ParamsVerifierKZG<midnight_curves::Bls12>,
+    vks: &[MidnightVK],
+    pis: &[Vec<F>],
+    proofs: &[Vec<u8>],
+    strategy: BatchStrategy,
+) -> Result<(), Error>
+where
+    G1Projective: Hashable<H>,
+    F: Hashable<H> + Sampleable<H>,
+{
+    let prepared = compute_reuseable_params::<H>(vks, pis, proofs, strategy)?;
+
+    if strategy == BatchStrategy::NoRecovery {
+        batch_verify_with_guard(params_verifier, &prepared)
+    } else {
+        // Binary-search the prepared guards to localise failures, reusing the
+        // guards across subset checks. The first iteration checks the whole batch,
+        // which is the fast path when all proofs are valid.
+        let mut failures = Vec::new();
+        let mut pending = vec![(0usize, prepared.len())];
+        while let Some((start, end)) = pending.pop() {
+            if batch_verify_with_guard(params_verifier, &prepared[start..end]).is_ok() {
+                continue;
+            };
+            if end - start == 1 {
+                failures.push(start);
+            } else {
+                let mid = start + (end - start) / 2;
+                pending.push((start, mid));
+                pending.push((mid, end));
+            }
+        }
+
+        if failures.is_empty() {
+            Ok(())
+        } else {
+            failures.sort_unstable();
+            Err(Error::BatchOpening(failures))
+        }
+    }
 }
 
 /// Returns the constraint-system degree relative to the given [`ZkStdLibArch`].

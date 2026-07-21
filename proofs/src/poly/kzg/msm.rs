@@ -283,6 +283,21 @@ where
         self.right.scale(e);
     }
 
+    /// Collapse each channel to a single point. Intended for the off-circuit
+    /// final pairing check (thus disregarding labels since they are here
+    /// irrelevant). Once collapsed, the guard can be reused across many subset
+    /// checks cheaply.
+    ///
+    /// # Note
+    ///
+    /// Unlike [`MSMKZG::collapse`], this does not
+    /// assert the absence of `Fixed` labels, since the collapsed points
+    /// feed only into the pairing.
+    pub fn early_collapse(&mut self) {
+        self.left = MSMKZG::from_base(&self.left.eval());
+        self.right = MSMKZG::from_base(&self.right.eval());
+    }
+
     /// Add another multiexp into this one
     pub fn add_msm(&mut self, other: Self) {
         self.left.add_msm(&other.left);

@@ -17,6 +17,9 @@ pub enum Error {
     BoundsFailure,
     /// Opening error
     Opening,
+    /// Batch-opening error: in an attempt to batch-verify several proofs, the
+    /// proofs at these (ascending) indices failed the opening check.
+    BatchOpening(Vec<usize>),
     /// Transcript error
     Transcript(io::Error),
     /// `k` is too small for the given circuit.
@@ -66,6 +69,10 @@ impl fmt::Display for Error {
             Error::ConstraintSystemFailure => write!(f, "The constraint system is not satisfied"),
             Error::BoundsFailure => write!(f, "An out-of-bounds index was passed to the backend"),
             Error::Opening => write!(f, "Multi-opening proof was invalid"),
+            Error::BatchOpening(indices) => write!(
+                f,
+                "Batch verification failed for proofs at indices {indices:?}",
+            ),
             Error::Transcript(e) => write!(f, "Transcript error: {e}"),
             Error::NotEnoughRowsAvailable { current_k } => write!(
                 f,
