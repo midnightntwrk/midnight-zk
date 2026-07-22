@@ -23,17 +23,17 @@ use std::{
     path::Path,
 };
 
-use midnight_curves::Bls12;
+use ff::PrimeField;
+use midnight_curves::{Bls12, Fq};
 use midnight_proofs::{
     plonk::{
         create_proof, keygen_pk, keygen_vk, prepare, Circuit, Error, ProvingKey, VerifyingKey,
     },
     poly::{
-        commitment::Guard,
-        kzg::{
-            commitment::KZGMultiCommitment,
+        commitment::{Guard, PolynomialCommitmentScheme},
+        pcs::{
             params::{ParamsKZG, ParamsVerifierKZG},
-            KZGCommitmentScheme,
+            FflonkCommitment, FflonkScheme,
         },
     },
     transcript::{CircuitTranscript, Hashable, Sampleable, Transcript, TranscriptHash},
@@ -45,7 +45,7 @@ use sha2::Digest;
 use crate::{cost_model, optimal_k, MidnightVK, Relation};
 
 macro_rules! plonk_api {
-    ($name:ident, $engine:ty, $native:ty, $curve:ty, $projective:ty) => {
+    ($name:ident, $engine:ty, $native:ty, $projective:ty) => {
         /// A struct providing all the basic functions of the PLONK proving system.
         #[derive(Debug)]
         pub struct $name<Relation> {
@@ -61,7 +61,7 @@ macro_rules! plonk_api {
             pub fn setup_vk(
                 params: &ParamsKZG<$engine>,
                 circuit: &Relation,
-            ) -> VerifyingKey<$native, KZGCommitmentScheme<$engine>> {
+            ) -> VerifyingKey<$native, FflonkScheme<$engine>> {
                 #[cfg(test)]
                 let start = Instant::now();
                 let vk = keygen_vk(params, circuit).expect("keygen_vk should not fail");
@@ -74,8 +74,8 @@ macro_rules! plonk_api {
             /// PLONK PK setup for the given circuit.
             pub fn setup_pk(
                 circuit: &Relation,
-                vk: &VerifyingKey<$native, KZGCommitmentScheme<$engine>>,
-            ) -> ProvingKey<$native, KZGCommitmentScheme<$engine>> {
+                vk: &VerifyingKey<$native, FflonkScheme<$engine>>,
+            ) -> ProvingKey<$native, FflonkScheme<$engine>> {
                 #[cfg(test)]
                 let start = Instant::now();
                 let pk = keygen_pk(vk.clone(), circuit).expect("keygen_pk should not fail");
@@ -88,7 +88,7 @@ macro_rules! plonk_api {
             /// PLONK proving algorithm.
             pub fn prove<H>(
                 params: &ParamsKZG<$engine>,
-                pk: &ProvingKey<$native, KZGCommitmentScheme<$engine>>,
+                pk: &ProvingKey<$native, FflonkScheme<$engine>>,
                 circuit: &Relation,
                 nb_instance_commitments: usize,
                 pi: &[&[$native]],
@@ -103,12 +103,7 @@ macro_rules! plonk_api {
                 let start = Instant::now();
                 let proof = {
                     let mut transcript = CircuitTranscript::init();
-                    create_proof::<
-                        $native,
-                        KZGCommitmentScheme<$engine>,
-                        CircuitTranscript<H>,
-                        Relation,
-                    >(
+                    create_proof::<$native, FflonkScheme<$engine>, CircuitTranscript<H>, Relation>(
                         params,
                         pk,
                         circuit,
@@ -132,8 +127,8 @@ macro_rules! plonk_api {
             /// PLONK verification algorithm.
             pub fn verify<H>(
                 params_verifier: &ParamsVerifierKZG<$engine>,
-                vk: &VerifyingKey<$native, KZGCommitmentScheme<$engine>>,
-                instance_commitments: &[KZGMultiCommitment<$engine>],
+                vk: &VerifyingKey<$native, FflonkScheme<$engine>>,
+                instance_commitments: &[FflonkCommitment<$engine>],
                 pi: &[&[$native]],
                 proof: &[u8],
             ) -> Result<(), Error>
@@ -146,7 +141,7 @@ macro_rules! plonk_api {
 
                 #[cfg(test)]
                 let start = Instant::now();
-                let res = prepare::<$native, KZGCommitmentScheme<$engine>, CircuitTranscript<H>>(
+                let res = prepare::<$native, FflonkScheme<$engine>, CircuitTranscript<H>>(
                     vk,
                     instance_commitments,
                     pi,
@@ -166,7 +161,6 @@ plonk_api!(
     BlstPLONK,
     midnight_curves::Bls12,
     midnight_curves::Fq,
-    midnight_curves::G1Affine,
     midnight_curves::G1Projective
 );
 
@@ -258,31 +252,62 @@ pub enum SrsSource {
     Midnight,
 }
 
+impl SrsSource {
+    /// Largest exponent `k` published in this source's catalog, i.e. the
+    /// biggest monomial basis (`2^k` bases) we can fetch. fflonk's bundling
+    /// extends the monomial basis past the circuit domain, and [`load_srs`]
+    /// caps that extension here: when the desired extended size exceeds the
+    /// catalog, we fetch the largest available SRS and let fflonk shrink its
+    /// bundling factor (see `effective_t_max_log`) instead of failing to load.
+    fn ceiling_k(&self) -> u32 {
+        match self {
+            // `filecoin_srs` hard-caps at k = 19 (downsizes the 2^19 file).
+            SrsSource::Filecoin => 19,
+            // The Midnight ceremony SRS has length 2^25.
+            SrsSource::Midnight => 25,
+        }
+    }
+}
+
 /// Loads an SRS (over BLS12-381) for the given circuit size `k` and
 /// constraint-system degree `cs_degree`.
 ///
-/// Without the `single-h-commitment` feature, the monomial and Lagrange bases
-/// have the same size `2^k`. With the feature enabled the monomial basis is
-/// extended to `k + ceil(log2(cs_degree - 1))` so that it can hold the full
-/// quotient polynomial, while the Lagrange basis is kept at size `2^k`.
+/// The monomial basis is sized via the active PCS's
+/// [`PolynomialCommitmentScheme::srs_monomial_blowup`]: a blow-up factor of
+/// `1` keeps the monomial basis at the Lagrange size `2^k`; a blow-up of
+/// `B` extends it to `2^k · B`. The Lagrange basis stays at size `2^k`.
 pub fn load_srs(source: SrsSource, k: u32, cs_degree: usize) -> ParamsKZG<Bls12> {
+    // Fail-fast on the field's 2-adicity limit.
+    assert!(
+        k <= Fq::S,
+        "load_srs: requested k = {k} exceeds the 2-adicity of the field = {}",
+        Fq::S
+    );
+
     let fetch = |k| match source {
         SrsSource::Filecoin => filecoin_srs(k),
         SrsSource::Midnight => midnight_srs(k),
     };
 
-    #[cfg(not(feature = "single-h-commitment"))]
-    {
-        let _ = cs_degree;
-        fetch(k)
+    let blowup = <crate::MidnightPCS as PolynomialCommitmentScheme<midnight_curves::Fq>>::srs_monomial_blowup(cs_degree);
+    if blowup <= 1 {
+        return fetch(k);
     }
-    #[cfg(feature = "single-h-commitment")]
-    {
-        let extended_k = k + ((cs_degree - 1) as f64).log2().ceil() as u32;
-        let base = fetch(k);
-        let extended = fetch(extended_k);
-        base.with_extended_monomial(extended)
+    // Desired monomial basis size for the full blow-up, capped at what the
+    // catalog actually publishes. If we cap below the desired size, fflonk's
+    // `commit`/`multi_open` read the (smaller) `g_monomial_size()` and reduce
+    // the bundling factor accordingly — graceful degradation instead of a
+    // fetch panic. (When the blow-up is `single-h-commitment`'s quotient
+    // rather than fflonk's bundling, it cannot shrink: an over-large `k` then
+    // fails at commit time with an explicit SRS-too-small error.)
+    let desired_extended_k = k + (blowup as f64).log2().ceil() as u32;
+    let extended_k = desired_extended_k.min(source.ceiling_k());
+    let base = fetch(k);
+    if extended_k <= k {
+        return base;
     }
+    let extended = fetch(extended_k);
+    base.with_extended_monomial(extended)
 }
 
 /// Loads Filecoin's production SRS (over BLS12-381) for the given relation.

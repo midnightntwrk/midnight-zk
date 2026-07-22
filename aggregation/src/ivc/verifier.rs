@@ -9,7 +9,7 @@ use midnight_circuits::{hash::poseidon::PoseidonState, verifier::Accumulator};
 use midnight_proofs::{
     plonk::{self},
     poly::{
-        kzg::{commitment::KZGMultiCommitment, params::ParamsVerifierKZG, KZGCommitmentScheme},
+        pcs::{params::ParamsVerifierKZG, FflonkCommitment},
         PolynomialLabel,
     },
     transcript::{CircuitTranscript, Transcript},
@@ -62,20 +62,19 @@ impl<T: Ivc> IvcVerifier<T> {
             IvcCircuit::<T>::format_instance(instance).map_err(|_| IvcError::InvalidInstance)?;
 
         let mut transcript = CircuitTranscript::<PoseidonState<F>>::init_from_bytes(proof);
-        let dual_msm =
-            plonk::prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<PoseidonState<F>>>(
-                self.vk.vk(),
-                &[KZGMultiCommitment::commitment_to_zero(
-                    PolynomialLabel::CommittedInstance(0),
-                )],
-                &[&pi],
-                &mut transcript,
-            )
-            .map_err(|_| IvcError::InvalidProof)?;
+        let dual_msm = plonk::prepare::<F, crate::KZG<E>, CircuitTranscript<PoseidonState<F>>>(
+            self.vk.vk(),
+            &[FflonkCommitment::commitment_to_zero(
+                PolynomialLabel::CommittedInstance(0),
+            )],
+            &[&pi],
+            &mut transcript,
+        )
+        .map_err(|_| IvcError::InvalidProof)?;
 
         transcript.assert_empty().map_err(|_| IvcError::TranscriptNotEmpty)?;
 
-        let proof_acc = Accumulator::from_dual_msm(dual_msm, &fixed_bases);
+        let proof_acc = Accumulator::from_dual_msm(dual_msm.into_dual_msm(), &fixed_bases);
 
         // Verify that both `proof_acc` and `instance.acc` satisfy the pairing
         // invariant, with a single pairing, by accumulating them first.

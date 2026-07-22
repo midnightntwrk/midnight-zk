@@ -140,12 +140,15 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
         self.sponge_chip.squeeze(layouter, state)
     }
 
-    /// Reads `length` curve points from the prover transcript (one per
-    /// polynomial held by the commitment) and absorbs them into the running
-    /// hash state.
+    /// Reads a (possibly batched) commitment to `length` polynomials from the
+    /// prover transcript and absorbs its `length` curve points into the
+    /// running hash state.
     ///
-    /// Commitments are not length-prefixed on the wire, so the caller supplies
-    /// the number of polynomials (`1` unless the commitment is batched).
+    /// On the wire every commitment is length-prefixed as
+    /// `[u8 len][point_0]…[point_{len-1}]` (see `FflonkCommitment`
+    /// serialization). The `u8` prefix is part of the byte encoding but is
+    /// *not* hashed, so we discard it here and read the `length` points
+    /// supplied by the caller (`1` unless the commitment is batched).
     ///
     /// Returns an [`AssignedKZGMultiCommitment`] whose inner commitments are
     /// labeled [`PolynomialLabel::NoLabel`]; callers must attach labels with
@@ -159,6 +162,8 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
         layouter: &mut impl Layouter<S::F>,
         length: usize,
     ) -> Result<AssignedKZGMultiCommitment<S>, Error> {
+        // Discard the `u8` length prefix that precedes the points on the wire.
+        self.skip_bytes(1);
         let mut inners = Vec::with_capacity(length);
         for _ in 0..length {
             let reader =
@@ -181,6 +186,19 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
         self.common_commitment(layouter, &assigned_com)?;
 
         Ok(assigned_com)
+    }
+
+    /// Advances the proof-buffer cursor by `n` bytes without reading or
+    /// absorbing them. Used to discard the `u8` length prefix that precedes
+    /// every (possibly batched) commitment on the wire (see
+    /// `FflonkCommitment` serialization); the prefix is part of the byte
+    /// encoding but is not absorbed into the transcript hash.
+    fn skip_bytes(&mut self, n: u64) {
+        if let Some(reader) = self.transcript_reader.as_mut() {
+            let buffer = reader.buffer();
+            let pos = buffer.position();
+            buffer.set_position(pos + n);
+        }
     }
 
     /// Reads a scalar from the reader buffer, and adds it to the transcript.

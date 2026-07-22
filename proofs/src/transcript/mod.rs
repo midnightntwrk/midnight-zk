@@ -13,8 +13,13 @@ const BLAKE2B_PREFIX_COMMON: u8 = 1;
 
 /// Hash function that can be used for transcript
 pub trait TranscriptHash: Clone {
-    /// Input type of the hash function
-    type Input;
+    /// Input type of the hash function.
+    ///
+    /// Bounded `IntoIterator + FromIterator` so that a commitment holding
+    /// several group elements (e.g. an `FflonkCommitment` with multiple
+    /// sub-bundles) can build its transcript input by concatenating the
+    /// per-element inputs.
+    type Input: IntoIterator + FromIterator<<Self::Input as IntoIterator>::Item>;
     /// Output type of the hash function
     type Output;
 

@@ -122,13 +122,12 @@ where
     let mult_blinding_count = pk.vk.cs.blinding_factors() + 1;
     let mult_blindings: Vec<Vec<F>> = sample_blindings(num_lookups, mult_blinding_count);
 
-    // Commit to the multiplicities columns.
-    // Computation in parallel, then sequential transcript writes.
+    // Commit to the multiplicities columns. All logup arguments' multiplicities
+    // are batched into one `CS::commit` call.
     let lookups: Vec<logup::prover::ComputedMultiplicities<F>> = {
         let logup_args: Vec<_> =
             pk.vk.cs.lookups.iter().map(|l| l.chunk_by_degree(pk.vk.cs.degree())).collect();
-        // Compute all lookups in parallel (no transcript access, no rng).
-        let results: Vec<_> = logup_args
+        let computed: Vec<_> = logup_args
             .par_iter()
             .enumerate()
             .zip(mult_blindings.par_iter())
@@ -136,7 +135,6 @@ where
                 logup.compute_multiplicities_parallel(
                     argument_index,
                     pk,
-                    params,
                     theta,
                     &advice.advice_polys,
                     &pk.fixed_values,
@@ -145,14 +143,18 @@ where
                 )
             })
             .collect::<Result<Vec<_>, Error>>()?;
-        // Sequential transcript writes to preserve Fiat-Shamir ordering.
-        results
-            .into_iter()
-            .map(|(computed, commitment)| {
-                transcript.write(&commitment)?;
-                Ok(computed)
-            })
-            .collect::<Result<Vec<_>, Error>>()?
+        if !computed.is_empty() {
+            let delta_polys =
+                computed.par_iter().map(|c| c.multiplicities.to_delta()).collect::<Vec<_>>();
+            let delta_refs = delta_polys.iter().collect::<Vec<_>>();
+            let labels: Vec<_> = computed
+                .iter()
+                .map(|c| PolynomialLabel::LogupMultiplicities(c.argument_index))
+                .collect();
+            let mult_com = CS::commit_many(params, &delta_refs, &labels);
+            transcript.write(&mult_com)?;
+        }
+        computed
     };
 
     // Sample beta challenge
@@ -167,10 +169,14 @@ where
     let perm_blindings: Vec<Vec<F>> = sample_blindings(num_perm_sets, blinding_factors);
     let logup_blindings: Vec<Vec<F>> = sample_blindings(lookups.len(), blinding_factors);
 
-    // Overlap permutation and logup computation.
-    // Both only need β (and γ for permutation). Neither touches the transcript.
-    // Transcript writes preserve the original ordering:
-    // permutation commitments first, then logup commitments.
+    // Overlap permutation and logup *computation*. Neither touches the
+    // transcript here; commits are deferred so they can be batched per phase
+    // (one batched commit each for: permutation, logup helpers cross-arg,
+    // logup aggregators cross-arg). The transcript-write order is pinned
+    // below.
+    //
+    // Helpers carry the unique label `LogupHelper(name, chunk_idx)` so
+    // cross-arg + within-arg bundling are both well-defined.
     let (perm_computed, logup_computed) = rayon::join(
         || {
             pk.vk.cs.permutation.compute::<F, CS>(
@@ -185,45 +191,57 @@ where
                 perm_blindings,
             )
         },
-        || -> Result<_, Error> {
-            let computed: Vec<_> = lookups
+        || -> Result<Vec<logup::prover::ComputedLogderivative<F>>, Error> {
+            lookups
                 .into_par_iter()
                 .zip(logup_blindings.into_par_iter())
-                .map(|(lookup, blindings)| {
-                    lookup.compute_logderivative(pk, params, beta, blindings)
-                })
-                .collect::<Result<Vec<_>, _>>()?;
-            let all_helper_commitments: Vec<Vec<CS::Commitment>> = computed
-                .par_iter()
-                .map(|c| {
-                    c.helper_polys_lagrange
-                        .par_iter()
-                        .enumerate()
-                        .map(|(j, h)| {
-                            let h_poly = domain.lagrange_from_vec(h.clone());
-                            CS::commit(
-                                params,
-                                &h_poly,
-                                PolynomialLabel::LogupHelper(c.argument_index, j),
-                            )
-                        })
-                        .collect()
-                })
-                .collect();
-            Ok((computed, all_helper_commitments))
+                .map(|(lookup, blindings)| lookup.compute_logderivative(pk, beta, blindings))
+                .collect()
         },
     );
 
-    // Write permutation commitments first.
+    // Write batched permutation commitment first.
     let permutations = perm_computed.write_and_convert(domain, transcript)?;
 
-    // Then write logup commitments and convert to coefficient form.
-    let (computed, all_helper_commitments) = logup_computed?;
-    for (c, helper_commitments) in computed.iter().zip(all_helper_commitments.iter()) {
-        for h_commitment in helper_commitments {
-            transcript.write(h_commitment)?;
-        }
-        transcript.write(&c.aggregator_commitment)?;
+    let computed = logup_computed?;
+
+    // Batch-commit all helper polynomials across all logup arguments and
+    // chunks.
+    let helper_polys_flat: Vec<(usize, usize, Polynomial<F, LagrangeCoeff>)> = computed
+        .iter()
+        .flat_map(|c| {
+            c.helper_polys_lagrange.iter().enumerate().map(move |(chunk_idx, h)| {
+                (
+                    c.argument_index,
+                    chunk_idx,
+                    domain.lagrange_from_vec(h.clone()),
+                )
+            })
+        })
+        .collect();
+    if !helper_polys_flat.is_empty() {
+        let helper_refs: Vec<_> = helper_polys_flat.iter().map(|(_, _, p)| p).collect();
+        let helper_labels: Vec<_> = helper_polys_flat
+            .iter()
+            .map(|(arg, chunk, _)| PolynomialLabel::LogupHelper(*arg, *chunk))
+            .collect();
+        let helpers_com = CS::commit_many(params, &helper_refs, &helper_labels);
+        transcript.write(&helpers_com)?;
+    }
+
+    // Batch-commit all aggregator polys across all logup arguments. Each
+    // arg contributes exactly one aggregator with label
+    // `LogupAggregator(argument_index)`; indices are unique per arg.
+    if !computed.is_empty() {
+        let agg_delta_polys: Vec<_> =
+            computed.par_iter().map(|c| c.aggregator_poly.to_double_delta()).collect();
+        let agg_refs: Vec<_> = agg_delta_polys.iter().collect();
+        let agg_labels: Vec<_> = computed
+            .iter()
+            .map(|c| PolynomialLabel::LogupAggregator(c.argument_index))
+            .collect();
+        let aggregators_com = CS::commit_many(params, &agg_refs, &agg_labels);
+        transcript.write(&aggregators_com)?;
     }
     let lookups: Vec<logup::prover::Committed<F>> = computed
         .into_par_iter()
@@ -342,7 +360,10 @@ where
         ..
     } = trace;
 
-    let x: F = transcript.squeeze_challenge();
+    // PCS-aware squeeze: the default impl is `transcript.squeeze_challenge()`,
+    // fflonk's override returns a `T_MAX`-th power so its `t_th_root` step
+    // succeeds.
+    let x: F = CS::squeeze_evaluation_point(transcript);
 
     let Evals {
         fixed_evals,
@@ -1076,8 +1097,9 @@ fn test_create_proof() {
     use crate::{
         circuit::SimpleFloorPlanner,
         plonk::{keygen_pk, keygen_vk_with_k},
-        poly::kzg::{params::ParamsKZG, KZGCommitmentScheme},
+        poly::pcs::params::ParamsKZG,
         transcript::CircuitTranscript,
+        KZG,
     };
 
     #[derive(Clone, Copy)]
@@ -1106,7 +1128,7 @@ fn test_create_proof() {
 
     const K: u32 = 4;
     let params: ParamsKZG<Bn256> = ParamsKZG::unsafe_setup(K, OsRng);
-    let vk = keygen_vk_with_k::<Fr, KZGCommitmentScheme<Bn256>, _>(&params, &MyCircuit, K)
+    let vk = keygen_vk_with_k::<Fr, KZG<Bn256>, _>(&params, &MyCircuit, K)
         .expect("keygen_vk should not fail");
     let pk = keygen_pk(vk, &MyCircuit).expect("keygen_pk should not fail");
     let mut transcript = CircuitTranscript::<_>::init();

@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 * `circuit_model` is now parameterized by a `PolynomialCommitmentScheme` (`circuit_model::<_, CS>`) instead of const `COMM`/`SCALAR` byte-size generics [#440](https://github.com/midnightntwrk/midnight-zk/pull/440)
+* Replace the standalone KZG commitment scheme with a fflonk-based `poly::pcs` module, batching PLONK commitments across arguments [#466](https://github.com/midnightntwrk/midnight-zk/pull/466)
 * Rename `PolynomialPointer` to `PolynomialReference` in `ProverQuery`; rename `poly` field to `poly_ref`; change `poly_inner_product` to accept `&[&Polynomial<F, Coeff>]` to avoid cloning [#411](https://github.com/midnightntwrk/midnight-zk/pull/411)
 * Rename `CommitmentLabel` to `PolynomialLabel`; add `NoLabel` variant for freshly deserialized commitments; introduce `Labelable` trait so every call site attaches the correct label after deserialization [#392](https://github.com/midnightntwrk/midnight-zk/pull/392)
 * Introduce `KZGCommitment` enum with `Simple` and `Linear` variants; attach `CommitmentLabel` at `commit` time and propagate it homomorphically through arithmetic [#381](https://github.com/midnightntwrk/midnight-zk/pull/381)

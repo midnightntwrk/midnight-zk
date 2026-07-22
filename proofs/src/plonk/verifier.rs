@@ -8,8 +8,8 @@ use ff::{FromUniformBytes, WithSmallOrderMulGroup};
 use super::{Error, VerifyingKey};
 use crate::{
     plonk::{
-        linearization::verifier::compute_linearization_commitment, partially_evaluate_identities,
-        traces::VerifierTrace,
+        linearization::verifier::compute_linearization_commitment, logup,
+        partially_evaluate_identities, traces::VerifierTrace,
     },
     poly::{
         commitment::{Labelable, PolynomialCommitmentScheme},
@@ -78,14 +78,12 @@ where
     // Sample theta challenge for keeping lookup columns linearly independent
     let theta: F = transcript.squeeze_challenge();
 
-    // Read multiplicities
-    let lookup_multiplicities: Vec<_> = vk
-        .cs
-        .lookups
-        .iter()
-        .enumerate()
-        .map(|(i, l)| l.chunk_by_degree(vk.cs_degree).read_multiplicities::<_, CS>(i, transcript))
-        .collect::<Result<Vec<_>, _>>()?;
+    // Read the batched multiplicities commitment (one transcript entry for
+    // all logup arguments; mirrors the prover's batched `CS::commit_many`).
+    let chunked_lookups: Vec<_> =
+        vk.cs.lookups.iter().map(|l| l.chunk_by_degree(vk.cs_degree)).collect();
+    let lookup_multiplicities =
+        logup::verifier::read_multiplicities::<_, CS, _>(&chunked_lookups, transcript)?;
 
     // Sample beta challenge
     let beta: F = transcript.squeeze_challenge();
@@ -95,12 +93,26 @@ where
 
     let permutations_committed = vk.cs.permutation.read_product_commitments(vk, transcript)?;
 
-    let lookups_committed: Vec<_> = lookup_multiplicities
-        .into_iter()
-        .zip(vk.cs.lookups.iter().map(|l| l.chunk_by_degree(vk.cs_degree)))
+    // Read one batched helper commitment for all args + all chunks, then
+    // one batched aggregator commitment.
+    let args_with_multiplicities: Vec<_> = chunked_lookups
+        .iter()
+        .zip(lookup_multiplicities)
         .enumerate()
-        .map(|(i, (m, batch))| m.read_commitment(i, batch.num_chunks(), transcript))
-        .collect::<Result<Vec<_>, _>>()?;
+        .map(|(i, (batch, m))| {
+            (
+                logup::verifier::ChunkedArgRef {
+                    argument_index: i,
+                    num_chunks: batch.num_chunks(),
+                },
+                m,
+            )
+        })
+        .collect();
+    let helpers_only =
+        logup::verifier::read_helpers::<_, CS, _>(args_with_multiplicities, transcript)?;
+    let lookups_committed =
+        logup::verifier::read_aggregators::<_, CS, _>(helpers_only, transcript)?;
 
     let trash_challenge: F = transcript.squeeze_challenge();
 
@@ -197,7 +209,7 @@ where
 
     // Sample x challenge, which is used to ensure the circuit is
     // satisfied with high probability.
-    let x: F = transcript.squeeze_challenge();
+    let x: F = CS::squeeze_evaluation_point(transcript);
 
     let splitting_factor = x.pow_vartime([vk.n() - 1]);
     let xn = splitting_factor * x;
@@ -360,7 +372,7 @@ where
     // We are now convinced the circuit is satisfied so long as the
     // polynomial commitments open to the correct values, which is true as long
     // as the following accumulator passes the invariant.
-    CS::multi_prepare(&queries, transcript).map_err(|_| Error::Opening)
+    CS::multi_prepare(&queries, vk.domain.k(), transcript).map_err(|_| Error::Opening)
 }
 
 /// Prepares a plonk proof into a PCS instance that can be finalized or

@@ -10,7 +10,7 @@ use bellman::{
     multicore::Worker,
 };
 use midnight_curves::{serde::SerdeObject, Bls12, CurveAffine, G1Affine, G2Affine};
-use midnight_proofs::{poly::kzg::params::ParamsKZG, utils::SerdeFormat};
+use midnight_proofs::{poly::pcs::params::ParamsKZG, utils::SerdeFormat};
 
 const G1_SIZE: usize = 96;
 const G2_SIZE: usize = 192;

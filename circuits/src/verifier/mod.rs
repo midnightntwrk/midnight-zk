@@ -20,7 +20,7 @@ use midnight_proofs::{
     circuit::Value,
     plonk,
     plonk::ConstraintSystem,
-    poly::{kzg::KZGCommitmentScheme, EvaluationDomain, PolynomialLabel},
+    poly::{pcs::FflonkScheme, EvaluationDomain, PolynomialLabel},
 };
 
 use crate::{
@@ -51,8 +51,13 @@ pub use types::BnEmulation;
 pub use types::{BlstrsEmulation, SelfEmulation};
 pub use verifier_gadget::VerifierGadget;
 
+/// The in-circuit verifier currently piggy-backs on fflonk's
+/// `FFLONK_T_MAX_LOG = 0` singleton path (algebraically identical to KZG, so
+/// the existing GWC machinery in `circuits/src/verifier/kzg.rs` works
+/// unchanged). Bumping the const generic here is part of the in-circuit
+/// fflonk follow-up (bundle pre-expansion in-circuit).
 type VerifyingKey<S> =
-    plonk::VerifyingKey<<S as SelfEmulation>::F, KZGCommitmentScheme<<S as SelfEmulation>::Engine>>;
+    plonk::VerifyingKey<<S as SelfEmulation>::F, FflonkScheme<<S as SelfEmulation>::Engine>>;
 
 /// Type for in-circuit verifying keys.
 ///

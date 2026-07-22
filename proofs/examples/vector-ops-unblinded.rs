@@ -16,13 +16,10 @@ use midnight_curves::{
 use midnight_proofs::{
     circuit::{AssignedCell, Chip, Layouter, Region, SimpleFloorPlanner, Value},
     plonk::*,
-    poly::{
-        commitment::Guard,
-        kzg::{params::ParamsKZG, KZGCommitmentScheme},
-        Rotation,
-    },
+    poly::{commitment::Guard, pcs::params::ParamsKZG, Rotation},
     transcript::{CircuitTranscript, Hashable, Sampleable, Transcript},
     utils::{arithmetic::Field, helpers::ProcessedSerdeObject},
+    KZG,
 };
 use rand_core::OsRng;
 
@@ -524,13 +521,13 @@ where
     let instance_commitments = public_inputs
         .iter()
         .take(NB_INSTANCE_COMS)
-        .map(|v| commit_to_instances::<E::Fr, KZGCommitmentScheme<E>>(&params, vk.get_domain(), v))
+        .map(|v| commit_to_instances::<E::Fr, KZG<E>>(&params, vk.get_domain(), v))
         .collect::<Vec<_>>();
 
     let proof = {
         let mut transcript = CircuitTranscript::<State>::init();
 
-        create_proof::<E::Fr, KZGCommitmentScheme<E>, _, _>(
+        create_proof::<E::Fr, KZG<E>, _, _>(
             &params,
             &pk,
             &circuit,
@@ -548,7 +545,7 @@ where
     let accepted = {
         let mut transcript = CircuitTranscript::<State>::init_from_bytes(&proof[..]);
 
-        prepare::<E::Fr, KZGCommitmentScheme<E>, _>(
+        prepare::<E::Fr, KZG<E>, _>(
             pk.get_vk(),
             #[cfg(feature = "committed-instances")]
             &instance_commitments,

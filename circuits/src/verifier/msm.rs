@@ -181,7 +181,7 @@ impl<S: SelfEmulation> Msm<S> {
     }
 
     /// Builds an `Msm` from a slice of `(label, scalar, base)` triples, as
-    /// returned by [`midnight_proofs::poly::kzg::msm::DualMSM::split`].
+    /// returned by [`midnight_proofs::poly::pcs::msm::DualMSM::split`].
     ///
     /// Each base is classified as `Fixed` if its label appears in
     /// `fixed_bases` (with a sanity-check that the point matches the expected

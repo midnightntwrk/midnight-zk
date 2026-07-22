@@ -131,9 +131,8 @@ where
         .map(|_| (0..mult_blinding_count).map(|_| F::random(&mut rng)).collect())
         .collect();
 
-    // Commit to the multiplicities columns. Compute and transcript write are
-    // now separate API calls — measure them together to match the prior
-    // `commit_multiplicities` shape.
+    // Commit to the multiplicities columns: first gathers all polynomials, and then
+    // commits to them in one go through one `commit_many` call.
     let lookups: Vec<logup::prover::ComputedMultiplicities<F>> = {
         group.bench_function("Commit lookup multiplicities", |b| {
             b.iter_batched(
@@ -146,7 +145,7 @@ where
                         .iter()
                         .map(|l| l.chunk_by_degree(pk.vk.cs.degree()))
                         .collect();
-                    let results: Vec<_> = logup_args
+                    let computed: Vec<_> = logup_args
                         .par_iter()
                         .enumerate()
                         .zip(mult_blinds.par_iter())
@@ -154,7 +153,6 @@ where
                             logup.compute_multiplicities_parallel(
                                 argument_index,
                                 pk,
-                                params,
                                 theta,
                                 &advice.advice_polys,
                                 &pk.fixed_values,
@@ -163,8 +161,16 @@ where
                             )
                         })
                         .collect::<Result<Vec<_>, Error>>()?;
-                    for (_, commitment) in &results {
-                        t.write(commitment)?;
+                    if !computed.is_empty() {
+                        let delta_polys: Vec<_> =
+                            computed.par_iter().map(|c| c.multiplicities.to_delta()).collect();
+                        let delta_refs: Vec<_> = delta_polys.par_iter().collect();
+                        let labels: Vec<_> = computed
+                            .iter()
+                            .map(|c| PolynomialLabel::LogupMultiplicities(c.argument_index))
+                            .collect();
+                        let mult_com = CS::commit_many(params, &delta_refs, &labels);
+                        t.write(&mult_com)?;
                     }
                     Ok(())
                 },
@@ -173,7 +179,7 @@ where
         });
         let logup_args: Vec<_> =
             pk.vk.cs.lookups.iter().map(|l| l.chunk_by_degree(pk.vk.cs.degree())).collect();
-        let results: Vec<_> = logup_args
+        let computed: Vec<_> = logup_args
             .par_iter()
             .enumerate()
             .zip(mult_blindings.par_iter())
@@ -181,7 +187,6 @@ where
                 logup.compute_multiplicities_parallel(
                     argument_index,
                     pk,
-                    params,
                     theta,
                     &advice.advice_polys,
                     &pk.fixed_values,
@@ -190,13 +195,18 @@ where
                 )
             })
             .collect::<Result<Vec<_>, Error>>()?;
-        results
-            .into_iter()
-            .map(|(c, commitment)| {
-                transcript.write(&commitment)?;
-                Ok::<_, Error>(c)
-            })
-            .collect::<Result<Vec<_>, _>>()?
+        if !computed.is_empty() {
+            let delta_polys: Vec<_> =
+                computed.par_iter().map(|c| c.multiplicities.to_delta()).collect();
+            let delta_refs: Vec<_> = delta_polys.iter().collect();
+            let labels: Vec<_> = computed
+                .iter()
+                .map(|c| PolynomialLabel::LogupMultiplicities(c.argument_index))
+                .collect();
+            let mult_com = CS::commit_many(params, &delta_refs, &labels);
+            transcript.write(&mult_com)?;
+        }
+        computed
     };
 
     // Sample beta challenge
@@ -263,10 +273,8 @@ where
         .map(|_| (0..blinding_factors).map(|_| F::random(&mut rng)).collect())
         .collect();
 
-    // Construct and commit to lookup product polynomials.
-    // `compute_logderivative` returns helper_polys_lagrange + aggregator
-    // commitment without transcript writes. Helper commitments must be taken
-    // and written here, and Lagrange polys converted to coefficient form.
+    // Construct and commit to lookup product polynomials, again by gathering all
+    // polys, and committing to them in batch.
     let lookups: Vec<logup::prover::Committed<F>> = {
         group.bench_function("Commit lookup products", |b| {
             b.iter_batched(
@@ -275,34 +283,37 @@ where
                     let computed: Vec<_> = lookups
                         .into_par_iter()
                         .zip(logup_blinds.into_par_iter())
-                        .map(|(lookup, blinds)| {
-                            lookup.compute_logderivative(pk, params, beta, blinds)
-                        })
+                        .map(|(lookup, blinds)| lookup.compute_logderivative(pk, beta, blinds))
                         .collect::<Result<Vec<_>, _>>()?;
-                    let all_helper_commitments: Vec<Vec<CS::Commitment>> = computed
-                        .par_iter()
-                        .map(|c| {
-                            c.helper_polys_lagrange
-                                .par_iter()
-                                .enumerate()
-                                .map(|(j, h)| {
-                                    let h_poly = domain.lagrange_from_vec(h.clone());
-                                    CS::commit(
-                                        params,
-                                        &h_poly,
-                                        PolynomialLabel::LogupHelper(c.argument_index, j),
-                                    )
-                                })
-                                .collect()
+                    let helper_polys_flat: Vec<(usize, usize, _)> = computed
+                        .iter()
+                        .flat_map(|c| {
+                            c.helper_polys_lagrange.iter().enumerate().map(move |(j, h)| {
+                                (c.argument_index, j, domain.lagrange_from_vec(h.clone()))
+                            })
                         })
                         .collect();
-                    for (c, helper_commitments) in
-                        computed.iter().zip(all_helper_commitments.iter())
-                    {
-                        for h_commitment in helper_commitments {
-                            t.write(h_commitment)?;
-                        }
-                        t.write(&c.aggregator_commitment)?;
+                    if !helper_polys_flat.is_empty() {
+                        let refs: Vec<_> = helper_polys_flat.iter().map(|(_, _, p)| p).collect();
+                        let labels: Vec<_> = helper_polys_flat
+                            .iter()
+                            .map(|(n, j, _)| PolynomialLabel::LogupHelper(*n, *j))
+                            .collect();
+                        let helpers_com = CS::commit_many(params, &refs, &labels);
+                        t.write(&helpers_com)?;
+                    }
+                    if !computed.is_empty() {
+                        let agg_polys: Vec<_> = computed
+                            .par_iter()
+                            .map(|c| c.aggregator_poly.to_double_delta())
+                            .collect();
+                        let agg_refs: Vec<_> = agg_polys.iter().collect();
+                        let agg_labels: Vec<_> = computed
+                            .iter()
+                            .map(|c| PolynomialLabel::LogupAggregator(c.argument_index))
+                            .collect();
+                        let agg_com = CS::commit_many(params, &agg_refs, &agg_labels);
+                        t.write(&agg_com)?;
                     }
                     Ok(())
                 },
@@ -312,30 +323,36 @@ where
         let computed: Vec<_> = lookups
             .into_par_iter()
             .zip(logup_blindings.into_par_iter())
-            .map(|(lookup, blinds)| lookup.compute_logderivative(pk, params, beta, blinds))
+            .map(|(lookup, blinds)| lookup.compute_logderivative(pk, beta, blinds))
             .collect::<Result<Vec<_>, _>>()?;
-        let all_helper_commitments: Vec<Vec<CS::Commitment>> = computed
-            .par_iter()
-            .map(|c| {
+        let helper_polys_flat: Vec<(usize, usize, _)> = computed
+            .iter()
+            .flat_map(|c| {
                 c.helper_polys_lagrange
-                    .par_iter()
+                    .iter()
                     .enumerate()
-                    .map(|(j, h)| {
-                        let h_poly = domain.lagrange_from_vec(h.clone());
-                        CS::commit(
-                            params,
-                            &h_poly,
-                            PolynomialLabel::LogupHelper(c.argument_index, j),
-                        )
-                    })
-                    .collect()
+                    .map(move |(j, h)| (c.argument_index, j, domain.lagrange_from_vec(h.clone())))
             })
             .collect();
-        for (c, helper_commitments) in computed.iter().zip(all_helper_commitments.iter()) {
-            for h_commitment in helper_commitments {
-                transcript.write(h_commitment)?;
-            }
-            transcript.write(&c.aggregator_commitment)?;
+        if !helper_polys_flat.is_empty() {
+            let refs: Vec<_> = helper_polys_flat.iter().map(|(_, _, p)| p).collect();
+            let labels: Vec<_> = helper_polys_flat
+                .iter()
+                .map(|(n, j, _)| PolynomialLabel::LogupHelper(*n, *j))
+                .collect();
+            let helpers_com = CS::commit_many(params, &refs, &labels);
+            transcript.write(&helpers_com)?;
+        }
+        if !computed.is_empty() {
+            let agg_polys: Vec<_> =
+                computed.par_iter().map(|c| c.aggregator_poly.to_double_delta()).collect();
+            let agg_refs: Vec<_> = agg_polys.iter().collect();
+            let agg_labels: Vec<_> = computed
+                .iter()
+                .map(|c| PolynomialLabel::LogupAggregator(c.argument_index))
+                .collect();
+            let agg_com = CS::commit_many(params, &agg_refs, &agg_labels);
+            transcript.write(&agg_com)?;
         }
         computed
             .into_par_iter()
@@ -504,7 +521,8 @@ where
         ..
     } = trace;
 
-    let x: F = transcript.squeeze_challenge();
+    // PCS-aware squeeze (see plonk/prover.rs for rationale).
+    let x: F = CS::squeeze_evaluation_point(transcript);
 
     group.bench_function("Write evals to transcript", |b| {
         b.iter_batched(

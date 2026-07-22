@@ -16,7 +16,7 @@ use midnight_curves::k256::K256;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::{commit_to_instances, Error},
-    poly::kzg::KZGCommitmentScheme,
+    KZG,
 };
 use midnight_zk_stdlib::{utils::plonk_api::srs_for_test, Relation, ZkStdLib, ZkStdLibArch};
 use rand::rngs::OsRng;
@@ -200,7 +200,7 @@ fn main() {
     };
     let committed_credential = {
         let instance = CredentialEnrollment::format_committed_instances(&witness);
-        commit_to_instances::<_, KZGCommitmentScheme<_>>(&srs, vk.vk().get_domain(), &instance)
+        commit_to_instances::<_, KZG<_>>(&srs, vk.vk().get_domain(), &instance)
     };
     println!("... done\n{:?}", wit.elapsed());
 

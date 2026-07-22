@@ -20,8 +20,28 @@ use crate::utils::{arithmetic::parallelize, SerdeFormat};
 mod domain;
 mod query;
 
-/// KZG commitment scheme
-pub mod kzg;
+/// Polynomial commitment scheme: fflonk (Gabizon–Williamson 2021), with KZG as
+/// the T=0 specialization. Also hosts the shared KZG-style primitives
+/// (`ParamsKZG`, `MSMKZG`, `DualMSM`, ...).
+pub mod pcs;
+
+/// **Temporary** backward-compatibility facade for the old `poly::kzg` path.
+///
+/// KZG has been folded into [`pcs`]: `KZGCommitmentScheme` is now
+/// `FflonkScheme<E>` (byte-identical to classic GWC KZG). This module
+/// contains **no implementation** — only aliases/re-exports — and exists
+/// solely so external, pinned dependencies that still import
+/// `midnight_proofs::poly::kzg::{...}` keep compiling (currently
+/// `blake2b_halo2`). Delete this module once those dependencies migrate to
+/// `poly::pcs` / the [`crate::KZG`] type alias. Nothing inside this crate
+/// should use it — internal code uses `poly::pcs` directly.
+pub mod kzg {
+    pub use super::pcs::params;
+
+    /// Compat alias for the unified scheme; see the module-level note. Equal
+    /// to [`crate::KZG`] (`FflonkScheme<E>`).
+    pub type KZGCommitmentScheme<E> = crate::KZG<E>;
+}
 
 pub mod commitment;
 
@@ -336,12 +356,14 @@ impl<F: Field> Polynomial<F, LagrangeCoeff> {
     }
 }
 
-#[cfg(test)]
 impl<F: Field> Polynomial<F, LagrangeDeltaCoeff> {
     /// Inverse of `to_delta`: prefix-sum the deltas back to Lagrange form:
     /// a_0 = b_0; a_i = a_{i-1} + b_i, in place.
     ///
-    /// Test-only: used to assert round-trip identity of the delta transform.
+    /// Used both in tests (to assert round-trip identity of the delta
+    /// transform) and at production by `FflonkScheme::commit`'s `t > 1`
+    /// branch, which has to materialise `g` in `Coeff` form regardless of
+    /// the polys' input basis — see the TODO at the call site.
     pub(crate) fn into_lagrange(mut self) -> Polynomial<F, LagrangeCoeff> {
         for i in 1..self.values.len() {
             let prev = self.values[i - 1];
@@ -360,6 +382,7 @@ impl<F: Field> Polynomial<F, LagrangeDeltaCoeff> {
     /// Test-only: used to assert the fused
     /// [`Polynomial::<_, LagrangeCoeff>::to_double_delta`] matches the
     /// two-step delta-of-delta path.
+    #[cfg(test)]
     pub(crate) fn into_double_delta(mut self) -> Polynomial<F, LagrangeDoubleDeltaCoeff> {
         for i in (1..self.values.len()).rev() {
             let prev = self.values[i - 1];
@@ -372,7 +395,6 @@ impl<F: Field> Polynomial<F, LagrangeDeltaCoeff> {
     }
 }
 
-#[cfg(test)]
 impl<F: Field> Polynomial<F, LagrangeDoubleDeltaCoeff> {
     /// Inverse of [`Polynomial::<_, LagrangeDeltaCoeff>::into_double_delta`]:
     /// prefix-sum the double-deltas back to delta form,
@@ -380,6 +402,7 @@ impl<F: Field> Polynomial<F, LagrangeDoubleDeltaCoeff> {
     ///
     /// Test-only: used to assert round-trip identity of the stepwise
     /// double-delta path.
+    #[cfg(test)]
     pub(crate) fn into_lagrange_delta(mut self) -> Polynomial<F, LagrangeDeltaCoeff> {
         for i in 1..self.values.len() {
             let prev = self.values[i - 1];
@@ -397,8 +420,9 @@ impl<F: Field> Polynomial<F, LagrangeDoubleDeltaCoeff> {
     /// `b` and for `a`). Two field additions per element, single memory
     /// pass, no allocation.
     ///
-    /// Test-only: used to assert round-trip identity of the fused
-    /// double-delta path.
+    /// Used both in tests (round-trip identity of the fused double-delta
+    /// path) and at production by `FflonkScheme::commit`'s `t > 1` branch
+    /// — see the TODO at the call site.
     pub(crate) fn into_lagrange(mut self) -> Polynomial<F, LagrangeCoeff> {
         let mut b_running = F::ZERO;
         let mut a_running = F::ZERO;

@@ -35,7 +35,7 @@ use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::{self, ConstraintSystem, Error},
     poly::{
-        kzg::{commitment::KZGMultiCommitment, params::ParamsVerifierKZG, KZGCommitmentScheme},
+        pcs::{params::ParamsVerifierKZG, FflonkCommitment},
         EvaluationDomain, PolynomialLabel,
     },
     transcript::{CircuitTranscript, Transcript},
@@ -236,16 +236,19 @@ impl IvcTransition for ProofAggregation {
         let inner_proof_acc = {
             let mut transcript =
                 CircuitTranscript::<PoseidonState<F>>::init_from_bytes(&witness.inner_proof);
-            let dual_msm =
-                plonk::prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<PoseidonState<F>>>(
-                    ctx.vk.vk(),
-                    &[KZGMultiCommitment::commitment_to_zero(
-                        PolynomialLabel::CommittedInstance(0),
-                    )],
-                    &[&statement_pis],
-                    &mut transcript,
-                )
-                .expect("off-circuit prepare should succeed");
+            let dual_msm = plonk::prepare::<
+                F,
+                midnight_aggregation::KZG<E>,
+                CircuitTranscript<PoseidonState<F>>,
+            >(
+                ctx.vk.vk(),
+                &[FflonkCommitment::commitment_to_zero(
+                    PolynomialLabel::CommittedInstance(0),
+                )],
+                &[&statement_pis],
+                &mut transcript,
+            )
+            .expect("off-circuit prepare should succeed");
 
             // Sanity check.
             assert!(
@@ -253,7 +256,7 @@ impl IvcTransition for ProofAggregation {
                 "invalid inner proof"
             );
 
-            Accumulator::from_dual_msm(dual_msm, &ctx.fixed_bases())
+            Accumulator::from_dual_msm(dual_msm.into_dual_msm(), &ctx.fixed_bases())
         };
 
         // Accumulate and collapse.
