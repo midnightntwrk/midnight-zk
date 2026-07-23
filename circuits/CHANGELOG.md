@@ -17,6 +17,10 @@ verification keys break backwards compatibility.
 
 ### Removed
 
+## [6.3.0]
+### Fixed
+* Fix `VectorGadget::padding_flag` soundness bug for short vectors whose payload starts in the last chunk. This changes the verification key of circuits that use vector or base64 gadgets. [#481](https://github.com/midnightntwrk/midnight-zk/pull/481)
+
 ## [6.2.1]
 ### Fixed
 * Bug fix in midnight-curves [#433](https://github.com/midnightntwrk/midnight-zk/pull/433)

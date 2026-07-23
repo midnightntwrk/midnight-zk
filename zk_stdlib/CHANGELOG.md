@@ -17,6 +17,10 @@ verification keys break backwards compatibility.
 
 ### Removed
 
+## [1.3.0]
+### Fixed
+* Bump `midnight-circuits` to 6.3.0 and `midnight-proofs` to 0.7.3, pulling in the `padding_flag` soundness fix. This changes the verification key of circuits that use vector or base64 gadgets. [#481](https://github.com/midnightntwrk/midnight-zk/pull/481)
+
 ## [1.2.1]
 ### Fixed
 * Bug fix in midnight-curves [#433](https://github.com/midnightntwrk/midnight-zk/pull/433)
