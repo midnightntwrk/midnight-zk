@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [0.7.3]
+### Fixed
+* Reject mismatched per-proof vector lengths in `verify_algebraic_constraints`. [#481](https://github.com/midnightntwrk/midnight-zk/pull/481)
+
 ## [0.7.2]
 ### Fixed
 * Bug fix in midnight-curves [#433](https://github.com/midnightntwrk/midnight-zk/pull/433)

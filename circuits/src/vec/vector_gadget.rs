@@ -126,7 +126,7 @@ where
         let (start, end) = self.get_limits(layouter, input)?;
         let mut is_data: AssignedBit<F> = ng.assign_fixed(layouter, true)?;
 
-        let result = (0..M - A)
+        let result = (0..=M - A)
             .map(|i| {
                 let is_start = ng.is_equal_to_fixed(layouter, &start, F::from(i as u64))?;
                 is_data = ng.xor(layouter, &[is_data.clone(), is_start])?;
@@ -134,7 +134,7 @@ where
             })
             .collect::<Result<Vec<_>, Error>>()?;
 
-        let last_chunk = (M - A..M)
+        let last_chunk = (M - A + 1..M)
             .map(|i| {
                 let is_end = ng.is_equal_to_fixed(layouter, &end, F::from(i as u64))?;
                 is_data = ng.xor(layouter, &[is_data.clone(), is_end])?;
@@ -714,6 +714,12 @@ mod tests {
             false,
             false,
         );
+
+        // Different data on short vectors whose payload lives entirely in the
+        // last chunk. These must be reported as not equal even though only the
+        // last-chunk payload differs.
+        run_eq_vec_test::<_, 128, 64>(&[F::ZERO], &[F::ONE], false, false, false);
+        run_eq_vec_test::<_, 64, 64>(&[F::ZERO], &[F::ONE], false, false, false);
     }
 
     #[test]
@@ -750,6 +756,18 @@ mod tests {
         run_padding_flags_test::<_, 128, 64>(&inputs, false);
         run_padding_flags_test::<F, 128, 64>(&[], false);
         run_padding_flags_test::<F, 64, 16>(&inputs[..64], false);
+
+        // Edge cases: payload starts in the last chunk.
+        // 1. Starts and ends in the last chunk, with back padding.
+        run_padding_flags_test::<_, 128, 64>(&inputs[..30], false);
+        // 2. Exactly fills the last chunk, with no back padding.
+        run_padding_flags_test::<_, 128, 64>(&inputs[..64], false);
+        // 3. Same with small A (many front chunks before the last one).
+        run_padding_flags_test::<_, 128, 2>(&inputs[..1], false);
+        // 4. Single-chunk buffer (A == M): empty, partial (back padding), and full.
+        run_padding_flags_test::<F, 64, 64>(&[], false);
+        run_padding_flags_test::<_, 64, 64>(&inputs[..30], false);
+        run_padding_flags_test::<_, 64, 64>(&inputs[..64], false);
     }
 
     #[test]
