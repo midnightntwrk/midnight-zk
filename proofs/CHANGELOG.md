@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [0.8.2]
+### Fixed
+* Check per-proof vector lengths in `verify_algebraic_constraints`. [#482](https://github.com/midnightntwrk/midnight-zk/pull/482)
+
 ## [0.8.1]
 ### Fixed
 * Bug fix in midnight-curves [#434](https://github.com/midnightntwrk/midnight-zk/pull/434)
@@ -48,7 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * changed `sha256` name in benches to account for the change of naming convention in `circuits` [#135](https://github.com/midnightntwrk/midnight-zk/pull/135)
 
 ### Changed
-* Interface of `ParamsKZG::from_parts` 
+* Interface of `ParamsKZG::from_parts`
 
 ### Removed
 
