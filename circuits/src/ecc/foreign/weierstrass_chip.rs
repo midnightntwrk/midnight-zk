@@ -246,7 +246,6 @@ where
         pis
     }
 
-    #[cfg(any(test, feature = "testing"))]
     fn from_public_input(fields: &[F]) -> Option<C::CryptographicGroup> {
         if *fields.last()? == F::ONE {
             return Some(C::CryptographicGroup::identity());

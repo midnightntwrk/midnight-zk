@@ -138,7 +138,6 @@ where
             .collect()
     }
 
-    #[cfg(any(test, feature = "testing"))]
     fn from_public_input(fields: &[F]) -> Option<K> {
         let base = BI::from(2).pow(P::LOG2_BASE);
         let nb_limbs_per_batch = (F::CAPACITY / P::LOG2_BASE) as usize;

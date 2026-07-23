@@ -364,7 +364,6 @@ where
         .concat()
     }
 
-    #[cfg(any(test, feature = "testing"))]
     fn from_public_input(fields: &[F]) -> Option<C::CryptographicGroup> {
         let nb_limbs_per_batch = (F::CAPACITY / B::LOG2_BASE) as usize;
         let nb_pi_per_coord = (B::NB_LIMBS as usize).div_ceil(nb_limbs_per_batch);

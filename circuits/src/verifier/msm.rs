@@ -107,7 +107,6 @@ impl<S: SelfEmulation> Instantiable<S::F> for AssignedPoint<S> {
         }
     }
 
-    #[cfg(any(test, feature = "testing"))]
     fn from_public_input(fields: &[S::F]) -> Option<Point<S>> {
         match fields {
             [] => Some(Point::Fixed),
@@ -366,7 +365,6 @@ impl<S: SelfEmulation> Instantiable<S::F> for AssignedMsm<S> {
         .collect::<Vec<_>>()
     }
 
-    #[cfg(any(test, feature = "testing"))]
     fn from_public_input(_fields: &[S::F]) -> Option<Msm<S>> {
         unimplemented!("not invertible: the flat encoding loses structural metadata.")
     }

@@ -58,7 +58,7 @@ use crate::{
     instructions::{hash::HashCPU, HashInstructions, PublicInputInstructions},
     types::{AssignedBit, InnerValue, Instantiable},
     verifier::{
-        msm::{AssignedMsm, Msm, Point},
+        msm::{AssignedMsm, AssignedPoint, Msm, Point},
         utils::AssignedBoundedScalar,
         SelfEmulation,
     },
@@ -223,9 +223,27 @@ impl<S: SelfEmulation> Instantiable<S::F> for AssignedAccumulator<S> {
         .collect()
     }
 
-    #[cfg(any(test, feature = "testing"))]
-    fn from_public_input(_fields: &[S::F]) -> Option<Accumulator<S>> {
-        unimplemented!("Size of inner MSMs cannot be known from public input format.")
+    /// Reconstructs a **single-point-per-side** accumulator from its
+    /// public-input encoding — i.e. one produced by a fully-collapsed verifier. 
+    /// The encoding is `lhs || rhs`, each side being one variable
+    /// followed by its scalar.
+    ///
+    /// Returns `None` if `fields` does not have that shape.
+    fn from_public_input(fields: &[S::F]) -> Option<Accumulator<S>> {
+        if fields.len() % 2 != 0 || fields.len() < 4 {
+            return None;
+        }
+
+        let reconstruct = |side: &[S::F]| -> Option<Msm<S>> {
+            let (point_fields, scalar) = side.split_at(side.len() - 1);
+            let base = <AssignedPoint<S> as Instantiable<S::F>>::from_public_input(point_fields)?;
+            Some(Msm::new(&[base], &[scalar[0]], &[PolynomialLabel::Collapsed]))
+        };
+
+        let lhs = reconstruct(&fields[..fields.len() / 2])?;
+        let rhs = reconstruct(&fields[fields.len() / 2..])?;
+        
+        Some(Accumulator { lhs, rhs })
     }
 }
 

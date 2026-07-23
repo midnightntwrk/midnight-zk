@@ -96,7 +96,6 @@ impl<C: CircuitCurve> Instantiable<C::Base> for AssignedNativePoint<C> {
         vec![coordinates.0, coordinates.1]
     }
 
-    #[cfg(any(test, feature = "testing"))]
     fn from_public_input(fields: &[C::Base]) -> Option<C::CryptographicGroup> {
         if fields.len() != 2 {
             return None;
@@ -143,7 +142,6 @@ impl<C: EdwardsCurve> Instantiable<C::Base> for AssignedScalarOfNativeCurve<C> {
             .collect()
     }
 
-    #[cfg(any(test, feature = "testing"))]
     fn from_public_input(fields: &[C::Base]) -> Option<C::ScalarField> {
         // A scalar needs at most two elements to be represented.
         if fields.len() > 2 {
