@@ -222,6 +222,15 @@ where
         y,
     } = trace;
 
+    if committed_instances.len() != num_proofs
+        || advice_commitments.len() != num_proofs
+        || permutations.len() != num_proofs
+        || lookups.len() != num_proofs
+        || trashcans.len() != num_proofs
+    {
+        return Err(Error::InvalidInstances);
+    }
+
     let vanishing = vanishing.read_commitments_after_y(vk, transcript)?;
 
     // Sample x challenge, which is used to ensure the circuit is
