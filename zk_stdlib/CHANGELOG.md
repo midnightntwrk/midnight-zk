@@ -11,6 +11,10 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 ### Removed
 
+## [2.3.4]
+### Changed
+* Bump `midnight-circuits` to 7.2.3 and `midnight-proofs` to 0.8.2 for the verifier per-proof length check [#482](https://github.com/midnightntwrk/midnight-zk/pull/482)
+
 ## [2.3.3]
 
 ### Changed

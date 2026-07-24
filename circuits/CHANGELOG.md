@@ -13,6 +13,10 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Removed
 
+## [7.2.3]
+### Changed
+* Require `midnight-proofs` >= 0.8.2 for the verifier per-proof length check [#482](https://github.com/midnightntwrk/midnight-zk/pull/482)
+
 ## [7.2.2]
 ### Fixed
 * Fix `InnerValue` for `AssignedScalarOfNativeCurve` [#451](https://github.com/midnightntwrk/midnight-zk/pull/451)
