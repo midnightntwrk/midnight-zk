@@ -1,6 +1,6 @@
 [package]
 name = "midnight-circuits"
-version = "7.2.2"
+version = "7.2.3"
 edition = "2021"
 license-file.workspace = true
 description = "Circuit and gadget implementations for Midnight zero-knowledge proofs"
@@ -12,7 +12,7 @@ group = { workspace = true }
 ff = { workspace = true }
 rustc-hash = "2"
 midnight-curves = "0.3.1"
-midnight-proofs = { version = "0.8.1", default-features = false, features = [
+midnight-proofs = { version = "0.8.2", default-features = false, features = [
     "circuit-params",
     "committed-instances",
 ] }
