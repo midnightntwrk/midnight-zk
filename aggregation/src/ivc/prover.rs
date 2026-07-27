@@ -7,16 +7,15 @@
 //! accumulates the result, produces a new proof for the updated state, and
 //! stores everything internally so the next step can build on it.
 
-use group::Group;
 use midnight_circuits::{
     hash::poseidon::PoseidonState,
     types::Instantiable,
-    verifier::{Accumulator, AssignedAccumulator, AssignedVk},
+    verifier::{Accumulator, AssignedAccumulator, AssignedVk, InCircuitKZG},
 };
 use midnight_proofs::{
     plonk::{self},
     poly::{
-        kzg::{commitment::KZGCommitment, params::ParamsKZG, KZGCommitmentScheme},
+        kzg::{commitment::KZGMultiCommitment, params::ParamsKZG, KZGCommitmentScheme},
         PolynomialLabel,
     },
     transcript::{CircuitTranscript, Transcript},
@@ -24,7 +23,7 @@ use midnight_proofs::{
 use midnight_zk_stdlib::MidnightPK;
 use rand::rngs::OsRng;
 
-use super::{Ivc, IvcCircuit, IvcError, IvcInstance, IvcWitness, C, E, F, S};
+use super::{Ivc, IvcCircuit, IvcError, IvcInstance, IvcWitness, E, F, S};
 
 /// Stateful IVC prover holding:
 /// - the SRS (params),
@@ -89,7 +88,7 @@ impl<T: Ivc> IvcProver<T> {
         } else {
             // Construct the public inputs of the previous proof.
             let prev_pi = [
-                AssignedVk::<S>::as_public_input(vk),
+                AssignedVk::<S, InCircuitKZG<S>>::as_public_input(vk),
                 T::format_public_input(&self.state),
                 AssignedAccumulator::<S>::as_public_input(&self.acc),
             ]
@@ -100,9 +99,8 @@ impl<T: Ivc> IvcProver<T> {
             let dual_msm =
                 plonk::prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<PoseidonState<F>>>(
                     vk,
-                    &[KZGCommitment::Simple(
-                        C::identity(),
-                        PolynomialLabel::Instance(0),
+                    &[KZGMultiCommitment::commitment_to_zero(
+                        PolynomialLabel::CommittedInstance(0),
                     )],
                     &[&prev_pi],
                     &mut transcript,

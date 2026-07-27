@@ -1300,6 +1300,128 @@ where
 
         Ok(res)
     }
+
+    /// Interleaved fixed-base comb MSM: `sum_b scalars[b] * base_vals[b]` where
+    /// every base is a compile-time constant. Each base gets its own `2^W` comb
+    /// table, but the `d - 1` accumulator doublings are **shared** across all
+    /// bases (the comb counterpart of what [`Self::windowed_msm`] does for
+    /// variable bases). Doublings are independent of the number of bases.
+    ///
+    /// # Algorithm
+    ///
+    /// This is the **Lim–Lee fixed-base comb** method, extended to simultaneous
+    /// multi-scalar multiplication by sharing the doubling chain across bases.
+    /// With `W` teeth and `d = ceil(num_bits / W)` columns, each scalar's bits
+    /// are laid out as a `W x d` array; the constant table holds
+    /// `T[e] = (sum_j e_j * 2^(j*d)) * base` for every `W`-bit pattern `e`, and
+    /// the result is `sum_i 2^i * T[col_i]` evaluated by Horner over the `d`
+    /// columns. Because the base is constant, the whole table is precomputed
+    /// off-circuit; only the `d - 1` intra-column weights cost in-circuit
+    /// doublings (vs `~num_bits` for the variable-base [`Self::windowed_msm`]).
+    ///
+    /// References:
+    ///  - C. H. Lim and P. J. Lee, "More Flexible Exponentiation with
+    ///    Precomputation", CRYPTO 1994 (LNCS 839) — original comb method.
+    ///  - Handbook of Applied Cryptography, §14.6.3 (fixed-base comb); Guide to
+    ///    Elliptic Curve Cryptography, §3.3 — treatments in additive/ECC form.
+    ///
+    /// Fixed-base multi-scalar multiplication `sum_b scalars[b] * base_vals[b]`
+    /// for compile-time constant bases. This is the public entry point; it
+    /// delegates to [`Self::fixed_base_comb_msm`] with the comb width `W` fixed
+    /// to the most performant setting for full-width scalar fields.
+    ///
+    /// Each scalar is paired with a bit bound `num_bits`; passing a tight bound
+    /// (rather than the full scalar-field width) reduces the number of comb
+    /// columns and thus the in-circuit cost.
+    pub fn fixed_base_msm(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        scalars: &[(S::Scalar, usize)],
+        base_vals: &[C::CryptographicGroup],
+    ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
+        // Comb width. The in-circuit EC ops are `num_bits/W` shared doublings
+        // plus `num_bits/W` additions per base, which shrink as W grows;
+        // the per-base table has `2^W` entries, which grow exponentially.
+        // For full-width (~253-bit) scalars these balance at W = 8.
+        // Tune here if the typical scalar bit bounds change.
+        const W: usize = 8;
+        self.fixed_base_comb_msm::<W>(layouter, scalars, base_vals)
+    }
+
+    fn fixed_base_comb_msm<const W: usize>(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        scalars: &[(S::Scalar, usize)],
+        base_vals: &[C::CryptographicGroup],
+    ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
+        // `W` is the comb width; the per-base table has `2^W` entries, so this
+        // must stay small. The upper bound also keeps `1u64 << W` (below) well
+        // clear of shift overflow.
+        const { assert!(W >= 1 && W <= 16, "comb width W must be in 1..=16") };
+        assert_eq!(scalars.len(), base_vals.len());
+        if scalars.is_empty() {
+            return self.assign_fixed(layouter, C::CryptographicGroup::identity());
+        }
+        let scalar_chip = self.scalar_field_chip();
+        let d = scalars.iter().map(|(_, nb)| nb.div_ceil(W)).max().unwrap();
+
+        // Per-base: bit-decompose (padded to W*d), build its constant comb table,
+        // and load it into the dynamic lookup under its own tag.
+        let mut per_base = Vec::with_capacity(scalars.len());
+        for ((s, num_bits), base_val) in scalars.iter().zip(base_vals.iter()) {
+            let mut bits = scalar_chip.assigned_to_le_bits(layouter, s, Some(*num_bits), true)?;
+            let pad = W * d - bits.len();
+            if pad > 0 {
+                bits.extend(self.native_gadget.assign_many_fixed(layouter, &vec![false; pad])?);
+            }
+
+            let two_pow_d = (0..d).fold(C::ScalarField::ONE, |acc, _| acc.double());
+            let table = (0..(1u64 << W))
+                .map(|e| {
+                    let mut coeff = C::ScalarField::ZERO;
+                    let mut weight = C::ScalarField::ONE;
+                    for j in 0..W {
+                        if (e >> j) & 1 == 1 {
+                            coeff += weight;
+                        }
+                        weight *= two_pow_d;
+                    }
+                    self.assign_fixed(layouter, *base_val * coeff)
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+
+            let tag = {
+                let t = *self.tag_cnt.borrow();
+                self.tag_cnt.replace(t + 1);
+                t
+            };
+            self.load_multi_select_table(layouter, &table, F::from(tag))?;
+            per_base.push((bits, table, tag));
+        }
+
+        // Interleaved Horner: one shared doubling per column, then one
+        // select+add per base at that column.
+        let mut acc: Option<AssignedForeignEdwardsPoint<F, C, B>> = None;
+        for i in (0..d).rev() {
+            if acc.is_some() {
+                acc = Some(self.double(layouter, acc.as_ref().unwrap())?);
+            }
+            for (bits, table, tag) in per_base.iter() {
+                let col_bits = (0..W).map(|j| bits[j * d + i].clone()).collect::<Vec<_>>();
+                let sel = self.native_gadget.assigned_from_le_bits(layouter, &col_bits)?;
+                let addend = self.multi_select(layouter, &sel, table, F::from(*tag))?;
+                acc = Some(match acc {
+                    None => addend,
+                    Some(a) => self.add(layouter, &a, &addend)?,
+                });
+            }
+        }
+
+        match acc {
+            Some(r) => Ok(r),
+            None => self.assign_fixed(layouter, C::CryptographicGroup::identity()),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -1679,5 +1801,135 @@ mod tests {
         let mut rng = ChaCha8Rng::seed_from_u64(0x7374727564656C);
         let p = Curve25519Subgroup::random(&mut rng);
         run_test_compressed_bytes(p, Curve25519::from(p).to_bytes(), true);
+    }
+
+    // Correctness of the fixed-base comb MSM (`fixed_base_comb_msm`): its result
+    // must equal the off-circuit `sum_i scalar_i * base_i`, and a wrong claimed
+    // result must be rejected.
+    #[test]
+    fn test_fixed_base_comb_msm() {
+        use ff::PrimeField;
+
+        use crate::instructions::{AssertionInstructions, AssignmentInstructions};
+
+        type SF = <Curve25519 as CircuitCurve>::ScalarField;
+        type G = <Curve25519 as CircuitCurve>::CryptographicGroup;
+
+        #[derive(Clone, Debug)]
+        struct CombCircuit<const W: usize> {
+            scalars: Vec<(SF, usize)>,
+            bases: Vec<G>,
+            expected: G,
+        }
+
+        impl<const W: usize> Circuit<F> for CombCircuit<W> {
+            type Config = <EdwardsChip<Curve25519> as FromScratch<F>>::Config;
+            type FloorPlanner = SimpleFloorPlanner;
+            type Params = ();
+
+            fn without_witnesses(&self) -> Self {
+                unreachable!()
+            }
+
+            fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+                let committed = meta.instance_column();
+                let instance = meta.instance_column();
+                EdwardsChip::<Curve25519>::configure_from_scratch(
+                    meta,
+                    &mut vec![],
+                    &mut vec![],
+                    &[committed, instance],
+                )
+            }
+
+            fn synthesize(
+                &self,
+                config: Self::Config,
+                mut layouter: impl Layouter<F>,
+            ) -> Result<(), Error> {
+                let chip = EdwardsChip::<Curve25519>::new_from_scratch(&config);
+                let scalars = self
+                    .scalars
+                    .iter()
+                    .map(|(s, nb)| Ok((chip.assign(&mut layouter, Value::known(*s))?, *nb)))
+                    .collect::<Result<Vec<_>, Error>>()?;
+                let res = chip.fixed_base_comb_msm::<W>(&mut layouter, &scalars, &self.bases)?;
+                chip.assert_equal_to_fixed(&mut layouter, &res, self.expected)?;
+                chip.load_from_scratch(&mut layouter)
+            }
+        }
+
+        fn msm_value(scalars: &[(SF, usize)], bases: &[G]) -> G {
+            scalars
+                .iter()
+                .zip(bases.iter())
+                .fold(G::identity(), |acc, ((s, _), b)| acc + *b * *s)
+        }
+
+        fn run<const W: usize>(
+            scalars: Vec<(SF, usize)>,
+            bases: Vec<G>,
+            expected: G,
+            must_pass: bool,
+        ) {
+            let circuit = CombCircuit::<W> {
+                scalars,
+                bases,
+                expected,
+            };
+            match MockProver::run(&circuit, vec![vec![], vec![]]) {
+                Ok(prover) => assert_eq!(prover.verify().is_ok(), must_pass),
+                Err(_) => assert!(!must_pass),
+            }
+        }
+
+        // Positive: correct result must verify, for both W = 4 and W = 8.
+        fn check<const W: usize>() {
+            let mut rng = ChaCha8Rng::seed_from_u64(0xc0ffee);
+            let full = SF::NUM_BITS as usize;
+            let g = G::generator();
+
+            // n = 0 -> identity.
+            run::<W>(vec![], vec![], G::identity(), true);
+
+            // n = 1, random full-width scalar.
+            let s = SF::random(&mut rng);
+            run::<W>(vec![(s, full)], vec![g], g * s, true);
+
+            // scalar = 0 -> identity; scalar = 1 -> base.
+            run::<W>(vec![(SF::ZERO, full)], vec![g], G::identity(), true);
+            run::<W>(vec![(SF::ONE, full)], vec![g], g, true);
+
+            // identity base -> identity.
+            run::<W>(vec![(s, full)], vec![G::identity()], G::identity(), true);
+
+            // n = 3, random scalars and bases.
+            let scalars: Vec<_> = (0..3).map(|_| (SF::random(&mut rng), full)).collect();
+            let bases: Vec<_> = (0..3).map(|_| G::random(&mut rng)).collect();
+            run::<W>(
+                scalars.clone(),
+                bases.clone(),
+                msm_value(&scalars, &bases),
+                true,
+            );
+
+            // Bounded scalars (values within a tight bound) and mixed bounds.
+            let b0 = SF::from(1234567u64);
+            let b1 = SF::from(42u64);
+            let mixed = vec![(b0, 21usize), (b1, 6usize), (SF::random(&mut rng), full)];
+            let mbases: Vec<_> = (0..3).map(|_| G::random(&mut rng)).collect();
+            run::<W>(
+                mixed.clone(),
+                mbases.clone(),
+                msm_value(&mixed, &mbases),
+                true,
+            );
+
+            // Negative: wrong claimed result must be rejected.
+            run::<W>(vec![(s, full)], vec![g], g * s + g, false);
+        }
+
+        check::<4>();
+        check::<8>();
     }
 }

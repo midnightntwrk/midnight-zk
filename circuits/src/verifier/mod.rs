@@ -33,6 +33,7 @@ mod expressions;
 mod kzg;
 mod lookup;
 mod msm;
+pub(crate) mod pcs;
 mod permutation;
 mod traces;
 mod transcript_gadget;
@@ -42,8 +43,9 @@ mod utils;
 mod verifier_gadget;
 
 pub use accumulator::{Accumulator, AssignedAccumulator};
-pub use kzg::AssignedKZGCommitment;
+pub use kzg::{AssignedKZGCommitment, AssignedKZGMultiCommitment, InCircuitKZG};
 pub use msm::{AssignedMsm, AssignedPoint, Msm, Point};
+pub use pcs::{InCircuitHomomorphicCommitment, InCircuitPCS};
 #[cfg(feature = "dev-curves")]
 pub use types::BnEmulation;
 pub use types::{BlstrsEmulation, SelfEmulation};
@@ -63,16 +65,16 @@ type VerifyingKey<S> =
 /// [VerifierGadget::prepare] contains the scalars of the
 /// fixed-commitments, in the `fixed_base_scalars` field (of its RHS).
 #[derive(Clone, Debug)]
-pub struct AssignedVk<S: SelfEmulation> {
+pub struct AssignedVk<S: SelfEmulation, PCS: InCircuitPCS<S>> {
     domain: EvaluationDomain<S::F>,
-    fixed_commitments: Vec<AssignedKZGCommitment<S>>,
-    perm_commitments: Vec<AssignedKZGCommitment<S>>,
+    fixed_commitments: Vec<PCS::AssignedCommitment>,
+    perm_commitments: Vec<PCS::AssignedCommitment>,
     cs: ConstraintSystem<S::F>,
     cs_degree: usize,
     transcript_repr: AssignedNative<S::F>,
 }
 
-impl<S: SelfEmulation> InnerValue for AssignedVk<S> {
+impl<S: SelfEmulation, PCS: InCircuitPCS<S>> InnerValue for AssignedVk<S, PCS> {
     type Element = VerifyingKey<S>;
 
     fn value(&self) -> Value<VerifyingKey<S>> {
@@ -83,7 +85,7 @@ impl<S: SelfEmulation> InnerValue for AssignedVk<S> {
     }
 }
 
-impl<S: SelfEmulation> Instantiable<S::F> for AssignedVk<S> {
+impl<S: SelfEmulation, PCS: InCircuitPCS<S>> Instantiable<S::F> for AssignedVk<S, PCS> {
     fn as_public_input(vk: &VerifyingKey<S>) -> Vec<S::F> {
         AssignedNative::<S::F>::as_public_input(&vk.transcript_repr())
     }
@@ -94,7 +96,7 @@ impl<S: SelfEmulation> Instantiable<S::F> for AssignedVk<S> {
     }
 }
 
-impl<S: SelfEmulation> AssignedVk<S> {
+impl<S: SelfEmulation, PCS: InCircuitPCS<S>> AssignedVk<S, PCS> {
     /// The assigned `transcript_repr` cell of this verifying key.
     pub fn transcript_repr(&self) -> &AssignedNative<S::F> {
         &self.transcript_repr
@@ -118,11 +120,11 @@ pub fn fixed_bases<S: SelfEmulation>(vk: &VerifyingKey<S>) -> BTreeMap<Polynomia
     let perm_commitments = vk.permutation().commitments();
 
     for (i, com) in fixed_commitments.iter().enumerate() {
-        fixed_bases.insert(PolynomialLabel::Fixed(i), *com.as_point());
+        fixed_bases.insert(PolynomialLabel::Fixed(i), *com.0[0].as_point());
     }
 
     for (i, com) in perm_commitments.iter().enumerate() {
-        fixed_bases.insert(PolynomialLabel::PermutationFixed(i), *com.as_point());
+        fixed_bases.insert(PolynomialLabel::PermutationFixed(i), *com.0[0].as_point());
     }
 
     fixed_bases.insert(PolynomialLabel::Custom("-G".into()), -S::C::generator());

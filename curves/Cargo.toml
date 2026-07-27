@@ -48,7 +48,7 @@ primeorder = "0.13"
 [dev-dependencies]
 rand_xorshift = "0.3.0"
 rand = "0.8"
-criterion = { version = "0.7", features = ["html_reports"] }
+criterion = { version = "0.8", features = ["html_reports"] }
 ark-std = "0.6"
 halo2derive = "0.2.0"
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]

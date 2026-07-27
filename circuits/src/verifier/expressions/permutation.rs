@@ -26,17 +26,18 @@ use crate::{
     field::AssignedNative,
     instructions::ArithInstructions,
     verifier::{
+        pcs::InCircuitPCS,
         permutation::{CommonEvaluated, Evaluated},
         SelfEmulation,
     },
 };
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn permutation_expressions<S: SelfEmulation>(
+pub(crate) fn permutation_expressions<S: SelfEmulation, PCS: InCircuitPCS<S>>(
     layouter: &mut impl Layouter<S::F>,
     scalar_chip: &S::ScalarChip,
     cs: &ConstraintSystem<S::F>,
-    permutation_evals: &Evaluated<S>,
+    permutation_evals: &Evaluated<S, PCS>,
     permutations_common: &CommonEvaluated<S>,
     advice_evals: &[AssignedNative<S::F>],
     fixed_evals: &[AssignedNative<S::F>],

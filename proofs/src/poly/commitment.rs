@@ -44,13 +44,29 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
     /// Extract the `VerifierParameters` from `Parameters`
     fn get_verifier_params(params: &Self::Parameters) -> Self::VerifierParameters;
 
-    /// Commit to a polynomial in coefficient form, tagging the result with
-    /// `label` for identification during multi-open accumulation.
+    /// Commit to one or more polynomials, tagging the result with the
+    /// corresponding labels for identification during multi-open accumulation.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `polynomials` and `labels` have different lengths, or if
+    /// either slice is empty.
+    fn commit_many<B: PolynomialRepresentation>(
+        params: &Self::Parameters,
+        polynomials: &[&Polynomial<F, B>],
+        labels: &[PolynomialLabel],
+    ) -> Self::Commitment;
+
+    /// Commit to a single polynomial in coefficient form, tagging the result
+    /// with `label`. Convenience wrapper around
+    /// [`commit_many`](Self::commit_many).
     fn commit<B: PolynomialRepresentation>(
         params: &Self::Parameters,
         polynomial: &Polynomial<F, B>,
         label: PolynomialLabel,
-    ) -> Self::Commitment;
+    ) -> Self::Commitment {
+        Self::commit_many(params, &[polynomial], &[label])
+    }
 
     /// Create a multi-opening proof at a set of [ProverQuery]'s.
     fn multi_open<T: Transcript>(
@@ -82,14 +98,22 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
         Self::Commitment: Hashable<T::Hash> + 'com;
 }
 
-/// A commitment that can be assigned a [`PolynomialLabel`].
+/// A commitment that can be assigned [`PolynomialLabel`]s.
 ///
-/// Deserialized commitments start with [`PolynomialLabel::NoLabel`]; call sites
-/// must attach the correct label before the commitment reaches the MSM layer.
-pub trait Labelable {
-    /// Attaches the given [`PolynomialLabel`] to this commitment, replacing any
-    /// existing label (including [`PolynomialLabel::NoLabel`]).
-    fn label(self, label: PolynomialLabel) -> Self;
+/// Deserialized commitments start with [`PolynomialLabel::NoLabel`] for each
+/// polynomial they hold; call sites must attach the correct labels before the
+/// commitment reaches the MSM layer.
+pub trait Labelable: Sized {
+    /// Attaches the given labels to this commitment, one per polynomial,
+    /// replacing any existing labels (including [`PolynomialLabel::NoLabel`]).
+    ///
+    /// # Panics
+    ///
+    /// Panics if `labels.len() != self.length()`.
+    fn label(self, labels: &[PolynomialLabel]) -> Self;
+
+    /// Returns the number of polynomials held by this commitment.
+    fn length(&self) -> usize;
 }
 
 /// Interface for verifier finalizer

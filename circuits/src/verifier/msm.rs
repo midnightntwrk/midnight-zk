@@ -224,16 +224,16 @@ impl<S: SelfEmulation> Msm<S> {
     }
 
     /// Collapses the variable-base part into a single `(collapsed-point, 1)`
-    /// term.
+    /// term, labeling the result with `label`.
     ///
     /// All `Variable` entries are accumulated into one curve point via MSM and
-    /// stored with scalar `1` and label `PolynomialLabel::Collapsed`.
+    /// stored with scalar `1` and the given `label`.
     /// `Fixed` entries are preserved: terms sharing the same label have their
     /// scalars summed. After the call the MSM has exactly one `Variable` entry
     /// (the collapsed result) plus one `Fixed` entry per distinct fixed label.
     ///
     /// This function mutates `self`.
-    pub fn collapse(&mut self) {
+    pub fn collapse(&mut self, label: PolynomialLabel) {
         // We allocate max capacity but we may not fill it.
         let n = self.bases.len();
         let mut variable_bases = Vec::<S::G1Affine>::with_capacity(n);
@@ -263,7 +263,7 @@ impl<S: SelfEmulation> Msm<S> {
         let collapsed_base = msm_best(&variable_scalars, &variable_bases);
         bases.push(Point::Variable(collapsed_base));
         scalars.push(S::F::ONE);
-        labels.push(PolynomialLabel::Collapsed);
+        labels.push(label);
 
         self.bases = bases;
         self.scalars = scalars;
@@ -303,10 +303,10 @@ impl<S: SelfEmulation> Msm<S> {
     pub fn eval(&self, fixed_bases: &BTreeMap<PolynomialLabel, S::C>) -> S::C {
         let mut msm = self.clone();
         msm.resolve_fixed_bases(fixed_bases);
-        msm.collapse();
+        msm.collapse(PolynomialLabel::NoLabel);
 
         debug_assert_eq!(msm.scalars, vec![S::F::ONE]);
-        debug_assert_eq!(msm.labels, vec![PolynomialLabel::Collapsed]);
+        debug_assert_eq!(msm.labels, vec![PolynomialLabel::NoLabel]);
 
         match msm.bases.as_slice() {
             [Point::Variable(p)] => *p,
@@ -573,9 +573,10 @@ impl<S: SelfEmulation> AssignedMsm<S> {
     /// In-circuit analog of [`Msm::collapse`].
     ///
     /// Reduces the variable-base part to a single MSM point via the circuit's
-    /// MSM chip. Fixed-base terms sharing the same label have their scalars
-    /// added in-circuit. After the call, the MSM has one `Variable` entry
-    /// (label `Collapsed`) and one `Fixed` entry per distinct fixed label.
+    /// MSM chip, labeling the result with `label`. Fixed-base terms sharing the
+    /// same label have their scalars added in-circuit. After the call, the MSM
+    /// has one `Variable` entry (the collapsed result) and one `Fixed` entry
+    /// per distinct fixed label.
     ///
     /// This function mutates `self`.
     pub fn collapse(
@@ -583,6 +584,7 @@ impl<S: SelfEmulation> AssignedMsm<S> {
         layouter: &mut impl Layouter<S::F>,
         curve_chip: &S::CurveChip,
         scalar_chip: &S::ScalarChip,
+        label: PolynomialLabel,
     ) -> Result<(), Error> {
         // We allocate max capacity but we may not fill it.
         let n = self.bases.len();
@@ -623,7 +625,7 @@ impl<S: SelfEmulation> AssignedMsm<S> {
         let collapsed_base = S::msm(layouter, curve_chip, &variable_scalars, &variable_bases)?;
         bases.push(AssignedPoint::Variable(collapsed_base));
         scalars.push(AssignedBoundedScalar::one(layouter, scalar_chip)?);
-        labels.push(PolynomialLabel::Collapsed);
+        labels.push(label);
 
         self.bases = bases;
         self.scalars = scalars;

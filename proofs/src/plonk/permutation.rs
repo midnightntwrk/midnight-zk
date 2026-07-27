@@ -126,7 +126,7 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> VerifyingKey<F, CS> {
         let commitments = (0..argument.columns.len())
             .map(|i| {
                 CS::Commitment::read(reader, format)
-                    .map(|c| c.label(PolynomialLabel::PermutationFixed(i)))
+                    .map(|c| c.label(&[PolynomialLabel::PermutationFixed(i)]))
             })
             .collect::<Result<Vec<_>, _>>()?;
         Ok(VerifyingKey { commitments })

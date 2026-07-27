@@ -15,6 +15,35 @@ updates:
       interval: "daily"
     cooldown:
       default-days: 7
+    # Blocked as ONE coordinated migration: the crypto stack (pairing 0.23, k256 0.13,
+    # p256/primeorder 0.13, curve25519-dalek 4.1, blstrs/halo2curves) pins ff 0.13 /
+    # group 0.13 / elliptic-curve 0.13 / rand_core 0.6 / getrandom 0.2 / digest 0.10.
+    # None of the below can land until all of those publish 0.14-generation releases.
+    ignore:
+      - dependency-name: "num-bigint"    # 0.5 drops rand 0.8 support (needs rand_core 0.9).
+        versions: ["0.5.x"]
+      - dependency-name: "rand"
+        versions: ["0.9.x"]
+      - dependency-name: "rand_core"
+        versions: ["0.9.x"]
+      - dependency-name: "rand_chacha"
+        versions: ["0.9.x"]
+      - dependency-name: "getrandom"     # 0.3+ also drops the `js` feature.
+        versions: [">=0.3"]
+      - dependency-name: "ff"
+        versions: ["0.14.x"]
+      - dependency-name: "group"
+        versions: ["0.14.x"]
+      - dependency-name: "p256"
+        versions: ["0.14.x"]
+      - dependency-name: "primeorder"
+        versions: ["0.14.x"]
+      - dependency-name: "digest"
+        versions: ["0.11.x"]
+      # bincode 3.0.0 is a protest release: its lib.rs is a bare
+      # `compile_error!("https://xkcd.com/2347/")` and cannot build. Stay on 2.x.
+      - dependency-name: "bincode"
+        versions: ["3.0.x"]
 #
 #  - package-ecosystem: "npm"
 #    directory: "/"

@@ -68,7 +68,11 @@ where
     // Hash the prover's advice commitments into the transcript and squeeze
     // challenges
     let advice_commitments: Vec<_> = (0..vk.cs.num_advice_columns)
-        .map(|i| transcript.read().map(|c: CS::Commitment| c.label(PolynomialLabel::Advice(i))))
+        .map(|i| {
+            transcript
+                .read()
+                .map(|c: CS::Commitment| c.label(&[PolynomialLabel::Advice(i)]))
+        })
         .collect::<Result<_, _>>()?;
 
     // Sample theta challenge for keeping lookup columns linearly independent
@@ -79,7 +83,8 @@ where
         .cs
         .lookups
         .iter()
-        .map(|l| l.chunk_by_degree(vk.cs_degree).read_multiplicities::<_, CS>(transcript))
+        .enumerate()
+        .map(|(i, l)| l.chunk_by_degree(vk.cs_degree).read_multiplicities::<_, CS>(i, transcript))
         .collect::<Result<Vec<_>, _>>()?;
 
     // Sample beta challenge
@@ -93,7 +98,8 @@ where
     let lookups_committed: Vec<_> = lookup_multiplicities
         .into_iter()
         .zip(vk.cs.lookups.iter().map(|l| l.chunk_by_degree(vk.cs_degree)))
-        .map(|(m, batch)| m.read_commitment(&batch.name, batch.num_chunks(), transcript))
+        .enumerate()
+        .map(|(i, (m, batch))| m.read_commitment(i, batch.num_chunks(), transcript))
         .collect::<Result<Vec<_>, _>>()?;
 
     let trash_challenge: F = transcript.squeeze_challenge();
@@ -102,7 +108,8 @@ where
         .cs
         .trashcans
         .iter()
-        .map(|argument| argument.read_committed::<CS, _>(transcript))
+        .enumerate()
+        .map(|(i, argument)| argument.read_committed::<CS, _>(i, transcript))
         .collect::<Result<Vec<_>, _>>()?;
 
     // Sample y challenge, which keeps the gates linearly independent.
@@ -178,11 +185,13 @@ where
         let labeled = raw
             .into_iter()
             .enumerate()
-            .map(|(i, c)| c.label(PolynomialLabel::QuotientPiece(i)))
+            .map(|(i, c)| c.label(&[PolynomialLabel::QuotientPiece(i)]))
             .collect::<Vec<_>>();
         #[cfg(feature = "single-h-commitment")]
-        let labeled =
-            raw.into_iter().map(|c| c.label(PolynomialLabel::Quotient)).collect::<Vec<_>>();
+        let labeled = raw
+            .into_iter()
+            .map(|c| c.label(&[PolynomialLabel::Quotient]))
+            .collect::<Vec<_>>();
         labeled
     };
 
@@ -301,6 +310,7 @@ where
                 VerifierQuery::new(
                     vk.domain.rotate_omega(x, at),
                     &advice_commitments[column.index()],
+                    PolynomialLabel::Advice(column.index()),
                     advice_evals[query_index],
                 )
             }),
@@ -311,6 +321,7 @@ where
                     Some(VerifierQuery::new(
                         vk.domain.rotate_omega(x, at),
                         &committed_instances[column.index()],
+                        PolynomialLabel::CommittedInstance(column.index()),
                         instance_evals[query_index],
                     ))
                 } else {
@@ -332,12 +343,18 @@ where
                     VerifierQuery::new(
                         vk.domain.rotate_omega(x, at),
                         &vk.fixed_commitments[column.index()],
+                        PolynomialLabel::Fixed(column.index()),
                         fixed_evals[query_index],
                     )
                 }),
         )
         .chain(permutations_common.queries(&vk.permutation, x))
-        .chain(iter::once(VerifierQuery::new(x, &lin_commitment, lin_eval)))
+        .chain(iter::once(VerifierQuery::new(
+            x,
+            &lin_commitment,
+            PolynomialLabel::Linearization,
+            lin_eval,
+        )))
         .collect::<Vec<_>>();
 
     // We are now convinced the circuit is satisfied so long as the

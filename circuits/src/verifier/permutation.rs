@@ -25,15 +25,15 @@ use midnight_proofs::{
 use crate::{
     field::AssignedNative,
     verifier::{
-        kzg::{AssignedKZGCommitment, VerifierQuery},
+        pcs::{InCircuitPCS, VerifierQuery},
         transcript_gadget::TranscriptGadget,
         SelfEmulation,
     },
 };
 
 #[derive(Clone, Debug)]
-pub(crate) struct Committed<S: SelfEmulation> {
-    permutation_product_commitments: Vec<AssignedKZGCommitment<S>>,
+pub(crate) struct Committed<S: SelfEmulation, PCS: InCircuitPCS<S>> {
+    permutation_product_commitments: Vec<PCS::AssignedCommitment>,
 }
 
 #[derive(Clone, Debug)]
@@ -49,27 +49,27 @@ pub(crate) struct CommonEvaluated<S: SelfEmulation> {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct Evaluated<S: SelfEmulation> {
-    coms: Committed<S>,
+pub(crate) struct Evaluated<S: SelfEmulation, PCS: InCircuitPCS<S>> {
+    coms: Committed<S, PCS>,
     pub(crate) sets: Vec<EvaluatedSet<S>>,
 }
 
-pub(crate) fn read_product_commitments<S: SelfEmulation>(
+pub(crate) fn read_product_commitments<S: SelfEmulation, PCS: InCircuitPCS<S>>(
     layouter: &mut impl Layouter<S::F>,
     transcript_gadget: &mut TranscriptGadget<S>,
     cs: &ConstraintSystem<S::F>,
-) -> Result<Committed<S>, Error> {
+) -> Result<Committed<S, PCS>, Error> {
     let chunk_len = cs.degree() - 2;
 
     let permutation_product_commitments = cs
         .permutation()
         .get_columns()
         .chunks(chunk_len)
-        .map(|_| transcript_gadget.read_commitment(layouter))
+        .map(|_| PCS::read_commitment(transcript_gadget, layouter, 1))
         .collect::<Result<Vec<_>, _>>()?
         .into_iter()
         .enumerate()
-        .map(|(i, c)| c.label(PolynomialLabel::PermutationAccumulator(i)))
+        .map(|(i, c)| c.label(&[PolynomialLabel::PermutationAccumulator(i)]))
         .collect();
 
     Ok(Committed {
@@ -94,12 +94,12 @@ pub(crate) fn evaluate_permutation_common<S: SelfEmulation>(
     Ok(CommonEvaluated { permutation_evals })
 }
 
-impl<S: SelfEmulation> Committed<S> {
+impl<S: SelfEmulation, PCS: InCircuitPCS<S>> Committed<S, PCS> {
     pub(crate) fn evaluate(
         self,
         layouter: &mut impl Layouter<S::F>,
         transcript_gadget: &mut TranscriptGadget<S>,
-    ) -> Result<Evaluated<S>, Error> {
+    ) -> Result<Evaluated<S, PCS>, Error> {
         let mut sets = vec![];
 
         let mut iter = self.permutation_product_commitments.iter();
@@ -126,24 +126,26 @@ impl<S: SelfEmulation> Committed<S> {
 
 // "expressions" is implemented in `expressions/permutation.rs`
 
-impl<'a, S: SelfEmulation> Evaluated<S> {
+impl<'a, S: SelfEmulation, PCS: InCircuitPCS<S>> Evaluated<S, PCS> {
     pub(crate) fn queries(
         &'a self,
         x: &AssignedNative<S::F>,      // evaluation point x
         x_next: &AssignedNative<S::F>, // x * \omega
         x_last: &AssignedNative<S::F>, // x * \omega^(-blinding_factors + 1)
-    ) -> Vec<VerifierQuery<'a, S>> {
+    ) -> Vec<VerifierQuery<'a, S, PCS>> {
         let mut queries = vec![];
         for (i, set) in self.sets.iter().enumerate() {
             // Open permutation product commitments at x and \omega x
             queries.push(VerifierQuery::new(
                 x,
                 &self.coms.permutation_product_commitments[i],
+                PolynomialLabel::PermutationAccumulator(i),
                 &set.permutation_product_eval,
             ));
             queries.push(VerifierQuery::new(
                 x_next,
                 &self.coms.permutation_product_commitments[i],
+                PolynomialLabel::PermutationAccumulator(i),
                 &set.permutation_product_next_eval,
             ));
         }
@@ -153,6 +155,7 @@ impl<'a, S: SelfEmulation> Evaluated<S> {
             queries.push(VerifierQuery::new(
                 x_last,
                 &self.coms.permutation_product_commitments[i],
+                PolynomialLabel::PermutationAccumulator(i),
                 set.permutation_product_last_eval.as_ref().unwrap(),
             ));
         }
@@ -161,18 +164,21 @@ impl<'a, S: SelfEmulation> Evaluated<S> {
     }
 }
 
-impl<'a, S: SelfEmulation> CommonEvaluated<S> {
-    pub(crate) fn queries(
+impl<S: SelfEmulation> CommonEvaluated<S> {
+    pub(crate) fn queries<'a, PCS: InCircuitPCS<S>>(
         &self,
-        vkey_commitments: &[&'a AssignedKZGCommitment<S>],
+        vkey_commitments: &[&'a PCS::AssignedCommitment],
         x: &AssignedNative<S::F>, // evaluation point x
-    ) -> Vec<VerifierQuery<'a, S>> {
+    ) -> Vec<VerifierQuery<'a, S, PCS>> {
         assert_eq!(vkey_commitments.len(), self.permutation_evals.len());
 
         vkey_commitments
             .iter()
             .zip(self.permutation_evals.iter())
-            .map(|(commitment, eval)| VerifierQuery::new(x, commitment, eval))
+            .enumerate()
+            .map(|(i, (commitment, eval))| {
+                VerifierQuery::new(x, *commitment, PolynomialLabel::PermutationFixed(i), eval)
+            })
             .collect()
     }
 }

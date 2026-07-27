@@ -25,7 +25,7 @@ use midnight_proofs::{
 use crate::{
     field::AssignedNative,
     verifier::{
-        kzg::{AssignedKZGCommitment, VerifierQuery},
+        pcs::{InCircuitPCS, VerifierQuery},
         transcript_gadget::TranscriptGadget,
         SelfEmulation,
     },
@@ -33,8 +33,8 @@ use crate::{
 
 /// Commitment to the multiplicity columns, read from the transcript.
 #[derive(Clone, Debug)]
-pub(crate) struct CommittedMultiplicities<S: SelfEmulation> {
-    multiplicities: AssignedKZGCommitment<S>,
+pub(crate) struct CommittedMultiplicities<S: SelfEmulation, PCS: InCircuitPCS<S>> {
+    multiplicities: PCS::AssignedCommitment,
 }
 
 #[derive(Clone, Debug)]
@@ -47,52 +47,50 @@ pub(crate) struct LookupEvaluated<S: SelfEmulation> {
 
 /// Commitments to the LogUp polynomials, read from the transcript.
 #[derive(Clone, Debug)]
-pub(crate) struct Committed<S: SelfEmulation> {
-    multiplicities: AssignedKZGCommitment<S>,
-    helper_polys: Vec<AssignedKZGCommitment<S>>,
-    accumulator: AssignedKZGCommitment<S>,
+pub(crate) struct Committed<S: SelfEmulation, PCS: InCircuitPCS<S>> {
+    argument_index: usize,
+    multiplicities: PCS::AssignedCommitment,
+    helper_polys: Vec<PCS::AssignedCommitment>,
+    accumulator: PCS::AssignedCommitment,
 }
 
 /// Commitments plus evaluations at challenge point.
 #[derive(Clone, Debug)]
-pub(crate) struct Evaluated<S: SelfEmulation> {
-    committed: Committed<S>,
+pub(crate) struct Evaluated<S: SelfEmulation, PCS: InCircuitPCS<S>> {
+    committed: Committed<S, PCS>,
     pub(crate) evaluated: LookupEvaluated<S>,
 }
 
 /// Reads the prover's multiplicities commitment from the transcript.
-pub(crate) fn read_multiplicities<S: SelfEmulation>(
-    name: &str,
+pub(crate) fn read_multiplicities<S: SelfEmulation, PCS: InCircuitPCS<S>>(
+    argument_index: usize,
     layouter: &mut impl Layouter<S::F>,
     transcript_gadget: &mut TranscriptGadget<S>,
-) -> Result<CommittedMultiplicities<S>, Error> {
-    let multiplicities =
-        transcript_gadget.read_commitment(layouter).map(|c: AssignedKZGCommitment<S>| {
-            c.label(PolynomialLabel::LogupMultiplicities(name.to_owned()))
-        })?;
+) -> Result<CommittedMultiplicities<S, PCS>, Error> {
+    let multiplicities = PCS::read_commitment(transcript_gadget, layouter, 1)
+        .map(|c| c.label(&[PolynomialLabel::LogupMultiplicities(argument_index)]))?;
     Ok(CommittedMultiplicities { multiplicities })
 }
 
-impl<S: SelfEmulation> CommittedMultiplicities<S> {
+impl<S: SelfEmulation, PCS: InCircuitPCS<S>> CommittedMultiplicities<S, PCS> {
     pub(crate) fn read_commitment(
         self,
-        name: &str,
+        argument_index: usize,
         nb_flattened: usize,
         layouter: &mut impl Layouter<S::F>,
         transcript_gadget: &mut TranscriptGadget<S>,
-    ) -> Result<Committed<S>, Error> {
+    ) -> Result<Committed<S, PCS>, Error> {
         let helper_polys = (0..nb_flattened)
-            .map(|_| {
-                transcript_gadget
-                    .read_commitment(layouter)
-                    .map(|c| c.label(PolynomialLabel::LogupHelper(name.to_owned())))
+            .map(|j| {
+                PCS::read_commitment(transcript_gadget, layouter, 1)
+                    .map(|c| c.label(&[PolynomialLabel::LogupHelper(argument_index, j)]))
             })
             .collect::<Result<Vec<_>, Error>>()?;
-        let accumulator = transcript_gadget
-            .read_commitment(layouter)
-            .map(|c| c.label(PolynomialLabel::LogupAggregator(name.to_owned())))?;
+        let accumulator = PCS::read_commitment(transcript_gadget, layouter, 1)
+            .map(|c| c.label(&[PolynomialLabel::LogupAggregator(argument_index)]))?;
 
         Ok(Committed {
+            argument_index,
             multiplicities: self.multiplicities,
             helper_polys,
             accumulator,
@@ -100,12 +98,12 @@ impl<S: SelfEmulation> CommittedMultiplicities<S> {
     }
 }
 
-impl<S: SelfEmulation> Committed<S> {
+impl<S: SelfEmulation, PCS: InCircuitPCS<S>> Committed<S, PCS> {
     pub(crate) fn evaluate(
         self,
         layouter: &mut impl Layouter<S::F>,
         transcript_gadget: &mut TranscriptGadget<S>,
-    ) -> Result<Evaluated<S>, Error> {
+    ) -> Result<Evaluated<S, PCS>, Error> {
         let nb_flattened = self.helper_polys.len();
         let multiplicities_eval = transcript_gadget.read_scalar(layouter)?;
         let helper_evals = (0..nb_flattened)
@@ -128,36 +126,49 @@ impl<S: SelfEmulation> Committed<S> {
 
 // "expressions" is implemented in `expressions/lookup.rs`
 
-impl<'a, S: SelfEmulation> Evaluated<S> {
+impl<'a, S: SelfEmulation, PCS: InCircuitPCS<S>> Evaluated<S, PCS> {
     pub(crate) fn queries(
         &'a self,
         x: &AssignedNative<S::F>,      // evaluation point x
         x_next: &AssignedNative<S::F>, // ωx
-    ) -> Vec<VerifierQuery<'a, S>> {
+    ) -> Vec<VerifierQuery<'a, S, PCS>> {
+        let arg = self.committed.argument_index;
         let mut queries = vec![
             // Open lookup product commitment at x
             VerifierQuery::new(
                 x,
                 &self.committed.multiplicities,
+                PolynomialLabel::LogupMultiplicities(arg),
                 &self.evaluated.multiplicities_eval,
             ),
         ];
         // Open lookup input commitments at x
-        for (h_commit, h_eval) in
-            self.committed.helper_polys.iter().zip(self.evaluated.helper_evals.iter())
+        for (j, (h_commit, h_eval)) in self
+            .committed
+            .helper_polys
+            .iter()
+            .zip(self.evaluated.helper_evals.iter())
+            .enumerate()
         {
-            queries.push(VerifierQuery::new(x, h_commit, h_eval));
+            queries.push(VerifierQuery::new(
+                x,
+                h_commit,
+                PolynomialLabel::LogupHelper(arg, j),
+                h_eval,
+            ));
         }
         // Open lookup table commitments at x
         queries.push(VerifierQuery::new(
             x,
             &self.committed.accumulator,
+            PolynomialLabel::LogupAggregator(arg),
             &self.evaluated.accumulator_eval,
         ));
         // Open lookup product commitment at \omega x
         queries.push(VerifierQuery::new(
             x_next,
             &self.committed.accumulator,
+            PolynomialLabel::LogupAggregator(arg),
             &self.evaluated.accumulator_next_eval,
         ));
         queries

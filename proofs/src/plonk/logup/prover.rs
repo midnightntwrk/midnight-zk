@@ -43,6 +43,7 @@ use crate::{
 #[cfg_attr(feature = "bench-internal", derive(Clone))]
 #[derive(Debug)]
 pub(crate) struct Committed<F: PrimeField> {
+    pub(crate) argument_index: usize,
     pub(crate) multiplicities: Polynomial<F, Coeff>,
     pub(crate) helper_polys: Vec<Polynomial<F, Coeff>>,
     pub(crate) aggregator_poly: Polynomial<F, Coeff>,
@@ -55,7 +56,7 @@ pub(crate) struct Committed<F: PrimeField> {
 #[cfg_attr(feature = "bench-internal", derive(Clone))]
 #[derive(Debug)]
 pub(crate) struct ComputedMultiplicities<F: PrimeField> {
-    pub(crate) name: String,
+    pub(crate) argument_index: usize,
     pub(crate) selector: Polynomial<F, LagrangeCoeff>,
     pub(crate) multiplicities: Polynomial<F, LagrangeCoeff>,
     pub(crate) chunked_compressed_inputs: Vec<Vec<Polynomial<F, LagrangeCoeff>>>,
@@ -65,7 +66,7 @@ pub(crate) struct ComputedMultiplicities<F: PrimeField> {
 /// Intermediate result from logderivative computation, before transcript
 /// write and FFT conversion to coefficient form.
 pub(crate) struct ComputedLogderivative<F: PrimeField, C> {
-    pub(crate) name: String,
+    pub(crate) argument_index: usize,
     pub(crate) multiplicities: Polynomial<F, LagrangeCoeff>,
     pub(crate) helper_polys_lagrange: Vec<Vec<F>>,
     pub(crate) aggregator_poly: Polynomial<F, LagrangeCoeff>,
@@ -93,6 +94,7 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ChunkedArgument<F> {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn compute_multiplicities_parallel<'a, CS: PolynomialCommitmentScheme<F>>(
         &self,
+        argument_index: usize,
         pk: &ProvingKey<F, CS>,
         params: &CS::Parameters,
         theta: F,
@@ -166,12 +168,12 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ChunkedArgument<F> {
         let commitment = CS::commit(
             params,
             &multiplicities.to_delta(),
-            PolynomialLabel::LogupMultiplicities(self.name.clone()),
+            PolynomialLabel::LogupMultiplicities(argument_index),
         );
 
         Ok((
             ComputedMultiplicities {
-                name: self.name.clone(),
+                argument_index,
                 selector,
                 multiplicities,
                 chunked_compressed_inputs,
@@ -297,11 +299,11 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ComputedMultiplicities<F> {
         let aggregator_commitment = CS::commit(
             params,
             &aggregator_poly.to_double_delta(),
-            PolynomialLabel::LogupAggregator(self.name.clone()),
+            PolynomialLabel::LogupAggregator(self.argument_index),
         );
 
         Ok(ComputedLogderivative {
-            name: self.name,
+            argument_index: self.argument_index,
             multiplicities: self.multiplicities,
             helper_polys_lagrange,
             aggregator_poly,
@@ -358,15 +360,32 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluated<F> {
         x: F,
     ) -> impl Iterator<Item = ProverQuery<'a, F>> + Clone {
         let x_next = pk.vk.domain.rotate_omega(x, Rotation::next());
+        let arg = self.constructed.argument_index;
 
-        let m_query = iter::once(ProverQuery::new(x, &self.constructed.multiplicities));
+        let m_query = iter::once(ProverQuery::new(
+            x,
+            &self.constructed.multiplicities,
+            PolynomialLabel::LogupMultiplicities(arg),
+        ));
 
-        let helper_queries =
-            self.constructed.helper_polys.iter().map(move |h| ProverQuery::new(x, h));
+        let helper_queries = self
+            .constructed
+            .helper_polys
+            .iter()
+            .enumerate()
+            .map(move |(j, h)| ProverQuery::new(x, h, PolynomialLabel::LogupHelper(arg, j)));
 
         let z_queries = [
-            ProverQuery::new(x, &self.constructed.aggregator_poly),
-            ProverQuery::new(x_next, &self.constructed.aggregator_poly),
+            ProverQuery::new(
+                x,
+                &self.constructed.aggregator_poly,
+                PolynomialLabel::LogupAggregator(arg),
+            ),
+            ProverQuery::new(
+                x_next,
+                &self.constructed.aggregator_poly,
+                PolynomialLabel::LogupAggregator(arg),
+            ),
         ];
 
         m_query.chain(helper_queries).chain(z_queries)

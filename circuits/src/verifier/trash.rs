@@ -25,7 +25,7 @@ use midnight_proofs::{
 use crate::{
     field::AssignedNative,
     verifier::{
-        kzg::{AssignedKZGCommitment, VerifierQuery},
+        pcs::{InCircuitPCS, VerifierQuery},
         transcript_gadget::TranscriptGadget,
         SelfEmulation,
     },
@@ -37,34 +37,37 @@ pub(crate) struct TrashEvaluated<S: SelfEmulation> {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct Committed<S: SelfEmulation> {
-    trash_commitment: AssignedKZGCommitment<S>,
+pub(crate) struct Committed<S: SelfEmulation, PCS: InCircuitPCS<S>> {
+    argument_index: usize,
+    trash_commitment: PCS::AssignedCommitment,
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct Evaluated<S: SelfEmulation> {
-    committed: Committed<S>,
+pub(crate) struct Evaluated<S: SelfEmulation, PCS: InCircuitPCS<S>> {
+    committed: Committed<S, PCS>,
     pub(crate) evaluated: TrashEvaluated<S>,
 }
 
-pub(crate) fn read_committed<S: SelfEmulation>(
-    argument_name: &str,
+pub(crate) fn read_committed<S: SelfEmulation, PCS: InCircuitPCS<S>>(
+    argument_index: usize,
     layouter: &mut impl Layouter<S::F>,
     transcript_gadget: &mut TranscriptGadget<S>,
-) -> Result<Committed<S>, Error> {
-    let trash_commitment = transcript_gadget
-        .read_commitment(layouter)
-        .map(|c| c.label(PolynomialLabel::Trash(argument_name.to_owned())))?;
+) -> Result<Committed<S, PCS>, Error> {
+    let trash_commitment = PCS::read_commitment(transcript_gadget, layouter, 1)
+        .map(|c| c.label(&[PolynomialLabel::Trash(argument_index)]))?;
 
-    Ok(Committed { trash_commitment })
+    Ok(Committed {
+        argument_index,
+        trash_commitment,
+    })
 }
 
-impl<S: SelfEmulation> Committed<S> {
+impl<S: SelfEmulation, PCS: InCircuitPCS<S>> Committed<S, PCS> {
     pub(crate) fn evaluate(
         self,
         layouter: &mut impl Layouter<S::F>,
         transcript_gadget: &mut TranscriptGadget<S>,
-    ) -> Result<Evaluated<S>, Error> {
+    ) -> Result<Evaluated<S, PCS>, Error> {
         let trash_eval = transcript_gadget.read_scalar(layouter)?;
 
         Ok(Evaluated {
@@ -76,14 +79,15 @@ impl<S: SelfEmulation> Committed<S> {
 
 // "expressions" is implemented in `expressions/trash.rs`
 
-impl<'a, S: SelfEmulation> Evaluated<S> {
+impl<'a, S: SelfEmulation, PCS: InCircuitPCS<S>> Evaluated<S, PCS> {
     pub(crate) fn queries(
         &'a self,
         x: &AssignedNative<S::F>, // evaluation point x
-    ) -> Vec<VerifierQuery<'a, S>> {
+    ) -> Vec<VerifierQuery<'a, S, PCS>> {
         vec![VerifierQuery::new(
             x,
             &self.committed.trash_commitment,
+            PolynomialLabel::Trash(self.committed.argument_index),
             &self.evaluated.trash_eval,
         )]
     }
