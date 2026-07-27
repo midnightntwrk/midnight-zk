@@ -7,8 +7,12 @@ use std::{collections::BTreeMap, io};
 
 use group::Group;
 use midnight_circuits::{
-    hash::poseidon::PoseidonState, instructions::AssignmentInstructions, types::{AssignedNative, Instantiable}, verifier::{
-        Accumulator, AssignedAccumulator, AssignedKZGCommitment, AssignedKZGMultiCommitment, AssignedVk, BlstrsEmulation, InCircuitKZG, SelfEmulation, fixed_bases,
+    hash::poseidon::PoseidonState,
+    instructions::AssignmentInstructions,
+    types::{AssignedNative, Instantiable},
+    verifier::{
+        fixed_bases, Accumulator, AssignedAccumulator, AssignedKZGCommitment,
+        AssignedKZGMultiCommitment, AssignedVk, BlstrsEmulation, InCircuitKZG, SelfEmulation,
     },
 };
 use midnight_proofs::{
@@ -198,7 +202,11 @@ impl Decider for StandardDecider {
         vk: &MidnightVK,
     ) -> Result<(), Error> {
         let fixed_bases = fixed_bases::<S>(vk.vk());
-        if acc.check(params, &fixed_bases) {Ok(())} else {Err(Error::Opening)}
+        if acc.check(params, &fixed_bases) {
+            Ok(())
+        } else {
+            Err(Error::Opening)
+        }
     }
 }
 
@@ -274,7 +282,11 @@ impl Decider for IvcDecider {
         vk: &Self::Vk,
     ) -> Result<(), Error> {
         let fixed_bases = fixed_bases::<S>(vk.vk());
-        if acc.check(params, &fixed_bases) {Ok(())} else {Err(Error::Opening)}
+        if acc.check(params, &fixed_bases) {
+            Ok(())
+        } else {
+            Err(Error::Opening)
+        }
     }
 }
 
@@ -286,7 +298,7 @@ pub enum DeciderKind {
     Standard,
     /// The IVC per-step decider ([`IvcDecider`]).
     Ivc,
-    /// Final IVC decider (Verifies the previous IVC check, and collapses it in 
+    /// Final IVC decider (Verifies the previous IVC check, and collapses it in
     /// a single step).
     FinalIVC,
 }
@@ -321,12 +333,12 @@ impl DeciderKind {
     }
 }
 
-/////////////
-/// Wrappers and abstractions for midnight-ledger
-/////////////
+/*
+Wrappers and abstractions for midnight-ledger
+*/
 
-/// Off-circuit partial verification from a self-describing VK blob. This function resolves
-/// the kind of decider, and executes the decide function.
+/// Off-circuit partial verification from a self-describing VK blob. This
+/// function resolves the kind of decider, and executes the decide function.
 pub fn decide(vk_blob: &[u8], instance: &[&[F]], proof: &[u8]) -> Result<Accumulator<S>, Error> {
     let (kind, vk_bytes) = DeciderKind::split(vk_blob)?;
     let committed_instance = [KZGCommitment::Simple(

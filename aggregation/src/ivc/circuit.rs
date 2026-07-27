@@ -16,15 +16,18 @@ use midnight_circuits::{
     instructions::{AssignmentInstructions, BinaryInstructions, PublicInputInstructions},
     types::{AssignedNative, Instantiable},
     verifier::{
-        fixed_bases, Accumulator, AssignedAccumulator, AssignedKZGCommitment, AssignedVk,
-        InCircuitKZG, SelfEmulation,
+        fixed_base_labels, fixed_bases, Accumulator, AssignedAccumulator, AssignedKZGCommitment,
+        AssignedVk, InCircuitKZG, SelfEmulation,
     },
 };
 use midnight_curves::Bls12;
 use midnight_proofs::{
     circuit::{Layouter, Value},
-    plonk::{ConstraintSystem, Error},
-    poly::{kzg::commitment::KZGCommitment, EvaluationDomain, PolynomialLabel},
+    plonk::{ConstraintSystem, Error, VerifyingKey},
+    poly::{
+        kzg::{commitment::KZGCommitment, KZGCommitmentScheme},
+        EvaluationDomain, PolynomialLabel,
+    },
     utils::{helpers::ProcessedSerdeObject, SerdeFormat},
 };
 use midnight_zk_stdlib::{
@@ -258,6 +261,9 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
     }
 }
 
+/// The underlying midnight-proofs verifying key type wrapped by [`MidnightVK`].
+type PlonkVk = VerifyingKey<midnight_curves::Fq, KZGCommitmentScheme<Bls12>>;
+
 /// Off-circuit verifying context for *finalizing* an IVC chain: the IVC PLONK
 /// verifying key plus the (structured) accumulator carried in the proof's
 /// public inputs.
@@ -267,6 +273,13 @@ pub struct IvcFinalVk {
     pub vk: MidnightVK,
     /// Accumulator from the IVC instance
     pub accumulator: Accumulator<S>,
+}
+
+impl IvcFinalVk {
+    /// The underlying midnight-proofs verifying key of the IVC circuit.
+    fn plonk_vk(&self) -> &PlonkVk {
+        self.vk.vk()
+    }
 }
 
 impl ProcessedSerdeObject for IvcFinalVk {
@@ -305,15 +318,40 @@ pub struct IvcFinalDecider {}
 impl Decider for IvcFinalDecider {
     type Vk = IvcFinalVk;
     type AssignedVk = IvcAssignedFinalVk;
-    
+
     const KIND: DeciderKind = DeciderKind::FinalIVC;
-    
+
     fn assign_vk(
         std_lib: &ZkStdLib,
         layouter: &mut impl Layouter<F>,
         vk: &Self::Vk,
     ) -> Result<Self::AssignedVk, Error> {
-        todo!()
+        let bls = std_lib.bls12_381();
+        let plonk_vk = vk.plonk_vk();
+
+        let assigned_vk = IvcDecider::assign_vk(std_lib, layouter, &vk.vk)?;
+
+        let fixed_bases = fixed_bases::<S>(plonk_vk)
+            .into_iter()
+            .map(|(l, p)| Ok((l, bls.assign_fixed(layouter, p)?)))
+            .collect::<Result<BTreeMap<_, _>, Error>>()?;
+
+        let cs = plonk_vk.cs();
+        let fb_labels = fixed_base_labels::<S>(
+            cs.num_fixed_columns() + cs.num_selectors(),
+            cs.permutation().columns.len(),
+        );
+        let carried_acc = std_lib.verifier().assign_collapsed_accumulator(
+            layouter,
+            &fb_labels,
+            Value::known(vk.accumulator.clone()),
+        )?;
+
+        Ok(IvcAssignedFinalVk {
+            vk: assigned_vk,
+            carried_acc,
+            fixed_bases,
+        })
     }
 
     fn prepare(
@@ -326,7 +364,7 @@ impl Decider for IvcFinalDecider {
             .expect("IvcDecider always yields an accumulator");
         let mut next_acc = Accumulator::accumulate(&[proof_acc, vk.accumulator.clone()]);
         next_acc.collapse();
-        next_acc.resolve_fixed_bases(&fixed_bases::<S>(&vk.vk.vk()));
+        next_acc.resolve_fixed_bases(&fixed_bases::<S>(vk.plonk_vk()));
         Ok(Some(next_acc))
     }
 
@@ -362,8 +400,11 @@ impl Decider for IvcFinalDecider {
         params: &midnight_proofs::poly::kzg::params::ParamsVerifierKZG<Bls12>,
         vk: &Self::Vk,
     ) -> Result<(), Error> {
-        
-        let fixed_bases = fixed_bases::<S>(vk.vk.vk());
-        if acc.check(params, &fixed_bases) {Ok(())} else {Err(Error::Opening)}
+        let fixed_bases = fixed_bases::<S>(vk.plonk_vk());
+        if acc.check(params, &fixed_bases) {
+            Ok(())
+        } else {
+            Err(Error::Opening)
+        }
     }
 }

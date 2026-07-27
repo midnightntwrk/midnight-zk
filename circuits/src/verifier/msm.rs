@@ -795,7 +795,9 @@ where
         let mut tag = [0u8; 1];
         reader.read_exact(&mut tag)?;
         match tag[0] {
-            0 => Ok(Point::Variable(<S::C as ProcessedSerdeObject>::read(reader, format)?)),
+            0 => Ok(Point::Variable(<S::C as ProcessedSerdeObject>::read(
+                reader, format,
+            )?)),
             1 => Ok(Point::Fixed),
             other => Err(io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -837,7 +839,11 @@ where
             .collect::<io::Result<Vec<_>>>()?;
         let k = read_usize(reader)?;
         let labels = (0..k).map(|_| read_label(reader)).collect::<io::Result<Vec<_>>>()?;
-        Ok(Msm { scalars, bases, labels })
+        Ok(Msm {
+            scalars,
+            bases,
+            labels,
+        })
     }
 
     fn write<W: io::Write>(&self, writer: &mut W, format: SerdeFormat) -> io::Result<()> {

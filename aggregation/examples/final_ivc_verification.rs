@@ -314,7 +314,7 @@ fn final_accumulator<const N: usize>(
 }
 
 fn main() {
-    const K: u32 = 17;
+    const K: u32 = 18;
     const N: usize = 1;
     const STEPS: usize = 2;
 

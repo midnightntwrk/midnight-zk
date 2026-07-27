@@ -317,7 +317,13 @@ impl<Rel: Relation> MidnightPK<Rel> {
             .params(),
         )?;
 
-        Ok(MidnightPK { k, nb_public_inputs, deferred_accumulators, relation, pk })
+        Ok(MidnightPK {
+            k,
+            nb_public_inputs,
+            deferred_accumulators,
+            relation,
+            pk,
+        })
     }
 
     /// The size of the domain associated to this proving key.
@@ -641,10 +647,11 @@ pub fn setup_pk<R: Relation>(relation: &R, vk: &MidnightVK) -> MidnightPK<R> {
     // During the call to [setup_vk] the circuit RefCell on public inputs has been
     // mutated with the correct value. The following [unwrap] is safe here.
     let nb_public_inputs = circuit.nb_public_inputs.clone().borrow().unwrap();
+    let deferred_accumulators = circuit.deferred_accumulators.clone().borrow().clone();
     MidnightPK {
         k: vk.k(),
         nb_public_inputs,
-        deferred_accumulators: vk.deferred_accumulators.clone(),
+        deferred_accumulators,
         relation: relation.clone(),
         pk,
     }

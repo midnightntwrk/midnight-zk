@@ -887,6 +887,14 @@ impl ZkStdLib {
         self.verifier().constrain_as_public_input(layouter, &acc)?;
         let len = self.native_gadget.native_chip.nb_public_inputs() - offset;
 
+        // Check that the accumulator is compressed.
+        assert_eq!(
+            len,
+            crate::decider::accumulator_pi_len(),
+            "decider exposed a non-single-point accumulator as public input; it \
+             must be collapsed with its fixed bases resolved"
+        );
+
         Ok(())
     }
 
