@@ -21,7 +21,6 @@
 
 pub use circuit::{IvcAssignedFinalVk, IvcCircuit, IvcFinalVk, IvcInstance, IvcWitness};
 pub use error::IvcError;
-pub use midnight_zk_stdlib::decidable::IvcDecider;
 use midnight_circuits::{
     instructions::{BinaryInstructions, EqualityInstructions},
     types::{AssignedBit, AssignedNative},
@@ -31,6 +30,7 @@ use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
+pub use midnight_zk_stdlib::decider::IvcDecider;
 use midnight_zk_stdlib::{ZkStdLib, ZkStdLibArch};
 pub use prover::IvcProver;
 pub use setup::setup;
