@@ -36,7 +36,7 @@ jobs:
       - name: 'Install rust-toolchain.toml'
         run: rustup toolchain install
       - name: Restore Cargo Cache
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: |
             ~/.cargo
@@ -55,7 +55,7 @@ jobs:
 
       # Save the Cargo Cache
       - name: Save Cargo Cache
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: |
             ~/.cargo
