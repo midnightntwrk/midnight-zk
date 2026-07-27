@@ -27,10 +27,14 @@
 //! Note that implication <= holds unconditionally, whereas implication => holds
 //! "computationally".
 
-use std::collections::{BTreeMap, HashSet};
+use std::{
+    collections::{BTreeMap, HashSet},
+    io,
+};
 
 use ff::Field;
 use group::Group;
+use midnight_curves::serde::SerdeObject;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
@@ -41,6 +45,7 @@ use midnight_proofs::{
         },
         PolynomialLabel,
     },
+    utils::{helpers::ProcessedSerdeObject, SerdeFormat},
 };
 use num_bigint::BigUint;
 use num_traits::One;
@@ -385,3 +390,26 @@ impl<S: SelfEmulation> AssignedAccumulator<S> {
         Ok(acc)
     }
 }
+impl<S: SelfEmulation> ProcessedSerdeObject for Accumulator<S>
+where
+    S::F: SerdeObject,
+    S::C: ProcessedSerdeObject,
+{
+    fn read<R: io::Read>(reader: &mut R, format: SerdeFormat) -> io::Result<Self> {
+        let lhs = Msm::<S>::read(reader, format)?;
+        let rhs = Msm::<S>::read(reader, format)?;
+        Ok(Accumulator { lhs, rhs })
+    }
+
+    fn write<W: io::Write>(&self, writer: &mut W, format: SerdeFormat) -> io::Result<()> {
+        self.lhs.write(writer, format)?;
+        self.rhs.write(writer, format)
+    }
+
+    fn byte_length(&self, format: SerdeFormat) -> usize {
+        let mut buf = Vec::new();
+        self.write(&mut buf, format).expect("in-memory write cannot fail");
+        buf.len()
+    }
+}
+

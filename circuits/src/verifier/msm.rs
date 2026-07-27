@@ -16,14 +16,18 @@
 //! scalars only.
 //! (The bases are assumed to be fixed and globally known.)
 
-use std::collections::{btree_map::Entry, BTreeMap, HashSet};
+use std::{
+    collections::{btree_map::Entry, BTreeMap, HashSet},
+    io,
+};
 
 use ff::Field;
-use midnight_curves::msm::msm_best;
+use midnight_curves::{msm::msm_best, serde::SerdeObject};
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
     poly::PolynomialLabel,
+    utils::{helpers::ProcessedSerdeObject, SerdeFormat},
 };
 
 use crate::{
@@ -694,5 +698,169 @@ impl<S: SelfEmulation> AssignedMsm<S> {
         acc.add_msm(&other)?;
 
         Ok(acc)
+    }
+}
+
+// Helper functions
+
+fn write_usize<W: io::Write>(writer: &mut W, v: usize) -> io::Result<()> {
+    writer.write_all(&(v as u32).to_le_bytes())
+}
+
+fn read_usize<R: io::Read>(reader: &mut R) -> io::Result<usize> {
+    let mut b = [0u8; 4];
+    reader.read_exact(&mut b)?;
+    Ok(u32::from_le_bytes(b) as usize)
+}
+
+fn write_string<W: io::Write>(writer: &mut W, s: &str) -> io::Result<()> {
+    write_usize(writer, s.len())?;
+    writer.write_all(s.as_bytes())
+}
+
+fn read_string<R: io::Read>(reader: &mut R) -> io::Result<String> {
+    let len = read_usize(reader)?;
+    let mut buf = vec![0u8; len];
+    reader.read_exact(&mut buf)?;
+    String::from_utf8(buf).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+}
+
+fn write_label<W: io::Write>(writer: &mut W, label: &PolynomialLabel) -> io::Result<()> {
+    match label {
+        PolynomialLabel::Fixed(i) => (writer.write_all(&[0])).and_then(|_| write_usize(writer, *i)),
+        PolynomialLabel::Advice(i) => (writer.write_all(&[1])).and_then(|_| write_usize(writer, *i)),
+        PolynomialLabel::CommittedInstance(i) => {
+            (writer.write_all(&[2])).and_then(|_| write_usize(writer, *i))
+        }
+        PolynomialLabel::PermutationFixed(i) => {
+            (writer.write_all(&[3])).and_then(|_| write_usize(writer, *i))
+        }
+        PolynomialLabel::PermutationAccumulator(i) => {
+            (writer.write_all(&[4])).and_then(|_| write_usize(writer, *i))
+        }
+        PolynomialLabel::LogupHelper(i, j) => (writer.write_all(&[5]))
+            .and_then(|_| write_usize(writer, *i))
+            .and_then(|_| write_usize(writer, *j)),
+        PolynomialLabel::LogupMultiplicities(i) => {
+            (writer.write_all(&[6])).and_then(|_| write_usize(writer, *i))
+        }
+        PolynomialLabel::LogupAggregator(i) => {
+            (writer.write_all(&[7])).and_then(|_| write_usize(writer, *i))
+        }
+        PolynomialLabel::Linearization => writer.write_all(&[8]),
+        PolynomialLabel::Quotient => writer.write_all(&[9]),
+        PolynomialLabel::QuotientPiece(i) => {
+            (writer.write_all(&[10])).and_then(|_| write_usize(writer, *i))
+        }
+        PolynomialLabel::Trash(i) => {
+            (writer.write_all(&[11])).and_then(|_| write_usize(writer, *i))
+        }
+        PolynomialLabel::Custom(s) => {
+            (writer.write_all(&[12])).and_then(|_| write_string(writer, s))
+        }
+        PolynomialLabel::NoLabel => writer.write_all(&[13]),
+    }
+}
+
+fn read_label<R: io::Read>(reader: &mut R) -> io::Result<PolynomialLabel> {
+    let mut tag = [0u8; 1];
+    reader.read_exact(&mut tag)?;
+    Ok(match tag[0] {
+        0 => PolynomialLabel::Fixed(read_usize(reader)?),
+        1 => PolynomialLabel::Advice(read_usize(reader)?),
+        2 => PolynomialLabel::CommittedInstance(read_usize(reader)?),
+        3 => PolynomialLabel::PermutationFixed(read_usize(reader)?),
+        4 => PolynomialLabel::PermutationAccumulator(read_usize(reader)?),
+        5 => PolynomialLabel::LogupHelper(read_usize(reader)?, read_usize(reader)?),
+        6 => PolynomialLabel::LogupMultiplicities(read_usize(reader)?),
+        7 => PolynomialLabel::LogupAggregator(read_usize(reader)?),
+        8 => PolynomialLabel::Linearization,
+        9 => PolynomialLabel::Quotient,
+        10 => PolynomialLabel::QuotientPiece(read_usize(reader)?),
+        11 => PolynomialLabel::Trash(read_usize(reader)?),
+        12 => PolynomialLabel::Custom(read_string(reader)?),
+        13 => PolynomialLabel::NoLabel,
+        other => {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("unknown PolynomialLabel tag: {other}"),
+            ))
+        }
+    })
+}
+
+impl<S: SelfEmulation> ProcessedSerdeObject for Point<S>
+where
+    S::C: ProcessedSerdeObject,
+{
+    fn read<R: io::Read>(reader: &mut R, format: SerdeFormat) -> io::Result<Self> {
+        let mut tag = [0u8; 1];
+        reader.read_exact(&mut tag)?;
+        match tag[0] {
+            0 => Ok(Point::Variable(<S::C as ProcessedSerdeObject>::read(reader, format)?)),
+            1 => Ok(Point::Fixed),
+            other => Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("unknown Point tag: {other}"),
+            )),
+        }
+    }
+
+    fn write<W: io::Write>(&self, writer: &mut W, format: SerdeFormat) -> io::Result<()> {
+        match self {
+            Point::Variable(p) => {
+                writer.write_all(&[0])?;
+                p.write(writer, format)
+            }
+            Point::Fixed => writer.write_all(&[1]),
+        }
+    }
+
+    fn byte_length(&self, format: SerdeFormat) -> usize {
+        let mut buf = Vec::new();
+        self.write(&mut buf, format).expect("in-memory write cannot fail");
+        buf.len()
+    }
+}
+
+impl<S: SelfEmulation> ProcessedSerdeObject for Msm<S>
+where
+    S::F: SerdeObject,
+    S::C: ProcessedSerdeObject,
+{
+    fn read<R: io::Read>(reader: &mut R, format: SerdeFormat) -> io::Result<Self> {
+        let n = read_usize(reader)?;
+        let scalars = (0..n)
+            .map(|_| <S::F as SerdeObject>::read_raw(reader))
+            .collect::<io::Result<Vec<_>>>()?;
+        let m = read_usize(reader)?;
+        let bases = (0..m)
+            .map(|_| Point::<S>::read(reader, format))
+            .collect::<io::Result<Vec<_>>>()?;
+        let k = read_usize(reader)?;
+        let labels = (0..k).map(|_| read_label(reader)).collect::<io::Result<Vec<_>>>()?;
+        Ok(Msm { scalars, bases, labels })
+    }
+
+    fn write<W: io::Write>(&self, writer: &mut W, format: SerdeFormat) -> io::Result<()> {
+        write_usize(writer, self.scalars.len())?;
+        for s in &self.scalars {
+            s.write_raw(writer)?;
+        }
+        write_usize(writer, self.bases.len())?;
+        for b in &self.bases {
+            b.write(writer, format)?;
+        }
+        write_usize(writer, self.labels.len())?;
+        for l in &self.labels {
+            write_label(writer, l)?;
+        }
+        Ok(())
+    }
+
+    fn byte_length(&self, format: SerdeFormat) -> usize {
+        let mut buf = Vec::new();
+        self.write(&mut buf, format).expect("in-memory write cannot fail");
+        buf.len()
     }
 }

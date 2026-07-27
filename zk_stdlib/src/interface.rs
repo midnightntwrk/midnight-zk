@@ -34,7 +34,7 @@ use midnight_proofs::{
         PolynomialLabel,
     },
     transcript::{CircuitTranscript, Hashable, Sampleable, Transcript, TranscriptHash},
-    utils::SerdeFormat,
+    utils::{helpers::ProcessedSerdeObject, SerdeFormat},
 };
 use rand::{CryptoRng, RngCore};
 
@@ -163,6 +163,23 @@ impl MidnightVK {
         &self,
     ) -> &VerifyingKey<midnight_curves::Fq, KZGCommitmentScheme<midnight_curves::Bls12>> {
         &self.vk
+    }
+}
+
+impl ProcessedSerdeObject for MidnightVK {
+    fn read<R: io::Read>(reader: &mut R, format: SerdeFormat) -> io::Result<Self> {
+        MidnightVK::read(reader, format)
+    }
+
+    fn write<W: io::Write>(&self, writer: &mut W, format: SerdeFormat) -> io::Result<()> {
+        MidnightVK::write(self, writer, format)
+    }
+
+    fn byte_length(&self, format: SerdeFormat) -> usize {
+        let mut buf = Vec::new();
+        self.write(&mut buf, format)
+            .expect("in-memory write cannot fail");
+        buf.len()
     }
 }
 
