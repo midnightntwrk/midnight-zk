@@ -306,7 +306,7 @@ pub fn decide(vk_blob: &[u8], instance: &[&[F]], proof: &[u8]) -> Result<Accumul
     let (kind, vk_bytes) = DeciderKind::split(vk_blob)?;
     let committed_instance = [KZGCommitment::Simple(
         C::identity(),
-        PolynomialLabel::Instance(0),
+        PolynomialLabel::CommittedInstance(0),
     )];
     match kind {
         DeciderKind::Standard => {

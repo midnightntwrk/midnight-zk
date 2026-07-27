@@ -188,6 +188,8 @@ impl ProcessedSerdeObject for MidnightVK {
 pub struct MidnightPK<R: Relation> {
     k: u8,
     relation: R,
+    // Needed to be able to build the VK from the PK
+    nb_public_inputs: usize,
     pk: ProvingKey<midnight_curves::Fq, KZGCommitmentScheme<midnight_curves::Bls12>>,
 }
 
@@ -202,6 +204,7 @@ impl<Rel: Relation> MidnightPK<Rel> {
     /// but it is not recommended.
     pub fn write<W: io::Write>(&self, writer: &mut W, format: SerdeFormat) -> io::Result<()> {
         writer.write_all(&[self.k])?;
+        writer.write_all(&(self.nb_public_inputs as u32).to_le_bytes())?;
 
         Rel::write_relation(&self.relation, writer)?;
 
@@ -222,6 +225,10 @@ impl<Rel: Relation> MidnightPK<Rel> {
         reader.read_exact(&mut byte)?;
         let k = byte[0];
 
+        let mut bytes = [0u8; 4];
+        reader.read_exact(&mut bytes)?;
+        let nb_public_inputs = u32::from_le_bytes(bytes) as usize;
+
         let relation = Rel::read_relation(reader)?;
 
         let pk = ProvingKey::read::<R, MidnightCircuit<Rel>>(
@@ -236,7 +243,7 @@ impl<Rel: Relation> MidnightPK<Rel> {
             .params(),
         )?;
 
-        Ok(MidnightPK { k, relation, pk })
+        Ok(MidnightPK { k, nb_public_inputs, relation, pk })
     }
 
     /// The size of the domain associated to this proving key.
@@ -249,6 +256,15 @@ impl<Rel: Relation> MidnightPK<Rel> {
         &self,
     ) -> &ProvingKey<midnight_curves::Fq, KZGCommitmentScheme<midnight_curves::Bls12>> {
         &self.pk
+    }
+
+    /// Return the associate [MidnightVk]
+    pub fn vk(&self) -> MidnightVK {
+        MidnightVK { 
+            architecture: self.relation.used_chips(), 
+            k: self.k, 
+            nb_public_inputs: self.nb_public_inputs, 
+            vk: self.pk.get_vk().clone() }
     }
 }
 
@@ -537,8 +553,13 @@ pub fn setup_pk<R: Relation>(relation: &R, vk: &MidnightVK) -> MidnightPK<R> {
         Some(vk.k() as u32),
     );
     let pk = BlstPLONK::<MidnightCircuit<R>>::setup_pk(&circuit, &vk.vk);
+
+    // During the call to [setup_vk] the circuit RefCell on public inputs has been
+    // mutated with the correct value. The following [unwrap] is safe here.
+    let nb_public_inputs = circuit.nb_public_inputs.clone().borrow().unwrap();
     MidnightPK {
         k: vk.k(),
+        nb_public_inputs,
         relation: relation.clone(),
         pk,
     }
