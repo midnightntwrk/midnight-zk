@@ -14,7 +14,10 @@ use midnight_proofs::{
     },
     transcript::{CircuitTranscript, Transcript},
 };
-use midnight_zk_stdlib::{MidnightVK, Relation};
+use midnight_zk_stdlib::{
+    decider::{Decider, IvcDecider},
+    MidnightVK, Relation,
+};
 
 use super::{Ivc, IvcCircuit, IvcError, IvcInstance, E, F, S};
 
@@ -32,6 +35,16 @@ pub struct IvcVerifier<T: Ivc> {
 }
 
 impl<T: Ivc> IvcVerifier<T> {
+    /// The verifying key of the IVC circuit.
+    pub fn vk(&self) -> &MidnightVK {
+        &self.vk
+    }
+
+    /// The SRS verifier parameters.
+    pub fn params_verifier(&self) -> &ParamsVerifierKZG<E> {
+        &self.params_verifier
+    }
+
     /// Verifies an IVC proof against the given instance.
     ///
     /// Checks that the proof is valid with respect to the given instance by:
@@ -78,11 +91,12 @@ impl<T: Ivc> IvcVerifier<T> {
         let proof_acc = Accumulator::from_dual_msm(dual_msm, &fixed_bases);
 
         // Verify that both `proof_acc` and `instance.acc` satisfy the pairing
-        // invariant, with a single pairing, by accumulating them first.
+        // invariant, with a single pairing, by accumulating them first. The
+        // accumulator still carries fixed bases, so `finalise` folds them via an
+        // MSM before the pairing.
         let final_acc = Accumulator::<S>::accumulate(&[proof_acc, instance.acc.clone()]);
-        if !final_acc.check(&self.params_verifier, &fixed_bases) {
-            return Err(IvcError::InvalidProof);
-        };
+        IvcDecider::decide(&final_acc, &self.params_verifier, &self.vk)
+            .map_err(|_| IvcError::InvalidProof)?;
 
         Ok(())
     }

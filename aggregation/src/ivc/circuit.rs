@@ -9,19 +9,26 @@
 //! there is no meaningful prior proof to verify, so the circuit substitutes a
 //! default accumulator that satisfies the verification invariant.
 
+use std::collections::BTreeMap;
+
+use group::Group;
 use midnight_circuits::{
-    instructions::{BinaryInstructions, PublicInputInstructions},
-    types::Instantiable,
+    instructions::{AssignmentInstructions, BinaryInstructions, PublicInputInstructions},
+    types::{AssignedNative, Instantiable},
     verifier::{
-        Accumulator, AssignedAccumulator, AssignedKZGMultiCommitment, AssignedVk, InCircuitKZG,
+        fixed_bases, Accumulator, AssignedAccumulator, AssignedKZGCommitment, AssignedVk,
+        SelfEmulation,
     },
 };
+use midnight_curves::Bls12;
 use midnight_proofs::{
-    circuit::{Layouter, Value},
-    plonk::ConstraintSystem,
-    poly::{EvaluationDomain, PolynomialLabel},
+    circuit::{Layouter, Value}, plonk::{ConstraintSystem, Error, VerifyingKey}, poly::{
+        EvaluationDomain, PolynomialLabel, kzg::{KZGCommitmentScheme, commitment::KZGCommitment},
+    }, utils::helpers::ProcessedSerdeObject,
 };
-use midnight_zk_stdlib::{Relation, ZkStdLib, ZkStdLibArch};
+use midnight_zk_stdlib::{
+    Relation, ZkStdLib, ZkStdLibArch, decidable::{Decider, DeciderKind, IvcDecider},
+};
 
 use super::{Ivc, IvcError, F, S};
 
@@ -47,6 +54,11 @@ impl<T: Ivc> IvcInstance<T> {
     /// Returns the current state.
     pub fn state(&self) -> &T::State {
         &self.state
+    }
+
+    /// Returns the accumulator carried by this instance.
+    pub fn acc(&self) -> &Accumulator<S> {
+        &self.acc
     }
 }
 
@@ -189,13 +201,15 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
 
         // Verify a witnessed proof that ensures the validity of `prev_state`.
         // The proof is valid iff `prev_proof_acc` satisfies the invariant.
-        let mut prev_proof_acc = verifier_gadget.prepare(
+        let mut prev_proof_acc = IvcDecider::in_circuit_prepare(
+            std_lib,
             layouter,
             &assigned_self_vk,
             &[instance_com],
             &[&prev_proof_pi],
             witness.map(|w| w.prev_proof),
-        )?;
+        )?
+        .expect("IvcDecider always yields an accumulator");
 
         // If `prev_state` is genesis, the provided accumulator is discarded/multiplied
         // by 0 so that it trivially satisfies the invariant.

@@ -19,8 +19,9 @@
 //! the chain length is relevant, it can be tracked by including a counter in
 //! the state that the transition function increments at each step.
 
-pub use circuit::{IvcCircuit, IvcInstance, IvcWitness};
+pub use circuit::{IvcAssignedFinalVk, IvcCircuit, IvcFinalVk, IvcInstance, IvcWitness};
 pub use error::IvcError;
+pub use midnight_zk_stdlib::decidable::IvcDecider;
 use midnight_circuits::{
     instructions::{BinaryInstructions, EqualityInstructions},
     types::{AssignedBit, AssignedNative},
