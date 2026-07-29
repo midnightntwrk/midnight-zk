@@ -27,7 +27,7 @@ use midnight_proofs::{
     }, utils::helpers::ProcessedSerdeObject,
 };
 use midnight_zk_stdlib::{
-    Relation, ZkStdLib, ZkStdLibArch, decidable::{Decider, DeciderKind, IvcDecider},
+    MidnightVK, Relation, ZkStdLib, ZkStdLibArch, decidable::{Decider, DeciderKind, IvcDecider},
 };
 
 use super::{Ivc, IvcError, F, S};
@@ -254,5 +254,112 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
         let domain = EvaluationDomain::new(cs.degree() as u32, k);
 
         Ok(IvcCircuit { domain, cs, ctx })
+    }
+}
+
+/// Off-circuit verifying context for *finalizing* an IVC chain: the IVC PLONK
+/// verifying key plus the (structured) accumulator carried in the proof's
+/// public inputs.
+#[derive(Clone, Debug)]
+pub struct IvcFinalVk {
+    /// Circuit VK
+    pub vk: MidnightVK,
+    /// Accumulator from the IVC instance
+    pub accumulator: Accumulator<S>,
+}
+
+impl ProcessedSerdeObject for IvcFinalVk {
+    fn read<R: std::io::Read>(reader: &mut R, format: midnight_proofs::utils::SerdeFormat) -> std::io::Result<Self> {
+        todo!()
+    }
+
+    fn write<W: std::io::Write>(&self, writer: &mut W, format: midnight_proofs::utils::SerdeFormat) -> std::io::Result<()> {
+        todo!()
+    }
+
+    fn byte_length(&self, format: midnight_proofs::utils::SerdeFormat) -> usize {
+        todo!()
+    }
+}
+
+/// In-circuit analog of [`IvcFinalVk`].
+#[derive(Clone, Debug)]
+pub struct IvcAssignedFinalVk {
+    /// Assigned VK.
+    pub vk: AssignedVk<S>,
+    /// Assigned accumulator from the IVC instance.
+    pub carried_acc: AssignedAccumulator<S>,
+    /// Assigned fixed bases map.
+    pub fixed_bases: BTreeMap<PolynomialLabel, <S as SelfEmulation>::AssignedPoint>,
+}
+
+/// IVC final decider. Updates the state (as per the step function) once, and
+/// collapses the MSM (including the fixed bases) into a collapsed MSM.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct IvcFinalDecider {}
+
+impl Decider for IvcFinalDecider {
+    type Vk = IvcFinalVk;
+    type AssignedVk = IvcAssignedFinalVk;
+    
+    const KIND: DeciderKind = DeciderKind::FinalIVC;
+    
+    fn assign_vk(
+        std_lib: &ZkStdLib,
+        layouter: &mut impl Layouter<F>,
+        vk: &Self::Vk,
+    ) -> Result<Self::AssignedVk, Error> {
+        todo!()
+    }
+
+    fn prepare(
+        vk: &Self::Vk,
+        committed_instance: &[KZGCommitment<midnight_curves::Bls12>],
+        instance: &[&[F]],
+        proof: &[u8],
+    ) -> Result<Option<Accumulator<S>>, Error> {
+        let proof_acc = IvcDecider::prepare(&vk.vk, committed_instance, instance, proof)?
+            .expect("IvcDecider always yields an accumulator");
+        let mut next_acc = Accumulator::accumulate(&[proof_acc, vk.accumulator.clone()]);
+        next_acc.collapse();
+        next_acc.resolve_fixed_bases(&fixed_bases::<S>(&vk.vk.vk()));
+        Ok(Some(next_acc))
+    }
+
+    fn in_circuit_prepare(
+        std_lib: &ZkStdLib,
+        layouter: &mut impl Layouter<F>,
+        vk: &Self::AssignedVk,
+        committed_instance: &[AssignedKZGCommitment<S>],
+        instance: &[&[AssignedNative<F>]],
+        proof: Value<Vec<u8>>,
+    ) -> Result<Option<AssignedAccumulator<S>>, Error> {
+        let bls = std_lib.bls12_381();
+
+        let proof_acc = IvcDecider::in_circuit_prepare(
+            std_lib,
+            layouter,
+            &vk.vk,
+            committed_instance,
+            instance,
+            proof,
+        )?
+        .expect("IvcDecider always yields an accumulator");
+        let mut next_acc =
+            std_lib.verifier().accumulate(layouter, &[proof_acc, vk.carried_acc.clone()])?;
+        next_acc.collapse(layouter, bls, bls.scalar_field_chip())?;
+        next_acc.resolve_fixed_bases(&vk.fixed_bases);
+
+        Ok(Some(next_acc))
+    }
+
+    fn decide(
+        acc: &Accumulator<S>,
+        params: &midnight_proofs::poly::kzg::params::ParamsVerifierKZG<Bls12>,
+        vk: &Self::Vk,
+    ) -> Result<(), Error> {
+        
+        let fixed_bases = fixed_bases::<S>(vk.vk.vk());
+        if acc.check(params, &fixed_bases) {Ok(())} else {Err(Error::Opening)}
     }
 }
