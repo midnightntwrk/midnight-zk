@@ -246,7 +246,7 @@ impl<const N: usize> Relation for FinalIvcVerifier<N> {
 
         let committed = vec![AssignedKZGCommitment::simple(
             std_lib.bls12_381().assign_fixed(layouter, C::identity())?,
-            PolynomialLabel::Instance(0),
+            PolynomialLabel::CommittedInstance(0),
         )];
 
         // 5. Run the final chain step (verify + fold + collapse + resolve) via
@@ -304,7 +304,7 @@ fn final_accumulator<const N: usize>(
         &final_vk,
         &[KZGCommitment::Simple(
             C::identity(),
-            PolynomialLabel::Instance(0),
+            PolynomialLabel::CommittedInstance(0),
         )],
         &[&full_pi],
         proof,
