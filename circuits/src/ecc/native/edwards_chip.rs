@@ -100,7 +100,7 @@ impl<C: CircuitCurve> Instantiable<C::Base> for AssignedNativePoint<C> {
         if fields.len() != 2 {
             return None;
         }
-        C::from_xy(fields[0], fields[1]).map(|p| p.into_subgroup())
+        C::from_xy(fields[0], fields[1])?.try_into_subgroup()
     }
 }
 
@@ -158,10 +158,13 @@ impl<C: EdwardsCurve> Instantiable<C::Base> for AssignedScalarOfNativeCurve<C> {
         let nb_bits_per_batch = C::Base::NUM_BITS as usize - 1;
         let bits: Vec<bool> = fields
             .iter()
-            .flat_map(|f| f.to_bits_le(Some(nb_bits_per_batch)))
+            .map(|f| f.try_to_bits_le(nb_bits_per_batch))
+            .collect::<Option<Vec<_>>>()?
+            .concat()
+            .into_iter()
             .take(C::NUM_BITS_SUBGROUP as usize)
             .collect();
-        Some(C::ScalarField::from_bits_le(&bits))
+        C::ScalarField::try_from_bits_le(&bits)
     }
 }
 

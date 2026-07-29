@@ -45,8 +45,10 @@ where
         <C as Hashable<LightPoseidonFS<C::ScalarField>>>::to_input(p)
     }
 
+    /// Always returns `None`: [Self::as_public_input] encodes the point via a
+    /// Poseidon hash, which is not invertible.
     fn from_public_input(_fields: &[C::ScalarField]) -> Option<C> {
-        unimplemented!("as_public_input encodes via Poseidon hash — not invertible")
+        None
     }
 }
 

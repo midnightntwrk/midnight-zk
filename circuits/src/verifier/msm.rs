@@ -238,8 +238,10 @@ impl<S: SelfEmulation> Instantiable<S::F> for AssignedMsm<S> {
         .collect::<Vec<_>>()
     }
 
+    /// Always returns `None`: the flat encoding loses the structural metadata
+    /// needed to rebuild the MSM, so it is not invertible.
     fn from_public_input(_fields: &[S::F]) -> Option<Msm<S>> {
-        unimplemented!("not invertible: the flat encoding loses structural metadata.")
+        None
     }
 }
 

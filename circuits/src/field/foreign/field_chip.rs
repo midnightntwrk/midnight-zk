@@ -141,16 +141,22 @@ where
     fn from_public_input(fields: &[F]) -> Option<K> {
         let base = BI::from(2).pow(P::LOG2_BASE);
         let nb_limbs_per_batch = (F::CAPACITY / P::LOG2_BASE) as usize;
-        if fields.len() != (P::NB_LIMBS as usize).div_ceil(nb_limbs_per_batch) {
+        if nb_limbs_per_batch == 0
+            || fields.len() != (P::NB_LIMBS as usize).div_ceil(nb_limbs_per_batch)
+        {
             return None;
         }
+        // Every batch must be expressible with `nb_limbs_per_batch` limbs in base
+        // `base`, otherwise the input is not a valid encoding.
+        let batch_bound = BI::pow(&base, nb_limbs_per_batch as u32);
         let limbs: Vec<BI> = fields
             .iter()
-            .flat_map(|f| {
+            .map(|f| {
                 let bi: BI = f.to_biguint().into();
-                bi_to_limbs(nb_limbs_per_batch as u32, &base, &bi)
+                (bi < batch_bound).then(|| bi_to_limbs(nb_limbs_per_batch as u32, &base, &bi))
             })
-            .collect();
+            .collect::<Option<Vec<_>>>()?
+            .concat();
         let (head, tail) = limbs.split_at(P::NB_LIMBS as usize);
         if tail.iter().any(|l| !l.is_zero()) {
             return None;

@@ -243,8 +243,10 @@ impl<S: SelfEmulation> Instantiable<S::F> for AssignedAccumulator<S> {
         .collect()
     }
 
+    /// Always returns `None`: the encoding is not invertible, since the size of
+    /// the inner MSMs cannot be known from the public input format.
     fn from_public_input(_fields: &[S::F]) -> Option<Accumulator<S>> {
-        unimplemented!("Size of inner MSMs cannot be known from public input format.")
+        None
     }
 }
 
