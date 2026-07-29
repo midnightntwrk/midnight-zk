@@ -8,15 +8,18 @@ use std::{collections::BTreeMap, io};
 use group::Group;
 use midnight_circuits::{
     hash::poseidon::PoseidonState, instructions::AssignmentInstructions, types::{AssignedNative, Instantiable}, verifier::{
-        Accumulator, AssignedAccumulator, AssignedKZGCommitment, AssignedVk, BlstrsEmulation, SelfEmulation, fixed_bases,
+        Accumulator, AssignedAccumulator, AssignedKZGCommitment, AssignedKZGMultiCommitment, AssignedVk, BlstrsEmulation, InCircuitKZG, SelfEmulation, fixed_bases,
     },
 };
-use midnight_curves::G1Projective;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::{self, Error},
     poly::{
-        kzg::{commitment::KZGCommitment, params::ParamsVerifierKZG, KZGCommitmentScheme},
+        kzg::{
+            commitment::{KZGCommitment, KZGMultiCommitment},
+            params::ParamsVerifierKZG,
+            KZGCommitmentScheme,
+        },
         PolynomialLabel,
     },
     transcript::{CircuitTranscript, Transcript},
@@ -100,7 +103,7 @@ pub struct StandardDecider;
 #[derive(Clone, Debug)]
 pub struct StandardAssignedVk {
     /// The assigned verifying key.
-    pub vk: AssignedVk<S>,
+    pub vk: AssignedVk<S, InCircuitKZG<S>>,
     /// The assigned fixed-base points, keyed by label.
     pub fixed_bases: BTreeMap<PolynomialLabel, AssignedPoint>,
 }
@@ -141,12 +144,17 @@ impl Decider for StandardDecider {
     ) -> Result<Option<Accumulator<S>>, Error> {
         let vk = vk.vk();
         let bases = fixed_bases::<S>(vk);
+        let committed_instance: Vec<KZGMultiCommitment<Bls12>> = committed_instance
+            .iter()
+            .cloned()
+            .map(|c| KZGMultiCommitment(vec![c]))
+            .collect();
         let mut transcript = CircuitTranscript::<PoseidonState<F>>::init_from_bytes(proof);
         let dual_msm = plonk::prepare::<
             F,
             KZGCommitmentScheme<Bls12>,
             CircuitTranscript<PoseidonState<F>>,
-        >(vk, committed_instance, instance, &mut transcript)?;
+        >(vk, &committed_instance, instance, &mut transcript)?;
         let mut acc = Accumulator::from_dual_msm(dual_msm, &bases);
         acc.collapse();
         acc.resolve_fixed_bases(&bases);
@@ -166,10 +174,15 @@ impl Decider for StandardDecider {
         proof: Value<Vec<u8>>,
     ) -> Result<Option<AssignedAccumulator<S>>, Error> {
         let bls = std_lib.bls12_381();
+        let committed_instance: Vec<AssignedKZGMultiCommitment<S>> = committed_instance
+            .iter()
+            .cloned()
+            .map(|c| AssignedKZGMultiCommitment(vec![c]))
+            .collect();
         let mut acc =
             std_lib
                 .verifier()
-                .prepare(layouter, &vk.vk, committed_instance, instance, proof)?;
+                .prepare(layouter, &vk.vk, &committed_instance, instance, proof)?;
         acc.collapse(layouter, bls, bls.scalar_field_chip())?;
         acc.resolve_fixed_bases(&vk.fixed_bases);
 
@@ -197,7 +210,7 @@ pub struct IvcDecider;
 
 impl Decider for IvcDecider {
     type Vk = MidnightVK;
-    type AssignedVk = AssignedVk<S>;
+    type AssignedVk = AssignedVk<S, InCircuitKZG<S>>;
 
     const KIND: DeciderKind = DeciderKind::Ivc;
 
@@ -205,7 +218,7 @@ impl Decider for IvcDecider {
         std_lib: &ZkStdLib,
         layouter: &mut impl Layouter<F>,
         vk: &MidnightVK,
-    ) -> Result<AssignedVk<S>, Error> {
+    ) -> Result<AssignedVk<S, InCircuitKZG<S>>, Error> {
         let plonk_vk = vk.vk();
         std_lib.verifier().assign_fixed_vk(
             layouter,
@@ -222,12 +235,17 @@ impl Decider for IvcDecider {
         proof: &[u8],
     ) -> Result<Option<Accumulator<S>>, Error> {
         let bases = fixed_bases::<S>(vk.vk());
+        let committed_instance: Vec<KZGMultiCommitment<Bls12>> = committed_instance
+            .iter()
+            .cloned()
+            .map(|c| KZGMultiCommitment(vec![c]))
+            .collect();
         let mut transcript = CircuitTranscript::<PoseidonState<F>>::init_from_bytes(proof);
         let dual_msm = plonk::prepare::<
             F,
             KZGCommitmentScheme<Bls12>,
             CircuitTranscript<PoseidonState<F>>,
-        >(vk.vk(), committed_instance, instance, &mut transcript)?;
+        >(vk.vk(), &committed_instance, instance, &mut transcript)?;
         Ok(Some(Accumulator::from_dual_msm(dual_msm, &bases)))
     }
 
@@ -239,7 +257,14 @@ impl Decider for IvcDecider {
         instance: &[&[AssignedNative<F>]],
         proof: Value<Vec<u8>>,
     ) -> Result<Option<AssignedAccumulator<S>>, Error> {
-        let acc = std_lib.verifier().prepare(layouter, vk, committed_instance, instance, proof)?;
+        let committed_instance: Vec<AssignedKZGMultiCommitment<S>> = committed_instance
+            .iter()
+            .cloned()
+            .map(|c| AssignedKZGMultiCommitment(vec![c]))
+            .collect();
+        let acc = std_lib
+            .verifier()
+            .prepare(layouter, vk, &committed_instance, instance, proof)?;
         Ok(Some(acc))
     }
     

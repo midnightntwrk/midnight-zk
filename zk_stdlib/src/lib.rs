@@ -26,6 +26,7 @@ use blake2b::blake2b::{
     blake2b_chip::{Blake2bChip, Blake2bConfig},
     NB_BLAKE2B_ADVICE_COLS,
 };
+use group::Group;
 pub use interface::*;
 use keccak_sha3::packed_chip::{PackedChip, PackedConfig, PACKED_ADVICE_COLS, PACKED_FIXED_COLS};
 use midnight_circuits::{
@@ -73,7 +74,7 @@ use midnight_circuits::{
     },
     types::{AssignedBit, AssignedByte, AssignedNative, AssignedNativePoint, ComposableChip},
     vec::{vector_gadget::VectorGadget, AssignedVector},
-    verifier::{BlstrsEmulation, VerifierGadget},
+    verifier::{AssignedKZGCommitment, BlstrsEmulation, SelfEmulation, VerifierGadget},
 };
 use midnight_curves::{
     curve25519::{self as curve25519_mod, Curve25519},
@@ -82,11 +83,16 @@ use midnight_curves::{
     Fq,
 };
 use midnight_proofs::{
-    circuit::Layouter,
+    circuit::{Layouter, Value},
     plonk::{ConstraintSystem, Error},
+    poly::PolynomialLabel,
+    utils::{helpers::ProcessedSerdeObject, SerdeFormat},
 };
 
-use crate::external::{blake2b::Blake2bWrapper, keccak_sha3::KeccakSha3Wrapper};
+use crate::{
+    decider::{Decider, DeciderKind, IvcDecider, StandardDecider},
+    external::{blake2b::Blake2bWrapper, keccak_sha3::KeccakSha3Wrapper},
+};
 
 type C = midnight_curves::JubjubExtended;
 type F = midnight_curves::Fq;
@@ -347,6 +353,10 @@ pub struct ZkStdLib {
     used_scanner: Rc<RefCell<bool>>,
     used_keccak_or_sha3: Rc<RefCell<bool>>,
     used_blake2b: Rc<RefCell<bool>>,
+
+    // Deferred accumulators exposed as public inputs during synthesis, as
+    // `(pi_offset, pi_len)`.
+    deferred_accumulators: Rc<RefCell<Vec<(usize, DeciderKind)>>>,
 }
 
 impl ZkStdLib {
@@ -455,6 +465,7 @@ impl ZkStdLib {
             used_scanner: Rc::new(RefCell::new(false)),
             used_keccak_or_sha3: Rc::new(RefCell::new(false)),
             used_blake2b: Rc::new(RefCell::new(false)),
+            deferred_accumulators: Rc::new(RefCell::new(Vec::new())),
         }
     }
 
@@ -809,6 +820,74 @@ impl ZkStdLib {
         self.verifier_gadget
             .as_ref()
             .unwrap_or_else(|| panic!("ZkStdLibArch must enable bls12_381 & poseidon"))
+    }
+
+    /// Verifies an inner proof in-circuit from a self-describing, fixed,
+    /// verifying-key blob, and exposes the resulting single-point accumulator
+    /// as public inputs, **recording its `(offset, len)`** so that
+    /// [`verify`](crate::verify) executes deferred pairing check
+    /// automatically.
+    pub fn verify_proof(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        vk_blob: &[u8],
+        instance: &[&[AssignedNative<F>]],
+        proof: Value<Vec<u8>>,
+    ) -> Result<(), Error> {
+        let (kind, vk_bytes) = DeciderKind::split(vk_blob)?;
+
+        // Push (offset, kind) to the deferred_accumulators.
+        self.deferred_accumulators.borrow_mut().push(
+            (self.native_gadget.native_chip.nb_public_inputs(), kind)
+        );
+
+        match kind {
+            DeciderKind::Standard => {
+                self.verify_proof_with::<StandardDecider>(layouter, vk_bytes, instance, proof)
+            }
+            DeciderKind::Ivc => {
+                self.verify_proof_with::<IvcDecider>(layouter, vk_bytes, instance, proof)
+            }
+            DeciderKind::FinalIVC => todo!(),
+        }
+    }
+
+    /// Body of [`verify_proof`](Self::verify_proof) parametrized for a
+    /// decider `D`: reads and assigns `D`'s verifying key, runs
+    /// [`Decider::in_circuit_decide`], then exposes and stores
+    /// the accumulator.
+    fn verify_proof_with<D: Decider>(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        vk_bytes: &[u8],
+        instance: &[&[AssignedNative<F>]],
+        proof: Value<Vec<u8>>,
+    ) -> Result<(), Error> {
+        let vk = <D::Vk as ProcessedSerdeObject>::read(&mut { vk_bytes }, SerdeFormat::Processed)
+            .map_err(|e| Error::Synthesis(format!("reading verifying key: {e}")))?;
+        let assigned_vk = D::assign_vk(self, layouter, &vk)?;
+
+        let committed_instance = [AssignedKZGCommitment::simple(
+            self.bls12_381()
+                .assign_fixed(layouter, <BlstrsEmulation as SelfEmulation>::C::identity())?,
+            PolynomialLabel::CommittedInstance(0),
+        )];
+
+        let acc = D::in_circuit_prepare(
+            self,
+            layouter,
+            &assigned_vk,
+            &committed_instance,
+            instance,
+            proof,
+        )?
+        .ok_or_else(|| Error::Synthesis("decider produced no accumulator".into()))?;
+
+        let offset = self.native_gadget.native_chip.nb_public_inputs();
+        self.verifier().constrain_as_public_input(layouter, &acc)?;
+        let len = self.native_gadget.native_chip.nb_public_inputs() - offset;
+
+        Ok(())
     }
 
     /// Assert that a given assigned bit is true.

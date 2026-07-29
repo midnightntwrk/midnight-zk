@@ -9,7 +9,7 @@
 //! there is no meaningful prior proof to verify, so the circuit substitutes a
 //! default accumulator that satisfies the verification invariant.
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, io};
 
 use group::Group;
 use midnight_circuits::{
@@ -17,20 +17,22 @@ use midnight_circuits::{
     types::{AssignedNative, Instantiable},
     verifier::{
         fixed_bases, Accumulator, AssignedAccumulator, AssignedKZGCommitment, AssignedVk,
-        SelfEmulation,
+        InCircuitKZG, SelfEmulation,
     },
 };
 use midnight_curves::Bls12;
 use midnight_proofs::{
-    circuit::{Layouter, Value}, plonk::{ConstraintSystem, Error}, poly::{
-        EvaluationDomain, PolynomialLabel, kzg::commitment::KZGCommitment,
-    }, utils::helpers::ProcessedSerdeObject,
+    circuit::{Layouter, Value},
+    plonk::{ConstraintSystem, Error},
+    poly::{kzg::commitment::KZGCommitment, EvaluationDomain, PolynomialLabel},
+    utils::{helpers::ProcessedSerdeObject, SerdeFormat},
 };
 use midnight_zk_stdlib::{
-    MidnightVK, Relation, ZkStdLib, ZkStdLibArch, decidable::{Decider, DeciderKind, IvcDecider},
+    decider::{Decider, DeciderKind, IvcDecider},
+    MidnightVK, Relation, ZkStdLib, ZkStdLibArch,
 };
 
-use super::{Ivc, IvcError, F, S};
+use super::{Ivc, IvcError, C, F, S};
 
 /// The public instance (statement) of an IVC proof.
 ///
@@ -193,11 +195,10 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
         ]
         .concat();
 
-        let instance_com = AssignedKZGMultiCommitment::commitment_to_zero(
-            layouter,
-            std_lib.bls12_381(),
+        let instance_com = AssignedKZGCommitment::simple(
+            std_lib.bls12_381().assign_fixed(layouter, C::identity())?,
             PolynomialLabel::CommittedInstance(0),
-        )?;
+        );
 
         // Verify a witnessed proof that ensures the validity of `prev_state`.
         // The proof is valid iff `prev_proof_acc` satisfies the invariant.
@@ -269,16 +270,19 @@ pub struct IvcFinalVk {
 }
 
 impl ProcessedSerdeObject for IvcFinalVk {
-    fn read<R: std::io::Read>(reader: &mut R, format: midnight_proofs::utils::SerdeFormat) -> std::io::Result<Self> {
-        todo!()
+    fn read<R: io::Read>(reader: &mut R, format: SerdeFormat) -> io::Result<Self> {
+        let vk = MidnightVK::read(reader, format)?;
+        let accumulator = Accumulator::<S>::read(reader, format)?;
+        Ok(IvcFinalVk { vk, accumulator })
     }
 
-    fn write<W: std::io::Write>(&self, writer: &mut W, format: midnight_proofs::utils::SerdeFormat) -> std::io::Result<()> {
-        todo!()
+    fn write<W: io::Write>(&self, writer: &mut W, format: SerdeFormat) -> io::Result<()> {
+        self.vk.write(writer, format)?;
+        self.accumulator.write(writer, format)
     }
 
-    fn byte_length(&self, format: midnight_proofs::utils::SerdeFormat) -> usize {
-        todo!()
+    fn byte_length(&self, format: SerdeFormat) -> usize {
+        self.vk.byte_length(format) + self.accumulator.byte_length(format)
     }
 }
 
@@ -286,7 +290,7 @@ impl ProcessedSerdeObject for IvcFinalVk {
 #[derive(Clone, Debug)]
 pub struct IvcAssignedFinalVk {
     /// Assigned VK.
-    pub vk: AssignedVk<S>,
+    pub vk: AssignedVk<S, InCircuitKZG<S>>,
     /// Assigned accumulator from the IVC instance.
     pub carried_acc: AssignedAccumulator<S>,
     /// Assigned fixed bases map.

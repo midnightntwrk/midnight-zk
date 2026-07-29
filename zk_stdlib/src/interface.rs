@@ -16,7 +16,10 @@
 use std::{cell::RefCell, io, rc::Rc};
 
 use ff::Field;
-use midnight_circuits::types::ComposableChip;
+use midnight_circuits::{
+    types::{ComposableChip, Instantiable},
+    verifier::{AssignedAccumulator, BlstrsEmulation},
+};
 use midnight_curves::G1Projective;
 use midnight_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
@@ -39,7 +42,7 @@ use midnight_proofs::{
 use rand::{CryptoRng, RngCore};
 
 use crate::{
-    utils::plonk_api::BlstPLONK, ZkStdLib, ZkStdLibArch, ZkStdLibConfig, F, NB_COMMITTED_INSTANCES,
+    F, IvcDecider, NB_COMMITTED_INSTANCES, ZkStdLib, ZkStdLibArch, ZkStdLibConfig, decider::{Decider, DeciderKind, StandardDecider, accumulator_pi_len}, utils::plonk_api::BlstPLONK,
 };
 
 /// Circuit structure which is used to create any circuit that can be compiled
@@ -51,6 +54,9 @@ pub struct MidnightCircuit<'a, R: Relation> {
     instance: Value<R::Instance>,
     witness: Value<R::Witness>,
     nb_public_inputs: Rc<RefCell<Option<usize>>>,
+    /// Deferred accumulators (as `(pi_offset, decider_kind)`) recorded during
+    /// synthesis, copied out of the `ZkStdLib` after `Relation::circuit` runs.
+    deferred_accumulators: Rc<RefCell<Vec<(usize, DeciderKind)>>>,
     circuit_error: Rc<RefCell<Option<R::Error>>>,
 }
 
@@ -78,6 +84,7 @@ impl<'a, R: Relation> MidnightCircuit<'a, R> {
             instance,
             witness,
             nb_public_inputs: Rc::new(RefCell::new(None)),
+            deferred_accumulators: Rc::new(RefCell::new(Vec::new())),
             circuit_error: Rc::new(RefCell::new(None)),
         }
     }
@@ -99,6 +106,11 @@ pub struct MidnightVK {
     architecture: ZkStdLibArch,
     k: u8,
     nb_public_inputs: usize,
+    /// Deferred accumulators (from proofs verified in-circuit) exposed in the
+    /// public inputs, as `(offset, decider_kind)` ranges. Each is a
+    /// single-point-per-side accumulator whose pairing check
+    /// is run transparently by [`verify`] after the Plonk check.
+    deferred_accumulators: Vec<(usize, DeciderKind)>,
     vk: VerifyingKey<midnight_curves::Fq, KZGCommitmentScheme<midnight_curves::Bls12>>,
 }
 
@@ -117,6 +129,12 @@ impl MidnightVK {
         writer.write_all(&[self.k])?;
 
         writer.write_all(&(self.nb_public_inputs as u32).to_le_bytes())?;
+
+        writer.write_all(&(self.deferred_accumulators.len() as u32).to_le_bytes())?;
+        for (offset, kind) in self.deferred_accumulators.iter() {
+            writer.write_all(&(*offset as u32).to_le_bytes())?;
+            writer.write_all(&[kind.tag()])?;
+        }
 
         self.vk.write(writer, format)
     }
@@ -140,6 +158,31 @@ impl MidnightVK {
         reader.read_exact(&mut bytes)?;
         let nb_public_inputs = u32::from_le_bytes(bytes) as usize;
 
+        let mut bytes = [0u8; 4];
+        reader.read_exact(&mut bytes)?;
+        let nb_accumulators = u32::from_le_bytes(bytes) as usize;
+        let mut deferred_accumulators = Vec::with_capacity(nb_accumulators);
+        for _ in 0..nb_accumulators {
+            let mut off = [0u8; 4];
+            reader.read_exact(&mut off)?;
+            let mut kind = [0u8; 1];
+            reader.read_exact(&mut kind)?;
+            let kind = match kind[0] {
+                0 => DeciderKind::Standard,
+                1 => DeciderKind::Ivc,
+                2 => DeciderKind::FinalIVC,
+                val => return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!("unknown DeciderKind tag: {val}"),
+                    )),
+            };
+
+            deferred_accumulators.push((
+                u32::from_le_bytes(off) as usize,
+                kind,
+            ));
+        }
+
         let mut cs = ConstraintSystem::default();
         let _config = ZkStdLib::configure(&mut cs, (architecture, k - 1));
 
@@ -149,6 +192,7 @@ impl MidnightVK {
             architecture,
             k,
             nb_public_inputs,
+            deferred_accumulators,
             vk,
         })
     }
@@ -177,8 +221,7 @@ impl ProcessedSerdeObject for MidnightVK {
 
     fn byte_length(&self, format: SerdeFormat) -> usize {
         let mut buf = Vec::new();
-        self.write(&mut buf, format)
-            .expect("in-memory write cannot fail");
+        self.write(&mut buf, format).expect("in-memory write cannot fail");
         buf.len()
     }
 }
@@ -190,6 +233,7 @@ pub struct MidnightPK<R: Relation> {
     relation: R,
     // Needed to be able to build the VK from the PK
     nb_public_inputs: usize,
+    deferred_accumulators: Vec<(usize, DeciderKind)>,
     pk: ProvingKey<midnight_curves::Fq, KZGCommitmentScheme<midnight_curves::Bls12>>,
 }
 
@@ -205,6 +249,12 @@ impl<Rel: Relation> MidnightPK<Rel> {
     pub fn write<W: io::Write>(&self, writer: &mut W, format: SerdeFormat) -> io::Result<()> {
         writer.write_all(&[self.k])?;
         writer.write_all(&(self.nb_public_inputs as u32).to_le_bytes())?;
+
+        writer.write_all(&(self.deferred_accumulators.len() as u32).to_le_bytes())?;
+        for (offset, kind) in self.deferred_accumulators.iter() {
+            writer.write_all(&(*offset as u32).to_le_bytes())?;
+            writer.write_all(&[kind.tag()])?;
+        }
 
         Rel::write_relation(&self.relation, writer)?;
 
@@ -229,6 +279,30 @@ impl<Rel: Relation> MidnightPK<Rel> {
         reader.read_exact(&mut bytes)?;
         let nb_public_inputs = u32::from_le_bytes(bytes) as usize;
 
+        let mut bytes = [0u8; 4];
+        reader.read_exact(&mut bytes)?;
+        let nb_accumulators = u32::from_le_bytes(bytes) as usize;
+        let mut deferred_accumulators = Vec::with_capacity(nb_accumulators);
+        for _ in 0..nb_accumulators {
+            let mut off = [0u8; 4];
+            reader.read_exact(&mut off)?;
+            let mut kind = [0u8; 1];
+            reader.read_exact(&mut kind)?;
+            let kind = match kind[0] {
+                0 => DeciderKind::Standard,
+                1 => DeciderKind::Ivc,
+                2 => DeciderKind::FinalIVC,
+                val => return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!("unknown DeciderKind tag: {val}"),
+                    )),
+            };
+            deferred_accumulators.push((
+                u32::from_le_bytes(off) as usize,
+                kind,
+            ));
+        }
+
         let relation = Rel::read_relation(reader)?;
 
         let pk = ProvingKey::read::<R, MidnightCircuit<Rel>>(
@@ -243,7 +317,7 @@ impl<Rel: Relation> MidnightPK<Rel> {
             .params(),
         )?;
 
-        Ok(MidnightPK { k, nb_public_inputs, relation, pk })
+        Ok(MidnightPK { k, nb_public_inputs, deferred_accumulators, relation, pk })
     }
 
     /// The size of the domain associated to this proving key.
@@ -260,11 +334,13 @@ impl<Rel: Relation> MidnightPK<Rel> {
 
     /// Return the associate [MidnightVk]
     pub fn vk(&self) -> MidnightVK {
-        MidnightVK { 
-            architecture: self.relation.used_chips(), 
-            k: self.k, 
-            nb_public_inputs: self.nb_public_inputs, 
-            vk: self.pk.get_vk().clone() }
+        MidnightVK {
+            architecture: self.relation.used_chips(),
+            k: self.k,
+            nb_public_inputs: self.nb_public_inputs,
+            deferred_accumulators: self.deferred_accumulators.clone(),
+            vk: self.pk.get_vk().clone(),
+        }
     }
 }
 
@@ -474,6 +550,12 @@ impl<R: Relation> Circuit<F> for MidnightCircuit<'_, R> {
         *self.nb_public_inputs.borrow_mut() =
             Some(zk_std_lib.native_gadget.native_chip.nb_public_inputs());
 
+        // Likewise, copy out the deferred accumulators recorded while the
+        // circuit exposed them as public inputs (see
+        // `ZkStdLib::constrain_accumulator_as_public_input`).
+        *self.deferred_accumulators.borrow_mut() =
+            zk_std_lib.deferred_accumulators.borrow().clone();
+
         // We load the tables at the end, once we have figured out what chips/gadgets
         // were actually used.
         zk_std_lib.core_decomposition_chip.load(&mut layouter)?;
@@ -535,11 +617,13 @@ pub fn setup_vk<R: Relation>(
     // During the call to [setup_vk] the circuit RefCell on public inputs has been
     // mutated with the correct value. The following [unwrap] is safe here.
     let nb_public_inputs = circuit.nb_public_inputs.clone().borrow().unwrap();
+    let deferred_accumulators = circuit.deferred_accumulators.borrow().clone();
 
     MidnightVK {
         architecture: relation.used_chips(),
         k: circuit.k as u8,
         nb_public_inputs,
+        deferred_accumulators,
         vk,
     }
 }
@@ -560,6 +644,7 @@ pub fn setup_pk<R: Relation>(relation: &R, vk: &MidnightVK) -> MidnightPK<R> {
     MidnightPK {
         k: vk.k(),
         nb_public_inputs,
+        deferred_accumulators: vk.deferred_accumulators.clone(),
         relation: relation.clone(),
         pk,
     }
@@ -618,13 +703,35 @@ where
     if pi.len() != vk.nb_public_inputs {
         return Err(Error::InvalidInstances.into());
     }
-    Ok(BlstPLONK::<MidnightCircuit<R>>::verify::<H>(
+    BlstPLONK::<MidnightCircuit<R>>::verify::<H>(
         params_verifier,
         &vk.vk,
         &[committed_pi],
         &[&pi],
         proof,
-    )?)
+    )?;
+
+    // Verify the deferred accumulators
+    // TODO: These could easily be batched.
+    // TODO: Handle batch_verify once the design is complete
+    for &(offset, kind) in vk.deferred_accumulators.iter() {
+        // The accumulator exposed in the public inputs is single-point (fixed
+        // bases already resolved).
+        let acc_len = accumulator_pi_len();
+        let fields = pi.get(offset..offset + acc_len).ok_or(Error::InvalidInstances)?;
+        let acc =
+            <AssignedAccumulator<BlstrsEmulation> as Instantiable<F>>::from_public_input(fields)
+                .ok_or(Error::InvalidInstances)?;
+        match kind{
+            DeciderKind::Standard => StandardDecider::decide(&acc, params_verifier, vk)
+            .map_err(|_| Error::InvalidInstances)?,
+            DeciderKind::Ivc => IvcDecider::decide(&acc, params_verifier, vk)
+            .map_err(|_| Error::InvalidInstances)?,
+            DeciderKind::FinalIVC => unimplemented!(),
+        }
+    }
+
+    Ok(())
 }
 
 /// Verifies a batch of proofs with respect to their corresponding vk.

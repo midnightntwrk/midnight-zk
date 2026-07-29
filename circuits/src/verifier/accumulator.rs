@@ -237,7 +237,7 @@ impl<S: SelfEmulation> Instantiable<S::F> for AssignedAccumulator<S> {
         let reconstruct = |side: &[S::F]| -> Option<Msm<S>> {
             let (point_fields, scalar) = side.split_at(side.len() - 1);
             let base = <AssignedPoint<S> as Instantiable<S::F>>::from_public_input(point_fields)?;
-            Some(Msm::new(&[base], &[scalar[0]], &[PolynomialLabel::Collapsed]))
+            Some(Msm::new(&[base], &[scalar[0]], &[PolynomialLabel::NoLabel]))
         };
 
         let lhs = reconstruct(&fields[..fields.len() / 2])?;
