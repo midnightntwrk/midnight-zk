@@ -46,10 +46,10 @@ use crate::{
 pub struct AssignedVector<F: CircuitField, T: Vectorizable, const M: usize, const A: usize> {
     /// Padded payload of the vector. Boxed to keep large buffers
     /// off the stack.
-    pub(crate) buffer: Box<[T; M]>,
+    buffer: Box<[T; M]>,
 
     /// Effective length of the vector.
-    pub(crate) len: AssignedNative<F>,
+    len: AssignedNative<F>,
 }
 
 impl<F: CircuitField, T: Vectorizable, const M: usize, const A: usize> AssignedVector<F, T, M, A> {
@@ -66,6 +66,21 @@ impl<F: CircuitField, T: Vectorizable, const M: usize, const A: usize> AssignedV
             )
         };
         Self { buffer, len }
+    }
+
+    pub(crate) fn buffer(&self) -> &[T; M] {
+        &self.buffer
+    }
+
+    pub(crate) fn len(&self) -> &AssignedNative<F> {
+        &self.len
+    }
+
+    #[cfg(test)]
+    // Mutates buffer at position i.
+    // Only intended for testing.
+    pub(crate) fn mutate_buffer(&mut self, value: T, pos: usize) {
+        self.buffer[pos] = value;
     }
 }
 

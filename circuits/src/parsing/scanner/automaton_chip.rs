@@ -1082,7 +1082,7 @@ mod test {
             )?;
 
             // Pointwise equality on the full buffer.
-            for (out_cell, exp_cell) in parsed.buffer.iter().zip(expected.iter()) {
+            for (out_cell, exp_cell) in parsed.buffer().iter().zip(expected.iter()) {
                 ng.assert_equal(&mut layouter, out_cell, exp_cell)?;
             }
 

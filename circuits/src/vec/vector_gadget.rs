@@ -86,10 +86,11 @@ where
             .native_gadget
             .assign_many(layouter, &vec![Value::known(T::FILLER); L - M])?;
 
-        let buffer: Box<[T; L]> =
-            Box::new([extra_pad.as_slice(), input.buffer.as_slice()].concat().try_into().unwrap());
+        let buffer: Box<[T; L]> = Box::new(
+            [extra_pad.as_slice(), input.buffer().as_slice()].concat().try_into().unwrap(),
+        );
 
-        Ok(AssignedVector::new(buffer, input.len.clone()))
+        Ok(AssignedVector::new(buffer, input.len().clone()))
     }
 
     fn assign_with_filler(
@@ -167,7 +168,7 @@ where
         let end: AssignedNative<F> = {
             // The last data position within the last chunk. Value in [0, A);
             // 0 means the last chunk is full, all its positions are data.
-            let offset = ng.rem(layouter, &input.len, A.into(), Some(M.into()))?;
+            let offset = ng.rem(layouter, input.len(), A.into(), Some(M.into()))?;
 
             // if offset != 0.  End = M - (A - offset).
             let end1 = ng.add_constant(layouter, &offset, F::from(M as u64 - A as u64))?;
@@ -178,7 +179,7 @@ where
         }?;
 
         // The index where the data starts.
-        let start: AssignedNative<F> = ng.sub(layouter, &end, &input.len)?;
+        let start: AssignedNative<F> = ng.sub(layouter, &end, input.len())?;
 
         Ok((start, end))
     }
@@ -193,8 +194,11 @@ where
         let a_max_bits = (usize::BITS - A.leading_zeros()) as usize;
 
         // Assert input.len >= n_elems.
-        let len_complement =
-            ng.linear_combination(layouter, &[(-F::ONE, input.len.clone())], F::from(M as u64))?;
+        let len_complement = ng.linear_combination(
+            layouter,
+            &[(-F::ONE, input.len().clone())],
+            F::from(M as u64),
+        )?;
         ng.assert_lower_than_fixed(layouter, &len_complement, &BigUint::from(M + 1 - n_elems))?;
 
         // We divide the number of elements to be trimmed in 2 parts.
@@ -208,7 +212,7 @@ where
         let last_trim = n_elems % A;
 
         // Length of last chunk ( or 0 if it is full ).
-        let last_len = ng.rem(layouter, &input.len, A.into(), Some(M.into()))?;
+        let last_len = ng.rem(layouter, input.len(), A.into(), Some(M.into()))?;
 
         // `modulus` already ensures last_len is in [0, A), so unsafe conversion can be
         // used here.
@@ -233,7 +237,7 @@ where
         // right to adjust the padding at the end.
         let buffer = {
             let filler = ng.assign_many_fixed(layouter, &vec![T::FILLER; A + last_trim])?;
-            [&filler[..A], &input.buffer[last_trim..], &filler[A..]].concat()
+            [&filler[..A], &input.buffer()[last_trim..], &filler[A..]].concat()
         };
         debug_assert_eq!(buffer.len(), M + A);
 
@@ -246,7 +250,7 @@ where
         );
 
         // Compute final length.
-        let len = ng.add_constant(layouter, &input.len, -F::from(n_elems as u64))?;
+        let len = ng.add_constant(layouter, input.len(), -F::from(n_elems as u64))?;
 
         Ok(AssignedVector::new(buffer, len))
     }
@@ -301,7 +305,7 @@ where
             .padding_flag(layouter, x)?
             .0
             .into_iter()
-            .zip(x.buffer.iter().zip(y.buffer.iter()))
+            .zip(x.buffer().iter().zip(y.buffer().iter()))
             .map(|(is_padding, (a, b))| {
                 let a_eq_b = ng.is_equal(layouter, a, b)?;
                 ng.or(layouter, &[is_padding, a_eq_b])
@@ -309,7 +313,7 @@ where
             .collect::<Result<Vec<_>, Error>>()?;
 
         // Check lengths are equal.
-        let len_check = ng.is_equal(layouter, &x.len, &y.len)?;
+        let len_check = ng.is_equal(layouter, x.len(), y.len())?;
 
         ng.and(layouter, &[val_checks.as_slice(), &[len_check]].concat())
     }
@@ -333,9 +337,9 @@ where
         let ng = &self.native_gadget;
         let ct_len = constant.len();
 
-        let eq_len = ng.is_equal_to_fixed(layouter, &x.len, F::from(ct_len as u64))?;
+        let eq_len = ng.is_equal_to_fixed(layouter, x.len(), F::from(ct_len as u64))?;
 
-        let mut element_checks = x.buffer[get_lims::<M, A>(ct_len)]
+        let mut element_checks = x.buffer()[get_lims::<M, A>(ct_len)]
             .iter()
             .zip(constant.iter())
             .map(|(a, c)| ng.is_equal_to_fixed(layouter, a, *c))
@@ -398,9 +402,9 @@ where
     ) -> Result<(), Error> {
         let ng = &self.native_gadget;
         let ct_len = constant.len();
-        ng.assert_equal_to_fixed(layouter, &x.len, F::from(ct_len as u64))?;
+        ng.assert_equal_to_fixed(layouter, x.len(), F::from(ct_len as u64))?;
 
-        x.buffer[get_lims::<M, A>(ct_len)]
+        x.buffer()[get_lims::<M, A>(ct_len)]
             .iter()
             .zip(constant.iter())
             .map(|(a, c)| ng.assert_equal_to_fixed(layouter, a, *c))
@@ -534,12 +538,12 @@ mod tests {
                     if mutate_padding {
                         let range = get_lims::<M, A>(self.input_2.len());
                         for i in 0..range.start {
-                            vec_2.buffer[i] =
-                                ng.add_constant(&mut layouter, &vec_2.buffer[i], F::ONE)?;
+                            let val = ng.add_constant(&mut layouter, &vec_2.buffer()[i], F::ONE)?;
+                            vec_2.mutate_buffer(val, i);
                         }
                         for i in range.end..M {
-                            vec_2.buffer[i] =
-                                ng.add_constant(&mut layouter, &vec_2.buffer[i], F::ONE)?;
+                            let val = ng.add_constant(&mut layouter, &vec_2.buffer()[i], F::ONE)?;
+                            vec_2.mutate_buffer(val, i);
                         }
                     }
 
@@ -553,7 +557,7 @@ mod tests {
 
                     let limits = vg.get_limits(&mut layouter, &vec_1)?;
                     let (start, end) = vec_1
-                        .len
+                        .len()
                         .value()
                         .map(|l| {
                             let len: usize = l.to_biguint().try_into().unwrap();
@@ -572,7 +576,7 @@ mod tests {
                         vg.assign(&mut layouter, self.input_1.clone())?;
 
                     let expected: [Value<bool>; M] = vec_1
-                        .len
+                        .len()
                         .value()
                         .map(|l| {
                             let len: usize = l.to_biguint().try_into().unwrap();

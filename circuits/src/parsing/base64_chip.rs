@@ -157,7 +157,7 @@ impl<F: CircuitField, const M: usize, const A: usize> Base64VarInstructions<F, M
 
         let check = ng.linear_combination(
             layouter,
-            &[(F::from(4u64), q), (-F::ONE, vec.len.clone())],
+            &[(F::from(4u64), q), (-F::ONE, vec.len().clone())],
             F::ZERO,
         )?;
         ng.assert_zero(layouter, &check)?;
@@ -175,14 +175,14 @@ impl<F: CircuitField, const M: usize, const A: usize> Base64VarInstructions<F, M
         let filler = ng.assign_fixed(layouter, ALT_PAD as u8)?;
         let (flags, _limits) = vg.padding_flag(layouter, vec)?;
         let result = vec
-            .buffer
+            .buffer()
             .iter()
             .zip(flags.iter())
             .map(|(elem, is_padding)| ng.select(layouter, is_padding, &filler, elem))
             .collect::<Result<Vec<_>, Error>>()?
             .try_into()
             .unwrap();
-        Ok(Base64Vec(AssignedVector::new(result, vec.len.clone())))
+        Ok(Base64Vec(AssignedVector::new(result, vec.len().clone())))
     }
 
     fn var_decode_base64url<const M_OUT: usize, const A_OUT: usize>(
@@ -190,11 +190,11 @@ impl<F: CircuitField, const M: usize, const A: usize> Base64VarInstructions<F, M
         layouter: &mut impl Layouter<F>,
         b64url_input: &Base64Vec<F, M, A>,
     ) -> Result<AssignedVector<F, AssignedByte<F>, M_OUT, A_OUT>, Error> {
-        let vec = self.url_to_standard(layouter, &*b64url_input.0.buffer)?;
+        let vec = self.url_to_standard(layouter, b64url_input.0.buffer())?;
 
         let b64_input = Base64Vec::<F, M, A>(AssignedVector::new(
             Box::new(vec.try_into().unwrap()),
-            b64url_input.0.len.clone(),
+            b64url_input.0.len().clone(),
         ));
 
         self.var_decode_base64(layouter, &b64_input)
@@ -215,7 +215,7 @@ impl<F: CircuitField, const M: usize, const A: usize> Base64VarInstructions<F, M
         // Compute and constrain new length.
         let three = F::from(3u64);
         let four = F::from(4u64);
-        let len = &b64_input.0.len;
+        let len = b64_input.0.len();
 
         let new_len: AssignedNative<F> = {
             let len_value = len.value().map(|&l| l * four.invert().unwrap() * three);
@@ -230,12 +230,12 @@ impl<F: CircuitField, const M: usize, const A: usize> Base64VarInstructions<F, M
         self.native_gadget.assert_zero(layouter, &check)?;
 
         // Compute decoded buffer.
-        let out_buffer = self.decode_base64(layouter, &*b64_input.0.buffer, true)?;
+        let out_buffer = self.decode_base64(layouter, b64_input.0.buffer(), true)?;
 
-        Ok(AssignedVector::<_, _, M_OUT, A_OUT> {
-            buffer: Box::new(out_buffer.try_into().unwrap()),
-            len: new_len,
-        })
+        Ok(AssignedVector::new(
+            Box::new(out_buffer.try_into().unwrap()),
+            new_len,
+        ))
     }
 }
 

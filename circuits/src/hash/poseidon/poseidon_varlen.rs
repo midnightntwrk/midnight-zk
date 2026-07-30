@@ -131,7 +131,7 @@ impl<F: PoseidonField> VarLenPoseidonGadget<F> {
     ) -> Result<AssignedNative<F>, Error> {
         assert_eq!(MAX_LEN % RATE, 0);
         let ng = &self.native_gadget;
-        let len = &input.len;
+        let len = input.len();
 
         ng.assert_lower_than_fixed(layouter, len, &BigUint::from(MAX_LEN + 1))?;
 
@@ -156,7 +156,7 @@ impl<F: PoseidonField> VarLenPoseidonGadget<F> {
             ng.select(layouter, &is_zero, &len_round, &len_round_extra)
         }?;
 
-        for (i, chunk) in input.buffer.chunks(RATE).enumerate() {
+        for (i, chunk) in input.buffer().chunks(RATE).enumerate() {
             // Determines when we have arrived at the first chunk of input.
             let b = ng.is_equal_to_fixed(
                 layouter,

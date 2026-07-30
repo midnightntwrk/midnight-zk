@@ -155,7 +155,7 @@ where
         let filler =
             self.native_gadget.assign_fixed(layouter, F::from(ALPHABET_MAX_SIZE as u64))?;
         let buffer: Box<[AssignedNative<F>; M]> = Box::new(
-            (vec.buffer.iter().zip(padding_flags.iter()))
+            (vec.buffer().iter().zip(padding_flags.iter()))
                 .map(|(elem, is_padding)| {
                     let native_elem = AssignedNative::from(elem);
                     self.native_gadget.select(layouter, is_padding, &filler, &native_elem)
@@ -166,7 +166,7 @@ where
         );
 
         Ok(ScannerVec {
-            length: vec.len,
+            length: vec.len().clone(),
             buffer,
             limits,
             padding_flags,
