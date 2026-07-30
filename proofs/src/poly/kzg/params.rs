@@ -115,7 +115,6 @@ where
     /// `downsize_lagrange(k)` so that `max_k()` equals the circuit domain size
     /// `k` while `g` retains its original length for the H-polynomial
     /// commitment.
-    #[cfg(feature = "single-h-commitment")]
     pub fn downsize_lagrange(&mut self, new_k: u32) {
         let n = 1usize << new_k;
         assert!(
@@ -135,7 +134,6 @@ where
     ///
     /// If `extended.g` is not strictly larger than `self.g`, or if the shared
     /// prefix of the monomial bases does not match.
-    #[cfg(feature = "single-h-commitment")]
     pub fn with_extended_monomial(mut self, extended: Self) -> Self {
         assert!(
             extended.g.len() > self.g.len(),
