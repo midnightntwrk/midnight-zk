@@ -128,7 +128,7 @@ where
     }
 
     /// Combine the monomial basis from `extended` with the Lagrange basis from
-    /// `self`, consuming both. This avoids the FFT that [`downsize_lagrange`]
+    /// `self`, consuming both. This avoids the FFT that `downsize_lagrange`
     /// would otherwise require.
     ///
     /// # Panics

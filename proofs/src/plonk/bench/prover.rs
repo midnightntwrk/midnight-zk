@@ -504,7 +504,8 @@ where
         ..
     } = trace;
 
-    let x: F = transcript.squeeze_challenge();
+    // PCS-aware squeeze (see plonk/prover.rs).
+    let x: F = CS::squeeze_evaluation_point(transcript);
 
     group.bench_function("Write evals to transcript", |b| {
         b.iter_batched(

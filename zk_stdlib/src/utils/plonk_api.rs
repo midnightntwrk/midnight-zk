@@ -29,7 +29,7 @@ use midnight_proofs::{
         create_proof, keygen_pk, keygen_vk, prepare, Circuit, Error, ProvingKey, VerifyingKey,
     },
     poly::{
-        commitment::Guard,
+        commitment::{Guard, PolynomialCommitmentScheme},
         kzg::{
             commitment::KZGMultiCommitment,
             params::{ParamsKZG, ParamsVerifierKZG},
@@ -261,28 +261,26 @@ pub enum SrsSource {
 /// Loads an SRS (over BLS12-381) for the given circuit size `k` and
 /// constraint-system degree `cs_degree`.
 ///
-/// Without the `single-h-commitment` feature, the monomial and Lagrange bases
-/// have the same size `2^k`. With the feature enabled the monomial basis is
-/// extended to `k + ceil(log2(cs_degree - 1))` so that it can hold the full
-/// quotient polynomial, while the Lagrange basis is kept at size `2^k`.
+/// The monomial basis is sized via the active PCS's
+/// [`PolynomialCommitmentScheme::srs_monomial_blowup`]: a blow-up factor of
+/// `1` keeps the monomial basis at the Lagrange size `2^k`; a blow-up of `B`
+/// extends it to `2^k · B`. The Lagrange basis stays at size `2^k`.
 pub fn load_srs(source: SrsSource, k: u32, cs_degree: usize) -> ParamsKZG<Bls12> {
     let fetch = |k| match source {
         SrsSource::Filecoin => filecoin_srs(k),
         SrsSource::Midnight => midnight_srs(k),
     };
 
-    #[cfg(not(feature = "single-h-commitment"))]
-    {
-        let _ = cs_degree;
-        fetch(k)
+    let blowup = <KZGCommitmentScheme<Bls12> as PolynomialCommitmentScheme<
+        midnight_curves::Fq,
+    >>::srs_monomial_blowup(cs_degree);
+    let base = fetch(k);
+    if blowup <= 1 {
+        return base;
     }
-    #[cfg(feature = "single-h-commitment")]
-    {
-        let extended_k = k + ((cs_degree - 1) as f64).log2().ceil() as u32;
-        let base = fetch(k);
-        let extended = fetch(extended_k);
-        base.with_extended_monomial(extended)
-    }
+    let extended_k = k + (blowup as f64).log2().ceil() as u32;
+    let extended = fetch(extended_k);
+    base.with_extended_monomial(extended)
 }
 
 /// Loads Filecoin's production SRS (over BLS12-381) for the given relation.
