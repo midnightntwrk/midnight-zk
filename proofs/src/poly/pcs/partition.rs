@@ -20,75 +20,28 @@
 //! Families involved in linearisation (`QuotientPiece` and simple-selector
 //! `Fixed`) must stay singletons for the current protocol.
 
-use std::collections::BTreeMap;
+use std::mem;
 
 use crate::poly::query::PolynomialLabel;
 
-/// Which bundlable family a label belongs to, for partition's purposes.
-/// `Ord` drives BTreeMap iteration order in `partition`; that order is
-/// deterministic but not relied upon (see module docs).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub(super) enum BundleFamily {
-    Advice,
-    CommittedInstance,
-    PermutationAccumulator,
-    LogupHelper,
-    LogupMultiplicities,
-    LogupAggregator,
-}
-
-/// Classify a label into its bundlable family, or `None` if it should be
-/// committed as a singleton (`t = 1`) sub-bundle.
-pub(super) fn bundle_family(label: &PolynomialLabel) -> Option<BundleFamily> {
-    match label {
-        PolynomialLabel::Advice(_) => Some(BundleFamily::Advice),
-        PolynomialLabel::CommittedInstance(_) => Some(BundleFamily::CommittedInstance),
-        PolynomialLabel::PermutationAccumulator(_) => Some(BundleFamily::PermutationAccumulator),
-        PolynomialLabel::LogupHelper(..) => Some(BundleFamily::LogupHelper),
-        PolynomialLabel::LogupMultiplicities(_) => Some(BundleFamily::LogupMultiplicities),
-        PolynomialLabel::LogupAggregator(_) => Some(BundleFamily::LogupAggregator),
-        _ => None,
-    }
-}
-
-/// Sort a bin of label-indices by the family's canonical key. Mixing variants
-/// within one bin is impossible by construction (each bin is one family).
-fn sort_canonically(indices: &mut [usize], labels: &[PolynomialLabel], family: BundleFamily) {
-    match family {
-        BundleFamily::Advice => indices.sort_by_key(|&idx| match &labels[idx] {
-            PolynomialLabel::Advice(i) => *i,
-            _ => unreachable!(),
-        }),
-        BundleFamily::CommittedInstance => indices.sort_by_key(|&idx| match &labels[idx] {
-            PolynomialLabel::CommittedInstance(i) => *i,
-            _ => unreachable!(),
-        }),
-        BundleFamily::PermutationAccumulator => indices.sort_by_key(|&idx| match &labels[idx] {
-            PolynomialLabel::PermutationAccumulator(i) => *i,
-            _ => unreachable!(),
-        }),
-        BundleFamily::LogupHelper => indices.sort_by(|&a, &b| match (&labels[a], &labels[b]) {
-            (PolynomialLabel::LogupHelper(na, ja), PolynomialLabel::LogupHelper(nb, jb)) => {
-                na.cmp(nb).then(ja.cmp(jb))
-            }
-            _ => unreachable!(),
-        }),
-        BundleFamily::LogupMultiplicities => {
-            indices.sort_by(|&a, &b| match (&labels[a], &labels[b]) {
-                (
-                    PolynomialLabel::LogupMultiplicities(na),
-                    PolynomialLabel::LogupMultiplicities(nb),
-                ) => na.cmp(nb),
-                _ => unreachable!(),
-            })
-        }
-        BundleFamily::LogupAggregator => indices.sort_by(|&a, &b| match (&labels[a], &labels[b]) {
-            (PolynomialLabel::LogupAggregator(na), PolynomialLabel::LogupAggregator(nb)) => {
-                na.cmp(nb)
-            }
-            _ => unreachable!(),
-        }),
-    }
+/// Indicates if a polynomial can be bundled by fflonk, i.e., if it is not
+/// opened individually by the protocol. Polynomials outside this set (quotient
+/// pieces, fixed/selector columns, the linearisation polynomial, ...) feed
+/// linearisation, which needs their individual commitments, so they must be
+/// committed as singletons.
+///
+/// TODO: ideally, this function should be removed at some point, once
+/// linearisation and fflonk are made compatible.
+pub(super) fn poly_is_combinable(label: &PolynomialLabel) -> bool {
+    matches!(
+        label,
+        PolynomialLabel::Advice(_)
+            | PolynomialLabel::CommittedInstance(_)
+            | PolynomialLabel::PermutationAccumulator(_)
+            | PolynomialLabel::LogupHelper(..)
+            | PolynomialLabel::LogupMultiplicities(_)
+            | PolynomialLabel::LogupAggregator(_)
+    )
 }
 
 /// Chunk one family's indices into sub-bundles of size `<= t_max`, appending
@@ -111,9 +64,8 @@ fn chunk_family(result: &mut Vec<Vec<usize>>, family_indices: &[usize], t_max: u
 /// `labels`; each inner vec is one sub-bundle, with indices in canonical
 /// order shared between prover and verifier.
 ///
-/// Output order: bundlable families first (each sorted by its canonical
-/// key, with families themselves ordered by [`BundleFamily`]'s `Ord`),
-/// then singletons in input order.
+/// Output order: combinable polynomials first, grouped by label variant and
+/// sorted within each group by label, then singletons in input order.
 ///
 /// # Soundness for linearised polynomials
 /// Any polynomial whose *individual* commitment is used downstream must be
@@ -122,23 +74,38 @@ fn chunk_family(result: &mut Vec<Vec<usize>>, family_indices: &[usize], t_max: u
 /// exposes only the combined group element, from which the individual
 /// commitments cannot be recovered.
 pub(super) fn partition(t_max: usize, labels: &[PolynomialLabel]) -> Vec<Vec<usize>> {
-    let mut bins: BTreeMap<BundleFamily, Vec<usize>> = BTreeMap::new();
+    let mut combinable: Vec<usize> = Vec::new();
     let mut singleton_indices: Vec<usize> = Vec::new();
     for (idx, label) in labels.iter().enumerate() {
-        match bundle_family(label) {
-            Some(family) => bins.entry(family).or_default().push(idx),
-            None => singleton_indices.push(idx),
+        if poly_is_combinable(label) {
+            combinable.push(idx);
+        } else {
+            singleton_indices.push(idx);
         }
     }
 
-    for (&family, indices) in bins.iter_mut() {
-        sort_canonically(indices, labels, family);
-    }
+    // Canonical order shared by prover and verifier: sort combinable indices by
+    // their label. `PolynomialLabel`'s derived `Ord` clusters equal variants
+    // together and orders within a variant by index, which is exactly the
+    // per-family canonical key both sides must agree on.
+    combinable.sort_by(|&a, &b| labels[a].cmp(&labels[b]));
 
     let mut result: Vec<Vec<usize>> = Vec::new();
-    for (_, indices) in bins {
-        chunk_family(&mut result, &indices, t_max);
+    // Split into maximal runs of a single variant (hence a single basis), then
+    // chunk each run into sub-bundles of at most `t_max`.
+    let mut start = 0;
+    while start < combinable.len() {
+        let mut end = start + 1;
+        while end < combinable.len()
+            && mem::discriminant(&labels[combinable[end]])
+                == mem::discriminant(&labels[combinable[start]])
+        {
+            end += 1;
+        }
+        chunk_family(&mut result, &combinable[start..end], t_max);
+        start = end;
     }
+
     for idx in singleton_indices {
         result.push(vec![idx]);
     }
@@ -228,9 +195,9 @@ mod tests {
     }
 
     #[test]
-    fn families_emit_in_bundlefamily_ord() {
-        // Advice + PermAcc + Logup* + singleton: each family gets its own bundle,
-        // emitted in BundleFamily Ord order, then singletons in input order.
+    fn families_emit_in_label_variant_order() {
+        // Advice + PermAcc + Logup* + singleton: each variant gets its own bundle,
+        // emitted in label variant order, then singletons in input order.
         let labels = vec![
             PolynomialLabel::LogupAggregator(0),
             PolynomialLabel::Fixed(0),

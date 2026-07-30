@@ -387,7 +387,7 @@ where
         // SRS-aware bundling ceiling.
         let t_max_log = all_labels
             .iter()
-            .find(|l| partition::bundle_family(l).is_some())
+            .find(|l| partition::poly_is_combinable(l))
             .map(|l| poly_lookup[l].values.len())
             .map_or(0, |n| effective_t_max_log(params, FFLONK_T_MAX_LOG, n));
         // Writing the ceiling to the transcript in case we are not in the trivial case.
