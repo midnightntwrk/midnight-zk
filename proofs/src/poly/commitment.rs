@@ -68,6 +68,33 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
         Self::commit_many(params, &[polynomial], &[label])
     }
 
+    /// Squeeze the evaluation point used by the protocol to open committed
+    /// polynomials. The default implementation simply squeezes a challenge,
+    /// but specific PCS may require squeezing over sets of challenges
+    /// verifying certain properties, for example fflonk requires the
+    /// evaluation point to be a `t`-th power in the field.
+    ///
+    /// The protocol must squeeze evaluation points through this method.
+    fn squeeze_evaluation_point<T: Transcript>(transcript: &mut T) -> F
+    where
+        F: Sampleable<T::Hash>,
+    {
+        transcript.squeeze_challenge()
+    }
+
+    /// Multiplicative blow-up factor by which `params.g_monomial_size()` must
+    /// exceed `2^k` (the circuit's Lagrange-domain size) for this PCS to
+    /// commit every polynomial it produces at the requested circuit size.
+    /// Returns `1` when no extension is needed.
+    ///
+    /// `cs_degree` is the constraint system's `cs.degree()`. Schemes that
+    /// commit to a single combined polynomial (e.g. `single-h-commitment`,
+    /// fflonk's bundles) factor that into their requested blow-up.
+    fn srs_monomial_blowup(cs_degree: usize) -> usize {
+        let _ = cs_degree; // Just to avoid a clippy warning.
+        1
+    }
+
     /// Create a multi-opening proof at a set of [ProverQuery]'s.
     fn multi_open<T: Transcript>(
         params: &Self::Parameters,
@@ -89,8 +116,15 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
 
     /// Verify an multi-opening proof for a given set of [VerifierQuery]'s.
     /// The function fails if the transcript has trailing bytes.
+    ///
+    /// `k` is the log2 of the circuit's (Lagrange) domain size. Schemes whose
+    /// opening structure depends on the domain relative to the SRS capacity
+    /// (e.g. fflonk's SRS-aware bundling) need it to reconstruct and
+    /// sanity-check the prover's choices; schemes that don't (e.g. plain KZG)
+    /// ignore it.
     fn multi_prepare<'com, T: Transcript>(
         verifier_query: &[VerifierQuery<'com, F, Self>],
+        k: u32,
         transcript: &mut T,
     ) -> Result<Self::VerificationGuard, Error>
     where
