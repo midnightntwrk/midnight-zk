@@ -143,19 +143,6 @@ impl<S: SelfEmulation> AssignedKZGCommitment<S> {
 }
 
 impl<S: SelfEmulation> AssignedKZGCommitment<S> {
-    /// Attaches `label` to a freshly-read (`NoLabel`) commitment.
-    ///
-    /// # Panics
-    ///
-    /// If the commitment is not `Simple` or if it was already labeled.
-    pub(crate) fn label(self, label: PolynomialLabel) -> Self {
-        match self {
-            Self::Simple(p, PolynomialLabel::NoLabel) => Self::Simple(p, label),
-            Self::Simple(_, existing) => panic!("commitment is already labeled: {existing:?}"),
-            Self::Linear(_, _, _) => panic!("KZGCommitment::Linear cannot be labeled"),
-        }
-    }
-
     /// Scales this commitment by a scalar.
     ///
     /// `Simple(p, l)` becomes `Linear([p], [scalar], [l])`.
@@ -246,26 +233,6 @@ impl<S: SelfEmulation> InnerValue for AssignedKZGMultiCommitment<S> {
     fn value(&self) -> Value<Self::Element> {
         Value::from_iter(self.0.iter().map(|c| c.value()))
             .map(midnight_proofs::poly::kzg::commitment::KZGMultiCommitment)
-    }
-}
-
-impl<S: SelfEmulation> Labelable for AssignedKZGMultiCommitment<S> {
-    /// Attaches one label per inner polynomial.
-    ///
-    /// # Panics
-    ///
-    /// If `labels.len() != self.length()`.
-    fn label(self, labels: &[PolynomialLabel]) -> Self {
-        assert_eq!(
-            labels.len(),
-            self.0.len(),
-            "label count must match polynomial count"
-        );
-        Self(self.0.into_iter().zip(labels).map(|(c, l)| c.label(l.clone())).collect())
-    }
-
-    fn length(&self) -> usize {
-        self.0.len()
     }
 }
 

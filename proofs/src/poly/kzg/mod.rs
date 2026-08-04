@@ -119,6 +119,41 @@ where
         }
     }
 
+    fn read_commitment<T: Transcript>(
+        transcript: &mut T,
+        labels: &[PolynomialLabel],
+    ) -> io::Result<Self::Commitment>
+    where
+        Self::Commitment: Hashable<T::Hash>,
+    {
+        // KZG commits each polynomial independently, so a commitment to
+        // `labels.len()` polynomials is `labels.len()` points read (and hashed)
+        // one after another, each tagged with its label.
+        let inners = labels
+            .iter()
+            .map(|label| {
+                let com: KZGMultiCommitment<E> = transcript.read()?;
+                Ok(com.into_single().label(label.clone()))
+            })
+            .collect::<io::Result<Vec<_>>>()?;
+        Ok(KZGMultiCommitment(inners))
+    }
+
+    fn deserialize_commitment<R: Read>(
+        reader: &mut R,
+        format: SerdeFormat,
+        labels: &[PolynomialLabel],
+    ) -> io::Result<Self::Commitment> {
+        let inners = labels
+            .iter()
+            .map(|label| {
+                let com = KZGCommitment::<E>::read(reader, format)?;
+                Ok(com.label(label.clone()))
+            })
+            .collect::<io::Result<Vec<_>>>()?;
+        Ok(KZGMultiCommitment(inners))
+    }
+
     fn multi_open<T: Transcript>(
         params: &Self::Parameters,
         queries: &[ProverQuery<E::Fr>],
