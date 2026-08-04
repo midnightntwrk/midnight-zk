@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Fix cost-model [#435](https://github.com/midnightntwrk/midnight-zk/pull/435)
 
 ### Changed
+* Removes the Labelable trait [#491](https://github.com/midnightntwrk/midnight-zk/pull/491)
 * Extend `PolynomialCommitmentScheme` with `squeeze_evaluation_point` and `srs_monomial_blowup` and add a `k` argument to `multi_prepare`, as PCS-agnostic extension points for fflonk [#487](https://github.com/midnightntwrk/midnight-zk/pull/487)
 * `circuit_model` is now parameterized by a `PolynomialCommitmentScheme` (`circuit_model::<_, CS>`) instead of const `COMM`/`SCALAR` byte-size generics [#440](https://github.com/midnightntwrk/midnight-zk/pull/440)
 * Rename `PolynomialPointer` to `PolynomialReference` in `ProverQuery`; rename `poly` field to `poly_ref`; change `poly_inner_product` to accept `&[&Polynomial<F, Coeff>]` to avoid cloning [#411](https://github.com/midnightntwrk/midnight-zk/pull/411)
@@ -52,6 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Simplify KZG multiopen verifier to use `KZGCommitment` directly [#430](https://github.com/midnightntwrk/midnight-zk/pull/430)
 
 ### Removed
+* Remove the `Labelable` trait; commitments are now labeled while being read through `read_commitment` / `deserialize_commitment` instead of being re-labeled after deserialization [#TODO](https://github.com/midnightntwrk/midnight-zk/pull/TODO)
 * Remove `Query<F>` trait; `construct_intermediate_sets` now accepts `&[(T, F, F)]` (commitment reference, point, eval) tuples with `T: PartialEq + Copy` [#411](https://github.com/midnightntwrk/midnight-zk/pull/411)
 * Remove multi-phase PLONK support: `Phase`, `Challenge`, `FirstPhase`, and `Layouter::get_challenge()` are removed; `Any::Advice` is no longer phase-parameterized; the prover and dev tools synthesize in a single pass [#376](https://github.com/midnightntwrk/midnight-zk/pull/376)
 * Remove multi-proof support; `create_proof` and `prepare` now operate on a single circuit and take `instances: &[&[F]]` instead of `&[&[&[F]]]` [#375](https://github.com/midnightntwrk/midnight-zk/pull/375)
