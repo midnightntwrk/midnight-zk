@@ -55,11 +55,11 @@ pub trait CircuitCurve: Curve + Default {
     /// Weierstrass identity coordinates, typically (0, 0), do not.
     fn from_xy(x: Self::Base, y: Self::Base) -> Option<Self>;
 
-    /// Checks that the point is part of the subgroup and enters the
+    /// Checks that the point is part of the subgroup and returns the
     /// [Self::CryptographicGroup] type. Returns `None` if the check fails.
     fn try_into_subgroup(self) -> Option<Self::CryptographicGroup>;
 
-    /// Checks that the point is part of the subgroup and enters the
+    /// Checks that the point is part of the subgroup and returns the
     /// [Self::CryptographicGroup] type.
     ///
     /// # Panics
