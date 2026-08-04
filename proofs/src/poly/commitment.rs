@@ -1,6 +1,10 @@
 //! Trait for a commitment scheme
 use core::ops::{Add, Mul};
-use std::{fmt::Debug, hash::Hash};
+use std::{
+    fmt::Debug,
+    hash::Hash,
+    io::{self, Read},
+};
 
 use ff::{FromUniformBytes, PrimeField};
 
