@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Fix cost-model [#435](https://github.com/midnightntwrk/midnight-zk/pull/435)
 
 ### Changed
+* Extend `PolynomialCommitmentScheme` with `squeeze_evaluation_point` and `srs_monomial_blowup` and add a `k` argument to `multi_prepare`, as PCS-agnostic extension points for fflonk [#487](https://github.com/midnightntwrk/midnight-zk/pull/487)
 * `circuit_model` is now parameterized by a `PolynomialCommitmentScheme` (`circuit_model::<_, CS>`) instead of const `COMM`/`SCALAR` byte-size generics [#440](https://github.com/midnightntwrk/midnight-zk/pull/440)
 * Rename `PolynomialPointer` to `PolynomialReference` in `ProverQuery`; rename `poly` field to `poly_ref`; change `poly_inner_product` to accept `&[&Polynomial<F, Coeff>]` to avoid cloning [#411](https://github.com/midnightntwrk/midnight-zk/pull/411)
 * Rename `CommitmentLabel` to `PolynomialLabel`; add `NoLabel` variant for freshly deserialized commitments; introduce `Labelable` trait so every call site attaches the correct label after deserialization [#392](https://github.com/midnightntwrk/midnight-zk/pull/392)

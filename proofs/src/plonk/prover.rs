@@ -342,7 +342,7 @@ where
         ..
     } = trace;
 
-    let x: F = transcript.squeeze_challenge();
+    let x: F = CS::squeeze_evaluation_point(transcript);
 
     let Evals {
         fixed_evals,
