@@ -107,6 +107,18 @@ where
         )
     }
 
+    /// With `single-h-commitment` the quotient is committed as one polynomial
+    /// of degree up to `(cs_degree - 1) * n`, so the monomial basis must be
+    /// blown up to the next power of two of `cs_degree - 1`. Otherwise KZG
+    /// commits each polynomial at the Lagrange size and needs no extension.
+    fn srs_monomial_blowup(cs_degree: usize) -> usize {
+        if cfg!(feature = "single-h-commitment") {
+            (cs_degree - 1).next_power_of_two()
+        } else {
+            1
+        }
+    }
+
     fn multi_open<T: Transcript>(
         params: &Self::Parameters,
         queries: &[ProverQuery<E::Fr>],
@@ -290,6 +302,7 @@ where
 
     fn multi_prepare<'com, T: Transcript>(
         queries: &[VerifierQuery<'com, E::Fr, KZGCommitmentScheme<E>>],
+        _k: u32,
         transcript: &mut T,
     ) -> Result<DualMSM<E>, Error>
     where
@@ -526,12 +539,12 @@ mod tests {
         let proof = create_proof::<_, CircuitTranscript<Blake2bState>>(&params);
 
         let verifier_params = params.verifier_params();
-        verify::<Bls12, CircuitTranscript<Blake2bState>>(&verifier_params, &proof[..], false);
+        verify::<Bls12, CircuitTranscript<Blake2bState>>(&verifier_params, &proof[..], K, false);
 
-        verify::<Bls12, CircuitTranscript<Blake2bState>>(&verifier_params, &proof[..], true);
+        verify::<Bls12, CircuitTranscript<Blake2bState>>(&verifier_params, &proof[..], K, true);
     }
 
-    fn verify<E, T>(verifier_params: &ParamsVerifierKZG<E>, proof: &[u8], should_fail: bool)
+    fn verify<E, T>(verifier_params: &ParamsVerifierKZG<E>, proof: &[u8], k: u32, should_fail: bool)
     where
         E: MultiMillerLoop,
         T: Transcript,
@@ -609,7 +622,7 @@ mod tests {
         };
 
         let result =
-            KZGCommitmentScheme::multi_prepare(&queries.collect::<Vec<_>>(), &mut transcript)
+            KZGCommitmentScheme::multi_prepare(&queries.collect::<Vec<_>>(), k, &mut transcript)
                 .unwrap();
 
         if should_fail {
