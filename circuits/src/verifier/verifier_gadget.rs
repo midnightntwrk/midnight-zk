@@ -25,7 +25,7 @@ use ff::Field;
 use midnight_proofs::{
     circuit::{AssignedCell, Chip, Layouter, Value},
     plonk::{ConstraintSystem, Error},
-    poly::{commitment::Labelable, EvaluationDomain, PolynomialLabel, Rotation},
+    poly::{EvaluationDomain, PolynomialLabel, Rotation},
 };
 
 use crate::{
@@ -351,10 +351,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         // Hash the prover's advice commitments into the transcript and squeeze
         // challenges
         let advice_commitments = (0..cs.num_advice_columns())
-            .map(|i| {
-                PCS::read_commitment(&mut transcript, layouter, 1)
-                    .map(|c| c.label(&[PolynomialLabel::Advice(i)]))
-            })
+            .map(|i| PCS::read_commitment(&mut transcript, layouter, &[PolynomialLabel::Advice(i)]))
             .collect::<Result<Vec<_>, Error>>()?;
 
         // Sample theta challenge for keeping lookup columns linearly independent
@@ -544,20 +541,22 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         #[cfg(feature = "single-h-commitment")]
         let nb_quotient_coms = 1;
         let limb_commitments = {
-            let raw = (0..nb_quotient_coms)
-                .map(|_| PCS::read_commitment(&mut transcript, layouter, 1))
-                .collect::<Result<Vec<_>, Error>>()?;
             #[cfg(not(feature = "single-h-commitment"))]
-            let labeled = raw
-                .into_iter()
-                .enumerate()
-                .map(|(i, c)| c.label(&[PolynomialLabel::QuotientPiece(i)]))
-                .collect::<Vec<_>>();
+            let labeled = (0..nb_quotient_coms)
+                .map(|i| {
+                    PCS::read_commitment(
+                        &mut transcript,
+                        layouter,
+                        &[PolynomialLabel::QuotientPiece(i)],
+                    )
+                })
+                .collect::<Result<Vec<_>, Error>>()?;
             #[cfg(feature = "single-h-commitment")]
-            let labeled = raw
-                .into_iter()
-                .map(|c| c.label(&[PolynomialLabel::Quotient]))
-                .collect::<Vec<_>>();
+            let labeled = (0..nb_quotient_coms)
+                .map(|_| {
+                    PCS::read_commitment(&mut transcript, layouter, &[PolynomialLabel::Quotient])
+                })
+                .collect::<Result<Vec<_>, Error>>()?;
             labeled
         };
 
