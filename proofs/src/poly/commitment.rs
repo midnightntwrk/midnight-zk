@@ -70,9 +70,9 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
 
     /// Squeeze the evaluation point used by the protocol to open committed
     /// polynomials. The default implementation simply squeezes a challenge,
-    /// but specific PCS may require squeezing over sets of challenges
-    /// verifying certain properties, for example fflonk requires the
-    /// evaluation point to be a `t`-th power in the field.
+    /// but specific PCS may require squeezing challenges satisfying certain
+    /// properties, for example fflonk requires the evaluation point to be a
+    /// `t`-th power in the field.
     ///
     /// The protocol must squeeze evaluation points through this method.
     fn squeeze_evaluation_point<T: Transcript>(transcript: &mut T) -> F

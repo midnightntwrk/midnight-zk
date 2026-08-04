@@ -539,12 +539,12 @@ mod tests {
         let proof = create_proof::<_, CircuitTranscript<Blake2bState>>(&params);
 
         let verifier_params = params.verifier_params();
-        verify::<Bls12, CircuitTranscript<Blake2bState>>(&verifier_params, &proof[..], false);
+        verify::<Bls12, CircuitTranscript<Blake2bState>>(&verifier_params, &proof[..], K, false);
 
-        verify::<Bls12, CircuitTranscript<Blake2bState>>(&verifier_params, &proof[..], true);
+        verify::<Bls12, CircuitTranscript<Blake2bState>>(&verifier_params, &proof[..], K, true);
     }
 
-    fn verify<E, T>(verifier_params: &ParamsVerifierKZG<E>, proof: &[u8], should_fail: bool)
+    fn verify<E, T>(verifier_params: &ParamsVerifierKZG<E>, proof: &[u8], k: u32, should_fail: bool)
     where
         E: MultiMillerLoop,
         T: Transcript,
@@ -622,7 +622,7 @@ mod tests {
         };
 
         let result =
-            KZGCommitmentScheme::multi_prepare(&queries.collect::<Vec<_>>(), 4, &mut transcript)
+            KZGCommitmentScheme::multi_prepare(&queries.collect::<Vec<_>>(), k, &mut transcript)
                 .unwrap();
 
         if should_fail {

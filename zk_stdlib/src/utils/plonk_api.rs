@@ -271,16 +271,16 @@ pub fn load_srs(source: SrsSource, k: u32, cs_degree: usize) -> ParamsKZG<Bls12>
         SrsSource::Midnight => midnight_srs(k),
     };
 
-    let blowup = <KZGCommitmentScheme<Bls12> as PolynomialCommitmentScheme<
-        midnight_curves::Fq,
-    >>::srs_monomial_blowup(cs_degree);
+    let blowup = <KZGCommitmentScheme<Bls12>>::srs_monomial_blowup(cs_degree);
+    assert_ne!(blowup, 0, "srs blowup should be >= 1");
     let base = fetch(k);
-    if blowup <= 1 {
-        return base;
+    if blowup == 1 {
+        base
+    } else {
+        let extended_k = k + (blowup as f64).log2().ceil() as u32;
+        let extended = fetch(extended_k);
+        base.with_extended_monomial(extended)
     }
-    let extended_k = k + (blowup as f64).log2().ceil() as u32;
-    let extended = fetch(extended_k);
-    base.with_extended_monomial(extended)
 }
 
 /// Loads Filecoin's production SRS (over BLS12-381) for the given relation.
