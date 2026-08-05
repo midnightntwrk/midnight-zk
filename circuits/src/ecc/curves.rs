@@ -55,8 +55,20 @@ pub trait CircuitCurve: Curve + Default {
     /// Weierstrass identity coordinates, typically (0, 0), do not.
     fn from_xy(x: Self::Base, y: Self::Base) -> Option<Self>;
 
-    /// Checks that the point is part of the subgroup.
-    fn into_subgroup(self) -> Self::CryptographicGroup;
+    /// Checks that the point is part of the subgroup and returns the
+    /// [Self::CryptographicGroup] type. Returns `None` if the check fails.
+    fn try_into_subgroup(self) -> Option<Self::CryptographicGroup>;
+
+    /// Checks that the point is part of the subgroup and returns the
+    /// [Self::CryptographicGroup] type.
+    ///
+    /// # Panics
+    ///
+    /// If the point is not part of the subgroup. Use
+    /// [Self::try_into_subgroup] for a fallible version.
+    fn into_subgroup(self) -> Self::CryptographicGroup {
+        self.try_into_subgroup().expect("point must be in the prime-order subgroup")
+    }
 }
 
 /// A Weierstrass curve of the form `y^2 = x^3 + Ax + B`.
@@ -125,9 +137,8 @@ impl CircuitCurve for JubjubExtended {
         }
     }
 
-    fn into_subgroup(self) -> Self::CryptographicGroup {
-        <JubjubExtended as CofactorGroup>::into_subgroup(self)
-            .expect("Point should be part of the subgroup")
+    fn try_into_subgroup(self) -> Option<Self::CryptographicGroup> {
+        <JubjubExtended as CofactorGroup>::into_subgroup(self).into_option()
     }
 }
 
@@ -167,8 +178,8 @@ impl CircuitCurve for Curve25519 {
         Some(Curve25519::from(affine))
     }
 
-    fn into_subgroup(self) -> Self::CryptographicGroup {
-        Curve25519Subgroup::from_edwards(self.0).expect("point must be in the prime-order subgroup")
+    fn try_into_subgroup(self) -> Option<Self::CryptographicGroup> {
+        Curve25519Subgroup::from_edwards(self.0)
     }
 }
 
@@ -199,8 +210,8 @@ impl CircuitCurve for K256 {
         K256Affine::from_xy(x, y).map(|p| p.into())
     }
 
-    fn into_subgroup(self) -> Self::CryptographicGroup {
-        self
+    fn try_into_subgroup(self) -> Option<Self::CryptographicGroup> {
+        Some(self)
     }
 }
 
@@ -241,8 +252,8 @@ impl CircuitCurve for P256 {
         affine_from_xy(x, y).map(Into::into)
     }
 
-    fn into_subgroup(self) -> Self::CryptographicGroup {
-        self
+    fn try_into_subgroup(self) -> Option<Self::CryptographicGroup> {
+        Some(self)
     }
 }
 
@@ -296,8 +307,8 @@ impl CircuitCurve for G1Projective {
         <G1Affine as CurveAffine>::from_xy(x, y).into_option().map(|p| p.into())
     }
 
-    fn into_subgroup(self) -> Self::CryptographicGroup {
-        self
+    fn try_into_subgroup(self) -> Option<Self::CryptographicGroup> {
+        Some(self)
     }
 }
 
@@ -343,8 +354,8 @@ impl CircuitCurve for bn256::G1 {
         <bn256::G1Affine as CurveAffine>::from_xy(x, y).into_option().map(|p| p.into())
     }
 
-    fn into_subgroup(self) -> Self::CryptographicGroup {
-        self
+    fn try_into_subgroup(self) -> Option<Self::CryptographicGroup> {
+        Some(self)
     }
 }
 

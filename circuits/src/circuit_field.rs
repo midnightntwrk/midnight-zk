@@ -91,6 +91,24 @@ pub trait CircuitField: PrimeField {
         Self::from_bytes_le(&bytes_le)
     }
 
+    /// Decomposes the field element into exactly `nb_bits` little-endian bits,
+    /// padding with trailing zeros if necessary.
+    ///
+    /// Returns `None` if `nb_bits` is zero or if the element does not fit in
+    /// `nb_bits` bits.
+    fn try_to_bits_le(&self, nb_bits: usize) -> Option<Vec<bool>> {
+        if nb_bits == 0 {
+            return None;
+        }
+        let mut all_bits = self.all_bits_le();
+        // The value must fit within `nb_bits` bits.
+        if all_bits.get(nb_bits..).is_some_and(|high| high.iter().any(|b| *b)) {
+            return None;
+        }
+        all_bits.resize(nb_bits, false);
+        Some(all_bits)
+    }
+
     /// Decomposes the field element into little-endian bits.
     ///
     /// - If `nb_bits = None`, the output has as many bits as necessary to
@@ -101,27 +119,16 @@ pub trait CircuitField: PrimeField {
     /// # Panics
     ///
     /// If the element does not fit in `nb_bits` bits when such argument is
-    /// provided.
+    /// provided. Use [Self::try_to_bits_le] for a fallible version.
     fn to_bits_le(&self, nb_bits: Option<usize>) -> Vec<bool> {
-        let bytes = self.to_bytes_le();
-        let all_bits: Vec<bool> = bytes
-            .as_ref()
-            .iter()
-            .flat_map(|byte| (0..8).map(move |j| byte & (1 << j) != 0))
-            .collect();
-
         match nb_bits {
-            Some(n) => {
-                // The value must fit within `n` bits.
-                assert!(
-                    n > 0 && all_bits[n..].iter().all(|b| !b),
-                    "field element does not fit in {n} bits"
-                );
-                all_bits[..n].to_vec()
-            }
+            Some(n) => self
+                .try_to_bits_le(n)
+                .unwrap_or_else(|| panic!("field element does not fit in {n} bits")),
             None => {
                 // Strip trailing zeros. Keep at least one bit (zero is [false], not an empty
                 // vec).
+                let all_bits = self.all_bits_le();
                 let len = all_bits.iter().rposition(|b| *b).unwrap_or(0);
                 all_bits[..=len].to_vec()
             }
@@ -133,11 +140,12 @@ pub trait CircuitField: PrimeField {
     /// The input may have fewer bits than `Self::NUM_BITS`; missing high bits
     /// are treated as zero.
     ///
-    /// # Panics
-    ///
-    /// If `bits.len() > Self::NUM_BITS`.
-    fn from_bits_le(bits: &[bool]) -> Self {
-        assert!(bits.len() as u32 <= Self::NUM_BITS);
+    /// Returns `None` if `bits.len() > Self::NUM_BITS`, or if the encoded value
+    /// is not in the canonical range `[0, modulus)`.
+    fn try_from_bits_le(bits: &[bool]) -> Option<Self> {
+        if bits.len() as u32 > Self::NUM_BITS {
+            return None;
+        }
         let mut bytes = vec![0u8; Self::NUM_BYTES];
         for (i, chunk) in bits.chunks(8).enumerate() {
             bytes[i] = chunk
@@ -145,7 +153,31 @@ pub trait CircuitField: PrimeField {
                 .enumerate()
                 .fold(0u8, |acc, (j, b)| acc + if *b { 1 << j } else { 0 });
         }
-        Self::from_bytes_le(&bytes).unwrap()
+        Self::from_bytes_le(&bytes)
+    }
+
+    /// Creates a field element from a little-endian bitstring.
+    ///
+    /// The input may have fewer bits than `Self::NUM_BITS`; missing high bits
+    /// are treated as zero.
+    ///
+    /// # Panics
+    ///
+    /// If `bits.len() > Self::NUM_BITS`, or if the encoded value is not in the
+    /// canonical range `[0, modulus)`. Use [Self::try_from_bits_le] for a
+    /// fallible version.
+    fn from_bits_le(bits: &[bool]) -> Self {
+        Self::try_from_bits_le(bits).expect("bits do not encode a canonical field element")
+    }
+
+    /// All the bits of the field representation, in little-endian order. The
+    /// output has length `8 * Self::NUM_BYTES`.
+    fn all_bits_le(&self) -> Vec<bool> {
+        self.to_bytes_le()
+            .as_ref()
+            .iter()
+            .flat_map(|byte| (0..8).map(move |j| byte & (1 << j) != 0))
+            .collect()
     }
 }
 
