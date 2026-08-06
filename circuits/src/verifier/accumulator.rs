@@ -33,14 +33,12 @@ use ff::Field;
 use group::Group;
 use midnight_proofs::{
     circuit::{Layouter, Value},
-    plonk::Error,
-    poly::{
-        pcs::{
-            msm::{DualMSM, MSMKZG},
-            params::ParamsVerifierKZG,
-        },
-        PolynomialLabel,
+    pcs::{
+        msm::{DualMSM, MSMKZG},
+        params::ParamsVerifierKZG,
     },
+    plonk::Error,
+    poly::PolynomialLabel,
 };
 use num_bigint::BigUint;
 use num_traits::One;

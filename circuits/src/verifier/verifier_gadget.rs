@@ -24,8 +24,9 @@ use std::{
 use ff::Field;
 use midnight_proofs::{
     circuit::{AssignedCell, Chip, Layouter, Value},
+    pcs::Labelable,
     plonk::{ConstraintSystem, Error},
-    poly::{commitment::Labelable, EvaluationDomain, PolynomialLabel, Rotation},
+    poly::{EvaluationDomain, PolynomialLabel, Rotation},
 };
 
 use crate::{
@@ -898,11 +899,9 @@ pub(crate) mod tests {
     use midnight_proofs::{
         circuit::SimpleFloorPlanner,
         dev::MockProver,
+        pcs::{params::ParamsKZG, FflonkCommitment, FflonkScheme},
         plonk::{create_proof, keygen_pk, keygen_vk_with_k, prepare, Circuit, Error},
-        poly::{
-            pcs::{params::ParamsKZG, FflonkCommitment, FflonkScheme},
-            PolynomialLabel,
-        },
+        poly::PolynomialLabel,
         transcript::{CircuitTranscript, Transcript},
     };
     use rand::SeedableRng;

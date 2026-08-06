@@ -2,11 +2,9 @@ use ff::{PrimeField, WithSmallOrderMulGroup};
 
 use super::Argument;
 use crate::{
+    pcs::{Labelable, PolynomialCommitmentScheme},
     plonk::{trash, Error},
-    poly::{
-        commitment::{Labelable, PolynomialCommitmentScheme},
-        PolynomialLabel, VerifierQuery,
-    },
+    poly::{PolynomialLabel, VerifierQuery},
     transcript::{Hashable, Transcript},
 };
 

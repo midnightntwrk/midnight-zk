@@ -9,12 +9,12 @@ use group::ff::Field;
 use midnight_curves::{Bls12, Fq as Scalar};
 use midnight_proofs::{
     circuit::{Cell, Layouter, SimpleFloorPlanner, Value},
-    plonk::*,
-    poly::{
-        commitment::Guard,
-        pcs::params::{ParamsKZG, ParamsVerifierKZG},
-        Rotation,
+    pcs::{
+        params::{ParamsKZG, ParamsVerifierKZG},
+        Guard,
     },
+    plonk::*,
+    poly::Rotation,
     transcript::{CircuitTranscript, Transcript},
     utils::rational::Rational,
     KZG,

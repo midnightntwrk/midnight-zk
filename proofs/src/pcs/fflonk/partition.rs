@@ -1,5 +1,5 @@
 //! Bundling policy for fflonk: how the polynomials in a `commit` call are
-//! partitioned into sub-bundles of size `t ≤ T_MAX` each.
+//! partitioned into bundles of size `t ≤ T_MAX` each.
 //!
 //! `T_MAX = 2^FFLONK_T_MAX_LOG` is the scheme-wide const generic of
 //! [`FflonkScheme`](super::FflonkScheme), so both sides agree on `t_max`
@@ -12,13 +12,14 @@
 //!   `PermutationAccumulator`, `LogupHelper`, `LogupMultiplicities`,
 //!   `LogupAggregator`) are grouped per-family, sorted by their family's
 //!   canonical key (`usize` index for the numeric variants, lexicographic
-//!   `String` for the named `Logup*` variants), and chunked into sub-bundles of
+//!   `String` for the named `Logup*` variants), and chunked into bundles of
 //!   size `≤ t_max`.
-//! - Non-bundlable labels are committed as their own singleton sub-bundles (`t
-//!   = 1`).
+//! - Non-bundlable labels are committed as their own singleton bundles (`t =
+//!   1`).
 //!
-//! Families involved in linearisation (`QuotientPiece` and simple-selector
-//! `Fixed`) must stay singletons for the current protocol.
+//! Polynomials opened individually — those feeding linearisation
+//! (`QuotientPiece` and simple-selector `Fixed`) and trash arguments — stay
+//! singletons for the current protocol.
 
 use std::mem;
 
@@ -26,8 +27,9 @@ use crate::poly::query::PolynomialLabel;
 
 /// Indicates if a polynomial can be bundled by fflonk, i.e., if it is not
 /// opened individually by the protocol. Polynomials outside this set (quotient
-/// pieces, fixed/selector columns, the linearisation polynomial, ...) feed
-/// linearisation, which needs their individual commitments, so they must be
+/// pieces, fixed/selector columns, trash arguments, the linearisation
+/// polynomial, ...) are opened individually (quotient and fixed feed
+/// linearisation, which needs their standalone commitments), so they must be
 /// committed as singletons.
 ///
 /// TODO: ideally, this function should be removed at some point, once
@@ -44,7 +46,7 @@ pub(super) fn poly_is_combinable(label: &PolynomialLabel) -> bool {
     )
 }
 
-/// Chunk one family's indices into sub-bundles of size `<= t_max`, appending
+/// Chunk one family's indices into bundles of size `<= t_max`, appending
 /// each chunk to `result`. Trailing chunks may have fewer than `t_max` entries;
 /// their logical bundle size is the next power of two.
 fn chunk_family(result: &mut Vec<Vec<usize>>, family_indices: &[usize], t_max: usize) {
@@ -60,8 +62,30 @@ fn chunk_family(result: &mut Vec<Vec<usize>>, family_indices: &[usize], t_max: u
     }
 }
 
-/// Sub-bundle partition of `labels`. Returns a list of index-vecs into
-/// `labels`; each inner vec is one sub-bundle, with indices in canonical
+/// Canonical order of `labels` shared by prover and verifier, *without*
+/// chunking: combinable polynomials first, sorted by label, then singletons in
+/// input order. `PolynomialLabel`'s derived `Ord` clusters equal variants
+/// together and orders within a variant by index, which is exactly the
+/// per-family canonical key both sides must agree on. This ordering is
+/// independent of the bundling factor; only the chunk boundaries drawn over it
+/// depend on `t_max`.
+pub(super) fn canonical_order(labels: &[PolynomialLabel]) -> Vec<usize> {
+    let mut combinable: Vec<usize> = Vec::new();
+    let mut singletons: Vec<usize> = Vec::new();
+    for (idx, label) in labels.iter().enumerate() {
+        if poly_is_combinable(label) {
+            combinable.push(idx);
+        } else {
+            singletons.push(idx);
+        }
+    }
+    combinable.sort_by(|&a, &b| labels[a].cmp(&labels[b]));
+    combinable.extend(singletons);
+    combinable
+}
+
+/// Bundle partition of `labels`. Returns a list of index-vecs into
+/// `labels`; each inner vec is one bundle, with indices in canonical
 /// order shared between prover and verifier.
 ///
 /// Output order: combinable polynomials first, grouped by label variant and
@@ -74,45 +98,33 @@ fn chunk_family(result: &mut Vec<Vec<usize>>, family_indices: &[usize], t_max: u
 /// exposes only the combined group element, from which the individual
 /// commitments cannot be recovered.
 pub(super) fn partition(t_max: usize, labels: &[PolynomialLabel]) -> Vec<Vec<usize>> {
-    let mut combinable: Vec<usize> = Vec::new();
-    let mut singleton_indices: Vec<usize> = Vec::new();
-    for (idx, label) in labels.iter().enumerate() {
-        if poly_is_combinable(label) {
-            combinable.push(idx);
-        } else {
-            singleton_indices.push(idx);
-        }
-    }
-
-    // Canonical order shared by prover and verifier: sort combinable indices by
-    // their label. `PolynomialLabel`'s derived `Ord` clusters equal variants
-    // together and orders within a variant by index, which is exactly the
-    // per-family canonical key both sides must agree on.
-    combinable.sort_by(|&a, &b| labels[a].cmp(&labels[b]));
+    let order = canonical_order(labels);
 
     let mut result: Vec<Vec<usize>> = Vec::new();
-    // Split into maximal runs of a single variant (hence a single basis), then
-    // chunk each run into sub-bundles of at most `t_max`.
+    // Walk the canonical order: chunk each maximal run of one combinable variant
+    // (hence a single basis) into bundles of at most `t_max`, and emit each
+    // singleton as its own bundle.
     let mut start = 0;
-    while start < combinable.len() {
+    while start < order.len() {
+        if !poly_is_combinable(&labels[order[start]]) {
+            result.push(vec![order[start]]);
+            start += 1;
+            continue;
+        }
         let mut end = start + 1;
-        while end < combinable.len()
-            && mem::discriminant(&labels[combinable[end]])
-                == mem::discriminant(&labels[combinable[start]])
+        while end < order.len()
+            && poly_is_combinable(&labels[order[end]])
+            && mem::discriminant(&labels[order[end]]) == mem::discriminant(&labels[order[start]])
         {
             end += 1;
         }
-        chunk_family(&mut result, &combinable[start..end], t_max);
+        chunk_family(&mut result, &order[start..end], t_max);
         start = end;
-    }
-
-    for idx in singleton_indices {
-        result.push(vec![idx]);
     }
     result
 }
 
-/// Logical bundle size for a sub-bundle with `real_count` real polynomials
+/// Logical bundle size for a bundle with `real_count` real polynomials
 /// at scheme cap `t_max`. This is because fflonk requires bundle's sizes to be
 /// a power of two, which makes it necessary to pad bundles with null
 /// polynomials until the next power.

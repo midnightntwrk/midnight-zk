@@ -8,11 +8,12 @@ use ff::Field;
 use midnight_curves::{Bls12, Fq as Scalar};
 use midnight_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
+    pcs::{params::ParamsKZG, Guard},
     plonk::{
         create_proof, keygen_pk, keygen_vk_with_k, prepare, Advice, Circuit, Column,
         ConstraintSystem, Constraints, Error, Fixed, Instance, ProvingKey,
     },
-    poly::{commitment::Guard, pcs::params::ParamsKZG, Rotation},
+    poly::Rotation,
     transcript::{CircuitTranscript, Transcript},
     utils::SerdeFormat,
     KZG,

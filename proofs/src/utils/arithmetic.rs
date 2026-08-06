@@ -3,6 +3,7 @@
 
 use std::{
     fmt::Debug,
+    marker::PhantomData,
     ops::{Add, Mul},
 };
 
@@ -15,7 +16,10 @@ use group::{
 use midnight_curves::{fft::best_fft, pairing::MultiMillerLoop};
 pub use midnight_curves::{CurveAffine, CurveExt};
 
-use crate::poly::pcs::msm::MSMKZG;
+use crate::{
+    pcs::msm::MSMKZG,
+    poly::{Coeff, Polynomial},
+};
 
 /// This represents an element of a group with basic operations that can be
 /// performed. This allows an FFT implementation (for example) to operate
@@ -288,25 +292,22 @@ pub(crate) fn inner_product<F: PrimeField, T: Mul<F, Output = T> + Add<T, Output
 /// contributions directly into the output buffer, avoiding `M` intermediate
 /// allocations and the sequential reduce chain.
 pub(crate) fn poly_inner_product<F: PrimeField>(
-    polys: &[crate::poly::Polynomial<F, crate::poly::Coeff>],
-    scalars: impl IntoIterator<Item = F>,
-) -> crate::poly::Polynomial<F, crate::poly::Coeff> {
-    use std::marker::PhantomData;
-    let scalars: Vec<F> = scalars.into_iter().take(polys.len()).collect();
+    polys: &[Polynomial<F, Coeff>],
+    scalars: &[F],
+) -> Polynomial<F, Coeff> {
+    debug_assert_eq!(polys.len(), scalars.len());
     let max_len = polys.iter().map(|p| p.len()).max().unwrap_or(0);
     let mut values = vec![F::ZERO; max_len];
     parallelize(&mut values, |chunk, start| {
         for (poly, scalar) in polys.iter().zip(scalars.iter()) {
-            let pv: &[F] = poly;
-            let end = (start + chunk.len()).min(pv.len());
-            if start < pv.len() {
-                for (out, coeff) in chunk[..end - start].iter_mut().zip(&pv[start..end]) {
+            if let Some(coeffs) = poly.get(start..) {
+                for (out, coeff) in chunk.iter_mut().zip(coeffs.iter()) {
                     *out += *coeff * scalar;
                 }
             }
         }
     });
-    crate::poly::Polynomial {
+    Polynomial {
         values,
         _marker: PhantomData,
     }
@@ -318,6 +319,7 @@ where
     E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
     E::Fr: Ord,
 {
+    debug_assert_eq!(msms.len(), scalars.len());
     let len: usize = msms.iter().map(|m| m.scalars.len()).sum();
 
     let mut new_scalars = Vec::with_capacity(len);

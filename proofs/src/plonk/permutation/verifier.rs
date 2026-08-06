@@ -2,11 +2,9 @@ use ff::{PrimeField, WithSmallOrderMulGroup};
 
 use super::{Argument, VerifyingKey};
 use crate::{
+    pcs::{Labelable, PolynomialCommitmentScheme},
     plonk::{self, permutation, Error},
-    poly::{
-        commitment::{Labelable, PolynomialCommitmentScheme},
-        PolynomialLabel, Rotation, VerifierQuery,
-    },
+    poly::{PolynomialLabel, Rotation, VerifierQuery},
     transcript::{Hashable, Transcript},
 };
 
@@ -126,7 +124,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
 
         // All chunks share the same batched commitment object; fflonk's
         // `find_bundle` (inside `multi_prepare`) routes each query to the
-        // correct sub-bundle via the label.
+        // correct bundle via the label.
         let product_com = &self.coms.permutation_product_commitment;
         let mut queries = Vec::new();
         for (i, set) in self.sets.iter().enumerate() {

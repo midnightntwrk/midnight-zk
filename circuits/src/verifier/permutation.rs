@@ -18,8 +18,9 @@
 
 use midnight_proofs::{
     circuit::Layouter,
+    pcs::Labelable,
     plonk::{ConstraintSystem, Error},
-    poly::{commitment::Labelable, PolynomialLabel},
+    poly::PolynomialLabel,
 };
 
 use crate::{
@@ -69,7 +70,7 @@ pub(crate) fn read_product_commitments<S: SelfEmulation, PCS: InCircuitPCS<S>>(
     // The prover writes one batched commitment covering all permutation
     // accumulator chunks (one G1 per chunk at T=0). Read it once with all
     // `PermutationAccumulator(i)` labels, then share it across chunks; each
-    // chunk's query routes to its sub-bundle via the label. Mirrors the
+    // chunk's query routes to its bundle via the label. Mirrors the
     // off-circuit `permutation::verifier::read_product_commitments`.
     let labels: Vec<_> = (0..num_chunks).map(PolynomialLabel::PermutationAccumulator).collect();
     let shared = PCS::read_commitment(transcript_gadget, layouter, num_chunks)?.label(&labels);

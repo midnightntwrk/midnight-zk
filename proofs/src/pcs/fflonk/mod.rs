@@ -8,16 +8,20 @@
 //! coefficient form. The current commit function performs a conversion
 //! otherwise. Native support will be implemented in the future.
 
+// This module holds the `FflonkScheme` `PolynomialCommitmentScheme` impl. The
+// generic PCS machinery (`scheme`, `msm`, `params`, the GWC point-set helpers
+// in `utils`) lives in the parent `crate::pcs` module.
+//
 // ## Layout
-// - `utils`: grouping helpers and the curve-free math.
-// - `partition`: the deterministic sub-bundling policy.
-// - `commitment`: implementation of the `PolynomialCommitmentScheme` trait.
-// - `params`: `ParamsFflonk` (alias for `ParamsKZG`).
+// - `math`: the curve-free fflonk paper math (`combine`, roots, ...).
+// - `partition`: the deterministic bundling policy.
+// - `commitment`: the `FflonkCommitment` type.
+// - `bundle_expansion`: multi-open bundle pre-expansion.
 //
 // ## Implementation
-// `commit_many` bundles via `partition::partition`. For each sub-bundle of size
+// `commit_many` bundles via `partition::partition`. For each bundle of size
 // `t > 1`, it builds `g(X) = Σ_i X^i · f_i(X^t)` from the `f_i` converted to
-// coefficient form. Singleton sub-bundles are kept in whichever base they were
+// coefficient form. Singleton bundles are kept in whichever base they were
 // initially.
 //
 // `multi_open` / `multi_prepare` pre-expand bundled queries into synthetic
@@ -38,37 +42,30 @@ use rayon::iter::{
 };
 use rustc_hash::{FxHashMap, FxHashSet};
 
+use self::math::{combine, primitive_root_of_unity, roots as t_th_roots, t_th_root};
 use crate::poly::{
-    pcs::utils::{combine, primitive_root_of_unity, roots as t_th_roots, t_th_root},
     EvaluationDomain, LagrangeCoeff, LagrangeDeltaCoeff, LagrangeDoubleDeltaCoeff, PolynomialBasis,
 };
 
 pub mod commitment;
-/// Multi-scalar-multiplication accumulators shared by the scheme and its
-/// verifier ([`MSMKZG`], [`DualMSM`]).
-pub mod msm;
-/// Public parameters / SRS for the scheme (`ParamsKZG`,
-/// `ParamsVerifierKZG`).
-pub mod params;
 
 mod bundle_expansion;
+mod math;
 mod partition;
-pub(crate) mod utils;
 
-pub use commitment::{FflonkBundle, FflonkCommitment};
-pub use params::{ParamsFflonk, ParamsVerifierFflonk};
-pub use utils::compute_dummy_queries;
+pub use commitment::FflonkCommitment;
 
 #[cfg(feature = "truncated-challenges")]
 use crate::utils::arithmetic::{truncate, truncated_powers};
 use crate::{
+    pcs::{
+        compute_dummy_queries,
+        msm::{msm_specific, DualMSM, MSMKZG},
+        params::{ParamsFflonk, ParamsKZG, ParamsVerifierFflonk},
+        scheme::{Guard, Params, PolynomialCommitmentScheme},
+        utils::construct_intermediate_sets,
+    },
     poly::{
-        commitment::{Guard, Params, PolynomialCommitmentScheme},
-        pcs::{
-            msm::{msm_specific, DualMSM, MSMKZG},
-            params::ParamsKZG,
-            utils::construct_intermediate_sets,
-        },
         query::{PolynomialLabel, VerifierQuery},
         Coeff, Error, Polynomial, PolynomialRepresentation, ProverQuery,
     },
@@ -99,8 +96,11 @@ pub const FFLONK_T_MAX_LOG: u32 = 0;
 ///   * Field 2-adicity: t_max_log ≤ F::S − log2(n) (so that roots of unity can
 ///     be a t-th power)
 ///
-/// The verifier applies the same `F::S − k` cap when decoding the exponent
-/// from the transcript, so both sides agree by construction.
+/// The prover writes the resulting `t_max_log` to the transcript; the verifier
+/// reads it and range-checks it only against `[0, FFLONK_T_MAX_LOG]`. The
+/// `F::S − k` cap is not re-enforced verifier-side: a mismatched value yields a
+/// partition that disagrees with the committed one, which the final pairing
+/// check rejects.
 fn effective_t_max_log<E: Engine>(params: &ParamsKZG<E>, t_max_log: u32, n: usize) -> u32
 where
     E::G1Affine: CurveAffine,
@@ -115,7 +115,7 @@ where
 /// The fflonk polynomial-commitment scheme over a pairing-friendly curve `E`.
 ///
 /// `FFLONK_T_MAX_LOG` is the log of the maximum bundle size the scheme will
-/// produce: any `t > 1` sub-bundle packs up to `T_MAX = 1 << FFLONK_T_MAX_LOG`
+/// produce: any `t > 1` bundle packs up to `T_MAX = 1 << FFLONK_T_MAX_LOG`
 /// polynomials into one G1 point.
 #[derive(Clone, Debug)]
 pub struct FflonkScheme<E: Engine> {
@@ -146,7 +146,7 @@ where
     /// Run the pairing check directly on the inner [`DualMSM`]. Same
     /// semantics as [`Guard::verify`] but returns `bool` instead of
     /// `Result`, matching `DualMSM::check`'s shape (`self` consumed).
-    pub fn check(self, params: &crate::poly::pcs::params::ParamsVerifierKZG<E>) -> bool {
+    pub fn check(self, params: &crate::pcs::params::ParamsVerifierKZG<E>) -> bool {
         self.0.check(params)
     }
 
@@ -196,7 +196,7 @@ where
     }
 
     /// fflonk requires the evaluation point to be a `T_MAX`-th power so the
-    /// verifier can compute `t`-th roots for each sub-bundle (each `t`
+    /// verifier can compute `t`-th roots for each bundle (each `t`
     /// divides `T_MAX = 2^FFLONK_T_MAX_LOG`, so any `T_MAX`-th power is also a
     /// `t`-th power). We squeeze `s` and return `s^T_MAX`.
     ///
@@ -262,12 +262,12 @@ where
         // it to the transcript so the verifier reconstructs the same partition.
         let t_max_log = effective_t_max_log(params, FFLONK_T_MAX_LOG, n);
         let t_max = 1usize << t_max_log;
-        let sub_bundles = partition::partition(t_max, labels);
+        let bundle_indices = partition::partition(t_max, labels);
 
         let bases_b = params.bases::<B>();
         let mono_bases = &params.g;
 
-        let bundles: Vec<FflonkBundle<E>> = sub_bundles
+        let bundles: Vec<(E::G1, Vec<PolynomialLabel>)> = bundle_indices
             .into_par_iter()
             .map(|indices| {
                 // Effective size of the bundle, including padding.
@@ -279,7 +279,7 @@ where
                     let size = p.values.len();
                     assert!(bases_b.len() >= size);
                     let g1 = msm_specific::<E::G1Affine>(&p.values, &bases_b[..size]);
-                    FflonkBundle::Bundle(g1, vec![labels[idx].clone()])
+                    (g1, vec![labels[idx].clone()])
                 } else {
                     // Multi-poly bundle: convert to Coeff form (if needed), combine into `g` over
                     // `t` slots (by padding with null polys), and MSM over monomial bases.
@@ -295,54 +295,47 @@ where
                         PolynomialBasis::Coeff => {
                             indices.iter().map(|&i| polynomials[i].values.clone()).collect()
                         }
-                        PolynomialBasis::Lagrange => {
+                        // Lagrange-family bases: reinterpret each poly in its concrete
+                        // basis, fold it back to `LagrangeCoeff`, then interpolate to
+                        // `Coeff`. Only the fold-back step differs per basis.
+                        _ => {
                             let domain = EvaluationDomain::<E::Fr>::new(1, log_n);
+                            let to_lagrange =
+                                |values: Vec<E::Fr>| -> Polynomial<E::Fr, LagrangeCoeff> {
+                                    match B::BASIS {
+                                        PolynomialBasis::Lagrange => Polynomial {
+                                            values,
+                                            _marker: PhantomData,
+                                        },
+                                        PolynomialBasis::LagrangeDelta => {
+                                            Polynomial::<E::Fr, LagrangeDeltaCoeff> {
+                                                values,
+                                                _marker: PhantomData,
+                                            }
+                                            .into_lagrange()
+                                        }
+                                        PolynomialBasis::LagrangeDoubleDelta => {
+                                            Polynomial::<E::Fr, LagrangeDoubleDeltaCoeff> {
+                                                values,
+                                                _marker: PhantomData,
+                                            }
+                                            .into_lagrange()
+                                        }
+                                        other => panic!(
+                                            "fflonk t>1 bundling not supported for basis \
+                                             {other:?} (Coeff, Lagrange, LagrangeDelta, \
+                                             LagrangeDoubleDelta only)"
+                                        ),
+                                    }
+                                };
                             indices
                                 .iter()
                                 .map(|&i| {
-                                    let lagrange_poly: Polynomial<E::Fr, LagrangeCoeff> =
-                                        Polynomial {
-                                            values: polynomials[i].values.clone(),
-                                            _marker: PhantomData,
-                                        };
-                                    domain.lagrange_to_coeff(lagrange_poly).values
-                                })
-                                .collect()
-                        }
-                        PolynomialBasis::LagrangeDelta => {
-                            let domain = EvaluationDomain::<E::Fr>::new(1, log_n);
-                            indices
-                                .iter()
-                                .map(|&i| {
-                                    let delta_poly: Polynomial<E::Fr, LagrangeDeltaCoeff> =
-                                        Polynomial {
-                                            values: polynomials[i].values.clone(),
-                                            _marker: PhantomData,
-                                        };
-                                    let lagrange = delta_poly.into_lagrange();
+                                    let lagrange = to_lagrange(polynomials[i].values.clone());
                                     domain.lagrange_to_coeff(lagrange).values
                                 })
                                 .collect()
                         }
-                        PolynomialBasis::LagrangeDoubleDelta => {
-                            let domain = EvaluationDomain::<E::Fr>::new(1, log_n);
-                            indices
-                                .iter()
-                                .map(|&i| {
-                                    let dd_poly: Polynomial<E::Fr, LagrangeDoubleDeltaCoeff> =
-                                        Polynomial {
-                                            values: polynomials[i].values.clone(),
-                                            _marker: PhantomData,
-                                        };
-                                    let lagrange = dd_poly.into_lagrange();
-                                    domain.lagrange_to_coeff(lagrange).values
-                                })
-                                .collect()
-                        }
-                        other => panic!(
-                            "fflonk t>1 bundling not supported for basis {other:?} \
-                             (Coeff, Lagrange, LagrangeDelta, LagrangeDoubleDelta only)"
-                        ),
                     };
 
                     // Interleave the (possibly padded) slots into `g` of length
@@ -353,12 +346,12 @@ where
                     let g1 = msm_specific::<E::G1Affine>(&g_values, &mono_bases[..t * n]);
                     let bundle_labels: Vec<PolynomialLabel> =
                         indices.iter().map(|&i| labels[i].clone()).collect();
-                    FflonkBundle::Bundle(g1, bundle_labels)
+                    (g1, bundle_labels)
                 }
             })
             .collect();
 
-        FflonkCommitment(bundles)
+        FflonkCommitment::Regular(bundles)
     }
 
     // TODO: at FFLONK_T_MAX_LOG = 0 the transcript is kept byte-identical to
@@ -406,10 +399,10 @@ where
         if all_labels.is_empty() {
             return Ok(());
         }
-        let sub_bundles = partition::partition(t_max, &all_labels);
+        let bundle_indices = partition::partition(t_max, &all_labels);
 
-        // Materialise `g` for each `t > 1` sub-bundle. Indexed by sub-bundle position.
-        let g_polys: Vec<Option<Polynomial<E::Fr, Coeff>>> = sub_bundles
+        // Materialise `g` for each `t > 1` bundle. Indexed by bundle position.
+        let g_polys: Vec<Option<Polynomial<E::Fr, Coeff>>> = bundle_indices
             .iter()
             .map(|indices| {
                 let real_count = indices.len();
@@ -420,7 +413,7 @@ where
                 let n_bundle = poly_lookup[&all_labels[indices[0]]].values.len();
                 assert!(
                     indices.iter().all(|&i| poly_lookup[&all_labels[i]].values.len() == n_bundle),
-                    "fflonk multi_open: polys within a `t > 1` sub-bundle must have equal length"
+                    "fflonk multi_open: polys within a `t > 1` bundle must have equal length"
                 );
                 let slot_refs: Vec<&[E::Fr]> = indices
                     .iter()
@@ -437,20 +430,20 @@ where
         // point) pairs to over-open, and the synthetic label. Sorted by synth-label so
         // prover and verifier visit bundles identically.
         let multi_pre =
-            bundle_expansion::build_prover_multi_pre(&sub_bundles, &all_labels, t_max, queries);
+            bundle_expansion::build_prover_multi_pre(&bundle_indices, &all_labels, t_max, queries);
 
         // Over-opening writes, mandatory for `t > 1` bundles whenever any slot is
         // missing an eval at a point in the bundle's logical union.
         for pre in &multi_pre {
             for &(slot, logical) in &pre.missing {
-                let poly_for_slot = poly_lookup[&all_labels[sub_bundles[pre.bundle_idx][slot]]];
+                let poly_for_slot = poly_lookup[&all_labels[bundle_indices[pre.bundle_idx][slot]]];
                 let eval = eval_polynomial(&poly_for_slot[..], logical);
                 transcript.write(&eval).map_err(|_| Error::OpeningError)?;
             }
         }
 
         // Build the singleton slice and the bundle-synth slice separately
-        let bundled_labels: FxHashSet<PolynomialLabel> = sub_bundles
+        let bundled_labels: FxHashSet<PolynomialLabel> = bundle_indices
             .iter()
             .filter(|indices| indices.len() > 1)
             .flat_map(|indices| indices.iter().map(|&i| all_labels[i].clone()))
@@ -536,7 +529,8 @@ where
                 #[cfg(not(feature = "truncated-challenges"))]
                 let x1 = powers(x1);
 
-                poly_inner_product(polys, x1)
+                let x1: Vec<_> = x1.take(polys.len()).collect();
+                poly_inner_product(polys, &x1)
             })
             .collect();
 
@@ -564,7 +558,8 @@ where
                     }
                 })
                 .collect();
-            poly_inner_product(&f_polys, powers(x2))
+            let x2: Vec<_> = powers(x2).take(f_polys.len()).collect();
+            poly_inner_product(&f_polys, &x2)
         };
 
         let f_com = Self::commit_many(
@@ -595,7 +590,8 @@ where
             #[cfg(not(feature = "truncated-challenges"))]
             let powers = powers(x4);
 
-            poly_inner_product(&polys, powers)
+            let powers: Vec<_> = powers.take(polys.len()).collect();
+            poly_inner_product(&polys, &powers)
         };
         let v = eval_polynomial(&final_poly, x3);
 
@@ -616,7 +612,6 @@ where
 
     fn multi_prepare<'com, T: Transcript>(
         queries: &[VerifierQuery<'com, E::Fr, FflonkScheme<E>>],
-        k: u32,
         transcript: &mut T,
     ) -> Result<FflonkVerificationGuard<E>, Error>
     where
@@ -628,14 +623,14 @@ where
         // (paired with the write at the top of `multi_open`) and sanity-check
         // it.
         let t_max_log: u32 = if FFLONK_T_MAX_LOG != 0 {
-            // `effective_t_log` is the prover's chosen bundling exponent, sent
-            // as a field element. We recover the integer and range-check it in one step by
-            // matching against the field encoding of each value in the valid
-            // band `[0, min(FFLONK_T_MAX_LOG, F::S − k)]`.
+            // `effective_t_log` is the prover's chosen bundling exponent, sent as
+            // a field element. Recover the integer by matching against the field
+            // encoding of each value in the valid band `[0, FFLONK_T_MAX_LOG]`.
+            // No tighter field-2-adicity (`S − k`) bound is enforced here: an
+            // out-of-band claim just yields a mismatched partition that the final
+            // pairing check rejects.
             let claimed: E::Fr = transcript.read().map_err(|_| Error::SamplingError)?;
-            #[allow(clippy::unnecessary_min_or_max)]
-            let upper = FFLONK_T_MAX_LOG.min(<E::Fr as PrimeField>::S.saturating_sub(k));
-            (0..=upper)
+            (0..=FFLONK_T_MAX_LOG)
                 .find(|&i| claimed == E::Fr::from(i as u64))
                 .ok_or(Error::OpeningError)?
         } else {
@@ -733,7 +728,10 @@ where
 
         let q_coms = q_coms
             .into_iter()
-            .map(|msms| msm_inner_product(msms, &powers_x1))
+            .map(|msms| {
+                let n = msms.len();
+                msm_inner_product(msms, &powers_x1[..n])
+            })
             .collect::<Vec<_>>();
 
         let q_eval_sets = q_eval_sets
@@ -750,14 +748,10 @@ where
             (q_coms, q_eval_sets, point_sets)
         };
 
-        let f_com: E::G1 = transcript
+        let f_com: E::G1 = *transcript
             .read::<FflonkCommitment<E>>()
             .map_err(|_| Error::SamplingError)?
-            .0
-            .into_iter()
-            .next()
-            .unwrap()
-            .into_point();
+            .as_point();
 
         let x3: E::Fr = transcript.squeeze_challenge();
         #[cfg(feature = "truncated-challenges")]
@@ -819,14 +813,10 @@ where
             inner_product(&evals, powers)
         };
 
-        let pi: E::G1 = transcript
+        let pi: E::G1 = *transcript
             .read::<FflonkCommitment<E>>()
             .map_err(|_| Error::SamplingError)?
-            .0
-            .into_iter()
-            .next()
-            .unwrap()
-            .into_point();
+            .as_point();
 
         let mut pi_msm = MSMKZG::<E>::init();
         pi_msm.append_term(E::Fr::ONE, pi, PolynomialLabel::Custom("π".into()));
@@ -875,13 +865,14 @@ mod tests {
     use midnight_curves::{pairing::MultiMillerLoop, serde::SerdeObject, CurveAffine, CurveExt};
     use rand_core::OsRng;
 
+    use super::{effective_t_max_log, FFLONK_T_MAX_LOG};
     use crate::{
+        pcs::{
+            params::{ParamsKZG, ParamsVerifierFflonk},
+            scheme::{Guard, Labelable, PolynomialCommitmentScheme},
+            FflonkCommitment, FflonkScheme, FflonkVerificationGuard, ParamsFflonk,
+        },
         poly::{
-            commitment::{Guard, Labelable, PolynomialCommitmentScheme},
-            pcs::{
-                params::{ParamsKZG, ParamsVerifierFflonk},
-                FflonkCommitment, FflonkScheme, FflonkVerificationGuard, ParamsFflonk,
-            },
             query::{ProverQuery, VerifierQuery},
             EvaluationDomain, PolynomialLabel,
         },
@@ -894,7 +885,7 @@ mod tests {
     /// and asserts the pairing check passes (and fails when one eval is
     /// tampered with).
     ///
-    /// In v1 every sub-bundle is `t=1`, so this is algebraically the same
+    /// In v1 every bundle is `t=1`, so this is algebraically the same
     /// proof KZG produces; we still run it to validate the trait wiring
     /// (commitment serde, Hashable, Labelable, Add/Mul, Guard).
     #[test]
@@ -909,16 +900,188 @@ mod tests {
         let proof = create_proof::<_, CircuitTranscript<Blake2bState>>(&params);
 
         let verifier_params = params.verifier_params();
-        verify::<Bls12, CircuitTranscript<Blake2bState>>(&verifier_params, &proof[..], false, K);
-        verify::<Bls12, CircuitTranscript<Blake2bState>>(&verifier_params, &proof[..], true, K);
+        verify::<Bls12, CircuitTranscript<Blake2bState>>(&verifier_params, &proof[..], false);
+        verify::<Bls12, CircuitTranscript<Blake2bState>>(&verifier_params, &proof[..], true);
     }
 
-    fn verify<E, T>(
-        verifier_params: &ParamsVerifierFflonk<E>,
-        proof: &[u8],
-        should_fail: bool,
-        k: u32,
-    ) where
+    /// `label` groups by the per-bundle sizes on the post-read commitment
+    /// (which come from the wire, not the const), and re-sorts the deliberately
+    /// shuffled labels into canonical order before chunking. This is the
+    /// property that lets the verifier follow the prover's effective bundling
+    /// factor instead of re-deriving it. Const-independent, so it runs in CI at
+    /// the shipped `FFLONK_T_MAX_LOG = 0`; the wire round-trip of a real bundle
+    /// is covered by `bundled_roundtrip_with_provisioned_srs`.
+    #[test]
+    fn label_groups_by_bundle_sizes_and_reorders() {
+        use group::Group;
+        use midnight_curves::{Bls12, G1Projective};
+
+        // Post-read state: three bundles with placeholder sizes 2, 2, 1.
+        let g = G1Projective::generator();
+        let com = FflonkCommitment::<Bls12>::Regular(vec![
+            (g, vec![PolynomialLabel::NoLabel; 2]),
+            (g + g, vec![PolynomialLabel::NoLabel; 2]),
+            (g + g + g, vec![PolynomialLabel::NoLabel; 1]),
+        ]);
+        assert_eq!(com.length(), 5);
+
+        // Labels supplied out of order: `label` sorts them canonically, then
+        // chunks by the bundle sizes.
+        let labels: Vec<_> = [4usize, 1, 3, 0, 2].map(PolynomialLabel::Advice).to_vec();
+        let FflonkCommitment::Regular(pairs) = com.label(&labels) else {
+            panic!("expected Regular");
+        };
+        let groups: Vec<Vec<_>> = pairs.into_iter().map(|(_, l)| l).collect();
+        assert_eq!(
+            groups,
+            vec![
+                vec![PolynomialLabel::Advice(0), PolynomialLabel::Advice(1)],
+                vec![PolynomialLabel::Advice(2), PolynomialLabel::Advice(3)],
+                vec![PolynomialLabel::Advice(4)],
+            ]
+        );
+    }
+
+    /// End-to-end round-trip through a real `t > 1` bundle (provisioned
+    /// SRS, so the effective bundling factor equals the const). Commits `t`
+    /// combinable polynomials in one `commit_many`, opens them, and checks
+    /// the pairing. No-op at the shipped `FFLONK_T_MAX_LOG = 0` (no
+    /// bundling to exercise); bump the const to activate it in a test
+    /// round.
+    #[test]
+    fn bundled_roundtrip_with_provisioned_srs() {
+        use midnight_curves::{Bls12, Fq};
+
+        if FFLONK_T_MAX_LOG == 0 {
+            return;
+        }
+        const K: u32 = 4;
+        let n = 1usize << K;
+        let t = 1usize << FFLONK_T_MAX_LOG;
+
+        // Extended monomial basis 2^(K + FFLONK_T_MAX_LOG) => effective == const.
+        let mut params: ParamsFflonk<Bls12> = ParamsKZG::unsafe_setup(K + FFLONK_T_MAX_LOG, OsRng);
+        params.downsize_lagrange(K);
+        assert_eq!(
+            effective_t_max_log(&params, FFLONK_T_MAX_LOG, n),
+            FFLONK_T_MAX_LOG
+        );
+
+        let domain = EvaluationDomain::new(1, K);
+        let polys: Vec<_> = (0..t)
+            .map(|j| {
+                let mut p = domain.empty_coeff();
+                for (i, c) in p.iter_mut().enumerate() {
+                    *c = Fq::from((j * n + i + 1) as u64);
+                }
+                p
+            })
+            .collect();
+        let labels: Vec<_> = (0..t).map(PolynomialLabel::Advice).collect();
+
+        // Prover.
+        let mut transcript = CircuitTranscript::<Blake2bState>::init();
+        let refs: Vec<_> = polys.iter().collect();
+        let com = FflonkScheme::<Bls12>::commit_many(&params, &refs, &labels);
+        match &com {
+            FflonkCommitment::Regular(p) => assert_eq!(p.len(), 1, "expected one t>1 bundle"),
+            _ => panic!("expected Regular"),
+        }
+        transcript.write(&com).unwrap();
+        let x = FflonkScheme::<Bls12>::squeeze_evaluation_point(&mut transcript);
+        let evals: Vec<Fq> = polys.iter().map(|p| eval_polynomial(p, x)).collect();
+        for e in &evals {
+            transcript.write(e).unwrap();
+        }
+        let queries: Vec<_> = polys
+            .iter()
+            .zip(&labels)
+            .map(|(p, l)| ProverQuery::new(x, p, l.clone()))
+            .collect();
+        FflonkScheme::<Bls12>::multi_open(&params, &queries, &mut transcript).unwrap();
+        let proof = transcript.finalize();
+
+        // Verifier.
+        let vp = params.verifier_params();
+        let mut vt = CircuitTranscript::<Blake2bState>::init_from_bytes(&proof);
+        let read_com = vt.read::<FflonkCommitment<Bls12>>().unwrap().label(&labels);
+        match &read_com {
+            FflonkCommitment::Regular(p) => {
+                assert_eq!(p.len(), 1);
+                assert_eq!(p[0].1.len(), t, "bundle must carry all t labels");
+            }
+            _ => panic!("expected Regular"),
+        }
+        let vx = FflonkScheme::<Bls12>::squeeze_evaluation_point(&mut vt);
+        let vevals: Vec<Fq> = (0..t).map(|_| vt.read().unwrap()).collect();
+        let vqueries: Vec<_> = labels
+            .iter()
+            .zip(&vevals)
+            .map(|(l, e)| VerifierQuery::new(vx, &read_com, l.clone(), *e))
+            .collect();
+        let guard = FflonkScheme::<Bls12>::multi_prepare(&vqueries, &mut vt).unwrap();
+        assert!(
+            <FflonkVerificationGuard<Bls12> as Guard<Fq, FflonkScheme<Bls12>>>::verify(guard, &vp)
+                .is_ok(),
+            "bundled proof must verify"
+        );
+    }
+
+    /// Two `t > 1` bundles with identical labels add homomorphically:
+    /// `commit(P) + commit(Q)` equals `commit(P + Q)` slot-wise, a single
+    /// point. No-op at the shipped `FFLONK_T_MAX_LOG = 0`.
+    #[test]
+    fn add_same_layout_bundles_is_homomorphic() {
+        use midnight_curves::{Bls12, Fq};
+
+        if FFLONK_T_MAX_LOG == 0 {
+            return;
+        }
+        const K: u32 = 4;
+        let n = 1usize << K;
+        let t = 1usize << FFLONK_T_MAX_LOG;
+
+        let mut params: ParamsFflonk<Bls12> = ParamsKZG::unsafe_setup(K + FFLONK_T_MAX_LOG, OsRng);
+        params.downsize_lagrange(K);
+
+        let domain = EvaluationDomain::new(1, K);
+        let labels: Vec<_> = (0..t).map(PolynomialLabel::Advice).collect();
+
+        let bundle = |seed: u64| -> Vec<_> {
+            (0..t)
+                .map(|j| {
+                    let mut p = domain.empty_coeff();
+                    for (i, c) in p.iter_mut().enumerate() {
+                        *c = Fq::from(seed * 1000 + (j * n + i + 1) as u64);
+                    }
+                    p
+                })
+                .collect()
+        };
+        let polys_a = bundle(1);
+        let polys_b = bundle(2);
+        let polys_sum: Vec<_> = polys_a.iter().zip(&polys_b).map(|(a, b)| a.clone() + b).collect();
+
+        let refs_a: Vec<_> = polys_a.iter().collect();
+        let refs_b: Vec<_> = polys_b.iter().collect();
+        let refs_sum: Vec<_> = polys_sum.iter().collect();
+        let com_a = FflonkScheme::<Bls12>::commit_many(&params, &refs_a, &labels);
+        let com_b = FflonkScheme::<Bls12>::commit_many(&params, &refs_b, &labels);
+        let com_sum = FflonkScheme::<Bls12>::commit_many(&params, &refs_sum, &labels);
+
+        match (com_a + com_b, com_sum) {
+            (FflonkCommitment::Regular(added), FflonkCommitment::Regular(expected)) => {
+                assert_eq!(added.len(), 1);
+                assert_eq!(expected.len(), 1);
+                assert_eq!(added[0].0, expected[0].0, "homomorphic point sum mismatch");
+                assert_eq!(added[0].1, expected[0].1, "labels must be preserved");
+            }
+            _ => panic!("expected Regular commitments"),
+        }
+    }
+
+    fn verify<E, T>(verifier_params: &ParamsVerifierFflonk<E>, proof: &[u8], should_fail: bool)
+    where
         E: MultiMillerLoop,
         T: Transcript,
         E::Fr: WithSmallOrderMulGroup<3> + Hashable<T::Hash> + Sampleable<T::Hash> + Ord + Hash,
@@ -996,7 +1159,7 @@ mod tests {
         };
 
         let result =
-            FflonkScheme::<E>::multi_prepare(&queries.collect::<Vec<_>>(), k, &mut transcript)
+            FflonkScheme::<E>::multi_prepare(&queries.collect::<Vec<_>>(), &mut transcript)
                 .unwrap();
 
         if should_fail {

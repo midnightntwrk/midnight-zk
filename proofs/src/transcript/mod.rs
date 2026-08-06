@@ -17,8 +17,14 @@ pub trait TranscriptHash: Clone {
     ///
     /// Bounded `IntoIterator + FromIterator` so that a commitment holding
     /// several group elements (e.g. an `FflonkCommitment` with multiple
-    /// sub-bundles) can build its transcript input by concatenating the
+    /// bundles) can build its transcript input by concatenating the
     /// per-element inputs.
+    ///
+    /// # Requirement
+    ///
+    /// The implementation of `IntoIterator` should be done with a
+    /// deterministic-order iterator, so that the prover and the verifier are
+    /// able to agree on the order. Otherwise, verification could fail.
     type Input: IntoIterator + FromIterator<<Self::Input as IntoIterator>::Item>;
     /// Output type of the hash function
     type Output;

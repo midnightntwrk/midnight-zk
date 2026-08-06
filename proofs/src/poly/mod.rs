@@ -18,36 +18,35 @@ use midnight_curves::serde::SerdeObject;
 use crate::utils::{arithmetic::parallelize, SerdeFormat};
 
 mod domain;
-mod query;
-
-/// Polynomial commitment scheme: fflonk (Gabizon–Williamson 2021), with KZG as
-/// the T=0 specialization. Also hosts the shared KZG-style primitives
-/// (`ParamsKZG`, `MSMKZG`, `DualMSM`, ...).
-pub mod pcs;
+/// Prover/verifier opening queries and polynomial labels.
+pub mod query;
 
 /// **Temporary** backward-compatibility facade for the old `poly::kzg` path.
 ///
-/// KZG has been folded into [`pcs`]: `KZGCommitmentScheme` is now
+/// KZG has been folded into `crate::pcs`: `KZGCommitmentScheme` is now
 /// `FflonkScheme<E>` (byte-identical to classic GWC KZG). This module
 /// contains **no implementation** — only aliases/re-exports — and exists
 /// solely so external, pinned dependencies that still import
 /// `midnight_proofs::poly::kzg::{...}` keep compiling (currently
 /// `blake2b_halo2`). Delete this module once those dependencies migrate to
-/// `poly::pcs` / the [`crate::KZG`] type alias. Nothing inside this crate
-/// should use it — internal code uses `poly::pcs` directly.
+/// `crate::pcs` / the [`crate::KZG`] type alias. Nothing inside this crate
+/// should use it — internal code uses `crate::pcs` directly.
 pub mod kzg {
-    pub use super::pcs::params;
+    pub use crate::pcs::params;
 
     /// Compat alias for the unified scheme; see the module-level note. Equal
     /// to [`crate::KZG`] (`FflonkScheme<E>`).
     pub type KZGCommitmentScheme<E> = crate::KZG<E>;
 }
 
-pub mod commitment;
-
 pub use domain::*;
 pub use query::{PolynomialLabel, ProverQuery, VerifierQuery};
 
+/// **Temporary** compatibility re-export of the PCS traits (moved to
+/// [`crate::pcs::scheme`]) for external pinned deps still importing
+/// `midnight_proofs::poly::commitment::{...}` (currently `blake2b_halo2`).
+/// Internal code uses `crate::pcs` directly.
+pub use crate::pcs::scheme as commitment;
 use crate::utils::{helpers::read_f, rational::Rational};
 
 /// This is an error that could occur during proving or circuit synthesis.

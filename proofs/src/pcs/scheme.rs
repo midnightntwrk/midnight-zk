@@ -90,8 +90,8 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
     /// `cs_degree` is the constraint system's `cs.degree()`. Schemes that
     /// commit to a single combined polynomial (e.g. `single-h-commitment`,
     /// fflonk's bundles) factor that into their requested blow-up.
+    #[allow(unused_variables)]
     fn srs_monomial_blowup(cs_degree: usize) -> usize {
-        let _ = cs_degree; // Just to avoid a clippy warning.
         1
     }
 
@@ -116,15 +116,8 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
 
     /// Verify an multi-opening proof for a given set of [VerifierQuery]'s.
     /// The function fails if the transcript has trailing bytes.
-    ///
-    /// `k` is the log2 of the circuit's (Lagrange) domain size. Schemes whose
-    /// opening structure depends on the domain relative to the SRS capacity
-    /// (e.g. fflonk's SRS-aware bundling) need it to reconstruct and
-    /// sanity-check the prover's choices; schemes that don't (e.g. plain KZG)
-    /// ignore it.
     fn multi_prepare<'com, T: Transcript>(
         verifier_query: &[VerifierQuery<'com, F, Self>],
-        k: u32,
         transcript: &mut T,
     ) -> Result<Self::VerificationGuard, Error>
     where

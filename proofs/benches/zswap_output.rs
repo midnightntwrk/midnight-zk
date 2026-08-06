@@ -18,15 +18,12 @@ use midnight_circuits::{
 use midnight_curves::{Bls12, Fr as JubjubScalar, JubjubExtended as Jubjub, JubjubSubgroup};
 use midnight_proofs::{
     circuit::{Layouter, Value},
+    pcs::{params::ParamsKZG, FflonkCommitment, Guard},
     plonk::{
         bench::prover::benchmark_create_proof, keygen_pk, keygen_vk_with_k, parse_trace,
         verify_algebraic_constraints, Error,
     },
-    poly::{
-        commitment::Guard,
-        pcs::{params::ParamsKZG, FflonkCommitment},
-        PolynomialLabel,
-    },
+    poly::PolynomialLabel,
     transcript::{CircuitTranscript, Transcript},
     KZG,
 };

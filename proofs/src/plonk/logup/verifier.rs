@@ -18,14 +18,12 @@ use std::iter;
 use ff::{PrimeField, WithSmallOrderMulGroup};
 
 use crate::{
+    pcs::{Labelable, PolynomialCommitmentScheme},
     plonk::{
         logup::{self, ChunkedArgument},
         Error, VerifyingKey,
     },
-    poly::{
-        commitment::{Labelable, PolynomialCommitmentScheme},
-        PolynomialLabel, Rotation, VerifierQuery,
-    },
+    poly::{PolynomialLabel, Rotation, VerifierQuery},
     transcript::{Hashable, Transcript},
 };
 
@@ -56,7 +54,7 @@ pub struct Evaluated<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
 /// in one transcript entry and hands each argument a clone of the shared
 /// commitment. The shared object carries the full label list (one
 /// `LogupMultiplicities(argument_index)` per arg); per-arg queries route to
-/// the correct sub-bundle via `find_bundle`.
+/// the correct bundle via `find_bundle`.
 pub(in crate::plonk) fn read_multiplicities<F, CS, T>(
     args: &[ChunkedArgument<F>],
     transcript: &mut T,
@@ -120,7 +118,7 @@ where
 
     // Hand each arg its own clone of the shared commitment. Each clone
     // carries the full label list; `find_bundle` routes per-chunk queries
-    // to the right sub-bundle.
+    // to the right bundle.
     Ok(args_with_multiplicities
         .into_iter()
         .map(|(arg, m)| {

@@ -10,6 +10,7 @@ use rayon::iter::{
 };
 
 use crate::{
+    pcs::PolynomialCommitmentScheme,
     plonk::{
         circuit::Circuit,
         linearization::prover::compute_linearization_poly,
@@ -21,7 +22,7 @@ use crate::{
         traces::ProverTrace,
         trash, Error, ProvingKey,
     },
-    poly::{commitment::PolynomialCommitmentScheme, PolynomialLabel},
+    poly::PolynomialLabel,
     transcript::{Hashable, Sampleable, Transcript},
     utils::arithmetic::eval_polynomial,
 };

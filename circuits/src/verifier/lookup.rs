@@ -16,11 +16,7 @@
 //! This is the in-circuit analog of `proofs/src/plonk/logup/verifier.rs`.
 //! The constraint expressions are implemented in `expressions/lookup.rs`.
 
-use midnight_proofs::{
-    circuit::Layouter,
-    plonk::Error,
-    poly::{commitment::Labelable, PolynomialLabel},
-};
+use midnight_proofs::{circuit::Layouter, pcs::Labelable, plonk::Error, poly::PolynomialLabel};
 
 use crate::{
     field::AssignedNative,
@@ -64,7 +60,7 @@ pub(crate) struct Evaluated<S: SelfEmulation, PCS: InCircuitPCS<S>> {
 /// Reads the batched multiplicities commitment for all logup arguments in one
 /// transcript entry and hands each argument a clone of the shared commitment
 /// (which carries one `LogupMultiplicities(arg)` label per arg; per-arg queries
-/// route to the right sub-bundle via the label). Mirrors the off-circuit
+/// route to the right bundle via the label). Mirrors the off-circuit
 /// `logup::verifier::read_multiplicities`.
 pub(crate) fn read_multiplicities<S: SelfEmulation, PCS: InCircuitPCS<S>>(
     num_args: usize,
@@ -124,7 +120,7 @@ pub(crate) fn read_helpers<S: SelfEmulation, PCS: InCircuitPCS<S>>(
     }
     let shared = PCS::read_commitment(transcript_gadget, layouter, total)?.label(&labels);
     // Hand each arg its own clone of the shared commitment, one per chunk;
-    // `LogupHelper(arg, chunk)` routes each query to the right sub-bundle.
+    // `LogupHelper(arg, chunk)` routes each query to the right bundle.
     Ok(args_with_multiplicities
         .into_iter()
         .map(|(argument_index, nb_chunks, m)| HelpersOnly {

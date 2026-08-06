@@ -26,15 +26,12 @@ use std::{
 use ff::PrimeField;
 use midnight_curves::{Bls12, Fq};
 use midnight_proofs::{
+    pcs::{
+        params::{ParamsKZG, ParamsVerifierKZG},
+        FflonkCommitment, FflonkScheme, Guard, PolynomialCommitmentScheme,
+    },
     plonk::{
         create_proof, keygen_pk, keygen_vk, prepare, Circuit, Error, ProvingKey, VerifyingKey,
-    },
-    poly::{
-        commitment::{Guard, PolynomialCommitmentScheme},
-        pcs::{
-            params::{ParamsKZG, ParamsVerifierKZG},
-            FflonkCommitment, FflonkScheme,
-        },
     },
     transcript::{CircuitTranscript, Hashable, Sampleable, Transcript, TranscriptHash},
     utils::SerdeFormat,

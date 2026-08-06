@@ -26,15 +26,13 @@ use ff::{BatchInvert, FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::{
+    pcs::PolynomialCommitmentScheme,
     plonk::{
         evaluation::evaluate,
         logup::{self, ChunkedArgument},
         Error, Expression, ProvingKey,
     },
-    poly::{
-        commitment::PolynomialCommitmentScheme, Coeff, LagrangeCoeff, Polynomial, PolynomialLabel,
-        ProverQuery, Rotation,
-    },
+    poly::{Coeff, LagrangeCoeff, Polynomial, PolynomialLabel, ProverQuery, Rotation},
     transcript::{Hashable, Transcript},
     utils::arithmetic::{eval_polynomial, parallelize},
 };

@@ -8,7 +8,7 @@
 
 extern crate core;
 
-use midnight_proofs::poly::pcs::FflonkScheme;
+use midnight_proofs::pcs::FflonkScheme;
 
 /// Temporary alias for the polynomial commitment scheme used by every
 /// aggregator circuit in this crate.

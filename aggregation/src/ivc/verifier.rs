@@ -7,11 +7,9 @@
 
 use midnight_circuits::{hash::poseidon::PoseidonState, verifier::Accumulator};
 use midnight_proofs::{
+    pcs::{params::ParamsVerifierKZG, FflonkCommitment},
     plonk::{self},
-    poly::{
-        pcs::{params::ParamsVerifierKZG, FflonkCommitment},
-        PolynomialLabel,
-    },
+    poly::PolynomialLabel,
     transcript::{CircuitTranscript, Transcript},
 };
 use midnight_zk_stdlib::{MidnightVK, Relation};

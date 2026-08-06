@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use ff::PrimeField;
 
-use crate::{plonk::VerifyingKey, poly::commitment::PolynomialCommitmentScheme};
+use crate::{pcs::scheme::PolynomialCommitmentScheme, plonk::VerifyingKey};
 
 /// Construct the commitment to the linearization polynomial and its expected
 /// evaluation at `x`.

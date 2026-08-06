@@ -13,14 +13,15 @@
 
 //! In-circuit abstraction layer for Polynomial Commitment Schemes.
 //!
-//! Mirrors [`midnight_proofs::poly::commitment`] for the in-circuit setting.
+//! Mirrors [`midnight_proofs::pcs::scheme`] for the in-circuit setting.
 
 use std::fmt::Debug;
 
 use midnight_proofs::{
     circuit::{Layouter, Value},
+    pcs::Labelable,
     plonk::Error,
-    poly::{commitment::Labelable, PolynomialLabel},
+    poly::PolynomialLabel,
 };
 
 use crate::{
@@ -84,7 +85,7 @@ pub trait InCircuitHomomorphicCommitment<S: SelfEmulation>:
 
 /// In-circuit abstraction over a Polynomial Commitment Scheme.
 ///
-/// Analog of [`midnight_proofs::poly::commitment::PolynomialCommitmentScheme`]
+/// Analog of [`midnight_proofs::pcs::scheme::PolynomialCommitmentScheme`]
 /// for the in-circuit verifier.
 pub trait InCircuitPCS<S: SelfEmulation>: Sized + Clone + Debug {
     /// The in-circuit type representing a committed polynomial.

@@ -4,7 +4,7 @@
 //! "fflonk-specific" phase that runs before the standard Halo2:
 //!
 //! - Prover (`multi_open`): classify queries into bundles, materialise the
-//!   combined polynomial `g` for each `t > 1` bundle, compute the over-opening
+//!   combined polynomial `g` for each `t > 1` bundle, compute the opening
 //!   point-set unions, expand into synthetic queries on `g` at the `t`-th roots
 //!   of each logical opening point.
 //! - Verifier (`multi_prepare`): classify queries into bundles, collect the
@@ -20,10 +20,14 @@ use ff::{Field, PrimeField, WithSmallOrderMulGroup};
 use midnight_curves::pairing::MultiMillerLoop;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use super::commitment::{find_bundle, synthetic_bundle_label, FflonkBundle, FflonkCommitment};
+use super::{
+    commitment::{synthetic_bundle_label, FflonkCommitment},
+    math::{eval_claims_as_poly, primitive_root_of_unity, roots as t_th_roots, t_th_root},
+    FflonkScheme,
+};
 use crate::{
+    pcs::{compute_dummy_queries, msm::MSMKZG},
     poly::{
-        pcs::{compute_dummy_queries, msm::MSMKZG, FflonkScheme},
         query::{PolynomialLabel, VerifierQuery},
         ProverQuery,
     },
@@ -36,11 +40,11 @@ use crate::{
 /// Per-bundle prover-side preparation. Holds everything `multi_open` needs
 /// to (a) write over-opening evals to the transcript and (b) emit the synthetic
 /// queries on `g`.
-pub(super) struct MultiPreData<F> {
-    /// Index into the prover's `sub_bundles` vec. Used to look up `g_poly`
+pub(super) struct MultiOpenPrepData<F> {
+    /// Index into the prover's `bundle_indices` vec. Used to look up `g_poly`
     /// and the canonical labels.
     pub(super) bundle_idx: usize,
-    /// Synthetic label shared with the verifier (`fflonk_g[Advice_X]`).
+    /// Synthetic label shared with the verifier (`fflonk_bundle[Advice_X]`).
     pub(super) synth_label: PolynomialLabel,
     /// The bundle's logical packing factor `t = bundle_t(real_count, t_max)`.
     /// May exceed the number of real polynomials in the bundle when the
@@ -80,13 +84,13 @@ pub(super) struct BundleAcc<E: MultiMillerLoop> {
 /// `synth_label.to_string()` so prover and verifier visit bundles in the
 /// same order. Pure function, no transcript I/O.
 pub(super) fn build_prover_multi_pre<F: PrimeField + Ord + std::hash::Hash>(
-    sub_bundles: &[Vec<usize>],
+    bundle_indices: &[Vec<usize>],
     all_labels: &[PolynomialLabel],
     t_max: usize,
     queries: &[ProverQuery<F>],
-) -> Vec<MultiPreData<F>> {
-    let mut multi_pre: Vec<MultiPreData<F>> = Vec::with_capacity(sub_bundles.len());
-    for (bundle_idx, indices) in sub_bundles.iter().enumerate() {
+) -> Vec<MultiOpenPrepData<F>> {
+    let mut multi_pre: Vec<MultiOpenPrepData<F>> = Vec::with_capacity(bundle_indices.len());
+    for (bundle_idx, indices) in bundle_indices.iter().enumerate() {
         let real_count = indices.len();
         let t = super::partition::bundle_t(real_count, t_max);
         if t <= 1 {
@@ -118,7 +122,7 @@ pub(super) fn build_prover_multi_pre<F: PrimeField + Ord + std::hash::Hash>(
         let mut union_logicals: Vec<F> = union_set.into_iter().collect();
         union_logicals.sort();
 
-        multi_pre.push(MultiPreData {
+        multi_pre.push(MultiOpenPrepData {
             bundle_idx,
             synth_label,
             t,
@@ -167,41 +171,8 @@ where
     let mut singleton_triples: Vec<(PolynomialLabel, E::Fr, E::Fr)> = Vec::new();
 
     for q in queries.iter() {
-        let bundle = find_bundle(q.commitment, &q.label);
-        match bundle {
-            FflonkBundle::Bundle(p, labels) if labels.len() == 1 => {
-                // Singleton (t=1): pass-through, single-term MSM.
-                singleton_triples.push((q.label.clone(), q.point, q.eval));
-                let mut msm = MSMKZG::init();
-                msm.append_term(E::Fr::ONE, *p, q.label.clone());
-                label_to_msm.insert(q.label.clone(), msm);
-            }
-            FflonkBundle::Bundle(p, labels) => {
-                // t>1 bundle: accumulate per (synthetic label, logical point).
-                // `labels` holds only the real labels (length = real_count);
-                // the logical bundle size `t` is derived from real_count and
-                // the scheme's `FFLONK_T_MAX_LOG`. The trailing bundle may have
-                // `t > real_count`, with pad slots [real_count, t) whose
-                // evals are implicitly zero (never appear in `pairs`).
-                let real_count = labels.len();
-                let t = super::partition::bundle_t(real_count, t_max);
-                let synth = synthetic_bundle_label(labels);
-                let acc = multi_bundles.entry(synth).or_insert_with(|| BundleAcc::<E> {
-                    bundle_g1: *p,
-                    canonical_labels: labels.clone(),
-                    t,
-                    pairs: Vec::new(),
-                    evals: FxHashMap::default(),
-                });
-                let slot = acc
-                    .canonical_labels
-                    .iter()
-                    .position(|l| l == &q.label)
-                    .expect("fflonk multi_prepare: query label missing from its bundle");
-                acc.pairs.push((slot, q.point));
-                acc.evals.insert((slot, q.point), q.eval);
-            }
-            FflonkBundle::Linear(points, scalars, labels) => {
+        match q.commitment {
+            FflonkCommitment::Linear(points, scalars, labels) => {
                 // Linearization commitment: pass-through, expanded MSM with
                 // all (point, scalar, label) terms.
                 singleton_triples.push((q.label.clone(), q.point, q.eval));
@@ -210,6 +181,40 @@ where
                     msm.append_term(*s, *p, label.clone());
                 }
                 label_to_msm.insert(q.label.clone(), msm);
+            }
+            FflonkCommitment::Regular(pairs) => {
+                let (p, labels) = FflonkCommitment::<E>::find_bundle(pairs, &q.label);
+                if labels.len() == 1 {
+                    // Singleton (t=1): pass-through, single-term MSM.
+                    singleton_triples.push((q.label.clone(), q.point, q.eval));
+                    let mut msm = MSMKZG::init();
+                    msm.append_term(E::Fr::ONE, *p, q.label.clone());
+                    label_to_msm.insert(q.label.clone(), msm);
+                } else {
+                    // t>1 bundle: accumulate per (synthetic label, logical point).
+                    // `labels` holds only the real labels (length = real_count);
+                    // the logical bundle size `t` is derived from real_count and
+                    // the scheme's `FFLONK_T_MAX_LOG`. The trailing bundle may have
+                    // `t > real_count`, with pad slots [real_count, t) whose
+                    // evals are implicitly zero (never appear in `pairs`).
+                    let real_count = labels.len();
+                    let t = super::partition::bundle_t(real_count, t_max);
+                    let synth = synthetic_bundle_label(labels);
+                    let acc = multi_bundles.entry(synth).or_insert_with(|| BundleAcc::<E> {
+                        bundle_g1: *p,
+                        canonical_labels: labels.clone(),
+                        t,
+                        pairs: Vec::new(),
+                        evals: FxHashMap::default(),
+                    });
+                    let slot = acc
+                        .canonical_labels
+                        .iter()
+                        .position(|l| l == &q.label)
+                        .expect("fflonk multi_prepare: query label missing from its bundle");
+                    acc.pairs.push((slot, q.point));
+                    acc.evals.insert((slot, q.point), q.eval);
+                }
             }
         }
     }
@@ -239,12 +244,6 @@ pub(super) fn synth_triples_for_bundle<E: MultiMillerLoop>(
 where
     E::Fr: std::hash::Hash + Eq,
 {
-    use ff::Field;
-
-    use super::utils::{
-        eval_claims_as_poly, primitive_root_of_unity, roots as t_th_roots, t_th_root,
-    };
-
     let omega_t = primitive_root_of_unity::<E::Fr>(acc.t);
     let real_count = acc.canonical_labels.len();
     let mut union_set: FxHashSet<E::Fr> = FxHashSet::default();

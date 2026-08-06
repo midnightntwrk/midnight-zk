@@ -16,11 +16,8 @@ use super::{
 use crate::{
     circuit::Value,
     dev::cost_model::cost_model_options,
-    poly::{
-        batch_invert_rational,
-        commitment::{Params, PolynomialCommitmentScheme},
-        EvaluationDomain, ExtendedLagrangeCoeff, PolynomialLabel,
-    },
+    pcs::{Params, PolynomialCommitmentScheme},
+    poly::{batch_invert_rational, EvaluationDomain, ExtendedLagrangeCoeff, PolynomialLabel},
     utils::{arithmetic::parallelize, rational::Rational},
 };
 

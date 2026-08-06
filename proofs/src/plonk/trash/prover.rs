@@ -2,11 +2,9 @@ use ff::{FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
 
 use super::{super::Error, Argument};
 use crate::{
+    pcs::PolynomialCommitmentScheme,
     plonk::{evaluation::evaluate, trash},
-    poly::{
-        commitment::PolynomialCommitmentScheme, Coeff, EvaluationDomain, LagrangeCoeff, Polynomial,
-        PolynomialLabel, ProverQuery,
-    },
+    poly::{Coeff, EvaluationDomain, LagrangeCoeff, Polynomial, PolynomialLabel, ProverQuery},
     transcript::{Hashable, Transcript},
     utils::arithmetic::eval_polynomial,
 };

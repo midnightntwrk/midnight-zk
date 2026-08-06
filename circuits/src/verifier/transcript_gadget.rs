@@ -20,6 +20,7 @@ use midnight_proofs::{
     plonk::Error::{self, Synthesis},
     poly::PolynomialLabel,
     transcript::{CircuitTranscript, Transcript},
+    FFLONK_T_MAX_LOG,
 };
 
 use crate::{
@@ -162,10 +163,19 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
         layouter: &mut impl Layouter<S::F>,
         length: usize,
     ) -> Result<AssignedKZGMultiCommitment<S>, Error> {
-        // Discard the `u8` length prefix that precedes the points on the wire.
+        // Discard the `u8` bundle-count prefix that precedes the points on
+        // the wire. This gadget only supports the singleton case (one poly per
+        // bundle, i.e. FFLONK_T_MAX_LOG = 0), so it reads `length` points.
+        // Bundling (t > 1) is not yet handled in-circuit; see the in-circuit
+        // fflonk verifier work.
         self.skip_bytes(1);
         let mut inners = Vec::with_capacity(length);
         for _ in 0..length {
+            // When bundling is enabled each point is preceded by a `u8`
+            // polynomial-count prefix on the wire; skip it (always 1 here).
+            if FFLONK_T_MAX_LOG != 0 {
+                self.skip_bytes(1);
+            }
             let reader =
                 self.transcript_reader.as_mut().expect("You must init the transcript gadget");
             // If an error, do not fail, assign a default commitment instead.

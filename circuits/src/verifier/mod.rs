@@ -18,9 +18,10 @@ use std::collections::BTreeMap;
 use group::Group;
 use midnight_proofs::{
     circuit::Value,
+    pcs::FflonkScheme,
     plonk,
     plonk::ConstraintSystem,
-    poly::{pcs::FflonkScheme, EvaluationDomain, PolynomialLabel},
+    poly::{EvaluationDomain, PolynomialLabel},
 };
 
 use crate::{
@@ -125,11 +126,11 @@ pub fn fixed_bases<S: SelfEmulation>(vk: &VerifyingKey<S>) -> BTreeMap<Polynomia
     let perm_commitments = vk.permutation().commitments();
 
     for (i, com) in fixed_commitments.iter().enumerate() {
-        fixed_bases.insert(PolynomialLabel::Fixed(i), *com.0[0].as_point());
+        fixed_bases.insert(PolynomialLabel::Fixed(i), *com.as_point());
     }
 
     for (i, com) in perm_commitments.iter().enumerate() {
-        fixed_bases.insert(PolynomialLabel::PermutationFixed(i), *com.0[0].as_point());
+        fixed_bases.insert(PolynomialLabel::PermutationFixed(i), *com.as_point());
     }
 
     fixed_bases.insert(PolynomialLabel::Custom("-G".into()), -S::C::generator());

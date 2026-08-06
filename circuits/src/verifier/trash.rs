@@ -16,11 +16,7 @@
 //!
 //! The "expressions" part is dealt with in our `expressions/` directory.
 
-use midnight_proofs::{
-    circuit::Layouter,
-    plonk::Error,
-    poly::{commitment::Labelable, PolynomialLabel},
-};
+use midnight_proofs::{circuit::Layouter, pcs::Labelable, plonk::Error, poly::PolynomialLabel};
 
 use crate::{
     field::AssignedNative,

@@ -51,9 +51,9 @@ use midnight_curves::serde::SerdeObject;
 pub use prover::*;
 pub use verifier::*;
 
-use crate::poly::{
-    commitment::{Labelable, PolynomialCommitmentScheme},
-    PolynomialLabel,
+use crate::{
+    pcs::{Labelable, PolynomialCommitmentScheme},
+    poly::PolynomialLabel,
 };
 
 /// This is a verifying key which allows for the verification of proofs for a

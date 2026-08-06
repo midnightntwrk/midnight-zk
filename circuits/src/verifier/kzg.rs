@@ -30,8 +30,9 @@ use ff::Field;
 use group::Group;
 use midnight_proofs::{
     circuit::{Layouter, Value},
+    pcs::{FflonkCommitment, Labelable},
     plonk::Error,
-    poly::{commitment::Labelable, pcs::commitment::FflonkBundle, PolynomialLabel},
+    poly::PolynomialLabel,
 };
 
 #[cfg(feature = "truncated-challenges")]
@@ -57,10 +58,8 @@ use crate::{
 // See proofs/src/poly/kzg/commitment.rs
 // -------------------------------------
 
-/// In-circuit analog of [`FflonkBundle`].
-///
-/// Carries a polynomial commitment (or a lazy linear combination of them)
-/// together with its `PolynomialLabel`(s).
+/// In-circuit representation of a single fflonk bundle (or a lazy linear
+/// combination of committed points), together with its `PolynomialLabel`(s).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AssignedKZGCommitment<S: SelfEmulation> {
     /// A single committed point with its label.
@@ -72,27 +71,6 @@ pub enum AssignedKZGCommitment<S: SelfEmulation> {
         Vec<AssignedBoundedScalar<S::F>>,
         Vec<PolynomialLabel>,
     ),
-}
-
-impl<S: SelfEmulation> InnerValue for AssignedKZGCommitment<S> {
-    type Element = FflonkBundle<S::Engine>;
-
-    fn value(&self) -> Value<Self::Element> {
-        match self.clone() {
-            Self::Simple(p, label) => {
-                p.value().map(|p| FflonkBundle::Bundle(*p.get_point(), vec![label]))
-            }
-            Self::Linear(points, scalars, labels) => {
-                let points: Vec<Value<S::C>> =
-                    points.iter().map(|p| p.value().map(|p| *p.get_point())).collect();
-                let scalars: Vec<Value<S::F>> =
-                    scalars.iter().map(|s| s.scalar.value().copied()).collect();
-                Value::from_iter(points)
-                    .zip(Value::from_iter(scalars))
-                    .map(|(ps, ss)| FflonkBundle::Linear(ps, ss, labels))
-            }
-        }
-    }
 }
 
 impl<S: SelfEmulation> AssignedKZGCommitment<S> {
@@ -151,7 +129,7 @@ impl<S: SelfEmulation> AssignedKZGCommitment<S> {
         match self {
             Self::Simple(p, PolynomialLabel::NoLabel) => Self::Simple(p, label),
             Self::Simple(_, existing) => panic!("commitment is already labeled: {existing:?}"),
-            Self::Linear(_, _, _) => panic!("FflonkBundle::Linear cannot be labeled"),
+            Self::Linear(_, _, _) => panic!("Linear commitment cannot be labeled"),
         }
     }
 
@@ -203,7 +181,7 @@ impl<S: SelfEmulation> AssignedKZGCommitment<S> {
 }
 
 /// In-circuit analog of
-/// [`FflonkCommitment`](midnight_proofs::poly::pcs::commitment::FflonkCommitment):
+/// [`FflonkCommitment`](midnight_proofs::pcs::FflonkCommitment):
 /// a commitment to one or more polynomials.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AssignedKZGMultiCommitment<S: SelfEmulation>(pub Vec<AssignedKZGCommitment<S>>);
@@ -240,11 +218,33 @@ impl<S: SelfEmulation> AssignedKZGMultiCommitment<S> {
 }
 
 impl<S: SelfEmulation> InnerValue for AssignedKZGMultiCommitment<S> {
-    type Element = midnight_proofs::poly::pcs::commitment::FflonkCommitment<S::Engine>;
+    type Element = FflonkCommitment<S::Engine>;
 
     fn value(&self) -> Value<Self::Element> {
-        Value::from_iter(self.0.iter().map(|c| c.value()))
-            .map(midnight_proofs::poly::pcs::commitment::FflonkCommitment)
+        // A single `Linear` inner → native `Linear`; otherwise every inner is
+        // `Simple`, giving a native `Regular` with one (point, [label]) pair
+        // each.
+        if let [AssignedKZGCommitment::Linear(points, scalars, labels)] = self.0.as_slice() {
+            let points: Vec<Value<S::C>> =
+                points.iter().map(|p| p.value().map(|p| *p.get_point())).collect();
+            let scalars: Vec<Value<S::F>> =
+                scalars.iter().map(|s| s.scalar.value().copied()).collect();
+            let labels = labels.clone();
+            Value::from_iter(points)
+                .zip(Value::from_iter(scalars))
+                .map(move |(ps, ss)| FflonkCommitment::Linear(ps, ss, labels))
+        } else {
+            let pairs = self.0.iter().map(|c| match c {
+                AssignedKZGCommitment::Simple(p, label) => {
+                    let label = label.clone();
+                    p.value().map(move |p| (*p.get_point(), vec![label]))
+                }
+                AssignedKZGCommitment::Linear(..) => {
+                    unreachable!("multi-element FflonkCommitment cannot contain a Linear bundle")
+                }
+            });
+            Value::from_iter(pairs).map(FflonkCommitment::Regular)
+        }
     }
 }
 
@@ -275,8 +275,7 @@ impl<S: SelfEmulation> InCircuitHomomorphicCommitment<S> for AssignedKZGMultiCom
         scalar_chip: &S::ScalarChip,
         scalar: &AssignedNative<S::F>,
     ) -> Result<Self, Error> {
-        self.assert_single();
-        let inner = self.0.into_iter().next().unwrap().mul(layouter, scalar_chip, scalar)?;
+        let inner = self.into_single().mul(layouter, scalar_chip, scalar)?;
         Ok(Self(vec![inner]))
     }
 
@@ -286,13 +285,7 @@ impl<S: SelfEmulation> InCircuitHomomorphicCommitment<S> for AssignedKZGMultiCom
         scalar_chip: &S::ScalarChip,
         other: Self,
     ) -> Result<Self, Error> {
-        self.assert_single();
-        other.assert_single();
-        let inner = self.0.into_iter().next().unwrap().add(
-            layouter,
-            scalar_chip,
-            other.0.into_iter().next().unwrap(),
-        )?;
+        let inner = self.into_single().add(layouter, scalar_chip, other.into_single())?;
         Ok(Self(vec![inner]))
     }
 }
@@ -497,7 +490,7 @@ pub(crate) fn multi_prepare_kzg<S: SelfEmulation>(
     #[cfg(feature = "fewer-point-sets")]
     let queries = &{
         let pairs: Vec<_> = queries.iter().map(|q| (q.label.clone(), q.point.clone())).collect();
-        let dummy_openings = midnight_proofs::poly::pcs::compute_dummy_queries(&pairs);
+        let dummy_openings = midnight_proofs::pcs::compute_dummy_queries(&pairs);
         let mut queries = queries.to_vec();
         for (idx, dummy_point) in dummy_openings {
             queries.push(VerifierQuery {

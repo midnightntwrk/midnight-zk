@@ -24,11 +24,9 @@ use midnight_circuits::{
 };
 use midnight_proofs::{
     circuit::{Layouter, Value},
+    pcs::{params::ParamsVerifierKZG, FflonkCommitment},
     plonk::{self, ConstraintSystem, Error},
-    poly::{
-        pcs::{params::ParamsVerifierKZG, FflonkCommitment},
-        EvaluationDomain, PolynomialLabel,
-    },
+    poly::{EvaluationDomain, PolynomialLabel},
     transcript::{CircuitTranscript, Transcript},
     utils::SerdeFormat,
 };
