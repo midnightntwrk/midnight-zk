@@ -28,7 +28,7 @@ rayon = { workspace = true }
 
 num-bigint = { version = "0.4" }
 num-traits = "0.2"
-base64 = "0.13.1"
+base64 = "0.23.1"
 bincode = "2.0"
 hex-literal = "1.1"
 
