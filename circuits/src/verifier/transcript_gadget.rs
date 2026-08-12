@@ -103,8 +103,7 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
     }
 
     /// Absorbs a commitment into the transcript, one inner polynomial point at
-    /// a time (the absorbed input never includes the multi-commitment's
-    /// length prefix, matching the off-circuit `Hashable::to_input`).
+    /// a time, matching the off-circuit `Hashable::to_input`.
     pub fn common_commitment(
         &mut self,
         layouter: &mut impl Layouter<S::F>,
@@ -143,9 +142,6 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
     /// Reads `labels.len()` curve points from the prover transcript (one per
     /// polynomial held by the commitment), absorbs them into the running hash
     /// state, and tags each polynomial with its label.
-    ///
-    /// Commitments are not length-prefixed on the wire; the label count gives
-    /// the number of polynomials (`1` unless the commitment is batched).
     ///
     /// # Warning
     ///

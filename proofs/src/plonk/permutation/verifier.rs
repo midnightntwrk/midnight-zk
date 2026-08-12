@@ -36,13 +36,8 @@ impl Argument {
     {
         let chunk_len = vk.cs_degree - 2;
 
-        let permutation_product_commitments = self
-            .columns
-            .chunks(chunk_len)
-            .enumerate()
-            .map(|(i, _)| {
-                CS::read_commitment(transcript, &[PolynomialLabel::PermutationAccumulator(i)])
-            })
+        let permutation_product_commitments = (0..self.columns.len().div_ceil(chunk_len))
+            .map(|i| CS::read_commitment(transcript, &[PolynomialLabel::PermutationAccumulator(i)]))
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(Committed {

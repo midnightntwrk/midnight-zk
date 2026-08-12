@@ -99,9 +99,8 @@ pub trait InCircuitPCS<S: SelfEmulation>: Sized + Clone + Debug {
         label: PolynomialLabel,
     ) -> Result<Self::AssignedCommitment, Error>;
 
-    /// Reads one commitment (to `labels.len()` polynomials) from the proof
-    /// transcript, tagging each polynomial with its label. Commitments are not
-    /// length-prefixed on the wire; the label count gives the polynomial count.
+    /// Reads one commitment to `labels.len()` polynomials from the proof
+    /// transcript, tagging each polynomial with its label.
     fn read_commitment(
         transcript: &mut TranscriptGadget<S>,
         layouter: &mut impl Layouter<S::F>,

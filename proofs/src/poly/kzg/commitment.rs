@@ -124,35 +124,21 @@ where
     }
 }
 
-impl<E: MultiMillerLoop> KZGCommitment<E> {
-    /// Attaches `label` to a freshly-deserialized (`NoLabel`) commitment.
-    ///
-    /// # Panics
-    ///
-    /// If the commitment is not `Simple` or if it was already labeled.
-    pub(super) fn label(self, label: PolynomialLabel) -> Self {
-        match self {
-            Self::Simple(p, PolynomialLabel::NoLabel) => Self::Simple(p, label),
-            Self::Simple(_, existing) => panic!("commitment is already labeled: {existing:?}"),
-            Self::Linear(_, _, _) => panic!("KZGCommitment::Linear cannot be labeled"),
-        }
-    }
-}
-
 /// Only `Simple` commitments are serialized; see the type-level doc for why
 /// `Linear` is never written to or read from a proof directly.
 ///
-/// Labels are not part of the serialized form; deserialized commitments receive
-/// [`PolynomialLabel::NoLabel`] and must be labeled at the call site.
+/// Labels are not part of the serialized form, so `read` is unimplemented:
+/// deserializing a commitment without its labels would produce a value that
+/// cannot reach the MSM layer. Use `deserialize_commitment` instead, which
+/// labels each polynomial as it reads it.
 impl<E: MultiMillerLoop> ProcessedSerdeObject for KZGCommitment<E>
 where
     E::G1: Default + ProcessedSerdeObject,
 {
-    fn read<R: io::Read>(reader: &mut R, format: SerdeFormat) -> io::Result<Self> {
-        Ok(Self::Simple(
-            E::G1::read(reader, format)?,
-            PolynomialLabel::NoLabel,
-        ))
+    fn read<R: io::Read>(_reader: &mut R, _format: SerdeFormat) -> io::Result<Self> {
+        unimplemented!(
+            "use `PolynomialCommitmentScheme::deserialize_commitment` to read a labeled commitment"
+        )
     }
 
     fn write<W: io::Write>(&self, writer: &mut W, format: SerdeFormat) -> io::Result<()> {
@@ -284,20 +270,18 @@ where
 }
 
 /// The inner per-polynomial `KZGCommitment`s, concatenated with no length
-/// prefix: a single-polynomial commitment serializes exactly like its inner
-/// commitment. The number of polynomials is therefore not recoverable from the
-/// bytes alone; `read` deserializes a single polynomial. Commitments to several
-/// polynomials are read via `read_commitment`, whose `labels` argument supplies
-/// the polynomial count.
-///
-/// Labels are not part of the serialized form; deserialized commitments receive
-/// [`PolynomialLabel::NoLabel`] and are labeled by the reader.
+/// prefix, so the polynomial count is not recoverable from the bytes. `read` is
+/// therefore unimplemented; commitments are read through `read_commitment`
+/// (from a transcript) or `deserialize_commitment` (from keys), whose `labels`
+/// argument supplies the count and tags each polynomial.
 impl<E: MultiMillerLoop> ProcessedSerdeObject for KZGMultiCommitment<E>
 where
     E::G1: Default + ProcessedSerdeObject,
 {
-    fn read<R: io::Read>(reader: &mut R, format: SerdeFormat) -> io::Result<Self> {
-        Ok(Self(vec![KZGCommitment::<E>::read(reader, format)?]))
+    fn read<R: io::Read>(_reader: &mut R, _format: SerdeFormat) -> io::Result<Self> {
+        unimplemented!(
+            "use `PolynomialCommitmentScheme::deserialize_commitment` to read a labeled commitment"
+        )
     }
 
     fn write<W: io::Write>(&self, writer: &mut W, format: SerdeFormat) -> io::Result<()> {

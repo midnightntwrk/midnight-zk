@@ -137,7 +137,10 @@ where
             .iter()
             .map(|label| {
                 let com: KZGMultiCommitment<E> = transcript.read()?;
-                Ok(com.into_single().label(label.clone()))
+                Ok(KZGCommitment::Simple(
+                    com.into_single().into_point(),
+                    label.clone(),
+                ))
             })
             .collect::<io::Result<Vec<_>>>()?;
         Ok(KZGMultiCommitment(inners))
@@ -151,8 +154,8 @@ where
         let inners = labels
             .iter()
             .map(|label| {
-                let com = KZGCommitment::<E>::read(reader, format)?;
-                Ok(com.label(label.clone()))
+                let point = E::G1::read(reader, format)?;
+                Ok(KZGCommitment::Simple(point, label.clone()))
             })
             .collect::<io::Result<Vec<_>>>()?;
         Ok(KZGMultiCommitment(inners))
@@ -447,11 +450,12 @@ where
             (q_coms, q_eval_sets, point_sets)
         };
 
-        let f_com = transcript
+        let f_point: E::G1 = transcript
             .read::<KZGMultiCommitment<E>>()
             .map_err(|_| Error::SamplingError)?
             .into_single()
-            .label(PolynomialLabel::Custom("kzg_batch".into()));
+            .into_point();
+        let f_com = KZGCommitment::Simple(f_point, PolynomialLabel::Custom("kzg_batch".into()));
 
         // Sample a challenge x_3 for checking that f(X) was committed to
         // correctly.
