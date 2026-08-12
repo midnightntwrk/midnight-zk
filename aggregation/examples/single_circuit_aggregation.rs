@@ -288,8 +288,8 @@ impl IvcTransition for ProofAggregation {
         // Assign inner VK as a hard-coded constant.
         let inner_vk: AssignedVk<S, InCircuitKZG<S>> = self.std_lib.verifier().assign_fixed_vk(
             layouter,
-            &self.inner_ctx.domain,
             &self.inner_ctx.cs,
+            &self.inner_ctx.domain,
             self.inner_ctx.vk.vk().transcript_repr(),
         )?;
 

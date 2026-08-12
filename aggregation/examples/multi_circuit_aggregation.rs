@@ -13,9 +13,7 @@
 //! - It must use the [`ZkStdLibArch`] chosen at IVC setup time.
 //! - It must encode its statement as a single formatted public input.
 //!
-//! Inner circuits may have *different* sizes `K`: the verifier gadget
-//! witnesses each VK's evaluation domain (`k`, `omega`), so a single shared
-//! constraint system (whose shape is independent of `K`) suffices. This
+//! Inner circuits may have *different* sizes `K`. Concretely, this
 //! example aggregates a SHA-256 circuit and a Poseidon circuit of different
 //! sizes.
 //!
@@ -64,18 +62,18 @@ fn main() {
     const IVC_K: u32 = 19;
 
     // Inner circuits may have different sizes.
-    const SHA_K: u32 = 13;
-    const POSEIDON_K: u32 = 14;
+    const SHA_CIRCUIT_K: u32 = 13;
+    const POSEIDON_CIRCUIT_K: u32 = 14;
 
     // The IVC aggregator only requires a shared SRS and architecture. It does
     // not need to know which circuits will be aggregated. Inner circuits can be
     // introduced, proved and folded in on-the-fly, after IVC initialization.
     // Each circuit is proved against an SRS of its own size.
-    let sha_srs = load_srs(SrsSource::Filecoin, SHA_K, cs_degree(inner_arch()));
-    let poseidon_srs = load_srs(SrsSource::Filecoin, POSEIDON_K, cs_degree(inner_arch()));
+    let sha_srs = load_srs(SrsSource::Filecoin, SHA_CIRCUIT_K, cs_degree(inner_arch()));
+    let poseidon_srs = load_srs(SrsSource::Filecoin, POSEIDON_CIRCUIT_K, cs_degree(inner_arch()));
     // Note: verifier params from the SRS do not depend on `k`.
     let inner_ctx =
-        InnerCircuitsContext::new(inner_arch(), POSEIDON_K, poseidon_srs.verifier_params());
+        InnerCircuitsContext::new(inner_arch(), POSEIDON_CIRCUIT_K, poseidon_srs.verifier_params());
 
     let aggregator_srs = load_srs(
         SrsSource::Midnight,

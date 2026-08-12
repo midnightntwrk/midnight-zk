@@ -62,15 +62,21 @@ impl State {
     }
 }
 
+/// In-circuit representation of a verifying key.
+#[derive(Clone, Debug)]
+struct AssignedVk {
+    repr: AssignedNative<F>,
+    k: AssignedNative<F>,
+    omega: AssignedNative<F>,
+}
+
 /// In-circuit counterpart of [`State`] (constant size).
 ///
 /// Contains only the vk from the last claim, the claims hash and the
 /// accumulator, the full list of claims is not represented in-circuit.
 #[derive(Clone, Debug)]
 pub struct AssignedState {
-    last_vk_repr: AssignedNative<F>,
-    last_vk_k: AssignedNative<F>,
-    last_vk_omega: AssignedNative<F>,
+    last_vk: AssignedVk,
     claims_hash: AssignedNative<F>,
     inner_acc: AssignedAccumulator<S>,
 }
@@ -208,10 +214,14 @@ impl IvcIO for ProofAggregation {
             value.as_ref().map(|s| s.inner_acc.clone()),
         )?;
 
+        let last_vk = AssignedVk {
+            repr: last_vk_repr,
+            omega: last_vk_omega,
+            k: last_vk_k,
+        };
+
         Ok(AssignedState {
-            last_vk_repr,
-            last_vk_k,
-            last_vk_omega,
+            last_vk,
             claims_hash,
             inner_acc,
         })
@@ -232,9 +242,9 @@ impl IvcIO for ProofAggregation {
         state: &AssignedState,
     ) -> Result<Vec<AssignedNative<F>>, Error> {
         Ok([
-            self.std_lib.as_public_input(layouter, &state.last_vk_repr)?,
-            self.std_lib.as_public_input(layouter, &state.last_vk_k)?,
-            self.std_lib.as_public_input(layouter, &state.last_vk_omega)?,
+            self.std_lib.as_public_input(layouter, &state.last_vk.repr)?,
+            self.std_lib.as_public_input(layouter, &state.last_vk.k)?,
+            self.std_lib.as_public_input(layouter, &state.last_vk.omega)?,
             self.std_lib.as_public_input(layouter, &state.claims_hash)?,
             self.std_lib.verifier().as_public_input(layouter, &state.inner_acc)?,
         ]
@@ -399,9 +409,11 @@ impl IvcTransition for ProofAggregation {
             .poseidon(layouter, &[vk_hash, statement, state.claims_hash.clone()])?;
 
         Ok(AssignedState {
-            last_vk_repr: assigned_vk.transcript_repr().clone(),
-            last_vk_k: assigned_vk.k().clone(),
-            last_vk_omega: assigned_vk.omega().clone(),
+            last_vk: AssignedVk {
+                repr: assigned_vk.transcript_repr().clone(),
+                k: assigned_vk.k().clone(),
+                omega: assigned_vk.omega().clone(),
+            },
             claims_hash,
             inner_acc,
         })

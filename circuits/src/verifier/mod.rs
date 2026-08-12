@@ -70,8 +70,10 @@ struct AssignedEvaluationDomain<S: SelfEmulation> {
 /// Type for in-circuit verifying keys.
 ///
 /// This type carries off-circuit the information about the constraint system.
-/// The in-circuit fields are the transcript representation, the fixed
-/// commitments, permutation commitments, and the evaluation domain.
+/// The in-circuit fields are the transcript representation and the evaluation
+/// domain. The fixed and permutation commitments are typed as
+/// [AssignedKZGCommitment], but they are "empty", i.e. of the `Fixed` variant:
+/// they only carry a label, no assigned point.
 ///
 /// The only entry-point for this function is intended to be
 /// [VerifierGadget::assign_vk_as_public_input]. This is possible because fixed
@@ -103,9 +105,9 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> Instantiable<S::F> for AssignedVk<S
     fn as_public_input(vk: &VerifyingKey<S>) -> Vec<S::F> {
         let domain = vk.get_domain();
         [
-            AssignedNative::<S::F>::as_public_input(&vk.transcript_repr()),
             AssignedNative::<S::F>::as_public_input(&S::F::from(domain.k() as u64)),
             AssignedNative::<S::F>::as_public_input(&domain.get_omega()),
+            AssignedNative::<S::F>::as_public_input(&vk.transcript_repr()),
         ]
         .concat()
     }
@@ -117,17 +119,17 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> Instantiable<S::F> for AssignedVk<S
 }
 
 impl<S: SelfEmulation, PCS: InCircuitPCS<S>> AssignedVk<S, PCS> {
-    /// The assigned `transcript_repr` cell of this verifying key.
+    /// The assigned `transcript_repr` of this verifying key.
     pub fn transcript_repr(&self) -> &AssignedNative<S::F> {
         &self.transcript_repr
     }
 
-    /// The assigned `k` cell.
+    /// The assigned `k`.
     pub fn k(&self) -> &AssignedNative<S::F> {
         &self.domain.k
     }
 
-    /// The assigned `omega` cell.
+    /// The assigned `omega`.
     pub fn omega(&self) -> &AssignedNative<S::F> {
         &self.domain.omega
     }
