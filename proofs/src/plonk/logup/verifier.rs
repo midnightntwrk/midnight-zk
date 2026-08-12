@@ -49,56 +49,33 @@ pub struct Evaluated<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
     pub(crate) evaluated: logup::Evaluated<F>,
 }
 
-impl<F: WithSmallOrderMulGroup<3>> ChunkedArgument<F> {
-    /// Reads the multiplicities commitment from the transcript.
-    pub(in crate::plonk) fn read_multiplicities<T: Transcript, CS: PolynomialCommitmentScheme<F>>(
-        &self,
-        argument_index: usize,
-        transcript: &mut T,
-    ) -> Result<CommittedMultiplicities<F, CS>, Error>
-    where
-        CS::Commitment: Hashable<T::Hash>,
-    {
-        let multiplicities = CS::read_commitment(
-            transcript,
-            &[PolynomialLabel::LogupMultiplicities(argument_index)],
-        )?;
-        Ok(CommittedMultiplicities { multiplicities })
-    }
-}
-
-impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>>
-    CommittedMultiplicities<F, CS>
+/// Reads the batched multiplicities commitment for all logup arguments in one
+/// transcript entry (one point per argument) and hands each argument a clone of
+/// the shared commitment. The shared object carries the full label list (one
+/// `LogupMultiplicities(arg)` per arg); per-arg queries route to the correct
+/// sub-bundle via the query label. Mirrors the prover's batched `commit_many`.
+pub(in crate::plonk) fn read_multiplicities<F, CS, T>(
+    args: &[ChunkedArgument<F>],
+    transcript: &mut T,
+) -> Result<Vec<CommittedMultiplicities<F, CS>>, Error>
+where
+    F: WithSmallOrderMulGroup<3>,
+    CS: PolynomialCommitmentScheme<F>,
+    CS::Commitment: Hashable<T::Hash>,
+    T: Transcript,
 {
-    /// Reads `nb_chunks` helper commitments and one accumulator commitment
-    /// from the transcript.
-    pub(in crate::plonk) fn read_commitment<T: Transcript>(
-        self,
-        argument_index: usize,
-        nb_chunks: usize,
-        transcript: &mut T,
-    ) -> Result<Committed<F, CS>, Error>
-    where
-        CS::Commitment: Hashable<T::Hash>,
-    {
-        let helper_polys = (0..nb_chunks)
-            .map(|j| {
-                CS::read_commitment(
-                    transcript,
-                    &[PolynomialLabel::LogupHelper(argument_index, j)],
-                )
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        let accumulator = CS::read_commitment(
-            transcript,
-            &[PolynomialLabel::LogupAggregator(argument_index)],
-        )?;
-
-        Ok(Committed {
-            argument_index,
-            multiplicities: self.multiplicities,
-            helper_polys,
-            accumulator,
+    if args.is_empty() {
+        return Ok(Vec::new());
+    }
+    let labels: Vec<_> = (0..args.len()).map(PolynomialLabel::LogupMultiplicities).collect();
+    let shared = CS::read_commitment(transcript, &labels)?;
+    Ok(args
+        .iter()
+        .map(|_| CommittedMultiplicities {
+            multiplicities: shared.clone(),
+        })
+        .collect())
+}
         })
     }
 }

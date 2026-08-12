@@ -132,72 +132,34 @@ where
         .map(|_| (0..mult_blinding_count).map(|_| F::random(&mut rng)).collect())
         .collect();
 
-    // Commit to the multiplicities columns. Compute and transcript write are
-    // now separate API calls — measure them together to match the prior
-    // `commit_multiplicities` shape.
+    // Commit to the multiplicities columns.
     let lookups: Vec<logup::prover::ComputedMultiplicities<F>> = {
         group.bench_function("Commit lookup multiplicities", |b| {
             b.iter_batched(
                 || (transcript.clone(), mult_blindings.clone()),
-                |(mut t, mult_blinds)| -> Result<(), Error> {
-                    let logup_args: Vec<_> = pk
-                        .vk
-                        .cs
-                        .lookups
-                        .iter()
-                        .map(|l| l.chunk_by_degree(pk.vk.cs.degree()))
-                        .collect();
-                    let results: Vec<_> = logup_args
-                        .par_iter()
-                        .enumerate()
-                        .zip(mult_blinds.par_iter())
-                        .map(|((argument_index, logup), blinds)| {
-                            logup.compute_multiplicities_parallel(
-                                argument_index,
-                                pk,
-                                params,
-                                theta,
-                                &advice.advice_polys,
-                                &pk.fixed_values,
-                                &instance.instance_values,
-                                blinds,
-                            )
-                        })
-                        .collect::<Result<Vec<_>, Error>>()?;
-                    for (_, commitment) in &results {
-                        t.write(commitment)?;
-                    }
-                    Ok(())
+                |(mut t, mult_blinds)| {
+                    let _ = logup::prover::commit_multiplicities(
+                        params,
+                        pk,
+                        theta,
+                        &advice.advice_polys,
+                        &instance.instance_values,
+                        &mult_blinds,
+                        &mut t,
+                    );
                 },
                 criterion::BatchSize::LargeInput,
             )
         });
-        let logup_args: Vec<_> =
-            pk.vk.cs.lookups.iter().map(|l| l.chunk_by_degree(pk.vk.cs.degree())).collect();
-        let results: Vec<_> = logup_args
-            .par_iter()
-            .enumerate()
-            .zip(mult_blindings.par_iter())
-            .map(|((argument_index, logup), blinds)| {
-                logup.compute_multiplicities_parallel(
-                    argument_index,
-                    pk,
-                    params,
-                    theta,
-                    &advice.advice_polys,
-                    &pk.fixed_values,
-                    &instance.instance_values,
-                    blinds,
-                )
-            })
-            .collect::<Result<Vec<_>, Error>>()?;
-        results
-            .into_iter()
-            .map(|(c, commitment)| {
-                transcript.write(&commitment)?;
-                Ok::<_, Error>(c)
-            })
-            .collect::<Result<Vec<_>, _>>()?
+        logup::prover::commit_multiplicities(
+            params,
+            pk,
+            theta,
+            &advice.advice_polys,
+            &instance.instance_values,
+            &mult_blindings,
+            transcript,
+        )?
     };
 
     // Sample beta challenge

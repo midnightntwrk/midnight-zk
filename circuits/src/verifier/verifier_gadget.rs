@@ -357,28 +357,25 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         // Sample theta challenge for keeping lookup columns linearly independent
         let theta = transcript.squeeze_challenge(layouter)?;
 
-        let multiplicities_committed = cs
-            .lookups()
-            .iter()
-            .enumerate()
-            .map(|(i, _l)| lookup::read_multiplicities(i, layouter, &mut transcript))
-            .collect::<Result<Vec<_>, Error>>()?;
+        // Read the batched multiplicities commitment.
+        let multiplicities_committed =
+            read_multiplicities::<S, PCS>(cs.lookups().len(), layouter, &mut transcript)?;
 
         let beta = transcript.squeeze_challenge(layouter)?;
         let gamma = transcript.squeeze_challenge(layouter)?;
 
         let permutation_committed =
-            // Hash each permutation product commitment
             permutation::read_product_commitments(layouter, &mut transcript, cs)?;
 
-        let lookups_committed = multiplicities_committed
+        // Read one batched helper commitment for all (arg, chunk) helpers, then
+        // one batched aggregator commitment.
+        let args_with_multiplicities: Vec<_> = multiplicities_committed
             .into_iter()
             .zip(cs.lookups().iter())
             .enumerate()
             .map(|(i, (m, batch))| {
                 let nb_flat = batch.num_chunks(assigned_vk.cs_degree);
-                // Hash each lookup product commitment
-                m.read_commitment(i, nb_flat, layouter, &mut transcript)
+                (i, nb_flat, m)
             })
             .collect::<Result<Vec<_>, _>>()?;
 

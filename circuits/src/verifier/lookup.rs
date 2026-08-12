@@ -57,18 +57,22 @@ pub(crate) struct Evaluated<S: SelfEmulation, PCS: InCircuitPCS<S>> {
     pub(crate) evaluated: LookupEvaluated<S>,
 }
 
-/// Reads the prover's multiplicities commitment from the transcript.
+/// Reads the batched multiplicities commitment for all logup arguments.
 pub(crate) fn read_multiplicities<S: SelfEmulation, PCS: InCircuitPCS<S>>(
-    argument_index: usize,
+    num_args: usize,
     layouter: &mut impl Layouter<S::F>,
     transcript_gadget: &mut TranscriptGadget<S>,
-) -> Result<CommittedMultiplicities<S, PCS>, Error> {
-    let multiplicities = PCS::read_commitment(
-        transcript_gadget,
-        layouter,
-        &[PolynomialLabel::LogupMultiplicities(argument_index)],
-    )?;
-    Ok(CommittedMultiplicities { multiplicities })
+) -> Result<Vec<CommittedMultiplicities<S, PCS>>, Error> {
+    if num_args == 0 {
+        return Ok(Vec::new());
+    }
+    let labels: Vec<_> = (0..num_args).map(PolynomialLabel::LogupMultiplicities).collect();
+    let shared = PCS::read_commitment(transcript_gadget, layouter, &labels)?;
+    Ok((0..num_args)
+        .map(|_| CommittedMultiplicities {
+            multiplicities: shared.clone(),
+        })
+        .collect())
 }
 
 impl<S: SelfEmulation, PCS: InCircuitPCS<S>> CommittedMultiplicities<S, PCS> {
