@@ -194,7 +194,7 @@ where
     );
 
     // Write permutation commitments first.
-    let permutations = perm_computed.write_and_convert(domain, transcript)?;
+    let permutations = perm_computed.write_and_convert::<T, CS>(domain, transcript)?;
 
     // Then write logup commitments and convert to coefficient form.
     let (computed, all_helper_commitments) = logup_computed?;

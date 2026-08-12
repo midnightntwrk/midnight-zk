@@ -35,10 +35,18 @@ impl Argument {
         CS::Commitment: Hashable<T::Hash>,
     {
         let chunk_len = vk.cs_degree - 2;
+        let num_chunks = self.columns.len().div_ceil(chunk_len);
 
-        let permutation_product_commitments = (0..self.columns.len().div_ceil(chunk_len))
-            .map(|i| CS::read_commitment(transcript, &[PolynomialLabel::PermutationAccumulator(i)]))
-            .collect::<Result<Vec<_>, _>>()?;
+        // One batched read for all permutation-accumulator sets; each set's
+        // query routes to its own sub-bundle via `PermutationAccumulator(i)`.
+        let permutation_product_commitments = if num_chunks == 0 {
+            Vec::new()
+        } else {
+            let labels: Vec<_> =
+                (0..num_chunks).map(PolynomialLabel::PermutationAccumulator).collect();
+            let shared = CS::read_commitment(transcript, &labels)?;
+            vec![shared; num_chunks]
+        };
 
         Ok(Committed {
             permutation_product_commitments,
