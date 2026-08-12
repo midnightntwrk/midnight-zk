@@ -17,6 +17,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 
 ### Changed
+* Adapt the in-circuit verifier gadget to the batched cross-argument commitment layout [#493](https://github.com/midnightntwrk/midnight-zk/pull/493)
 * Removes the Labelable trait [#491](https://github.com/midnightntwrk/midnight-zk/pull/491)
 * Migrate to Rust edition 2024; declare MSRV 1.90. Both are now inherited from the workspace [#508](https://github.com/midnightntwrk/midnight-zk/pull/508)
 * `circuit_modeling` derives the commitment byte length from `KZGCommitmentScheme` via `circuit_model_with` instead of hard-coded sizes [#440](https://github.com/midnightntwrk/midnight-zk/pull/440)
