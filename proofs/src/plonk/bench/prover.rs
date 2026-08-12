@@ -201,7 +201,7 @@ where
                         gamma,
                         perm_blinds,
                     );
-                    let _ = computed.write_and_convert(domain, &mut t)?;
+                    let _ = computed.write_and_convert::<_, CS>(domain, &mut t)?;
                     Ok(())
                 },
                 criterion::BatchSize::LargeInput,
@@ -218,7 +218,7 @@ where
             gamma,
             perm_blindings,
         );
-        computed.write_and_convert(domain, transcript)?
+        computed.write_and_convert::<_, CS>(domain, transcript)?
     };
 
     // Pre-generate logderivative blindings, one vector per lookup.

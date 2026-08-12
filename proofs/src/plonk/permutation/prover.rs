@@ -33,27 +33,28 @@ pub(crate) struct Committed<F: PrimeField> {
 }
 
 /// Intermediate result from the computation stage of the permutation argument.
-/// Holds commitments and Lagrange-form z polynomials, ready to be written to
-/// the transcript and converted to coefficient form.
+/// Holds the batched commitment to all z polynomials and their Lagrange-form
+/// values, ready to be written to the transcript and converted to coefficient
+/// form.
 pub(crate) struct Computed<F: PrimeField, C> {
-    pub(crate) commitments: Vec<C>,
+    pub(crate) commitment: C,
     z_polys: Vec<Polynomial<F, LagrangeCoeff>>,
 }
 
 impl<F: WithSmallOrderMulGroup<3>, C> Computed<F, C> {
-    /// Write commitments to the transcript in order, then convert z polynomials
-    /// to coefficient form.
-    pub(crate) fn write_and_convert<T: Transcript>(
+    /// Write the batched commitment to the transcript, then convert z
+    /// polynomials to coefficient form.
+    pub(crate) fn write_and_convert<T, CS>(
         self,
         domain: &EvaluationDomain<F>,
         transcript: &mut T,
     ) -> Result<Committed<F>, Error>
     where
+        T: Transcript,
+        CS: PolynomialCommitmentScheme<F, Commitment = C>,
         C: Hashable<T::Hash>,
     {
-        for commitment in &self.commitments {
-            transcript.write(commitment)?;
-        }
+        CS::write_commitment(transcript, &self.commitment)?;
 
         let sets: Vec<_> = self
             .z_polys
@@ -216,13 +217,11 @@ impl Argument {
             corrections.push(prev);
         }
 
-        // Step C: Apply corrections and commit.
-        //
-        let committed: Vec<(CS::Commitment, Polynomial<F, LagrangeCoeff>)> = z_and_uncorrected
+        // Step C: Apply corrections.
+        let z_polys: Vec<Polynomial<F, LagrangeCoeff>> = z_and_uncorrected
             .into_par_iter()
             .zip(corrections.par_iter())
-            .enumerate()
-            .map(|(i, ((mut z, _), &correction))| {
+            .map(|((mut z, _), &correction)| {
                 // Multiply every z value by the correction factor.
                 if correction != F::ONE {
                     parallelize(&mut z, |z, _| {
@@ -232,23 +231,24 @@ impl Argument {
                     });
                 }
 
-                // perm_z has long contiguous-constant runs (the identity-permutation
-                // tail and interior gaps), so we commit in the LagrangeDelta basis.
-                // The Lagrange form is needed downstream for the linearization step,
-                // so we borrow into a transient delta buffer rather than transforming
-                // in place and prefix-summing back.
-                let commitment = CS::commit(
-                    params,
-                    &z.to_delta(),
-                    PolynomialLabel::PermutationAccumulator(i),
-                );
-                (commitment, z)
+                z
             })
             .collect();
 
-        let (commitments, z_polys) = committed.into_iter().unzip();
+        // perm_z has long contiguous-constant runs (the identity-permutation
+        // tail and interior gaps), so we commit in the LagrangeDelta basis. The
+        // Lagrange form is needed downstream for the linearization step, so we
+        // borrow into a transient delta buffer rather than transforming in place
+        // and prefix-summing back. All accumulators are batched into one
+        // `commit_many` call.
+        let delta_polys: Vec<_> = z_polys.par_iter().map(|z| z.to_delta()).collect();
+        let delta_refs: Vec<_> = delta_polys.iter().collect();
+        let labels: Vec<_> =
+            (0..z_polys.len()).map(PolynomialLabel::PermutationAccumulator).collect();
+        let commitment = CS::commit_many(params, &delta_refs, &labels);
+
         Computed {
-            commitments,
+            commitment,
             z_polys,
         }
     }
