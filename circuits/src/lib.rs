@@ -31,6 +31,7 @@ pub mod ecc;
 pub mod field;
 pub mod hash;
 pub mod map;
+pub mod mmr;
 pub mod parsing;
 pub mod vec;
 pub mod verifier;
@@ -67,6 +68,10 @@ pub mod types {
             foreign::AssignedField,
             native::{AssignedBit, AssignedByte},
             AssignedNative,
+        },
+        mmr::{
+            cpu::{MmrState, SummitPath},
+            mmr_gadget::{AssignedMmr, AssignedSummitPath},
         },
         utils::{
             types::{InnerConstants, InnerValue, Instantiable},
