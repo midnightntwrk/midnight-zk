@@ -56,7 +56,7 @@ pub fn compute_vk_hash(vk: &MidnightVK) -> F {
     let to_raw = Hashable::<PoseidonState<F>>::to_input;
 
     let domain = vk.get_domain();
-    let vk_repr = vec![
+    let in_circuit_vk = vec![
         vk.transcript_repr(),
         F::from(domain.k() as u64),
         domain.get_omega(),
@@ -68,7 +68,7 @@ pub fn compute_vk_hash(vk: &MidnightVK) -> F {
     );
     let base_inputs: Vec<F> = labels.iter().flat_map(|label| to_raw(&bases[label])).collect();
 
-    <PoseidonChip<F> as HashCPU<F, F>>::hash(&[vk_repr, base_inputs].concat())
+    <PoseidonChip<F> as HashCPU<F, F>>::hash(&[in_circuit_vk, base_inputs].concat())
 }
 
 /// In-circuit counterpart of [`compute_vk_hash`].

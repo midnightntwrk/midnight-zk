@@ -93,9 +93,9 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> PublicInputInstructions<S::F, Assig
         assigned_vk: &AssignedVk<S, PCS>,
     ) -> Result<Vec<AssignedNative<S::F>>, Error> {
         Ok([
-            self.scalar_chip.as_public_input(layouter, &assigned_vk.transcript_repr)?,
             self.scalar_chip.as_public_input(layouter, assigned_vk.k())?,
             self.scalar_chip.as_public_input(layouter, assigned_vk.omega())?,
+            self.scalar_chip.as_public_input(layouter, &assigned_vk.transcript_repr)?,
         ]
         .concat())
     }
@@ -233,6 +233,12 @@ impl<S: SelfEmulation> VerifierGadget<S> {
     /// is required off-circuit, except for the `transcript_repr` and the
     /// evaluation domain.
     ///
+    /// The domain values `k` and `omega` are *trusted* at this point: this
+    /// function does not check that they are consistent (i.e. that `omega` is a
+    /// primitive `2^k`-th root of unity), nor that they are the ones of the
+    /// verifying key identified by `transcript_repr`. It is the caller's
+    /// responsibility to constrain them.
+    ///
     /// `cs` must be finalized, i.e. its selectors must have been converted to
     /// fixed columns, as in the constraint system of a verifying key.
     pub fn assign_vk_as_public_input<PCS: InCircuitPCS<S>>(
@@ -242,13 +248,13 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         cs: &ConstraintSystem<S::F>,
         transcript_repr_value: Value<S::F>,
     ) -> Result<AssignedVk<S, PCS>, Error> {
-        let transcript_repr =
-            self.scalar_chip.assign_as_public_input(layouter, transcript_repr_value)?;
-
         let [k, omega] =
             domain.map(|d| [S::F::from(d.k() as u64), d.get_omega()]).transpose_array();
         let k = self.scalar_chip.assign_as_public_input(layouter, k)?;
         let omega = self.scalar_chip.assign_as_public_input(layouter, omega)?;
+        let transcript_repr =
+            self.scalar_chip.assign_as_public_input(layouter, transcript_repr_value)?;
+
         let domain = self.derive_domain(layouter, k, omega)?;
 
         self.assemble_vk(cs, domain, transcript_repr)
@@ -508,6 +514,8 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         let omega_inv = &assigned_vk.domain.omega_inv;
         let n = &assigned_vk.domain.n;
         let xn = pow_2_pow_k(layouter, &self.scalar_chip, &x, k)?;
+        // Shared by all calls to `evaluate_lagrange_polynomials` below.
+        let n_inv = self.scalar_chip.inv(layouter, n)?;
 
         let instance_evals = {
             let instance_queries = cs.instance_queries();
@@ -521,7 +529,8 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                 layouter,
                 &self.scalar_chip,
                 omega,
-                n,
+                omega_inv,
+                &n_inv,
                 &x,
                 &xn,
                 (-max_rotation)..(max_instance_len as i32 + min_rotation.abs()),
@@ -609,7 +618,8 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             layouter,
             &self.scalar_chip,
             omega,
-            n,
+            omega_inv,
+            &n_inv,
             &x,
             &xn,
             (-((nr_blinding_factors + 1) as i32))..1,
@@ -942,8 +952,8 @@ pub(crate) mod tests {
 
     #[derive(Clone, Debug)]
     pub struct TestCircuit {
-        // (domain, cs, vk_repr)
-        inner_vk: (Value<EvaluationDomain<F>>, ConstraintSystem<F>, Value<F>),
+        // (cs, domain, vk_repr)
+        inner_vk: (ConstraintSystem<F>, Value<EvaluationDomain<F>>, Value<F>),
         inner_committed_instance: Value<C>,
         inner_instances: Value<[F; NB_INNER_INSTANCES]>,
         inner_proof: Value<Vec<u8>>,
@@ -1041,8 +1051,8 @@ pub(crate) mod tests {
             let assigned_inner_vk: AssignedVk<S, InCircuitKZG<S>> = verifier_chip
                 .assign_vk_as_public_input(
                     &mut layouter,
-                    self.inner_vk.0.clone(),
-                    &self.inner_vk.1,
+                    self.inner_vk.1.clone(),
+                    &self.inner_vk.0,
                     self.inner_vk.2,
                 )?;
 
@@ -1139,8 +1149,8 @@ pub(crate) mod tests {
 
         let circuit = TestCircuit {
             inner_vk: (
-                Value::known(inner_vk.get_domain().clone()),
                 inner_vk.cs().clone(),
+                Value::known(inner_vk.get_domain().clone()),
                 Value::known(inner_vk.transcript_repr()),
             ),
             inner_committed_instance: Value::known(C::identity()),

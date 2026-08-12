@@ -144,21 +144,29 @@ pub(crate) fn truncate<F: CircuitField>(
 /// degree-`n` polynomial such that `L_i(ωⁱ) = 1` and `L_i(ωʲ) = 0` for all
 /// `j ∈ {1, ..., n} \ {i}`.
 ///
+/// The values `w_inv`, `n_inv` and `xn` are taken as arguments (instead of
+/// being derived here) so that they can be computed once and shared by all
+/// calls over the same domain and evaluation point. It is the caller's
+/// responsibility to guarantee that `w_inv = ω⁻¹`, `n_inv = n⁻¹` and `xn = xⁿ`.
+///
+/// It is also the caller's responsibility to guarantee that `|i| < n` for every
+/// `i ∈ i_indices`.
+///
 /// # Unsatisfiable Circuit
 ///
 /// If x^n = 1.
+#[allow(clippy::too_many_arguments)]
 pub fn evaluate_lagrange_polynomials<F: CircuitField>(
     layouter: &mut impl Layouter<F>,
     scalar_chip: &impl FieldInstructions<F, AssignedNative<F>>,
     w: &AssignedNative<F>,
-    n: &AssignedNative<F>,
+    w_inv: &AssignedNative<F>,
+    n_inv: &AssignedNative<F>,
     x: &AssignedNative<F>,
     xn: &AssignedNative<F>,
     i_indices: Range<i32>,
 ) -> Result<Vec<AssignedNative<F>>, Error> {
     // For every i, L_i(X) := (ωⁱ / n) · (Xⁿ - 1) / (X - ωⁱ).
-    let w_inv = scalar_chip.inv(layouter, w)?;
-    let n_inv = scalar_chip.inv(layouter, n)?;
     let xn_minus_one = scalar_chip.add_constant(layouter, xn, -F::ONE)?;
 
     i_indices
@@ -166,11 +174,11 @@ pub fn evaluate_lagrange_polynomials<F: CircuitField>(
             let wi = if i >= 0 {
                 scalar_chip.pow(layouter, w, i as u64)?
             } else {
-                scalar_chip.pow(layouter, &w_inv, (-i) as u64)?
+                scalar_chip.pow(layouter, w_inv, (-i) as u64)?
             };
             let x_minus_wi = scalar_chip.sub(layouter, x, &wi)?;
             let quotient = scalar_chip.div(layouter, &xn_minus_one, &x_minus_wi)?;
-            let wi_over_n = scalar_chip.mul(layouter, &wi, &n_inv, None)?;
+            let wi_over_n = scalar_chip.mul(layouter, &wi, n_inv, None)?;
             scalar_chip.mul(layouter, &quotient, &wi_over_n, None)
         })
         .collect()
