@@ -49,6 +49,21 @@ pub struct Evaluated<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
     pub(crate) evaluated: logup::Evaluated<F>,
 }
 
+/// Lightweight per-arg view passed into [`read_helpers`] — just the argument
+/// index and chunk count, both reconstructible from the verifying key.
+pub(in crate::plonk) struct ChunkedArgRef {
+    pub(in crate::plonk) argument_index: usize,
+    pub(in crate::plonk) num_chunks: usize,
+}
+
+/// Partial state between the batched helper read and the batched aggregator
+/// read.
+pub(in crate::plonk) struct HelpersOnly<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
+    argument_index: usize,
+    multiplicities: CS::Commitment,
+    helper_polys: Vec<CS::Commitment>,
+}
+
 /// Reads the batched multiplicities commitment for all logup arguments in one
 /// transcript entry (one point per argument) and hands each argument a clone of
 /// the shared commitment. The shared object carries the full label list (one
@@ -76,8 +91,82 @@ where
         })
         .collect())
 }
-        })
+
+/// Reads the batched helper commitments for all logup arguments in one
+/// transcript entry (one point per `(arg, chunk)`, in flat `(arg, chunk)`
+/// order). Each helper carries the unique label `LogupHelper(arg, chunk_idx)`;
+/// each per-arg view holds a clone of the shared commitment for each of its
+/// chunks and routes per-chunk queries via that label.
+pub(in crate::plonk) fn read_helpers<F, CS, T>(
+    args_with_multiplicities: Vec<(ChunkedArgRef, CommittedMultiplicities<F, CS>)>,
+    transcript: &mut T,
+) -> Result<Vec<HelpersOnly<F, CS>>, Error>
+where
+    F: WithSmallOrderMulGroup<3>,
+    CS: PolynomialCommitmentScheme<F>,
+    CS::Commitment: Hashable<T::Hash>,
+    T: Transcript,
+{
+    // Build the full label set in (arg, chunk) order, matching the prover's
+    // flat iteration.
+    let mut labels: Vec<PolynomialLabel> = Vec::new();
+    for (arg, _) in &args_with_multiplicities {
+        for chunk_idx in 0..arg.num_chunks {
+            labels.push(PolynomialLabel::LogupHelper(arg.argument_index, chunk_idx));
+        }
     }
+    if labels.is_empty() {
+        // No helpers across any arg — the prover skipped the write.
+        return Ok(args_with_multiplicities
+            .into_iter()
+            .map(|(arg, m)| HelpersOnly {
+                argument_index: arg.argument_index,
+                multiplicities: m.multiplicities,
+                helper_polys: Vec::new(),
+            })
+            .collect());
+    }
+    let shared = CS::read_commitment(transcript, &labels)?;
+    Ok(args_with_multiplicities
+        .into_iter()
+        .map(|(arg, m)| HelpersOnly {
+            argument_index: arg.argument_index,
+            multiplicities: m.multiplicities,
+            helper_polys: vec![shared.clone(); arg.num_chunks],
+        })
+        .collect())
+}
+
+/// Reads the batched aggregator commitment for all logup arguments (one point
+/// per argument) and assembles one [`Committed`] per arg, each holding a clone
+/// of the shared aggregator commitment.
+pub(in crate::plonk) fn read_aggregators<F, CS, T>(
+    helpers: Vec<HelpersOnly<F, CS>>,
+    transcript: &mut T,
+) -> Result<Vec<Committed<F, CS>>, Error>
+where
+    F: WithSmallOrderMulGroup<3>,
+    CS: PolynomialCommitmentScheme<F>,
+    CS::Commitment: Hashable<T::Hash>,
+    T: Transcript,
+{
+    if helpers.is_empty() {
+        return Ok(Vec::new());
+    }
+    let labels: Vec<_> = helpers
+        .iter()
+        .map(|h| PolynomialLabel::LogupAggregator(h.argument_index))
+        .collect();
+    let shared_agg = CS::read_commitment(transcript, &labels)?;
+    Ok(helpers
+        .into_iter()
+        .map(|h| Committed {
+            argument_index: h.argument_index,
+            multiplicities: h.multiplicities,
+            helper_polys: h.helper_polys,
+            accumulator: shared_agg.clone(),
+        })
+        .collect())
 }
 
 impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> Committed<F, CS> {

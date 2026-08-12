@@ -8,7 +8,9 @@ use ff::{FromUniformBytes, WithSmallOrderMulGroup};
 use super::{Error, VerifyingKey};
 use crate::{
     plonk::{
-        linearization::verifier::compute_linearization_commitment, partially_evaluate_identities,
+        linearization::verifier::compute_linearization_commitment,
+        logup::verifier::{read_aggregators, read_helpers, read_multiplicities, ChunkedArgRef},
+        partially_evaluate_identities,
         traces::VerifierTrace,
     },
     poly::{commitment::PolynomialCommitmentScheme, PolynomialLabel, VerifierQuery},
@@ -101,6 +103,8 @@ where
             )
         })
         .collect();
+    let helpers_only = read_helpers::<_, CS, _>(args_with_multiplicities, transcript)?;
+    let lookups_committed = read_aggregators::<_, CS, _>(helpers_only, transcript)?;
 
     let trash_challenge: F = transcript.squeeze_challenge();
 
