@@ -39,7 +39,7 @@ use crate::{
             eval_expression, lookup::lookup_expressions, permutation::permutation_expressions,
             trash::trash_expressions,
         },
-        lookup,
+        lookup::{read_aggregators, read_helpers, read_multiplicities},
         pcs::{InCircuitHomomorphicCommitment, InCircuitPCS, VerifierQuery},
         permutation::{self, evaluate_permutation_common},
         traces::VerifierTrace,
@@ -377,7 +377,11 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                 let nb_flat = batch.num_chunks(assigned_vk.cs_degree);
                 (i, nb_flat, m)
             })
-            .collect::<Result<Vec<_>, _>>()?;
+            .collect();
+        let helpers_only =
+            read_helpers::<S, PCS>(args_with_multiplicities, layouter, &mut transcript)?;
+        let lookups_committed =
+            read_aggregators::<S, PCS>(helpers_only, layouter, &mut transcript)?;
 
         let trash_challenge = transcript.squeeze_challenge(layouter)?;
 

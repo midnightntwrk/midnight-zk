@@ -5,9 +5,7 @@ use std::hash::Hash;
 use criterion::BenchmarkGroup;
 use ff::{FromUniformBytes, WithSmallOrderMulGroup};
 use rand_core::{CryptoRng, RngCore};
-use rayon::iter::{
-    IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
-};
+use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 
 use crate::{
     plonk::{
@@ -22,7 +20,7 @@ use crate::{
         traces::ProverTrace,
         trash,
     },
-    poly::{PolynomialLabel, commitment::PolynomialCommitmentScheme},
+    poly::commitment::PolynomialCommitmentScheme,
     transcript::{Hashable, Sampleable, Transcript},
     utils::arithmetic::eval_polynomial,
 };
@@ -226,10 +224,10 @@ where
         .map(|_| (0..blinding_factors).map(|_| F::random(&mut rng)).collect())
         .collect();
 
-    // Construct and commit to lookup product polynomials.
-    // `compute_logderivative` returns helper_polys_lagrange + aggregator
-    // commitment without transcript writes. Helper commitments must be taken
-    // and written here, and Lagrange polys converted to coefficient form.
+    // Construct and commit to lookup product polynomials. `compute_logderivative`
+    // returns helper_polys_lagrange + aggregator without transcript writes; the
+    // helper and aggregator commitments are batched and written per phase, and
+    // Lagrange polys are then converted to coefficient form.
     let lookups: Vec<logup::prover::Committed<F>> = {
         group.bench_function("Commit lookup products", |b| {
             b.iter_batched(
@@ -238,35 +236,10 @@ where
                     let computed: Vec<_> = lookups
                         .into_par_iter()
                         .zip(logup_blinds.into_par_iter())
-                        .map(|(lookup, blinds)| {
-                            lookup.compute_logderivative(pk, params, beta, blinds)
-                        })
+                        .map(|(lookup, blinds)| lookup.compute_logderivative(pk, beta, blinds))
                         .collect::<Result<Vec<_>, _>>()?;
-                    let all_helper_commitments: Vec<Vec<CS::Commitment>> = computed
-                        .par_iter()
-                        .map(|c| {
-                            c.helper_polys_lagrange
-                                .par_iter()
-                                .enumerate()
-                                .map(|(j, h)| {
-                                    let h_poly = domain.lagrange_from_vec(h.clone());
-                                    CS::commit(
-                                        params,
-                                        &h_poly,
-                                        PolynomialLabel::LogupHelper(c.argument_index, j),
-                                    )
-                                })
-                                .collect()
-                        })
-                        .collect();
-                    for (c, helper_commitments) in
-                        computed.iter().zip(all_helper_commitments.iter())
-                    {
-                        for h_commitment in helper_commitments {
-                            t.write(h_commitment)?;
-                        }
-                        t.write(&c.aggregator_commitment)?;
-                    }
+                    logup::prover::commit_helpers(params, pk, &computed, &mut t)?;
+                    logup::prover::commit_aggregators::<F, CS, T>(params, &computed, &mut t)?;
                     Ok(())
                 },
                 criterion::BatchSize::LargeInput,
@@ -275,31 +248,10 @@ where
         let computed: Vec<_> = lookups
             .into_par_iter()
             .zip(logup_blindings.into_par_iter())
-            .map(|(lookup, blinds)| lookup.compute_logderivative(pk, params, beta, blinds))
+            .map(|(lookup, blinds)| lookup.compute_logderivative(pk, beta, blinds))
             .collect::<Result<Vec<_>, _>>()?;
-        let all_helper_commitments: Vec<Vec<CS::Commitment>> = computed
-            .par_iter()
-            .map(|c| {
-                c.helper_polys_lagrange
-                    .par_iter()
-                    .enumerate()
-                    .map(|(j, h)| {
-                        let h_poly = domain.lagrange_from_vec(h.clone());
-                        CS::commit(
-                            params,
-                            &h_poly,
-                            PolynomialLabel::LogupHelper(c.argument_index, j),
-                        )
-                    })
-                    .collect()
-            })
-            .collect();
-        for (c, helper_commitments) in computed.iter().zip(all_helper_commitments.iter()) {
-            for h_commitment in helper_commitments {
-                transcript.write(h_commitment)?;
-            }
-            transcript.write(&c.aggregator_commitment)?;
-        }
+        logup::prover::commit_helpers(params, pk, &computed, transcript)?;
+        logup::prover::commit_aggregators::<F, CS, T>(params, &computed, transcript)?;
         computed
             .into_par_iter()
             .map(|c| {
