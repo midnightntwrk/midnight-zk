@@ -392,6 +392,66 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluated<F> {
     }
 }
 
+/// Computes the multiplicities of every logup argument and writes one batched
+/// commitment to all of them. Mirrors the verifier's `read_multiplicities`.
+///
+/// `blindings` holds one pre-generated set of blinding values per argument, so
+/// this function needs no `&mut rng` and the per-argument computation runs in
+/// parallel.
+pub(in crate::plonk) fn commit_multiplicities<F, CS, T>(
+    params: &CS::Parameters,
+    pk: &ProvingKey<F, CS>,
+    theta: F,
+    advice_values: &[Polynomial<F, LagrangeCoeff>],
+    instance_values: &[Polynomial<F, LagrangeCoeff>],
+    blindings: &[Vec<F>],
+    transcript: &mut T,
+) -> Result<Vec<ComputedMultiplicities<F>>, Error>
+where
+    F: WithSmallOrderMulGroup<3> + Hash + FromUniformBytes<64>,
+    CS: PolynomialCommitmentScheme<F>,
+    CS::Commitment: Hashable<T::Hash>,
+    T: Transcript,
+{
+    let logup_args: Vec<_> =
+        pk.vk.cs.lookups.iter().map(|l| l.chunk_by_degree(pk.vk.cs.degree())).collect();
+
+    // Compute all lookups in parallel (no transcript access, no rng).
+    let computed: Vec<_> = logup_args
+        .par_iter()
+        .enumerate()
+        .zip(blindings.par_iter())
+        .map(|((argument_index, logup), blinds)| {
+            logup.compute_multiplicities_parallel(
+                argument_index,
+                pk,
+                theta,
+                advice_values,
+                &pk.fixed_values,
+                instance_values,
+                blinds,
+            )
+        })
+        .collect::<Result<Vec<_>, Error>>()?;
+
+    // Multiplicities are produced by sorting/deduplicating into contiguous
+    // equal-value runs, which collapse to zeros in the LagrangeDelta basis;
+    // commit in that basis.
+    if !computed.is_empty() {
+        let delta_polys =
+            computed.par_iter().map(|c| c.multiplicities.to_delta()).collect::<Vec<_>>();
+        let delta_refs = delta_polys.iter().collect::<Vec<_>>();
+        let labels: Vec<_> = computed
+            .iter()
+            .map(|c| PolynomialLabel::LogupMultiplicities(c.argument_index))
+            .collect();
+        let mult_com = CS::commit_many(params, &delta_refs, &labels);
+        CS::write_commitment(transcript, &mult_com)?;
+    }
+
+    Ok(computed)
+}
+
 /// Computes the multiplicity of each value in the polynomial.
 ///
 /// Returns a vector where `result[i]` is the number of times `table[i]` appears

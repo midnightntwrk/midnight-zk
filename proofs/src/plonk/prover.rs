@@ -122,38 +122,17 @@ where
     let mult_blinding_count = pk.vk.cs.blinding_factors() + 1;
     let mult_blindings: Vec<Vec<F>> = sample_blindings(num_lookups, mult_blinding_count);
 
-    // Commit to the multiplicities columns.
-    // Computation in parallel, then sequential transcript writes.
-    let lookups: Vec<logup::prover::ComputedMultiplicities<F>> = {
-        let logup_args: Vec<_> =
-            pk.vk.cs.lookups.iter().map(|l| l.chunk_by_degree(pk.vk.cs.degree())).collect();
-        // Compute all lookups in parallel (no transcript access, no rng).
-        let results: Vec<_> = logup_args
-            .par_iter()
-            .enumerate()
-            .zip(mult_blindings.par_iter())
-            .map(|((argument_index, logup), blinds)| {
-                logup.compute_multiplicities_parallel(
-                    argument_index,
-                    pk,
-                    params,
-                    theta,
-                    &advice.advice_polys,
-                    &pk.fixed_values,
-                    &instance.instance_values,
-                    blinds,
-                )
-            })
-            .collect::<Result<Vec<_>, Error>>()?;
-        // Sequential transcript writes to preserve Fiat-Shamir ordering.
-        results
-            .into_iter()
-            .map(|(computed, commitment)| {
-                transcript.write(&commitment)?;
-                Ok(computed)
-            })
-            .collect::<Result<Vec<_>, Error>>()?
-    };
+    // Commit to the multiplicities columns. All logup arguments'
+    // multiplicities are batched into one `CS::commit_many` call.
+    let lookups: Vec<ComputedMultiplicities<F>> = commit_multiplicities(
+        params,
+        pk,
+        theta,
+        &advice.advice_polys,
+        &instance.instance_values,
+        &mult_blindings,
+        transcript,
+    )?;
 
     // Sample beta challenge
     let beta: F = transcript.squeeze_challenge();

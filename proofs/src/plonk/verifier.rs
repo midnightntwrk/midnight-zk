@@ -71,14 +71,11 @@ where
     // Sample theta challenge for keeping lookup columns linearly independent
     let theta: F = transcript.squeeze_challenge();
 
-    // Read multiplicities
-    let lookup_multiplicities: Vec<_> = vk
-        .cs
-        .lookups
-        .iter()
-        .enumerate()
-        .map(|(i, l)| l.chunk_by_degree(vk.cs_degree).read_multiplicities::<_, CS>(i, transcript))
-        .collect::<Result<Vec<_>, _>>()?;
+    // Read the batched multiplicities commitment (one transcript entry for all
+    // logup arguments; mirrors the prover's batched `commit_many`).
+    let chunked_lookups: Vec<_> =
+        vk.cs.lookups.iter().map(|l| l.chunk_by_degree(vk.cs_degree)).collect();
+    let lookup_multiplicities = read_multiplicities::<_, CS, _>(&chunked_lookups, transcript)?;
 
     // Sample beta challenge
     let beta: F = transcript.squeeze_challenge();
@@ -88,12 +85,22 @@ where
 
     let permutations_committed = vk.cs.permutation.read_product_commitments(vk, transcript)?;
 
-    let lookups_committed: Vec<_> = lookup_multiplicities
-        .into_iter()
-        .zip(vk.cs.lookups.iter().map(|l| l.chunk_by_degree(vk.cs_degree)))
+    // Read one batched helper commitment for all args + chunks, then one
+    // batched aggregator commitment.
+    let args_with_multiplicities: Vec<_> = chunked_lookups
+        .iter()
+        .zip(lookup_multiplicities)
         .enumerate()
-        .map(|(i, (m, batch))| m.read_commitment(i, batch.num_chunks(), transcript))
-        .collect::<Result<Vec<_>, _>>()?;
+        .map(|(i, (batch, m))| {
+            (
+                ChunkedArgRef {
+                    argument_index: i,
+                    num_chunks: batch.num_chunks(),
+                },
+                m,
+            )
+        })
+        .collect();
 
     let trash_challenge: F = transcript.squeeze_challenge();
 
