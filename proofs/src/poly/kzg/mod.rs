@@ -20,11 +20,6 @@ use rayon::iter::{
 
 /// KZG commitment type
 pub mod commitment;
-/// Multiscalar multiplication engines
-pub mod msm;
-/// KZG commitment scheme
-pub mod params;
-mod utils;
 
 use std::{fmt::Debug, hash::Hash};
 
@@ -33,19 +28,22 @@ use ff::Field;
 use group::Group;
 use midnight_curves::pairing::MultiMillerLoop;
 use rand_core::OsRng;
-#[cfg(feature = "fewer-point-sets")]
-pub use utils::compute_dummy_queries;
 
+#[cfg(feature = "fewer-point-sets")]
+pub use crate::pcs::compute_dummy_queries;
+/// Compatibility re-exports of the shared machinery, which now lives in
+/// [`crate::pcs`].
+pub use crate::pcs::{msm, params};
 #[cfg(feature = "truncated-challenges")]
 use crate::utils::arithmetic::{truncate, truncated_powers};
 use crate::{
+    pcs::{
+        msm::{msm_specific, DualMSM, MSMKZG},
+        params::{ParamsKZG, ParamsVerifierKZG},
+        utils::construct_intermediate_sets,
+    },
     poly::{
         commitment::PolynomialCommitmentScheme,
-        kzg::{
-            msm::{msm_specific, DualMSM, MSMKZG},
-            params::{ParamsKZG, ParamsVerifierKZG},
-            utils::construct_intermediate_sets,
-        },
         query::{PolynomialLabel, VerifierQuery},
         Coeff, Error, Polynomial, PolynomialRepresentation, ProverQuery,
     },
