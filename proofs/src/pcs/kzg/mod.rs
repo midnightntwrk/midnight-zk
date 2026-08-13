@@ -31,10 +31,7 @@ use midnight_curves::pairing::MultiMillerLoop;
 use rand_core::OsRng;
 
 #[cfg(feature = "fewer-point-sets")]
-pub use crate::pcs::compute_dummy_queries;
-/// Compatibility re-exports of the shared machinery, which now lives in
-/// [`crate::pcs`].
-pub use crate::pcs::{msm, params};
+use crate::pcs::compute_dummy_queries;
 #[cfg(feature = "truncated-challenges")]
 use crate::utils::arithmetic::{truncate, truncated_powers};
 use crate::{
