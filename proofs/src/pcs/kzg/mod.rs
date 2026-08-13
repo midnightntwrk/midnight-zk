@@ -352,7 +352,6 @@ where
 
     fn multi_prepare<'com, T: Transcript>(
         queries: &[VerifierQuery<'com, E::Fr, KZGCommitmentScheme<E>>],
-        _k: u32,
         transcript: &mut T,
     ) -> Result<DualMSM<E>, Error>
     where
@@ -590,12 +589,12 @@ mod tests {
         let proof = create_proof::<_, CircuitTranscript<Blake2bState>>(&params);
 
         let verifier_params = params.verifier_params();
-        verify::<Bls12, CircuitTranscript<Blake2bState>>(&verifier_params, &proof[..], K, false);
+        verify::<Bls12, CircuitTranscript<Blake2bState>>(&verifier_params, &proof[..], false);
 
-        verify::<Bls12, CircuitTranscript<Blake2bState>>(&verifier_params, &proof[..], K, true);
+        verify::<Bls12, CircuitTranscript<Blake2bState>>(&verifier_params, &proof[..], true);
     }
 
-    fn verify<E, T>(verifier_params: &ParamsVerifierKZG<E>, proof: &[u8], k: u32, should_fail: bool)
+    fn verify<E, T>(verifier_params: &ParamsVerifierKZG<E>, proof: &[u8], should_fail: bool)
     where
         E: MultiMillerLoop,
         T: Transcript,
@@ -676,7 +675,7 @@ mod tests {
         };
 
         let result =
-            KZGCommitmentScheme::multi_prepare(&queries.collect::<Vec<_>>(), k, &mut transcript)
+            KZGCommitmentScheme::multi_prepare(&queries.collect::<Vec<_>>(), &mut transcript)
                 .unwrap();
 
         if should_fail {
