@@ -2,8 +2,9 @@ use ff::{PrimeField, WithSmallOrderMulGroup};
 
 use super::{Argument, VerifyingKey};
 use crate::{
+    pcs::PolynomialCommitmentScheme,
     plonk::{self, permutation, Error},
-    poly::{commitment::PolynomialCommitmentScheme, PolynomialLabel, Rotation, VerifierQuery},
+    poly::{PolynomialLabel, Rotation, VerifierQuery},
     transcript::{Hashable, Transcript},
 };
 

@@ -15,12 +15,9 @@ use midnight_curves::{
 };
 use midnight_proofs::{
     circuit::{AssignedCell, Chip, Layouter, Region, SimpleFloorPlanner, Value},
+    pcs::{kzg::KZGCommitmentScheme, params::ParamsKZG, Guard},
     plonk::*,
-    poly::{
-        commitment::Guard,
-        kzg::{params::ParamsKZG, KZGCommitmentScheme},
-        Rotation,
-    },
+    poly::Rotation,
     transcript::{CircuitTranscript, Hashable, Sampleable, Transcript},
     utils::{arithmetic::Field, helpers::ProcessedSerdeObject},
 };

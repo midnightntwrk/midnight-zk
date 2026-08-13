@@ -33,11 +33,12 @@ use midnight_circuits::{
 };
 use midnight_proofs::{
     circuit::{Layouter, Value},
-    plonk::{self, ConstraintSystem, Error},
-    poly::{
-        kzg::{commitment::KZGMultiCommitment, params::ParamsVerifierKZG, KZGCommitmentScheme},
-        EvaluationDomain, PolynomialLabel,
+    pcs::{
+        kzg::{commitment::KZGMultiCommitment, KZGCommitmentScheme},
+        params::ParamsVerifierKZG,
     },
+    plonk::{self, ConstraintSystem, Error},
+    poly::{EvaluationDomain, PolynomialLabel},
     transcript::{CircuitTranscript, Transcript},
 };
 use midnight_zk_stdlib::{

@@ -18,9 +18,10 @@ use std::collections::BTreeMap;
 use group::Group;
 use midnight_proofs::{
     circuit::Value,
+    pcs::kzg::KZGCommitmentScheme,
     plonk,
     plonk::ConstraintSystem,
-    poly::{kzg::KZGCommitmentScheme, EvaluationDomain, PolynomialLabel},
+    poly::{EvaluationDomain, PolynomialLabel},
 };
 
 use crate::{

@@ -38,9 +38,9 @@ use crate::{
         msm::{msm_specific, DualMSM, MSMKZG},
         params::{ParamsKZG, ParamsVerifierKZG},
         utils::construct_intermediate_sets,
+        PolynomialCommitmentScheme,
     },
     poly::{
-        commitment::PolynomialCommitmentScheme,
         query::{PolynomialLabel, VerifierQuery},
         Coeff, Error, Polynomial, PolynomialRepresentation, ProverQuery,
     },
@@ -565,13 +565,12 @@ mod tests {
     use rand_core::OsRng;
 
     use crate::{
+        pcs::{
+            kzg::{commitment::KZGMultiCommitment, KZGCommitmentScheme},
+            params::{ParamsKZG, ParamsVerifierKZG},
+            Guard, PolynomialCommitmentScheme,
+        },
         poly::{
-            commitment::{Guard, PolynomialCommitmentScheme},
-            kzg::{
-                commitment::KZGMultiCommitment,
-                params::{ParamsKZG, ParamsVerifierKZG},
-                KZGCommitmentScheme,
-            },
             query::{ProverQuery, VerifierQuery},
             EvaluationDomain, PolynomialLabel,
         },
