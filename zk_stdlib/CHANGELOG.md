@@ -20,6 +20,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Fix cost model proof size check to account for committed instance columns [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 
 ### Changed
+* Updating PCS API [#501](https://github.com/midnightntwrk/midnight-zk/pull/501)
 * `load_srs` sizes the monomial basis via `PolynomialCommitmentScheme::srs_monomial_blowup` instead of a `single-h-commitment` `cfg` branch [#487](https://github.com/midnightntwrk/midnight-zk/pull/487)
 * `cost_model` passes `KZGCommitmentScheme<Bls12>` to `circuit_model`, removing the `COMMITMENT_BYTE_SIZE`/`SCALAR_BYTE_SIZE` constants [#440](https://github.com/midnightntwrk/midnight-zk/pull/440)
 * `verify` now takes `committed_instance: Option<KZGMultiCommitment<Bls12>>` instead of `Option<G1Affine>`, avoiding a commitment→point→commitment round-trip at call sites [#450](https://github.com/midnightntwrk/midnight-zk/pull/450)

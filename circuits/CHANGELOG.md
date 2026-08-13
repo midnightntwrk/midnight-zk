@@ -16,6 +16,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 
 ### Changed
+* Updating PCS API [#501](https://github.com/midnightntwrk/midnight-zk/pull/501)
 * Adapt the in-circuit verifier gadget to the batched cross-argument commitment layout [#493](https://github.com/midnightntwrk/midnight-zk/pull/493)
 * Removes the Labelable trait [#491](https://github.com/midnightntwrk/midnight-zk/pull/491)
 * `circuit_modeling` derives the commitment byte length from `KZGCommitmentScheme` via `circuit_model_with` instead of hard-coded sizes [#440](https://github.com/midnightntwrk/midnight-zk/pull/440)
