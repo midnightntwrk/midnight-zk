@@ -18,16 +18,18 @@ use midnight_curves::serde::SerdeObject;
 use crate::utils::{arithmetic::parallelize, SerdeFormat};
 
 mod domain;
-mod query;
+/// Prover/verifier opening queries and polynomial labels.
+pub mod query;
 
 /// KZG commitment scheme
 pub mod kzg;
 
-pub mod commitment;
-
 pub use domain::*;
 pub use query::{PolynomialLabel, ProverQuery, VerifierQuery};
 
+/// Compatibility re-export of the PCS traits, which now live in
+/// [`crate::pcs::scheme`].
+pub use crate::pcs::scheme as commitment;
 use crate::utils::{helpers::read_f, rational::Rational};
 
 /// This is an error that could occur during proving or circuit synthesis.
