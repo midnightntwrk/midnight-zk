@@ -15,8 +15,8 @@ use midnight_circuits::{
 use midnight_curves::k256::K256;
 use midnight_proofs::{
     circuit::{Layouter, Value},
+    pcs::kzg::KZGCommitmentScheme,
     plonk::{Error, commit_to_instances},
-    poly::kzg::KZGCommitmentScheme,
 };
 use midnight_zk_stdlib::{Relation, ZkStdLib, ZkStdLibArch, utils::plonk_api::srs_for_test};
 use rand::rngs::OsRng;

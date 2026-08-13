@@ -1,8 +1,9 @@
 use ff::{PrimeField, WithSmallOrderMulGroup};
 
 use crate::{
+    pcs::PolynomialCommitmentScheme,
     plonk::{Error, trash},
-    poly::{PolynomialLabel, VerifierQuery, commitment::PolynomialCommitmentScheme},
+    poly::{PolynomialLabel, VerifierQuery},
     transcript::{Hashable, Transcript},
 };
 

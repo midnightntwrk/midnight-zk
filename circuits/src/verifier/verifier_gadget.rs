@@ -899,11 +899,12 @@ pub(crate) mod tests {
     use midnight_proofs::{
         circuit::SimpleFloorPlanner,
         dev::MockProver,
-        plonk::{Circuit, Error, create_proof, keygen_pk, keygen_vk_with_k, prepare},
-        poly::{
-            PolynomialLabel,
-            kzg::{KZGCommitmentScheme, commitment::KZGMultiCommitment, params::ParamsKZG},
+        pcs::{
+            kzg::{KZGCommitmentScheme, commitment::KZGMultiCommitment},
+            params::ParamsKZG,
         },
+        plonk::{Circuit, Error, create_proof, keygen_pk, keygen_vk_with_k, prepare},
+        poly::PolynomialLabel,
         transcript::{CircuitTranscript, Transcript},
     };
     use rand::SeedableRng;

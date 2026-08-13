@@ -7,6 +7,7 @@ use ff::{FromUniformBytes, WithSmallOrderMulGroup};
 
 use super::{Error, VerifyingKey};
 use crate::{
+    pcs::PolynomialCommitmentScheme,
     plonk::{
         linearization::verifier::compute_linearization_commitment,
         logup::verifier::{ChunkedArgRef, read_aggregators, read_helpers, read_multiplicities},
@@ -14,7 +15,7 @@ use crate::{
         traces::VerifierTrace,
         trash::verifier::read_trashcans,
     },
-    poly::{PolynomialLabel, VerifierQuery, commitment::PolynomialCommitmentScheme},
+    poly::{PolynomialLabel, VerifierQuery},
     transcript::{Hashable, Sampleable, Transcript, read_n},
     utils::arithmetic::compute_inner_product,
 };

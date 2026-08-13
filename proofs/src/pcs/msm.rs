@@ -10,13 +10,10 @@ use midnight_curves::{
 };
 use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 
-use super::params::ParamsVerifierKZG;
+use super::{kzg::KZGCommitmentScheme, params::ParamsVerifierKZG};
 use crate::{
-    poly::{
-        Error, PolynomialLabel,
-        commitment::{Guard, PolynomialCommitmentScheme},
-        kzg::KZGCommitmentScheme,
-    },
+    pcs::{Guard, PolynomialCommitmentScheme},
+    poly::{Error, PolynomialLabel},
     utils::{
         arithmetic::{CurveExt, MSM},
         helpers::ProcessedSerdeObject,

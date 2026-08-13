@@ -10,16 +10,13 @@ use midnight_curves::serde::SerdeObject;
 use midnight_proofs::{
     circuit::{Cell, Layouter, SimpleFloorPlanner, Value},
     dev::MockProver,
+    pcs::{Guard, PolynomialCommitmentScheme, kzg::KZGCommitmentScheme, params::ParamsKZG},
     plonk::{
         Advice, Circuit, Column, ConstraintSystem, Constraints, Error, Fixed, ProvingKey,
         TableColumn, VerifyingKey, create_proof as create_plonk_proof, keygen_pk, keygen_vk,
         keygen_vk_with_k, prepare as prepare_plonk_proof,
     },
-    poly::{
-        Rotation,
-        commitment::{Guard, PolynomialCommitmentScheme},
-        kzg::{KZGCommitmentScheme, params::ParamsKZG},
-    },
+    poly::Rotation,
     transcript::{CircuitTranscript, Hashable, Sampleable, Transcript},
     utils::{arithmetic::Field, rational::Rational},
 };

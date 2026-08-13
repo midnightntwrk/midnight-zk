@@ -3,8 +3,9 @@ use std::iter::successors;
 use ff::PrimeField;
 
 use crate::{
+    pcs::PolynomialCommitmentScheme,
     plonk::ProvingKey,
-    poly::{Coeff, Polynomial, commitment::PolynomialCommitmentScheme},
+    poly::{Coeff, Polynomial},
 };
 
 /// Construct the linearization polynomial:

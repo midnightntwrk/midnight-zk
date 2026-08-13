@@ -2,8 +2,9 @@
 
 use midnight_circuits::verifier::{Accumulator, fixed_bases};
 use midnight_proofs::{
+    pcs::params::ParamsKZG,
     plonk::ConstraintSystem,
-    poly::{EvaluationDomain, PolynomialLabel, kzg::params::ParamsKZG},
+    poly::{EvaluationDomain, PolynomialLabel},
 };
 use midnight_zk_stdlib::ZkStdLib;
 

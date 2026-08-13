@@ -24,11 +24,12 @@ use midnight_circuits::{
 };
 use midnight_proofs::{
     circuit::{Layouter, Value},
-    plonk::{self, ConstraintSystem, Error},
-    poly::{
-        EvaluationDomain, PolynomialLabel,
-        kzg::{KZGCommitmentScheme, commitment::KZGMultiCommitment, params::ParamsVerifierKZG},
+    pcs::{
+        kzg::{KZGCommitmentScheme, commitment::KZGMultiCommitment},
+        params::ParamsVerifierKZG,
     },
+    plonk::{self, ConstraintSystem, Error},
+    poly::{EvaluationDomain, PolynomialLabel},
     transcript::{CircuitTranscript, Transcript},
     utils::SerdeFormat,
 };

@@ -13,11 +13,12 @@ use midnight_circuits::{
     verifier::{Accumulator, AssignedAccumulator, AssignedVk, InCircuitKZG},
 };
 use midnight_proofs::{
-    plonk::{self},
-    poly::{
-        PolynomialLabel,
-        kzg::{KZGCommitmentScheme, commitment::KZGMultiCommitment, params::ParamsKZG},
+    pcs::{
+        kzg::{KZGCommitmentScheme, commitment::KZGMultiCommitment},
+        params::ParamsKZG,
     },
+    plonk::{self},
+    poly::PolynomialLabel,
     transcript::{CircuitTranscript, Transcript},
 };
 use midnight_zk_stdlib::MidnightPK;

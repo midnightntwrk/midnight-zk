@@ -36,13 +36,13 @@ use crate::pcs::compute_dummy_queries;
 use crate::utils::arithmetic::{truncate, truncated_powers};
 use crate::{
     pcs::{
-        msm::{msm_specific, DualMSM, MSMKZG},
+        PolynomialCommitmentScheme,
+        msm::{DualMSM, MSMKZG, msm_specific},
         params::{ParamsKZG, ParamsVerifierKZG},
         utils::construct_intermediate_sets,
     },
     poly::{
         Coeff, Error, Polynomial, PolynomialRepresentation, ProverQuery,
-        commitment::PolynomialCommitmentScheme,
         query::{PolynomialLabel, VerifierQuery},
     },
     transcript::{Hashable, Sampleable, Transcript},
@@ -564,14 +564,13 @@ mod tests {
     use rand_core::OsRng;
 
     use crate::{
+        pcs::{
+            Guard, PolynomialCommitmentScheme,
+            kzg::{KZGCommitmentScheme, commitment::KZGMultiCommitment},
+            params::{ParamsKZG, ParamsVerifierKZG},
+        },
         poly::{
             EvaluationDomain, PolynomialLabel,
-            commitment::{Guard, PolynomialCommitmentScheme},
-            kzg::{
-                KZGCommitmentScheme,
-                commitment::KZGMultiCommitment,
-                params::{ParamsKZG, ParamsVerifierKZG},
-            },
             query::{ProverQuery, VerifierQuery},
         },
         transcript::{CircuitTranscript, Hashable, Sampleable, Transcript},

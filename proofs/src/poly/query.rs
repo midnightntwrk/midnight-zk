@@ -2,7 +2,10 @@ use std::fmt::{self, Debug};
 
 use ff::PrimeField;
 
-use crate::poly::{Coeff, Polynomial, commitment::PolynomialCommitmentScheme};
+use crate::{
+    pcs::PolynomialCommitmentScheme,
+    poly::{Coeff, Polynomial},
+};
 
 /// A structured label for polynomial commitments in verifier queries.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]

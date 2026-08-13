@@ -9,7 +9,8 @@ use midnight_curves::{
 use rand_core::RngCore;
 
 use crate::{
-    poly::{PolynomialBasis, PolynomialRepresentation, commitment::Params},
+    pcs::Params,
+    poly::{PolynomialBasis, PolynomialRepresentation},
     utils::{
         SerdeFormat,
         arithmetic::{CurveAffine, g_to_lagrange, parallelize},
@@ -406,11 +407,8 @@ mod test {
     use rand_core::OsRng;
 
     use crate::{
-        poly::{
-            PolynomialLabel,
-            commitment::PolynomialCommitmentScheme,
-            kzg::{KZGCommitmentScheme, params::ParamsKZG},
-        },
+        pcs::{PolynomialCommitmentScheme, kzg::KZGCommitmentScheme, params::ParamsKZG},
+        poly::PolynomialLabel,
         utils::SerdeFormat,
     };
 

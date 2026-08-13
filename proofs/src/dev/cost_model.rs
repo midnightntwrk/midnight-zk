@@ -17,12 +17,12 @@ use serde_derive::Serialize;
 use super::Region;
 use crate::{
     circuit::{self, Value},
+    pcs::PolynomialCommitmentScheme,
     plonk::{
         Advice,
         Any::{self, Fixed},
         Assignment, Circuit, Column, ConstraintSystem, Error, FloorPlanner, Instance, Selector,
     },
-    poly::commitment::PolynomialCommitmentScheme,
     utils::rational::Rational,
 };
 
@@ -669,13 +669,11 @@ mod tests {
     use super::*;
     use crate::{
         circuit::{Layouter, SimpleFloorPlanner},
+        pcs::{kzg::KZGCommitmentScheme, params::ParamsKZG},
         plonk::{
             Constraints, Expression, Fixed, TableColumn, create_proof, keygen_pk, keygen_vk_with_k,
         },
-        poly::{
-            Rotation,
-            kzg::{KZGCommitmentScheme, params::ParamsKZG},
-        },
+        poly::Rotation,
         transcript::{CircuitTranscript, Transcript},
     };
 

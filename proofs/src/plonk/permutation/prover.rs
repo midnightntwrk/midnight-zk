@@ -8,13 +8,13 @@ use rayon::iter::{
 
 use super::{super::circuit::Any, Argument, ProvingKey};
 use crate::{
+    pcs::PolynomialCommitmentScheme,
     plonk::{
         self, Error,
         permutation::{self, verifier::CommonEvaluated},
     },
     poly::{
         Coeff, EvaluationDomain, LagrangeCoeff, Polynomial, PolynomialLabel, ProverQuery, Rotation,
-        commitment::PolynomialCommitmentScheme,
     },
     transcript::{Hashable, Transcript},
     utils::arithmetic::{eval_polynomial, eval_polynomial_seq, parallelize},

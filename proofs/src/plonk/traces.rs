@@ -3,8 +3,9 @@
 use ff::PrimeField;
 
 use crate::{
+    pcs::PolynomialCommitmentScheme,
     plonk::{logup, permutation, trash},
-    poly::{Coeff, LagrangeCoeff, Polynomial, commitment::PolynomialCommitmentScheme},
+    poly::{Coeff, LagrangeCoeff, Polynomial},
 };
 
 /// Prover's trace of a proof.

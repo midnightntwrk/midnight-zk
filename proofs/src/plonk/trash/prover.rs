@@ -7,11 +7,9 @@ use rayon::iter::{
 
 use super::{super::Error, Argument};
 use crate::{
+    pcs::PolynomialCommitmentScheme,
     plonk::{evaluation::evaluate, trash},
-    poly::{
-        Coeff, EvaluationDomain, LagrangeCoeff, Polynomial, PolynomialLabel, ProverQuery,
-        commitment::PolynomialCommitmentScheme,
-    },
+    poly::{Coeff, EvaluationDomain, LagrangeCoeff, Polynomial, PolynomialLabel, ProverQuery},
     transcript::{Hashable, Transcript},
     utils::arithmetic::eval_polynomial,
 };

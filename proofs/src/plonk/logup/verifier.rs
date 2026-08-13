@@ -18,11 +18,12 @@ use std::iter;
 use ff::{PrimeField, WithSmallOrderMulGroup};
 
 use crate::{
+    pcs::PolynomialCommitmentScheme,
     plonk::{
         Error, VerifyingKey,
         logup::{self, ChunkedArgument},
     },
-    poly::{PolynomialLabel, Rotation, VerifierQuery, commitment::PolynomialCommitmentScheme},
+    poly::{PolynomialLabel, Rotation, VerifierQuery},
     transcript::{Hashable, Transcript},
 };
 

@@ -25,16 +25,13 @@ use std::{
 
 use midnight_curves::Bls12;
 use midnight_proofs::{
+    pcs::{
+        Guard, PolynomialCommitmentScheme,
+        kzg::{KZGCommitmentScheme, commitment::KZGMultiCommitment},
+        params::{ParamsKZG, ParamsVerifierKZG},
+    },
     plonk::{
         Circuit, Error, ProvingKey, VerifyingKey, create_proof, keygen_pk, keygen_vk, prepare,
-    },
-    poly::{
-        commitment::{Guard, PolynomialCommitmentScheme},
-        kzg::{
-            KZGCommitmentScheme,
-            commitment::KZGMultiCommitment,
-            params::{ParamsKZG, ParamsVerifierKZG},
-        },
     },
     transcript::{CircuitTranscript, Hashable, Sampleable, Transcript, TranscriptHash},
     utils::SerdeFormat,

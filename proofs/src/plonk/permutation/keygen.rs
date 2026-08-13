@@ -5,10 +5,10 @@ use rayon::iter::{
 
 use super::{Argument, ProvingKey, VerifyingKey};
 use crate::{
+    pcs::PolynomialCommitmentScheme,
     plonk::{Any, Column, Error},
     poly::{
         Coeff, EvaluationDomain, ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial, PolynomialLabel,
-        commitment::PolynomialCommitmentScheme,
     },
     utils::arithmetic::parallelize,
 };

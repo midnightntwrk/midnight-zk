@@ -23,6 +23,7 @@ use super::{
 };
 use crate::{
     circuit::Value,
+    pcs::PolynomialCommitmentScheme,
     plonk::{
         linearization::prover::compute_linearization_poly,
         logup::{
@@ -39,7 +40,6 @@ use crate::{
     poly::{
         Coeff, EvaluationDomain, ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial, PolynomialLabel,
         PolynomialRepresentation, ProverQuery, Rotation, batch_invert_rational,
-        commitment::PolynomialCommitmentScheme,
     },
     transcript::{Hashable, Sampleable, Transcript},
     utils::{
@@ -685,7 +685,7 @@ where
     // The params SRS must have at least h_poly.len() monomial elements.
     #[cfg(feature = "single-h-commitment")]
     {
-        use crate::poly::commitment::Params;
+        use crate::pcs::Params;
         if params.g_monomial_size() < h_poly.len() {
             return Err(Error::SrsError(params.g_monomial_size(), h_poly.len()));
         }
@@ -1033,8 +1033,8 @@ fn test_create_proof() {
 
     use crate::{
         circuit::SimpleFloorPlanner,
+        pcs::{kzg::KZGCommitmentScheme, params::ParamsKZG},
         plonk::{keygen_pk, keygen_vk_with_k},
-        poly::kzg::{KZGCommitmentScheme, params::ParamsKZG},
         transcript::CircuitTranscript,
     };
 

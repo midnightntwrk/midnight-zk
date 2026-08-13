@@ -24,8 +24,8 @@ use midnight_curves::{Bls12, Fq};
 use midnight_proofs::{
     circuit::Layouter,
     dev::cost_model::{COST_MEASURE_END, COST_MEASURE_START, CircuitModel, circuit_model_with},
+    pcs::{PolynomialCommitmentScheme, kzg::KZGCommitmentScheme},
     plonk::Circuit,
-    poly::{commitment::PolynomialCommitmentScheme, kzg::KZGCommitmentScheme},
 };
 use serde_json::{Map, Value, json};
 
