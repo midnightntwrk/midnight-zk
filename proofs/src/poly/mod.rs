@@ -21,19 +21,24 @@ mod domain;
 /// Prover/verifier opening queries and polynomial labels.
 pub mod query;
 
-/// Compatibility facade for the old `poly::kzg` path. The KZG scheme and the
-/// machinery it shares with other schemes now live in [`crate::pcs`].
+/// **Temporary** backward-compatibility facade for the old `poly::kzg` path.
+///
+/// The commitment schemes now live in [`crate::pcs`]. This module contains no
+/// implementation, only re-exports, and exists solely so external pinned
+/// dependencies that still import `midnight_proofs::poly::kzg::{...}` keep
+/// compiling (currently `blake2b_halo2`). Delete it once those dependencies
+/// migrate to `crate::pcs`; internal code uses `crate::pcs` directly.
 pub mod kzg {
-    #[cfg(feature = "fewer-point-sets")]
-    pub use crate::pcs::compute_dummy_queries;
-    pub use crate::pcs::{kzg::*, msm, params};
+    pub use crate::pcs::{kzg::KZGCommitmentScheme, params};
 }
 
 pub use domain::*;
 pub use query::{PolynomialLabel, ProverQuery, VerifierQuery};
 
-/// Compatibility re-export of the PCS traits, which now live in
-/// [`crate::pcs::scheme`].
+/// **Temporary** compatibility re-export of the PCS traits (moved to
+/// [`crate::pcs::scheme`]) for external pinned dependencies still importing
+/// `midnight_proofs::poly::commitment::{...}` (currently `blake2b_halo2`).
+/// Internal code uses `crate::pcs` directly.
 pub use crate::pcs::scheme as commitment;
 use crate::utils::{helpers::read_f, rational::Rational};
 
