@@ -360,7 +360,7 @@ where
     // We are now convinced the circuit is satisfied so long as the
     // polynomial commitments open to the correct values, which is true as long
     // as the following accumulator passes the invariant.
-    CS::multi_prepare(&queries, vk.domain.k(), transcript).map_err(|_| Error::Opening)
+    CS::multi_prepare(&queries, transcript).map_err(|_| Error::Opening)
 }
 
 /// Prepares a plonk proof into a PCS instance that can be finalized or
