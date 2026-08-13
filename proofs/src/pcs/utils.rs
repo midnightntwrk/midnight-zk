@@ -9,11 +9,11 @@ use ff::Field;
 use crate::poly::{Error, query::PolynomialLabel};
 
 #[derive(Clone, Debug)]
-pub(super) struct CommitmentData<F> {
-    pub(super) label: PolynomialLabel,
-    pub(super) set_index: usize,
-    pub(super) point_indices: Vec<usize>,
-    pub(super) evals: Vec<F>,
+pub(crate) struct CommitmentData<F> {
+    pub(crate) label: PolynomialLabel,
+    pub(crate) set_index: usize,
+    pub(crate) point_indices: Vec<usize>,
+    pub(crate) evals: Vec<F>,
 }
 
 impl<F> CommitmentData<F> {
@@ -27,7 +27,7 @@ impl<F> CommitmentData<F> {
     }
 }
 
-pub(super) type IntermediateSets<F> = (Vec<CommitmentData<F>>, Vec<Vec<F>>);
+pub(crate) type IntermediateSets<F> = (Vec<CommitmentData<F>>, Vec<Vec<F>>);
 
 /// Groups a list of `(label, point, eval)` queries into per-polynomial data and
 /// point sets for multi-open batching.
@@ -37,7 +37,7 @@ pub(super) type IntermediateSets<F> = (Vec<CommitmentData<F>>, Vec<Vec<F>>);
 ///
 /// Returns [`Error::DuplicatedQuery`] if the same `(label, point)` pair appears
 /// more than once.
-pub fn construct_intermediate_sets<F: Field + Hash + Ord>(
+pub(crate) fn construct_intermediate_sets<F: Field + Hash + Ord>(
     queries: &[(PolynomialLabel, F, F)],
 ) -> Result<IntermediateSets<F>, Error> {
     // Construct sets of unique commitments and corresponding information about
