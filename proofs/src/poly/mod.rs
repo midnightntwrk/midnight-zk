@@ -21,8 +21,13 @@ mod domain;
 /// Prover/verifier opening queries and polynomial labels.
 pub mod query;
 
-/// KZG commitment scheme
-pub mod kzg;
+/// Compatibility facade for the old `poly::kzg` path. The KZG scheme and the
+/// machinery it shares with other schemes now live in [`crate::pcs`].
+pub mod kzg {
+    #[cfg(feature = "fewer-point-sets")]
+    pub use crate::pcs::compute_dummy_queries;
+    pub use crate::pcs::{kzg::*, msm, params};
+}
 
 pub use domain::*;
 pub use query::{PolynomialLabel, ProverQuery, VerifierQuery};

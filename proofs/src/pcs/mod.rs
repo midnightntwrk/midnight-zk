@@ -1,9 +1,12 @@
 //! Polynomial commitment schemes.
 //!
 //! [`scheme`] holds the generic `PolynomialCommitmentScheme` trait and its
-//! supporting traits. [`msm`], [`params`] and the `utils` module hold the
-//! shared KZG-style / GWC machinery reused across schemes.
+//! supporting traits; [`kzg`] holds the concrete KZG scheme. [`msm`],
+//! [`params`] and the `utils` module hold the shared KZG-style / GWC machinery
+//! reused across schemes.
 
+/// The KZG polynomial commitment scheme.
+pub mod kzg;
 /// Multi-scalar-multiplication accumulators ([`MSMKZG`](msm::MSMKZG),
 /// [`DualMSM`](msm::DualMSM)).
 pub mod msm;
