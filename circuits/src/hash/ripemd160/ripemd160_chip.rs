@@ -490,18 +490,18 @@ impl<F: CircuitField> RipeMD160Chip<F> {
         round_const_prime: &AssignedWord<F>,
     ) -> Result<(), Error> {
         let State {
-            h0: ref mut A,
-            h1: ref mut B,
-            h2: ref mut C,
-            h3: ref mut D,
-            h4: ref mut E,
+            h0: A,
+            h1: B,
+            h2: C,
+            h3: D,
+            h4: E,
         } = temp_state;
         let State {
-            h0: ref mut A_prime,
-            h1: ref mut B_prime,
-            h2: ref mut C_prime,
-            h3: ref mut D_prime,
-            h4: ref mut E_prime,
+            h0: A_prime,
+            h1: B_prime,
+            h2: C_prime,
+            h3: D_prime,
+            h4: E_prime,
         } = temp_state_prime;
 
         let rot = S[idx / 16][idx % 16];

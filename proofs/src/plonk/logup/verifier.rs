@@ -141,7 +141,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
         &self,
         vk: &VerifyingKey<F, CS>,
         x: F,
-    ) -> impl Iterator<Item = VerifierQuery<'_, F, CS>> + Clone {
+    ) -> impl Iterator<Item = VerifierQuery<'_, F, CS>> + Clone + use<'_, F, CS> {
         let x_next = vk.domain.rotate_omega(x, Rotation::next());
         let arg = self.committed.argument_index;
 

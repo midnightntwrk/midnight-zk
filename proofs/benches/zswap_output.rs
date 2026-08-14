@@ -113,12 +113,14 @@ impl Relation for ZSwapOutputCircuit {
 
         let value_com = {
             let color_base = std_lib.hash_to_curve(layouter, &[coin.color])?;
-            let gen = std_lib.jubjub().assign_fixed(layouter, JubjubSubgroup::generator())?;
+            let generator = std_lib.jubjub().assign_fixed(layouter, JubjubSubgroup::generator())?;
             let rc = std_lib.jubjub().assign(layouter, witness.as_ref().map(|w| w.2))?;
             let coin_value_as_scalar = std_lib.jubjub().convert(layouter, &coin.value)?;
-            std_lib
-                .jubjub()
-                .msm(layouter, &[coin_value_as_scalar, rc], &[color_base, gen])?
+            std_lib.jubjub().msm(
+                layouter,
+                &[coin_value_as_scalar, rc],
+                &[color_base, generator],
+            )?
         };
 
         coin_com
@@ -199,8 +201,8 @@ fn assign_fixed_domain_sep(
 fn sample_zswap_inputs() -> (Vec<F>, MidnightCircuit<'static, ZSwapOutputCircuit>) {
     let mut rng = ChaCha8Rng::from_entropy();
 
-    let zswap_pk_bytes = core::array::from_fn(|_| rng.gen());
-    let zswap_pk_is_contract: bool = rng.gen();
+    let zswap_pk_bytes = core::array::from_fn(|_| rng.r#gen());
+    let zswap_pk_is_contract: bool = rng.r#gen();
     let zswap_pk = match zswap_pk_is_contract {
         false => PK::ZSwapCoinPublicKey(zswap_pk_bytes),
         true => PK::ContractAddress(zswap_pk_bytes),

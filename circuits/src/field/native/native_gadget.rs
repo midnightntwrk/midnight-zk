@@ -543,7 +543,6 @@ impl<F, CD, NA, Assigned> CommittedInstanceInstructions<F, Assigned> for NativeG
 where
     F: CircuitField,
     CD: CoreDecompositionInstructions<F>,
-
     NA: CommittedInstanceInstructions<F, AssignedNative<F>>
         + ArithInstructions<F, AssignedNative<F>>,
     Assigned: Instantiable<F> + Into<AssignedNative<F>>,
@@ -925,7 +924,9 @@ where
         let f_num_bytes = F::NUM_BITS.div_ceil(8);
         let nb_bytes = nb_bytes.unwrap_or(f_num_bytes as usize);
         if nb_bytes > f_num_bytes as usize {
-            panic!("assigned_to_le_bytes: why do you need the output to have more bytes than necessary?");
+            panic!(
+                "assigned_to_le_bytes: why do you need the output to have more bytes than necessary?"
+            );
         }
         // If nb_bytes equals ⌈F::NUM_BITS / 8⌉, we need extra care to
         // guarantee that the output is canonical: we split in bits enforcing canonicity

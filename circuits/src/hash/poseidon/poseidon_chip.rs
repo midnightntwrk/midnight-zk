@@ -525,7 +525,11 @@ impl<F: PoseidonField> SpongeInstructions<F, AssignedNative<F>, AssignedNative<F
             }
             Some(len) => {
                 if state.queue.len() != len {
-                    panic!("Inconsistent lengths in fixed-size Poseidon sponge (Circuit). Expected: {}, found: {}.", len, state.queue.len())
+                    panic!(
+                        "Inconsistent lengths in fixed-size Poseidon sponge (Circuit). Expected: {}, found: {}.",
+                        len,
+                        state.queue.len()
+                    )
                 };
             }
         }

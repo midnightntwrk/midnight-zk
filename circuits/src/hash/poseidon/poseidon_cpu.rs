@@ -165,7 +165,11 @@ impl<F: PoseidonField> SpongeCPU<F, F> for PoseidonChip<F> {
             }
             Some(len) => {
                 if state.queue.len() != len {
-                    panic!("Inconsistent lengths in fixed-size Poseidon sponge (CPU). Expected: {}, found: {}.", len, state.queue.len())
+                    panic!(
+                        "Inconsistent lengths in fixed-size Poseidon sponge (CPU). Expected: {}, found: {}.",
+                        len,
+                        state.queue.len()
+                    )
                 };
             }
         }

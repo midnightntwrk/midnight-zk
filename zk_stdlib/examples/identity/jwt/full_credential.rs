@@ -130,9 +130,9 @@ impl Relation for FullCredential {
         let holder_sk: AssignedField<_, K256Scalar, MultiEmulationParams> =
             secp256k1_scalar.assign(layouter, sk)?;
 
-        let gen: AssignedForeignPoint<_, K256, MultiEmulationParams> =
+        let generator: AssignedForeignPoint<_, K256, MultiEmulationParams> =
             secp256k1_curve.assign_fixed(layouter, K256::generator())?;
-        let must_be_pk = secp256k1_curve.msm(layouter, &[holder_sk], &[gen])?;
+        let must_be_pk = secp256k1_curve.msm(layouter, &[holder_sk], &[generator])?;
         secp256k1_curve.assert_equal(layouter, &holder_pk, &must_be_pk)?;
 
         Ok(())
@@ -190,8 +190,8 @@ impl FullCredential {
         let r_over_s = secp256k1_scalar.div(layouter, &r_as_scalar, &s)?;
         let m_over_s = secp256k1_scalar.div(layouter, &msg_hash, &s)?;
 
-        let gen = secp256k1_curve.assign_fixed(layouter, K256::generator())?;
-        let lhs = secp256k1_curve.msm(layouter, &[m_over_s, r_over_s], &[gen, pk])?;
+        let generator = secp256k1_curve.assign_fixed(layouter, K256::generator())?;
+        let lhs = secp256k1_curve.msm(layouter, &[m_over_s, r_over_s], &[generator, pk])?;
         let lhs_x = secp256k1_curve.x_coordinate(&lhs);
 
         secp256k1_base.assert_equal(layouter, &lhs_x, &r_as_base)

@@ -398,17 +398,17 @@ mod tests {
     #[test]
     fn test_identity() {
         let id = Curve25519::identity();
-        let gen = Curve25519::generator();
+        let generator = Curve25519::generator();
 
-        assert_eq!(id + gen, gen);
-        assert_eq!(gen - gen, id);
+        assert_eq!(id + generator, generator);
+        assert_eq!(generator - generator, id);
     }
 
     #[test]
     fn test_scalar_mul() {
-        let gen = Curve25519::generator();
+        let generator = Curve25519::generator();
         let scalar = Scalar::from(42u64);
-        let result = gen * scalar;
+        let result = generator * scalar;
 
         // Check it's not identity
         assert_ne!(result, Curve25519::identity());
@@ -416,20 +416,20 @@ mod tests {
 
     #[test]
     fn test_doubling() {
-        let gen = Curve25519::generator();
-        let doubled = gen.double();
-        let added = gen + gen;
+        let generator = Curve25519::generator();
+        let doubled = generator.double();
+        let added = generator + generator;
 
         assert_eq!(doubled, added);
     }
 
     #[test]
     fn test_encoding() {
-        let gen = Curve25519::generator();
-        let bytes = gen.to_bytes();
+        let generator = Curve25519::generator();
+        let bytes = generator.to_bytes();
         let decoded = Curve25519::from_bytes(&bytes).unwrap();
 
-        assert_eq!(gen, decoded);
+        assert_eq!(generator, decoded);
     }
 
     #[test]

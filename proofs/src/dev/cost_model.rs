@@ -106,7 +106,7 @@ impl Lookup {
     ///  - 1 multiplicities polynomial at x,
     ///  - `num_chunks` helper polynomials at x,
     ///  - 1 accumulator polynomial at x and ωx.
-    fn queries(&self) -> impl Iterator<Item = Poly> {
+    fn queries(&self) -> impl Iterator<Item = Poly> + use<> {
         let multiplicities: Poly = "0".parse().unwrap();
         let helper: Poly = "0".parse().unwrap();
         let aggregator: Poly = "0,1".parse().unwrap();
@@ -146,7 +146,7 @@ struct Permutation {
 
 impl Permutation {
     /// Returns the queries of the Permutation argument
-    fn queries(&self) -> impl Iterator<Item = Poly> {
+    fn queries(&self) -> impl Iterator<Item = Poly> + use<> {
         // - at wX, X, uwX for all (except the last)
         // - at wX, X for the last
         let mut chunks: Poly = "0,1".parse().unwrap();
@@ -423,7 +423,9 @@ pub(crate) fn cost_model_options<F: Ord + Field + FromUniformBytes<64>, C: Circu
     .unwrap();
 
     if min_circuit_size == nb_instances {
-        println!("WARNING: The dominant factor in your circuit's size is the number of public inputs, which causes the verifier to perform linear work.");
+        println!(
+            "WARNING: The dominant factor in your circuit's size is the number of public inputs, which causes the verifier to perform linear work."
+        );
     }
 
     CostOptions {

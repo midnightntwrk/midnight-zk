@@ -118,12 +118,15 @@ impl Relation for BitcoinSigExample {
             .flatten()
             .collect::<Vec<_>>();
 
-        let gen = secp256k1_curve.assign_fixed(layouter, K256::generator())?;
+        let generator = secp256k1_curve.assign_fixed(layouter, K256::generator())?;
         let s_bits = secp256k1_scalar.assigned_to_le_bits(layouter, &s, None, true)?;
         let neg_pk = secp256k1_curve.negate(layouter, &pk)?;
 
-        let r_point =
-            secp256k1_curve.msm_by_le_bits(layouter, &[s_bits, sha_output_bits], &[gen, neg_pk])?;
+        let r_point = secp256k1_curve.msm_by_le_bits(
+            layouter,
+            &[s_bits, sha_output_bits],
+            &[generator, neg_pk],
+        )?;
 
         // Check the correctness of R:
         //  1. It should not be the identity.

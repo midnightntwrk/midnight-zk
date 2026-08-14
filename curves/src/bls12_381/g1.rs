@@ -1048,9 +1048,10 @@ mod tests {
             0x12b108ac33643c3e,
         ]);
 
-        let gen = G1Affine::generator();
+        let generator = G1Affine::generator();
         let z2 = z.square();
-        let mut test = G1Projective::from_raw_unchecked(gen.x() * z2, gen.y() * (z2 * z), z);
+        let mut test =
+            G1Projective::from_raw_unchecked(generator.x() * z2, generator.y() * (z2 * z), z);
 
         assert_eq!(test.is_on_curve().unwrap_u8(), 1);
 

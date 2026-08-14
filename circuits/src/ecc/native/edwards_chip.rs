@@ -638,7 +638,7 @@ impl<C: EdwardsCurve> EccChip<C> {
     }
 
     /// The native gadget carried by this chip.
-    pub fn native_gadget(&self) -> &impl NativeInstructions<C::Base> {
+    pub fn native_gadget(&self) -> &(impl NativeInstructions<C::Base> + use<C>) {
         &self.native_gadget
     }
 }
@@ -1380,7 +1380,9 @@ impl<C: EdwardsCurve>
     for EccChip<C>
 {
     fn convert_value(&self, _x: &C::Base) -> Option<C::ScalarField> {
-        unimplemented!("The caller should decide how to convert the value off-circuit, i.e., what to do with overflows.");
+        unimplemented!(
+            "The caller should decide how to convert the value off-circuit, i.e., what to do with overflows."
+        );
     }
 
     fn convert(

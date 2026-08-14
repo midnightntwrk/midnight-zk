@@ -194,15 +194,15 @@ impl<S: SelfEmulation> Msm<S> {
         let mut scalars = Vec::with_capacity(terms.len());
         let mut labels = Vec::with_capacity(terms.len());
 
-        for (label, scalar, &base) in terms {
+        for (label, scalar, base) in terms {
             scalars.push(**scalar);
             labels.push((*label).clone());
             match fixed_bases.get(*label) {
                 Some(expected) => {
-                    assert_eq!(base, *expected);
+                    assert_eq!(**base, *expected);
                     bases.push(Point::Fixed);
                 }
-                None => bases.push(Point::Variable(base)),
+                None => bases.push(Point::Variable(**base)),
             }
         }
         Msm::new(&bases, &scalars, &labels)

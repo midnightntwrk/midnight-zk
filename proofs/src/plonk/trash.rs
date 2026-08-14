@@ -62,7 +62,7 @@ impl<F: PrimeField> Evaluated<F> {
         advice_evals: &[F],
         fixed_evals: &[F],
         instance_evals: &[F],
-    ) -> impl Iterator<Item = F> + 'a {
+    ) -> impl Iterator<Item = F> + 'a + use<'a, F> {
         let evaluate_expression = |expr: &Expression<F>| {
             expr.evaluate(
                 &|scalar| scalar,

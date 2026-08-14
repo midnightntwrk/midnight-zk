@@ -105,7 +105,7 @@ impl<'a, F: Field, CS: Assignment<F> + 'a> TableLayouter<F> for SimpleTableLayou
                     column,
                     format!("{:?}", entry.0.unwrap()),
                     format!("{value:?}"),
-                )))
+                )));
             }
             _ => (),
         }

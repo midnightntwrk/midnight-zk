@@ -1700,10 +1700,23 @@ impl<F: CircuitField> Sha512Chip<F> {
 
                 let w_i_plain = self.assign_add_mod_2_64(&mut region, summands, &zero)?;
 
-                let [val_03a, val_13a, val_13b, val_13c, val_03b, val_11, val_01a, val_01b, val_05, val_01c] =
-                    w_i_plain.0.value().copied()
-                        .map(|w| u64_in_be_limbs(fe_to_u64(w), [3, 13, 13, 13, 3, 11, 1, 1, 5, 1]))
-                        .transpose_array();
+                let [
+                    val_03a,
+                    val_13a,
+                    val_13b,
+                    val_13c,
+                    val_03b,
+                    val_11,
+                    val_01a,
+                    val_01b,
+                    val_05,
+                    val_01c,
+                ] = w_i_plain
+                    .0
+                    .value()
+                    .copied()
+                    .map(|w| u64_in_be_limbs(fe_to_u64(w), [3, 13, 13, 13, 3, 11, 1, 1, 5, 1]))
+                    .transpose_array();
                 let limb_03a = self.assign_plain_and_spreaded(&mut region, val_03a, 0, 0)?;
                 let limb_13a = self.assign_plain_and_spreaded(&mut region, val_13a, 0, 1)?;
                 let limb_13b = self.assign_plain_and_spreaded(&mut region, val_13b, 1, 0)?;
@@ -1714,9 +1727,12 @@ impl<F: CircuitField> Sha512Chip<F> {
 
                 // The spreaded forms of 1-bit values W.01a, W.01b and W.01c equal themselves.
                 let col = self.config().advice_cols[7];
-                let limb_01a = region.assign_advice(|| "W.01a", col, 0, || val_01a.map(u64_to_fe))?;
-                let limb_01b = region.assign_advice(|| "W.01b", col, 1, || val_01b.map(u64_to_fe))?;
-                let limb_01c = region.assign_advice(|| "W.01c", col, 2, || val_01c.map(u64_to_fe))?;
+                let limb_01a =
+                    region.assign_advice(|| "W.01a", col, 0, || val_01a.map(u64_to_fe))?;
+                let limb_01b =
+                    region.assign_advice(|| "W.01b", col, 1, || val_01b.map(u64_to_fe))?;
+                let limb_01c =
+                    region.assign_advice(|| "W.01c", col, 2, || val_01c.map(u64_to_fe))?;
 
                 Ok(AssignedMessageWord {
                     combined_plain: w_i_plain,

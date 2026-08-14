@@ -222,7 +222,12 @@ impl fmt::Display for VerifyFailure {
                 write!(
                     f,
                     "{} uses {} at offset {}, which requires cell in column {:?} at offset {} with annotation {:?} to be assigned.",
-                    region, gate, gate_offset, column, offset, region.get_column_annotation((*column).into())
+                    region,
+                    gate,
+                    gate_offset,
+                    column,
+                    offset,
+                    region.get_column_annotation((*column).into())
                 )
             }
             Self::InstanceCellNotAssigned {
