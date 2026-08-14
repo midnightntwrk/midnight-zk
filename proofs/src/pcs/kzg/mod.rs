@@ -106,18 +106,6 @@ where
         )
     }
 
-    /// With `single-h-commitment` the quotient is committed as one polynomial
-    /// of degree up to `(cs_degree - 1) * n`, so the monomial basis must be
-    /// blown up to the next power of two of `cs_degree - 1`. Otherwise KZG
-    /// commits each polynomial at the Lagrange size and needs no extension.
-    fn srs_monomial_blowup(cs_degree: usize) -> usize {
-        if cfg!(feature = "single-h-commitment") {
-            (cs_degree - 1).next_power_of_two()
-        } else {
-            1
-        }
-    }
-
     fn read_commitment<T: Transcript>(
         transcript: &mut T,
         labels: &[PolynomialLabel],
