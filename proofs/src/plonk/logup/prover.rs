@@ -128,12 +128,11 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ChunkedArgument<F> {
 
         // Closure to get values of expressions and compress them
         let compress_expressions = |expressions: &[Expression<F>]| {
-            let compressed_expression = eval_expressions(expressions)
+            eval_expressions(expressions)
                 .iter()
                 .fold(domain.empty_lagrange(), |acc, expression| {
                     acc * theta + expression
-                });
-            compressed_expression
+                })
         };
 
         let chunked_compressed_inputs: Vec<Vec<Polynomial<F, LagrangeCoeff>>> = self

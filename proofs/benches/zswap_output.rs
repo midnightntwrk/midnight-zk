@@ -344,7 +344,8 @@ fn bench_zswap_output(c: &mut Criterion) {
                     &mut t,
                 )
                 .unwrap();
-                let guard = verify_algebraic_constraints(
+
+                verify_algebraic_constraints(
                     pk.get_vk(),
                     trace,
                     &[KZGMultiCommitment::commitment_to_zero(
@@ -353,8 +354,7 @@ fn bench_zswap_output(c: &mut Criterion) {
                     &[&instance],
                     &mut t,
                 )
-                .unwrap();
-                guard
+                .unwrap()
             },
             |guard| guard.verify(&srs.verifier_params()).unwrap(),
             BatchSize::SmallInput,

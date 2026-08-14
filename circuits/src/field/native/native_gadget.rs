@@ -276,10 +276,10 @@ where
         x: &AssignedNative<F>,
         bound: &BigUint,
     ) -> Result<(), Error> {
-        if let Some(current_bound) = self.constrained_cells.borrow().get(x) {
-            if current_bound <= bound {
-                return Ok(());
-            }
+        if let Some(current_bound) = self.constrained_cells.borrow().get(x)
+            && current_bound <= bound
+        {
+            return Ok(());
         }
         self.update_bound(x, bound.clone());
 
@@ -361,10 +361,10 @@ where
         x: &AssignedBounded<F>,
         y: F,
     ) -> Result<AssignedBit<F>, Error> {
-        if let Some(current_bound) = self.constrained_cells.borrow().get(&x.value) {
-            if *current_bound <= y.to_biguint() {
-                return self.assign_fixed(layouter, true);
-            }
+        if let Some(current_bound) = self.constrained_cells.borrow().get(&x.value)
+            && *current_bound <= y.to_biguint()
+        {
+            return self.assign_fixed(layouter, true);
         }
 
         let x_as_bint = x.value.value().map(|x| x.to_biguint());
@@ -785,10 +785,10 @@ where
         layouter: &mut impl Layouter<F>,
         x: &AssignedNative<F>,
     ) -> Result<AssignedByte<F>, Error> {
-        if let Some(current_bound) = self.constrained_cells.borrow().get(x) {
-            if *current_bound <= BigUint::from(256u32) {
-                return self.convert_unsafe(layouter, x);
-            }
+        if let Some(current_bound) = self.constrained_cells.borrow().get(x)
+            && *current_bound <= BigUint::from(256u32)
+        {
+            return self.convert_unsafe(layouter, x);
         }
         self.update_bound(x, BigUint::from(256u32));
         let b_value = x.value().map(|x| {
@@ -1360,10 +1360,10 @@ where
         layouter: &mut impl Layouter<F>,
         x: &AssignedNative<F>,
     ) -> Result<AssignedBit<F>, Error> {
-        if let Some(current_bound) = self.constrained_cells.borrow().get(x) {
-            if *current_bound <= BigUint::from(2u32) {
-                return self.native_chip.convert_unsafe(layouter, x);
-            }
+        if let Some(current_bound) = self.constrained_cells.borrow().get(x)
+            && *current_bound <= BigUint::from(2u32)
+        {
+            return self.native_chip.convert_unsafe(layouter, x);
         }
         self.update_bound(x, BigUint::from(2u32));
         self.native_chip.convert(layouter, x)

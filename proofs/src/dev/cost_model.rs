@@ -112,7 +112,7 @@ impl Lookup {
         let aggregator: Poly = "0,1".parse().unwrap();
 
         iter::once(multiplicities)
-            .chain(iter::repeat(helper).take(self.num_chunks))
+            .chain(std::iter::repeat_n(helper, self.num_chunks))
             .chain(iter::once(aggregator))
     }
 
@@ -155,7 +155,10 @@ impl Permutation {
         let last_chunk: Poly = "0,1".parse().unwrap();
 
         iter::empty()
-            .chain(iter::repeat(chunks).take((self.columns - 1) / self.chunk_len))
+            .chain(std::iter::repeat_n(
+                chunks,
+                (self.columns - 1) / self.chunk_len,
+            ))
             .chain(Some(last_chunk))
     }
 }
@@ -218,7 +221,7 @@ pub fn circuit_model_with<F: Ord + Field + FromUniformBytes<64>>(
         .cloned()
         .chain(o.lookup.iter().flat_map(|l| l.queries()))
         .chain(o.permutation.queries())
-        .chain(iter::repeat("0".parse().unwrap()).take(o.trash.len()))
+        .chain(std::iter::repeat_n("0".parse().unwrap(), o.trash.len()))
         .chain(iter::once("0".parse().unwrap())) // Linearization polynomial query at x
         .filter(|p| !p.rotations.is_empty())
         .collect();

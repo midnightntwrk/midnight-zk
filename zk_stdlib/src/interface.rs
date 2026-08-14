@@ -445,40 +445,40 @@ impl<R: Relation> Circuit<F> for MidnightCircuit<'_, R> {
         // were actually used.
         zk_std_lib.core_decomposition_chip.load(&mut layouter)?;
 
-        if let Some(sha256_chip) = zk_std_lib.sha2_256_chip {
-            if *zk_std_lib.used_sha2_256.borrow() {
-                sha256_chip.load(&mut layouter)?;
-            }
+        if let Some(sha256_chip) = zk_std_lib.sha2_256_chip
+            && *zk_std_lib.used_sha2_256.borrow()
+        {
+            sha256_chip.load(&mut layouter)?;
         }
 
-        if let Some(sha512_chip) = zk_std_lib.sha2_512_chip {
-            if *zk_std_lib.used_sha2_512.borrow() {
-                sha512_chip.load(&mut layouter)?;
-            }
+        if let Some(sha512_chip) = zk_std_lib.sha2_512_chip
+            && *zk_std_lib.used_sha2_512.borrow()
+        {
+            sha512_chip.load(&mut layouter)?;
         }
 
-        if let Some(b64_chip) = zk_std_lib.base64_chip {
-            if *zk_std_lib.used_base64.borrow() {
-                b64_chip.load(&mut layouter)?;
-            }
+        if let Some(b64_chip) = zk_std_lib.base64_chip
+            && *zk_std_lib.used_base64.borrow()
+        {
+            b64_chip.load(&mut layouter)?;
         }
 
-        if let Some(scanner_chip) = zk_std_lib.scanner_chip {
-            if *zk_std_lib.used_scanner.borrow() {
-                scanner_chip.load(&mut layouter)?;
-            }
+        if let Some(scanner_chip) = zk_std_lib.scanner_chip
+            && *zk_std_lib.used_scanner.borrow()
+        {
+            scanner_chip.load(&mut layouter)?;
         }
 
-        if let Some(keccak_sha3_chip) = zk_std_lib.keccak_sha3_chip {
-            if *zk_std_lib.used_keccak_or_sha3.borrow() {
-                keccak_sha3_chip.load(&mut layouter)?;
-            }
+        if let Some(keccak_sha3_chip) = zk_std_lib.keccak_sha3_chip
+            && *zk_std_lib.used_keccak_or_sha3.borrow()
+        {
+            keccak_sha3_chip.load(&mut layouter)?;
         }
 
-        if let Some(blake2b_chip) = zk_std_lib.blake2b_chip {
-            if *zk_std_lib.used_blake2b.borrow() {
-                blake2b_chip.load(&mut layouter)?;
-            }
+        if let Some(blake2b_chip) = zk_std_lib.blake2b_chip
+            && *zk_std_lib.used_blake2b.borrow()
+        {
+            blake2b_chip.load(&mut layouter)?;
         }
 
         Ok(())

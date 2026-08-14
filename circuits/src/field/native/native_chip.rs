@@ -883,10 +883,11 @@ where
         }
 
         // If only one term remains after filtering, we may early return.
-        if let [(coeff, var)] = terms.as_slice() {
-            if *coeff == F::ONE && F::is_zero_vartime(&constant) {
-                return Ok(var.clone());
-            }
+        if let [(coeff, var)] = terms.as_slice()
+            && *coeff == F::ONE
+            && F::is_zero_vartime(&constant)
+        {
+            return Ok(var.clone());
         }
 
         // Maybe a  &[(F, AssignedNative<F>)] (and correspondingly to the aux function.
