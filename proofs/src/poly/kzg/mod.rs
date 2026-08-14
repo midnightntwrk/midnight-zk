@@ -161,6 +161,20 @@ where
         Ok(KZGMultiCommitment(inners))
     }
 
+    fn write_commitment<T: Transcript>(
+        transcript: &mut T,
+        commitment: &Self::Commitment,
+    ) -> io::Result<()>
+    where
+        Self::Commitment: Hashable<T::Hash>,
+    {
+        // KZG commits each polynomial independently.
+        for inner in &commitment.0 {
+            transcript.write(&KZGMultiCommitment(vec![inner.clone()]))?;
+        }
+        Ok(())
+    }
+
     fn multi_open<T: Transcript>(
         params: &Self::Parameters,
         queries: &[ProverQuery<E::Fr>],

@@ -89,6 +89,15 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
         labels: &[PolynomialLabel],
     ) -> io::Result<Self::Commitment>;
 
+    /// Write a batched `commitment` to the transcript and proof. Counterpart to
+    /// [`read_commitment`](Self::read_commitment).
+    fn write_commitment<T: Transcript>(
+        transcript: &mut T,
+        commitment: &Self::Commitment,
+    ) -> io::Result<()>
+    where
+        Self::Commitment: Hashable<T::Hash>;
+
     /// Squeeze the evaluation point used by the protocol to open committed
     /// polynomials. The default implementation simply squeezes a challenge,
     /// but specific PCS may require squeezing challenges satisfying certain

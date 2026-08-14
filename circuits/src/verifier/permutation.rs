@@ -60,18 +60,17 @@ pub(crate) fn read_product_commitments<S: SelfEmulation, PCS: InCircuitPCS<S>>(
     cs: &ConstraintSystem<S::F>,
 ) -> Result<Committed<S, PCS>, Error> {
     let chunk_len = cs.degree() - 2;
+    let num_chunks = cs.permutation().get_columns().len().div_ceil(chunk_len);
 
-    let nb_chunks = cs.permutation().get_columns().len().div_ceil(chunk_len);
-
-    let permutation_product_commitments = (0..nb_chunks)
-        .map(|i| {
-            PCS::read_commitment(
-                transcript_gadget,
-                layouter,
-                &[PolynomialLabel::PermutationAccumulator(i)],
-            )
-        })
-        .collect::<Result<Vec<_>, _>>()?;
+    // One batched read for all permutation-accumulator sets; each set's query
+    // routes to its own sub-bundle via `PermutationAccumulator(i)`.
+    let permutation_product_commitments = if num_chunks == 0 {
+        Vec::new()
+    } else {
+        let labels: Vec<_> = (0..num_chunks).map(PolynomialLabel::PermutationAccumulator).collect();
+        let shared = PCS::read_commitment(transcript_gadget, layouter, &labels)?;
+        vec![shared; num_chunks]
+    };
 
     Ok(Committed {
         permutation_product_commitments,
