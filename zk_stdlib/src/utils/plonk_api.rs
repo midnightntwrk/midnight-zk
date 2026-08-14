@@ -31,7 +31,8 @@ use midnight_proofs::{
         params::{ParamsKZG, ParamsVerifierKZG},
     },
     plonk::{
-        Circuit, Error, ProvingKey, VerifyingKey, create_proof, keygen_pk, keygen_vk, prepare,
+        Circuit, Error, ProvingKey, VerifyingKey, create_proof, keygen_pk, keygen_vk,
+        max_committed_degree, prepare,
     },
     transcript::{CircuitTranscript, Hashable, Sampleable, Transcript, TranscriptHash},
     utils::SerdeFormat,
@@ -258,25 +259,26 @@ pub enum SrsSource {
 /// Loads an SRS (over BLS12-381) for the given circuit size `k` and
 /// constraint-system degree `cs_degree`.
 ///
-/// The monomial basis is sized via the active PCS's
-/// [`PolynomialCommitmentScheme::srs_monomial_blowup`]: a blow-up factor of
-/// `1` keeps the monomial basis at the Lagrange size `2^k`; a blow-up of `B`
-/// extends it to `2^k · B`. The Lagrange basis stays at size `2^k`.
+/// The SRS is sized to hold the largest polynomial the protocol commits
+/// ([`max_committed_degree`]), as transformed by the commitment scheme
+/// ([`PolynomialCommitmentScheme::internal_degree`]). When that exceeds the
+/// circuit domain, the monomial basis is extended by splicing in a larger SRS;
+/// the Lagrange basis stays at size `2^k`.
 pub fn load_srs(source: SrsSource, k: u32, cs_degree: usize) -> ParamsKZG<Bls12> {
     let fetch = |k| match source {
         SrsSource::Filecoin => filecoin_srs(k),
         SrsSource::Midnight => midnight_srs(k),
     };
 
-    let blowup = <KZGCommitmentScheme<Bls12>>::srs_monomial_blowup(cs_degree);
-    assert_ne!(blowup, 0, "srs blowup should be >= 1");
+    let degree =
+        <KZGCommitmentScheme<Bls12>>::internal_degree(k, max_committed_degree(k, cs_degree));
+    let srs_k = (degree + 1).next_power_of_two().ilog2();
+
     let base = fetch(k);
-    if blowup == 1 {
+    if srs_k <= k {
         base
     } else {
-        let extended_k = k + (blowup as f64).log2().ceil() as u32;
-        let extended = fetch(extended_k);
-        base.with_extended_monomial(extended)
+        base.with_extended_monomial(fetch(srs_k))
     }
 }
 

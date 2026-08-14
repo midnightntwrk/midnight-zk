@@ -122,17 +122,19 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
         transcript.squeeze_challenge()
     }
 
-    /// Multiplicative blow-up factor by which `params.g_monomial_size()` must
-    /// exceed `2^k` (the circuit's Lagrange-domain size) for this PCS to
-    /// commit every polynomial it produces at the requested circuit size.
-    /// Returns `1` when no extension is needed.
+    /// Largest polynomial degree this scheme commits to internally, when asked
+    /// to commit polynomials of degree at most `max_poly_degree`, those on the
+    /// circuit domain (of degree below `2^k`) possibly several at a time.
     ///
-    /// `cs_degree` is the constraint system's `cs.degree()`. Schemes that
-    /// commit to a single combined polynomial (e.g. `single-h-commitment`,
-    /// fflonk's bundles) factor that into their requested blow-up.
-    fn srs_monomial_blowup(cs_degree: usize) -> usize {
-        let _ = cs_degree; // Just to avoid a clippy warning.
-        1
+    /// Schemes that commit every polynomial as given (e.g. KZG) return
+    /// `max_poly_degree`. Schemes that fold several circuit-domain polynomials
+    /// into a single commitment (e.g. fflonk) return a larger degree.
+    ///
+    /// Used to size the parameters, see
+    /// [`max_committed_degree`](crate::plonk::max_committed_degree).
+    fn internal_degree(k: u32, max_poly_degree: usize) -> usize {
+        let _ = k; // Just to avoid a clippy warning.
+        max_poly_degree
     }
 
     /// Create a multi-opening proof at a set of [ProverQuery]'s.
