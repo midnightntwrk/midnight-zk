@@ -10,9 +10,9 @@ permissions:
   issues: write
 
 concurrency:
-  group: default-origin-${{ github.event.issue.number }}
+  group: default-origin-on-open-${{ github.event.issue.number }}
   cancel-in-progress: true
 
 jobs:
   apply:
-    uses: midnightntwrk/.github/.github/workflows/default-origin-on-open.yml@f8dc1fe275748124b842edefa6bd863df6f33f27
+    uses: midnightntwrk/.github/.github/workflows/default-origin-on-open.yml@90a3581fa1fc8136ea5de6cb43d7e4c82b223beb

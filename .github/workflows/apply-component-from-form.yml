@@ -1,0 +1,18 @@
+name: Apply component from form
+
+# Dispatcher — calls the reusable workflow in midnightntwrk/.github.
+# Translates the issue form's Component dropdown into a component:* label.
+on:
+  issues:
+    types: [opened, edited]
+
+permissions:
+  issues: write
+
+concurrency:
+  group: apply-component-from-form-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  apply:
+    uses: midnightntwrk/.github/.github/workflows/apply-component-from-form.yml@90a3581fa1fc8136ea5de6cb43d7e4c82b223beb

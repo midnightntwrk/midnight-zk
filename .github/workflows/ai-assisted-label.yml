@@ -1,0 +1,19 @@
+name: Label AI-assisted PRs
+
+# Dispatcher — calls the reusable workflow in midnightntwrk/.github.
+# Applies bot:ai-assisted when a PR carries an AI-tooling signature.
+on:
+  pull_request:
+    types: [opened, edited, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ai-assisted-label-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  apply:
+    uses: midnightntwrk/.github/.github/workflows/ai-assisted-label.yml@90a3581fa1fc8136ea5de6cb43d7e4c82b223beb

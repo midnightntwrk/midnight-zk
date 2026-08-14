@@ -3,11 +3,21 @@ description: Report a problem with the documentation or request missing docs
 title: "[Docs] "
 type: Task
 labels:
-  - type:task
   - status:untriaged
   - area:documentation
   - component:zk
 body:
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which component does this affect?
+      options:
+        - zk
+        - crypto
+    validations:
+      required: true
+
   - type: input
     id: url
     attributes:

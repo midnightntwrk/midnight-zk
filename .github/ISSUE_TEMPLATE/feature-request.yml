@@ -3,10 +3,20 @@ description: Propose a new feature or capability for midnight-zk
 title: "[Feature] "
 type: Feature
 labels:
-  - type:feature
   - status:untriaged
   - component:zk
 body:
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which component does this affect?
+      options:
+        - zk
+        - crypto
+    validations:
+      required: true
+
   - type: textarea
     id: feature
     attributes:

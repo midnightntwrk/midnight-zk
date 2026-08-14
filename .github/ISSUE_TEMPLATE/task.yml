@@ -3,10 +3,20 @@ description: A unit of work that isn't a bug or a new feature
 title: "[Task] "
 type: Task
 labels:
-  - type:task
   - status:untriaged
   - component:zk
 body:
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which component does this affect?
+      options:
+        - zk
+        - crypto
+    validations:
+      required: true
+
   - type: textarea
     id: summary
     attributes:
