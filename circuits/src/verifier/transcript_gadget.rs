@@ -103,8 +103,7 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
     }
 
     /// Absorbs a commitment into the transcript, one inner polynomial point at
-    /// a time (the absorbed input never includes the multi-commitment's
-    /// length prefix, matching the off-circuit `Hashable::to_input`).
+    /// a time, matching the off-circuit `Hashable::to_input`.
     pub fn common_commitment(
         &mut self,
         layouter: &mut impl Layouter<S::F>,
@@ -140,16 +139,9 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
         self.sponge_chip.squeeze(layouter, state)
     }
 
-    /// Reads `length` curve points from the prover transcript (one per
-    /// polynomial held by the commitment) and absorbs them into the running
-    /// hash state.
-    ///
-    /// Commitments are not length-prefixed on the wire, so the caller supplies
-    /// the number of polynomials (`1` unless the commitment is batched).
-    ///
-    /// Returns an [`AssignedKZGMultiCommitment`] whose inner commitments are
-    /// labeled [`PolynomialLabel::NoLabel`]; callers must attach labels with
-    /// `.label(...)` before using it in verifier queries.
+    /// Reads `labels.len()` curve points from the prover transcript (one per
+    /// polynomial held by the commitment), absorbs them into the running hash
+    /// state, and tags each polynomial with its label.
     ///
     /// # Warning
     ///
@@ -157,10 +149,10 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
     pub fn read_commitment(
         &mut self,
         layouter: &mut impl Layouter<S::F>,
-        length: usize,
+        labels: &[PolynomialLabel],
     ) -> Result<AssignedKZGMultiCommitment<S>, Error> {
-        let mut inners = Vec::with_capacity(length);
-        for _ in 0..length {
+        let mut inners = Vec::with_capacity(labels.len());
+        for label in labels {
             let reader =
                 self.transcript_reader.as_mut().expect("You must init the transcript gadget");
             // If an error, do not fail, assign a default commitment instead.
@@ -171,10 +163,7 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
             };
             let assigned_point =
                 S::assign_without_subgroup_check(layouter, &self.curve_chip, point)?;
-            inners.push(AssignedKZGCommitment::simple(
-                assigned_point,
-                PolynomialLabel::NoLabel,
-            ));
+            inners.push(AssignedKZGCommitment::simple(assigned_point, label.clone()));
         }
 
         let assigned_com = AssignedKZGMultiCommitment(inners);
