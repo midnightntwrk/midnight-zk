@@ -3,7 +3,10 @@ resolver = "2"
 
 members = ["proofs", "curves", "circuits", "aggregation", "zk_stdlib"]
 
-package = { license-file = "LICENSE" }
+[workspace.package]
+license-file = "LICENSE"
+edition = "2024"
+rust-version = "1.88.0"
 
 [workspace.dependencies]
 ff = "0.13"
