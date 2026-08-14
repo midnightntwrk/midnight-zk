@@ -25,9 +25,10 @@ use std::{
 
 use midnight_curves::Bls12;
 use midnight_proofs::{
+    MidnightPCS,
     pcs::{
         Guard, PolynomialCommitmentScheme,
-        kzg::{KZGCommitmentScheme, commitment::KZGMultiCommitment},
+        kzg::commitment::KZGMultiCommitment,
         params::{ParamsKZG, ParamsVerifierKZG},
     },
     plonk::{
@@ -59,7 +60,7 @@ macro_rules! plonk_api {
             pub fn setup_vk(
                 params: &ParamsKZG<$engine>,
                 circuit: &Relation,
-            ) -> VerifyingKey<$native, KZGCommitmentScheme<$engine>> {
+            ) -> VerifyingKey<$native, MidnightPCS<$engine>> {
                 #[cfg(test)]
                 let start = Instant::now();
                 let vk = keygen_vk(params, circuit).expect("keygen_vk should not fail");
@@ -72,8 +73,8 @@ macro_rules! plonk_api {
             /// PLONK PK setup for the given circuit.
             pub fn setup_pk(
                 circuit: &Relation,
-                vk: &VerifyingKey<$native, KZGCommitmentScheme<$engine>>,
-            ) -> ProvingKey<$native, KZGCommitmentScheme<$engine>> {
+                vk: &VerifyingKey<$native, MidnightPCS<$engine>>,
+            ) -> ProvingKey<$native, MidnightPCS<$engine>> {
                 #[cfg(test)]
                 let start = Instant::now();
                 let pk = keygen_pk(vk.clone(), circuit).expect("keygen_pk should not fail");
@@ -86,7 +87,7 @@ macro_rules! plonk_api {
             /// PLONK proving algorithm.
             pub fn prove<H>(
                 params: &ParamsKZG<$engine>,
-                pk: &ProvingKey<$native, KZGCommitmentScheme<$engine>>,
+                pk: &ProvingKey<$native, MidnightPCS<$engine>>,
                 circuit: &Relation,
                 nb_instance_commitments: usize,
                 pi: &[&[$native]],
@@ -101,12 +102,7 @@ macro_rules! plonk_api {
                 let start = Instant::now();
                 let proof = {
                     let mut transcript = CircuitTranscript::init();
-                    create_proof::<
-                        $native,
-                        KZGCommitmentScheme<$engine>,
-                        CircuitTranscript<H>,
-                        Relation,
-                    >(
+                    create_proof::<$native, MidnightPCS<$engine>, CircuitTranscript<H>, Relation>(
                         params,
                         pk,
                         circuit,
@@ -130,7 +126,7 @@ macro_rules! plonk_api {
             /// PLONK verification algorithm.
             pub fn verify<H>(
                 params_verifier: &ParamsVerifierKZG<$engine>,
-                vk: &VerifyingKey<$native, KZGCommitmentScheme<$engine>>,
+                vk: &VerifyingKey<$native, MidnightPCS<$engine>>,
                 instance_commitments: &[KZGMultiCommitment<$engine>],
                 pi: &[&[$native]],
                 proof: &[u8],
@@ -144,7 +140,7 @@ macro_rules! plonk_api {
 
                 #[cfg(test)]
                 let start = Instant::now();
-                let res = prepare::<$native, KZGCommitmentScheme<$engine>, CircuitTranscript<H>>(
+                let res = prepare::<$native, MidnightPCS<$engine>, CircuitTranscript<H>>(
                     vk,
                     instance_commitments,
                     pi,
@@ -270,8 +266,7 @@ pub fn load_srs(source: SrsSource, k: u32, cs_degree: usize) -> ParamsKZG<Bls12>
         SrsSource::Midnight => midnight_srs(k),
     };
 
-    let degree =
-        <KZGCommitmentScheme<Bls12>>::internal_degree(k, max_committed_degree(k, cs_degree));
+    let degree = <MidnightPCS<Bls12>>::internal_degree(k, max_committed_degree(k, cs_degree));
     let srs_k = (degree + 1).next_power_of_two().ilog2();
 
     let base = fetch(k);

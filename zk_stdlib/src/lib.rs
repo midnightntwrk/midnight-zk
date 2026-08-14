@@ -79,6 +79,7 @@ use midnight_curves::{
     k256::{self as k256_mod, K256},
     p256::{self as p256_mod, P256},
 };
+pub use midnight_proofs::MidnightPCS;
 use midnight_proofs::{
     circuit::Layouter,
     plonk::{ConstraintSystem, Error},

@@ -14,8 +14,8 @@ use midnight_circuits::{
 };
 use midnight_curves::k256::K256;
 use midnight_proofs::{
+    MidnightPCS,
     circuit::{Layouter, Value},
-    pcs::kzg::KZGCommitmentScheme,
     plonk::{Error, commit_to_instances},
 };
 use midnight_zk_stdlib::{Relation, ZkStdLib, ZkStdLibArch, utils::plonk_api::srs_for_test};
@@ -200,7 +200,7 @@ fn main() {
     };
     let committed_credential = {
         let instance = CredentialEnrollment::format_committed_instances(&witness);
-        commit_to_instances::<_, KZGCommitmentScheme<_>>(&srs, vk.vk().get_domain(), &instance)
+        commit_to_instances::<_, MidnightPCS<_>>(&srs, vk.vk().get_domain(), &instance)
     };
     println!("... done\n{:?}", wit.elapsed());
 

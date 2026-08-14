@@ -22,9 +22,10 @@ use ff::{Field, FromUniformBytes, PrimeField};
 use goldenfile::Mint;
 use midnight_curves::{Bls12, Fq};
 use midnight_proofs::{
+    MidnightPCS,
     circuit::Layouter,
     dev::cost_model::{COST_MEASURE_END, COST_MEASURE_START, CircuitModel, circuit_model_with},
-    pcs::{PolynomialCommitmentScheme, kzg::KZGCommitmentScheme},
+    pcs::PolynomialCommitmentScheme,
     plonk::Circuit,
 };
 use serde_json::{Map, Value, json};
@@ -83,7 +84,7 @@ where
         let model = circuit_model_with::<F>(
             &circuit,
             0,
-            <KZGCommitmentScheme<Bls12> as PolynomialCommitmentScheme<Fq>>::commitment_byte_length,
+            <MidnightPCS<Bls12> as PolynomialCommitmentScheme<Fq>>::commitment_byte_length,
         );
         update_json(chip_name, op_name, model).expect("csv generation failed");
     }

@@ -17,8 +17,8 @@ use std::collections::BTreeMap;
 
 use group::Group;
 use midnight_proofs::{
+    MidnightPCS,
     circuit::Value,
-    pcs::kzg::KZGCommitmentScheme,
     plonk,
     plonk::ConstraintSystem,
     poly::{EvaluationDomain, PolynomialLabel},
@@ -53,7 +53,7 @@ pub use types::{BlstrsEmulation, SelfEmulation};
 pub use verifier_gadget::VerifierGadget;
 
 type VerifyingKey<S> =
-    plonk::VerifyingKey<<S as SelfEmulation>::F, KZGCommitmentScheme<<S as SelfEmulation>::Engine>>;
+    plonk::VerifyingKey<<S as SelfEmulation>::F, MidnightPCS<<S as SelfEmulation>::Engine>>;
 
 /// Type for in-circuit verifying keys.
 ///

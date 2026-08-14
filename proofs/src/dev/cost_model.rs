@@ -668,8 +668,9 @@ mod tests {
 
     use super::*;
     use crate::{
+        MidnightPCS,
         circuit::{Layouter, SimpleFloorPlanner},
-        pcs::{kzg::KZGCommitmentScheme, params::ParamsKZG},
+        pcs::params::ParamsKZG,
         plonk::{
             Constraints, Expression, Fixed, TableColumn, create_proof, keygen_pk, keygen_vk_with_k,
         },
@@ -833,14 +834,14 @@ mod tests {
         let circuit = StandardPlonk::<1>(Fq::from(random_byte[0] as u64));
 
         let params = ParamsKZG::<Bls12>::unsafe_setup(k, OsRng);
-        let vk = keygen_vk_with_k::<_, KZGCommitmentScheme<Bls12>, _>(&params, &circuit, k)
+        let vk = keygen_vk_with_k::<_, MidnightPCS<Bls12>, _>(&params, &circuit, k)
             .expect("vk should not fail");
         let pk = keygen_pk(vk, &circuit).expect("pk should not fail");
 
         let instances: &[&[Fq]] = &[&[circuit.0]];
         let mut transcript = CircuitTranscript::<State>::init();
 
-        create_proof::<Fq, KZGCommitmentScheme<Bls12>, _, _>(
+        create_proof::<Fq, MidnightPCS<Bls12>, _, _>(
             &params,
             &pk,
             &circuit,
@@ -855,7 +856,7 @@ mod tests {
         let proof = transcript.finalize();
 
         assert_eq!(
-            circuit_model::<_, KZGCommitmentScheme<Bls12>>(&circuit, 0).size,
+            circuit_model::<_, MidnightPCS<Bls12>>(&circuit, 0).size,
             proof.len()
         );
     }
@@ -869,14 +870,14 @@ mod tests {
         let circuit = StandardPlonk::<1>(Fq::from(random_byte[0] as u64));
 
         let params = ParamsKZG::<Bls12>::unsafe_setup(k, OsRng);
-        let vk = keygen_vk_with_k::<_, KZGCommitmentScheme<Bls12>, _>(&params, &circuit, k)
+        let vk = keygen_vk_with_k::<_, MidnightPCS<Bls12>, _>(&params, &circuit, k)
             .expect("vk should not fail");
         let pk = keygen_pk(vk, &circuit).expect("pk should not fail");
 
         let instances: &[&[Fq]] = &[&[circuit.0]];
         let mut transcript = CircuitTranscript::<State>::init();
 
-        create_proof::<Fq, KZGCommitmentScheme<Bls12>, _, _>(
+        create_proof::<Fq, MidnightPCS<Bls12>, _, _>(
             &params,
             &pk,
             &circuit,
@@ -890,7 +891,7 @@ mod tests {
         let proof = transcript.finalize();
 
         assert_eq!(
-            circuit_model::<_, KZGCommitmentScheme<Bls12>>(&circuit, 1).size,
+            circuit_model::<_, MidnightPCS<Bls12>>(&circuit, 1).size,
             proof.len()
         );
     }

@@ -1,8 +1,8 @@
 use midnight_curves::{Bls12, Fq as Scalar};
 use midnight_proofs::{
+    MidnightPCS,
     circuit::{Layouter, SimpleFloorPlanner, Value},
     dev::cost_model::circuit_model,
-    pcs::kzg::KZGCommitmentScheme,
     plonk::{Advice, Circuit, Column, ConstraintSystem, Error, Expression, Selector, TableColumn},
     poly::Rotation,
 };
@@ -88,7 +88,7 @@ impl Circuit<Scalar> for TestCircuit {
 fn main() {
     let circuit = TestCircuit {};
 
-    let model = circuit_model::<_, KZGCommitmentScheme<Bls12>>(&circuit, 0);
+    let model = circuit_model::<_, MidnightPCS<Bls12>>(&circuit, 0);
     println!(
         "Cost of circuit with 8 bit lookup table: \n{}",
         serde_json::to_string_pretty(&model).unwrap()

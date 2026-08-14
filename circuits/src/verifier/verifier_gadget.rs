@@ -897,12 +897,10 @@ pub(crate) mod tests {
 
     use group::Group;
     use midnight_proofs::{
+        MidnightPCS,
         circuit::SimpleFloorPlanner,
         dev::MockProver,
-        pcs::{
-            kzg::{KZGCommitmentScheme, commitment::KZGMultiCommitment},
-            params::ParamsKZG,
-        },
+        pcs::{kzg::commitment::KZGMultiCommitment, params::ParamsKZG},
         plonk::{Circuit, Error, create_proof, keygen_pk, keygen_vk_with_k, prepare},
         poly::PolynomialLabel,
         transcript::{CircuitTranscript, Transcript},
@@ -1167,12 +1165,7 @@ pub(crate) mod tests {
 
         let inner_proof = {
             let mut transcript = CircuitTranscript::<PoseidonState<F>>::init();
-            create_proof::<
-                F,
-                KZGCommitmentScheme<E>,
-                CircuitTranscript<PoseidonState<F>>,
-                InnerCircuit,
-            >(
+            create_proof::<F, MidnightPCS<E>, CircuitTranscript<PoseidonState<F>>, InnerCircuit>(
                 &inner_params,
                 &inner_pk,
                 &InnerCircuit::from_witness(preimage),
@@ -1188,7 +1181,7 @@ pub(crate) mod tests {
         let inner_dual_msm = {
             let mut transcript =
                 CircuitTranscript::<PoseidonState<F>>::init_from_bytes(&inner_proof);
-            prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<PoseidonState<F>>>(
+            prepare::<F, MidnightPCS<E>, CircuitTranscript<PoseidonState<F>>>(
                 &inner_vk,
                 &[KZGMultiCommitment::commitment_to_zero(
                     PolynomialLabel::CommittedInstance(0),

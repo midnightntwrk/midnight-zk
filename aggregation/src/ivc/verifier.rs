@@ -7,10 +7,8 @@
 
 use midnight_circuits::{hash::poseidon::PoseidonState, verifier::Accumulator};
 use midnight_proofs::{
-    pcs::{
-        kzg::{KZGCommitmentScheme, commitment::KZGMultiCommitment},
-        params::ParamsVerifierKZG,
-    },
+    MidnightPCS,
+    pcs::{kzg::commitment::KZGMultiCommitment, params::ParamsVerifierKZG},
     plonk::{self},
     poly::PolynomialLabel,
     transcript::{CircuitTranscript, Transcript},
@@ -63,16 +61,15 @@ impl<T: Ivc> IvcVerifier<T> {
             IvcCircuit::<T>::format_instance(instance).map_err(|_| IvcError::InvalidInstance)?;
 
         let mut transcript = CircuitTranscript::<PoseidonState<F>>::init_from_bytes(proof);
-        let dual_msm =
-            plonk::prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<PoseidonState<F>>>(
-                self.vk.vk(),
-                &[KZGMultiCommitment::commitment_to_zero(
-                    PolynomialLabel::CommittedInstance(0),
-                )],
-                &[&pi],
-                &mut transcript,
-            )
-            .map_err(|_| IvcError::InvalidProof)?;
+        let dual_msm = plonk::prepare::<F, MidnightPCS<E>, CircuitTranscript<PoseidonState<F>>>(
+            self.vk.vk(),
+            &[KZGMultiCommitment::commitment_to_zero(
+                PolynomialLabel::CommittedInstance(0),
+            )],
+            &[&pi],
+            &mut transcript,
+        )
+        .map_err(|_| IvcError::InvalidProof)?;
 
         transcript.assert_empty().map_err(|_| IvcError::TranscriptNotEmpty)?;
 
