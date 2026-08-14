@@ -22,7 +22,7 @@ use midnight_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
     dev::cost_model::{circuit_model, CircuitModel},
     pcs::{
-        kzg::{commitment::KZGMultiCommitment, KZGCommitmentScheme},
+        kzg::commitment::KZGMultiCommitment,
         params::{ParamsKZG, ParamsVerifierKZG},
         Guard, Params,
     },
@@ -32,6 +32,7 @@ use midnight_proofs::{
     poly::PolynomialLabel,
     transcript::{CircuitTranscript, Hashable, Sampleable, Transcript, TranscriptHash},
     utils::SerdeFormat,
+    MidnightPCS,
 };
 use rand::{CryptoRng, RngCore};
 
@@ -96,7 +97,7 @@ pub struct MidnightVK {
     architecture: ZkStdLibArch,
     k: u8,
     nb_public_inputs: usize,
-    vk: VerifyingKey<midnight_curves::Fq, KZGCommitmentScheme<midnight_curves::Bls12>>,
+    vk: VerifyingKey<midnight_curves::Fq, MidnightPCS<midnight_curves::Bls12>>,
 }
 
 impl MidnightVK {
@@ -156,9 +157,7 @@ impl MidnightVK {
     }
 
     /// The underlying midnight-proofs verifying key.
-    pub fn vk(
-        &self,
-    ) -> &VerifyingKey<midnight_curves::Fq, KZGCommitmentScheme<midnight_curves::Bls12>> {
+    pub fn vk(&self) -> &VerifyingKey<midnight_curves::Fq, MidnightPCS<midnight_curves::Bls12>> {
         &self.vk
     }
 }
@@ -168,7 +167,7 @@ impl MidnightVK {
 pub struct MidnightPK<R: Relation> {
     k: u8,
     relation: R,
-    pk: ProvingKey<midnight_curves::Fq, KZGCommitmentScheme<midnight_curves::Bls12>>,
+    pk: ProvingKey<midnight_curves::Fq, MidnightPCS<midnight_curves::Bls12>>,
 }
 
 impl<Rel: Relation> MidnightPK<Rel> {
@@ -225,9 +224,7 @@ impl<Rel: Relation> MidnightPK<Rel> {
     }
 
     /// The underlying midnight-proofs proving key.
-    pub fn pk(
-        &self,
-    ) -> &ProvingKey<midnight_curves::Fq, KZGCommitmentScheme<midnight_curves::Bls12>> {
+    pub fn pk(&self) -> &ProvingKey<midnight_curves::Fq, MidnightPCS<midnight_curves::Bls12>> {
         &self.pk
     }
 }
@@ -624,7 +621,7 @@ where
             let mut transcript = CircuitTranscript::init_from_bytes(proof);
             let dual_msm = prepare::<
                 midnight_curves::Fq,
-                KZGCommitmentScheme<midnight_curves::Bls12>,
+                MidnightPCS<midnight_curves::Bls12>,
                 CircuitTranscript<H>,
             >(
                 &vk.vk,
@@ -677,10 +674,7 @@ pub fn cs_degree(arch: ZkStdLibArch) -> usize {
 /// computed automatically.
 pub fn cost_model<R: Relation>(relation: &R, k: Option<u32>) -> CircuitModel {
     let circuit = MidnightCircuit::from_relation(relation, k);
-    circuit_model::<_, KZGCommitmentScheme<midnight_curves::Bls12>>(
-        &circuit,
-        NB_COMMITTED_INSTANCES,
-    )
+    circuit_model::<_, MidnightPCS<midnight_curves::Bls12>>(&circuit, NB_COMMITTED_INSTANCES)
 }
 
 /// Finds the optimal `k` (log2 of the circuit size) for the given relation.

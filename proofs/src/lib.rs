@@ -16,3 +16,10 @@ pub mod transcript;
 
 pub mod dev;
 pub mod utils;
+
+/// The polynomial commitment scheme Midnight's keys and proofs are built with,
+/// over the pairing engine `E`. Everything that means "the scheme this library
+/// ships" goes through this alias, so switching schemes is a single edit; code
+/// that means KZG specifically keeps naming
+/// [`KZGCommitmentScheme`](pcs::kzg::KZGCommitmentScheme).
+pub type MidnightPCS<E> = pcs::kzg::KZGCommitmentScheme<E>;

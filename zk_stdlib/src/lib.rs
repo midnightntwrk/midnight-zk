@@ -80,6 +80,7 @@ use midnight_curves::{
     p256::{self as p256_mod, P256},
     Fq,
 };
+pub use midnight_proofs::MidnightPCS;
 use midnight_proofs::{
     circuit::Layouter,
     plonk::{ConstraintSystem, Error},
