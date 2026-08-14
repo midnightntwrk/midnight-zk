@@ -896,11 +896,12 @@ pub(crate) mod tests {
     use midnight_proofs::{
         circuit::SimpleFloorPlanner,
         dev::MockProver,
-        plonk::{create_proof, keygen_pk, keygen_vk_with_k, prepare, Circuit, Error},
-        poly::{
-            kzg::{commitment::KZGMultiCommitment, params::ParamsKZG, KZGCommitmentScheme},
-            PolynomialLabel,
+        pcs::{
+            kzg::{commitment::KZGMultiCommitment, KZGCommitmentScheme},
+            params::ParamsKZG,
         },
+        plonk::{create_proof, keygen_pk, keygen_vk_with_k, prepare, Circuit, Error},
+        poly::PolynomialLabel,
         transcript::{CircuitTranscript, Transcript},
     };
     use rand::SeedableRng;

@@ -20,11 +20,6 @@ use rayon::iter::{
 
 /// KZG commitment type
 pub mod commitment;
-/// Multiscalar multiplication engines
-pub mod msm;
-/// KZG commitment scheme
-pub mod params;
-mod utils;
 
 use std::{fmt::Debug, hash::Hash};
 
@@ -33,19 +28,19 @@ use ff::Field;
 use group::Group;
 use midnight_curves::pairing::MultiMillerLoop;
 use rand_core::OsRng;
-#[cfg(feature = "fewer-point-sets")]
-pub use utils::compute_dummy_queries;
 
+#[cfg(feature = "fewer-point-sets")]
+use crate::pcs::compute_dummy_queries;
 #[cfg(feature = "truncated-challenges")]
 use crate::utils::arithmetic::{truncate, truncated_powers};
 use crate::{
+    pcs::{
+        msm::{msm_specific, DualMSM, MSMKZG},
+        params::{ParamsKZG, ParamsVerifierKZG},
+        utils::construct_intermediate_sets,
+        PolynomialCommitmentScheme,
+    },
     poly::{
-        commitment::PolynomialCommitmentScheme,
-        kzg::{
-            msm::{msm_specific, DualMSM, MSMKZG},
-            params::{ParamsKZG, ParamsVerifierKZG},
-            utils::construct_intermediate_sets,
-        },
         query::{PolynomialLabel, VerifierQuery},
         Coeff, Error, Polynomial, PolynomialRepresentation, ProverQuery,
     },
@@ -358,7 +353,6 @@ where
 
     fn multi_prepare<'com, T: Transcript>(
         queries: &[VerifierQuery<'com, E::Fr, KZGCommitmentScheme<E>>],
-        _k: u32,
         transcript: &mut T,
     ) -> Result<DualMSM<E>, Error>
     where
@@ -571,13 +565,12 @@ mod tests {
     use rand_core::OsRng;
 
     use crate::{
+        pcs::{
+            kzg::{commitment::KZGMultiCommitment, KZGCommitmentScheme},
+            params::{ParamsKZG, ParamsVerifierKZG},
+            Guard, PolynomialCommitmentScheme,
+        },
         poly::{
-            commitment::{Guard, PolynomialCommitmentScheme},
-            kzg::{
-                commitment::KZGMultiCommitment,
-                params::{ParamsKZG, ParamsVerifierKZG},
-                KZGCommitmentScheme,
-            },
             query::{ProverQuery, VerifierQuery},
             EvaluationDomain, PolynomialLabel,
         },
@@ -596,12 +589,12 @@ mod tests {
         let proof = create_proof::<_, CircuitTranscript<Blake2bState>>(&params);
 
         let verifier_params = params.verifier_params();
-        verify::<Bls12, CircuitTranscript<Blake2bState>>(&verifier_params, &proof[..], K, false);
+        verify::<Bls12, CircuitTranscript<Blake2bState>>(&verifier_params, &proof[..], false);
 
-        verify::<Bls12, CircuitTranscript<Blake2bState>>(&verifier_params, &proof[..], K, true);
+        verify::<Bls12, CircuitTranscript<Blake2bState>>(&verifier_params, &proof[..], true);
     }
 
-    fn verify<E, T>(verifier_params: &ParamsVerifierKZG<E>, proof: &[u8], k: u32, should_fail: bool)
+    fn verify<E, T>(verifier_params: &ParamsVerifierKZG<E>, proof: &[u8], should_fail: bool)
     where
         E: MultiMillerLoop,
         T: Transcript,
@@ -682,7 +675,7 @@ mod tests {
         };
 
         let result =
-            KZGCommitmentScheme::multi_prepare(&queries.collect::<Vec<_>>(), k, &mut transcript)
+            KZGCommitmentScheme::multi_prepare(&queries.collect::<Vec<_>>(), &mut transcript)
                 .unwrap();
 
         if should_fail {

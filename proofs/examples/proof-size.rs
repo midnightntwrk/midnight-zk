@@ -2,8 +2,9 @@ use midnight_curves::{Bls12, Fq as Scalar};
 use midnight_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
     dev::cost_model::circuit_model,
+    pcs::kzg::KZGCommitmentScheme,
     plonk::{Advice, Circuit, Column, ConstraintSystem, Error, Expression, Selector, TableColumn},
-    poly::{kzg::KZGCommitmentScheme, Rotation},
+    poly::Rotation,
 };
 
 // We use a lookup example

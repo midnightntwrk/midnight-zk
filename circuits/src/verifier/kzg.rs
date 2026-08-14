@@ -30,8 +30,9 @@ use ff::Field;
 use group::Group;
 use midnight_proofs::{
     circuit::{Layouter, Value},
+    pcs::kzg::commitment::KZGCommitment,
     plonk::Error,
-    poly::{kzg::commitment::KZGCommitment, PolynomialLabel},
+    poly::PolynomialLabel,
 };
 
 #[cfg(feature = "truncated-challenges")]
@@ -58,7 +59,7 @@ use crate::{
 // -------------------------------------
 
 /// In-circuit analog of
-/// [`KZGCommitment`](midnight_proofs::poly::kzg::commitment::KZGCommitment).
+/// [`KZGCommitment`](midnight_proofs::pcs::kzg::commitment::KZGCommitment).
 ///
 /// Carries a polynomial commitment (or a lazy linear combination of them)
 /// together with its `PolynomialLabel`(s).
@@ -191,7 +192,7 @@ impl<S: SelfEmulation> AssignedKZGCommitment<S> {
 }
 
 /// In-circuit analog of
-/// [`KZGMultiCommitment`](midnight_proofs::poly::kzg::commitment::KZGMultiCommitment):
+/// [`KZGMultiCommitment`](midnight_proofs::pcs::kzg::commitment::KZGMultiCommitment):
 /// a commitment to one or more polynomials.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AssignedKZGMultiCommitment<S: SelfEmulation>(pub Vec<AssignedKZGCommitment<S>>);
@@ -228,11 +229,11 @@ impl<S: SelfEmulation> AssignedKZGMultiCommitment<S> {
 }
 
 impl<S: SelfEmulation> InnerValue for AssignedKZGMultiCommitment<S> {
-    type Element = midnight_proofs::poly::kzg::commitment::KZGMultiCommitment<S::Engine>;
+    type Element = midnight_proofs::pcs::kzg::commitment::KZGMultiCommitment<S::Engine>;
 
     fn value(&self) -> Value<Self::Element> {
         Value::from_iter(self.0.iter().map(|c| c.value()))
-            .map(midnight_proofs::poly::kzg::commitment::KZGMultiCommitment)
+            .map(midnight_proofs::pcs::kzg::commitment::KZGMultiCommitment)
     }
 }
 
@@ -465,7 +466,7 @@ pub(crate) fn multi_prepare_kzg<S: SelfEmulation>(
     #[cfg(feature = "fewer-point-sets")]
     let queries = &{
         let pairs: Vec<_> = queries.iter().map(|q| (q.label.clone(), q.point.clone())).collect();
-        let dummy_openings = midnight_proofs::poly::kzg::compute_dummy_queries(&pairs);
+        let dummy_openings = midnight_proofs::pcs::compute_dummy_queries(&pairs);
         let mut queries = queries.to_vec();
         for (idx, dummy_point) in dummy_openings {
             queries.push(VerifierQuery {

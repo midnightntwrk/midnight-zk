@@ -7,13 +7,14 @@ use ff::{FromUniformBytes, WithSmallOrderMulGroup};
 
 use super::{Error, VerifyingKey};
 use crate::{
+    pcs::PolynomialCommitmentScheme,
     plonk::{
         linearization::verifier::compute_linearization_commitment,
         logup::verifier::{read_aggregators, read_helpers, read_multiplicities, ChunkedArgRef},
         partially_evaluate_identities,
         traces::VerifierTrace,
     },
-    poly::{commitment::PolynomialCommitmentScheme, PolynomialLabel, VerifierQuery},
+    poly::{PolynomialLabel, VerifierQuery},
     transcript::{read_n, Hashable, Sampleable, Transcript},
     utils::arithmetic::compute_inner_product,
 };
@@ -360,7 +361,7 @@ where
     // We are now convinced the circuit is satisfied so long as the
     // polynomial commitments open to the correct values, which is true as long
     // as the following accumulator passes the invariant.
-    CS::multi_prepare(&queries, vk.domain.k(), transcript).map_err(|_| Error::Opening)
+    CS::multi_prepare(&queries, transcript).map_err(|_| Error::Opening)
 }
 
 /// Prepares a plonk proof into a PCS instance that can be finalized or

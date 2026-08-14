@@ -8,6 +8,7 @@ use rand_core::{CryptoRng, RngCore};
 use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 
 use crate::{
+    pcs::PolynomialCommitmentScheme,
     plonk::{
         circuit::Circuit,
         linearization::prover::compute_linearization_poly,
@@ -19,7 +20,6 @@ use crate::{
         traces::ProverTrace,
         trash, Error, ProvingKey,
     },
-    poly::commitment::PolynomialCommitmentScheme,
     transcript::{Hashable, Sampleable, Transcript},
     utils::arithmetic::eval_polynomial,
 };

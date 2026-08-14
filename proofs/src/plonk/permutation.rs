@@ -20,11 +20,12 @@ pub use keygen::Assembly;
 use midnight_curves::serde::SerdeObject;
 
 use crate::{
+    pcs::PolynomialCommitmentScheme,
     plonk::{
         self,
         permutation::{keygen::compute_polys_and_cosets, verifier::CommonEvaluated},
     },
-    poly::{commitment::PolynomialCommitmentScheme, EvaluationDomain, PolynomialLabel},
+    poly::{EvaluationDomain, PolynomialLabel},
     utils::helpers::ProcessedSerdeObject,
 };
 

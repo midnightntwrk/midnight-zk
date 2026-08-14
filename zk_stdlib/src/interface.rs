@@ -21,18 +21,15 @@ use midnight_curves::G1Projective;
 use midnight_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
     dev::cost_model::{circuit_model, CircuitModel},
+    pcs::{
+        kzg::{commitment::KZGMultiCommitment, KZGCommitmentScheme},
+        params::{ParamsKZG, ParamsVerifierKZG},
+        Guard, Params,
+    },
     plonk::{
         self, keygen_vk_with_k, prepare, Circuit, ConstraintSystem, Error, ProvingKey, VerifyingKey,
     },
-    poly::{
-        commitment::{Guard, Params},
-        kzg::{
-            commitment::KZGMultiCommitment,
-            params::{ParamsKZG, ParamsVerifierKZG},
-            KZGCommitmentScheme,
-        },
-        PolynomialLabel,
-    },
+    poly::PolynomialLabel,
     transcript::{CircuitTranscript, Hashable, Sampleable, Transcript, TranscriptHash},
     utils::SerdeFormat,
 };

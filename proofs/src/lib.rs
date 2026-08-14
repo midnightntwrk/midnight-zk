@@ -9,6 +9,7 @@
 #![deny(unsafe_code)]
 
 pub mod circuit;
+pub mod pcs;
 pub mod plonk;
 pub mod poly;
 pub mod transcript;

@@ -7,11 +7,12 @@
 
 use midnight_circuits::{hash::poseidon::PoseidonState, verifier::Accumulator};
 use midnight_proofs::{
-    plonk::{self},
-    poly::{
-        kzg::{commitment::KZGMultiCommitment, params::ParamsVerifierKZG, KZGCommitmentScheme},
-        PolynomialLabel,
+    pcs::{
+        kzg::{commitment::KZGMultiCommitment, KZGCommitmentScheme},
+        params::ParamsVerifierKZG,
     },
+    plonk::{self},
+    poly::PolynomialLabel,
     transcript::{CircuitTranscript, Transcript},
 };
 use midnight_zk_stdlib::{MidnightVK, Relation};
