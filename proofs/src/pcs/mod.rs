@@ -16,6 +16,7 @@ pub mod params;
 /// `Guard`).
 pub mod scheme;
 
+pub(crate) mod multi_open;
 pub(crate) mod utils;
 
 pub use scheme::{Guard, Params, PolynomialCommitmentScheme};
