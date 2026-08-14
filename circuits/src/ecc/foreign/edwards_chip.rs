@@ -49,16 +49,17 @@ use super::common::{
     add_1bit_scalar_bases, configure_multi_select_lookup, fill_dynamic_lookup_row, msm_preprocess,
 };
 use crate::{
+    CircuitField,
     ecc::{
         curves::{CircuitCurve, EdwardsCurve},
         foreign::gates::edwards::addition::{self, AdditionConfig},
     },
     field::{
+        AssignedNative,
         foreign::{
             field_chip::{FieldChip, FieldChipConfig},
             params::FieldEmulationParams,
         },
-        AssignedNative,
     },
     instructions::{
         ArithInstructions, AssertionInstructions, AssignmentInstructions, ControlFlowInstructions,
@@ -66,7 +67,6 @@ use crate::{
         PublicInputInstructions, ScalarFieldInstructions, ZeroInstructions,
     },
     types::{AssignedBit, AssignedByte, AssignedField, InnerConstants, InnerValue, Instantiable},
-    CircuitField,
 };
 
 /// Number of columns required by the custom gates of this chip.
@@ -1518,7 +1518,7 @@ where
 mod tests {
     use ff::Field;
     use group::{Group, GroupEncoding};
-    use midnight_curves::{curve25519::Curve25519, BlsScalar};
+    use midnight_curves::{BlsScalar, curve25519::Curve25519};
     use midnight_proofs::{circuit::SimpleFloorPlanner, dev::MockProver, plonk::Circuit};
     use rand::SeedableRng;
     use rand_chacha::ChaCha8Rng;
@@ -1527,8 +1527,8 @@ mod tests {
     use crate::{
         ecc::curves::CircuitCurve,
         field::{
-            decomposition::chip::P2RDecompositionChip, foreign::params::MultiEmulationParams,
-            NativeChip, NativeGadget,
+            NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip,
+            foreign::params::MultiEmulationParams,
         },
         instructions::{assertions, control_flow, ecc, equality, public_input, zero},
     };

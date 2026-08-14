@@ -17,7 +17,7 @@
 //! match that of `midnight-circuits`, unsafe type conversions are performed.
 
 use midnight_circuits::{
-    field::{decomposition::chip::P2RDecompositionChip, AssignedNative, NativeChip, NativeGadget},
+    field::{AssignedNative, NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip},
     instructions::{
         AssertionInstructions, AssignmentInstructions, ConversionInstructions,
         UnsafeConversionInstructions,

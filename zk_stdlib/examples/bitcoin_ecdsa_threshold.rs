@@ -4,25 +4,25 @@
 use ff::Field;
 use group::Curve;
 use midnight_circuits::{
-    field::foreign::{params::MultiEmulationParams as MEP, AssignedField},
+    CircuitField,
+    field::foreign::{AssignedField, params::MultiEmulationParams as MEP},
     instructions::{
         ArithInstructions, AssignmentInstructions, DecompositionInstructions, EccInstructions,
         PublicInputInstructions, ZeroInstructions,
     },
     testing_utils::ecdsa::{ECDSASig, Ecdsa},
     types::{AssignedForeignPoint, InnerValue, Instantiable},
-    CircuitField,
 };
 use midnight_curves::{
-    k256::{Fq as K256Scalar, K256},
     Fq as Scalar,
+    k256::{Fq as K256Scalar, K256},
 };
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
-use midnight_zk_stdlib::{utils::plonk_api::srs_for_test, Relation, ZkStdLib, ZkStdLibArch};
-use rand::{prelude::SliceRandom, rngs::OsRng, SeedableRng};
+use midnight_zk_stdlib::{Relation, ZkStdLib, ZkStdLibArch, utils::plonk_api::srs_for_test};
+use rand::{SeedableRng, prelude::SliceRandom, rngs::OsRng};
 use rand_chacha::ChaCha8Rng;
 
 type F = Scalar;

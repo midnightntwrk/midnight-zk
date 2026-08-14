@@ -33,16 +33,16 @@ use {
 };
 
 use crate::{
+    CircuitField,
     biguint::BigUintGadget,
     ecc::curves::{CircuitCurve, EdwardsCurve},
-    field::{decomposition::chip::P2RDecompositionChip, NativeChip, NativeGadget},
+    field::{NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip},
     instructions::*,
     types::{
         AssignedBigUint, AssignedBit, AssignedByte, AssignedNative, InnerConstants, InnerValue,
         Instantiable,
     },
     utils::ComposableChip,
-    CircuitField,
 };
 
 /// The number of advice columns used by the EccChip.

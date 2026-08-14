@@ -12,7 +12,7 @@ use midnight_proofs::{
     plonk::Error,
 };
 use midnight_zk_stdlib::{Relation, ZkStdLib, ZkStdLibArch};
-use rand::{rngs::OsRng, Rng};
+use rand::{Rng, rngs::OsRng};
 use sha2::Digest;
 
 type F = midnight_curves::Fq;

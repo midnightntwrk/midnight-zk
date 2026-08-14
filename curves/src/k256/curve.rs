@@ -16,14 +16,14 @@
 use ff::Field as FfField;
 use group::{Curve, Group, GroupEncoding};
 use k256::{
+    AffinePoint, ProjectivePoint,
     elliptic_curve::{
+        BatchNormalize, Group as K256Group,
         ff::PrimeField as K256PrimeField,
         group::GroupEncoding as K256GroupEncoding,
         point::AffineCoordinates,
         sec1::{FromEncodedPoint, ToEncodedPoint},
-        BatchNormalize, Group as K256Group,
     },
-    AffinePoint, ProjectivePoint,
 };
 use subtle::{Choice, CtOption};
 

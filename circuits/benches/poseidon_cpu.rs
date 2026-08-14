@@ -1,7 +1,7 @@
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 use ff::Field;
 use midnight_circuits::hash::poseidon::{
-    permutation_cpu, round_skips::PreComputedRoundCPU, PoseidonChip,
+    PoseidonChip, permutation_cpu, round_skips::PreComputedRoundCPU,
 };
 use rand::SeedableRng;
 use rand_chacha::ChaCha12Rng;

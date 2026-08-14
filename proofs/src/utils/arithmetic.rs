@@ -8,9 +8,9 @@ use std::{
 
 pub use ff::Field;
 use group::{
+    Curve, GroupOpsOwned, ScalarMulOwned,
     ff::{BatchInvert, PrimeField},
     prime::PrimeCurveAffine,
-    Curve, GroupOpsOwned, ScalarMulOwned,
 };
 use midnight_curves::fft::best_fft;
 pub use midnight_curves::{CurveAffine, CurveExt};

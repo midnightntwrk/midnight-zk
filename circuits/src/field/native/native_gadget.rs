@@ -33,21 +33,22 @@ use {
 };
 
 use crate::{
+    CircuitField,
     field::{
-        decomposition::{chip::P2RDecompositionChip, instructions::CoreDecompositionInstructions},
         NativeChip,
+        decomposition::{chip::P2RDecompositionChip, instructions::CoreDecompositionInstructions},
     },
     instructions::{
-        public_input::CommittedInstanceInstructions, ArithInstructions, AssertionInstructions,
-        AssignmentInstructions, BinaryInstructions, BitwiseInstructions, CanonicityInstructions,
-        ComparisonInstructions, ControlFlowInstructions, ConversionInstructions,
-        DecompositionInstructions, DivisionInstructions, EqualityInstructions, FieldInstructions,
-        NativeInstructions, PublicInputInstructions, RangeCheckInstructions,
-        ScalarFieldInstructions, UnsafeConversionInstructions, ZeroInstructions,
+        ArithInstructions, AssertionInstructions, AssignmentInstructions, BinaryInstructions,
+        BitwiseInstructions, CanonicityInstructions, ComparisonInstructions,
+        ControlFlowInstructions, ConversionInstructions, DecompositionInstructions,
+        DivisionInstructions, EqualityInstructions, FieldInstructions, NativeInstructions,
+        PublicInputInstructions, RangeCheckInstructions, ScalarFieldInstructions,
+        UnsafeConversionInstructions, ZeroInstructions,
+        public_input::CommittedInstanceInstructions,
     },
     types::{AssignedBit, AssignedNative, InnerValue, Instantiable},
     utils::util::big_to_fe,
-    CircuitField,
 };
 
 #[derive(Debug, Clone)]

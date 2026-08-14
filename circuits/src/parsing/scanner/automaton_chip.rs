@@ -101,12 +101,12 @@ use midnight_proofs::{
 };
 
 use super::{
-    varlen::ScannerVec, NativeAutomaton, ScannerChip, ALPHABET_MAX_SIZE, AUTOMATON_PARALLELISM,
-    NB_AUTOMATON_COLS,
+    ALPHABET_MAX_SIZE, AUTOMATON_PARALLELISM, NB_AUTOMATON_COLS, NativeAutomaton, ScannerChip,
+    varlen::ScannerVec,
 };
 use crate::{
-    field::AssignedNative, instructions::AssignmentInstructions, parsing::scanner::AutomatonParser,
-    types::AssignedByte, vec::AssignedVector, CircuitField,
+    CircuitField, field::AssignedNative, instructions::AssignmentInstructions,
+    parsing::scanner::AutomatonParser, types::AssignedByte, vec::AssignedVector,
 };
 
 impl<F> NativeAutomaton<F>
@@ -466,16 +466,16 @@ mod test {
     };
 
     use super::{
-        super::{regex::Regex, AutomatonParser},
+        super::{AutomatonParser, regex::Regex},
         ScannerChip,
     };
     use crate::{
+        CircuitField,
         field::AssignedNative,
         instructions::{AssertionInstructions, AssignmentInstructions},
         testing_utils::FromScratch,
         types::AssignedByte,
         utils::circuit_modeling::{circuit_to_json, cost_measure_end, cost_measure_start},
-        CircuitField,
     };
 
     #[derive(Clone, Debug)]

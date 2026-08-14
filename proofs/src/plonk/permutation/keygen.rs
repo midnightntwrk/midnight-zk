@@ -7,8 +7,8 @@ use super::{Argument, ProvingKey, VerifyingKey};
 use crate::{
     plonk::{Any, Column, Error},
     poly::{
-        commitment::PolynomialCommitmentScheme, Coeff, EvaluationDomain, ExtendedLagrangeCoeff,
-        LagrangeCoeff, Polynomial, PolynomialLabel,
+        Coeff, EvaluationDomain, ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial, PolynomialLabel,
+        commitment::PolynomialCommitmentScheme,
     },
     utils::arithmetic::parallelize,
 };

@@ -28,8 +28,8 @@ use num_traits::One;
 
 use super::{BinaryInstructions, DecompositionInstructions, RangeCheckInstructions};
 use crate::{
-    types::{InnerConstants, Instantiable},
     CircuitField,
+    types::{InnerConstants, Instantiable},
 };
 
 /// The set of circuit instructions for binary bit-wise operations.

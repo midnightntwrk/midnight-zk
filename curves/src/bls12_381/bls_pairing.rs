@@ -4,7 +4,7 @@ use blst::*;
 use ff::Field;
 use subtle::{Choice, ConditionallySelectable};
 
-use super::{fp12::Fp12, G1Affine, G2Affine, Gt};
+use super::{G1Affine, G2Affine, Gt, fp12::Fp12};
 
 /// Execute a complete pairing operation `(p, q)`.
 pub fn pairing(p: &G1Affine, q: &G2Affine) -> Gt {

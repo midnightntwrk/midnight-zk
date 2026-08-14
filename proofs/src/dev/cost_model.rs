@@ -670,11 +670,11 @@ mod tests {
     use crate::{
         circuit::{Layouter, SimpleFloorPlanner},
         plonk::{
-            create_proof, keygen_pk, keygen_vk_with_k, Constraints, Expression, Fixed, TableColumn,
+            Constraints, Expression, Fixed, TableColumn, create_proof, keygen_pk, keygen_vk_with_k,
         },
         poly::{
-            kzg::{params::ParamsKZG, KZGCommitmentScheme},
             Rotation,
+            kzg::{KZGCommitmentScheme, params::ParamsKZG},
         },
         transcript::{CircuitTranscript, Transcript},
     };

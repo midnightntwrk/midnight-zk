@@ -16,7 +16,7 @@
 //! scalars only.
 //! (The bases are assumed to be fixed and globally known.)
 
-use std::collections::{btree_map::Entry, BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashSet, btree_map::Entry};
 
 use ff::Field;
 use midnight_curves::msm::msm_best;
@@ -33,7 +33,7 @@ use crate::{
     verifier::{
         types::SelfEmulation,
         utils::{
-            add_bounded_scalars, assign_bounded_scalars, mul_bounded_scalars, AssignedBoundedScalar,
+            AssignedBoundedScalar, add_bounded_scalars, assign_bounded_scalars, mul_bounded_scalars,
         },
     },
 };

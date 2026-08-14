@@ -13,25 +13,26 @@
 
 use std::time::Instant;
 
-use base64::{decode_config, STANDARD_NO_PAD};
+use base64::{STANDARD_NO_PAD, decode_config};
 use midnight_circuits::{
-    field::foreign::{params::MultiEmulationParams, AssignedField},
+    CircuitField,
+    field::foreign::{AssignedField, params::MultiEmulationParams},
     instructions::{
-        public_input::CommittedInstanceInstructions, AssertionInstructions, AssignmentInstructions,
-        Base64Instructions, DecompositionInstructions, EccInstructions, RangeCheckInstructions,
+        AssertionInstructions, AssignmentInstructions, Base64Instructions,
+        DecompositionInstructions, EccInstructions, RangeCheckInstructions,
+        public_input::CommittedInstanceInstructions,
     },
     parsing::{DateFormat, Separator},
     testing_utils::ecdsa::{ECDSASig, FromBase64},
     types::{AssignedByte, AssignedForeignPoint, AssignedNative},
-    CircuitField,
 };
 use midnight_curves::k256::{Fq as K256Scalar, K256};
 use midnight_proofs::{
     circuit::{Layouter, Value},
-    plonk::{commit_to_instances, Error},
+    plonk::{Error, commit_to_instances},
     poly::kzg::KZGCommitmentScheme,
 };
-use midnight_zk_stdlib::{utils::plonk_api::srs_for_test, Relation, ZkStdLib, ZkStdLibArch};
+use midnight_zk_stdlib::{Relation, ZkStdLib, ZkStdLibArch, utils::plonk_api::srs_for_test};
 use num_bigint::BigUint;
 use rand::rngs::OsRng;
 use utils::{read_credential, split_blob, verify_credential_sig};

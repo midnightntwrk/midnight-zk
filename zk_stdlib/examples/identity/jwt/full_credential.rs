@@ -4,7 +4,8 @@
 use std::{io::Write, time::Instant};
 
 use midnight_circuits::{
-    field::foreign::{params::MultiEmulationParams, AssignedField},
+    CircuitField,
+    field::foreign::{AssignedField, params::MultiEmulationParams},
     instructions::{
         ArithInstructions, AssertionInstructions, AssignmentInstructions, Base64Instructions,
         DecompositionInstructions, EccInstructions, PublicInputInstructions,
@@ -13,14 +14,13 @@ use midnight_circuits::{
     parsing::{DateFormat, Separator},
     testing_utils::ecdsa::{ECDSASig, FromBase64, PublicKey},
     types::{AssignedByte, AssignedForeignPoint, AssignedNative, InnerValue, Instantiable},
-    CircuitField,
 };
 use midnight_curves::k256::{Fq as K256Scalar, K256};
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
-use midnight_zk_stdlib::{utils::plonk_api::srs_for_test, Relation, ZkStdLib, ZkStdLibArch};
+use midnight_zk_stdlib::{Relation, ZkStdLib, ZkStdLibArch, utils::plonk_api::srs_for_test};
 use num_bigint::BigUint;
 use rand::rngs::OsRng;
 use utils::{read_credential, split_blob, verify_credential_sig};

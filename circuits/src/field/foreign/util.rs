@@ -25,8 +25,8 @@ use num_integer::Integer;
 use num_traits::{One, Signed, Zero};
 
 use crate::{
-    field::decomposition::cpu_utils::compute_optimal_limb_sizes, utils::util::bigint_to_fe,
-    CircuitField,
+    CircuitField, field::decomposition::cpu_utils::compute_optimal_limb_sizes,
+    utils::util::bigint_to_fe,
 };
 
 /// Like .rem, but gives positive answers only.
@@ -43,11 +43,7 @@ pub fn urem(value: &BI, modulus: &BI) -> BI {
 /// bounds than `urem` when the unsigned representative is close to `modulus`.
 pub fn signed_mod(value: &BI, modulus: &BI) -> BI {
     let r = urem(value, modulus);
-    if &r * 2 > *modulus {
-        r - modulus
-    } else {
-        r
-    }
+    if &r * 2 > *modulus { r - modulus } else { r }
 }
 
 /// Returns the signed representative of a field element (closest to zero).

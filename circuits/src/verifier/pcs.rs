@@ -20,12 +20,12 @@ use std::fmt::Debug;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
-    poly::{commitment::Labelable, PolynomialLabel},
+    poly::{PolynomialLabel, commitment::Labelable},
 };
 
 use crate::{
     field::AssignedNative,
-    verifier::{transcript_gadget::TranscriptGadget, AssignedAccumulator, SelfEmulation},
+    verifier::{AssignedAccumulator, SelfEmulation, transcript_gadget::TranscriptGadget},
 };
 
 // ---------------------------------------------------------------------------

@@ -19,15 +19,15 @@
 use midnight_proofs::{
     circuit::Layouter,
     plonk::Error,
-    poly::{commitment::Labelable, PolynomialLabel},
+    poly::{PolynomialLabel, commitment::Labelable},
 };
 
 use crate::{
     field::AssignedNative,
     verifier::{
+        SelfEmulation,
         pcs::{InCircuitPCS, VerifierQuery},
         transcript_gadget::TranscriptGadget,
-        SelfEmulation,
     },
 };
 

@@ -12,9 +12,9 @@ use std::{
 
 use ff::Field;
 
-use super::{logup, permutation, trash, Error};
+use super::{Error, logup, permutation, trash};
 use crate::{
-    circuit::{layouter::SyncDeps, Layouter, Region, RegionStart, Value},
+    circuit::{Layouter, Region, RegionStart, Value, layouter::SyncDeps},
     dev::metadata,
     plonk::trash::Argument,
     poly::Rotation,

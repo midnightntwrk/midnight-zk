@@ -26,14 +26,14 @@ use std::{
 use midnight_curves::Bls12;
 use midnight_proofs::{
     plonk::{
-        create_proof, keygen_pk, keygen_vk, prepare, Circuit, Error, ProvingKey, VerifyingKey,
+        Circuit, Error, ProvingKey, VerifyingKey, create_proof, keygen_pk, keygen_vk, prepare,
     },
     poly::{
         commitment::{Guard, PolynomialCommitmentScheme},
         kzg::{
+            KZGCommitmentScheme,
             commitment::KZGMultiCommitment,
             params::{ParamsKZG, ParamsVerifierKZG},
-            KZGCommitmentScheme,
         },
     },
     transcript::{CircuitTranscript, Hashable, Sampleable, Transcript, TranscriptHash},
@@ -42,7 +42,7 @@ use midnight_proofs::{
 use rand::{CryptoRng, RngCore};
 use sha2::Digest;
 
-use crate::{cost_model, optimal_k, MidnightVK, Relation};
+use crate::{MidnightVK, Relation, cost_model, optimal_k};
 
 macro_rules! plonk_api {
     ($name:ident, $engine:ty, $native:ty, $curve:ty, $projective:ty) => {

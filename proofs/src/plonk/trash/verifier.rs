@@ -2,10 +2,10 @@ use ff::{PrimeField, WithSmallOrderMulGroup};
 
 use super::Argument;
 use crate::{
-    plonk::{trash, Error},
+    plonk::{Error, trash},
     poly::{
-        commitment::{Labelable, PolynomialCommitmentScheme},
         PolynomialLabel, VerifierQuery,
+        commitment::{Labelable, PolynomialCommitmentScheme},
     },
     transcript::{Hashable, Transcript},
 };

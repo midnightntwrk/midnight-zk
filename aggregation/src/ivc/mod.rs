@@ -63,7 +63,7 @@ pub trait IvcContext: Clone {
 
     /// Serializes the context to a writer.
     fn write_context<W: std::io::Write>(ctx: &Self::Context, writer: &mut W)
-        -> std::io::Result<()>;
+    -> std::io::Result<()>;
 
     /// Deserializes a context from a reader.
     fn read_context<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self::Context>;

@@ -1,10 +1,10 @@
 use ff::Field;
 
 use super::{
+    ExtField,
     ext_field::cubic::{CubicExtField, CubicExtFieldArith, CubicSparseMul},
     fq::Fq,
     fq2::Fq2,
-    ExtField,
 };
 
 // -BETA is a cubic non-residue in Fp2. Fp6 = Fp2[X]/(X^3 + BETA)

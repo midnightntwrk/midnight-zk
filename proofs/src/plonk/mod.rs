@@ -16,11 +16,11 @@ use crate::{
     },
     transcript::{Hashable, Transcript},
     utils::{
-        helpers::{
-            polynomial_slice_byte_length, read_polynomial_vec, write_polynomial_slice,
-            ProcessedSerdeObject,
-        },
         SerdeFormat,
+        helpers::{
+            ProcessedSerdeObject, polynomial_slice_byte_length, read_polynomial_vec,
+            write_polynomial_slice,
+        },
     },
 };
 
@@ -52,8 +52,8 @@ pub use prover::*;
 pub use verifier::*;
 
 use crate::poly::{
-    commitment::{Labelable, PolynomialCommitmentScheme},
     PolynomialLabel,
+    commitment::{Labelable, PolynomialCommitmentScheme},
 };
 
 /// This is a verifying key which allows for the verification of proofs for a

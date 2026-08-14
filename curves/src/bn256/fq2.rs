@@ -5,9 +5,9 @@ use ff::{Field, FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
 use subtle::{Choice, CtOption};
 
 use super::{
+    ExtField,
     ext_field::quadratic::{QuadExtField, QuadExtFieldArith, SQRT},
     fq::Fq,
-    ExtField,
 };
 use crate::ff_ext::Legendre;
 

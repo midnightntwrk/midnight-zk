@@ -25,9 +25,9 @@ use crate::instructions::FieldInstructions;
 #[cfg(feature = "truncated-challenges")]
 use crate::instructions::NativeInstructions;
 use crate::{
+    CircuitField,
     field::AssignedNative,
     instructions::{ArithInstructions, AssignmentInstructions},
-    CircuitField,
 };
 
 /// An assigned scalar known to be bounded in the range [0, bound].

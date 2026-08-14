@@ -16,9 +16,9 @@ use std::ops::Range;
 use midnight_proofs::circuit::Value;
 
 use crate::{
+    CircuitField,
     field::AssignedNative,
     types::{AssignedByte, InnerValue},
-    CircuitField,
 };
 
 /// A variable-length vector of elements of type T, with size bound M.

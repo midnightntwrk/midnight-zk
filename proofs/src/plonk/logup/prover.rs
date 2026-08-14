@@ -27,13 +27,13 @@ use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::{
     plonk::{
+        Error, Expression, ProvingKey,
         evaluation::evaluate,
         logup::{self, ChunkedArgument},
-        Error, Expression, ProvingKey,
     },
     poly::{
-        commitment::PolynomialCommitmentScheme, Coeff, LagrangeCoeff, Polynomial, PolynomialLabel,
-        ProverQuery, Rotation,
+        Coeff, LagrangeCoeff, Polynomial, PolynomialLabel, ProverQuery, Rotation,
+        commitment::PolynomialCommitmentScheme,
     },
     transcript::{Hashable, Transcript},
     utils::arithmetic::{eval_polynomial, parallelize},
@@ -584,7 +584,7 @@ mod tests {
 
         assert_eq!(result.len(), 4);
         assert_eq!(result[0], Fq::from(1u64)); // table[0]=1 -> 1/1 = 1
-                                               // Value 2: looked up 2 times, appears 2 times in table -> each gets 2/2 = 1
+        // Value 2: looked up 2 times, appears 2 times in table -> each gets 2/2 = 1
         assert_eq!(result[1], Fq::from(1u64)); // table[1]=2 -> 2/2 = 1
         assert_eq!(result[2], Fq::from(1u64)); // table[2]=2 -> 2/2 = 1
         assert_eq!(result[3], Fq::from(1u64)); // table[3]=3 -> 1/1 = 1

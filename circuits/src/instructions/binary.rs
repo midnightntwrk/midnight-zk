@@ -17,7 +17,7 @@
 
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
-use crate::{types::AssignedBit, CircuitField};
+use crate::{CircuitField, types::AssignedBit};
 
 /// The set of circuit instructions for binary operations.
 pub trait BinaryInstructions<F: CircuitField> {

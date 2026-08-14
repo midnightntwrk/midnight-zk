@@ -3,7 +3,7 @@
 //!
 //! For more details, visit:
 //! https://github.com/midnightntwrk/midnight-ledger-prototype/blob/main/zswap/zswap.compact
-use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
+use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
 use ff::Field;
 use group::Group;
 use midnight_circuits::{
@@ -19,18 +19,18 @@ use midnight_curves::{Bls12, Fr as JubjubScalar, JubjubExtended as Jubjub, Jubju
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::{
-        bench::prover::benchmark_create_proof, keygen_pk, keygen_vk_with_k, parse_trace,
-        verify_algebraic_constraints, Error,
+        Error, bench::prover::benchmark_create_proof, keygen_pk, keygen_vk_with_k, parse_trace,
+        verify_algebraic_constraints,
     },
     poly::{
-        commitment::Guard,
-        kzg::{commitment::KZGMultiCommitment, params::ParamsKZG, KZGCommitmentScheme},
         PolynomialLabel,
+        commitment::Guard,
+        kzg::{KZGCommitmentScheme, commitment::KZGMultiCommitment, params::ParamsKZG},
     },
     transcript::{CircuitTranscript, Transcript},
 };
 use midnight_zk_stdlib::{MidnightCircuit, Relation, ZkStdLib, ZkStdLibArch};
-use rand::{rngs::OsRng, Rng, SeedableRng};
+use rand::{Rng, SeedableRng, rngs::OsRng};
 use rand_chacha::ChaCha8Rng;
 use sha2::Digest;
 

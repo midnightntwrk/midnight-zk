@@ -66,15 +66,16 @@ use num_traits::Zero;
 #[cfg(any(test, feature = "testing"))]
 use crate::testing_utils::FromScratch;
 use crate::{
+    CircuitField,
     instructions::{
-        public_input::CommittedInstanceInstructions, ArithInstructions, AssertionInstructions,
-        AssignmentInstructions, BinaryInstructions, CanonicityInstructions,
-        ControlFlowInstructions, ConversionInstructions, EqualityInstructions, FieldInstructions,
-        PublicInputInstructions, UnsafeConversionInstructions, ZeroInstructions,
+        ArithInstructions, AssertionInstructions, AssignmentInstructions, BinaryInstructions,
+        CanonicityInstructions, ControlFlowInstructions, ConversionInstructions,
+        EqualityInstructions, FieldInstructions, PublicInputInstructions,
+        UnsafeConversionInstructions, ZeroInstructions,
+        public_input::CommittedInstanceInstructions,
     },
     types::{AssignedNative, InnerValue, Instantiable},
     utils::ComposableChip,
-    CircuitField,
 };
 
 /// Minimum number of arithmetic columns.

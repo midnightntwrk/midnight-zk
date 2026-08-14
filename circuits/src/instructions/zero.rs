@@ -22,9 +22,9 @@
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use crate::{
+    CircuitField,
     instructions::{AssertionInstructions, EqualityInstructions},
     types::{AssignedBit, InnerConstants},
-    CircuitField,
 };
 
 /// The set of circuit instructions for zero equality and assertions.

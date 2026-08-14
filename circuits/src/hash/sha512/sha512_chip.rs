@@ -48,25 +48,25 @@ use midnight_proofs::{
 use num_integer::Integer;
 
 use crate::{
-    field::{decomposition::chip::P2RDecompositionChip, NativeChip, NativeGadget},
+    CircuitField,
+    field::{NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip},
     hash::sha512::{
         types::{
             AssignedMessageWord, AssignedPlain, AssignedPlainSpreaded, AssignedSpreaded,
             CompressionState, LimbsOfA, LimbsOfE,
         },
         utils::{
-            expr_pow2_ip, expr_pow4_ip, gen_spread_table, get_even_and_odd_bits, negate_spreaded,
-            spread, spreaded_Sigma_0, spreaded_Sigma_1, spreaded_maj, spreaded_sigma_0,
-            spreaded_sigma_1, u64_in_be_limbs, MASK_EVN_128,
+            MASK_EVN_128, expr_pow2_ip, expr_pow4_ip, gen_spread_table, get_even_and_odd_bits,
+            negate_spreaded, spread, spreaded_Sigma_0, spreaded_Sigma_1, spreaded_maj,
+            spreaded_sigma_0, spreaded_sigma_1, u64_in_be_limbs,
         },
     },
-    instructions::{assignments::AssignmentInstructions, DecompositionInstructions},
+    instructions::{DecompositionInstructions, assignments::AssignmentInstructions},
     types::{AssignedByte, AssignedNative},
     utils::{
-        util::{fe_to_u128, fe_to_u64, u128_to_fe, u64_to_fe},
         ComposableChip,
+        util::{fe_to_u64, fe_to_u128, u64_to_fe, u128_to_fe},
     },
-    CircuitField,
 };
 
 /// Number of advice columns used by the identities of the SHA512 chip.

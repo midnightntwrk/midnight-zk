@@ -20,18 +20,18 @@ use midnight_circuits::types::ComposableChip;
 use midnight_curves::G1Projective;
 use midnight_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
-    dev::cost_model::{circuit_model, CircuitModel},
+    dev::cost_model::{CircuitModel, circuit_model},
     plonk::{
-        self, keygen_vk_with_k, prepare, Circuit, ConstraintSystem, Error, ProvingKey, VerifyingKey,
+        self, Circuit, ConstraintSystem, Error, ProvingKey, VerifyingKey, keygen_vk_with_k, prepare,
     },
     poly::{
+        PolynomialLabel,
         commitment::{Guard, Params},
         kzg::{
+            KZGCommitmentScheme,
             commitment::KZGMultiCommitment,
             params::{ParamsKZG, ParamsVerifierKZG},
-            KZGCommitmentScheme,
         },
-        PolynomialLabel,
     },
     transcript::{CircuitTranscript, Hashable, Sampleable, Transcript, TranscriptHash},
     utils::SerdeFormat,
@@ -39,7 +39,7 @@ use midnight_proofs::{
 use rand::{CryptoRng, RngCore};
 
 use crate::{
-    utils::plonk_api::BlstPLONK, ZkStdLib, ZkStdLibArch, ZkStdLibConfig, F, NB_COMMITTED_INSTANCES,
+    F, NB_COMMITTED_INSTANCES, ZkStdLib, ZkStdLibArch, ZkStdLibConfig, utils::plonk_api::BlstPLONK,
 };
 
 /// Circuit structure which is used to create any circuit that can be compiled

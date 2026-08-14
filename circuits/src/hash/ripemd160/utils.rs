@@ -1,8 +1,8 @@
-pub(crate) use crate::hash::utils::{
-    expr_pow2_ip, expr_pow4_ip, get_even_and_odd_bits, negate_spreaded, spread,
-    spread_table_from_lengths, u32_in_be_limbs, MASK_EVN_64,
-};
 use crate::CircuitField;
+pub(crate) use crate::hash::utils::{
+    MASK_EVN_64, expr_pow2_ip, expr_pow4_ip, get_even_and_odd_bits, negate_spreaded, spread,
+    spread_table_from_lengths, u32_in_be_limbs,
+};
 
 const WORD: u8 = 32;
 const MAX_LIMB: u8 = 11;

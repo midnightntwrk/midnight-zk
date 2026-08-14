@@ -1,6 +1,6 @@
 use midnight_proofs::plonk::Expression;
 
-use crate::{utils::util::u128_to_fe, CircuitField};
+use crate::{CircuitField, utils::util::u128_to_fe};
 
 pub(super) const MASK_EVN_128: u128 = 0x5555_5555_5555_5555_5555_5555_5555_5555; // 010101...01 (even positions in u128)
 pub(super) const MASK_ODD_128: u128 = 0xAAAA_AAAA_AAAA_AAAA_AAAA_AAAA_AAAA_AAAA; // 101010...10 (odd positions in u128)
@@ -151,8 +151,18 @@ pub fn spreaded_Sigma_1(spreaded_limbs: [u128; 7]) -> u128 {
 pub fn spreaded_sigma_0(spreaded_limbs: [u128; 10]) -> u128 {
     (spreaded_limbs.into_iter()).for_each(assert_in_valid_spreaded_form);
 
-    let [sW_03a, sW_13a, sW_13b, sW_13c, sW_03b, sW_11, sW_01a, sW_01b, sW_05, sW_01c] =
-        spreaded_limbs;
+    let [
+        sW_03a,
+        sW_13a,
+        sW_13b,
+        sW_13c,
+        sW_03b,
+        sW_11,
+        sW_01a,
+        sW_01b,
+        sW_05,
+        sW_01c,
+    ] = spreaded_limbs;
 
     // As each limb is in valid spreaded form, the sum of three rotations composed
     // by the limbs is at most: 3 * 0b0101..01 = 0b1111..11.
@@ -181,8 +191,18 @@ pub fn spreaded_sigma_0(spreaded_limbs: [u128; 10]) -> u128 {
 pub fn spreaded_sigma_1(spreaded_limbs: [u128; 10]) -> u128 {
     (spreaded_limbs.into_iter()).for_each(assert_in_valid_spreaded_form);
 
-    let [sW_03a, sW_13a, sW_13b, sW_13c, sW_03b, sW_11, sW_01a, sW_01b, sW_05, sW_01c] =
-        spreaded_limbs;
+    let [
+        sW_03a,
+        sW_13a,
+        sW_13b,
+        sW_13c,
+        sW_03b,
+        sW_11,
+        sW_01a,
+        sW_01b,
+        sW_05,
+        sW_01c,
+    ] = spreaded_limbs;
 
     // As each limb is in valid spreaded form, the sum of three rotations composed
     // by the limbs is at most: 3 * 0b0101..01 = 0b1111..11.
@@ -233,7 +253,7 @@ pub(crate) fn expr_pow4_ip<F: CircuitField, const N: usize>(
 #[cfg(test)]
 mod tests {
 
-    use rand::{seq::SliceRandom, Rng};
+    use rand::{Rng, seq::SliceRandom};
 
     use super::*;
 

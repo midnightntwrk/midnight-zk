@@ -4,13 +4,13 @@
 
 use group::GroupEncoding;
 use midnight_circuits::{
+    CircuitField,
     field::foreign::params::MultiEmulationParams,
     instructions::{
         AssertionInstructions, AssignmentInstructions, DecompositionInstructions, EccInstructions,
         PublicInputInstructions, ZeroInstructions,
     },
     types::{AssignedByte, AssignedForeignPoint, Instantiable},
-    CircuitField,
 };
 use midnight_curves::k256::{Fp as K256Base, Fq as K256Scalar, K256};
 use midnight_proofs::{
@@ -18,7 +18,7 @@ use midnight_proofs::{
     plonk::Error,
     transcript::Blake2b256,
 };
-use midnight_zk_stdlib::{utils::plonk_api::srs_for_test, Relation, ZkStdLib, ZkStdLibArch};
+use midnight_zk_stdlib::{Relation, ZkStdLib, ZkStdLibArch, utils::plonk_api::srs_for_test};
 use rand::rngs::OsRng;
 use sha2::Digest;
 
@@ -196,14 +196,16 @@ fn main() {
     )
     .expect("Proof generation should not fail");
 
-    assert!(midnight_zk_stdlib::verify::<BitcoinSigExample, Blake2b256>(
-        &srs.verifier_params(),
-        &vk,
-        &instance,
-        None,
-        &proof
+    assert!(
+        midnight_zk_stdlib::verify::<BitcoinSigExample, Blake2b256>(
+            &srs.verifier_params(),
+            &vk,
+            &instance,
+            None,
+            &proof
+        )
+        .is_ok()
     )
-    .is_ok())
 }
 
 // Bitcoin uses points that only have even y coordinates. The input x_coord is

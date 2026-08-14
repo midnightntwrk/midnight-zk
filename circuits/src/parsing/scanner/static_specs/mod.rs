@@ -300,8 +300,8 @@ mod tests {
     use rustc_hash::{FxBuildHasher, FxHashMap};
 
     use super::{
-        super::automaton::Automaton, check_serialization, spec_library, spec_library_data,
-        StdLibParser,
+        super::automaton::Automaton, StdLibParser, check_serialization, spec_library,
+        spec_library_data,
     };
     use crate::parsing::{regex::Regex, scanner::MarkerTestVector};
 

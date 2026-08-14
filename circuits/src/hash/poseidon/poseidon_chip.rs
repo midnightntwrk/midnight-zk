@@ -24,19 +24,19 @@ use midnight_proofs::{
 use {crate::testing_utils::FromScratch, midnight_proofs::plonk::Instance};
 
 use super::{
-    constants::{PoseidonField, NB_FULL_ROUNDS, NB_PARTIAL_ROUNDS, RATE, WIDTH},
+    NB_POSEIDON_ADVICE_COLS, NB_POSEIDON_FIXED_COLS,
+    constants::{NB_FULL_ROUNDS, NB_PARTIAL_ROUNDS, PoseidonField, RATE, WIDTH},
     full_round_cpu, partial_round_cpu_for_circuits,
     round_skips::PreComputedRoundCircuit,
-    NB_POSEIDON_ADVICE_COLS, NB_POSEIDON_FIXED_COLS,
 };
 #[cfg(any(test, feature = "testing"))]
-use crate::field::{native::NB_EXTRA_ARITH_FIXED_COLS, NativeConfig};
+use crate::field::{NativeConfig, native::NB_EXTRA_ARITH_FIXED_COLS};
 use crate::{
+    CircuitField,
     field::NativeChip,
     instructions::{ArithInstructions, AssignmentInstructions, SpongeInstructions},
     types::AssignedNative,
     utils::ComposableChip,
-    CircuitField,
 };
 
 /// Number of times the linear part of the partial rounds is skipped in the
@@ -607,7 +607,7 @@ mod tests {
     use crate::{
         field::NativeGadget,
         hash::poseidon::{permutation_cpu, round_skips::PreComputedRoundCPU},
-        instructions::{sponge::tests::test_sponge, AssertionInstructions},
+        instructions::{AssertionInstructions, sponge::tests::test_sponge},
         utils::circuit_modeling::{circuit_to_json, cost_measure_end, cost_measure_start},
     };
 

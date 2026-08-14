@@ -24,11 +24,11 @@ use core::{
     ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign},
 };
 
-use curve25519_dalek::{edwards::CompressedEdwardsY, EdwardsPoint};
+use curve25519_dalek::{EdwardsPoint, edwards::CompressedEdwardsY};
 use group::{Group, GroupEncoding};
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
-use super::{affine::Curve25519Affine, Fp, Scalar};
+use super::{Fp, Scalar, affine::Curve25519Affine};
 
 /// Macro to implement common traits for Edwards curve point wrappers.
 macro_rules! impl_edwards_curve_ops {

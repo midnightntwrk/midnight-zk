@@ -2,8 +2,8 @@ use ff::Field;
 use subtle::{Choice, CtOption};
 
 use super::{
-    cubic::{CubicExtField, CubicSparseMul},
     ExtField,
+    cubic::{CubicExtField, CubicSparseMul},
 };
 
 pub trait QuadSparseMul {

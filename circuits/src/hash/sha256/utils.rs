@@ -1,8 +1,8 @@
 use ff::PrimeField;
 
 pub(crate) use crate::hash::utils::{
-    assert_in_valid_spreaded_form, expr_pow2_ip, expr_pow4_ip, get_even_and_odd_bits,
-    negate_spreaded, spread, spread_table_from_lengths, u32_in_be_limbs, MASK_EVN_64,
+    MASK_EVN_64, assert_in_valid_spreaded_form, expr_pow2_ip, expr_pow4_ip, get_even_and_odd_bits,
+    negate_spreaded, spread, spread_table_from_lengths, u32_in_be_limbs,
 };
 
 const LOOKUP_LENGTHS: [u32; 10] = [2, 3, 4, 5, 6, 7, 9, 10, 11, 12]; // supported lookup bit lengths
@@ -121,7 +121,7 @@ fn pow4_ip<const N: usize>(exponents: [u8; N], terms: [u64; N]) -> u64 {
 #[cfg(test)]
 mod tests {
 
-    use rand::{seq::SliceRandom, Rng};
+    use rand::{Rng, seq::SliceRandom};
 
     use super::*;
 

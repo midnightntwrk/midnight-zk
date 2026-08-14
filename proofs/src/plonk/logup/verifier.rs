@@ -19,12 +19,12 @@ use ff::{PrimeField, WithSmallOrderMulGroup};
 
 use crate::{
     plonk::{
-        logup::{self, ChunkedArgument},
         Error, VerifyingKey,
+        logup::{self, ChunkedArgument},
     },
     poly::{
-        commitment::{Labelable, PolynomialCommitmentScheme},
         PolynomialLabel, Rotation, VerifierQuery,
+        commitment::{Labelable, PolynomialCommitmentScheme},
     },
     transcript::{Hashable, Transcript},
 };

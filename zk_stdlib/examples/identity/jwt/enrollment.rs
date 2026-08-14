@@ -3,11 +3,11 @@
 use std::{io::Write, time::Instant};
 
 use midnight_circuits::{
-    field::foreign::{params::MultiEmulationParams, AssignedField},
+    field::foreign::{AssignedField, params::MultiEmulationParams},
     instructions::{
-        public_input::CommittedInstanceInstructions, ArithInstructions, AssertionInstructions,
-        AssignmentInstructions, Base64Instructions, DecompositionInstructions, EccInstructions,
-        PublicInputInstructions,
+        ArithInstructions, AssertionInstructions, AssignmentInstructions, Base64Instructions,
+        DecompositionInstructions, EccInstructions, PublicInputInstructions,
+        public_input::CommittedInstanceInstructions,
     },
     testing_utils::ecdsa::{ECDSASig, FromBase64, PublicKey},
     types::{AssignedByte, AssignedForeignPoint, Instantiable},
@@ -15,10 +15,10 @@ use midnight_circuits::{
 use midnight_curves::k256::K256;
 use midnight_proofs::{
     circuit::{Layouter, Value},
-    plonk::{commit_to_instances, Error},
+    plonk::{Error, commit_to_instances},
     poly::kzg::KZGCommitmentScheme,
 };
-use midnight_zk_stdlib::{utils::plonk_api::srs_for_test, Relation, ZkStdLib, ZkStdLibArch};
+use midnight_zk_stdlib::{Relation, ZkStdLib, ZkStdLibArch, utils::plonk_api::srs_for_test};
 use rand::rngs::OsRng;
 use utils::{read_credential, split_blob, verify_credential_sig};
 

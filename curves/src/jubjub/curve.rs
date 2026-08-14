@@ -39,9 +39,9 @@ use core::{
 use bitvec::{order::Lsb0, view::AsBits};
 use ff::{BatchInverter, Field};
 use group::{
+    Curve, Group, GroupEncoding,
     cofactor::{CofactorCurve, CofactorCurveAffine, CofactorGroup},
     prime::PrimeGroup,
-    Curve, Group, GroupEncoding,
 };
 use rand_core::RngCore;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};

@@ -1,6 +1,6 @@
 use super::super::regex::{Regex, RegexInstructions};
 #[cfg(test)]
-use crate::parsing::{scanner::automaton::Automaton, StdLibParser};
+use crate::parsing::{StdLibParser, scanner::automaton::Automaton};
 
 /// Regex formalising the spec of `StdLibParser::Jwt`.
 pub(super) fn spec_jwt() -> Regex {

@@ -6,13 +6,12 @@ use std::{
 use group::ff::Field;
 
 use super::{
-    metadata,
+    MockProver, Region, metadata,
     metadata::{DebugColumn, DebugVirtualCell},
     util::{self, AnyQuery},
-    MockProver, Region,
 };
 use crate::{
-    dev::{metadata::Constraint, Instance, Value},
+    dev::{Instance, Value, metadata::Constraint},
     plonk::{Any, Column, ConstraintSystem, Expression, Gate},
 };
 

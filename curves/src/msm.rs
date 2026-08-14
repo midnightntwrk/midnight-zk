@@ -540,8 +540,8 @@ mod test {
     use rand_core::OsRng;
 
     use crate::{
-        bn256::{Fr, G1Affine, G1},
         CurveAffine,
+        bn256::{Fr, G1, G1Affine},
     };
 
     #[test]

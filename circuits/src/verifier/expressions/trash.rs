@@ -25,9 +25,9 @@ use crate::{
     field::AssignedNative,
     instructions::ArithInstructions,
     verifier::{
+        SelfEmulation,
         expressions::{compress_expressions, eval_expression},
         trash::TrashEvaluated,
-        SelfEmulation,
     },
 };
 

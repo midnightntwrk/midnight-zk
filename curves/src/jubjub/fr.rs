@@ -1008,7 +1008,9 @@ pub(crate) mod tests {
         let max_u64 = 0xffff_ffff_ffff_ffff;
         assert_eq!(
             R3 - R,
-            Fr::from_u512([max_u64, max_u64, max_u64, max_u64, max_u64, max_u64, max_u64, max_u64])
+            Fr::from_u512([
+                max_u64, max_u64, max_u64, max_u64, max_u64, max_u64, max_u64, max_u64
+            ])
         );
     }
 

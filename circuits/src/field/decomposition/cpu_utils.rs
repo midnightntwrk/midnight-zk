@@ -17,7 +17,7 @@ use std::collections::HashMap;
 
 use num_bigint::BigInt;
 
-use crate::{utils::util::bigint_to_fe, CircuitField};
+use crate::{CircuitField, utils::util::bigint_to_fe};
 
 /// Decomposes an element of the input field into limbs of variable sizes and
 /// each limb is in the output field: given x\in InF and a slice limb_sizes that
