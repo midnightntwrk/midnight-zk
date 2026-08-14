@@ -2,6 +2,8 @@ version: 2
 
 updates:
   - package-ecosystem: "github-actions"
+    labels:
+      - "bot:github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
@@ -9,6 +11,8 @@ updates:
       default-days: 7
 
   - package-ecosystem: "cargo"
+    labels:
+      - "bot:dependencies"
     directory: "/"
     registries: "*"
     schedule:
