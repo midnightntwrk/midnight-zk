@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 * Add `k256` module [#189](https://github.com/midnightntwrk/midnight-zk/pull/189), [#191](https://github.com/midnightntwrk/midnight-zk/pull/191)
 
 ### Changed
+* Migrate to Rust edition 2024 (from 2018); declare MSRV 1.88. Both are now inherited from the workspace [#508](https://github.com/midnightntwrk/midnight-zk/pull/508)
 *  Moved the generic extension-field tower (`ExtField`, `quadratic`/`cubic`) from `ff_ext` to the dev-curves `bn256` module [#412](https://github.com/midnightntwrk/midnight-zk/pull/412)
 
 ### Fixed

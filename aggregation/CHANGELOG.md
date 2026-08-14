@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 * Add `IvcError::InvalidWitness` variant [#311](https://github.com/midnightntwrk/midnight-zk/pull/311)
 * Add `assign_without_subgroup_check` to `SelfEmulation` trait [#284](https://github.com/midnightntwrk/midnight-zk/pull/284)
 ### Changed
+* Migrate to Rust edition 2024; MSRV raised from 1.76 to 1.88. Both are now inherited from the workspace [#508](https://github.com/midnightntwrk/midnight-zk/pull/508)
 * Adapt to single-proof prover API [#375](https://github.com/midnightntwrk/midnight-zk/pull/375)
 * Adapt to new `ZkStdLib` curve accessors [#335](https://github.com/midnightntwrk/midnight-zk/pull/335)
 * `IvcCircuit`'s `Relation::Error` is now `IvcError` instead of `plonk::Error` [#311](https://github.com/midnightntwrk/midnight-zk/pull/311)
