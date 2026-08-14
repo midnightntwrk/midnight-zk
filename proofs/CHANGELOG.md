@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Fix cost-model [#435](https://github.com/midnightntwrk/midnight-zk/pull/435)
 
 ### Changed
+* Introducing MidnightPCS alias for the commitment scheme [#504](https://github.com/midnightntwrk/midnight-zk/pull/504)
 * Updating PCS API [#501](https://github.com/midnightntwrk/midnight-zk/pull/501)
 * Batch cross-argument commitments and add `write_commitment` method on the `PolynomialCommitmentScheme` trait [#493](https://github.com/midnightntwrk/midnight-zk/pull/493)
 * Removes the Labelable trait [#491](https://github.com/midnightntwrk/midnight-zk/pull/491)

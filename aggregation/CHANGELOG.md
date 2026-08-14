@@ -30,11 +30,13 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 * Rebase to new `circuits/` with `sha512` [#96](https://github.com/midnightntwrk/midnight-zk/pull/96)
 * truncated_challenges feature to allow --all-features compilation [#146](https://github.com/midnightntwrk/midnight-zk/pull/146)
 * Rebase to new `circuits/` with `keccak` and `blake2b` [#135](https://github.com/midnightntwrk/midnight-zk/pull/135)
+
 ### Fixed
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 * Run 'prepare' function in-circuit for the multi-circuit aggregator [416](https://github.com/midnightntwrk/midnight-zk/pull/416)
 
 ### Changed
+* Introducing MidnightPCS alias for the commitment scheme [#504](https://github.com/midnightntwrk/midnight-zk/pull/504)
 * Adapt `LightAggregator` to affine SRS storage [#350](https://github.com/midnightntwrk/midnight-zk/pull/350)
 * Adapt to configurable `NB_ARITH_COLS` [#287](https://github.com/midnightntwrk/midnight-zk/pull/287)
 * Remove `is_genesis` from `IvcState` trait; genesis detection is now derived generically from `format_public_input` [#272](https://github.com/midnightntwrk/midnight-zk/pull/272)
