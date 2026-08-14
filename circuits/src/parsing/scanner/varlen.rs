@@ -81,10 +81,7 @@ impl<F: CircuitField, const M: usize, const A: usize> From<ScannerVec<F, M, A>>
     for AssignedVector<F, AssignedNative<F>, M, A>
 {
     fn from(value: ScannerVec<F, M, A>) -> Self {
-        AssignedVector {
-            buffer: value.buffer,
-            len: value.length,
-        }
+        AssignedVector::new(value.buffer, value.length)
     }
 }
 
@@ -118,10 +115,10 @@ where
             })
             .collect::<Result<Vec<_>, Error>>()?;
 
-        Ok(AssignedVector {
-            buffer: Box::new(byte_buffer.try_into().unwrap()),
-            len: sv.length.clone(),
-        })
+        Ok(AssignedVector::new(
+            Box::new(byte_buffer.try_into().unwrap()),
+            sv.length.clone(),
+        ))
     }
 
     /// Assigns a variable-length byte vector as a `ScannerVec`.
@@ -158,7 +155,7 @@ where
         let filler =
             self.native_gadget.assign_fixed(layouter, F::from(ALPHABET_MAX_SIZE as u64))?;
         let buffer: Box<[AssignedNative<F>; M]> = Box::new(
-            (vec.buffer.iter().zip(padding_flags.iter()))
+            (vec.buffer().iter().zip(padding_flags.iter()))
                 .map(|(elem, is_padding)| {
                     let native_elem = AssignedNative::from(elem);
                     self.native_gadget.select(layouter, is_padding, &filler, &native_elem)
@@ -169,7 +166,7 @@ where
         );
 
         Ok(ScannerVec {
-            length: vec.len,
+            length: vec.len().clone(),
             buffer,
             limits,
             padding_flags,
