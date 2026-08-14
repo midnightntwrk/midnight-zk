@@ -28,8 +28,8 @@ use midnight_circuits::{
 use midnight_curves::k256::{Fq as K256Scalar, K256};
 use midnight_proofs::{
     circuit::{Layouter, Value},
-    pcs::kzg::KZGCommitmentScheme,
     plonk::{commit_to_instances, Error},
+    MidnightPCS,
 };
 use midnight_zk_stdlib::{utils::plonk_api::srs_for_test, Relation, ZkStdLib, ZkStdLibArch};
 use num_bigint::BigUint;
@@ -337,7 +337,7 @@ fn main() {
 
     let committed_credential = {
         let instance = CredentialProperty::format_committed_instances(&witness);
-        commit_to_instances::<_, KZGCommitmentScheme<_>>(&srs, vk.vk().get_domain(), &instance)
+        commit_to_instances::<_, MidnightPCS<_>>(&srs, vk.vk().get_domain(), &instance)
     };
     println!("... done ({:?})", wit.elapsed());
 

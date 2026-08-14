@@ -646,6 +646,29 @@ pub(super) fn compute_nu_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommit
     )
 }
 
+/// Degree of the largest polynomial the protocol commits when proving a
+/// circuit of size `2^k` whose constraint system has degree `cs_degree`.
+///
+/// Used to size the parameters: feed the result to
+/// [`PolynomialCommitmentScheme::internal_degree`] to obtain the degree the
+/// commitment scheme itself needs to support.
+pub fn max_committed_degree(k: u32, cs_degree: usize) -> usize {
+    let n = 1usize << k;
+
+    // Polynomials on the circuit domain (advice, fixed, permutation, lookups)
+    // have degree at most `n - 1`.
+    let domain_degree = n - 1;
+
+    if cfg!(feature = "single-h-commitment") {
+        // `compute_h_poly` keeps `(n - 1) * (cs_degree - 1)` coefficients of the
+        // quotient, which it then commits as one polynomial.
+        domain_degree.max(((n - 1) * (cs_degree - 1)).saturating_sub(1))
+    } else {
+        // The quotient is split into limbs that fit the circuit domain.
+        domain_degree
+    }
+}
+
 /// Computes the quotient polynomial `h(X) = nu(X) / (X^n - 1)` and commits to
 /// it, writing the commitment(s) to the transcript.
 ///

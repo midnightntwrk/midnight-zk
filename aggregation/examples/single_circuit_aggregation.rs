@@ -33,13 +33,11 @@ use midnight_circuits::{
 };
 use midnight_proofs::{
     circuit::{Layouter, Value},
-    pcs::{
-        kzg::{commitment::KZGMultiCommitment, KZGCommitmentScheme},
-        params::ParamsVerifierKZG,
-    },
+    pcs::{kzg::commitment::KZGMultiCommitment, params::ParamsVerifierKZG},
     plonk::{self, ConstraintSystem, Error},
     poly::{EvaluationDomain, PolynomialLabel},
     transcript::{CircuitTranscript, Transcript},
+    MidnightPCS,
 };
 use midnight_zk_stdlib::{
     cs_degree, prove, setup_pk, setup_vk,
@@ -238,7 +236,7 @@ impl IvcTransition for ProofAggregation {
             let mut transcript =
                 CircuitTranscript::<PoseidonState<F>>::init_from_bytes(&witness.inner_proof);
             let dual_msm =
-                plonk::prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<PoseidonState<F>>>(
+                plonk::prepare::<F, MidnightPCS<E>, CircuitTranscript<PoseidonState<F>>>(
                     ctx.vk.vk(),
                     &[KZGMultiCommitment::commitment_to_zero(
                         PolynomialLabel::CommittedInstance(0),

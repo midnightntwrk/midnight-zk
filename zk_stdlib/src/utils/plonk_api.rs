@@ -26,15 +26,17 @@ use std::{
 use midnight_curves::Bls12;
 use midnight_proofs::{
     pcs::{
-        kzg::{commitment::KZGMultiCommitment, KZGCommitmentScheme},
+        kzg::commitment::KZGMultiCommitment,
         params::{ParamsKZG, ParamsVerifierKZG},
         Guard, PolynomialCommitmentScheme,
     },
     plonk::{
-        create_proof, keygen_pk, keygen_vk, prepare, Circuit, Error, ProvingKey, VerifyingKey,
+        create_proof, keygen_pk, keygen_vk, max_committed_degree, prepare, Circuit, Error,
+        ProvingKey, VerifyingKey,
     },
     transcript::{CircuitTranscript, Hashable, Sampleable, Transcript, TranscriptHash},
     utils::SerdeFormat,
+    MidnightPCS,
 };
 use rand::{CryptoRng, RngCore};
 use sha2::Digest;
@@ -58,7 +60,7 @@ macro_rules! plonk_api {
             pub fn setup_vk(
                 params: &ParamsKZG<$engine>,
                 circuit: &Relation,
-            ) -> VerifyingKey<$native, KZGCommitmentScheme<$engine>> {
+            ) -> VerifyingKey<$native, MidnightPCS<$engine>> {
                 #[cfg(test)]
                 let start = Instant::now();
                 let vk = keygen_vk(params, circuit).expect("keygen_vk should not fail");
@@ -71,8 +73,8 @@ macro_rules! plonk_api {
             /// PLONK PK setup for the given circuit.
             pub fn setup_pk(
                 circuit: &Relation,
-                vk: &VerifyingKey<$native, KZGCommitmentScheme<$engine>>,
-            ) -> ProvingKey<$native, KZGCommitmentScheme<$engine>> {
+                vk: &VerifyingKey<$native, MidnightPCS<$engine>>,
+            ) -> ProvingKey<$native, MidnightPCS<$engine>> {
                 #[cfg(test)]
                 let start = Instant::now();
                 let pk = keygen_pk(vk.clone(), circuit).expect("keygen_pk should not fail");
@@ -85,7 +87,7 @@ macro_rules! plonk_api {
             /// PLONK proving algorithm.
             pub fn prove<H>(
                 params: &ParamsKZG<$engine>,
-                pk: &ProvingKey<$native, KZGCommitmentScheme<$engine>>,
+                pk: &ProvingKey<$native, MidnightPCS<$engine>>,
                 circuit: &Relation,
                 nb_instance_commitments: usize,
                 pi: &[&[$native]],
@@ -100,12 +102,7 @@ macro_rules! plonk_api {
                 let start = Instant::now();
                 let proof = {
                     let mut transcript = CircuitTranscript::init();
-                    create_proof::<
-                        $native,
-                        KZGCommitmentScheme<$engine>,
-                        CircuitTranscript<H>,
-                        Relation,
-                    >(
+                    create_proof::<$native, MidnightPCS<$engine>, CircuitTranscript<H>, Relation>(
                         params,
                         pk,
                         circuit,
@@ -129,7 +126,7 @@ macro_rules! plonk_api {
             /// PLONK verification algorithm.
             pub fn verify<H>(
                 params_verifier: &ParamsVerifierKZG<$engine>,
-                vk: &VerifyingKey<$native, KZGCommitmentScheme<$engine>>,
+                vk: &VerifyingKey<$native, MidnightPCS<$engine>>,
                 instance_commitments: &[KZGMultiCommitment<$engine>],
                 pi: &[&[$native]],
                 proof: &[u8],
@@ -143,7 +140,7 @@ macro_rules! plonk_api {
 
                 #[cfg(test)]
                 let start = Instant::now();
-                let res = prepare::<$native, KZGCommitmentScheme<$engine>, CircuitTranscript<H>>(
+                let res = prepare::<$native, MidnightPCS<$engine>, CircuitTranscript<H>>(
                     vk,
                     instance_commitments,
                     pi,
@@ -258,25 +255,25 @@ pub enum SrsSource {
 /// Loads an SRS (over BLS12-381) for the given circuit size `k` and
 /// constraint-system degree `cs_degree`.
 ///
-/// The monomial basis is sized via the active PCS's
-/// [`PolynomialCommitmentScheme::srs_monomial_blowup`]: a blow-up factor of
-/// `1` keeps the monomial basis at the Lagrange size `2^k`; a blow-up of `B`
-/// extends it to `2^k · B`. The Lagrange basis stays at size `2^k`.
+/// The SRS is sized to hold the largest polynomial the protocol commits
+/// ([`max_committed_degree`]), as transformed by the commitment scheme
+/// ([`PolynomialCommitmentScheme::internal_degree`]). When that exceeds the
+/// circuit domain, the monomial basis is extended by splicing in a larger SRS;
+/// the Lagrange basis stays at size `2^k`.
 pub fn load_srs(source: SrsSource, k: u32, cs_degree: usize) -> ParamsKZG<Bls12> {
     let fetch = |k| match source {
         SrsSource::Filecoin => filecoin_srs(k),
         SrsSource::Midnight => midnight_srs(k),
     };
 
-    let blowup = <KZGCommitmentScheme<Bls12>>::srs_monomial_blowup(cs_degree);
-    assert_ne!(blowup, 0, "srs blowup should be >= 1");
+    let degree = <MidnightPCS<Bls12>>::internal_degree(k, max_committed_degree(k, cs_degree));
+    let srs_k = (degree + 1).next_power_of_two().ilog2();
+
     let base = fetch(k);
-    if blowup == 1 {
+    if srs_k <= k {
         base
     } else {
-        let extended_k = k + (blowup as f64).log2().ceil() as u32;
-        let extended = fetch(extended_k);
-        base.with_extended_monomial(extended)
+        base.with_extended_monomial(fetch(srs_k))
     }
 }
 

@@ -13,13 +13,11 @@ use midnight_circuits::{
     verifier::{Accumulator, AssignedAccumulator, AssignedVk, InCircuitKZG},
 };
 use midnight_proofs::{
-    pcs::{
-        kzg::{commitment::KZGMultiCommitment, KZGCommitmentScheme},
-        params::ParamsKZG,
-    },
+    pcs::{kzg::commitment::KZGMultiCommitment, params::ParamsKZG},
     plonk::{self},
     poly::PolynomialLabel,
     transcript::{CircuitTranscript, Transcript},
+    MidnightPCS,
 };
 use midnight_zk_stdlib::MidnightPK;
 use rand::rngs::OsRng;
@@ -97,15 +95,14 @@ impl<T: Ivc> IvcProver<T> {
 
             let mut transcript =
                 CircuitTranscript::<PoseidonState<F>>::init_from_bytes(&self.proof);
-            let dual_msm =
-                plonk::prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<PoseidonState<F>>>(
-                    vk,
-                    &[KZGMultiCommitment::commitment_to_zero(
-                        PolynomialLabel::CommittedInstance(0),
-                    )],
-                    &[&prev_pi],
-                    &mut transcript,
-                )?;
+            let dual_msm = plonk::prepare::<F, MidnightPCS<E>, CircuitTranscript<PoseidonState<F>>>(
+                vk,
+                &[KZGMultiCommitment::commitment_to_zero(
+                    PolynomialLabel::CommittedInstance(0),
+                )],
+                &[&prev_pi],
+                &mut transcript,
+            )?;
 
             if !dual_msm.clone().check(&self.params.verifier_params()) {
                 return Err(IvcError::InvalidProof);
