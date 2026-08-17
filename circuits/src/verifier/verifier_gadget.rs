@@ -390,12 +390,10 @@ impl<S: SelfEmulation> VerifierGadget<S> {
 
         let trash_challenge = transcript.squeeze_challenge(layouter)?;
 
-        let trashcans_committed = cs
-            .trashcans()
-            .iter()
-            .enumerate()
-            .map(|(i, _argument)| trash::read_committed(i, layouter, &mut transcript))
-            .collect::<Result<Vec<_>, _>>()?;
+        // Read the batched trash commitment (one transcript entry for all trash
+        // arguments).
+        let trashcans_committed =
+            trash::read_trashcans(cs.trashcans().len(), layouter, &mut transcript)?;
 
         // Sample y challenge, which keeps the gates linearly independent
         let y = transcript.squeeze_challenge(layouter)?;

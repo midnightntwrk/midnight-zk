@@ -12,6 +12,7 @@ use crate::{
         logup::verifier::{ChunkedArgRef, read_aggregators, read_helpers, read_multiplicities},
         partially_evaluate_identities,
         traces::VerifierTrace,
+        trash::verifier::read_trashcans,
     },
     poly::{PolynomialLabel, VerifierQuery, commitment::PolynomialCommitmentScheme},
     transcript::{Hashable, Sampleable, Transcript, read_n},
@@ -113,13 +114,9 @@ where
 
     let trash_challenge: F = transcript.squeeze_challenge();
 
-    let trashcans_committed: Vec<_> = vk
-        .cs
-        .trashcans
-        .iter()
-        .enumerate()
-        .map(|(i, argument)| argument.read_committed::<CS, _>(i, transcript))
-        .collect::<Result<Vec<_>, _>>()?;
+    // Read the batched trash commitment (one transcript entry for all trash
+    // arguments; mirrors the prover's batched `commit_many`).
+    let trashcans_committed = read_trashcans::<F, CS, _>(vk.cs.trashcans.len(), transcript)?;
 
     // Sample y challenge, which keeps the gates linearly independent.
     let y: F = transcript.squeeze_challenge();

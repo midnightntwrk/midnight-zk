@@ -1,4 +1,7 @@
 use ff::{FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
+use rayon::iter::{
+    IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
+};
 
 use super::{super::Error, Argument};
 use crate::{
@@ -23,57 +26,65 @@ pub(crate) struct Evaluated<F: PrimeField> {
     pub(crate) evaluated: trash::Evaluated<F>,
 }
 
-impl<F: WithSmallOrderMulGroup<3> + Ord> Argument<F> {
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn commit<'a, 'params: 'a, CS, T>(
-        &self,
-        argument_index: usize,
-        params: &'params CS::Parameters,
-        domain: &EvaluationDomain<F>,
-        trash_challenge: F,
-        advice_values: &'a [Polynomial<F, LagrangeCoeff>],
-        fixed_values: &'a [Polynomial<F, LagrangeCoeff>],
-        instance_values: &'a [Polynomial<F, LagrangeCoeff>],
-        transcript: &mut T,
-    ) -> Result<Committed<F>, Error>
-    where
-        F: FromUniformBytes<64>,
-        CS: PolynomialCommitmentScheme<F>,
-        CS::Commitment: Hashable<T::Hash>,
-        T: Transcript,
-    {
-        let compressed_expression = self
-            .constraint_expressions
-            .iter()
-            .map(|expression| {
-                domain.lagrange_from_vec(evaluate(
-                    expression,
-                    domain.n as usize,
-                    0,
-                    fixed_values,
-                    advice_values,
-                    instance_values,
-                ))
-            })
-            .fold(domain.empty_lagrange(), |acc, expression| {
-                acc * trash_challenge + &expression
-            });
-
-        let trash_commitment = CS::commit(
-            params,
-            &compressed_expression,
-            PolynomialLabel::Trash(argument_index),
-        );
-        let trash_poly = domain.lagrange_to_coeff(compressed_expression);
-
-        // Hash permuted input commitment
-        transcript.write(&trash_commitment)?;
-
-        Ok(Committed {
-            argument_index,
-            trash_poly,
-        })
+/// Compresses the constraints of every trash argument into one polynomial each,
+/// commits to all of them in a single batched call, and writes the result to
+/// the transcript. Mirrors the verifier's `read_trashcans`.
+#[allow(clippy::too_many_arguments)]
+pub(in crate::plonk) fn commit_trashcans<F, CS, T>(
+    arguments: &[Argument<F>],
+    params: &CS::Parameters,
+    domain: &EvaluationDomain<F>,
+    trash_challenge: F,
+    advice_values: &[Polynomial<F, LagrangeCoeff>],
+    fixed_values: &[Polynomial<F, LagrangeCoeff>],
+    instance_values: &[Polynomial<F, LagrangeCoeff>],
+    transcript: &mut T,
+) -> Result<Vec<Committed<F>>, Error>
+where
+    F: WithSmallOrderMulGroup<3> + Ord + FromUniformBytes<64>,
+    CS: PolynomialCommitmentScheme<F>,
+    CS::Commitment: Hashable<T::Hash>,
+    T: Transcript,
+{
+    if arguments.is_empty() {
+        return Ok(Vec::new());
     }
+
+    let compressed_expressions: Vec<Polynomial<F, LagrangeCoeff>> = arguments
+        .par_iter()
+        .map(|argument| {
+            argument
+                .constraint_expressions
+                .iter()
+                .map(|expression| {
+                    domain.lagrange_from_vec(evaluate(
+                        expression,
+                        domain.n as usize,
+                        0,
+                        fixed_values,
+                        advice_values,
+                        instance_values,
+                    ))
+                })
+                .fold(domain.empty_lagrange(), |acc, expression| {
+                    acc * trash_challenge + &expression
+                })
+        })
+        .collect();
+
+    let refs: Vec<_> = compressed_expressions.iter().collect();
+    let labels: Vec<_> = (0..arguments.len()).map(PolynomialLabel::Trash).collect();
+    let trash_com = CS::commit_many(params, &refs, &labels);
+    CS::write_commitment(transcript, &trash_com)?;
+
+    Ok(compressed_expressions
+        .into_par_iter()
+        .enumerate()
+        .map(|(argument_index, compressed_expression)| Committed {
+            argument_index,
+            trash_poly: domain.lagrange_to_coeff(compressed_expression),
+        })
+        .collect())
 }
 
 impl<F: WithSmallOrderMulGroup<3>> Committed<F> {

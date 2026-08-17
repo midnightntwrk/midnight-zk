@@ -18,7 +18,7 @@ use crate::{
             parse_advices, write_evals_to_transcript,
         },
         traces::ProverTrace,
-        trash,
+        trash::{self, prover::commit_trashcans},
     },
     poly::commitment::PolynomialCommitmentScheme,
     transcript::{Hashable, Sampleable, Transcript},
@@ -278,47 +278,30 @@ where
             b.iter_batched(
                 || (transcript.clone(), instance.clone(), advice.clone()),
                 |(mut t, inst, adv)| {
-                    let _: Result<Vec<_>, _> = pk
-                        .vk
-                        .cs
-                        .trashcans
-                        .iter()
-                        .enumerate()
-                        .map(|(i, trash)| {
-                            trash.commit::<CS, _>(
-                                i,
-                                params,
-                                domain,
-                                trash_challenge,
-                                &adv.advice_polys,
-                                &pk.fixed_values,
-                                &inst.instance_values,
-                                &mut t,
-                            )
-                        })
-                        .collect();
+                    let _ = commit_trashcans::<F, CS, T>(
+                        &pk.vk.cs.trashcans,
+                        params,
+                        domain,
+                        trash_challenge,
+                        &adv.advice_polys,
+                        &pk.fixed_values,
+                        &inst.instance_values,
+                        &mut t,
+                    );
                 },
                 criterion::BatchSize::LargeInput,
             )
         });
-        pk.vk
-            .cs
-            .trashcans
-            .iter()
-            .enumerate()
-            .map(|(i, trash)| {
-                trash.commit::<CS, _>(
-                    i,
-                    params,
-                    domain,
-                    trash_challenge,
-                    &advice.advice_polys,
-                    &pk.fixed_values,
-                    &instance.instance_values,
-                    transcript,
-                )
-            })
-            .collect::<Result<Vec<_>, _>>()?
+        commit_trashcans::<F, CS, T>(
+            &pk.vk.cs.trashcans,
+            params,
+            domain,
+            trash_challenge,
+            &advice.advice_polys,
+            &pk.fixed_values,
+            &instance.instance_values,
+            transcript,
+        )?
     };
 
     // Obtain challenge for keeping all separate gates linearly independent

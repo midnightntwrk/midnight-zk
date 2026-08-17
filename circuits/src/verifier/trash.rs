@@ -44,21 +44,26 @@ pub(crate) struct Evaluated<S: SelfEmulation, PCS: InCircuitPCS<S>> {
     pub(crate) evaluated: TrashEvaluated<S>,
 }
 
-pub(crate) fn read_committed<S: SelfEmulation, PCS: InCircuitPCS<S>>(
-    argument_index: usize,
+/// Reads the batched commitment to all trash arguments in one transcript entry.
+/// Each argument holds a clone of the shared commitment and routes its query
+/// via its own label.
+pub(crate) fn read_trashcans<S: SelfEmulation, PCS: InCircuitPCS<S>>(
+    num_args: usize,
     layouter: &mut impl Layouter<S::F>,
     transcript_gadget: &mut TranscriptGadget<S>,
-) -> Result<Committed<S, PCS>, Error> {
-    let trash_commitment = PCS::read_commitment(
-        transcript_gadget,
-        layouter,
-        &[PolynomialLabel::Trash(argument_index)],
-    )?;
+) -> Result<Vec<Committed<S, PCS>>, Error> {
+    if num_args == 0 {
+        return Ok(Vec::new());
+    }
+    let labels: Vec<_> = (0..num_args).map(PolynomialLabel::Trash).collect();
+    let shared = PCS::read_commitment(transcript_gadget, layouter, &labels)?;
 
-    Ok(Committed {
-        argument_index,
-        trash_commitment,
-    })
+    Ok((0..num_args)
+        .map(|argument_index| Committed {
+            argument_index,
+            trash_commitment: shared.clone(),
+        })
+        .collect())
 }
 
 impl<S: SelfEmulation, PCS: InCircuitPCS<S>> Committed<S, PCS> {

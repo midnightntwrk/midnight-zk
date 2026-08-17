@@ -34,7 +34,7 @@ use crate::{
         },
         partially_evaluate_identities,
         traces::ProverTrace,
-        trash,
+        trash::{self, prover::commit_trashcans},
     },
     poly::{
         Coeff, EvaluationDomain, ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial, PolynomialLabel,
@@ -210,25 +210,16 @@ where
     // Trash argument
     let trash_challenge: F = transcript.squeeze_challenge();
 
-    let trashcans: Vec<trash::prover::Committed<F>> = pk
-        .vk
-        .cs
-        .trashcans
-        .iter()
-        .enumerate()
-        .map(|(i, trash)| {
-            trash.commit::<CS, _>(
-                i,
-                params,
-                domain,
-                trash_challenge,
-                &advice.advice_polys,
-                &pk.fixed_values,
-                &instance.instance_values,
-                transcript,
-            )
-        })
-        .collect::<Result<Vec<_>, _>>()?;
+    let trashcans = commit_trashcans::<F, CS, T>(
+        &pk.vk.cs.trashcans,
+        params,
+        domain,
+        trash_challenge,
+        &advice.advice_polys,
+        &pk.fixed_values,
+        &instance.instance_values,
+        transcript,
+    )?;
 
     // Obtain challenge for keeping all separate gates linearly independent
     let y: F = transcript.squeeze_challenge();
