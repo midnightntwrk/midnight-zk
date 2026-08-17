@@ -18,13 +18,22 @@ use super::{
         Advice, Any, Assignment, Circuit, Column, ConstraintSystem, Fixed, FloorPlanner, Instance,
         Selector,
     },
-    logup, permutation, Error, ProvingKey,
+    permutation, Error, ProvingKey,
 };
 use crate::{
     circuit::Value,
     plonk::{
-        linearization::prover::compute_linearization_poly, partially_evaluate_identities,
-        traces::ProverTrace, trash,
+        linearization::prover::compute_linearization_poly,
+        logup::{
+            self,
+            prover::{
+                commit_aggregators, commit_helpers, commit_multiplicities, Committed,
+                ComputedLogderivative, ComputedMultiplicities,
+            },
+        },
+        partially_evaluate_identities,
+        traces::ProverTrace,
+        trash,
     },
     poly::{
         batch_invert_rational, commitment::PolynomialCommitmentScheme, Coeff, EvaluationDomain,
@@ -122,38 +131,17 @@ where
     let mult_blinding_count = pk.vk.cs.blinding_factors() + 1;
     let mult_blindings: Vec<Vec<F>> = sample_blindings(num_lookups, mult_blinding_count);
 
-    // Commit to the multiplicities columns.
-    // Computation in parallel, then sequential transcript writes.
-    let lookups: Vec<logup::prover::ComputedMultiplicities<F>> = {
-        let logup_args: Vec<_> =
-            pk.vk.cs.lookups.iter().map(|l| l.chunk_by_degree(pk.vk.cs.degree())).collect();
-        // Compute all lookups in parallel (no transcript access, no rng).
-        let results: Vec<_> = logup_args
-            .par_iter()
-            .enumerate()
-            .zip(mult_blindings.par_iter())
-            .map(|((argument_index, logup), blinds)| {
-                logup.compute_multiplicities_parallel(
-                    argument_index,
-                    pk,
-                    params,
-                    theta,
-                    &advice.advice_polys,
-                    &pk.fixed_values,
-                    &instance.instance_values,
-                    blinds,
-                )
-            })
-            .collect::<Result<Vec<_>, Error>>()?;
-        // Sequential transcript writes to preserve Fiat-Shamir ordering.
-        results
-            .into_iter()
-            .map(|(computed, commitment)| {
-                transcript.write(&commitment)?;
-                Ok(computed)
-            })
-            .collect::<Result<Vec<_>, Error>>()?
-    };
+    // Commit to the multiplicities columns. All logup arguments'
+    // multiplicities are batched into one `CS::commit_many` call.
+    let lookups: Vec<ComputedMultiplicities<F>> = commit_multiplicities(
+        params,
+        pk,
+        theta,
+        &advice.advice_polys,
+        &instance.instance_values,
+        &mult_blindings,
+        transcript,
+    )?;
 
     // Sample beta challenge
     let beta: F = transcript.squeeze_challenge();
@@ -167,10 +155,8 @@ where
     let perm_blindings: Vec<Vec<F>> = sample_blindings(num_perm_sets, blinding_factors);
     let logup_blindings: Vec<Vec<F>> = sample_blindings(lookups.len(), blinding_factors);
 
-    // Overlap permutation and logup computation.
-    // Both only need β (and γ for permutation). Neither touches the transcript.
-    // Transcript writes preserve the original ordering:
-    // permutation commitments first, then logup commitments.
+    // Overlap permutation and logup computation. Neither touches the transcript.
+    // Transcript-write order: permutation, then all helpers, then all aggregators.
     let (perm_computed, logup_computed) = rayon::join(
         || {
             pk.vk.cs.permutation.compute::<F, CS>(
@@ -185,47 +171,25 @@ where
                 perm_blindings,
             )
         },
-        || -> Result<_, Error> {
-            let computed: Vec<_> = lookups
+        || -> Result<Vec<ComputedLogderivative<F>>, Error> {
+            lookups
                 .into_par_iter()
                 .zip(logup_blindings.into_par_iter())
-                .map(|(lookup, blindings)| {
-                    lookup.compute_logderivative(pk, params, beta, blindings)
-                })
-                .collect::<Result<Vec<_>, _>>()?;
-            let all_helper_commitments: Vec<Vec<CS::Commitment>> = computed
-                .par_iter()
-                .map(|c| {
-                    c.helper_polys_lagrange
-                        .par_iter()
-                        .enumerate()
-                        .map(|(j, h)| {
-                            let h_poly = domain.lagrange_from_vec(h.clone());
-                            CS::commit(
-                                params,
-                                &h_poly,
-                                PolynomialLabel::LogupHelper(c.argument_index, j),
-                            )
-                        })
-                        .collect()
-                })
-                .collect();
-            Ok((computed, all_helper_commitments))
+                .map(|(lookup, blindings)| lookup.compute_logderivative(pk, beta, blindings))
+                .collect()
         },
     );
 
-    // Write permutation commitments first.
-    let permutations = perm_computed.write_and_convert(domain, transcript)?;
+    // Write the batched permutation commitment first.
+    let permutations = perm_computed.write_and_convert::<T, CS>(domain, transcript)?;
 
-    // Then write logup commitments and convert to coefficient form.
-    let (computed, all_helper_commitments) = logup_computed?;
-    for (c, helper_commitments) in computed.iter().zip(all_helper_commitments.iter()) {
-        for h_commitment in helper_commitments {
-            transcript.write(h_commitment)?;
-        }
-        transcript.write(&c.aggregator_commitment)?;
-    }
-    let lookups: Vec<logup::prover::Committed<F>> = computed
+    let computed = logup_computed?;
+
+    commit_helpers(params, pk, &computed, transcript)?;
+    commit_aggregators::<F, CS, T>(params, &computed, transcript)?;
+
+    // Convert logup polynomials to coefficient form for the opening phase.
+    let lookups: Vec<Committed<F>> = computed
         .into_par_iter()
         .map(|c| {
             let helper_polys = c
@@ -233,7 +197,7 @@ where
                 .into_iter()
                 .map(|h| domain.lagrange_to_coeff(domain.lagrange_from_vec(h)))
                 .collect();
-            logup::prover::Committed {
+            Committed {
                 argument_index: c.argument_index,
                 multiplicities: domain.lagrange_to_coeff(c.multiplicities),
                 helper_polys,
