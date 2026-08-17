@@ -70,10 +70,17 @@ fn main() {
     // introduced, proved and folded in on-the-fly, after IVC initialization.
     // Each circuit is proved against an SRS of its own size.
     let sha_srs = load_srs(SrsSource::Filecoin, SHA_CIRCUIT_K, cs_degree(inner_arch()));
-    let poseidon_srs = load_srs(SrsSource::Filecoin, POSEIDON_CIRCUIT_K, cs_degree(inner_arch()));
+    let poseidon_srs = load_srs(
+        SrsSource::Filecoin,
+        POSEIDON_CIRCUIT_K,
+        cs_degree(inner_arch()),
+    );
     // Note: verifier params from the SRS do not depend on `k`.
-    let inner_ctx =
-        InnerCircuitsContext::new(inner_arch(), POSEIDON_CIRCUIT_K, poseidon_srs.verifier_params());
+    let inner_ctx = InnerCircuitsContext::new(
+        inner_arch(),
+        POSEIDON_CIRCUIT_K,
+        poseidon_srs.verifier_params(),
+    );
 
     let aggregator_srs = load_srs(
         SrsSource::Midnight,

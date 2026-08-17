@@ -34,8 +34,6 @@ use crate::{
         assignments::AssignmentInstructions, ArithInstructions, PublicInputInstructions,
     },
     verifier::{
-        Accumulator, AssignedAccumulator, AssignedEvaluationDomain, AssignedVk, SelfEmulation,
-        VerifyingKey,
         expressions::{
             eval_expression, lookup::lookup_expressions, permutation::permutation_expressions,
             trash::trash_expressions,
@@ -46,9 +44,9 @@ use crate::{
         traces::VerifierTrace,
         transcript_gadget::TranscriptGadget,
         trash,
-        utils::{
-            evaluate_lagrange_polynomials, inner_product, pow_2_pow_k, pow_of_two, sum,
-        },
+        utils::{evaluate_lagrange_polynomials, inner_product, pow_2_pow_k, pow_of_two, sum},
+        Accumulator, AssignedAccumulator, AssignedEvaluationDomain, AssignedVk, SelfEmulation,
+        VerifyingKey,
     },
 };
 
@@ -1143,12 +1141,13 @@ pub(crate) mod tests {
             let verifier_chip =
                 VerifierGadget::<S>::new(&curve_chip, &native_gadget, &poseidon_chip);
 
-            let assigned_inner_vk: AssignedVk<S, InCircuitKZG<S>> = verifier_chip.assign_vk_as_public_input(
-                &mut layouter,
-                &self.inner_vk.0,
-                self.inner_vk.1.clone(),
-                self.inner_vk.2,
-            )?;
+            let assigned_inner_vk: AssignedVk<S, InCircuitKZG<S>> = verifier_chip
+                .assign_vk_as_public_input(
+                    &mut layouter,
+                    &self.inner_vk.0,
+                    self.inner_vk.1.clone(),
+                    self.inner_vk.2,
+                )?;
 
             let assigned_committed_instance =
                 AssignedKZGMultiCommitment(vec![AssignedKZGCommitment::assign(
