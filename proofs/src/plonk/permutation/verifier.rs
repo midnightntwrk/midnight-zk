@@ -3,10 +3,7 @@ use ff::{PrimeField, WithSmallOrderMulGroup};
 use super::{Argument, VerifyingKey};
 use crate::{
     plonk::{self, permutation, Error},
-    poly::{
-        commitment::{Labelable, PolynomialCommitmentScheme},
-        PolynomialLabel, Rotation, VerifierQuery,
-    },
+    poly::{commitment::PolynomialCommitmentScheme, PolynomialLabel, Rotation, VerifierQuery},
     transcript::{Hashable, Transcript},
 };
 
@@ -39,15 +36,9 @@ impl Argument {
     {
         let chunk_len = vk.cs_degree - 2;
 
-        let permutation_product_commitments = self
-            .columns
-            .chunks(chunk_len)
-            .map(|_| transcript.read::<CS::Commitment>())
-            .collect::<Result<Vec<_>, _>>()?
-            .into_iter()
-            .enumerate()
-            .map(|(i, c)| c.label(&[PolynomialLabel::PermutationAccumulator(i)]))
-            .collect();
+        let permutation_product_commitments = (0..self.columns.len().div_ceil(chunk_len))
+            .map(|i| CS::read_commitment(transcript, &[PolynomialLabel::PermutationAccumulator(i)]))
+            .collect::<Result<Vec<_>, _>>()?;
 
         Ok(Committed {
             permutation_product_commitments,
