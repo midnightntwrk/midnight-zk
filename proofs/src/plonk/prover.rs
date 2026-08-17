@@ -581,14 +581,13 @@ where
         }
     }
 
-    let advice_commitments: Vec<_> = advice_values
-        .par_iter()
-        .enumerate()
-        .map(|(i, poly)| CS::commit(params, poly, PolynomialLabel::Advice(i)))
-        .collect();
-
-    for commitment in &advice_commitments {
-        transcript.write(commitment)?;
+    // Commit to all advice columns in a single batched call, so that schemes
+    // able to fold same-phase polynomials (e.g. fflonk) see the whole phase.
+    if !advice_values.is_empty() {
+        let advice_refs: Vec<_> = advice_values.iter().collect();
+        let labels: Vec<_> = (0..advice_values.len()).map(PolynomialLabel::Advice).collect();
+        let advice_com = CS::commit_many(params, &advice_refs, &labels);
+        CS::write_commitment(transcript, &advice_com)?;
     }
 
     advice.advice_polys = advice_values;

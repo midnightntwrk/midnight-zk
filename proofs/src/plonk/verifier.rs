@@ -64,11 +64,16 @@ where
         }
     }
 
-    // Hash the prover's advice commitments into the transcript and squeeze
-    // challenges
-    let advice_commitments: Vec<_> = (0..vk.cs.num_advice_columns)
-        .map(|i| CS::read_commitment(transcript, &[PolynomialLabel::Advice(i)]))
-        .collect::<Result<_, _>>()?;
+    // Read the batched advice commitment (one transcript entry for all advice
+    // columns; mirrors the prover's batched `commit_many`). Every column holds a
+    // clone of the shared commitment and routes its queries via its own label.
+    let advice_commitments: Vec<CS::Commitment> = if vk.cs.num_advice_columns == 0 {
+        Vec::new()
+    } else {
+        let labels: Vec<_> = (0..vk.cs.num_advice_columns).map(PolynomialLabel::Advice).collect();
+        let shared = CS::read_commitment(transcript, &labels)?;
+        vec![shared; vk.cs.num_advice_columns]
+    };
 
     // Sample theta challenge for keeping lookup columns linearly independent
     let theta: F = transcript.squeeze_challenge();

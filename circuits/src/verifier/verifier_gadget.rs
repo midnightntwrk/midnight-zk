@@ -348,11 +348,16 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             instance.iter().try_for_each(|pi| transcript.common_scalar(layouter, pi))?;
         }
 
-        // Hash the prover's advice commitments into the transcript and squeeze
-        // challenges
-        let advice_commitments = (0..cs.num_advice_columns())
-            .map(|i| PCS::read_commitment(&mut transcript, layouter, &[PolynomialLabel::Advice(i)]))
-            .collect::<Result<Vec<_>, Error>>()?;
+        // Read the batched advice commitment (one transcript entry for all advice
+        // columns).
+        let advice_commitments = if cs.num_advice_columns() == 0 {
+            Vec::new()
+        } else {
+            let labels: Vec<_> =
+                (0..cs.num_advice_columns()).map(PolynomialLabel::Advice).collect();
+            let shared = PCS::read_commitment(&mut transcript, layouter, &labels)?;
+            vec![shared; cs.num_advice_columns()]
+        };
 
         // Sample theta challenge for keeping lookup columns linearly independent
         let theta = transcript.squeeze_challenge(layouter)?;

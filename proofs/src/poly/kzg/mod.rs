@@ -95,10 +95,11 @@ where
         );
         assert!(!polynomials.is_empty(), "cannot commit to zero polynomials");
         let bases = params.bases::<B>();
+        // One independent MSM per polynomial, run in parallel.
         KZGMultiCommitment(
             polynomials
-                .iter()
-                .zip(labels)
+                .par_iter()
+                .zip(labels.par_iter())
                 .map(|(polynomial, label)| {
                     let size = polynomial.values.len();
                     assert!(bases.len() >= size);
