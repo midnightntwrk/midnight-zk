@@ -413,7 +413,7 @@ impl<F: PrimeField> Evaluated<F> {
         advice_evals: &[F],
         fixed_evals: &[F],
         instance_evals: &[F],
-    ) -> impl Iterator<Item = F> + 'a + use<'a, F> {
+    ) -> impl Iterator<Item = F> + 'a {
         use crate::plonk::circuit::Expression;
 
         let active_rows = F::ONE - (l_last + l_blind);

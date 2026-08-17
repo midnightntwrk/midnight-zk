@@ -638,7 +638,7 @@ impl<C: EdwardsCurve> EccChip<C> {
     }
 
     /// The native gadget carried by this chip.
-    pub fn native_gadget(&self) -> &(impl NativeInstructions<C::Base> + use<C>) {
+    pub fn native_gadget(&self) -> &impl NativeInstructions<C::Base> {
         &self.native_gadget
     }
 }

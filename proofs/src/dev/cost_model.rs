@@ -106,7 +106,7 @@ impl Lookup {
     ///  - 1 multiplicities polynomial at x,
     ///  - `num_chunks` helper polynomials at x,
     ///  - 1 accumulator polynomial at x and ωx.
-    fn queries(&self) -> impl Iterator<Item = Poly> + use<> {
+    fn queries(&self) -> impl Iterator<Item = Poly> {
         let multiplicities: Poly = "0".parse().unwrap();
         let helper: Poly = "0".parse().unwrap();
         let aggregator: Poly = "0,1".parse().unwrap();
@@ -146,7 +146,7 @@ struct Permutation {
 
 impl Permutation {
     /// Returns the queries of the Permutation argument
-    fn queries(&self) -> impl Iterator<Item = Poly> + use<> {
+    fn queries(&self) -> impl Iterator<Item = Poly> {
         // - at wX, X, uwX for all (except the last)
         // - at wX, X for the last
         let mut chunks: Poly = "0,1".parse().unwrap();

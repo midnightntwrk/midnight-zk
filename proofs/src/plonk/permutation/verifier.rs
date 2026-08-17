@@ -111,7 +111,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<
         &self,
         vk: &plonk::VerifyingKey<F, CS>,
         x: F,
-    ) -> impl Iterator<Item = VerifierQuery<'_, F, CS>> + Clone + use<'_, F, CS> {
+    ) -> impl Iterator<Item = VerifierQuery<'_, F, CS>> + Clone {
         let blinding_factors = vk.cs.blinding_factors();
         let x_next = vk.domain.rotate_omega(x, Rotation::next());
         let x_last = vk.domain.rotate_omega(x, Rotation(-((blinding_factors + 1) as i32)));
@@ -150,7 +150,7 @@ impl<F: PrimeField> CommonEvaluated<F> {
         &self,
         vkey: &'vkey VerifyingKey<F, CS>,
         x: F,
-    ) -> impl Iterator<Item = VerifierQuery<'vkey, F, CS>> + Clone + use<'vkey, CS, F> {
+    ) -> impl Iterator<Item = VerifierQuery<'vkey, F, CS>> + Clone {
         let evals = self.permutation_evals.clone();
         vkey.commitments
             .iter()
