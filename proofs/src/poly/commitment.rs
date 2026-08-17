@@ -71,9 +71,12 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
         Self::commit_many(params, &[polynomial], &[label])
     }
 
-    /// Read a commitment to `labels.len()` polynomials from the transcript,
-    /// absorbing it into the transcript state and tagging each polynomial with
-    /// its label.
+    /// Read a commitment to `labels.len()` polynomials from the proof
+    /// transcript, absorbing it into the transcript state and tagging each
+    /// polynomial with its label.
+    ///
+    /// Use [`deserialize_commitment`](Self::deserialize_commitment) instead for
+    /// commitments that are not part of the proof.
     fn read_commitment<T: Transcript>(
         transcript: &mut T,
         labels: &[PolynomialLabel],
@@ -83,6 +86,10 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
 
     /// Deserialize a commitment to `labels.len()` polynomials from `reader`,
     /// tagging each polynomial with its label.
+    ///
+    /// Unlike [`read_commitment`](Self::read_commitment), the bytes come from a
+    /// plain reader, typically a serialized verifying key, and nothing is
+    /// absorbed into a transcript.
     fn deserialize_commitment<R: Read>(
         reader: &mut R,
         format: SerdeFormat,
