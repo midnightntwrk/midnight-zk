@@ -16,11 +16,7 @@
 //!
 //! The "expressions" part is dealt with in our `expressions/` directory.
 
-use midnight_proofs::{
-    circuit::Layouter,
-    plonk::Error,
-    poly::{PolynomialLabel, commitment::Labelable},
-};
+use midnight_proofs::{circuit::Layouter, plonk::Error, poly::PolynomialLabel};
 
 use crate::{
     field::AssignedNative,
@@ -53,8 +49,11 @@ pub(crate) fn read_committed<S: SelfEmulation, PCS: InCircuitPCS<S>>(
     layouter: &mut impl Layouter<S::F>,
     transcript_gadget: &mut TranscriptGadget<S>,
 ) -> Result<Committed<S, PCS>, Error> {
-    let trash_commitment = PCS::read_commitment(transcript_gadget, layouter, 1)
-        .map(|c| c.label(&[PolynomialLabel::Trash(argument_index)]))?;
+    let trash_commitment = PCS::read_commitment(
+        transcript_gadget,
+        layouter,
+        &[PolynomialLabel::Trash(argument_index)],
+    )?;
 
     Ok(Committed {
         argument_index,

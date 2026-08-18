@@ -1,6 +1,10 @@
 //! Trait for a commitment scheme
 use core::ops::{Add, Mul};
-use std::{fmt::Debug, hash::Hash};
+use std::{
+    fmt::Debug,
+    hash::Hash,
+    io::{self, Read},
+};
 
 use ff::{FromUniformBytes, PrimeField};
 
@@ -29,7 +33,6 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
         + Default
         + PartialEq
         + ProcessedSerdeObject
-        + Labelable
         + Send
         + Sync
         + Add<Output = Self::Commitment>
@@ -67,6 +70,31 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
     ) -> Self::Commitment {
         Self::commit_many(params, &[polynomial], &[label])
     }
+
+    /// Read a commitment to `labels.len()` polynomials from the proof
+    /// transcript, absorbing it into the transcript state and tagging each
+    /// polynomial with its label.
+    ///
+    /// Use [`deserialize_commitment`](Self::deserialize_commitment) instead for
+    /// commitments that are not part of the proof.
+    fn read_commitment<T: Transcript>(
+        transcript: &mut T,
+        labels: &[PolynomialLabel],
+    ) -> io::Result<Self::Commitment>
+    where
+        Self::Commitment: Hashable<T::Hash>;
+
+    /// Deserialize a commitment to `labels.len()` polynomials from `reader`,
+    /// tagging each polynomial with its label.
+    ///
+    /// Unlike [`read_commitment`](Self::read_commitment), the bytes come from a
+    /// plain reader, typically a serialized verifying key, and nothing is
+    /// absorbed into a transcript.
+    fn deserialize_commitment<R: Read>(
+        reader: &mut R,
+        format: SerdeFormat,
+        labels: &[PolynomialLabel],
+    ) -> io::Result<Self::Commitment>;
 
     /// Squeeze the evaluation point used by the protocol to open committed
     /// polynomials. The default implementation simply squeezes a challenge,
@@ -130,24 +158,6 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
     where
         F: Sampleable<T::Hash> + Hash + Ord + Hashable<T::Hash>,
         Self::Commitment: Hashable<T::Hash> + 'com;
-}
-
-/// A commitment that can be assigned [`PolynomialLabel`]s.
-///
-/// Deserialized commitments start with [`PolynomialLabel::NoLabel`] for each
-/// polynomial they hold; call sites must attach the correct labels before the
-/// commitment reaches the MSM layer.
-pub trait Labelable: Sized {
-    /// Attaches the given labels to this commitment, one per polynomial,
-    /// replacing any existing labels (including [`PolynomialLabel::NoLabel`]).
-    ///
-    /// # Panics
-    ///
-    /// Panics if `labels.len() != self.length()`.
-    fn label(self, labels: &[PolynomialLabel]) -> Self;
-
-    /// Returns the number of polynomials held by this commitment.
-    fn length(&self) -> usize;
 }
 
 /// Interface for verifier finalizer

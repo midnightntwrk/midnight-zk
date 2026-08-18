@@ -53,6 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Simplify KZG multiopen verifier to use `KZGCommitment` directly [#430](https://github.com/midnightntwrk/midnight-zk/pull/430)
 
 ### Removed
+* Remove the `Labelable` trait; commitments are now labeled while being read through `read_commitment` / `deserialize_commitment` instead of being re-labeled after deserialization [#491](https://github.com/midnightntwrk/midnight-zk/pull/491)
 * Remove `Query<F>` trait; `construct_intermediate_sets` now accepts `&[(T, F, F)]` (commitment reference, point, eval) tuples with `T: PartialEq + Copy` [#411](https://github.com/midnightntwrk/midnight-zk/pull/411)
 * Remove multi-phase PLONK support: `Phase`, `Challenge`, `FirstPhase`, and `Layouter::get_challenge()` are removed; `Any::Advice` is no longer phase-parameterized; the prover and dev tools synthesize in a single pass [#376](https://github.com/midnightntwrk/midnight-zk/pull/376)
 * Remove multi-proof support; `create_proof` and `prepare` now operate on a single circuit and take `instances: &[&[F]]` instead of `&[&[&[F]]]` [#375](https://github.com/midnightntwrk/midnight-zk/pull/375)

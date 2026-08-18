@@ -20,7 +20,7 @@ use std::fmt::Debug;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
-    poly::{PolynomialLabel, commitment::Labelable},
+    poly::PolynomialLabel,
 };
 
 use crate::{
@@ -62,9 +62,7 @@ impl<'a, S: SelfEmulation, PCS: InCircuitPCS<S>> VerifierQuery<'a, S, PCS> {
 // ---------------------------------------------------------------------------
 
 /// In-circuit operations on an additively homomorphic commitment.
-pub trait InCircuitHomomorphicCommitment<S: SelfEmulation>:
-    Clone + Debug + Labelable + Sized
-{
+pub trait InCircuitHomomorphicCommitment<S: SelfEmulation>: Clone + Debug + Sized {
     /// Scales this commitment by an assigned scalar.
     fn mul(
         self,
@@ -101,13 +99,12 @@ pub trait InCircuitPCS<S: SelfEmulation>: Sized + Clone + Debug {
         label: PolynomialLabel,
     ) -> Result<Self::AssignedCommitment, Error>;
 
-    /// Reads one commitment (to `length` polynomials) from the proof
-    /// transcript. Commitments are not length-prefixed on the wire, so the
-    /// caller supplies the polynomial count (`1` unless batched).
+    /// Reads one commitment to `labels.len()` polynomials from the proof
+    /// transcript, tagging each polynomial with its label.
     fn read_commitment(
         transcript: &mut TranscriptGadget<S>,
         layouter: &mut impl Layouter<S::F>,
-        length: usize,
+        labels: &[PolynomialLabel],
     ) -> Result<Self::AssignedCommitment, Error>;
 
     /// Absorbs a commitment into the proof transcript.

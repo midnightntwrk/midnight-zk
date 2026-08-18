@@ -31,7 +31,7 @@ use group::Group;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
-    poly::{PolynomialLabel, commitment::Labelable, kzg::commitment::KZGCommitment},
+    poly::{PolynomialLabel, kzg::commitment::KZGCommitment},
 };
 
 #[cfg(feature = "truncated-challenges")]
@@ -143,19 +143,6 @@ impl<S: SelfEmulation> AssignedKZGCommitment<S> {
 }
 
 impl<S: SelfEmulation> AssignedKZGCommitment<S> {
-    /// Attaches `label` to a freshly-read (`NoLabel`) commitment.
-    ///
-    /// # Panics
-    ///
-    /// If the commitment is not `Simple` or if it was already labeled.
-    pub(crate) fn label(self, label: PolynomialLabel) -> Self {
-        match self {
-            Self::Simple(p, PolynomialLabel::NoLabel) => Self::Simple(p, label),
-            Self::Simple(_, existing) => panic!("commitment is already labeled: {existing:?}"),
-            Self::Linear(_, _, _) => panic!("KZGCommitment::Linear cannot be labeled"),
-        }
-    }
-
     /// Scales this commitment by a scalar.
     ///
     /// `Simple(p, l)` becomes `Linear([p], [scalar], [l])`.
@@ -246,26 +233,6 @@ impl<S: SelfEmulation> InnerValue for AssignedKZGMultiCommitment<S> {
     fn value(&self) -> Value<Self::Element> {
         Value::from_iter(self.0.iter().map(|c| c.value()))
             .map(midnight_proofs::poly::kzg::commitment::KZGMultiCommitment)
-    }
-}
-
-impl<S: SelfEmulation> Labelable for AssignedKZGMultiCommitment<S> {
-    /// Attaches one label per inner polynomial.
-    ///
-    /// # Panics
-    ///
-    /// If `labels.len() != self.length()`.
-    fn label(self, labels: &[PolynomialLabel]) -> Self {
-        assert_eq!(
-            labels.len(),
-            self.0.len(),
-            "label count must match polynomial count"
-        );
-        Self(self.0.into_iter().zip(labels).map(|(c, l)| c.label(l.clone())).collect())
-    }
-
-    fn length(&self) -> usize {
-        self.0.len()
     }
 }
 
@@ -592,8 +559,7 @@ pub(crate) fn multi_prepare_kzg<S: SelfEmulation>(
     };
 
     let f_com = transcript_gadget
-        .read_commitment(layouter, 1)?
-        .label(&[PolynomialLabel::Custom("kzg_batch".into())])
+        .read_commitment(layouter, &[PolynomialLabel::Custom("kzg_batch".into())])?
         .into_single();
 
     let x3 = transcript_gadget.squeeze_challenge(layouter)?;
@@ -672,8 +638,7 @@ pub(crate) fn multi_prepare_kzg<S: SelfEmulation>(
     };
 
     let pi = transcript_gadget
-        .read_commitment(layouter, 1)
-        .map(|c| c.label(&[PolynomialLabel::Custom("π".into())]))?
+        .read_commitment(layouter, &[PolynomialLabel::Custom("π".into())])?
         .into_single();
     let pi_msm = pi.into_msm(layouter, scalar_chip)?;
 
@@ -709,9 +674,9 @@ impl<S: SelfEmulation> InCircuitPCS<S> for InCircuitKZG<S> {
     fn read_commitment(
         transcript: &mut TranscriptGadget<S>,
         layouter: &mut impl Layouter<S::F>,
-        length: usize,
+        labels: &[PolynomialLabel],
     ) -> Result<Self::AssignedCommitment, Error> {
-        transcript.read_commitment(layouter, length)
+        transcript.read_commitment(layouter, labels)
     }
 
     fn assign_commitment(

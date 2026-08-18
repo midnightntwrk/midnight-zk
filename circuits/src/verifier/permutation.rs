@@ -19,7 +19,7 @@
 use midnight_proofs::{
     circuit::Layouter,
     plonk::{ConstraintSystem, Error},
-    poly::{PolynomialLabel, commitment::Labelable},
+    poly::PolynomialLabel,
 };
 
 use crate::{
@@ -61,16 +61,17 @@ pub(crate) fn read_product_commitments<S: SelfEmulation, PCS: InCircuitPCS<S>>(
 ) -> Result<Committed<S, PCS>, Error> {
     let chunk_len = cs.degree() - 2;
 
-    let permutation_product_commitments = cs
-        .permutation()
-        .get_columns()
-        .chunks(chunk_len)
-        .map(|_| PCS::read_commitment(transcript_gadget, layouter, 1))
-        .collect::<Result<Vec<_>, _>>()?
-        .into_iter()
-        .enumerate()
-        .map(|(i, c)| c.label(&[PolynomialLabel::PermutationAccumulator(i)]))
-        .collect();
+    let nb_chunks = cs.permutation().get_columns().len().div_ceil(chunk_len);
+
+    let permutation_product_commitments = (0..nb_chunks)
+        .map(|i| {
+            PCS::read_commitment(
+                transcript_gadget,
+                layouter,
+                &[PolynomialLabel::PermutationAccumulator(i)],
+            )
+        })
+        .collect::<Result<Vec<_>, _>>()?;
 
     Ok(Committed {
         permutation_product_commitments,

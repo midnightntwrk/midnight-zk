@@ -16,11 +16,7 @@
 //! This is the in-circuit analog of `proofs/src/plonk/logup/verifier.rs`.
 //! The constraint expressions are implemented in `expressions/lookup.rs`.
 
-use midnight_proofs::{
-    circuit::Layouter,
-    plonk::Error,
-    poly::{PolynomialLabel, commitment::Labelable},
-};
+use midnight_proofs::{circuit::Layouter, plonk::Error, poly::PolynomialLabel};
 
 use crate::{
     field::AssignedNative,
@@ -67,8 +63,11 @@ pub(crate) fn read_multiplicities<S: SelfEmulation, PCS: InCircuitPCS<S>>(
     layouter: &mut impl Layouter<S::F>,
     transcript_gadget: &mut TranscriptGadget<S>,
 ) -> Result<CommittedMultiplicities<S, PCS>, Error> {
-    let multiplicities = PCS::read_commitment(transcript_gadget, layouter, 1)
-        .map(|c| c.label(&[PolynomialLabel::LogupMultiplicities(argument_index)]))?;
+    let multiplicities = PCS::read_commitment(
+        transcript_gadget,
+        layouter,
+        &[PolynomialLabel::LogupMultiplicities(argument_index)],
+    )?;
     Ok(CommittedMultiplicities { multiplicities })
 }
 
@@ -82,12 +81,18 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> CommittedMultiplicities<S, PCS> {
     ) -> Result<Committed<S, PCS>, Error> {
         let helper_polys = (0..nb_flattened)
             .map(|j| {
-                PCS::read_commitment(transcript_gadget, layouter, 1)
-                    .map(|c| c.label(&[PolynomialLabel::LogupHelper(argument_index, j)]))
+                PCS::read_commitment(
+                    transcript_gadget,
+                    layouter,
+                    &[PolynomialLabel::LogupHelper(argument_index, j)],
+                )
             })
             .collect::<Result<Vec<_>, Error>>()?;
-        let accumulator = PCS::read_commitment(transcript_gadget, layouter, 1)
-            .map(|c| c.label(&[PolynomialLabel::LogupAggregator(argument_index)]))?;
+        let accumulator = PCS::read_commitment(
+            transcript_gadget,
+            layouter,
+            &[PolynomialLabel::LogupAggregator(argument_index)],
+        )?;
 
         Ok(Committed {
             argument_index,

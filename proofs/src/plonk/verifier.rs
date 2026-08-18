@@ -11,10 +11,7 @@ use crate::{
         linearization::verifier::compute_linearization_commitment, partially_evaluate_identities,
         traces::VerifierTrace,
     },
-    poly::{
-        PolynomialLabel, VerifierQuery,
-        commitment::{Labelable, PolynomialCommitmentScheme},
-    },
+    poly::{PolynomialLabel, VerifierQuery, commitment::PolynomialCommitmentScheme},
     transcript::{Hashable, Sampleable, Transcript, read_n},
     utils::arithmetic::compute_inner_product,
 };
@@ -68,11 +65,7 @@ where
     // Hash the prover's advice commitments into the transcript and squeeze
     // challenges
     let advice_commitments: Vec<_> = (0..vk.cs.num_advice_columns)
-        .map(|i| {
-            transcript
-                .read()
-                .map(|c: CS::Commitment| c.label(&[PolynomialLabel::Advice(i)]))
-        })
+        .map(|i| CS::read_commitment(transcript, &[PolynomialLabel::Advice(i)]))
         .collect::<Result<_, _>>()?;
 
     // Sample theta challenge for keeping lookup columns linearly independent
@@ -180,18 +173,14 @@ where
     #[cfg(feature = "single-h-commitment")]
     let nb_quotient_coms = 1;
     let quotient_limb_coms = {
-        let raw = read_n::<CS::Commitment, _>(transcript, nb_quotient_coms)?;
         #[cfg(not(feature = "single-h-commitment"))]
-        let labeled = raw
-            .into_iter()
-            .enumerate()
-            .map(|(i, c)| c.label(&[PolynomialLabel::QuotientPiece(i)]))
-            .collect::<Vec<_>>();
+        let labeled = (0..nb_quotient_coms)
+            .map(|i| CS::read_commitment(transcript, &[PolynomialLabel::QuotientPiece(i)]))
+            .collect::<Result<Vec<_>, _>>()?;
         #[cfg(feature = "single-h-commitment")]
-        let labeled = raw
-            .into_iter()
-            .map(|c| c.label(&[PolynomialLabel::Quotient]))
-            .collect::<Vec<_>>();
+        let labeled = (0..nb_quotient_coms)
+            .map(|_| CS::read_commitment(transcript, &[PolynomialLabel::Quotient]))
+            .collect::<Result<Vec<_>, _>>()?;
         labeled
     };
 
