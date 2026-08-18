@@ -96,9 +96,9 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> PublicInputInstructions<S::F, Assig
         assigned_vk: &AssignedVk<S, PCS>,
     ) -> Result<Vec<AssignedNative<S::F>>, Error> {
         Ok([
+            self.scalar_chip.as_public_input(layouter, &assigned_vk.transcript_repr)?,
             self.scalar_chip.as_public_input(layouter, assigned_vk.k())?,
             self.scalar_chip.as_public_input(layouter, assigned_vk.omega())?,
-            self.scalar_chip.as_public_input(layouter, &assigned_vk.transcript_repr)?,
         ]
         .concat())
     }
@@ -236,6 +236,11 @@ impl<S: SelfEmulation> VerifierGadget<S> {
     /// is required off-circuit, except for the `transcript_repr` and the
     /// evaluation domain.
     ///
+    /// These are taken as separate values (instead of a `Value<VerifyingKey>`)
+    /// because a circuit may need to verify its *own* key, in which case no
+    /// verifying key exists yet: the values are then supplied by the prover
+    /// through the public inputs.
+    ///
     /// The domain values `k` and `omega` are *trusted* at this point: this
     /// function does not check that they are consistent (i.e. that `omega` is a
     /// primitive `2^k`-th root of unity), nor that they are the ones of the
@@ -248,12 +253,12 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         domain: Value<EvaluationDomain<S::F>>,
         transcript_repr_value: Value<S::F>,
     ) -> Result<AssignedVk<S, PCS>, Error> {
-        let [k, omega] =
+        let [k_value, omega_value] =
             domain.map(|d| [S::F::from(d.k() as u64), d.get_omega()]).transpose_array();
-        let k = self.scalar_chip.assign_as_public_input(layouter, k)?;
-        let omega = self.scalar_chip.assign_as_public_input(layouter, omega)?;
         let transcript_repr =
             self.scalar_chip.assign_as_public_input(layouter, transcript_repr_value)?;
+        let k = self.scalar_chip.assign_as_public_input(layouter, k_value)?;
+        let omega = self.scalar_chip.assign_as_public_input(layouter, omega_value)?;
 
         let domain = self.derive_domain(layouter, k, omega)?;
 
@@ -266,15 +271,14 @@ impl<S: SelfEmulation> VerifierGadget<S> {
     pub fn assign_fixed_vk<PCS: InCircuitPCS<S>>(
         &self,
         layouter: &mut impl Layouter<S::F>,
-        cs: &ConstraintSystem<S::F>,
-        domain: &EvaluationDomain<S::F>,
-        transcript_repr_constant: S::F,
+        vk: &VerifyingKey<S>,
     ) -> Result<AssignedVk<S, PCS>, Error> {
-        let transcript_repr = self.scalar_chip.assign_fixed(layouter, transcript_repr_constant)?;
+        let domain = vk.get_domain();
+        let transcript_repr = self.scalar_chip.assign_fixed(layouter, vk.transcript_repr())?;
         let k = self.scalar_chip.assign_fixed(layouter, S::F::from(domain.k() as u64))?;
         let omega = self.scalar_chip.assign_fixed(layouter, domain.get_omega())?;
         let domain = self.derive_domain(layouter, k, omega)?;
-        self.assemble_vk(cs, domain, transcript_repr)
+        self.assemble_vk(vk.cs(), domain, transcript_repr)
     }
 
     /// Completes the assigned domain by deriving `omega_inv` and `n = 2^k` from
@@ -597,6 +601,12 @@ impl<S: SelfEmulation> VerifierGadget<S> {
 
         let omega = &assigned_vk.domain.omega;
         let omega_inv = &assigned_vk.domain.omega_inv;
+        // `n = 2^k` is larger than the rotation bounds computed below, and than the
+        // length of any instance column: rotations are compile-time constants of the
+        // verified circuit's `cs`, and its instance rows must fit in its own domain.
+        // Thus the range of Lagrange polynomials evaluated below spans less than one
+        // period of `omega` (which has order `n`), i.e. the powers `omega^i` involved
+        // are pair-wise distinct and never wrap around the domain.
         let n = &assigned_vk.domain.n;
         let xn = pow_2_pow_k(layouter, &self.scalar_chip, &x, k)?;
         // Shared by all calls to `evaluate_lagrange_polynomials` below.

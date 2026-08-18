@@ -129,7 +129,7 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
 
     fn format_instance(instance: &Self::Instance) -> Result<Vec<F>, IvcError> {
         Ok([
-            vec![instance.domain_k, instance.domain_omega, instance.vk_repr],
+            vec![instance.vk_repr, instance.domain_k, instance.domain_omega],
             T::format_public_input(&instance.state),
             AssignedAccumulator::<S>::as_public_input(&instance.acc),
         ]

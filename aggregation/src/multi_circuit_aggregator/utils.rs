@@ -47,7 +47,7 @@ pub fn compute_vk_hash(vk: &MidnightVK) -> F {
     let to_raw = Hashable::<PoseidonState<F>>::to_input;
 
     let domain = vk.get_domain();
-    let in_circuit_vk = vec![
+    let vk_as_public_inputs = vec![
         vk.transcript_repr(),
         F::from(domain.k() as u64),
         domain.get_omega(),
@@ -55,7 +55,7 @@ pub fn compute_vk_hash(vk: &MidnightVK) -> F {
     let fixed_coms: Vec<F> = vk.fixed_commitments().iter().flat_map(to_raw).collect();
     let perm_coms: Vec<F> = vk.permutation().commitments().iter().flat_map(to_raw).collect();
 
-    <PoseidonChip<F> as HashCPU<F, F>>::hash(&[in_circuit_vk, fixed_coms, perm_coms].concat())
+    <PoseidonChip<F> as HashCPU<F, F>>::hash(&[vk_as_public_inputs, fixed_coms, perm_coms].concat())
 }
 
 /// In-circuit counterpart of [`compute_vk_hash`].

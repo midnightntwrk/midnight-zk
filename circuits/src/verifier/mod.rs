@@ -75,11 +75,14 @@ struct AssignedEvaluationDomain<S: SelfEmulation> {
 /// [AssignedKZGCommitment], but they are "empty", i.e. of the `Fixed` variant:
 /// they only carry a label, no assigned point.
 ///
+/// This is fine because the verifier only adds them to an MSM: the accumulator
+/// of [VerifierGadget::prepare] just records their scalars in
+/// `fixed_base_scalars`, and the actual commitments are provided off-circuit by
+/// the final verifier (the decider), via [Accumulator::resolve_fixed_bases].
+/// The key remains bound in-circuit through `transcript_repr`.
+///
 /// The only entry-point for this function is intended to be
-/// [VerifierGadget::assign_vk_as_public_input]. This is possible because fixed
-/// commitments are dealt with off-circuit, i.e., the resulting accumulator of
-/// [VerifierGadget::prepare] contains the scalars of the
-/// fixed-commitments, in the `fixed_base_scalars` field (of its RHS).
+/// [VerifierGadget::assign_vk_as_public_input].
 #[derive(Clone, Debug)]
 pub struct AssignedVk<S: SelfEmulation, PCS: InCircuitPCS<S>> {
     domain: AssignedEvaluationDomain<S>,
@@ -105,9 +108,9 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> Instantiable<S::F> for AssignedVk<S
     fn as_public_input(vk: &VerifyingKey<S>) -> Vec<S::F> {
         let domain = vk.get_domain();
         [
+            AssignedNative::<S::F>::as_public_input(&vk.transcript_repr()),
             AssignedNative::<S::F>::as_public_input(&S::F::from(domain.k() as u64)),
             AssignedNative::<S::F>::as_public_input(&domain.get_omega()),
-            AssignedNative::<S::F>::as_public_input(&vk.transcript_repr()),
         ]
         .concat()
     }

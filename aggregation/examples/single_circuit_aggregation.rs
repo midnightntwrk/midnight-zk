@@ -33,10 +33,10 @@ use midnight_circuits::{
 };
 use midnight_proofs::{
     circuit::{Layouter, Value},
-    plonk::{self, ConstraintSystem, Error},
+    plonk::{self, Error},
     poly::{
         kzg::{commitment::KZGMultiCommitment, params::ParamsVerifierKZG, KZGCommitmentScheme},
-        EvaluationDomain, PolynomialLabel,
+        PolynomialLabel,
     },
     transcript::{CircuitTranscript, Transcript},
 };
@@ -58,10 +58,6 @@ type InnerCircuit = ShaPreimageCircuit;
 /// Setup data for the inner circuit, threaded as IVC context.
 #[derive(Clone, Debug)]
 pub struct InnerCircuitContext {
-    /// Constraint system used by the inner proofs (to be aggregated).
-    cs: ConstraintSystem<F>,
-    /// Evaluation domain for the inner circuit.
-    domain: EvaluationDomain<F>,
     /// Verifying key.
     vk: MidnightVK,
     /// SRS verifier parameters (for off-circuit proof preparation).
@@ -286,12 +282,8 @@ impl IvcTransition for ProofAggregation {
         witness: Value<Self::Witness>,
     ) -> Result<Self::AssignedState, Error> {
         // Assign inner VK as a hard-coded constant.
-        let inner_vk: AssignedVk<S, InCircuitKZG<S>> = self.std_lib.verifier().assign_fixed_vk(
-            layouter,
-            &self.inner_ctx.cs,
-            &self.inner_ctx.domain,
-            self.inner_ctx.vk.vk().transcript_repr(),
-        )?;
+        let inner_vk: AssignedVk<S, InCircuitKZG<S>> =
+            self.std_lib.verifier().assign_fixed_vk(layouter, self.inner_ctx.vk.vk())?;
 
         // Assign the inner statement as a witness.
         let statement_pis = self.std_lib.assign_many(
@@ -356,18 +348,9 @@ fn main() {
     let inner_srs = load_srs(SrsSource::Filecoin, sha_preimage::K, cs_degree(inner_arch));
     let inner_vk = setup_vk(&inner_srs, &ShaPreimageCircuit);
     let inner_pk = setup_pk(&ShaPreimageCircuit, &inner_vk);
-    let inner_ctx = {
-        let k = sha_preimage::K;
-        let mut cs = midnight_proofs::plonk::ConstraintSystem::default();
-        ZkStdLib::configure(&mut cs, (inner_arch, (k - 1) as u8));
-        let domain = midnight_proofs::poly::EvaluationDomain::new(cs.degree() as u32, k);
-
-        InnerCircuitContext {
-            cs,
-            domain,
-            vk: inner_vk,
-            params_verifier: inner_srs.verifier_params(),
-        }
+    let inner_ctx = InnerCircuitContext {
+        vk: inner_vk,
+        params_verifier: inner_srs.verifier_params(),
     };
 
     // Generate random inner statements and prove them.
