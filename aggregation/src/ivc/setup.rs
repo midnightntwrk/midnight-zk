@@ -1,13 +1,13 @@
 //! IVC setup: circuit compilation and key generation.
 
-use midnight_circuits::verifier::{fixed_bases, Accumulator};
+use midnight_circuits::verifier::{Accumulator, fixed_bases};
 use midnight_proofs::{
     plonk::ConstraintSystem,
-    poly::{kzg::params::ParamsKZG, EvaluationDomain, PolynomialLabel},
+    poly::{EvaluationDomain, PolynomialLabel, kzg::params::ParamsKZG},
 };
 use midnight_zk_stdlib::ZkStdLib;
 
-use super::{Ivc, IvcCircuit, IvcProver, IvcVerifier, E, S};
+use super::{E, Ivc, IvcCircuit, IvcProver, IvcVerifier, S};
 
 /// Sets up the IVC context: compiles the circuit, generates keys,
 /// and initializes the prover at the genesis state.

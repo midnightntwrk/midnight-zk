@@ -101,12 +101,12 @@ use midnight_proofs::{
 };
 
 use super::{
-    varlen::ScannerVec, NativeAutomaton, ScannerChip, ALPHABET_MAX_SIZE, AUTOMATON_PARALLELISM,
-    NB_AUTOMATON_COLS,
+    ALPHABET_MAX_SIZE, AUTOMATON_PARALLELISM, NB_AUTOMATON_COLS, NativeAutomaton, ScannerChip,
+    varlen::ScannerVec,
 };
 use crate::{
-    field::AssignedNative, instructions::AssignmentInstructions, parsing::scanner::AutomatonParser,
-    types::AssignedByte, vec::AssignedVector, CircuitField,
+    CircuitField, field::AssignedNative, instructions::AssignmentInstructions,
+    parsing::scanner::AutomatonParser, types::AssignedByte, vec::AssignedVector,
 };
 
 impl<F> NativeAutomaton<F>
@@ -449,10 +449,10 @@ where
         // and hit the self-loop transitions (added during NativeAutomaton
         // construction), outputting marker 0.
         let buffer = self.parse_automaton(layouter, &automaton, &*input.buffer)?;
-        Ok(AssignedVector {
-            buffer: Box::new(buffer.try_into().unwrap()),
-            len: input.len().clone(),
-        })
+        Ok(AssignedVector::new(
+            Box::new(buffer.try_into().unwrap()),
+            input.len().clone(),
+        ))
     }
 }
 
@@ -466,16 +466,16 @@ mod test {
     };
 
     use super::{
-        super::{regex::Regex, AutomatonParser},
+        super::{AutomatonParser, regex::Regex},
         ScannerChip,
     };
     use crate::{
+        CircuitField,
         field::AssignedNative,
         instructions::{AssertionInstructions, AssignmentInstructions},
         testing_utils::FromScratch,
         types::AssignedByte,
         utils::circuit_modeling::{circuit_to_json, cost_measure_end, cost_measure_start},
-        CircuitField,
     };
 
     #[derive(Clone, Debug)]
@@ -1082,7 +1082,7 @@ mod test {
             )?;
 
             // Pointwise equality on the full buffer.
-            for (out_cell, exp_cell) in parsed.buffer.iter().zip(expected.iter()) {
+            for (out_cell, exp_cell) in parsed.buffer().iter().zip(expected.iter()) {
                 ng.assert_equal(&mut layouter, out_cell, exp_cell)?;
             }
 

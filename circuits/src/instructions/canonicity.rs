@@ -25,9 +25,9 @@ use midnight_proofs::{circuit::Layouter, plonk::Error};
 use num_bigint::BigUint;
 
 use crate::{
+    CircuitField,
     instructions::{AssignmentInstructions, FieldInstructions},
     types::{AssignedBit, InnerConstants, Instantiable},
-    CircuitField,
 };
 
 /// The set of circuit instructions for canonicity assertions.

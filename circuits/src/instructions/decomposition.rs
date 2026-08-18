@@ -25,9 +25,9 @@ use std::fmt::Debug;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use crate::{
+    CircuitField,
     instructions::{ArithInstructions, CanonicityInstructions, ConversionInstructions},
     types::{AssignedBit, AssignedByte, AssignedNative, InnerConstants, Instantiable},
-    CircuitField,
 };
 
 /// The set of circuit instructions for (de)composition operations.

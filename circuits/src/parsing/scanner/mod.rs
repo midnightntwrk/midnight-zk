@@ -69,13 +69,13 @@ use {
 #[cfg(test)]
 use crate::field::native::NB_EXTRA_ARITH_FIXED_COLS;
 use crate::{
+    CircuitField,
     field::{
-        decomposition::chip::P2RDecompositionChip, native::AssignedBit, AssignedNative, NativeChip,
-        NativeGadget,
+        AssignedNative, NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip,
+        native::AssignedBit,
     },
     utils::ComposableChip,
     vec::vector_gadget::VectorGadget,
-    CircuitField,
 };
 
 /// Maximal size of the alphabet of an automaton/regex (input bytes are in

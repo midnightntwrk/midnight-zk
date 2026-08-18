@@ -1,6 +1,6 @@
 use crate::{
     field::AssignedNative,
-    verifier::{pcs::InCircuitPCS, SelfEmulation},
+    verifier::{SelfEmulation, pcs::InCircuitPCS},
 };
 
 /// In-circuit verifier trace of a proof.

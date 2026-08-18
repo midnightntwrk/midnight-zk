@@ -4,7 +4,7 @@ use ff::PrimeField;
 
 use crate::{
     plonk::{logup, permutation, trash},
-    poly::{commitment::PolynomialCommitmentScheme, Coeff, LagrangeCoeff, Polynomial},
+    poly::{Coeff, LagrangeCoeff, Polynomial, commitment::PolynomialCommitmentScheme},
 };
 
 /// Prover's trace of a proof.

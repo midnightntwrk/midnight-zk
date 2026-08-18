@@ -15,7 +15,7 @@
 use base64::DecodeError;
 use ff::Field;
 use group::{Curve, GroupEncoding};
-use midnight_curves::k256::{Fp as K256Base, Fq as K256Scalar, K256Affine, K256};
+use midnight_curves::k256::{Fp as K256Base, Fq as K256Scalar, K256, K256Affine};
 use rand::RngCore;
 
 use crate::CircuitField;

@@ -108,7 +108,7 @@ pub trait RegionLayouter<F: Field>: fmt::Debug + SyncDeps {
     /// Returns the value of the instance column's cell at absolute location
     /// `row`.
     fn instance_value(&mut self, instance: Column<Instance>, row: usize)
-        -> Result<Value<F>, Error>;
+    -> Result<Value<F>, Error>;
 
     /// Assigns a fixed value
     fn assign_fixed<'v>(
@@ -166,8 +166,8 @@ impl From<Selector> for RegionColumn {
 impl Ord for RegionColumn {
     fn cmp(&self, other: &Self) -> cmp::Ordering {
         match (self, other) {
-            (Self::Column(ref a), Self::Column(ref b)) => a.cmp(b),
-            (Self::Selector(ref a), Self::Selector(ref b)) => a.0.cmp(&b.0),
+            (Self::Column(a), Self::Column(b)) => a.cmp(b),
+            (Self::Selector(a), Self::Selector(b)) => a.0.cmp(&b.0),
             (Self::Column(_), Self::Selector(_)) => cmp::Ordering::Less,
             (Self::Selector(_), Self::Column(_)) => cmp::Ordering::Greater,
         }

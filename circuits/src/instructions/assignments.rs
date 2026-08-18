@@ -25,7 +25,7 @@ use midnight_proofs::{
     plonk::Error,
 };
 
-use crate::{types::InnerValue, CircuitField};
+use crate::{CircuitField, types::InnerValue};
 
 /// The set of circuit instructions for assignment operations.
 pub trait AssignmentInstructions<F, Assigned>

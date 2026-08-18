@@ -21,8 +21,8 @@ use std::fmt::Debug;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use crate::{
-    types::{AssignedVector, InnerValue, Vectorizable},
     CircuitField,
+    types::{AssignedVector, InnerValue, Vectorizable},
 };
 
 /// The set of off-circuit instructions for hashing operations.
@@ -73,7 +73,7 @@ pub(crate) mod tests {
     use super::*;
     #[cfg(test)]
     use crate::{
-        field::{decomposition::chip::P2RDecompositionChip, NativeChip, NativeGadget},
+        field::{NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip},
         vec::vector_gadget::VectorGadget,
     };
     use crate::{

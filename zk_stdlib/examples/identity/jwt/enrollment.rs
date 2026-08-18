@@ -3,11 +3,11 @@
 use std::{io::Write, time::Instant};
 
 use midnight_circuits::{
-    field::foreign::{params::MultiEmulationParams, AssignedField},
+    field::foreign::{AssignedField, params::MultiEmulationParams},
     instructions::{
-        public_input::CommittedInstanceInstructions, ArithInstructions, AssertionInstructions,
-        AssignmentInstructions, Base64Instructions, DecompositionInstructions, EccInstructions,
-        PublicInputInstructions,
+        ArithInstructions, AssertionInstructions, AssignmentInstructions, Base64Instructions,
+        DecompositionInstructions, EccInstructions, PublicInputInstructions,
+        public_input::CommittedInstanceInstructions,
     },
     testing_utils::ecdsa::{ECDSASig, FromBase64, PublicKey},
     types::{AssignedByte, AssignedForeignPoint, Instantiable},
@@ -15,10 +15,10 @@ use midnight_circuits::{
 use midnight_curves::k256::K256;
 use midnight_proofs::{
     circuit::{Layouter, Value},
-    plonk::{commit_to_instances, Error},
+    plonk::{Error, commit_to_instances},
     poly::kzg::KZGCommitmentScheme,
 };
-use midnight_zk_stdlib::{utils::plonk_api::srs_for_test, Relation, ZkStdLib, ZkStdLibArch};
+use midnight_zk_stdlib::{Relation, ZkStdLib, ZkStdLibArch, utils::plonk_api::srs_for_test};
 use rand::rngs::OsRng;
 use utils::{read_credential, split_blob, verify_credential_sig};
 
@@ -165,8 +165,8 @@ impl CredentialEnrollment {
         let r_over_s = secp256k1_scalar.div(layouter, &r_as_scalar, &s)?;
         let m_over_s = secp256k1_scalar.div(layouter, &msg_hash, &s)?;
 
-        let gen = secp256k1_curve.assign_fixed(layouter, K256::generator())?;
-        let lhs = secp256k1_curve.msm(layouter, &[m_over_s, r_over_s], &[gen, pk])?;
+        let generator = secp256k1_curve.assign_fixed(layouter, K256::generator())?;
+        let lhs = secp256k1_curve.msm(layouter, &[m_over_s, r_over_s], &[generator, pk])?;
         let lhs_x = secp256k1_curve.x_coordinate(&lhs);
 
         secp256k1_base.assert_equal(layouter, &lhs_x, &r_as_base)

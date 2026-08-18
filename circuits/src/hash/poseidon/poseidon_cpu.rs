@@ -19,15 +19,15 @@ use midnight_proofs::transcript::{Hashable, Sampleable, TranscriptHash};
 use {ff::PrimeField, midnight_curves::bn256};
 
 use super::{
-    constants::{PoseidonField, NB_FULL_ROUNDS, NB_PARTIAL_ROUNDS, RATE, WIDTH},
+    NB_SKIPS_CIRCUIT, PoseidonChip,
+    constants::{NB_FULL_ROUNDS, NB_PARTIAL_ROUNDS, PoseidonField, RATE, WIDTH},
     round_skips::{PreComputedRoundCPU, PreComputedRoundCircuit},
-    PoseidonChip, NB_SKIPS_CIRCUIT,
 };
 use crate::{
+    CircuitField,
     field::foreign::params::MultiEmulationParams as MEP,
     instructions::SpongeCPU,
     types::{AssignedForeignPoint, Instantiable},
-    CircuitField,
 };
 
 /// Number of times the linear part of the partial rounds is skipped in the
@@ -165,7 +165,11 @@ impl<F: PoseidonField> SpongeCPU<F, F> for PoseidonChip<F> {
             }
             Some(len) => {
                 if state.queue.len() != len {
-                    panic!("Inconsistent lengths in fixed-size Poseidon sponge (CPU). Expected: {}, found: {}.", len, state.queue.len())
+                    panic!(
+                        "Inconsistent lengths in fixed-size Poseidon sponge (CPU). Expected: {}, found: {}.",
+                        len,
+                        state.queue.len()
+                    )
                 };
             }
         }

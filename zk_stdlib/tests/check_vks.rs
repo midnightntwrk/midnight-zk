@@ -14,8 +14,8 @@
 //! Integration tests for identifying breaking changes in circuits
 
 use midnight_zk_stdlib::{
-    utils::plonk_api::{check_vk, srs_for_test, update_circuit_goldenfiles},
     MidnightCircuit,
+    utils::plonk_api::{check_vk, srs_for_test, update_circuit_goldenfiles},
 };
 
 #[path = "../examples/exposing_types.rs"]

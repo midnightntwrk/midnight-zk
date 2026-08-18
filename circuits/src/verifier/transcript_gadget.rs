@@ -26,9 +26,9 @@ use crate::{
     instructions::{AssignmentInstructions, PublicInputInstructions, SpongeInstructions},
     types::AssignedNative,
     verifier::{
+        SelfEmulation,
         kzg::{AssignedKZGCommitment, AssignedKZGMultiCommitment},
         msm::AssignedPoint,
-        SelfEmulation,
     },
 };
 

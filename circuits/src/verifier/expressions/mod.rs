@@ -20,8 +20,8 @@ use crate::{
     field::AssignedNative,
     instructions::{ArithInstructions, AssignmentInstructions},
     verifier::{
-        utils::{mul_add, try_reduce},
         SelfEmulation,
+        utils::{mul_add, try_reduce},
     },
 };
 

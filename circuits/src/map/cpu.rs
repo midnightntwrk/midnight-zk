@@ -19,9 +19,9 @@ use std::{collections::HashMap, fmt::Debug, marker::PhantomData};
 use num_bigint::BigUint;
 
 use crate::{
+    CircuitField,
     instructions::{hash::HashCPU, map::MapCPU},
     utils::util::big_to_fe,
-    CircuitField,
 };
 
 /// This constant defines the height of the tree. This is a lower bound
@@ -203,7 +203,7 @@ mod tests {
     use rand_chacha::ChaCha8Rng;
 
     use super::*;
-    use crate::hash::poseidon::{constants::PoseidonField, PoseidonChip};
+    use crate::hash::poseidon::{PoseidonChip, constants::PoseidonField};
 
     fn test_map<F, H>()
     where

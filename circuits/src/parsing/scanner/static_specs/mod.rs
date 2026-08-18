@@ -263,21 +263,25 @@ fn check_serialization(checks: &ParsingLibrary) {
     for (parser, (_, automaton)) in checks {
         let file_name = parser.serialization_file();
         assert!(
-                Path::new(&file_name).exists(),
-                "serialisation file {file_name} does not exist! Follow the documentation of `midnight_circuits::parsing::scanner::static_specs` for instructions on how to add a new parser to the standard library."
-            );
+            Path::new(&file_name).exists(),
+            "serialisation file {file_name} does not exist! Follow the documentation of `midnight_circuits::parsing::scanner::static_specs` for instructions on how to add a new parser to the standard library."
+        );
         let previous_data = fs::read(file_name.clone()).unwrap();
         let mut current_data = Vec::new();
         automaton.serialize(&mut current_data);
         if previous_data.is_empty() {
-            println!("-> bootstrapping the serialisation of {:?}. Recompilation will be necessary so that the executable contains the correct serialised data.", parser);
+            println!(
+                "-> bootstrapping the serialisation of {:?}. Recompilation will be necessary so that the executable contains the correct serialised data.",
+                parser
+            );
             recompile = true;
             fs::write(file_name, &current_data).unwrap();
         } else {
             assert!(
                 current_data == previous_data,
                 "The serialisation data of the parsing library (parser name: {:?}) is not up to date. If this is intentional, clear the content of {}, and run the test again to replace its content.",
-                parser, parser.serialization_file()
+                parser,
+                parser.serialization_file()
             );
             println!("-> serialisation data of {:?} is up to date.", parser)
         }
@@ -296,8 +300,8 @@ mod tests {
     use rustc_hash::{FxBuildHasher, FxHashMap};
 
     use super::{
-        super::automaton::Automaton, check_serialization, spec_library, spec_library_data,
-        StdLibParser,
+        super::automaton::Automaton, StdLibParser, check_serialization, spec_library,
+        spec_library_data,
     };
     use crate::parsing::{regex::Regex, scanner::MarkerTestVector};
 
@@ -338,7 +342,8 @@ mod tests {
         println!("\n -> accepting test nb. {index}");
         let (v, outputs, interrupted) = automaton.run(input);
         let counter = v.len() - 1;
-        assert!(!interrupted,
+        assert!(
+            !interrupted,
             "[spec {:?}, accept #{index}] stuck after {counter} transitions, reading byte {} ({:02X}). Partial input:\n\n{}\n\n(bytes {:02X?})",
             spec,
             input[counter],
@@ -370,7 +375,8 @@ mod tests {
             assert!(
                 !automaton.final_states.contains(&state),
                 "[spec {:?}, reject #{index}] unexpectedly accepted (final state {state} after {counter} transitions). Raw outputs: {:?}",
-                spec, outputs
+                spec,
+                outputs
             );
             println!(
                 "... rejected as expected (non-final state {state} after {counter} transitions)."
@@ -416,7 +422,8 @@ mod tests {
                         spec
                     ),
                     Some(output_bytes) => {
-                        assert!(output_bytes == expected_output_bytes,
+                        assert!(
+                            output_bytes == expected_output_bytes,
                             "[test of spec {:?}, nb. {index}]: output for marker {i} is\n  \"{}\"\ninstead of\n  \"{}\"",
                             spec,
                             String::from_utf8_lossy(output_bytes),

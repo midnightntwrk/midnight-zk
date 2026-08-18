@@ -11,12 +11,14 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * `Point`/`AssignedPoint` enums and flat-triple `Msm`/`AssignedMsm` representation to distinguish variable-base from globally-fixed bases [#430](https://github.com/midnightntwrk/midnight-zk/pull/430)
 * `AssignedKZGCommitment` enum as the in-circuit analog of `KZGCommitment` [#430](https://github.com/midnightntwrk/midnight-zk/pull/430)
 * `fixed_base_msm` on the foreign Edwards chip: public fixed-base MSM for compile-time-constant bases, backed by the internal Lim-Lee comb `fixed_base_comb_msm` with a fixed comb width [#467](https://github.com/midnightntwrk/midnight-zk/pull/467)
+* Add tests compile time generics checks for `VectorGadget` and tests for `resize` [#464](https://github.com/midnightntwrk/midnight-zk/pull/465)
 
 ### Fixed
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 
 ### Changed
 * Removes the Labelable trait [#491](https://github.com/midnightntwrk/midnight-zk/pull/491)
+* Migrate to Rust edition 2024; declare MSRV 1.90. Both are now inherited from the workspace [#508](https://github.com/midnightntwrk/midnight-zk/pull/508)
 * `circuit_modeling` derives the commitment byte length from `KZGCommitmentScheme` via `circuit_model_with` instead of hard-coded sizes [#440](https://github.com/midnightntwrk/midnight-zk/pull/440)
 * Panic loudly in `from_dual_msm` when a `NoLabel` commitment reaches the MSM layer [#392](https://github.com/midnightntwrk/midnight-zk/pull/392)
 * Adapt verifier gadget to single-proof prover API [#375](https://github.com/midnightntwrk/midnight-zk/pull/375)

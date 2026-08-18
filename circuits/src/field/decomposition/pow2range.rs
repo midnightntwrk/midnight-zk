@@ -23,7 +23,7 @@ use midnight_proofs::{
 };
 
 use crate::{
-    instructions::decomposition::Pow2RangeInstructions, types::AssignedNative, CircuitField,
+    CircuitField, instructions::decomposition::Pow2RangeInstructions, types::AssignedNative,
 };
 
 /// Pow2Range gate configuration.

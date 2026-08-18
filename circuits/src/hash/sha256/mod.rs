@@ -22,17 +22,17 @@ pub(crate) mod utils;
 
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 use sha2::Digest;
-pub use sha256_chip::{Sha256Chip, Sha256Config, NB_SHA256_ADVICE_COLS, NB_SHA256_FIXED_COLS};
+pub use sha256_chip::{NB_SHA256_ADVICE_COLS, NB_SHA256_FIXED_COLS, Sha256Chip, Sha256Config};
 pub use sha256_varlen::VarLenSha256Gadget;
 
 use crate::{
+    CircuitField,
     instructions::{
-        hash::{HashCPU, VarHashInstructions},
         DecompositionInstructions, HashInstructions,
+        hash::{HashCPU, VarHashInstructions},
     },
     types::AssignedByte,
     vec::AssignedVector,
-    CircuitField,
 };
 
 impl<F: CircuitField> HashCPU<u8, [u8; 32]> for Sha256Chip<F> {

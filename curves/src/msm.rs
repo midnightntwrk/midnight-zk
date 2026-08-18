@@ -251,14 +251,14 @@ impl<C: CurveAffine> BucketAffine<C> {
     fn set_x(&mut self, x: &C::Base) {
         match self {
             Self::None => panic!("::set_x None"),
-            Self::Point(ref mut a) => a.x = *x,
+            Self::Point(a) => a.x = *x,
         }
     }
 
     fn set_y(&mut self, y: &C::Base) {
         match self {
             Self::None => panic!("::set_y None"),
-            Self::Point(ref mut a) => a.y = *y,
+            Self::Point(a) => a.y = *y,
         }
     }
 
@@ -540,8 +540,8 @@ mod test {
     use rand_core::OsRng;
 
     use crate::{
-        bn256::{Fr, G1Affine, G1},
         CurveAffine,
+        bn256::{Fr, G1, G1Affine},
     };
 
     #[test]

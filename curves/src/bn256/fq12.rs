@@ -1,9 +1,9 @@
 use super::{
+    ExtField,
     ext_field::quadratic::{QuadExtField, QuadExtFieldArith, QuadSparseMul},
     fq::Fq,
     fq2::Fq2,
     fq6::Fq6,
-    ExtField,
 };
 
 /// -GAMMA is a quadratic non-residue in Fp6. Fp12 = Fp6[X]/(X^2 + GAMMA)

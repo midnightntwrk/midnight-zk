@@ -20,10 +20,10 @@ use num_traits::{One, Zero};
 #[cfg(any(test, feature = "testing"))]
 use crate::testing_utils::Sampleable;
 use crate::{
+    CircuitField,
     field::foreign::util::{big_from_limbs, big_to_limbs},
     types::{AssignedNative, InnerConstants, InnerValue},
     utils::util::big_to_fe,
-    CircuitField,
 };
 
 /// The logarithm of the base of representation `BASE := 2^LOG2_BASE`.

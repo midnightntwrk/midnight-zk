@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use group::ff::Field;
 
-use super::{metadata, CellValue, InstanceValue, Value};
+use super::{CellValue, InstanceValue, Value, metadata};
 use crate::{
     plonk::{
         AdviceQuery, Any, Column, ColumnType, Expression, FixedQuery, Gate, InstanceQuery,

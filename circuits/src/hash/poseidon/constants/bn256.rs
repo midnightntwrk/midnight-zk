@@ -9,7 +9,7 @@
 
 use midnight_curves::bn256;
 
-use crate::hash::poseidon::constants::{PoseidonField, NB_FULL_ROUNDS, NB_PARTIAL_ROUNDS, WIDTH};
+use crate::hash::poseidon::constants::{NB_FULL_ROUNDS, NB_PARTIAL_ROUNDS, PoseidonField, WIDTH};
 
 impl PoseidonField for bn256::Fr {
     // Number of round constants: 204 = (8 + 60) * 3

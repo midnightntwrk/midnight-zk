@@ -11,8 +11,8 @@ use crate::{
         linearization::verifier::compute_linearization_commitment, partially_evaluate_identities,
         traces::VerifierTrace,
     },
-    poly::{commitment::PolynomialCommitmentScheme, PolynomialLabel, VerifierQuery},
-    transcript::{read_n, Hashable, Sampleable, Transcript},
+    poly::{PolynomialLabel, VerifierQuery, commitment::PolynomialCommitmentScheme},
+    transcript::{Hashable, Sampleable, Transcript, read_n},
     utils::arithmetic::compute_inner_product,
 };
 

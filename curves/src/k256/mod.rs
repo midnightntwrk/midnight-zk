@@ -21,7 +21,7 @@ mod base_field;
 mod curve;
 
 pub use base_field::Fp;
-pub use curve::{K256Affine, K256};
+pub use curve::{K256, K256Affine};
 
 /// secp256k1 scalar field - direct alias to k256::Scalar.
 pub type Fq = k256::Scalar;

@@ -28,9 +28,9 @@ use std::{
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use crate::{
+    CircuitField,
     instructions::{AssertionInstructions, AssignmentInstructions},
     types::InnerValue,
-    CircuitField,
 };
 
 /// The set of circuit instructions for arithmetic operations.

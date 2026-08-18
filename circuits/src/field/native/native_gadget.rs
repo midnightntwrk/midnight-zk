@@ -33,21 +33,22 @@ use {
 };
 
 use crate::{
+    CircuitField,
     field::{
-        decomposition::{chip::P2RDecompositionChip, instructions::CoreDecompositionInstructions},
         NativeChip,
+        decomposition::{chip::P2RDecompositionChip, instructions::CoreDecompositionInstructions},
     },
     instructions::{
-        public_input::CommittedInstanceInstructions, ArithInstructions, AssertionInstructions,
-        AssignmentInstructions, BinaryInstructions, BitwiseInstructions, CanonicityInstructions,
-        ComparisonInstructions, ControlFlowInstructions, ConversionInstructions,
-        DecompositionInstructions, DivisionInstructions, EqualityInstructions, FieldInstructions,
-        NativeInstructions, PublicInputInstructions, RangeCheckInstructions,
-        ScalarFieldInstructions, UnsafeConversionInstructions, ZeroInstructions,
+        ArithInstructions, AssertionInstructions, AssignmentInstructions, BinaryInstructions,
+        BitwiseInstructions, CanonicityInstructions, ComparisonInstructions,
+        ControlFlowInstructions, ConversionInstructions, DecompositionInstructions,
+        DivisionInstructions, EqualityInstructions, FieldInstructions, NativeInstructions,
+        PublicInputInstructions, RangeCheckInstructions, ScalarFieldInstructions,
+        UnsafeConversionInstructions, ZeroInstructions,
+        public_input::CommittedInstanceInstructions,
     },
     types::{AssignedBit, AssignedNative, InnerValue, Instantiable},
     utils::util::big_to_fe,
-    CircuitField,
 };
 
 #[derive(Debug, Clone)]
@@ -276,10 +277,10 @@ where
         x: &AssignedNative<F>,
         bound: &BigUint,
     ) -> Result<(), Error> {
-        if let Some(current_bound) = self.constrained_cells.borrow().get(x) {
-            if current_bound <= bound {
-                return Ok(());
-            }
+        if let Some(current_bound) = self.constrained_cells.borrow().get(x)
+            && current_bound <= bound
+        {
+            return Ok(());
         }
         self.update_bound(x, bound.clone());
 
@@ -361,10 +362,10 @@ where
         x: &AssignedBounded<F>,
         y: F,
     ) -> Result<AssignedBit<F>, Error> {
-        if let Some(current_bound) = self.constrained_cells.borrow().get(&x.value) {
-            if *current_bound <= y.to_biguint() {
-                return self.assign_fixed(layouter, true);
-            }
+        if let Some(current_bound) = self.constrained_cells.borrow().get(&x.value)
+            && *current_bound <= y.to_biguint()
+        {
+            return self.assign_fixed(layouter, true);
         }
 
         let x_as_bint = x.value.value().map(|x| x.to_biguint());
@@ -543,7 +544,6 @@ impl<F, CD, NA, Assigned> CommittedInstanceInstructions<F, Assigned> for NativeG
 where
     F: CircuitField,
     CD: CoreDecompositionInstructions<F>,
-
     NA: CommittedInstanceInstructions<F, AssignedNative<F>>
         + ArithInstructions<F, AssignedNative<F>>,
     Assigned: Instantiable<F> + Into<AssignedNative<F>>,
@@ -786,10 +786,10 @@ where
         layouter: &mut impl Layouter<F>,
         x: &AssignedNative<F>,
     ) -> Result<AssignedByte<F>, Error> {
-        if let Some(current_bound) = self.constrained_cells.borrow().get(x) {
-            if *current_bound <= BigUint::from(256u32) {
-                return self.convert_unsafe(layouter, x);
-            }
+        if let Some(current_bound) = self.constrained_cells.borrow().get(x)
+            && *current_bound <= BigUint::from(256u32)
+        {
+            return self.convert_unsafe(layouter, x);
         }
         self.update_bound(x, BigUint::from(256u32));
         let b_value = x.value().map(|x| {
@@ -925,7 +925,9 @@ where
         let f_num_bytes = F::NUM_BITS.div_ceil(8);
         let nb_bytes = nb_bytes.unwrap_or(f_num_bytes as usize);
         if nb_bytes > f_num_bytes as usize {
-            panic!("assigned_to_le_bytes: why do you need the output to have more bytes than necessary?");
+            panic!(
+                "assigned_to_le_bytes: why do you need the output to have more bytes than necessary?"
+            );
         }
         // If nb_bytes equals ⌈F::NUM_BITS / 8⌉, we need extra care to
         // guarantee that the output is canonical: we split in bits enforcing canonicity
@@ -1359,10 +1361,10 @@ where
         layouter: &mut impl Layouter<F>,
         x: &AssignedNative<F>,
     ) -> Result<AssignedBit<F>, Error> {
-        if let Some(current_bound) = self.constrained_cells.borrow().get(x) {
-            if *current_bound <= BigUint::from(2u32) {
-                return self.native_chip.convert_unsafe(layouter, x);
-            }
+        if let Some(current_bound) = self.constrained_cells.borrow().get(x)
+            && *current_bound <= BigUint::from(2u32)
+        {
+            return self.native_chip.convert_unsafe(layouter, x);
         }
         self.update_bound(x, BigUint::from(2u32));
         self.native_chip.convert(layouter, x)

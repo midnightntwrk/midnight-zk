@@ -25,7 +25,7 @@ use midnight_proofs::{
 
 use crate::{
     field::AssignedNative,
-    verifier::{transcript_gadget::TranscriptGadget, AssignedAccumulator, SelfEmulation},
+    verifier::{AssignedAccumulator, SelfEmulation, transcript_gadget::TranscriptGadget},
 };
 
 // ---------------------------------------------------------------------------

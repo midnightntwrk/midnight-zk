@@ -22,10 +22,10 @@ use midnight_proofs::{
 
 use super::AssertionInstructions;
 use crate::{
+    CircuitField,
     ecc::curves::CircuitCurve,
     instructions::DecompositionInstructions,
     types::{InnerConstants, InnerValue, Instantiable},
-    CircuitField,
 };
 
 /// The  set of circuit instructions for EC operations.

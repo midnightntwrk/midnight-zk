@@ -20,20 +20,20 @@ use midnight_proofs::{
 use num_bigint::BigUint;
 
 use crate::{
+    CircuitField,
     field::{
-        decomposition::chip::P2RDecompositionChip, AssignedBounded, AssignedNative, NativeChip,
-        NativeGadget,
+        AssignedBounded, AssignedNative, NativeChip, NativeGadget,
+        decomposition::chip::P2RDecompositionChip,
     },
     instructions::{
-        division::DivisionInstructions,
-        vector::{VectorBounds, VectorInstructions},
         ArithInstructions, AssertionInstructions, AssignmentInstructions, BinaryInstructions,
         ComparisonInstructions, ControlFlowInstructions, EqualityInstructions,
         RangeCheckInstructions,
+        division::DivisionInstructions,
+        vector::{VectorBounds, VectorInstructions},
     },
     types::{AssignedBit, AssignedVector, InnerValue, Vectorizable},
     vec::get_lims,
-    CircuitField,
 };
 
 type NG<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
@@ -79,20 +79,18 @@ where
         layouter: &mut impl Layouter<F>,
         input: AssignedVector<F, T, M, A>,
     ) -> Result<AssignedVector<F, T, L, A>, Error> {
-        assert_eq!(L % A, 0);
+        assert!(L.is_multiple_of(A));
         assert!(L > M);
 
         let extra_pad = self
             .native_gadget
             .assign_many(layouter, &vec![Value::known(T::FILLER); L - M])?;
 
-        let buffer: Box<[T; L]> =
-            Box::new([extra_pad.as_slice(), input.buffer.as_slice()].concat().try_into().unwrap());
+        let buffer: Box<[T; L]> = Box::new(
+            [extra_pad.as_slice(), input.buffer().as_slice()].concat().try_into().unwrap(),
+        );
 
-        Ok(AssignedVector {
-            buffer,
-            len: input.len.clone(),
-        })
+        Ok(AssignedVector::new(buffer, input.len().clone()))
     }
 
     fn assign_with_filler(
@@ -101,18 +99,11 @@ where
         value: Value<Vec<T::Element>>,
         filler: Option<T::Element>,
     ) -> Result<AssignedVector<F, T, M, A>, Error> {
-        assert!(M >= A, "AssignedVector requires M >= A (got M={M}, A={A})");
-        assert!(A > 0, "AssignedVector requires A positive (A={A})");
-        assert!(
-            M.is_multiple_of(A),
-            "AssignedVector requires M % A == 0 (got M={M}, A={A})"
-        );
         let ng = &self.native_gadget;
         let filler = filler.unwrap_or(T::FILLER);
         let (data_val, len_val) = value
             .map(|v| {
-                // `v` needs to be at most `M - M % A`, i.e., `M` since we require above that it
-                // is a multiple of `A`.
+                // `v` needs to be at most `M`, which is a multiple of `A` by invariant.
                 assert!(v.len() <= M);
                 let len = F::from(v.len() as u64);
                 let mut buffer = [filler; M];
@@ -127,7 +118,7 @@ where
                 .expect("Length mismatch in AssignedVector."),
         );
         let len = ng.assign_lower_than_fixed(layouter, len_val, &(M + 1).into())?;
-        Ok(AssignedVector { buffer: data, len })
+        Ok(AssignedVector::new(data, len))
     }
 
     fn padding_flag(
@@ -167,11 +158,17 @@ where
         layouter: &mut impl Layouter<F>,
         input: &AssignedVector<F, T, M, A>,
     ) -> Result<(AssignedNative<F>, AssignedNative<F>), Error> {
+        const {
+            assert!(
+                A > 0 && M >= A && M.is_multiple_of(A),
+                "AssignedVector requires 0 < A <= M and A | M."
+            )
+        };
         let ng = &self.native_gadget;
         let end: AssignedNative<F> = {
             // The last data position within the last chunk. Value in [0, A);
             // 0 means the last chunk is full, all its positions are data.
-            let offset = ng.rem(layouter, &input.len, A.into(), Some(M.into()))?;
+            let offset = ng.rem(layouter, input.len(), A.into(), Some(M.into()))?;
 
             // if offset != 0.  End = M - (A - offset).
             let end1 = ng.add_constant(layouter, &offset, F::from(M as u64 - A as u64))?;
@@ -182,7 +179,7 @@ where
         }?;
 
         // The index where the data starts.
-        let start: AssignedNative<F> = ng.sub(layouter, &end, &input.len)?;
+        let start: AssignedNative<F> = ng.sub(layouter, &end, input.len())?;
 
         Ok((start, end))
     }
@@ -197,8 +194,11 @@ where
         let a_max_bits = (usize::BITS - A.leading_zeros()) as usize;
 
         // Assert input.len >= n_elems.
-        let len_complement =
-            ng.linear_combination(layouter, &[(-F::ONE, input.len.clone())], F::from(M as u64))?;
+        let len_complement = ng.linear_combination(
+            layouter,
+            &[(-F::ONE, input.len().clone())],
+            F::from(M as u64),
+        )?;
         ng.assert_lower_than_fixed(layouter, &len_complement, &BigUint::from(M + 1 - n_elems))?;
 
         // We divide the number of elements to be trimmed in 2 parts.
@@ -212,7 +212,7 @@ where
         let last_trim = n_elems % A;
 
         // Length of last chunk ( or 0 if it is full ).
-        let last_len = ng.rem(layouter, &input.len, A.into(), Some(M.into()))?;
+        let last_len = ng.rem(layouter, input.len(), A.into(), Some(M.into()))?;
 
         // `modulus` already ensures last_len is in [0, A), so unsafe conversion can be
         // used here.
@@ -237,7 +237,7 @@ where
         // right to adjust the padding at the end.
         let buffer = {
             let filler = ng.assign_many_fixed(layouter, &vec![T::FILLER; A + last_trim])?;
-            [&filler[..A], &input.buffer[last_trim..], &filler[A..]].concat()
+            [&filler[..A], &input.buffer()[last_trim..], &filler[A..]].concat()
         };
         debug_assert_eq!(buffer.len(), M + A);
 
@@ -250,9 +250,9 @@ where
         );
 
         // Compute final length.
-        let len = ng.add_constant(layouter, &input.len, -F::from(n_elems as u64))?;
+        let len = ng.add_constant(layouter, input.len(), -F::from(n_elems as u64))?;
 
-        Ok(AssignedVector { buffer, len })
+        Ok(AssignedVector::new(buffer, len))
     }
 }
 
@@ -305,7 +305,7 @@ where
             .padding_flag(layouter, x)?
             .0
             .into_iter()
-            .zip(x.buffer.iter().zip(y.buffer.iter()))
+            .zip(x.buffer().iter().zip(y.buffer().iter()))
             .map(|(is_padding, (a, b))| {
                 let a_eq_b = ng.is_equal(layouter, a, b)?;
                 ng.or(layouter, &[is_padding, a_eq_b])
@@ -313,7 +313,7 @@ where
             .collect::<Result<Vec<_>, Error>>()?;
 
         // Check lengths are equal.
-        let len_check = ng.is_equal(layouter, &x.len, &y.len)?;
+        let len_check = ng.is_equal(layouter, x.len(), y.len())?;
 
         ng.and(layouter, &[val_checks.as_slice(), &[len_check]].concat())
     }
@@ -337,9 +337,9 @@ where
         let ng = &self.native_gadget;
         let ct_len = constant.len();
 
-        let eq_len = ng.is_equal_to_fixed(layouter, &x.len, F::from(ct_len as u64))?;
+        let eq_len = ng.is_equal_to_fixed(layouter, x.len(), F::from(ct_len as u64))?;
 
-        let mut element_checks = x.buffer[get_lims::<M, A>(ct_len)]
+        let mut element_checks = x.buffer()[get_lims::<M, A>(ct_len)]
             .iter()
             .zip(constant.iter())
             .map(|(a, c)| ng.is_equal_to_fixed(layouter, a, *c))
@@ -402,9 +402,9 @@ where
     ) -> Result<(), Error> {
         let ng = &self.native_gadget;
         let ct_len = constant.len();
-        ng.assert_equal_to_fixed(layouter, &x.len, F::from(ct_len as u64))?;
+        ng.assert_equal_to_fixed(layouter, x.len(), F::from(ct_len as u64))?;
 
-        x.buffer[get_lims::<M, A>(ct_len)]
+        x.buffer()[get_lims::<M, A>(ct_len)]
             .iter()
             .zip(constant.iter())
             .map(|(a, c)| ng.assert_equal_to_fixed(layouter, a, *c))
@@ -461,13 +461,13 @@ mod tests {
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem},
     };
-    use rand_chacha::{rand_core::SeedableRng, ChaCha12Rng};
+    use rand_chacha::{ChaCha12Rng, rand_core::SeedableRng};
 
     use super::*;
     use crate::{
         field::{
-            decomposition::chip::{P2RDecompositionChip, P2RDecompositionConfig},
             AssignedNative, NativeChip, NativeGadget,
+            decomposition::chip::{P2RDecompositionChip, P2RDecompositionConfig},
         },
         testing_utils::FromScratch,
         utils::circuit_modeling::{circuit_to_json, cost_measure_end, cost_measure_start},
@@ -538,12 +538,12 @@ mod tests {
                     if mutate_padding {
                         let range = get_lims::<M, A>(self.input_2.len());
                         for i in 0..range.start {
-                            vec_2.buffer[i] =
-                                ng.add_constant(&mut layouter, &vec_2.buffer[i], F::ONE)?;
+                            let val = ng.add_constant(&mut layouter, &vec_2.buffer()[i], F::ONE)?;
+                            vec_2.mutate_buffer(val, i);
                         }
                         for i in range.end..M {
-                            vec_2.buffer[i] =
-                                ng.add_constant(&mut layouter, &vec_2.buffer[i], F::ONE)?;
+                            let val = ng.add_constant(&mut layouter, &vec_2.buffer()[i], F::ONE)?;
+                            vec_2.mutate_buffer(val, i);
                         }
                     }
 
@@ -557,7 +557,7 @@ mod tests {
 
                     let limits = vg.get_limits(&mut layouter, &vec_1)?;
                     let (start, end) = vec_1
-                        .len
+                        .len()
                         .value()
                         .map(|l| {
                             let len: usize = l.to_biguint().try_into().unwrap();
@@ -576,7 +576,7 @@ mod tests {
                         vg.assign(&mut layouter, self.input_1.clone())?;
 
                     let expected: [Value<bool>; M] = vec_1
-                        .len
+                        .len()
                         .value()
                         .map(|l| {
                             let len: usize = l.to_biguint().try_into().unwrap();
@@ -610,6 +610,67 @@ mod tests {
 
             ng.load_from_scratch(&mut layouter)
         }
+    }
+
+    // Dedicated circuit for `resize`, which changes the size const generic `M ->
+    // L`.
+    struct ResizeTestCircuit<F: CircuitField, const M: usize, const A: usize, const L: usize> {
+        input: Vec<F>,
+    }
+
+    impl<F: CircuitField, const M: usize, const A: usize, const L: usize> Circuit<F>
+        for ResizeTestCircuit<F, M, A, L>
+    {
+        type Config = P2RDecompositionConfig;
+
+        type FloorPlanner = SimpleFloorPlanner;
+
+        type Params = ();
+
+        fn without_witnesses(&self) -> Self {
+            unreachable!();
+        }
+
+        fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+            let comm_ic = meta.instance_column();
+            let instance_column = meta.instance_column();
+            NativeGadget::configure_from_scratch(
+                meta,
+                &mut vec![],
+                &mut vec![],
+                &[comm_ic, instance_column],
+            )
+        }
+
+        fn synthesize(
+            &self,
+            config: Self::Config,
+            mut layouter: impl Layouter<F>,
+        ) -> Result<(), Error> {
+            let ng = NG::<F>::new_from_scratch(&config);
+            let vg = VectorGadget::new(&ng);
+
+            let vec_m: AssignedVector<F, AssignedNative<F>, M, A> =
+                vg.assign(&mut layouter, Value::known(self.input.clone()))?;
+            let vec_l: AssignedVector<F, AssignedNative<F>, L, A> =
+                vg.resize::<L>(&mut layouter, vec_m)?;
+
+            // The resized vector must have the same logical value (data and length)
+            // as the input, now placed in an `L`-sized, `A`-aligned buffer.
+            vg.assert_equal_to_fixed(&mut layouter, &vec_l, self.input.clone())?;
+
+            ng.load_from_scratch(&mut layouter)
+        }
+    }
+
+    fn run_resize_vec_test<F, const M: usize, const A: usize, const L: usize>(input: &[F])
+    where
+        F: CircuitField + FromUniformBytes<64> + Ord,
+    {
+        let circuit = ResizeTestCircuit::<F, M, A, L> {
+            input: input.to_vec(),
+        };
+        MockProver::run(&circuit, vec![vec![], vec![]]).unwrap().assert_satisfied();
     }
 
     fn run_eq_vec_test<F, const M: usize, const A: usize>(
@@ -825,5 +886,22 @@ mod tests {
 
         // The particular case of the credentials:
         run_trim_vec_test::<_, 128, 64>(&inputs, 39, false);
+    }
+
+    #[test]
+    fn vector_resize() {
+        type F = midnight_curves::Fq;
+
+        // Create a random number generator
+        let mut rng = ChaCha12Rng::seed_from_u64(0xdeadcafe);
+        let inputs = (0..100).map(|_| F::random(&mut rng)).collect::<Vec<_>>();
+
+        // Grow with different source lengths and alignments.
+        run_resize_vec_test::<_, 64, 2, 128>(&inputs[..40]); // partial, back padding
+        run_resize_vec_test::<_, 64, 2, 128>(&inputs[..64]); // full source vector
+        run_resize_vec_test::<F, 64, 2, 128>(&[]); // empty source vector
+        run_resize_vec_test::<_, 66, 3, 126>(&inputs[..50]); // A = 3
+        run_resize_vec_test::<_, 64, 64, 128>(&inputs[..30]); // single-chunk source (A = M)
+        run_resize_vec_test::<_, 64, 16, 256>(&inputs[..48]); // larger growth
     }
 }

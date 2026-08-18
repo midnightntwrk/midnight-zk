@@ -111,8 +111,8 @@ pub use poseidon_varlen::VarLenPoseidonGadget;
 
 use crate::{
     instructions::{
-        hash::{HashCPU, HashInstructions, VarHashInstructions},
         SpongeCPU, SpongeInstructions,
+        hash::{HashCPU, HashInstructions, VarHashInstructions},
     },
     types::AssignedNative,
     vec::AssignedVector,
@@ -178,7 +178,7 @@ impl<F: PoseidonField, const MAX_LEN: usize>
 
 #[cfg(test)]
 mod tests {
-    use super::{constants::RATE, PoseidonChip};
+    use super::{PoseidonChip, constants::RATE};
     use crate::{
         field::{AssignedNative, NativeChip},
         hash::poseidon::VarLenPoseidonGadget,

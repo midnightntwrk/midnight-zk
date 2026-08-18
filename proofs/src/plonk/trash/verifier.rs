@@ -2,8 +2,8 @@ use ff::{PrimeField, WithSmallOrderMulGroup};
 
 use super::Argument;
 use crate::{
-    plonk::{trash, Error},
-    poly::{commitment::PolynomialCommitmentScheme, PolynomialLabel, VerifierQuery},
+    plonk::{Error, trash},
+    poly::{PolynomialLabel, VerifierQuery, commitment::PolynomialCommitmentScheme},
     transcript::{Hashable, Transcript},
 };
 

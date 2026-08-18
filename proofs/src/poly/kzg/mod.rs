@@ -40,20 +40,20 @@ pub use utils::compute_dummy_queries;
 use crate::utils::arithmetic::{truncate, truncated_powers};
 use crate::{
     poly::{
+        Coeff, Error, Polynomial, PolynomialRepresentation, ProverQuery,
         commitment::PolynomialCommitmentScheme,
         kzg::{
-            msm::{msm_specific, DualMSM, MSMKZG},
+            msm::{DualMSM, MSMKZG, msm_specific},
             params::{ParamsKZG, ParamsVerifierKZG},
             utils::construct_intermediate_sets,
         },
         query::{PolynomialLabel, VerifierQuery},
-        Coeff, Error, Polynomial, PolynomialRepresentation, ProverQuery,
     },
     transcript::{Hashable, Sampleable, Transcript},
     utils::{
         arithmetic::{
-            eval_polynomial, evals_inner_product, inner_product, kate_division,
-            lagrange_interpolate, parallelize, powers, CurveAffine, CurveExt, MSM,
+            CurveAffine, CurveExt, MSM, eval_polynomial, evals_inner_product, inner_product,
+            kate_division, lagrange_interpolate, parallelize, powers,
         },
         helpers::{ProcessedSerdeObject, SerdeFormat},
     },
@@ -553,19 +553,19 @@ mod tests {
 
     use blake2b_simd::State as Blake2bState;
     use ff::WithSmallOrderMulGroup;
-    use midnight_curves::{pairing::MultiMillerLoop, serde::SerdeObject, CurveAffine, CurveExt};
+    use midnight_curves::{CurveAffine, CurveExt, pairing::MultiMillerLoop, serde::SerdeObject};
     use rand_core::OsRng;
 
     use crate::{
         poly::{
+            EvaluationDomain, PolynomialLabel,
             commitment::{Guard, PolynomialCommitmentScheme},
             kzg::{
+                KZGCommitmentScheme,
                 commitment::KZGMultiCommitment,
                 params::{ParamsKZG, ParamsVerifierKZG},
-                KZGCommitmentScheme,
             },
             query::{ProverQuery, VerifierQuery},
-            EvaluationDomain, PolynomialLabel,
         },
         transcript::{CircuitTranscript, Hashable, Sampleable, Transcript},
         utils::arithmetic::eval_polynomial,

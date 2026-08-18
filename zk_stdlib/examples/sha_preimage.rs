@@ -16,8 +16,8 @@ use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
-use midnight_zk_stdlib::{utils::plonk_api::srs_for_test, Relation, ZkStdLib, ZkStdLibArch};
-use rand::{rngs::OsRng, Rng, SeedableRng};
+use midnight_zk_stdlib::{Relation, ZkStdLib, ZkStdLibArch, utils::plonk_api::srs_for_test};
+use rand::{Rng, SeedableRng, rngs::OsRng};
 use rand_chacha::ChaCha8Rng;
 use sha2::Digest;
 
@@ -75,7 +75,7 @@ fn main() {
 
     // Sample a random preimage as the witness.
     let mut rng = ChaCha8Rng::from_entropy();
-    let witness: [u8; 24] = core::array::from_fn(|_| rng.gen());
+    let witness: [u8; 24] = core::array::from_fn(|_| rng.r#gen());
     let instance = sha2::Sha256::digest(witness).into();
 
     let proof = midnight_zk_stdlib::prove::<ShaPreImageCircuit, blake2b_simd::State>(

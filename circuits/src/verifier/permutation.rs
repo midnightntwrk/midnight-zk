@@ -25,9 +25,9 @@ use midnight_proofs::{
 use crate::{
     field::AssignedNative,
     verifier::{
+        SelfEmulation,
         pcs::{InCircuitPCS, VerifierQuery},
         transcript_gadget::TranscriptGadget,
-        SelfEmulation,
     },
 };
 

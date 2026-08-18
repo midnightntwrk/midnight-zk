@@ -93,11 +93,7 @@ pub fn bigint_to_fe<F: CircuitField>(value: &BI) -> F where
     let (sign, u64_chunks) = value.to_u64_digits();
     let res = from_u64_le_digits::<F>(&u64_chunks);
 
-    if sign == Sign::Minus {
-        -res
-    } else {
-        res
-    }
+    if sign == Sign::Minus { -res } else { res }
 }
 
 /// Off-circuit GLV scalar decomposition.

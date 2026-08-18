@@ -22,7 +22,7 @@ use midnight_proofs::{
     utils::SerdeFormat,
 };
 use midnight_zk_stdlib::{
-    utils::plonk_api::srs_for_test, MidnightPK, MidnightVK, Relation, ZkStdLib, ZkStdLibArch,
+    MidnightPK, MidnightVK, Relation, ZkStdLib, ZkStdLibArch, utils::plonk_api::srs_for_test,
 };
 use serial_test::serial;
 

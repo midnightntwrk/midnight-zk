@@ -112,7 +112,7 @@ impl Lookup {
         let aggregator: Poly = "0,1".parse().unwrap();
 
         iter::once(multiplicities)
-            .chain(iter::repeat(helper).take(self.num_chunks))
+            .chain(std::iter::repeat_n(helper, self.num_chunks))
             .chain(iter::once(aggregator))
     }
 
@@ -155,7 +155,10 @@ impl Permutation {
         let last_chunk: Poly = "0,1".parse().unwrap();
 
         iter::empty()
-            .chain(iter::repeat(chunks).take((self.columns - 1) / self.chunk_len))
+            .chain(std::iter::repeat_n(
+                chunks,
+                (self.columns - 1) / self.chunk_len,
+            ))
             .chain(Some(last_chunk))
     }
 }
@@ -218,7 +221,7 @@ pub fn circuit_model_with<F: Ord + Field + FromUniformBytes<64>>(
         .cloned()
         .chain(o.lookup.iter().flat_map(|l| l.queries()))
         .chain(o.permutation.queries())
-        .chain(iter::repeat("0".parse().unwrap()).take(o.trash.len()))
+        .chain(std::iter::repeat_n("0".parse().unwrap(), o.trash.len()))
         .chain(iter::once("0".parse().unwrap())) // Linearization polynomial query at x
         .filter(|p| !p.rotations.is_empty())
         .collect();
@@ -423,7 +426,9 @@ pub(crate) fn cost_model_options<F: Ord + Field + FromUniformBytes<64>, C: Circu
     .unwrap();
 
     if min_circuit_size == nb_instances {
-        println!("WARNING: The dominant factor in your circuit's size is the number of public inputs, which causes the verifier to perform linear work.");
+        println!(
+            "WARNING: The dominant factor in your circuit's size is the number of public inputs, which causes the verifier to perform linear work."
+        );
     }
 
     CostOptions {
@@ -665,11 +670,11 @@ mod tests {
     use crate::{
         circuit::{Layouter, SimpleFloorPlanner},
         plonk::{
-            create_proof, keygen_pk, keygen_vk_with_k, Constraints, Expression, Fixed, TableColumn,
+            Constraints, Expression, Fixed, TableColumn, create_proof, keygen_pk, keygen_vk_with_k,
         },
         poly::{
-            kzg::{params::ParamsKZG, KZGCommitmentScheme},
             Rotation,
+            kzg::{KZGCommitmentScheme, params::ParamsKZG},
         },
         transcript::{CircuitTranscript, Transcript},
     };

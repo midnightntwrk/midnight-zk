@@ -11,7 +11,7 @@ use rand_core::RngCore;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
 use super::{
-    fp::{Fp, FROBENIUS_COEFF_FP6_C1, FROBENIUS_COEFF_FP6_C2},
+    fp::{FROBENIUS_COEFF_FP6_C1, FROBENIUS_COEFF_FP6_C2, Fp},
     fp2::Fp2,
 };
 

@@ -20,7 +20,7 @@
 //! $ sage generate_parameters_grain.sage 1 0 255 3 8 60 0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001
 //! ```
 
-use super::{PoseidonField, NB_FULL_ROUNDS, NB_PARTIAL_ROUNDS, WIDTH};
+use super::{NB_FULL_ROUNDS, NB_PARTIAL_ROUNDS, PoseidonField, WIDTH};
 
 impl PoseidonField for midnight_curves::Fq {
     // Number of round constants: 204 = (8 + 60) * 3

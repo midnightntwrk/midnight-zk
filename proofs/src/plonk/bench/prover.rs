@@ -11,17 +11,18 @@ use rayon::iter::{
 
 use crate::{
     plonk::{
+        Error, ProvingKey,
         circuit::Circuit,
         linearization::prover::compute_linearization_poly,
         logup, partially_evaluate_identities,
         prover::{
-            compute_h_poly, compute_instances, compute_nu_poly, compute_queries, parse_advices,
-            write_evals_to_transcript, Evals,
+            Evals, compute_h_poly, compute_instances, compute_nu_poly, compute_queries,
+            parse_advices, write_evals_to_transcript,
         },
         traces::ProverTrace,
-        trash, Error, ProvingKey,
+        trash,
     },
-    poly::{commitment::PolynomialCommitmentScheme, PolynomialLabel},
+    poly::{PolynomialLabel, commitment::PolynomialCommitmentScheme},
     transcript::{Hashable, Sampleable, Transcript},
     utils::arithmetic::eval_polynomial,
 };

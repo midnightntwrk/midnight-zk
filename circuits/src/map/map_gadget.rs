@@ -24,13 +24,13 @@ use {
 };
 
 use crate::{
+    CircuitField,
     instructions::{
-        map::{MapCPU, MapInstructions},
         HashInstructions, NativeInstructions,
+        map::{MapCPU, MapInstructions},
     },
     map::cpu::{MapMt, TREE_HEIGHT},
     types::AssignedNative,
-    CircuitField,
 };
 
 #[derive(Clone, Debug)]
@@ -270,8 +270,8 @@ mod test {
 
     use super::*;
     use crate::{
-        field::{decomposition::chip::P2RDecompositionChip, NativeChip, NativeGadget},
-        hash::poseidon::{constants::PoseidonField, PoseidonChip},
+        field::{NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip},
+        hash::poseidon::{PoseidonChip, constants::PoseidonField},
         map::cpu::MapMt,
         utils::circuit_modeling::{circuit_to_json, cost_measure_end, cost_measure_start},
     };

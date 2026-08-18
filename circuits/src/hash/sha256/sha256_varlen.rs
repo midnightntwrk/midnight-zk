@@ -13,11 +13,12 @@
 
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
-use super::{sha256_chip::IV, Sha256Chip};
+use super::{Sha256Chip, sha256_chip::IV};
 use crate::{
+    CircuitField,
     field::{
-        decomposition::chip::P2RDecompositionChip, AssignedBounded, AssignedNative, NativeChip,
-        NativeGadget,
+        AssignedBounded, AssignedNative, NativeChip, NativeGadget,
+        decomposition::chip::P2RDecompositionChip,
     },
     hash::sha256::{
         sha256_chip::ROUND_CONSTANTS,
@@ -30,7 +31,6 @@ use crate::{
     },
     types::{AssignedBit, AssignedByte},
     vec::AssignedVector,
-    CircuitField,
 };
 
 /// Gadget for SHA256 with variable-length input.
@@ -263,13 +263,13 @@ impl<F: CircuitField> VarLenSha256Gadget<F> {
         let ng = self.ng();
 
         // Compute the block where the effective data starts.
-        let (final_block_len, extra_block) = self.final_block_len::<M>(layouter, &inputs.len)?;
+        let (final_block_len, extra_block) = self.final_block_len::<M>(layouter, inputs.len())?;
 
         // Length of the input rounded up to the chunk size.
         let rounded_len = {
             let fc_len = ng.element_of_bounded(layouter, &final_block_len)?;
             let is_zero = ng.is_zero(layouter, &fc_len)?;
-            let len_round = ng.sub(layouter, &inputs.len, &fc_len)?;
+            let len_round = ng.sub(layouter, inputs.len(), &fc_len)?;
             let len_round_extra = ng.add_constant(layouter, &len_round, F::from(64u64))?;
             ng.select(layouter, &is_zero, &len_round, &len_round_extra)
         }?;
@@ -281,7 +281,7 @@ impl<F: CircuitField> VarLenSha256Gadget<F> {
         let mut state = CompressionState::<F>::fixed(layouter, ng, IV)?;
 
         // Process input in chunks.
-        let mut block_iter = inputs.buffer.chunks_exact(64);
+        let mut block_iter = inputs.buffer().chunks_exact(64);
         let mut block = block_iter.next().expect("At least one block.");
 
         // Conditional update loop. Stops 1 chunk before the end.
@@ -306,7 +306,7 @@ impl<F: CircuitField> VarLenSha256Gadget<F> {
         // Padding
         let padding_data = self.compute_padding(
             layouter,
-            &inputs.len,
+            inputs.len(),
             &final_block_len,
             final_block,
             &extra_block,

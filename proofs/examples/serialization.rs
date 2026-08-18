@@ -9,13 +9,13 @@ use midnight_curves::{Bls12, Fq as Scalar};
 use midnight_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
     plonk::{
-        create_proof, keygen_pk, keygen_vk_with_k, prepare, Advice, Circuit, Column,
-        ConstraintSystem, Constraints, Error, Fixed, Instance, ProvingKey,
+        Advice, Circuit, Column, ConstraintSystem, Constraints, Error, Fixed, Instance, ProvingKey,
+        create_proof, keygen_pk, keygen_vk_with_k, prepare,
     },
     poly::{
-        commitment::Guard,
-        kzg::{params::ParamsKZG, KZGCommitmentScheme},
         Rotation,
+        commitment::Guard,
+        kzg::{KZGCommitmentScheme, params::ParamsKZG},
     },
     transcript::{CircuitTranscript, Transcript},
     utils::SerdeFormat,
@@ -170,14 +170,16 @@ fn main() {
 
     let mut transcript = CircuitTranscript::<State>::init_from_bytes(&proof[..]);
 
-    assert!(prepare::<Scalar, KZGCommitmentScheme<Bls12>, _>(
-        pk.get_vk(),
-        #[cfg(feature = "committed-instances")]
-        &[],
-        instances,
-        &mut transcript,
-    )
-    .unwrap()
-    .verify(&params.verifier_params())
-    .is_ok());
+    assert!(
+        prepare::<Scalar, KZGCommitmentScheme<Bls12>, _>(
+            pk.get_vk(),
+            #[cfg(feature = "committed-instances")]
+            &[],
+            instances,
+            &mut transcript,
+        )
+        .unwrap()
+        .verify(&params.verifier_params())
+        .is_ok()
+    );
 }

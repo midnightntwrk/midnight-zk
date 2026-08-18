@@ -2,12 +2,12 @@ use core::fmt::Debug;
 use std::convert::TryInto;
 
 use ff::{Field, PrimeField};
-use group::{cofactor::CofactorGroup, prime::PrimeCurveAffine, Curve, Group, GroupEncoding};
+use group::{Curve, Group, GroupEncoding, cofactor::CofactorGroup, prime::PrimeCurveAffine};
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
 use crate::{
-    bn256::{Fq, Fq2, Fr},
     Coordinates, CurveAffine, CurveExt,
+    bn256::{Fq, Fq2, Fr},
 };
 
 impl crate::serde::endian::EndianRepr for Fq2 {

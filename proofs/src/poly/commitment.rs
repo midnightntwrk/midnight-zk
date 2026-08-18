@@ -9,10 +9,10 @@ use std::{
 use ff::{FromUniformBytes, PrimeField};
 
 use crate::{
-    plonk::{k_from_circuit, Circuit},
+    plonk::{Circuit, k_from_circuit},
     poly::{
-        query::PolynomialLabel, Error, Polynomial, PolynomialRepresentation, ProverQuery,
-        VerifierQuery,
+        Error, Polynomial, PolynomialRepresentation, ProverQuery, VerifierQuery,
+        query::PolynomialLabel,
     },
     transcript::{Hashable, Sampleable, Transcript},
     utils::helpers::{ProcessedSerdeObject, SerdeFormat},

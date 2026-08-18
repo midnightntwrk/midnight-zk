@@ -16,10 +16,10 @@ use num_bigint::BigUint;
 
 use super::ParserGadget;
 use crate::{
-    field::{native::AssignedBit, AssignedNative},
+    CircuitField,
+    field::{AssignedNative, native::AssignedBit},
     instructions::NativeInstructions,
     types::{AssignedByte, InnerValue},
-    CircuitField,
 };
 
 /// Order of day, month and year in the date string.
@@ -292,7 +292,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        field::{decomposition::chip::P2RDecompositionChip, NativeChip, NativeGadget},
+        field::{NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip},
         testing_utils::FromScratch,
     };
 

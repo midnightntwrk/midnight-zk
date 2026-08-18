@@ -1,8 +1,8 @@
 use ff::PrimeField;
 
 pub(crate) use crate::hash::utils::{
-    assert_in_valid_spreaded_form, expr_pow2_ip, expr_pow4_ip, get_even_and_odd_bits,
-    negate_spreaded, spread, spread_table_from_lengths, u32_in_be_limbs, MASK_EVN_64,
+    MASK_EVN_64, assert_in_valid_spreaded_form, expr_pow2_ip, expr_pow4_ip, get_even_and_odd_bits,
+    negate_spreaded, spread, spread_table_from_lengths, u32_in_be_limbs,
 };
 
 const LOOKUP_LENGTHS: [u32; 10] = [2, 3, 4, 5, 6, 7, 9, 10, 11, 12]; // supported lookup bit lengths
@@ -121,7 +121,7 @@ fn pow4_ip<const N: usize>(exponents: [u8; N], terms: [u64; N]) -> u64 {
 #[cfg(test)]
 mod tests {
 
-    use rand::{seq::SliceRandom, Rng};
+    use rand::{Rng, seq::SliceRandom};
 
     use super::*;
 
@@ -151,7 +151,7 @@ mod tests {
 
             // Negative test: check that the table does not contain a random triple of
             // (tag, plain, spreaded).
-            let random_triple = to_fe((rng.gen(), rng.gen(), rng.gen()));
+            let random_triple = to_fe((rng.r#gen(), rng.r#gen(), rng.r#gen()));
             assert!(!table.contains(&random_triple));
         }
 
@@ -182,7 +182,7 @@ mod tests {
 
         let mut rng = rand::thread_rng();
         for _ in 0..10 {
-            let vals: [u32; 3] = [rng.gen(), rng.gen(), rng.gen()];
+            let vals: [u32; 3] = [rng.r#gen(), rng.r#gen(), rng.r#gen()];
             assert_odd_of_spreaded_maj(vals);
         }
     }
@@ -207,7 +207,7 @@ mod tests {
 
         let mut rng = rand::thread_rng();
         for _ in 0..10 {
-            assert_even_of_spreaded_Sigma_0(rng.gen());
+            assert_even_of_spreaded_Sigma_0(rng.r#gen());
         }
     }
 
@@ -231,7 +231,7 @@ mod tests {
 
         let mut rng = rand::thread_rng();
         for _ in 0..10 {
-            assert_even_of_spreaded_Sigma_1(rng.gen());
+            assert_even_of_spreaded_Sigma_1(rng.r#gen());
         }
     }
 
@@ -255,7 +255,7 @@ mod tests {
 
         let mut rng = rand::thread_rng();
         for _ in 0..10 {
-            assert_even_of_spreaded_sigma_0(rng.gen());
+            assert_even_of_spreaded_sigma_0(rng.r#gen());
         }
     }
 
@@ -279,7 +279,7 @@ mod tests {
 
         let mut rng = rand::thread_rng();
         for _ in 0..10 {
-            assert_even_of_spreaded_sigma_1(rng.gen());
+            assert_even_of_spreaded_sigma_1(rng.r#gen());
         }
     }
 }
