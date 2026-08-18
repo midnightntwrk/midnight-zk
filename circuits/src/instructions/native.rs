@@ -15,13 +15,13 @@
 
 use super::{DivisionInstructions, RangeCheckInstructions};
 use crate::{
+    CircuitField,
     instructions::{
         AssertionInstructions, BinaryInstructions, ComparisonInstructions, ControlFlowInstructions,
         DecompositionInstructions, EqualityInstructions, FieldInstructions,
         UnsafeConversionInstructions,
     },
     types::{AssignedBit, AssignedByte, AssignedNative},
-    CircuitField,
 };
 
 /// The set of circuit all native instructions.

@@ -20,7 +20,7 @@ use midnight_proofs::{
     circuit::Value,
     plonk,
     plonk::ConstraintSystem,
-    poly::{kzg::KZGCommitmentScheme, EvaluationDomain, PolynomialLabel},
+    poly::{EvaluationDomain, PolynomialLabel, kzg::KZGCommitmentScheme},
 };
 
 use crate::{

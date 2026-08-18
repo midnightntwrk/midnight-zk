@@ -9,7 +9,7 @@ use bellman::{
     domain::{EvaluationDomain, Group},
     multicore::Worker,
 };
-use midnight_curves::{serde::SerdeObject, Bls12, CurveAffine, G1Affine, G2Affine};
+use midnight_curves::{Bls12, CurveAffine, G1Affine, G2Affine, serde::SerdeObject};
 use midnight_proofs::{poly::kzg::params::ParamsKZG, utils::SerdeFormat};
 
 const G1_SIZE: usize = 96;

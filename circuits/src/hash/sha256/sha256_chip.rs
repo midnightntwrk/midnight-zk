@@ -49,25 +49,25 @@ use midnight_proofs::{
 use num_integer::Integer;
 
 use crate::{
-    field::{decomposition::chip::P2RDecompositionChip, NativeChip, NativeGadget},
+    CircuitField,
+    field::{NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip},
     hash::sha256::{
         types::{
             AssignedMessageWord, AssignedPlain, AssignedPlainSpreaded, AssignedSpreaded,
             CompressionState, LimbsOfA, LimbsOfE,
         },
         utils::{
-            expr_pow2_ip, expr_pow4_ip, gen_spread_table, get_even_and_odd_bits, negate_spreaded,
-            spread, spreaded_Sigma_0, spreaded_Sigma_1, spreaded_maj, spreaded_sigma_0,
-            spreaded_sigma_1, u32_in_be_limbs, MASK_EVN_64,
+            MASK_EVN_64, expr_pow2_ip, expr_pow4_ip, gen_spread_table, get_even_and_odd_bits,
+            negate_spreaded, spread, spreaded_Sigma_0, spreaded_Sigma_1, spreaded_maj,
+            spreaded_sigma_0, spreaded_sigma_1, u32_in_be_limbs,
         },
     },
-    instructions::{assignments::AssignmentInstructions, DecompositionInstructions},
+    instructions::{DecompositionInstructions, assignments::AssignmentInstructions},
     types::{AssignedByte, AssignedNative},
     utils::{
-        util::{fe_to_u32, fe_to_u64, u32_to_fe, u64_to_fe},
         ComposableChip,
+        util::{fe_to_u32, fe_to_u64, u32_to_fe, u64_to_fe},
     },
-    CircuitField,
 };
 
 /// Number of advice columns used by the identities of the SHA256 chip.
@@ -1489,10 +1489,18 @@ impl<F: CircuitField> Sha256Chip<F> {
 
                 let w_i_plain = self.assign_add_mod_2_32(&mut region, summands, &zero)?;
 
-                let [val_12, val_1a, val_1b, val_1c, val_07, val_3a, val_04, val_3b] =
-                    (w_i_plain.value().copied())
-                        .map(|w| u32_in_be_limbs(fe_to_u32(w), [12, 1, 1, 1, 7, 3, 4, 3]))
-                        .transpose_array();
+                let [
+                    val_12,
+                    val_1a,
+                    val_1b,
+                    val_1c,
+                    val_07,
+                    val_3a,
+                    val_04,
+                    val_3b,
+                ] = (w_i_plain.value().copied())
+                    .map(|w| u32_in_be_limbs(fe_to_u32(w), [12, 1, 1, 1, 7, 3, 4, 3]))
+                    .transpose_array();
                 let limb_12 = self.assign_plain_and_spreaded(&mut region, val_12, 0, 0)?;
                 let limb_07 = self.assign_plain_and_spreaded(&mut region, val_07, 0, 1)?;
                 let limb_3a = self.assign_plain_and_spreaded(&mut region, val_3a, 1, 0)?;

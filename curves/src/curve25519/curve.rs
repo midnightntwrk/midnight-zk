@@ -24,11 +24,11 @@ use core::{
     ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign},
 };
 
-use curve25519_dalek::{edwards::CompressedEdwardsY, EdwardsPoint};
+use curve25519_dalek::{EdwardsPoint, edwards::CompressedEdwardsY};
 use group::{Group, GroupEncoding};
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
-use super::{affine::Curve25519Affine, Fp, Scalar};
+use super::{Fp, Scalar, affine::Curve25519Affine};
 
 /// Macro to implement common traits for Edwards curve point wrappers.
 macro_rules! impl_edwards_curve_ops {
@@ -398,17 +398,17 @@ mod tests {
     #[test]
     fn test_identity() {
         let id = Curve25519::identity();
-        let gen = Curve25519::generator();
+        let generator = Curve25519::generator();
 
-        assert_eq!(id + gen, gen);
-        assert_eq!(gen - gen, id);
+        assert_eq!(id + generator, generator);
+        assert_eq!(generator - generator, id);
     }
 
     #[test]
     fn test_scalar_mul() {
-        let gen = Curve25519::generator();
+        let generator = Curve25519::generator();
         let scalar = Scalar::from(42u64);
-        let result = gen * scalar;
+        let result = generator * scalar;
 
         // Check it's not identity
         assert_ne!(result, Curve25519::identity());
@@ -416,20 +416,20 @@ mod tests {
 
     #[test]
     fn test_doubling() {
-        let gen = Curve25519::generator();
-        let doubled = gen.double();
-        let added = gen + gen;
+        let generator = Curve25519::generator();
+        let doubled = generator.double();
+        let added = generator + generator;
 
         assert_eq!(doubled, added);
     }
 
     #[test]
     fn test_encoding() {
-        let gen = Curve25519::generator();
-        let bytes = gen.to_bytes();
+        let generator = Curve25519::generator();
+        let bytes = generator.to_bytes();
         let decoded = Curve25519::from_bytes(&bytes).unwrap();
 
-        assert_eq!(gen, decoded);
+        assert_eq!(generator, decoded);
     }
 
     #[test]

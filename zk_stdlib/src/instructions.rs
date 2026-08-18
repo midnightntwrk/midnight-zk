@@ -25,7 +25,7 @@ use midnight_proofs::{
 };
 use num_bigint::BigUint;
 
-use crate::{ZkStdLib, F, NG};
+use crate::{F, NG, ZkStdLib};
 
 impl<T> AssignmentInstructions<F, T> for ZkStdLib
 where

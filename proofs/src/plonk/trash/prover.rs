@@ -4,8 +4,8 @@ use super::{super::Error, Argument};
 use crate::{
     plonk::{evaluation::evaluate, trash},
     poly::{
-        commitment::PolynomialCommitmentScheme, Coeff, EvaluationDomain, LagrangeCoeff, Polynomial,
-        PolynomialLabel, ProverQuery,
+        Coeff, EvaluationDomain, LagrangeCoeff, Polynomial, PolynomialLabel, ProverQuery,
+        commitment::PolynomialCommitmentScheme,
     },
     transcript::{Hashable, Transcript},
     utils::arithmetic::eval_polynomial,

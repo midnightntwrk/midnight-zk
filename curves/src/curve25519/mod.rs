@@ -20,6 +20,6 @@ mod curve;
 mod fp;
 
 pub use affine::Curve25519Affine;
-pub use curve::{Curve25519, Curve25519Subgroup, CURVE_A, CURVE_D};
-pub use curve25519_dalek::{edwards::CompressedEdwardsY, Scalar};
+pub use curve::{CURVE_A, CURVE_D, Curve25519, Curve25519Subgroup};
+pub use curve25519_dalek::{Scalar, edwards::CompressedEdwardsY};
 pub use fp::Fp;

@@ -16,13 +16,13 @@
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 use num_bigint::BigUint;
 
-use super::{varlen::ScannerVec, ScannerChip, PARSING_MAX_LEN_BITS};
+use super::{PARSING_MAX_LEN_BITS, ScannerChip, varlen::ScannerVec};
 use crate::{
+    CircuitField,
     field::AssignedNative,
     instructions::{AssertionInstructions, AssignmentInstructions, RangeCheckInstructions},
     types::AssignedByte,
     vec::get_lims,
-    CircuitField,
 };
 
 impl<F> ScannerChip<F>
@@ -171,8 +171,8 @@ mod test {
 
     use super::super::ScannerChip;
     use crate::{
-        instructions::AssignmentInstructions, testing_utils::FromScratch, types::AssignedByte,
-        utils::circuit_modeling::circuit_to_json, CircuitField,
+        CircuitField, instructions::AssignmentInstructions, testing_utils::FromScratch,
+        types::AssignedByte, utils::circuit_modeling::circuit_to_json,
     };
 
     // ---- check_bytes_varlen_partial tests ----

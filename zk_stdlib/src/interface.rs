@@ -20,18 +20,18 @@ use midnight_circuits::types::ComposableChip;
 use midnight_curves::G1Projective;
 use midnight_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
-    dev::cost_model::{circuit_model, CircuitModel},
+    dev::cost_model::{CircuitModel, circuit_model},
     plonk::{
-        self, keygen_vk_with_k, prepare, Circuit, ConstraintSystem, Error, ProvingKey, VerifyingKey,
+        self, Circuit, ConstraintSystem, Error, ProvingKey, VerifyingKey, keygen_vk_with_k, prepare,
     },
     poly::{
+        PolynomialLabel,
         commitment::{Guard, Params},
         kzg::{
+            KZGCommitmentScheme,
             commitment::KZGMultiCommitment,
             params::{ParamsKZG, ParamsVerifierKZG},
-            KZGCommitmentScheme,
         },
-        PolynomialLabel,
     },
     transcript::{CircuitTranscript, Hashable, Sampleable, Transcript, TranscriptHash},
     utils::SerdeFormat,
@@ -39,7 +39,7 @@ use midnight_proofs::{
 use rand::{CryptoRng, RngCore};
 
 use crate::{
-    utils::plonk_api::BlstPLONK, ZkStdLib, ZkStdLibArch, ZkStdLibConfig, F, NB_COMMITTED_INSTANCES,
+    F, NB_COMMITTED_INSTANCES, ZkStdLib, ZkStdLibArch, ZkStdLibConfig, utils::plonk_api::BlstPLONK,
 };
 
 /// Circuit structure which is used to create any circuit that can be compiled
@@ -322,7 +322,7 @@ impl<Rel: Relation> MidnightPK<Rel> {
 /// let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
 ///
 /// let mut rng = ChaCha8Rng::from_entropy();
-/// let witness: [u8; 24] = core::array::from_fn(|_| rng.gen());
+/// let witness: [u8; 24] = core::array::from_fn(|_| rng.r#gen());
 /// let instance = sha2::Sha256::digest(witness).into();
 ///
 /// let proof = midnight_zk_stdlib::prove::<ShaPreImageCircuit, blake2b_simd::State>(
@@ -445,40 +445,40 @@ impl<R: Relation> Circuit<F> for MidnightCircuit<'_, R> {
         // were actually used.
         zk_std_lib.core_decomposition_chip.load(&mut layouter)?;
 
-        if let Some(sha256_chip) = zk_std_lib.sha2_256_chip {
-            if *zk_std_lib.used_sha2_256.borrow() {
-                sha256_chip.load(&mut layouter)?;
-            }
+        if let Some(sha256_chip) = zk_std_lib.sha2_256_chip
+            && *zk_std_lib.used_sha2_256.borrow()
+        {
+            sha256_chip.load(&mut layouter)?;
         }
 
-        if let Some(sha512_chip) = zk_std_lib.sha2_512_chip {
-            if *zk_std_lib.used_sha2_512.borrow() {
-                sha512_chip.load(&mut layouter)?;
-            }
+        if let Some(sha512_chip) = zk_std_lib.sha2_512_chip
+            && *zk_std_lib.used_sha2_512.borrow()
+        {
+            sha512_chip.load(&mut layouter)?;
         }
 
-        if let Some(b64_chip) = zk_std_lib.base64_chip {
-            if *zk_std_lib.used_base64.borrow() {
-                b64_chip.load(&mut layouter)?;
-            }
+        if let Some(b64_chip) = zk_std_lib.base64_chip
+            && *zk_std_lib.used_base64.borrow()
+        {
+            b64_chip.load(&mut layouter)?;
         }
 
-        if let Some(scanner_chip) = zk_std_lib.scanner_chip {
-            if *zk_std_lib.used_scanner.borrow() {
-                scanner_chip.load(&mut layouter)?;
-            }
+        if let Some(scanner_chip) = zk_std_lib.scanner_chip
+            && *zk_std_lib.used_scanner.borrow()
+        {
+            scanner_chip.load(&mut layouter)?;
         }
 
-        if let Some(keccak_sha3_chip) = zk_std_lib.keccak_sha3_chip {
-            if *zk_std_lib.used_keccak_or_sha3.borrow() {
-                keccak_sha3_chip.load(&mut layouter)?;
-            }
+        if let Some(keccak_sha3_chip) = zk_std_lib.keccak_sha3_chip
+            && *zk_std_lib.used_keccak_or_sha3.borrow()
+        {
+            keccak_sha3_chip.load(&mut layouter)?;
         }
 
-        if let Some(blake2b_chip) = zk_std_lib.blake2b_chip {
-            if *zk_std_lib.used_blake2b.borrow() {
-                blake2b_chip.load(&mut layouter)?;
-            }
+        if let Some(blake2b_chip) = zk_std_lib.blake2b_chip
+            && *zk_std_lib.used_blake2b.borrow()
+        {
+            blake2b_chip.load(&mut layouter)?;
         }
 
         Ok(())

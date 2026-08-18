@@ -361,11 +361,7 @@ impl<const L: usize> BYInverter<L> {
         // This function is defined because the method "min" of the usize type is not
         // constant
         const fn min(a: usize, b: usize) -> usize {
-            if a > b {
-                b
-            } else {
-                a
-            }
+            if a > b { b } else { a }
         }
 
         let (total, mut output, mut bits) = (min(input.len() * I, S * O), [0; S], 0);

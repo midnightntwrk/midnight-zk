@@ -13,14 +13,14 @@
 
 //! Affine representation for Curve25519 points.
 
-use curve25519_dalek::{edwards::CompressedEdwardsY, EdwardsPoint};
+use curve25519_dalek::{EdwardsPoint, edwards::CompressedEdwardsY};
 use ff::Field;
 use group::{Group, GroupEncoding};
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
 use super::{
-    curve::{Curve25519, CURVE_A, CURVE_D},
     Fp,
+    curve::{CURVE_A, CURVE_D, Curve25519},
 };
 
 /// Affine representation with cached EdwardsPoint for efficient conversion.

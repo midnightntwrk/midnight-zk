@@ -14,11 +14,12 @@ use rayon::iter::{
 };
 
 use super::{
+    Error, ProvingKey,
     circuit::{
         Advice, Any, Assignment, Circuit, Column, ConstraintSystem, Fixed, FloorPlanner, Instance,
         Selector,
     },
-    logup, permutation, Error, ProvingKey,
+    logup, permutation,
 };
 use crate::{
     circuit::Value,
@@ -27,9 +28,9 @@ use crate::{
         traces::ProverTrace, trash,
     },
     poly::{
-        batch_invert_rational, commitment::PolynomialCommitmentScheme, Coeff, EvaluationDomain,
-        ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial, PolynomialLabel,
-        PolynomialRepresentation, ProverQuery, Rotation,
+        Coeff, EvaluationDomain, ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial, PolynomialLabel,
+        PolynomialRepresentation, ProverQuery, Rotation, batch_invert_rational,
+        commitment::PolynomialCommitmentScheme,
     },
     transcript::{Hashable, Sampleable, Transcript},
     utils::{
@@ -1076,7 +1077,7 @@ fn test_create_proof() {
     use crate::{
         circuit::SimpleFloorPlanner,
         plonk::{keygen_pk, keygen_vk_with_k},
-        poly::kzg::{params::ParamsKZG, KZGCommitmentScheme},
+        poly::kzg::{KZGCommitmentScheme, params::ParamsKZG},
         transcript::CircuitTranscript,
     };
 

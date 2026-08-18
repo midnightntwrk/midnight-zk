@@ -5,7 +5,7 @@ use std::{
 
 use ff::Field;
 use group::Group;
-use midnight_curves::{pairing::MultiMillerLoop, CurveAffine};
+use midnight_curves::{CurveAffine, pairing::MultiMillerLoop};
 
 use crate::{
     poly::{commitment::Labelable, kzg::msm::MSMKZG, query::PolynomialLabel},

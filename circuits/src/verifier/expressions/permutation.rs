@@ -26,9 +26,9 @@ use crate::{
     field::AssignedNative,
     instructions::ArithInstructions,
     verifier::{
+        SelfEmulation,
         pcs::InCircuitPCS,
         permutation::{CommonEvaluated, Evaluated},
-        SelfEmulation,
     },
 };
 

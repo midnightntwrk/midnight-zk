@@ -31,26 +31,26 @@ use group::Group;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
-    poly::{commitment::Labelable, kzg::commitment::KZGCommitment, PolynomialLabel},
+    poly::{PolynomialLabel, commitment::Labelable, kzg::commitment::KZGCommitment},
 };
 
 #[cfg(feature = "truncated-challenges")]
 use crate::verifier::utils::truncate;
 use crate::{
+    CircuitField,
     field::AssignedNative,
     instructions::{ArithInstructions, AssignmentInstructions},
     types::InnerValue,
     verifier::{
+        AssignedAccumulator, SelfEmulation,
         msm::{AssignedMsm, AssignedPoint},
         pcs::{InCircuitHomomorphicCommitment, InCircuitPCS, VerifierQuery},
         transcript_gadget::TranscriptGadget,
         utils::{
-            evaluate_interpolated_polynomial, inner_product, mul_add, mul_bounded_scalars,
-            truncated_powers, AssignedBoundedScalar,
+            AssignedBoundedScalar, evaluate_interpolated_polynomial, inner_product, mul_add,
+            mul_bounded_scalars, truncated_powers,
         },
-        AssignedAccumulator, SelfEmulation,
     },
-    CircuitField,
 };
 
 // -------------------------------------

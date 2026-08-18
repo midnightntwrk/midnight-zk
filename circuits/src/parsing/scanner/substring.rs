@@ -172,16 +172,16 @@ use midnight_proofs::{
 };
 use num_bigint::BigUint;
 
-use super::{ScannerChip, NB_SUBSTRING_COLS, PARSING_MAX_LEN_BITS, SUBSTRING_PARALLELISM};
+use super::{NB_SUBSTRING_COLS, PARSING_MAX_LEN_BITS, SUBSTRING_PARALLELISM, ScannerChip};
 use crate::{
+    CircuitField,
     field::AssignedNative,
     instructions::{
         ArithInstructions, AssertionInstructions, AssignmentInstructions, ControlFlowInstructions,
         RangeCheckInstructions,
     },
-    parsing::scanner::{Sequence, ALPHABET_MAX_SIZE},
+    parsing::scanner::{ALPHABET_MAX_SIZE, Sequence},
     types::AssignedByte,
-    CircuitField,
 };
 
 /// Structure of assigned cells for verifying substring checks.
@@ -347,7 +347,7 @@ where
     ) -> Result<SubstringCheckLayout<F>, Error> {
         let ng = &self.native_gadget;
         let mut calls: Vec<_> = self.sequence_cache.borrow_mut().drain().collect();
-        calls.sort_by(|a, b| b.0.len().cmp(&a.0.len()).then(b.1 .1.cmp(&a.1 .1)));
+        calls.sort_by(|a, b| b.0.len().cmp(&a.0.len()).then(b.1.1.cmp(&a.1.1)));
 
         // Padding for tables: a value that cannot be a valid byte.
         let sequence_padding: AssignedNative<F> =
@@ -499,8 +499,8 @@ mod test {
 
     use super::super::ScannerChip;
     use crate::{
-        instructions::AssignmentInstructions, testing_utils::FromScratch, types::AssignedByte,
-        utils::circuit_modeling::circuit_to_json, CircuitField,
+        CircuitField, instructions::AssignmentInstructions, testing_utils::FromScratch,
+        types::AssignedByte, utils::circuit_modeling::circuit_to_json,
     };
 
     /// Check bytes test circuit with two witnesses, so that the isolation of

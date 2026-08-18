@@ -5,8 +5,8 @@ use tracing::{debug, debug_span, span::EnteredSpan};
 
 use crate::{
     circuit::{
-        layouter::{RegionLayouter, SyncDeps},
         AssignedCell, Cell, Layouter, Region, Table, Value,
+        layouter::{RegionLayouter, SyncDeps},
     },
     plonk::{
         Advice, Any, Assignment, Circuit, Column, ConstraintSystem, Error, Fixed, FloorPlanner,
@@ -34,7 +34,7 @@ use crate::{
 /// ```no_run
 /// use ff::Field;
 /// use midnight_proofs::{
-///     circuit::{floor_planner, Layouter, Value},
+///     circuit::{Layouter, Value, floor_planner},
 ///     dev::TracingFloorPlanner,
 ///     plonk::{Circuit, ConstraintSystem, Error},
 /// };

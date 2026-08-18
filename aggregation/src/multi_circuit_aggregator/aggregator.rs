@@ -16,11 +16,11 @@ use midnight_proofs::poly::kzg::params::ParamsKZG;
 use midnight_zk_stdlib::{MidnightVK, ZkStdLibArch};
 
 use super::{
+    AggregableRelation,
     circuit::{InnerCircuitsContext, ProofAggregation},
     claims::{Claim, TypedStatement},
-    AggregableRelation,
 };
-use crate::ivc::{self, IvcError, IvcInstance, E};
+use crate::ivc::{self, E, IvcError, IvcInstance};
 
 impl ProofAggregation {
     /// Sets up the proof aggregator, returning an [`Aggregator`] (at genesis)

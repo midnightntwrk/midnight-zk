@@ -10,7 +10,7 @@ use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
-use midnight_zk_stdlib::{utils::plonk_api::srs_for_test, Relation, ZkStdLib};
+use midnight_zk_stdlib::{Relation, ZkStdLib, utils::plonk_api::srs_for_test};
 use rand::rngs::OsRng;
 
 type F = midnight_curves::Fq;

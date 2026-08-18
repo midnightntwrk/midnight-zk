@@ -12,7 +12,7 @@ use midnight_proofs::{
     plonk::Error,
 };
 use midnight_zk_stdlib::{Relation, ZkStdLib, ZkStdLibArch};
-use rand::{rngs::OsRng, Rng};
+use rand::{Rng, rngs::OsRng};
 use sha2::Digest;
 
 type F = midnight_curves::Fq;
@@ -66,7 +66,7 @@ impl Relation for ShaPreimageCircuit {
 
 /// Samples a random instance–witness pair for the SHA preimage circuit.
 pub fn random_instance() -> ([u8; 32], [u8; 24]) {
-    let preimage: [u8; 24] = OsRng.gen();
+    let preimage: [u8; 24] = OsRng.r#gen();
     let digest: [u8; 32] = sha2::Sha256::digest(preimage).into();
     (digest, preimage)
 }

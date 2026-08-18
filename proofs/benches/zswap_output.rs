@@ -3,7 +3,7 @@
 //!
 //! For more details, visit:
 //! https://github.com/midnightntwrk/midnight-ledger-prototype/blob/main/zswap/zswap.compact
-use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
+use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
 use ff::Field;
 use group::Group;
 use midnight_circuits::{
@@ -19,18 +19,18 @@ use midnight_curves::{Bls12, Fr as JubjubScalar, JubjubExtended as Jubjub, Jubju
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::{
-        bench::prover::benchmark_create_proof, keygen_pk, keygen_vk_with_k, parse_trace,
-        verify_algebraic_constraints, Error,
+        Error, bench::prover::benchmark_create_proof, keygen_pk, keygen_vk_with_k, parse_trace,
+        verify_algebraic_constraints,
     },
     poly::{
-        commitment::Guard,
-        kzg::{commitment::KZGMultiCommitment, params::ParamsKZG, KZGCommitmentScheme},
         PolynomialLabel,
+        commitment::Guard,
+        kzg::{KZGCommitmentScheme, commitment::KZGMultiCommitment, params::ParamsKZG},
     },
     transcript::{CircuitTranscript, Transcript},
 };
 use midnight_zk_stdlib::{MidnightCircuit, Relation, ZkStdLib, ZkStdLibArch};
-use rand::{rngs::OsRng, Rng, SeedableRng};
+use rand::{Rng, SeedableRng, rngs::OsRng};
 use rand_chacha::ChaCha8Rng;
 use sha2::Digest;
 
@@ -113,12 +113,14 @@ impl Relation for ZSwapOutputCircuit {
 
         let value_com = {
             let color_base = std_lib.hash_to_curve(layouter, &[coin.color])?;
-            let gen = std_lib.jubjub().assign_fixed(layouter, JubjubSubgroup::generator())?;
+            let generator = std_lib.jubjub().assign_fixed(layouter, JubjubSubgroup::generator())?;
             let rc = std_lib.jubjub().assign(layouter, witness.as_ref().map(|w| w.2))?;
             let coin_value_as_scalar = std_lib.jubjub().convert(layouter, &coin.value)?;
-            std_lib
-                .jubjub()
-                .msm(layouter, &[coin_value_as_scalar, rc], &[color_base, gen])?
+            std_lib.jubjub().msm(
+                layouter,
+                &[coin_value_as_scalar, rc],
+                &[color_base, generator],
+            )?
         };
 
         coin_com
@@ -199,8 +201,8 @@ fn assign_fixed_domain_sep(
 fn sample_zswap_inputs() -> (Vec<F>, MidnightCircuit<'static, ZSwapOutputCircuit>) {
     let mut rng = ChaCha8Rng::from_entropy();
 
-    let zswap_pk_bytes = core::array::from_fn(|_| rng.gen());
-    let zswap_pk_is_contract: bool = rng.gen();
+    let zswap_pk_bytes = core::array::from_fn(|_| rng.r#gen());
+    let zswap_pk_is_contract: bool = rng.r#gen();
     let zswap_pk = match zswap_pk_is_contract {
         false => PK::ZSwapCoinPublicKey(zswap_pk_bytes),
         true => PK::ContractAddress(zswap_pk_bytes),
@@ -342,7 +344,8 @@ fn bench_zswap_output(c: &mut Criterion) {
                     &mut t,
                 )
                 .unwrap();
-                let guard = verify_algebraic_constraints(
+
+                verify_algebraic_constraints(
                     pk.get_vk(),
                     trace,
                     &[KZGMultiCommitment::commitment_to_zero(
@@ -351,8 +354,7 @@ fn bench_zswap_output(c: &mut Criterion) {
                     &[&instance],
                     &mut t,
                 )
-                .unwrap();
-                guard
+                .unwrap()
             },
             |guard| guard.verify(&srs.verifier_params()).unwrap(),
             BatchSize::SmallInput,

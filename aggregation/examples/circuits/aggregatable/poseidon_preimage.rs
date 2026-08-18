@@ -11,7 +11,7 @@ use ff::Field;
 use midnight_aggregation::multi_circuit_aggregator::AggregableRelation;
 use midnight_circuits::{
     hash::poseidon::PoseidonChip,
-    instructions::{hash::HashCPU, AssignmentInstructions, PublicInputInstructions},
+    instructions::{AssignmentInstructions, PublicInputInstructions, hash::HashCPU},
 };
 use midnight_proofs::{
     circuit::{Layouter, Value},

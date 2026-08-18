@@ -2,10 +2,10 @@ use ff::{PrimeField, WithSmallOrderMulGroup};
 
 use super::{Argument, VerifyingKey};
 use crate::{
-    plonk::{self, permutation, Error},
+    plonk::{self, Error, permutation},
     poly::{
-        commitment::{Labelable, PolynomialCommitmentScheme},
         PolynomialLabel, Rotation, VerifierQuery,
+        commitment::{Labelable, PolynomialCommitmentScheme},
     },
     transcript::{Hashable, Transcript},
 };

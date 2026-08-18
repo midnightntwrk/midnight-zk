@@ -12,10 +12,10 @@ use crate::{
         traces::VerifierTrace,
     },
     poly::{
-        commitment::{Labelable, PolynomialCommitmentScheme},
         PolynomialLabel, VerifierQuery,
+        commitment::{Labelable, PolynomialCommitmentScheme},
     },
-    transcript::{read_n, Hashable, Sampleable, Transcript},
+    transcript::{Hashable, Sampleable, Transcript, read_n},
     utils::arithmetic::compute_inner_product,
 };
 

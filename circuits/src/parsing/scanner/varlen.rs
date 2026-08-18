@@ -18,15 +18,15 @@ use midnight_proofs::{
     plonk::Error,
 };
 
-use super::{ScannerChip, ALPHABET_MAX_SIZE};
+use super::{ALPHABET_MAX_SIZE, ScannerChip};
 use crate::{
-    field::{native::AssignedBit, AssignedNative},
+    CircuitField,
+    field::{AssignedNative, native::AssignedBit},
     instructions::{
         AssignmentInstructions, ControlFlowInstructions, UnsafeConversionInstructions,
         VectorInstructions,
     },
     types::{AssignedByte, AssignedVector},
-    CircuitField,
 };
 
 /// A [`ScannerVec`] is built from an [`AssignedVector`] of [`AssignedByte`]s

@@ -22,13 +22,13 @@ use {
 
 use super::{mtc::MapToCurveInstructions, mtc_cpu::MapToCurveCPU};
 use crate::{
+    CircuitField,
     ecc::curves::CircuitCurve,
     instructions::{
-        hash_to_curve::HashToCurveCPU, EccInstructions, HashToCurveInstructions, SpongeCPU,
-        SpongeInstructions,
+        EccInstructions, HashToCurveInstructions, SpongeCPU, SpongeInstructions,
+        hash_to_curve::HashToCurveCPU,
     },
     types::InnerValue,
-    CircuitField,
 };
 
 #[derive(Clone, Debug)]

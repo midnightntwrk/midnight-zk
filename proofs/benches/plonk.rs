@@ -11,12 +11,12 @@ use midnight_proofs::{
     circuit::{Cell, Layouter, SimpleFloorPlanner, Value},
     plonk::*,
     poly::{
+        Rotation,
         commitment::Guard,
         kzg::{
-            params::{ParamsKZG, ParamsVerifierKZG},
             KZGCommitmentScheme,
+            params::{ParamsKZG, ParamsVerifierKZG},
         },
-        Rotation,
     },
     transcript::{CircuitTranscript, Transcript},
     utils::rational::Rational,
@@ -304,16 +304,18 @@ fn criterion_benchmark(c: &mut Criterion) {
     ) {
         let mut transcript: CircuitTranscript<Blake2bState> =
             CircuitTranscript::init_from_bytes(proof);
-        assert!(prepare::<Scalar, KZGCommitmentScheme<Bls12>, _>(
-            vk,
-            #[cfg(feature = "committed-instances")]
-            &[],
-            &[],
-            &mut transcript
-        )
-        .unwrap()
-        .verify(params)
-        .is_ok());
+        assert!(
+            prepare::<Scalar, KZGCommitmentScheme<Bls12>, _>(
+                vk,
+                #[cfg(feature = "committed-instances")]
+                &[],
+                &[],
+                &mut transcript
+            )
+            .unwrap()
+            .verify(params)
+            .is_ok()
+        );
     }
 
     let k_range = 8..=16;

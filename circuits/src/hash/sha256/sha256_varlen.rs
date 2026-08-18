@@ -13,11 +13,12 @@
 
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
-use super::{sha256_chip::IV, Sha256Chip};
+use super::{Sha256Chip, sha256_chip::IV};
 use crate::{
+    CircuitField,
     field::{
-        decomposition::chip::P2RDecompositionChip, AssignedBounded, AssignedNative, NativeChip,
-        NativeGadget,
+        AssignedBounded, AssignedNative, NativeChip, NativeGadget,
+        decomposition::chip::P2RDecompositionChip,
     },
     hash::sha256::{
         sha256_chip::ROUND_CONSTANTS,
@@ -30,7 +31,6 @@ use crate::{
     },
     types::{AssignedBit, AssignedByte},
     vec::AssignedVector,
-    CircuitField,
 };
 
 /// Gadget for SHA256 with variable-length input.

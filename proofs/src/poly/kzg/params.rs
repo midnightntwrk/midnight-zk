@@ -1,7 +1,7 @@
 use std::{fmt::Debug, io};
 
 use ff::{Field, PrimeField};
-use group::{prime::PrimeCurveAffine, Curve, Group, GroupEncoding};
+use group::{Curve, Group, GroupEncoding, prime::PrimeCurveAffine};
 use midnight_curves::{
     pairing::{Engine, MultiMillerLoop},
     serde::SerdeObject,
@@ -9,11 +9,11 @@ use midnight_curves::{
 use rand_core::RngCore;
 
 use crate::{
-    poly::{commitment::Params, PolynomialBasis, PolynomialRepresentation},
+    poly::{PolynomialBasis, PolynomialRepresentation, commitment::Params},
     utils::{
-        arithmetic::{g_to_lagrange, parallelize, CurveAffine},
-        helpers::ProcessedSerdeObject,
         SerdeFormat,
+        arithmetic::{CurveAffine, g_to_lagrange, parallelize},
+        helpers::ProcessedSerdeObject,
     },
 };
 
@@ -407,9 +407,9 @@ mod test {
 
     use crate::{
         poly::{
-            commitment::PolynomialCommitmentScheme,
-            kzg::{params::ParamsKZG, KZGCommitmentScheme},
             PolynomialLabel,
+            commitment::PolynomialCommitmentScheme,
+            kzg::{KZGCommitmentScheme, params::ParamsKZG},
         },
         utils::SerdeFormat,
     };

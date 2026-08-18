@@ -4,8 +4,8 @@ use super::circuit::{Any, Column};
 use crate::{
     poly::{Coeff, ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial, Rotation},
     utils::{
-        helpers::{polynomial_slice_byte_length, read_polynomial_vec, write_polynomial_slice},
         SerdeFormat,
+        helpers::{polynomial_slice_byte_length, read_polynomial_vec, write_polynomial_slice},
     },
 };
 
@@ -25,8 +25,8 @@ use crate::{
         permutation::{keygen::compute_polys_and_cosets, verifier::CommonEvaluated},
     },
     poly::{
-        commitment::{Labelable, PolynomialCommitmentScheme},
         EvaluationDomain, PolynomialLabel,
+        commitment::{Labelable, PolynomialCommitmentScheme},
     },
     utils::helpers::ProcessedSerdeObject,
 };

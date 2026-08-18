@@ -48,25 +48,25 @@ use midnight_proofs::{
 use num_integer::Integer;
 
 use crate::{
-    field::{decomposition::chip::P2RDecompositionChip, NativeChip, NativeGadget},
+    CircuitField,
+    field::{NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip},
     hash::sha512::{
         types::{
             AssignedMessageWord, AssignedPlain, AssignedPlainSpreaded, AssignedSpreaded,
             CompressionState, LimbsOfA, LimbsOfE,
         },
         utils::{
-            expr_pow2_ip, expr_pow4_ip, gen_spread_table, get_even_and_odd_bits, negate_spreaded,
-            spread, spreaded_Sigma_0, spreaded_Sigma_1, spreaded_maj, spreaded_sigma_0,
-            spreaded_sigma_1, u64_in_be_limbs, MASK_EVN_128,
+            MASK_EVN_128, expr_pow2_ip, expr_pow4_ip, gen_spread_table, get_even_and_odd_bits,
+            negate_spreaded, spread, spreaded_Sigma_0, spreaded_Sigma_1, spreaded_maj,
+            spreaded_sigma_0, spreaded_sigma_1, u64_in_be_limbs,
         },
     },
-    instructions::{assignments::AssignmentInstructions, DecompositionInstructions},
+    instructions::{DecompositionInstructions, assignments::AssignmentInstructions},
     types::{AssignedByte, AssignedNative},
     utils::{
-        util::{fe_to_u128, fe_to_u64, u128_to_fe, u64_to_fe},
         ComposableChip,
+        util::{fe_to_u64, fe_to_u128, u64_to_fe, u128_to_fe},
     },
-    CircuitField,
 };
 
 /// Number of advice columns used by the identities of the SHA512 chip.
@@ -1700,10 +1700,23 @@ impl<F: CircuitField> Sha512Chip<F> {
 
                 let w_i_plain = self.assign_add_mod_2_64(&mut region, summands, &zero)?;
 
-                let [val_03a, val_13a, val_13b, val_13c, val_03b, val_11, val_01a, val_01b, val_05, val_01c] =
-                    w_i_plain.0.value().copied()
-                        .map(|w| u64_in_be_limbs(fe_to_u64(w), [3, 13, 13, 13, 3, 11, 1, 1, 5, 1]))
-                        .transpose_array();
+                let [
+                    val_03a,
+                    val_13a,
+                    val_13b,
+                    val_13c,
+                    val_03b,
+                    val_11,
+                    val_01a,
+                    val_01b,
+                    val_05,
+                    val_01c,
+                ] = w_i_plain
+                    .0
+                    .value()
+                    .copied()
+                    .map(|w| u64_in_be_limbs(fe_to_u64(w), [3, 13, 13, 13, 3, 11, 1, 1, 5, 1]))
+                    .transpose_array();
                 let limb_03a = self.assign_plain_and_spreaded(&mut region, val_03a, 0, 0)?;
                 let limb_13a = self.assign_plain_and_spreaded(&mut region, val_13a, 0, 1)?;
                 let limb_13b = self.assign_plain_and_spreaded(&mut region, val_13b, 1, 0)?;
@@ -1714,9 +1727,12 @@ impl<F: CircuitField> Sha512Chip<F> {
 
                 // The spreaded forms of 1-bit values W.01a, W.01b and W.01c equal themselves.
                 let col = self.config().advice_cols[7];
-                let limb_01a = region.assign_advice(|| "W.01a", col, 0, || val_01a.map(u64_to_fe))?;
-                let limb_01b = region.assign_advice(|| "W.01b", col, 1, || val_01b.map(u64_to_fe))?;
-                let limb_01c = region.assign_advice(|| "W.01c", col, 2, || val_01c.map(u64_to_fe))?;
+                let limb_01a =
+                    region.assign_advice(|| "W.01a", col, 0, || val_01a.map(u64_to_fe))?;
+                let limb_01b =
+                    region.assign_advice(|| "W.01b", col, 1, || val_01b.map(u64_to_fe))?;
+                let limb_01c =
+                    region.assign_advice(|| "W.01c", col, 2, || val_01c.map(u64_to_fe))?;
 
                 Ok(AssignedMessageWord {
                     combined_plain: w_i_plain,

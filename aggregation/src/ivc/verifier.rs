@@ -9,14 +9,14 @@ use midnight_circuits::{hash::poseidon::PoseidonState, verifier::Accumulator};
 use midnight_proofs::{
     plonk::{self},
     poly::{
-        kzg::{commitment::KZGMultiCommitment, params::ParamsVerifierKZG, KZGCommitmentScheme},
         PolynomialLabel,
+        kzg::{KZGCommitmentScheme, commitment::KZGMultiCommitment, params::ParamsVerifierKZG},
     },
     transcript::{CircuitTranscript, Transcript},
 };
 use midnight_zk_stdlib::{MidnightVK, Relation};
 
-use super::{Ivc, IvcCircuit, IvcError, IvcInstance, E, F, S};
+use super::{E, F, Ivc, IvcCircuit, IvcError, IvcInstance, S};
 
 /// Lightweight IVC verifier carrying:
 /// - the application context (for the decider check),

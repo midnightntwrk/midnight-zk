@@ -125,7 +125,7 @@ let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
 
 // Sample a random preimage as the witness.
 let mut rng = ChaCha8Rng::from_entropy();
-let witness: [u8; 24] = core::array::from_fn(|_| rng.gen());
+let witness: [u8; 24] = core::array::from_fn(|_| rng.r#gen());
 let instance = sha2::Sha256::digest(witness).into();
 
 let proof = midnight_zk_stdlib::prove::<ShaPreImageCircuit, blake2b_simd::State>(

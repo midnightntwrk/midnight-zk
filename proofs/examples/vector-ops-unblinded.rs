@@ -9,17 +9,17 @@ use std::marker::PhantomData;
 use blake2b_simd::State;
 use ff::{FromUniformBytes, WithSmallOrderMulGroup};
 use midnight_curves::{
+    CurveAffine, CurveExt,
     pairing::{Engine, MultiMillerLoop},
     serde::SerdeObject,
-    CurveAffine, CurveExt,
 };
 use midnight_proofs::{
     circuit::{AssignedCell, Chip, Layouter, Region, SimpleFloorPlanner, Value},
     plonk::*,
     poly::{
-        commitment::Guard,
-        kzg::{params::ParamsKZG, KZGCommitmentScheme},
         Rotation,
+        commitment::Guard,
+        kzg::{KZGCommitmentScheme, params::ParamsKZG},
     },
     transcript::{CircuitTranscript, Hashable, Sampleable, Transcript},
     utils::{arithmetic::Field, helpers::ProcessedSerdeObject},

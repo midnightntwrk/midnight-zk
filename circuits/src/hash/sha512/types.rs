@@ -1,11 +1,11 @@
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use crate::{
+    CircuitField,
     field::AssignedNative,
     hash::sha512::utils::{spread, u64_in_be_limbs},
     instructions::FieldInstructions,
     utils::util::u128_to_fe,
-    CircuitField,
 };
 
 /// An assigned value in plain (non-spreaded) form, guaranteed to be in the

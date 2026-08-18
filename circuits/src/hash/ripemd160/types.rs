@@ -1,7 +1,7 @@
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use crate::{
-    field::AssignedNative, instructions::FieldInstructions, utils::util::u32_to_fe, CircuitField,
+    CircuitField, field::AssignedNative, instructions::FieldInstructions, utils::util::u32_to_fe,
 };
 
 /// An assigned 32-bit word, represented by a field element. The 32 bits are

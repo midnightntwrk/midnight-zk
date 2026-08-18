@@ -11,7 +11,7 @@ use ff::Field;
 use rand_core::RngCore;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
-use super::fp::{Fp, FROBENIUS_COEFF_FP2_C1};
+use super::fp::{FROBENIUS_COEFF_FP2_C1, Fp};
 use crate::serde_traits::SerdeObject;
 
 #[derive(Copy, Clone)]

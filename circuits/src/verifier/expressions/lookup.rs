@@ -26,9 +26,9 @@ use crate::{
     field::AssignedNative,
     instructions::{ArithInstructions, AssignmentInstructions},
     verifier::{
+        SelfEmulation,
         expressions::{compress_expressions, eval_expression},
         lookup::LookupEvaluated,
-        SelfEmulation,
     },
 };
 

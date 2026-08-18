@@ -22,10 +22,10 @@ use num_integer::Integer;
 use num_traits::{One, Zero};
 
 use crate::{
+    CircuitField,
     instructions::{ArithInstructions, RangeCheckInstructions},
     types::InnerValue,
     utils::util::big_to_fe,
-    CircuitField,
 };
 
 /// Set of circuit instructions for integer division.

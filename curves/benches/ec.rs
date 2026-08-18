@@ -9,7 +9,7 @@
 
 use std::hint::black_box;
 
-use criterion::{criterion_group, criterion_main, Criterion, Throughput};
+use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use ff::Field;
 use group::prime::PrimeCurveAffine;
 use midnight_curves::{CurveExt, G1Projective};
