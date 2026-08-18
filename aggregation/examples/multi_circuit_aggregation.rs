@@ -66,15 +66,16 @@ fn main() {
     // The IVC aggregator only requires a shared SRS and architecture. It does
     // not need to know which circuits will be aggregated. Inner circuits can be
     // introduced, proved and folded in on-the-fly, after IVC initialization.
-    // Each circuit is proved against an SRS of its own size.
+    // Each circuit is proved against an SRS of its own size whose source (i.e.
+    // toxic waste) is the same.
     let sha_srs = load_srs::<DefaultPCS>(SrsSource::Filecoin, SHA_CIRCUIT_K);
     let poseidon_srs = load_srs::<DefaultPCS>(SrsSource::Filecoin, POSEIDON_CIRCUIT_K);
+
     // Note: verifier params from the SRS do not depend on `k`.
-    let inner_ctx = InnerCircuitsContext::new(
-        inner_arch(),
-        POSEIDON_CIRCUIT_K,
-        poseidon_srs.verifier_params(),
-    );
+    let inner_verifier_params = poseidon_srs.verifier_params();
+
+    let inner_ctx =
+        InnerCircuitsContext::new(inner_arch(), POSEIDON_CIRCUIT_K, inner_verifier_params);
 
     let aggregator_srs = load_srs::<DefaultPCS>(SrsSource::Midnight, IVC_K);
     let start = Instant::now();
