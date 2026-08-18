@@ -50,6 +50,26 @@ pub struct SummitPath<F, const SIZE: usize> {
     pub(crate) steps: [F; SIZE],
 }
 
+/// Witness for a membership claim: a Merkle authentication path from a leaf to
+/// one of the MMR's peaks.
+///
+/// - `height` selects the mountain (equivalently, the peak `peaks[height]`)
+///   that contains the leaf.
+/// - `leaf_index` is the leaf's position within that mountain; its bit `l`
+///   gives the left/right direction when climbing from level `l` to `l + 1`.
+/// - `siblings[l]` is the sibling node absorbed at that climb.
+///
+/// Only the low `height` bits of `leaf_index` and the first `height` entries of
+/// `siblings` are meaningful; the rest are padding (`F::ZERO`). The claim fixes
+/// no absolute position: `height` and `leaf_index` are a hint supplied by the
+/// prover (see [Mmr::verify_membership]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MembershipProof<F, const SIZE: usize> {
+    pub(crate) height: usize,
+    pub(crate) leaf_index: u64,
+    pub(crate) siblings: [F; SIZE],
+}
+
 /// A *mountain*: a complete (perfect) binary Merkle tree of some height `h`,
 /// stored as a flat vector of its `2^(h+1) - 1` nodes in *in-order* layout:
 /// first the left subtree, then the peak, then the right subtree. Merging two
@@ -344,6 +364,84 @@ where
         }
         ok
     }
+
+    /// Produces a membership proof for the element at append-position `pos`
+    /// (`0` is the oldest element). The proof authenticates the leaf against
+    /// the peak of the mountain that contains it.
+    ///
+    /// # Panics
+    ///
+    /// If `pos >= self.size()`.
+    pub fn prove_membership(&self, pos: u64) -> MembershipProof<F, SIZE> {
+        assert!(pos < self.size, "position out of range");
+
+        // Locate the mountain holding `pos`: taller mountains hold the older
+        // elements, so scan heights high-to-low, accumulating their leaf counts
+        // until `pos` falls inside one.
+        let mut offset = 0u64;
+        let (mut height, mut leaf_index) = (0, 0);
+        for h in (0..SIZE).rev() {
+            if (self.size >> h) & 1 == 1 {
+                let leaves = 1u64 << h;
+                if pos < offset + leaves {
+                    (height, leaf_index) = (h, pos - offset);
+                    break;
+                }
+                offset += leaves;
+            }
+        }
+
+        // The authentication path: the sibling of the climbing node at each
+        // level, following the bits of `leaf_index`.
+        let mountain = self.mountains[height].as_ref().expect("bit `height` of size is set");
+        let mut siblings = [F::ZERO; SIZE];
+        for (l, sibling) in siblings.iter_mut().enumerate().take(height) {
+            *sibling = mountain.node(l, (leaf_index >> l) ^ 1);
+        }
+
+        MembershipProof {
+            height,
+            leaf_index,
+            siblings,
+        }
+    }
+
+    /// Verifies that `elem` is one of the elements committed to by `state`,
+    /// given a [MembershipProof] (produced with [Self::prove_membership]).
+    ///
+    /// The element's position is not fixed by this check: `height` and
+    /// `leaf_index` are supplied by the proof as a hint. This is the
+    /// off-circuit specification of the in-circuit
+    /// [assert_membership](crate::mmr::mmr_gadget::MmrGadget::assert_membership).
+    pub fn verify_membership(
+        state: &MmrState<F, SIZE>,
+        elem: F,
+        proof: &MembershipProof<F, SIZE>,
+    ) -> bool {
+        // States whose size exceeds SIZE bits are not representable in-circuit.
+        if state.size > Self::capacity() {
+            return false;
+        }
+
+        // The target mountain must exist.
+        let h = proof.height;
+        if h >= SIZE || (state.size >> h) & 1 == 0 {
+            return false;
+        }
+
+        // Fold the (arity-1) leaf hash up to the peak, following the index bits:
+        // a `0` bit places the running node on the left, a `1` on the right.
+        let mut node = <H as HashCPU<F, F>>::hash(&[elem]);
+        for l in 0..h {
+            let sibling = proof.siblings[l];
+            node = if (proof.leaf_index >> l) & 1 == 0 {
+                <H as HashCPU<F, F>>::hash(&[node, sibling])
+            } else {
+                <H as HashCPU<F, F>>::hash(&[sibling, node])
+            };
+        }
+        node == state.peaks[h]
+    }
 }
 
 impl<F, H, const SIZE: usize> Default for Mmr<F, H, SIZE>
@@ -531,10 +629,74 @@ mod tests {
         }
     }
 
+    fn test_membership<F: CircuitField, H: HashCPU<F, F>>() {
+        const SIZE: usize = 6;
+        let mut rng = ChaCha8Rng::seed_from_u64(0xfeedbeef);
+        let n = 45usize;
+        // n = 45 = 0b101101, so the height-1 mountain is absent.
+        assert_eq!(n as u64 & 0b10, 0, "test assumes the height-1 mountain is absent");
+        let leaves: Vec<F> = (0..n).map(|_| F::random(&mut rng)).collect();
+
+        let mut mmr = Mmr::<F, H, SIZE>::new();
+        leaves.iter().for_each(|leaf| mmr.append(*leaf));
+        let state = mmr.state();
+
+        for (pos, &leaf) in leaves.iter().enumerate() {
+            let proof = mmr.prove_membership(pos as u64);
+            assert!(
+                Mmr::<F, H, SIZE>::verify_membership(&state, leaf, &proof),
+                "honest membership rejected at pos {pos}"
+            );
+
+            // A wrong element is rejected against an honest path.
+            assert!(
+                !Mmr::<F, H, SIZE>::verify_membership(&state, leaf + F::ONE, &proof),
+                "wrong element accepted at pos {pos}"
+            );
+
+            // Tampering with any consumed sibling is rejected.
+            for l in 0..proof.height {
+                let mut tampered = proof;
+                tampered.siblings[l] += F::ONE;
+                assert!(
+                    !Mmr::<F, H, SIZE>::verify_membership(&state, leaf, &tampered),
+                    "tampered sibling[{l}] accepted at pos {pos}"
+                );
+            }
+
+            // Flipping a consumed direction bit points at the wrong subtree.
+            if proof.height > 0 {
+                let mut tampered = proof;
+                tampered.leaf_index ^= 1;
+                assert!(
+                    !Mmr::<F, H, SIZE>::verify_membership(&state, leaf, &tampered),
+                    "flipped direction bit accepted at pos {pos}"
+                );
+            }
+        }
+
+        // An element that is not in the MMR is rejected.
+        let outsider = F::random(&mut rng);
+        let proof = mmr.prove_membership(0);
+        assert!(
+            !Mmr::<F, H, SIZE>::verify_membership(&state, outsider, &proof),
+            "non-member accepted"
+        );
+
+        // A height pointing at an absent mountain is rejected.
+        let mut absent = mmr.prove_membership(0);
+        absent.height = 1;
+        assert!(
+            !Mmr::<F, H, SIZE>::verify_membership(&state, leaves[0], &absent),
+            "membership against an absent mountain accepted"
+        );
+    }
+
     fn run_poseidon_tests<F: PoseidonField>() {
         test_append::<F, PoseidonChip<F>>();
         test_node_layout::<F, PoseidonChip<F>>();
         test_prefix::<F, PoseidonChip<F>>();
+        test_membership::<F, PoseidonChip<F>>();
     }
 
     #[test]

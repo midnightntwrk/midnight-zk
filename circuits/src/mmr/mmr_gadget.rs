@@ -36,7 +36,7 @@ use {
 
 use crate::{
     instructions::{HashInstructions, NativeInstructions},
-    mmr::cpu::{MmrState, SummitPath},
+    mmr::cpu::{MembershipProof, MmrState, SummitPath},
     types::{AssignedBit, AssignedNative, InnerValue, Instantiable},
     CircuitField,
 };
@@ -106,6 +106,37 @@ impl<F: CircuitField, const SIZE: usize> InnerValue for AssignedSummitPath<F, SI
 
     fn value(&self) -> Value<SummitPath<F, SIZE>> {
         self.steps.value().map(|steps| SummitPath { steps })
+    }
+}
+
+/// An assigned [MembershipProof]: the witness of a membership claim.
+#[derive(Clone, Debug)]
+pub struct AssignedMembershipProof<F: CircuitField, const SIZE: usize> {
+    pub(crate) height: AssignedNative<F>,
+    pub(crate) leaf_index: AssignedNative<F>,
+    pub(crate) siblings: [AssignedNative<F>; SIZE],
+}
+
+impl<F: CircuitField, const SIZE: usize> InnerValue for AssignedMembershipProof<F, SIZE> {
+    type Element = MembershipProof<F, SIZE>;
+
+    fn value(&self) -> Value<MembershipProof<F, SIZE>> {
+        let height = self
+            .height
+            .value()
+            .map(|h| u64::try_from(h.to_biguint()).expect("MMR height fits in u64") as usize);
+        let leaf_index = self
+            .leaf_index
+            .value()
+            .map(|i| u64::try_from(i.to_biguint()).expect("MMR leaf index fits in u64"));
+        let siblings = self.siblings.value();
+        (height.zip(leaf_index).zip(siblings)).map(|((height, leaf_index), siblings)| {
+            MembershipProof {
+                height,
+                leaf_index,
+                siblings,
+            }
+        })
     }
 }
 
@@ -301,6 +332,86 @@ where
         Ok(())
     }
 
+    /// Assigns a [MembershipProof] as a private input.
+    ///
+    /// The proof is not constrained here; its fields are verified when consumed
+    /// by [Self::assert_membership].
+    pub fn assign_membership_proof<const SIZE: usize>(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        proof: Value<MembershipProof<F, SIZE>>,
+    ) -> Result<AssignedMembershipProof<F, SIZE>, Error> {
+        let height = self
+            .native_gadget
+            .assign(layouter, proof.map(|p| F::from(p.height as u64)))?;
+        let leaf_index = self
+            .native_gadget
+            .assign(layouter, proof.map(|p| F::from(p.leaf_index)))?;
+        let siblings = proof.map(|p| p.siblings).transpose_array();
+        let siblings = self.native_gadget.assign_many(layouter, &siblings)?;
+        Ok(AssignedMembershipProof {
+            height,
+            leaf_index,
+            siblings: siblings.try_into().unwrap(),
+        })
+    }
+
+    /// Asserts that `elem` is one of the elements committed to by `mmr`, given
+    /// a membership proof (produced off-circuit with
+    /// [Mmr::prove_membership](crate::mmr::cpu::Mmr::prove_membership)).
+    ///
+    /// The element's position is not fixed: `height` and `leaf_index` are
+    /// supplied by the proof as a hint. This is the in-circuit counterpart of
+    /// [Mmr::verify_membership](crate::mmr::cpu::Mmr::verify_membership).
+    ///
+    /// # Unsatisfiable Circuit
+    ///
+    /// If `elem` is not a member of `mmr`, or if the proof is malformed.
+    pub fn assert_membership<const SIZE: usize>(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        mmr: &AssignedMmr<F, SIZE>,
+        elem: &AssignedNative<F>,
+        proof: &AssignedMembershipProof<F, SIZE>,
+    ) -> Result<(), Error> {
+        let ng = &self.native_gadget;
+
+        // Little-endian bits of the leaf index; bit `l` is the left/right
+        // direction of the climb from level `l` to `l + 1`.
+        let index_bits = ng.assigned_to_le_bits(layouter, &proof.leaf_index, Some(SIZE), true)?;
+
+        // `node` is the root of the height-`l` subtree over the leaf. It starts
+        // as the arity-1 leaf hash, which is the peak of a height-0 mountain.
+        let mut node = self.hash_chip.hash(layouter, std::slice::from_ref(elem))?;
+
+        // Set once the climb reaches the claimed height, ensuring that `height`
+        // selects some slot (i.e. lies in `[0, SIZE)`).
+        let mut matched: AssignedBit<F> = ng.assign_fixed(layouter, false)?;
+
+        for (l, (peak, size_bit)) in mmr.peaks.iter().zip(mmr.size_bits.iter()).enumerate() {
+            // On the claimed height, `node` must equal that peak and the
+            // mountain must be present.
+            let is_height = ng.is_equal_to_fixed(layouter, &proof.height, F::from(l as u64))?;
+            ng.cond_assert_equal(layouter, &is_height, &node, peak)?;
+
+            let absent = ng.not(layouter, size_bit)?;
+            let selects_absent = ng.and(layouter, &[is_height.clone(), absent])?;
+            ng.assert_equal_to_fixed(layouter, &selects_absent, false)?;
+
+            matched = ng.or(layouter, &[matched, is_height])?;
+
+            // Climb one level (the top height never climbs).
+            if l < SIZE - 1 {
+                let dir = &index_bits[l];
+                let left = ng.select(layouter, dir, &proof.siblings[l], &node)?;
+                let right = ng.select(layouter, dir, &node, &proof.siblings[l])?;
+                node = self.hash_chip.hash(layouter, &[left, right])?;
+            }
+        }
+
+        ng.assert_equal_to_fixed(layouter, &matched, true)
+    }
+
     /// Enforces the [AssignedMmr] invariants over an assigned size and
     /// assigned peaks: the size is linked to its `SIZE`-bit decomposition
     /// (hence range-checked) and the peaks at absent slots are set to zero.
@@ -389,6 +500,7 @@ mod tests {
     enum MmrTests {
         Assign,
         Prefix,
+        Membership,
     }
 
     struct TestCircuit<F, N, H>
@@ -400,6 +512,8 @@ mod tests {
         small: Value<MmrState<F, SIZE>>,
         big: Value<MmrState<F, SIZE>>,
         path: Value<SummitPath<F, SIZE>>,
+        elem: Value<F>,
+        membership: Value<MembershipProof<F, SIZE>>,
         mode: MmrTests,
         _marker: PhantomData<(N, H)>,
     }
@@ -419,6 +533,8 @@ mod tests {
                 small: Value::unknown(),
                 big: Value::unknown(),
                 path: Value::unknown(),
+                elem: Value::unknown(),
+                membership: Value::unknown(),
                 mode: self.mode.clone(),
                 _marker: PhantomData,
             }
@@ -459,6 +575,16 @@ mod tests {
 
                     cost_measure_start(&mut layouter);
                     mmr_gadget.assert_prefix(&mut layouter, &small, &big, &path)?;
+                    cost_measure_end(&mut layouter);
+                }
+                MmrTests::Membership => {
+                    let mmr = mmr_gadget.assign(&mut layouter, self.small)?;
+                    let elem = native_gadget.assign(&mut layouter, self.elem)?;
+                    let proof =
+                        mmr_gadget.assign_membership_proof(&mut layouter, self.membership)?;
+
+                    cost_measure_start(&mut layouter);
+                    mmr_gadget.assert_membership(&mut layouter, &mmr, &elem, &proof)?;
                     cost_measure_end(&mut layouter);
                 }
             }
@@ -578,6 +704,8 @@ mod tests {
                 small: Value::known(small.state()),
                 big: Value::known(big.state()),
                 path: Value::known(path),
+                elem: Value::unknown(),
+                membership: Value::unknown(),
                 mode: MmrTests::Prefix,
                 _marker: PhantomData,
             };
@@ -619,6 +747,8 @@ mod tests {
                 small: Value::known(state),
                 big: Value::unknown(),
                 path: Value::unknown(),
+                elem: Value::unknown(),
+                membership: Value::unknown(),
                 mode: MmrTests::Assign,
                 _marker: PhantomData,
             };
@@ -634,6 +764,68 @@ mod tests {
                     prover.verify().is_err(),
                     "tampered public input ({tampered_entry:?}) accepted"
                 );
+            }
+        }
+    }
+
+    fn test_mmr_membership<F, N, H>(cost_model: bool)
+    where
+        F: CircuitField + ff::FromUniformBytes<64> + Ord,
+        N: NativeInstructions<F> + FromScratch<F>,
+        H: HashInstructions<F, AssignedNative<F>, AssignedNative<F>> + FromScratch<F>,
+    {
+        // 22 = 0b10110: mountains of heights 4, 2 and 1 (the height-0 mountain
+        // is absent).
+        let n = 22u64;
+        let mmr = &all_mmrs::<F, H>(0, n)[n as usize];
+        let leaves: Vec<F> = (0..n).map(F::from).collect();
+        let state = mmr.state();
+
+        // (elem, proof, expect_ok, description).
+        let mut cases: Vec<(F, MembershipProof<F, SIZE>, bool, String)> = vec![
+            (leaves[0], mmr.prove_membership(0), true, "oldest (tallest mountain)".into()),
+            (leaves[7], mmr.prove_membership(7), true, "interior of the tallest".into()),
+            (leaves[16], mmr.prove_membership(16), true, "in a smaller mountain".into()),
+            (leaves[(n - 1) as usize], mmr.prove_membership(n - 1), true, "newest".into()),
+        ];
+
+        // Wrong element against an honest path.
+        cases.push((leaves[0] + F::ONE, mmr.prove_membership(0), false, "wrong element".into()));
+
+        // Tampered sibling.
+        let mut proof = mmr.prove_membership(5);
+        proof.siblings[0] += F::ONE;
+        cases.push((leaves[5], proof, false, "tampered sibling".into()));
+
+        // Flipped direction bit selects the wrong subtree.
+        let mut proof = mmr.prove_membership(5);
+        proof.leaf_index ^= 1;
+        cases.push((leaves[5], proof, false, "flipped direction bit".into()));
+
+        // Height pointing at the absent height-0 mountain.
+        let mut proof = mmr.prove_membership(0);
+        proof.height = 0;
+        cases.push((leaves[0], proof, false, "absent mountain".into()));
+
+        for (elem, proof, expect_ok, description) in cases.into_iter() {
+            let circuit = TestCircuit::<F, N, H> {
+                small: Value::known(state),
+                big: Value::unknown(),
+                path: Value::unknown(),
+                elem: Value::known(elem),
+                membership: Value::known(proof),
+                mode: MmrTests::Membership,
+                _marker: PhantomData,
+            };
+            let prover = MockProver::run(&circuit, vec![vec![], vec![]]).unwrap();
+            if expect_ok {
+                assert!(prover.verify().is_ok(), "membership case {description} rejected");
+            } else {
+                assert!(prover.verify().is_err(), "membership case {description} accepted");
+            }
+
+            if cost_model && description == "oldest (tallest mountain)" {
+                circuit_to_json::<F>("MMR gadget", "Membership", circuit);
             }
         }
     }
@@ -671,5 +863,16 @@ mod tests {
     #[test]
     fn test_mmr_gadget_poseidon() {
         run_poseidon_test::<midnight_curves::Fq>(true);
+    }
+
+    fn run_membership_test<F: PoseidonField + ff::FromUniformBytes<64> + Ord>(cost_model: bool) {
+        test_mmr_membership::<F, NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>, PoseidonChip<F>>(
+            cost_model,
+        )
+    }
+
+    #[test]
+    fn test_mmr_membership_poseidon() {
+        run_membership_test::<midnight_curves::Fq>(true);
     }
 }
