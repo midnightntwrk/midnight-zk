@@ -62,13 +62,21 @@ impl State {
     }
 }
 
+/// In-circuit representation of a verifying key.
+#[derive(Clone, Debug)]
+struct AssignedVk {
+    repr: AssignedNative<F>,
+    k: AssignedNative<F>,
+    omega: AssignedNative<F>,
+}
+
 /// In-circuit counterpart of [`State`] (constant size).
 ///
 /// Contains only the vk from the last claim, the claims hash and the
 /// accumulator, the full list of claims is not represented in-circuit.
 #[derive(Clone, Debug)]
 pub struct AssignedState {
-    last_vk_repr: AssignedNative<F>,
+    last_vk: AssignedVk,
     claims_hash: AssignedNative<F>,
     inner_acc: AssignedAccumulator<S>,
 }
@@ -177,11 +185,34 @@ impl IvcIO for ProofAggregation {
         layouter: &mut impl Layouter<F>,
         value: Value<State>,
     ) -> Result<AssignedState, Error> {
+        // There is no integrity checks performed in the VK (`vk_repr`, `k` and
+        // `omega`), as those are guaranteed to be correct by the hash-chain,
+        // which is checked in the decider. The hash-chain is enforced to be
+        // correctly computed by hashing the previous `claims_hash`
+        // together with the `vk_repr`, `k` and `omega` of the current circuit.
         let last_vk_repr = self.std_lib.assign(
             layouter,
             value
                 .as_ref()
                 .map(|s| s.claims.last().map(|c| c.vk.vk().transcript_repr()).unwrap_or(F::ZERO)),
+        )?;
+        let last_vk_k = self.std_lib.assign(
+            layouter,
+            value.as_ref().map(|s| {
+                s.claims
+                    .last()
+                    .map(|c| F::from(c.vk.vk().get_domain().k() as u64))
+                    .unwrap_or(F::ZERO)
+            }),
+        )?;
+        // Base case (no claims yet): the placeholders below are arbitrary, nothing
+        // consumes them. We use the degenerate domain of size 1, i.e. k = 0 and
+        // omega = 1.
+        let last_vk_omega = self.std_lib.assign(
+            layouter,
+            value.as_ref().map(|s| {
+                s.claims.last().map(|c| c.vk.vk().get_domain().get_omega()).unwrap_or(F::ONE)
+            }),
         )?;
         let claims_hash = self.std_lib.assign(layouter, value.as_ref().map(|s| s.claims_hash))?;
 
@@ -191,8 +222,14 @@ impl IvcIO for ProofAggregation {
             value.as_ref().map(|s| s.inner_acc.clone()),
         )?;
 
+        let last_vk = AssignedVk {
+            repr: last_vk_repr,
+            omega: last_vk_omega,
+            k: last_vk_k,
+        };
+
         Ok(AssignedState {
-            last_vk_repr,
+            last_vk,
             claims_hash,
             inner_acc,
         })
@@ -213,7 +250,9 @@ impl IvcIO for ProofAggregation {
         state: &AssignedState,
     ) -> Result<Vec<AssignedNative<F>>, Error> {
         Ok([
-            self.std_lib.as_public_input(layouter, &state.last_vk_repr)?,
+            self.std_lib.as_public_input(layouter, &state.last_vk.repr)?,
+            self.std_lib.as_public_input(layouter, &state.last_vk.k)?,
+            self.std_lib.as_public_input(layouter, &state.last_vk.omega)?,
             self.std_lib.as_public_input(layouter, &state.claims_hash)?,
             self.std_lib.verifier().as_public_input(layouter, &state.inner_acc)?,
         ]
@@ -221,10 +260,20 @@ impl IvcIO for ProofAggregation {
     }
 
     fn format_public_input(state: &State) -> Vec<F> {
-        let last_vk_repr =
-            state.claims.last().map(|c| c.vk.vk().transcript_repr()).unwrap_or(F::ZERO);
+        // In the base case (no claims yet) there is no last vk, so the values below
+        // are arbitrary placeholders: nothing consumes them, they just need to match
+        // what the base-case circuit assigns. We use the degenerate domain of size 1,
+        // i.e. k = 0 and omega = 1.
+        let last_claim = state.claims.last();
+        let last_vk_repr = last_claim.map(|c| c.vk.vk().transcript_repr()).unwrap_or(F::ZERO);
+        let (last_vk_k, last_vk_omega) = last_claim
+            .map(|c| {
+                let d = c.vk.vk().get_domain();
+                (F::from(d.k() as u64), d.get_omega())
+            })
+            .unwrap_or((F::ZERO, F::ONE));
         [
-            vec![last_vk_repr],
+            vec![last_vk_repr, last_vk_k, last_vk_omega],
             vec![state.claims_hash],
             AssignedAccumulator::<S>::as_public_input(&state.inner_acc),
         ]
@@ -314,7 +363,6 @@ impl IvcTransition for ProofAggregation {
         let (assigned_vk, vk_hash, fixed_bases_map) = assign_as_public_inputs_and_hash_vk(
             layouter,
             &self.std_lib,
-            &self.inner_ctx.domain,
             &self.inner_ctx.cs,
             witness.as_ref().map(|w| &w.claim.vk),
         )?;
@@ -373,7 +421,11 @@ impl IvcTransition for ProofAggregation {
             .poseidon(layouter, &[vk_hash, statement, state.claims_hash.clone()])?;
 
         Ok(AssignedState {
-            last_vk_repr: assigned_vk.transcript_repr().clone(),
+            last_vk: AssignedVk {
+                repr: assigned_vk.transcript_repr().clone(),
+                k: assigned_vk.k().clone(),
+                omega: assigned_vk.omega().clone(),
+            },
             claims_hash,
             inner_acc,
         })

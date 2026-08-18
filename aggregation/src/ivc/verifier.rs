@@ -47,8 +47,18 @@ impl<T: Ivc> IvcVerifier<T> {
     /// under a different (potentially malicious) circuit could pass
     /// verification.
     pub fn verify(&self, instance: &IvcInstance<T>, proof: &[u8]) -> Result<(), IvcError> {
-        // Reject proofs whose instance claims a different verifying key.
-        if instance.vk_repr != self.vk.vk().transcript_repr() {
+        // `instance.vk_repr`, `instance.domain_k` and `instance.domain_omega`
+        // are public inputs chosen by the prover: the circuit uses them to
+        // verify the previous step, but nothing forces them to describe the
+        // key this verifier was set up with. Hence we compare all three against
+        // `self.vk` and reject any mismatch; otherwise a proof produced under
+        // a different (possibly malicious) circuit or domain would verify
+        // here.
+        let domain = self.vk.vk().get_domain();
+        if instance.vk_repr != self.vk.vk().transcript_repr()
+            || instance.domain_k != F::from(domain.k() as u64)
+            || instance.domain_omega != domain.get_omega()
+        {
             return Err(IvcError::VkMismatch);
         }
 

@@ -39,6 +39,8 @@ use super::{Ivc, IvcError, F, S};
 #[derive(Clone, Debug)]
 pub struct IvcInstance<T: Ivc> {
     pub(crate) vk_repr: F,
+    pub(crate) domain_k: F,
+    pub(crate) domain_omega: F,
     pub(crate) state: T::State,
     pub(crate) acc: Accumulator<S>,
 }
@@ -127,7 +129,7 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
 
     fn format_instance(instance: &Self::Instance) -> Result<Vec<F>, IvcError> {
         Ok([
-            vec![instance.vk_repr],
+            vec![instance.vk_repr, instance.domain_k, instance.domain_omega],
             T::format_public_input(&instance.state),
             AssignedAccumulator::<S>::as_public_input(&instance.acc),
         ]
@@ -147,8 +149,8 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
         let assigned_self_vk: AssignedVk<S, InCircuitKZG<S>> = verifier_gadget
             .assign_vk_as_public_input(
                 layouter,
-                &self.domain,
                 &self.cs,
+                Value::known(self.domain.clone()),
                 instance.as_ref().map(|x| x.vk_repr),
             )?;
 
