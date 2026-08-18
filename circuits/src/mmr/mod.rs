@@ -50,10 +50,15 @@
 //!
 //! An MMR is succinctly represented by its [MmrState](cpu::MmrState): the
 //! number of appended elements together with the array of mountain roots
-//! (the *peaks*). This module provides, both off-circuit and in-circuit,
-//! verification that the elements of an MMR are a prefix of the elements of
-//! another MMR, given a witness of at most one node per height (a
-//! [SummitPath](cpu::SummitPath)).
+//! (the *peaks*). This module provides, both off-circuit and in-circuit:
+//!
+//! - *prefix* verification: that the elements of an MMR are a prefix of the
+//!   elements of another MMR, given a witness of at most one node per height
+//!   (a [SummitPath](cpu::SummitPath));
+//! - *membership* verification: that a given element is one of the appended
+//!   elements, given a Merkle authentication path to one of the peaks (a
+//!   [MembershipProof](cpu::MembershipProof)). The element's position is only a
+//!   hint, not part of the statement.
 
 pub mod cpu;
 pub mod mmr_gadget;
