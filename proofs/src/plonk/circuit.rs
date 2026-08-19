@@ -2198,6 +2198,28 @@ impl<F: Field> ConstraintSystem<F> {
         *[degree_without_lookup, degree].iter().max().unwrap()
     }
 
+    /// Panics if some advice column is never queried, at any rotation.
+    ///
+    /// An unqueried column is committed to but absent from the opening
+    /// argument, so it contributes nothing to the statement being proven. Both
+    /// `enable_equality` and every use of a column in an expression register a
+    /// query, so this can only happen to a column no constraint touches.
+    pub fn assert_all_columns_queried(&self) {
+        let unqueried: Vec<usize> = self
+            .num_advice_queries
+            .iter()
+            .enumerate()
+            .filter(|&(_, &nb)| nb == 0)
+            .map(|(i, _)| i)
+            .collect();
+        assert!(
+            unqueried.is_empty(),
+            "advice columns {unqueried:?} are never queried, your circuit is likely doing \
+             something wrong: they are committed to but appear in no gate, lookup or copy \
+             constraint, so nothing constrains them."
+        );
+    }
+
     /// Compute the number of blinding factors necessary to perfectly blind
     /// each of the prover's witness polynomials.
     pub fn blinding_factors(&self) -> usize {

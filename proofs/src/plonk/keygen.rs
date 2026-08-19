@@ -40,6 +40,12 @@ where
     #[cfg(not(feature = "circuit-params"))]
     let config = ConcreteCircuit::configure(&mut cs);
 
+    // Enforces that no orphan advice column remains. Otherwise fflonk's prover
+    // bundles from the queries and its verifier from the commitment, the two
+    // disagree in the multi-open argument, and the verifier typically panics on a
+    // bundle slot it has no evaluation for.
+    cs.assert_all_columns_queried();
+
     let degree = cs.degree();
 
     let domain = EvaluationDomain::new(degree as u32, k);
