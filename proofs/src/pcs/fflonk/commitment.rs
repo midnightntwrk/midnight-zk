@@ -11,13 +11,20 @@
 //!   collapsed to one group element only when the guard verifies. It is never
 //!   serialized or hashed.
 
-use std::ops::{Add, Mul};
+use std::{
+    io::{self, Read},
+    ops::{Add, Mul},
+};
 
 use ff::Field;
 use group::Group;
 use midnight_curves::pairing::MultiMillerLoop;
 
-use crate::poly::query::PolynomialLabel;
+use crate::{
+    poly::query::PolynomialLabel,
+    transcript::{Hashable, TranscriptHash},
+    utils::helpers::{ProcessedSerdeObject, SerdeFormat},
+};
 
 /// A fflonk commitment: the output of a single `commit` call.
 #[derive(Clone, Debug)]
@@ -58,6 +65,18 @@ impl<E: MultiMillerLoop> FflonkCommitment<E> {
             },
             Self::Linear(..) => None,
         }
+    }
+
+    /// Bundle count as the `u8` written on the wire, so a commitment may hold
+    /// at most 255 bundles.
+    fn count_u8(len: usize) -> u8 {
+        u8::try_from(len).expect("FflonkCommitment holds more than 255 bundles.")
+    }
+
+    /// Polynomial count of a single bundle as the `u8` written on the wire.
+    /// Bounded by `t_max = 1 << FFLONK_T_MAX_LOG`, well under 255.
+    fn size_u8(size: usize) -> u8 {
+        u8::try_from(size).expect("fflonk bundle packs more than 255 polynomials.")
     }
 
     /// Decomposes into `(points, scalars, labels)` for `Add`/`Mul`. A single
@@ -105,6 +124,131 @@ impl<E: MultiMillerLoop> FflonkCommitment<E> {
     }
 }
 
+impl<E: MultiMillerLoop> FflonkCommitment<E>
+where
+    E::G1: Default + ProcessedSerdeObject,
+{
+    /// Parses the wire format: a bundle count, then per bundle the number of
+    /// polynomials it packs and its point. Labels are not on the wire, so each
+    /// bundle comes back with that count alone; see the wire-format doc on the
+    /// [`ProcessedSerdeObject`] impl.
+    fn read_wire<R: io::Read>(
+        reader: &mut R,
+        format: SerdeFormat,
+    ) -> io::Result<Vec<(E::G1, usize)>> {
+        let mut byte = [0u8; 1];
+        reader.read_exact(&mut byte)?;
+        let nb_bundles = byte[0] as usize;
+        (0..nb_bundles)
+            .map(|_| {
+                reader.read_exact(&mut byte)?;
+                let size = byte[0] as usize;
+                Ok((E::G1::read(reader, format)?, size))
+            })
+            .collect()
+    }
+
+    /// Reads a commitment and tags each bundle with its share of `labels`, in a
+    /// single pass. The chunk boundaries come from the per-bundle sizes on the
+    /// wire, since the prover's effective bundling factor depends on the SRS,
+    /// which the verifier cannot inspect. The ordering within those chunks is
+    /// `t_max`-independent and re-derived here through
+    /// [`canonical_order`](super::partition::canonical_order), so both sides
+    /// agree on the slot assignment whatever order `labels` are supplied in.
+    ///
+    /// A commitment whose sizes do not add up to `labels.len()` is rejected as
+    /// invalid data: the verifier expects a different number of polynomials
+    /// than the prover committed to.
+    pub(super) fn read_labeled<R: io::Read>(
+        reader: &mut R,
+        format: SerdeFormat,
+        labels: &[PolynomialLabel],
+    ) -> io::Result<Self> {
+        let ordered: Vec<PolynomialLabel> = super::partition::canonical_order(labels)
+            .into_iter()
+            .map(|i| labels[i].clone())
+            .collect();
+        let mut rest = ordered.as_slice();
+
+        let pairs = Self::read_wire(reader, format)?
+            .into_iter()
+            .map(|(point, size)| {
+                if size > rest.len() {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!(
+                            "FflonkCommitment: bundle packs {size} polynomials but only {} labels \
+                             are left",
+                            rest.len()
+                        ),
+                    ));
+                }
+                let (chunk, tail) = rest.split_at(size);
+                rest = tail;
+                Ok((point, chunk.to_vec()))
+            })
+            .collect::<io::Result<Vec<_>>>()?;
+
+        if !rest.is_empty() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "FflonkCommitment: {} labels were supplied but the commitment carries fewer \
+                     polynomials",
+                    labels.len()
+                ),
+            ));
+        }
+        Ok(Self::Regular(pairs))
+    }
+
+    /// Attaches `labels` to a commitment read off a transcript, whose bundles
+    /// carry `NoLabel` placeholders because `Hashable::read` takes no labels.
+    /// The keys path parses and tags in one pass instead, see
+    /// [`read_labeled`](Self::read_labeled).
+    ///
+    /// The chunk boundaries come from the per-bundle sizes carried on the wire:
+    /// the prover's effective bundling factor depends on the SRS, which the
+    /// verifier cannot inspect. The ordering within those chunks is
+    /// `t_max`-independent and re-derived here through
+    /// [`canonical_order`](super::partition::canonical_order), so both sides
+    /// agree on the slot assignment whatever order `labels` are supplied in.
+    ///
+    /// # Panics
+    /// If `labels.len()` differs from the polynomial count the commitment
+    /// carries, i.e. the verifier expects a different number of polynomials
+    /// than the prover committed to.
+    pub(super) fn with_labels(self, labels: &[PolynomialLabel]) -> Self {
+        match self {
+            Self::Regular(pairs) => {
+                let total: usize = pairs.iter().map(|(_, l)| l.len()).sum();
+                assert_eq!(
+                    total,
+                    labels.len(),
+                    "FflonkCommitment: commitment carries {total} polynomials but {} labels were \
+                     supplied",
+                    labels.len(),
+                );
+                let ordered: Vec<PolynomialLabel> = super::partition::canonical_order(labels)
+                    .into_iter()
+                    .map(|i| labels[i].clone())
+                    .collect();
+                let mut rest = ordered.as_slice();
+                let new_pairs = pairs
+                    .into_iter()
+                    .map(|(p, placeholders)| {
+                        let (chunk, tail) = rest.split_at(placeholders.len());
+                        rest = tail;
+                        (p, chunk.to_vec())
+                    })
+                    .collect();
+                Self::Regular(new_pairs)
+            }
+            Self::Linear(..) => panic!("FflonkCommitment::Linear is never deserialized"),
+        }
+    }
+}
+
 // Manual `PartialEq` (deriving would demand `E: PartialEq`; only
 // `E::G1`/`E::Fr` are ever compared). Equality is on the committed points alone
 // (plus a `Linear`'s scalars): a commitment's identity is its curve points, and
@@ -131,6 +275,79 @@ where
 {
     fn default() -> Self {
         Self::Regular(vec![(E::G1::default(), vec![PolynomialLabel::NoLabel])])
+    }
+}
+
+/// Wire format: `u8 num_bundles`, then per bundle a `u8` count of the
+/// polynomials it packs followed by its G1 point. The counts make the grouping
+/// self-describing, which the verifier needs: the prover's effective bundling
+/// factor depends on the SRS and is not recoverable verifier-side. Labels
+/// themselves are never encoded, so `read` is unimplemented; commitments are
+/// read through `read_commitment` (from a transcript) or
+/// `deserialize_commitment` (from keys), whose `labels` argument tags each
+/// polynomial.
+impl<E: MultiMillerLoop> ProcessedSerdeObject for FflonkCommitment<E>
+where
+    E::G1: Default + ProcessedSerdeObject,
+{
+    fn read<R: io::Read>(_reader: &mut R, _format: SerdeFormat) -> io::Result<Self> {
+        unimplemented!(
+            "use `PolynomialCommitmentScheme::deserialize_commitment` to read a labeled commitment"
+        )
+    }
+
+    fn write<W: io::Write>(&self, writer: &mut W, format: SerdeFormat) -> io::Result<()> {
+        match self {
+            Self::Regular(pairs) => {
+                writer.write_all(&[Self::count_u8(pairs.len())])?;
+                for (p, labels) in pairs {
+                    writer.write_all(&[Self::size_u8(labels.len())])?;
+                    p.write(writer, format)?;
+                }
+                Ok(())
+            }
+            Self::Linear(..) => panic!("FflonkCommitment::Linear cannot be serialized"),
+        }
+    }
+
+    fn byte_length(&self, format: SerdeFormat) -> usize {
+        match self {
+            Self::Regular(pairs) => {
+                1 + pairs.iter().map(|(p, _)| 1 + p.byte_length(format)).sum::<usize>()
+            }
+            Self::Linear(..) => panic!("FflonkCommitment::Linear has no fixed byte length"),
+        }
+    }
+}
+
+impl<H: TranscriptHash, E: MultiMillerLoop> Hashable<H> for FflonkCommitment<E>
+where
+    E::G1: Hashable<H> + Default + ProcessedSerdeObject,
+{
+    fn to_input(&self) -> H::Input {
+        match self {
+            Self::Regular(pairs) => pairs.iter().flat_map(|(p, _)| p.to_input()).collect(),
+            Self::Linear(..) => panic!("FflonkCommitment::Linear cannot be hashed"),
+        }
+    }
+
+    // `to_bytes` / `read` share the `ProcessedSerdeObject` wire format:
+    // `SerdeFormat::Processed` is the compressed `GroupEncoding` the transcript
+    // uses, so the framing and per-point bytes are identical. Delegate rather
+    // than duplicate. (`to_input` cannot: it yields `H::Input`, not bytes.)
+    fn to_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        <Self as ProcessedSerdeObject>::write(self, &mut bytes, SerdeFormat::Processed)
+            .expect("writing to a Vec is infallible");
+        bytes
+    }
+
+    fn read(buffer: &mut impl Read) -> io::Result<Self> {
+        let pairs = Self::read_wire(buffer, SerdeFormat::Processed)?
+            .into_iter()
+            .map(|(point, size)| (point, vec![PolynomialLabel::NoLabel; size]))
+            .collect();
+        Ok(Self::Regular(pairs))
     }
 }
 
