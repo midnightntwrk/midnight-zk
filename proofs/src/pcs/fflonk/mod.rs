@@ -34,7 +34,7 @@
 //! coefficient form; `commit_many` converts otherwise. Native support for the
 //! other bases will be implemented in the future.
 
-use std::{fmt::Debug, hash::Hash, marker::PhantomData};
+use std::{borrow::Borrow, collections::BTreeMap, fmt::Debug, hash::Hash, marker::PhantomData};
 
 use ff::{Field, PrimeField, WithSmallOrderMulGroup};
 use midnight_curves::pairing::{Engine, MultiMillerLoop};
@@ -192,6 +192,68 @@ where
         1 + n * (single - 1)
     }
 
+    fn commit_many<B: PolynomialRepresentation, P: Borrow<Polynomial<E::Fr, B>> + Sync>(
+        params: &Self::Parameters,
+        polynomials: &BTreeMap<PolynomialLabel, P>,
+    ) -> Self::Commitment {
+        assert!(!polynomials.is_empty(), "cannot commit to zero polynomials");
+
+        // The map fixes the bundling order to the labels' `Ord` order, which is the
+        // order `read_commitment` tags the bundles it reads in.
+        let labels: Vec<PolynomialLabel> = polynomials.keys().cloned().collect();
+        let polynomials: Vec<&Polynomial<E::Fr, B>> =
+            polynomials.values().map(Borrow::borrow).collect();
+
+        // All polys of one call must share their length, so that the bundle's `n`
+        // is well-defined and `combine` produces a length-`t·n` g.
+        let n = polynomials[0].values.len();
+        assert!(
+            polynomials.iter().all(|p| p.values.len() == n),
+            "fflonk commit: all polys in one call must have equal length"
+        );
+
+        // Shrink the bundling exponent to whatever the loaded SRS can afford for
+        // this `n`. `multi_open` writes the same exponent to the transcript, and
+        // the per-bundle sizes travel with the commitment, so the verifier
+        // reconstructs the same partition.
+        let t_max = 1usize << effective_t_max_log(params, n);
+        let bundle_indices = partition::partition(t_max, &labels);
+
+        let bases_b = params.bases::<B>();
+        let mono_bases = &params.g;
+
+        let bundles: Vec<(E::G1, Vec<PolynomialLabel>)> = bundle_indices
+            .into_par_iter()
+            .map(|indices| {
+                let t = partition::bundle_t(indices.len(), t_max);
+                if t == 1 {
+                    // Singleton: MSM over the polynomial's own basis, as in KZG.
+                    let idx = indices[0];
+                    let p = polynomials[idx];
+                    let size = p.values.len();
+                    assert!(bases_b.len() >= size);
+                    let g1 = msm_specific::<E::G1Affine>(&p.values, &bases_b[..size]);
+                    (g1, vec![labels[idx].clone()])
+                } else {
+                    // Multi-poly bundle: convert to coefficient form (if needed), combine
+                    // into `g` over `t` slots (padding with null polys), and MSM over the
+                    // monomial bases.
+                    let coeff_values_per_slot =
+                        to_coeff_slots::<E, B>(&polynomials, &indices, n.trailing_zeros());
+                    let slot_refs: Vec<&[E::Fr]> =
+                        coeff_values_per_slot.iter().map(Vec::as_slice).collect();
+                    let g_values = combine(&slot_refs, t);
+                    let g1 = msm_specific::<E::G1Affine>(&g_values, &mono_bases[..t * n]);
+                    let bundle_labels: Vec<PolynomialLabel> =
+                        indices.iter().map(|&i| labels[i].clone()).collect();
+                    (g1, bundle_labels)
+                }
+            })
+            .collect();
+
+        FflonkCommitment::Regular(bundles)
+    }
+
     fn read_commitment<T: Transcript>(
         transcript: &mut T,
         labels: &[PolynomialLabel],
@@ -223,4 +285,51 @@ where
         // All bundles of one commitment go out as a single transcript object.
         transcript.write(commitment)
     }
+}
+
+/// The polynomials of a bundle, in coefficient form, in bundle-slot order.
+/// Lagrange-family bases are reinterpreted in their concrete basis, folded back
+/// to `LagrangeCoeff` and interpolated; only that fold-back differs per basis.
+fn to_coeff_slots<E: MultiMillerLoop, B: PolynomialRepresentation>(
+    polynomials: &[&Polynomial<E::Fr, B>],
+    indices: &[usize],
+    log_n: u32,
+) -> Vec<Vec<E::Fr>>
+where
+    E::Fr: WithSmallOrderMulGroup<3>,
+{
+    if let PolynomialBasis::Coeff = B::BASIS {
+        return indices.iter().map(|&i| polynomials[i].values.clone()).collect();
+    }
+
+    let domain = EvaluationDomain::<E::Fr>::new(1, log_n);
+    let to_lagrange = |values: Vec<E::Fr>| -> Polynomial<E::Fr, LagrangeCoeff> {
+        match B::BASIS {
+            PolynomialBasis::Lagrange => Polynomial {
+                values,
+                _marker: PhantomData,
+            },
+            PolynomialBasis::LagrangeDelta => Polynomial::<E::Fr, LagrangeDeltaCoeff> {
+                values,
+                _marker: PhantomData,
+            }
+            .into_lagrange(),
+            PolynomialBasis::LagrangeDoubleDelta => Polynomial::<E::Fr, LagrangeDoubleDeltaCoeff> {
+                values,
+                _marker: PhantomData,
+            }
+            .into_lagrange(),
+            other => panic!(
+                "fflonk t>1 bundling not supported for basis {other:?} (Coeff, Lagrange, \
+                 LagrangeDelta, LagrangeDoubleDelta only)"
+            ),
+        }
+    };
+    indices
+        .iter()
+        .map(|&i| {
+            let lagrange = to_lagrange(polynomials[i].values.clone());
+            domain.lagrange_to_coeff(lagrange).values
+        })
+        .collect()
 }

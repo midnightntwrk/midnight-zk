@@ -348,12 +348,9 @@ impl<F: Field> Polynomial<F, LagrangeCoeff> {
     }
 }
 
-#[cfg(test)]
 impl<F: Field> Polynomial<F, LagrangeDeltaCoeff> {
     /// Inverse of `to_delta`: prefix-sum the deltas back to Lagrange form:
     /// a_0 = b_0; a_i = a_{i-1} + b_i, in place.
-    ///
-    /// Test-only: used to assert round-trip identity of the delta transform.
     pub(crate) fn into_lagrange(mut self) -> Polynomial<F, LagrangeCoeff> {
         for i in 1..self.values.len() {
             let prev = self.values[i - 1];
@@ -372,6 +369,7 @@ impl<F: Field> Polynomial<F, LagrangeDeltaCoeff> {
     /// Test-only: used to assert the fused
     /// [`Polynomial::<_, LagrangeCoeff>::to_double_delta`] matches the
     /// two-step delta-of-delta path.
+    #[cfg(test)]
     pub(crate) fn into_double_delta(mut self) -> Polynomial<F, LagrangeDoubleDeltaCoeff> {
         for i in (1..self.values.len()).rev() {
             let prev = self.values[i - 1];
@@ -384,7 +382,6 @@ impl<F: Field> Polynomial<F, LagrangeDeltaCoeff> {
     }
 }
 
-#[cfg(test)]
 impl<F: Field> Polynomial<F, LagrangeDoubleDeltaCoeff> {
     /// Inverse of [`Polynomial::<_, LagrangeDeltaCoeff>::into_double_delta`]:
     /// prefix-sum the double-deltas back to delta form,
@@ -392,6 +389,7 @@ impl<F: Field> Polynomial<F, LagrangeDoubleDeltaCoeff> {
     ///
     /// Test-only: used to assert round-trip identity of the stepwise
     /// double-delta path.
+    #[cfg(test)]
     pub(crate) fn into_lagrange_delta(mut self) -> Polynomial<F, LagrangeDeltaCoeff> {
         for i in 1..self.values.len() {
             let prev = self.values[i - 1];
@@ -408,9 +406,6 @@ impl<F: Field> Polynomial<F, LagrangeDoubleDeltaCoeff> {
     /// forward sweep using two running accumulators (the partial sums for
     /// `b` and for `a`). Two field additions per element, single memory
     /// pass, no allocation.
-    ///
-    /// Test-only: used to assert round-trip identity of the fused
-    /// double-delta path.
     pub(crate) fn into_lagrange(mut self) -> Polynomial<F, LagrangeCoeff> {
         let mut b_running = F::ZERO;
         let mut a_running = F::ZERO;
