@@ -86,6 +86,9 @@ where
     // Sample gamma challenge
     let gamma: F = transcript.squeeze_challenge();
 
+    // Sample the trash challenge after the advices have been committed to
+    let trash_challenge: F = transcript.squeeze_challenge();
+
     let permutations_committed = vk.cs.permutation.read_product_commitments(vk, transcript)?;
 
     let lookups_committed: Vec<_> = lookup_multiplicities
@@ -94,8 +97,6 @@ where
         .enumerate()
         .map(|(i, (m, batch))| m.read_commitment(i, batch.num_chunks(), transcript))
         .collect::<Result<Vec<_>, _>>()?;
-
-    let trash_challenge: F = transcript.squeeze_challenge();
 
     let trashcans_committed: Vec<_> = vk
         .cs

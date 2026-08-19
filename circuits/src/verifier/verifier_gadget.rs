@@ -367,6 +367,8 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         let beta = transcript.squeeze_challenge(layouter)?;
         let gamma = transcript.squeeze_challenge(layouter)?;
 
+        let trash_challenge = transcript.squeeze_challenge(layouter)?;
+
         let permutation_committed =
             // Hash each permutation product commitment
             permutation::read_product_commitments(layouter, &mut transcript, cs)?;
@@ -381,8 +383,6 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                 m.read_commitment(i, nb_flat, layouter, &mut transcript)
             })
             .collect::<Result<Vec<_>, _>>()?;
-
-        let trash_challenge = transcript.squeeze_challenge(layouter)?;
 
         let trashcans_committed = cs
             .trashcans()

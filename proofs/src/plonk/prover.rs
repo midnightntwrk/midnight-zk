@@ -162,6 +162,9 @@ where
     // Sample gamma challenge
     let gamma: F = transcript.squeeze_challenge();
 
+    // Sample the trash challenge after the advices have been committed to
+    let trash_challenge: F = transcript.squeeze_challenge();
+
     let blinding_factors = pk.vk.cs.blinding_factors();
     let chunk_len = pk.vk.cs_degree - 2;
     let num_perm_sets = pk.vk.cs.permutation.columns.chunks(chunk_len).len();
@@ -242,9 +245,6 @@ where
             }
         })
         .collect();
-
-    // Trash argument
-    let trash_challenge: F = transcript.squeeze_challenge();
 
     let trashcans: Vec<trash::prover::Committed<F>> = pk
         .vk
