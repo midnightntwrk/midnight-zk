@@ -286,6 +286,143 @@ where
         // All bundles of one commitment go out as a single transcript object.
         transcript.write(commitment)
     }
+
+    fn multi_open<T: Transcript>(
+        params: &Self::Parameters,
+        queries: &[ProverQuery<E::Fr>],
+        transcript: &mut T,
+    ) -> Result<(), Error>
+    where
+        E::Fr: Sampleable<T::Hash> + Hash + Ord + Hashable<T::Hash>,
+        FflonkCommitment<E>: Hashable<T::Hash>,
+    {
+        // === Bundle pre-expansion (fflonk-specific) ===
+        //
+        // Replace the queries targeting a `t > 1` bundle with synthetic queries on
+        // the bundle's combined polynomial `g`, at the `t`-th roots of each distinct
+        // logical opening point.
+
+        // Distinct query labels, in first-appearance order, and the polynomial each
+        // one identifies.
+        let mut poly_lookup: FxHashMap<PolynomialLabel, &Polynomial<E::Fr, Coeff>> =
+            FxHashMap::default();
+        let mut all_labels: Vec<PolynomialLabel> = Vec::new();
+        for q in queries.iter() {
+            if poly_lookup.insert(q.label.clone(), q.poly).is_none() {
+                all_labels.push(q.label.clone());
+            }
+        }
+
+        // Bundling ceiling, mirroring the one `commit_many` derived from the SRS.
+        let t_max_log = all_labels
+            .iter()
+            .find(|l| partition::poly_is_combinable(l))
+            .map(|l| poly_lookup[l].values.len())
+            .map_or(0, |n| effective_t_max_log(params, n));
+        transcript
+            .write(&E::Fr::from(t_max_log as u64))
+            .map_err(|_| Error::OpeningError)?;
+        let t_max = 1usize << t_max_log;
+
+        // Theoretically unreachable, but the code below would panic on it.
+        if all_labels.is_empty() {
+            return Ok(());
+        }
+        let bundle_indices = partition::partition(t_max, &all_labels);
+
+        // Materialise `g` for each `t > 1` bundle, indexed by bundle position.
+        let g_polys: Vec<Option<Polynomial<E::Fr, Coeff>>> = bundle_indices
+            .iter()
+            .map(|indices| {
+                let t = partition::bundle_t(indices.len(), t_max);
+                if t <= 1 {
+                    return None;
+                }
+                let n_bundle = poly_lookup[&all_labels[indices[0]]].values.len();
+                assert!(
+                    indices.iter().all(|&i| poly_lookup[&all_labels[i]].values.len() == n_bundle),
+                    "fflonk multi_open: polys within a `t > 1` bundle must have equal length"
+                );
+                let slot_refs: Vec<&[E::Fr]> = indices
+                    .iter()
+                    .map(|&i| poly_lookup[&all_labels[i]].values.as_slice())
+                    .collect();
+                Some(Polynomial {
+                    values: combine(&slot_refs, t),
+                    _marker: PhantomData,
+                })
+            })
+            .collect();
+
+        // Per-bundle preparation: union of logical points, the (slot, point) pairs to
+        // over-open, and the synthetic label.
+        let multi_pre = bundle_expansion::build_prover_multi_pre::<E>(
+            &bundle_indices,
+            &all_labels,
+            t_max,
+            queries,
+        );
+
+        // Over-opening writes: a `t > 1` bundle needs every slot opened at every
+        // point of the bundle's logical union.
+        for pre in &multi_pre {
+            for &(slot, logical) in &pre.missing {
+                let poly = poly_lookup[&all_labels[bundle_indices[pre.bundle_idx][slot]]];
+                let eval = eval_polynomial(&poly[..], logical);
+                transcript.write(&eval).map_err(|_| Error::OpeningError)?;
+            }
+        }
+
+        // Queries on singleton bundles are opened as they are.
+        let bundled: FxHashSet<PolynomialLabel> = bundle_indices
+            .iter()
+            .filter(|indices| indices.len() > 1)
+            .flat_map(|indices| indices.iter().map(|&i| all_labels[i].clone()))
+            .collect();
+        // Only extended under `fewer-point-sets`.
+        #[allow(unused_mut)]
+        let mut singleton_queries: Vec<ProverQuery<E::Fr>> =
+            queries.iter().filter(|q| !bundled.contains(&q.label)).cloned().collect();
+
+        // `fewer-point-sets` applies to the singleton slice only: the bundled
+        // queries have been replaced by synthetic ones on `g`, whose point sets are
+        // the `t`-th roots.
+        #[cfg(feature = "fewer-point-sets")]
+        {
+            let pairs: Vec<(PolynomialLabel, E::Fr)> =
+                singleton_queries.iter().map(|q| (q.label.clone(), q.point)).collect();
+            for (idx, point) in compute_dummy_queries(&pairs) {
+                let poly = singleton_queries[idx].poly;
+                let label = singleton_queries[idx].label.clone();
+                transcript
+                    .write(&eval_polynomial(&poly[..], point))
+                    .map_err(|_| Error::OpeningError)?;
+                singleton_queries.push(ProverQuery::new(point, poly, label));
+            }
+        }
+
+        // Bundle-synth slice: `t` queries on `g` at the t-th roots of each logical
+        // point of the union (uniform across slots after over-opening). The
+        // `t_th_root(logical, t)` cache is shared across bundles, which typically
+        // open at the same logical points (ζ, ζ·ω, ...).
+        let mut t_th_root_cache: FxHashMap<(E::Fr, usize), E::Fr> = FxHashMap::default();
+        let mut expanded_queries = singleton_queries;
+        for pre in &multi_pre {
+            let g_poly =
+                g_polys[pre.bundle_idx].as_ref().expect("g_poly must be Some for a t>1 bundle");
+            let omega_t = primitive_root_of_unity::<E::Fr>(pre.t);
+            for &logical in &pre.union_logicals {
+                let z = *t_th_root_cache
+                    .entry((logical, pre.t))
+                    .or_insert_with(|| t_th_root(logical, pre.t));
+                for r in t_th_roots(z, omega_t, pre.t) {
+                    expanded_queries.push(ProverQuery::new(r, g_poly, pre.synth_label.clone()));
+                }
+            }
+        }
+
+        multi_open_core::<E::Fr, Self, T>(params, &expanded_queries, transcript)
+    }
 }
 
 /// The polynomials of a bundle, in coefficient form, in bundle-slot order.
