@@ -44,6 +44,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 pub mod commitment;
 
+mod bundle_expansion;
 mod math;
 mod partition;
 
