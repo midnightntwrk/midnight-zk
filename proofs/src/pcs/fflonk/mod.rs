@@ -423,6 +423,103 @@ where
 
         multi_open_core::<E::Fr, Self, T>(params, &expanded_queries, transcript)
     }
+
+    fn multi_prepare<'com, T: Transcript>(
+        queries: &[VerifierQuery<'com, E::Fr, FflonkScheme<E>>],
+        transcript: &mut T,
+    ) -> Result<FflonkVerificationGuard<E>, Error>
+    where
+        E::Fr: Sampleable<T::Hash> + Ord + Hash + Hashable<T::Hash>,
+        E::G1: CurveExt<ScalarExt = E::Fr>,
+        FflonkCommitment<E>: Hashable<T::Hash> + 'com,
+    {
+        // The prover's bundling ceiling, sent as a field element. Recover the
+        // integer by matching against the field encoding of each value in the valid
+        // band `[0, FFLONK_T_MAX_LOG]`. The SRS-room and 2-adicity caps are not
+        // re-enforced here: an out-of-band claim just yields a partition that
+        // mismatches the committed one, which the pairing check rejects.
+        let claimed: E::Fr = transcript.read().map_err(|_| Error::SamplingError)?;
+        let t_max_log = (0..=FFLONK_T_MAX_LOG)
+            .find(|&i| claimed == E::Fr::from(i as u64))
+            .ok_or(Error::OpeningError)?;
+        let t_max = 1usize << t_max_log;
+
+        // Bind the bundle sizes read off the wire to the transcript, see
+        // `check_bundle_layout`. Commitments are deduplicated by address, since the
+        // same one backs one query per polynomial it holds.
+        let mut checked: Vec<*const FflonkCommitment<E>> = Vec::new();
+        for q in queries.iter() {
+            if let FflonkCommitment::Regular(pairs) = q.commitment {
+                let addr = q.commitment as *const _;
+                if !checked.contains(&addr) {
+                    bundle_expansion::check_bundle_layout::<E>(pairs, t_max)?;
+                    checked.push(addr);
+                }
+            }
+        }
+
+        // === Bundle pre-expansion (fflonk-specific) ===
+        //
+        // Singletons and `Linear` commitments pass through with their own (label,
+        // point, eval) triple. Queries on a `t > 1` bundle are gathered per logical
+        // point and expanded into synthetic triples on the bundle's `g`, whose
+        // evaluations at the `t`-th roots are reconstructed through Lemma 5.1.
+
+        // `singleton_triples` is only extended under `fewer-point-sets`.
+        #[allow(unused_mut)]
+        let (mut multi_bundles_sorted, mut label_to_msm, mut singleton_triples) =
+            bundle_expansion::classify_verifier_queries::<E>(queries, t_max);
+
+        // Over-opening reads, paired with the writes in `multi_open`.
+        for (_synth, acc) in multi_bundles_sorted.iter_mut() {
+            for (pair_idx, point) in bundle_expansion::missing_openings(&acc.pairs) {
+                let slot = acc.pairs[pair_idx].0;
+                let eval: E::Fr = transcript.read().map_err(|_| Error::SamplingError)?;
+                acc.evals.insert((slot, point), eval);
+            }
+        }
+
+        #[cfg(feature = "fewer-point-sets")]
+        {
+            let pairs: Vec<(PolynomialLabel, E::Fr)> = singleton_triples
+                .iter()
+                .map(|(label, point, _)| (label.clone(), *point))
+                .collect();
+            for (idx, point) in compute_dummy_queries(&pairs) {
+                let label = singleton_triples[idx].0.clone();
+                let eval: E::Fr = transcript.read().map_err(|_| Error::SamplingError)?;
+                // `label_to_msm` already maps `label`, so no new entry is needed.
+                singleton_triples.push((label, point, eval));
+            }
+        }
+
+        let mut triples = singleton_triples;
+        let mut t_th_root_cache: FxHashMap<(E::Fr, usize), E::Fr> = FxHashMap::default();
+        for (synth_label, acc) in multi_bundles_sorted.into_iter() {
+            triples.extend(bundle_expansion::synth_triples_for_bundle::<E>(
+                &synth_label,
+                &acc,
+                &mut t_th_root_cache,
+            ));
+            let mut msm = MSMKZG::init();
+            msm.append_term(E::Fr::ONE, acc.bundle_g1, synth_label.clone());
+            label_to_msm.insert(synth_label, msm);
+        }
+
+        let msm_accumulator = multi_prepare_core::<E, MSMKZG<E>, T>(
+            &triples,
+            &label_to_msm,
+            transcript,
+            |transcript| {
+                // `f` and `π` commit to a single polynomial, so anything else on the
+                // wire is a malformed proof and must be rejected, not panicked on.
+                let commitment: FflonkCommitment<E> =
+                    transcript.read().map_err(|_| Error::SamplingError)?;
+                commitment.single_point().copied().ok_or(Error::OpeningError)
+            },
+        )?;
+        Ok(FflonkVerificationGuard(msm_accumulator))
+    }
 }
 
 /// The polynomials of a bundle, in coefficient form, in bundle-slot order.
@@ -470,4 +567,17 @@ where
             domain.lagrange_to_coeff(lagrange).values
         })
         .collect()
+}
+
+/// The final pairing check is identical to KZG's; we delegate to the inner
+/// [`DualMSM`].
+impl<E: MultiMillerLoop> Guard<E::Fr, FflonkScheme<E>> for FflonkVerificationGuard<E>
+where
+    E::Fr: WithSmallOrderMulGroup<3>,
+    E::G1: Default + CurveExt<ScalarExt = E::Fr> + ProcessedSerdeObject,
+    E::G1Affine: Default + CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
+{
+    fn verify(self, params: &ParamsVerifierKZG<E>) -> Result<(), Error> {
+        self.0.check(params).then_some(()).ok_or(Error::OpeningError)
+    }
 }

@@ -261,6 +261,35 @@ where
     }
 }
 
+// fflonk accumulates directly in MSM space: its commitments are bundles, so the
+// per-label sources the argument combines are already MSMs (one term for a
+// bundle, several for a linearization commitment).
+impl<E: MultiMillerLoop + Debug> BatchAccumulator<E> for MSMKZG<E>
+where
+    E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
+{
+    fn from_point(point: E::G1, label: PolynomialLabel) -> Self {
+        MSMKZG::new(&[E::Fr::ONE], &[point], &[label])
+    }
+
+    fn scale(&mut self, factor: E::Fr) {
+        MSM::scale(self, factor)
+    }
+
+    fn add(&mut self, other: &Self) {
+        MSM::add_msm(self, other)
+    }
+
+    #[cfg(feature = "truncated-challenges")]
+    fn collapse(&mut self, label: PolynomialLabel) {
+        MSMKZG::collapse(self, label)
+    }
+
+    fn into_msm(self) -> MSMKZG<E> {
+        self
+    }
+}
+
 /// `sum_i coms[i] * scalars[i]`, in the accumulator's own representation.
 fn com_inner_product<E: MultiMillerLoop + Debug, C: BatchAccumulator<E>>(
     coms: &[C],
