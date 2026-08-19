@@ -581,3 +581,419 @@ where
         self.0.check(params).then_some(()).ok_or(Error::OpeningError)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::{collections::BTreeMap, hash::Hash};
+
+    use blake2b_simd::State as Blake2bState;
+    use ff::WithSmallOrderMulGroup;
+    use midnight_curves::{CurveAffine, CurveExt, pairing::MultiMillerLoop, serde::SerdeObject};
+    use rand_core::OsRng;
+
+    use super::{FFLONK_T_MAX_LOG, FflonkCommitment, FflonkScheme, effective_t_max_log};
+    use crate::{
+        pcs::{
+            Guard, PolynomialCommitmentScheme,
+            params::{ParamsKZG, ParamsVerifierKZG},
+        },
+        poly::{
+            EvaluationDomain, PolynomialLabel,
+            query::{ProverQuery, VerifierQuery},
+        },
+        transcript::{CircuitTranscript, Hashable, Sampleable, Transcript},
+        utils::{
+            arithmetic::eval_polynomial,
+            helpers::{ProcessedSerdeObject, SerdeFormat},
+        },
+    };
+
+    /// Round-trip mirroring `kzg::tests::test_roundtrip_gwc`: commits three
+    /// polynomials, runs `multi_open` + `multi_prepare` end-to-end, and asserts
+    /// the pairing check passes (and fails when one eval is tampered with).
+    #[test]
+    fn test_roundtrip_gwc() {
+        use midnight_curves::Bls12;
+
+        const K: u32 = 4;
+
+        let params: ParamsKZG<Bls12> = ParamsKZG::unsafe_setup(K, OsRng);
+
+        let proof = create_proof::<_, CircuitTranscript<Blake2bState>>(&params);
+
+        let verifier_params = params.verifier_params();
+        verify::<Bls12, CircuitTranscript<Blake2bState>>(&verifier_params, &proof[..], false);
+        verify::<Bls12, CircuitTranscript<Blake2bState>>(&verifier_params, &proof[..], true);
+    }
+
+    /// `deserialize_commitment` groups the labels it is given by the per-bundle
+    /// sizes read off the wire, and re-sorts deliberately shuffled labels into
+    /// canonical order. This is what lets the verifier follow the prover's
+    /// effective bundling factor instead of re-deriving it.
+    #[test]
+    fn read_groups_by_bundle_sizes_and_reorders() {
+        use group::Group;
+        use midnight_curves::{Bls12, G1Projective};
+
+        // Three bundles packing 2, 2 and 1 polynomials.
+        let g = G1Projective::generator();
+        let com = FflonkCommitment::<Bls12>::Regular(vec![
+            (g, vec![PolynomialLabel::NoLabel; 2]),
+            (g + g, vec![PolynomialLabel::NoLabel; 2]),
+            (g + g + g, vec![PolynomialLabel::NoLabel; 1]),
+        ]);
+        let mut bytes = vec![];
+        com.write(&mut bytes, SerdeFormat::Processed).unwrap();
+
+        // Labels supplied out of order: the read sorts them canonically, then
+        // chunks them by the bundle sizes.
+        let labels: Vec<_> = [4usize, 1, 3, 0, 2].map(PolynomialLabel::Advice).to_vec();
+        let read = FflonkScheme::<Bls12>::deserialize_commitment(
+            &mut &bytes[..],
+            SerdeFormat::Processed,
+            &labels,
+        )
+        .unwrap();
+
+        let FflonkCommitment::Regular(pairs) = read else {
+            panic!("expected Regular");
+        };
+        let groups: Vec<Vec<_>> = pairs.into_iter().map(|(_, l)| l).collect();
+        assert_eq!(
+            groups,
+            vec![
+                vec![PolynomialLabel::Advice(0), PolynomialLabel::Advice(1)],
+                vec![PolynomialLabel::Advice(2), PolynomialLabel::Advice(3)],
+                vec![PolynomialLabel::Advice(4)],
+            ]
+        );
+    }
+
+    /// A commitment whose wire sizes do not encode `partition(t_max, labels)`
+    /// is rejected: the sizes are not hashed, so they are bound to the
+    /// transcript-carried `t_max` by this check. Const-independent.
+    #[test]
+    fn forged_bundle_layout_is_rejected() {
+        use group::Group;
+        use midnight_curves::{Bls12, G1Projective};
+
+        use super::bundle_expansion::check_bundle_layout;
+
+        let g = G1Projective::generator();
+        let labels = [PolynomialLabel::Advice(0), PolynomialLabel::Advice(1)];
+        let as_bundle = vec![(g, labels.to_vec())];
+        let as_singletons = vec![(g, vec![labels[0].clone()]), (g, vec![labels[1].clone()])];
+
+        // Without bundling the only legal layout is one bundle per polynomial.
+        assert!(check_bundle_layout::<Bls12>(&as_singletons, 1).is_ok());
+        assert!(check_bundle_layout::<Bls12>(&as_bundle, 1).is_err());
+
+        // At `t_max = 2` both advice polys must be packed together.
+        assert!(check_bundle_layout::<Bls12>(&as_bundle, 2).is_ok());
+        assert!(check_bundle_layout::<Bls12>(&as_singletons, 2).is_err());
+    }
+
+    /// End-to-end round-trip through a real `t > 1` bundle (provisioned SRS, so
+    /// the effective bundling factor equals the const). Commits `t` combinable
+    /// polynomials in one `commit_many`, opens them, and checks the pairing.
+    /// No-op at the shipped `FFLONK_T_MAX_LOG = 0`; bump the const to activate
+    /// it in a test round.
+    #[test]
+    fn bundled_roundtrip_with_provisioned_srs() {
+        use midnight_curves::{Bls12, Fq};
+
+        if FFLONK_T_MAX_LOG == 0 {
+            return;
+        }
+        const K: u32 = 4;
+        let n = 1usize << K;
+        let t = 1usize << FFLONK_T_MAX_LOG;
+
+        // Extended monomial basis 2^(K + FFLONK_T_MAX_LOG) => effective == const.
+        let mut params: ParamsKZG<Bls12> = ParamsKZG::unsafe_setup(K + FFLONK_T_MAX_LOG, OsRng);
+        params.downsize_lagrange(K);
+        assert_eq!(effective_t_max_log(&params, n), FFLONK_T_MAX_LOG);
+
+        let domain = EvaluationDomain::new(1, K);
+        let polys: Vec<_> = (0..t)
+            .map(|j| {
+                let mut p = domain.empty_coeff();
+                for (i, c) in p.iter_mut().enumerate() {
+                    *c = Fq::from((j * n + i + 1) as u64);
+                }
+                p
+            })
+            .collect();
+        let labels: Vec<_> = (0..t).map(PolynomialLabel::Advice).collect();
+
+        // Prover.
+        let mut transcript = CircuitTranscript::<Blake2bState>::init();
+        let polys_map: BTreeMap<_, _> = labels.iter().cloned().zip(polys.iter()).collect();
+        let com = FflonkScheme::<Bls12>::commit_many(&params, &polys_map);
+        match &com {
+            FflonkCommitment::Regular(p) => assert_eq!(p.len(), 1, "expected one t>1 bundle"),
+            _ => panic!("expected Regular"),
+        }
+        FflonkScheme::<Bls12>::write_commitment(&mut transcript, &com).unwrap();
+        let x = FflonkScheme::<Bls12>::squeeze_evaluation_point(&mut transcript);
+        for p in &polys {
+            transcript.write(&eval_polynomial(p, x)).unwrap();
+        }
+        let queries: Vec<_> = polys
+            .iter()
+            .zip(&labels)
+            .map(|(p, l)| ProverQuery::new(x, p, l.clone()))
+            .collect();
+        FflonkScheme::<Bls12>::multi_open(&params, &queries, &mut transcript).unwrap();
+        let proof = transcript.finalize();
+
+        // Verifier.
+        let vp = params.verifier_params();
+        let mut vt = CircuitTranscript::<Blake2bState>::init_from_bytes(&proof);
+        let read_com = FflonkScheme::<Bls12>::read_commitment(&mut vt, &labels).unwrap();
+        match &read_com {
+            FflonkCommitment::Regular(p) => {
+                assert_eq!(p.len(), 1);
+                assert_eq!(p[0].1.len(), t, "bundle must carry all t labels");
+            }
+            _ => panic!("expected Regular"),
+        }
+        let vx = FflonkScheme::<Bls12>::squeeze_evaluation_point(&mut vt);
+        let vevals: Vec<Fq> = (0..t).map(|_| vt.read().unwrap()).collect();
+        let vqueries: Vec<_> = labels
+            .iter()
+            .zip(&vevals)
+            .map(|(l, e)| VerifierQuery::new(vx, &read_com, l.clone(), *e))
+            .collect();
+        let guard = FflonkScheme::<Bls12>::multi_prepare(&vqueries, &mut vt).unwrap();
+        assert!(
+            Guard::<Fq, FflonkScheme<Bls12>>::verify(guard, &vp).is_ok(),
+            "bundled proof must verify"
+        );
+    }
+
+    /// Round-trip over several bundles whose slots are opened at *different*
+    /// points, which is what forces the over-opening writes/reads, plus a
+    /// padded trailing bundle and a non-combinable singleton. No-op at the
+    /// shipped `FFLONK_T_MAX_LOG = 0`.
+    #[test]
+    fn bundled_roundtrip_with_rotations_and_singleton() {
+        use midnight_curves::{Bls12, Fq};
+
+        if FFLONK_T_MAX_LOG == 0 {
+            return;
+        }
+        const K: u32 = 4;
+        let n = 1usize << K;
+        let t = 1usize << FFLONK_T_MAX_LOG;
+
+        let mut params: ParamsKZG<Bls12> = ParamsKZG::unsafe_setup(K + FFLONK_T_MAX_LOG, OsRng);
+        params.downsize_lagrange(K);
+
+        let domain = EvaluationDomain::new(1, K);
+        let omega = domain.get_omega();
+
+        // `t + 3` advice polys: one full bundle plus a trailing one, padded when
+        // `t > 4`. The `Fixed` poly is not combinable, so it stays a singleton.
+        let nb_advice = t + 3;
+        let polys: Vec<_> = (0..nb_advice + 1)
+            .map(|j| {
+                let mut p = domain.empty_coeff();
+                for (i, c) in p.iter_mut().enumerate() {
+                    *c = Fq::from((j * n + i + 1) as u64);
+                }
+                p
+            })
+            .collect();
+        let labels: Vec<_> = (0..nb_advice)
+            .map(PolynomialLabel::Advice)
+            .chain([PolynomialLabel::Fixed(0)])
+            .collect();
+
+        // Prover.
+        let mut transcript = CircuitTranscript::<Blake2bState>::init();
+        let polys_map: BTreeMap<_, _> = labels.iter().cloned().zip(polys.iter()).collect();
+        let com = FflonkScheme::<Bls12>::commit_many(&params, &polys_map);
+        FflonkScheme::<Bls12>::write_commitment(&mut transcript, &com).unwrap();
+
+        let x = FflonkScheme::<Bls12>::squeeze_evaluation_point(&mut transcript);
+        // Every other polynomial is opened at the rotated point, so the slots of a
+        // bundle disagree on their opening points.
+        let point_of = |i: usize| if i.is_multiple_of(2) { x } else { x * omega };
+        let evals: Vec<Fq> =
+            polys.iter().enumerate().map(|(i, p)| eval_polynomial(p, point_of(i))).collect();
+        for e in &evals {
+            transcript.write(e).unwrap();
+        }
+        let queries: Vec<_> = polys
+            .iter()
+            .zip(&labels)
+            .enumerate()
+            .map(|(i, (p, l))| ProverQuery::new(point_of(i), p, l.clone()))
+            .collect();
+        FflonkScheme::<Bls12>::multi_open(&params, &queries, &mut transcript).unwrap();
+        let proof = transcript.finalize();
+
+        // Verifier.
+        let vp = params.verifier_params();
+        let mut vt = CircuitTranscript::<Blake2bState>::init_from_bytes(&proof);
+        let read_com = FflonkScheme::<Bls12>::read_commitment(&mut vt, &labels).unwrap();
+        let vx = FflonkScheme::<Bls12>::squeeze_evaluation_point(&mut vt);
+        let vevals: Vec<Fq> = (0..labels.len()).map(|_| vt.read().unwrap()).collect();
+        assert_eq!(vevals, evals);
+        let vqueries: Vec<_> = labels
+            .iter()
+            .zip(&vevals)
+            .enumerate()
+            .map(|(i, (l, e))| {
+                let point = if i % 2 == 0 { vx } else { vx * omega };
+                VerifierQuery::new(point, &read_com, l.clone(), *e)
+            })
+            .collect();
+        let guard = FflonkScheme::<Bls12>::multi_prepare(&vqueries, &mut vt).unwrap();
+        assert!(
+            Guard::<Fq, FflonkScheme<Bls12>>::verify(guard, &vp).is_ok(),
+            "bundled proof with rotations must verify"
+        );
+    }
+
+    /// Two `t > 1` bundles with identical layout add homomorphically:
+    /// `commit(P) + commit(Q)` equals `commit(P + Q)` slot-wise, a single
+    /// point. No-op at the shipped `FFLONK_T_MAX_LOG = 0`.
+    #[test]
+    fn add_same_layout_bundles_is_homomorphic() {
+        use midnight_curves::{Bls12, Fq};
+
+        if FFLONK_T_MAX_LOG == 0 {
+            return;
+        }
+        const K: u32 = 4;
+        let n = 1usize << K;
+        let t = 1usize << FFLONK_T_MAX_LOG;
+
+        let mut params: ParamsKZG<Bls12> = ParamsKZG::unsafe_setup(K + FFLONK_T_MAX_LOG, OsRng);
+        params.downsize_lagrange(K);
+
+        let domain = EvaluationDomain::new(1, K);
+        let labels: Vec<_> = (0..t).map(PolynomialLabel::Advice).collect();
+
+        let bundle = |seed: u64| -> Vec<_> {
+            (0..t)
+                .map(|j| {
+                    let mut p = domain.empty_coeff();
+                    for (i, c) in p.iter_mut().enumerate() {
+                        *c = Fq::from(seed * 1000 + (j * n + i + 1) as u64);
+                    }
+                    p
+                })
+                .collect()
+        };
+        let polys_a = bundle(1);
+        let polys_b = bundle(2);
+        let polys_sum: Vec<_> = polys_a.iter().zip(&polys_b).map(|(a, b)| a.clone() + b).collect();
+
+        let map_a: BTreeMap<_, _> = labels.iter().cloned().zip(polys_a.iter()).collect();
+        let map_b: BTreeMap<_, _> = labels.iter().cloned().zip(polys_b.iter()).collect();
+        let map_sum: BTreeMap<_, _> = labels.iter().cloned().zip(polys_sum.iter()).collect();
+        let com_a = FflonkScheme::<Bls12>::commit_many(&params, &map_a);
+        let com_b = FflonkScheme::<Bls12>::commit_many(&params, &map_b);
+        let com_sum = FflonkScheme::<Bls12>::commit_many(&params, &map_sum);
+
+        match (com_a + com_b, com_sum) {
+            (FflonkCommitment::Regular(added), FflonkCommitment::Regular(expected)) => {
+                assert_eq!(added.len(), 1);
+                assert_eq!(expected.len(), 1);
+                assert_eq!(added[0].0, expected[0].0, "homomorphic point sum mismatch");
+                assert_eq!(added[0].1, expected[0].1, "labels must be preserved");
+            }
+            _ => panic!("expected Regular commitments"),
+        }
+    }
+
+    fn verify<E, T>(verifier_params: &ParamsVerifierKZG<E>, proof: &[u8], should_fail: bool)
+    where
+        E: MultiMillerLoop,
+        T: Transcript,
+        E::Fr: WithSmallOrderMulGroup<3> + Hashable<T::Hash> + Sampleable<T::Hash> + Ord + Hash,
+        E::G1: Hashable<T::Hash> + CurveExt<ScalarExt = E::Fr, AffineExt = E::G1Affine>,
+        E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1> + SerdeObject,
+        FflonkCommitment<E>: Hashable<T::Hash>,
+    {
+        let mut transcript = T::init_from_bytes(proof);
+
+        let label = |name: &str| PolynomialLabel::Custom(name.into());
+        let a = FflonkScheme::<E>::read_commitment(&mut transcript, &[label("a")]).unwrap();
+        let b = FflonkScheme::<E>::read_commitment(&mut transcript, &[label("b")]).unwrap();
+        let c = FflonkScheme::<E>::read_commitment(&mut transcript, &[label("c")]).unwrap();
+
+        let x: E::Fr = transcript.squeeze_challenge();
+        let y: E::Fr = transcript.squeeze_challenge();
+
+        let avx: E::Fr = transcript.read().unwrap();
+        let bvx: E::Fr = transcript.read().unwrap();
+        let cvy: E::Fr = transcript.read().unwrap();
+
+        // When tampering, `b`'s eval is swapped for `a`'s to force the pairing
+        // check to fail.
+        let queries = vec![
+            VerifierQuery::new(x, &a, label("a"), avx),
+            VerifierQuery::new(x, &b, label("b"), if should_fail { avx } else { bvx }),
+            VerifierQuery::new(y, &c, label("c"), cvy),
+        ];
+
+        let guard = FflonkScheme::<E>::multi_prepare(&queries, &mut transcript).unwrap();
+        let result = Guard::<E::Fr, FflonkScheme<E>>::verify(guard, verifier_params);
+
+        if should_fail {
+            assert!(result.is_err());
+        } else {
+            assert!(result.is_ok());
+        }
+    }
+
+    fn create_proof<E, T>(params: &ParamsKZG<E>) -> Vec<u8>
+    where
+        E: MultiMillerLoop,
+        T: Transcript,
+        E::Fr: WithSmallOrderMulGroup<3> + Hashable<T::Hash> + Hash + Sampleable<T::Hash> + Ord,
+        E::G1: Hashable<T::Hash> + CurveExt<ScalarExt = E::Fr, AffineExt = E::G1Affine>,
+        E::G1Affine: SerdeObject + CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
+    {
+        let k = (params.g.len() - 1).ilog2() + 1;
+        let domain = EvaluationDomain::new(1, k);
+
+        let poly = |offset: u64| {
+            let mut p = domain.empty_coeff();
+            for (i, a) in p.iter_mut().enumerate() {
+                *a = <E::Fr>::from(offset + i as u64);
+            }
+            p
+        };
+        let (ax, bx, cx) = (poly(10), poly(100), poly(100));
+
+        let mut transcript = T::init();
+
+        let label = |name: &str| PolynomialLabel::Custom(name.into());
+        for (p, name) in [(&ax, "a"), (&bx, "b"), (&cx, "c")] {
+            let com = FflonkScheme::<E>::commit(params, p, label(name));
+            FflonkScheme::<E>::write_commitment(&mut transcript, &com).unwrap();
+        }
+
+        let x: E::Fr = transcript.squeeze_challenge();
+        let y: E::Fr = transcript.squeeze_challenge();
+
+        transcript.write(&eval_polynomial(&ax, x)).unwrap();
+        transcript.write(&eval_polynomial(&bx, x)).unwrap();
+        transcript.write(&eval_polynomial(&cx, y)).unwrap();
+
+        let queries = [
+            ProverQuery::new(x, &ax, label("a")),
+            ProverQuery::new(x, &bx, label("b")),
+            ProverQuery::new(y, &cx, label("c")),
+        ];
+
+        FflonkScheme::<E>::multi_open(params, &queries, &mut transcript).unwrap();
+
+        transcript.finalize()
+    }
+}
