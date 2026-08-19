@@ -36,6 +36,7 @@
 
 pub mod commitment;
 
+mod math;
 mod partition;
 
 pub use commitment::FflonkCommitment;
