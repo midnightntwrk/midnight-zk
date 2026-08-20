@@ -17,6 +17,8 @@ pub enum Error {
     BoundsFailure,
     /// Opening error
     Opening,
+    /// A polynomial label is duplicated
+    DuplicatedLabel,
     /// Transcript error
     Transcript(io::Error),
     /// `k` is too small for the given circuit.
@@ -66,6 +68,7 @@ impl fmt::Display for Error {
             Error::ConstraintSystemFailure => write!(f, "The constraint system is not satisfied"),
             Error::BoundsFailure => write!(f, "An out-of-bounds index was passed to the backend"),
             Error::Opening => write!(f, "Multi-opening proof was invalid"),
+            Error::DuplicatedLabel => write!(f, "A polynomial label is duplicated"),
             Error::Transcript(e) => write!(f, "Transcript error: {e}"),
             Error::NotEnoughRowsAvailable { current_k } => write!(
                 f,

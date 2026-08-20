@@ -8,8 +8,8 @@ use ff::{FromUniformBytes, WithSmallOrderMulGroup};
 use super::{Error, VerifyingKey};
 use crate::{
     plonk::{
-        linearization::verifier::compute_linearization_commitment, partially_evaluate_identities,
-        traces::VerifierTrace,
+        argument, linearization::verifier::compute_linearization_commitment,
+        partially_evaluate_identities, traces::VerifierTrace,
     },
     poly::{PolynomialLabel, VerifierQuery, commitment::PolynomialCommitmentScheme},
     transcript::{Hashable, Sampleable, Transcript, read_n},
@@ -98,13 +98,13 @@ where
         .map(|(i, (m, batch))| m.read_commitment(i, batch.num_chunks(), transcript))
         .collect::<Result<Vec<_>, _>>()?;
 
-    let trashcans_committed: Vec<_> = vk
+    let phase2_labels = vk
         .cs
         .trashcans
         .iter()
-        .enumerate()
-        .map(|(i, argument)| argument.read_committed::<CS, _>(i, transcript))
-        .collect::<Result<Vec<_>, _>>()?;
+        .map(|argument| PolynomialLabel::Trash(argument.argument_index))
+        .collect::<Vec<_>>();
+    let phase2_committed = argument::verifier::Committed::read(&phase2_labels, transcript)?;
 
     // Sample y challenge, which keeps the gates linearly independent.
     let y: F = transcript.squeeze_challenge();
@@ -112,7 +112,7 @@ where
     Ok(VerifierTrace {
         advice_commitments,
         lookups: lookups_committed,
-        trashcans: trashcans_committed,
+        phase2_committed,
         permutations: permutations_committed,
         beta,
         gamma,
@@ -156,7 +156,7 @@ where
     let VerifierTrace {
         advice_commitments,
         lookups,
-        trashcans,
+        phase2_committed,
         permutations,
         beta,
         gamma,
@@ -257,10 +257,7 @@ where
         .map(|lookup| lookup.evaluate(transcript))
         .collect::<Result<Vec<_>, _>>()?;
 
-    let trashcans_evaluated: Vec<_> = trashcans
-        .into_iter()
-        .map(|trash| trash.evaluate(transcript))
-        .collect::<Result<Vec<_>, _>>()?;
+    let phase2_evaluated = phase2_committed.evaluate(x, transcript)?;
 
     // Partially evaluate batched identities
     // (without fixed columns corresponding to simple, multiplicative selectors)
@@ -271,7 +268,7 @@ where
         &advice_evals,
         &permutations_evaluated.sets,
         lookups_evaluated.iter().map(|inner| &inner.evaluated),
-        trashcans_evaluated.iter().map(|inner| &inner.evaluated),
+        &phase2_evaluated.evals_map,
         &permutations_common,
         x,
         xn,
@@ -321,7 +318,7 @@ where
         ))
         .chain(permutations_evaluated.queries(vk, x))
         .chain(lookups_evaluated.iter().flat_map(|p| p.queries(vk, x)))
-        .chain(trashcans_evaluated.iter().flat_map(|p| p.queries(x)))
+        .chain(phase2_evaluated.queries())
         .chain(
             vk.cs
                 .fixed_queries
