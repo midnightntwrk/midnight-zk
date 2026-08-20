@@ -41,8 +41,9 @@ use super::gates::{
     norm::{self, NormConfig},
 };
 use crate::{
+    CircuitField,
     field::foreign::{
-        params::{check_params, FieldEmulationParams},
+        params::{FieldEmulationParams, check_params},
         util::{bi_from_limbs, bi_to_limbs},
     },
     instructions::{
@@ -53,7 +54,6 @@ use crate::{
     },
     types::{AssignedBit, AssignedByte, AssignedNative, InnerConstants, InnerValue, Instantiable},
     utils::util::bigint_to_fe,
-    CircuitField,
 };
 
 /// Type for assigned emulated field elements of K over native field F.
@@ -1856,16 +1856,16 @@ where
 #[cfg(test)]
 mod tests {
     use midnight_curves::{
+        Fq as BlsScalar,
         k256::{Fp as K256Base, Fq as K256Scalar},
         p256::{Fp as P256Base, Fq as P256Scalar},
-        Fq as BlsScalar,
     };
 
     use super::*;
     use crate::{
         field::{
-            decomposition::chip::P2RDecompositionChip, foreign::params::MultiEmulationParams,
-            NativeChip, NativeGadget,
+            NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip,
+            foreign::params::MultiEmulationParams,
         },
         instructions::{
             arithmetic, assertions, control_flow, decomposition, equality, public_input, zero,

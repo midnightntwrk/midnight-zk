@@ -3,20 +3,20 @@
 
 use group::GroupEncoding;
 use midnight_circuits::{
+    CircuitField,
     field::foreign::params::MultiEmulationParams,
     instructions::{
         ArithInstructions, AssertionInstructions, AssignmentInstructions,
         DecompositionInstructions, EccInstructions, PublicInputInstructions, ZeroInstructions,
     },
     types::{AssignedByte, AssignedForeignPoint, Instantiable},
-    CircuitField,
 };
 use midnight_curves::k256::{Fq as K256Scalar, K256};
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
-use midnight_zk_stdlib::{utils::plonk_api::srs_for_test, Relation, ZkStdLib, ZkStdLibArch};
+use midnight_zk_stdlib::{Relation, ZkStdLib, ZkStdLibArch, utils::plonk_api::srs_for_test};
 use rand::rngs::OsRng;
 
 type F = midnight_curves::Fq;
@@ -102,13 +102,14 @@ impl Relation for EthereumSigExample {
         let u1 = secp256k1_scalar.mul(layouter, &z, &s_inv, None)?;
         let u2 = secp256k1_scalar.mul(layouter, &r, &s_inv, None)?;
 
-        let gen = secp256k1_curve.assign_fixed(layouter, K256::generator())?;
+        let generator = secp256k1_curve.assign_fixed(layouter, K256::generator())?;
         let u1_bits = secp256k1_scalar.assigned_to_le_bits(layouter, &u1, None, true)?;
         let u2_bits = secp256k1_scalar.assigned_to_le_bits(layouter, &u2, None, true)?;
 
         // Computing R = u1 * G + u2 * pk, where u1 = keccak output (as integer) *
         // s^{-1} and u2 = r * s^{-1}.
-        let r_point = secp256k1_curve.msm_by_le_bits(layouter, &[u1_bits, u2_bits], &[gen, pk])?;
+        let r_point =
+            secp256k1_curve.msm_by_le_bits(layouter, &[u1_bits, u2_bits], &[generator, pk])?;
 
         // Check the correctness of R:
         //  1. It should not be the identity.

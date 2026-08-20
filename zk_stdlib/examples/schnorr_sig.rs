@@ -9,8 +9,8 @@ use midnight_circuits::{
     ecc::native::AssignedScalarOfNativeCurve,
     hash::poseidon::PoseidonChip,
     instructions::{
-        hash::HashCPU, AssertionInstructions, AssignmentInstructions, DecompositionInstructions,
-        EccInstructions, PublicInputInstructions,
+        AssertionInstructions, AssignmentInstructions, DecompositionInstructions, EccInstructions,
+        PublicInputInstructions, hash::HashCPU,
     },
     types::{AssignedNativePoint, Instantiable},
 };
@@ -19,7 +19,7 @@ use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
-use midnight_zk_stdlib::{utils::plonk_api::srs_for_test, Relation, ZkStdLib, ZkStdLibArch};
+use midnight_zk_stdlib::{Relation, ZkStdLib, ZkStdLibArch, utils::plonk_api::srs_for_test};
 use rand::{RngCore, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 
@@ -198,11 +198,13 @@ fn main() {
         proofs.push(proof);
     }
 
-    assert!(midnight_zk_stdlib::batch_verify::<blake2b_simd::State>(
-        &srs.verifier_params(),
-        &vks,
-        &instances,
-        &proofs
+    assert!(
+        midnight_zk_stdlib::batch_verify::<blake2b_simd::State>(
+            &srs.verifier_params(),
+            &vks,
+            &instances,
+            &proofs
+        )
+        .is_ok()
     )
-    .is_ok())
 }

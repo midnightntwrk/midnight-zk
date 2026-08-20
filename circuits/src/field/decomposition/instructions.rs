@@ -23,7 +23,7 @@ use midnight_proofs::{
     plonk::Error,
 };
 
-use crate::{types::AssignedNative, CircuitField};
+use crate::{CircuitField, types::AssignedNative};
 
 /// Trait that implement the "core" decomposition instructions
 pub trait CoreDecompositionInstructions<F: CircuitField>: Clone + Debug {

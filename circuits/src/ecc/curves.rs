@@ -18,8 +18,8 @@ use group::{Curve, Group};
 #[cfg(feature = "dev-curves")]
 use midnight_curves::bn256;
 use midnight_curves::{
-    curve25519::{Curve25519, Curve25519Affine, CURVE_A as CURVE25519_A, CURVE_D as CURVE25519_D},
     CurveAffine, Fq as BlsScalar, JubjubAffine, JubjubExtended, JubjubSubgroup,
+    curve25519::{CURVE_A as CURVE25519_A, CURVE_D as CURVE25519_D, Curve25519, Curve25519Affine},
 };
 
 use crate::CircuitField;
@@ -178,7 +178,7 @@ impl EdwardsCurve for Curve25519 {
 }
 
 // Implementation for K256 (secp256k1 using k256 crate).
-use midnight_curves::k256::{Fp as K256Fp, K256Affine, K256};
+use midnight_curves::k256::{Fp as K256Fp, K256, K256Affine};
 
 impl CircuitCurve for K256 {
     type Base = K256Fp;
@@ -219,7 +219,7 @@ impl WeierstrassCurve for K256 {
 
 // Implementation for P256 (secp256r1 / NIST P-256).
 use midnight_curves::p256::{
-    affine_from_xy, affine_x, affine_y, Fp as P256Fp, CURVE_A, CURVE_B, P256,
+    CURVE_A, CURVE_B, Fp as P256Fp, P256, affine_from_xy, affine_x, affine_y,
 };
 
 impl CircuitCurve for P256 {

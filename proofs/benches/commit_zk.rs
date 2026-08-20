@@ -2,11 +2,11 @@ extern crate criterion;
 
 use std::{collections::HashMap, iter};
 
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use group::ff::Field;
 use midnight_curves::Fq as Scalar;
 use midnight_proofs::utils::arithmetic::parallelize;
-use rand_chacha::{rand_core::RngCore, ChaCha20Rng};
+use rand_chacha::{ChaCha20Rng, rand_core::RngCore};
 use rand_core::SeedableRng;
 use rayon::current_num_threads;
 

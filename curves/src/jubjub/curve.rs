@@ -39,9 +39,9 @@ use core::{
 use bitvec::{order::Lsb0, view::AsBits};
 use ff::{BatchInverter, Field};
 use group::{
+    Curve, Group, GroupEncoding,
     cofactor::{CofactorCurve, CofactorCurveAffine, CofactorGroup},
     prime::PrimeGroup,
-    Curve, Group, GroupEncoding,
 };
 use rand_core::RngCore;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
@@ -1804,8 +1804,8 @@ fn test_mul_consistency() {
 
 #[test]
 fn test_serialization_consistency() {
-    let gen = full_generator().mul_by_cofactor();
-    let mut p = gen;
+    let generator = full_generator().mul_by_cofactor();
+    let mut p = generator;
 
     let v = vec![
         [
@@ -1884,7 +1884,7 @@ fn test_serialization_consistency() {
         assert_eq!(affine, deserialized);
         assert_eq!(affine, batch_deserialized.unwrap());
         assert_eq!(expected_serialized, serialized);
-        p += gen;
+        p += generator;
     }
 }
 

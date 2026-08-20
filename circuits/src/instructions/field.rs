@@ -19,13 +19,13 @@ use num_bigint::BigUint;
 
 use super::PublicInputInstructions;
 use crate::{
+    CircuitField,
     instructions::{
         ArithInstructions, AssertionInstructions, AssignmentInstructions, ControlFlowInstructions,
         EqualityInstructions, ZeroInstructions,
     },
     types::{AssignedBit, InnerConstants, Instantiable},
     utils::util::qnr,
-    CircuitField,
 };
 
 /// The set of circuit instructions for field operations.

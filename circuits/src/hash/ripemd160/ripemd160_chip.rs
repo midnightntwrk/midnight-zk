@@ -19,12 +19,13 @@ use midnight_proofs::{
 use num_integer::Integer;
 
 use crate::{
-    field::{decomposition::chip::P2RDecompositionChip, AssignedNative, NativeChip, NativeGadget},
+    CircuitField,
+    field::{AssignedNative, NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip},
     hash::ripemd160::{
         types::{AssignedSpreaded, AssignedWord, State},
         utils::{
-            expr_pow2_ip, expr_pow4_ip, gen_spread_table, get_even_and_odd_bits, limb_coeffs,
-            limb_lengths, limb_values, negate_spreaded, spread, u32_in_be_limbs, MASK_EVN_64,
+            MASK_EVN_64, expr_pow2_ip, expr_pow4_ip, gen_spread_table, get_even_and_odd_bits,
+            limb_coeffs, limb_lengths, limb_values, negate_spreaded, spread, u32_in_be_limbs,
         },
     },
     instructions::{
@@ -32,10 +33,9 @@ use crate::{
     },
     types::AssignedByte,
     utils::{
-        util::{fe_to_u32, fe_to_u64, u32_to_fe, u64_to_fe},
         ComposableChip,
+        util::{fe_to_u32, fe_to_u64, u32_to_fe, u64_to_fe},
     },
-    CircuitField,
 };
 
 /// Number of advice columns used by the identities of the RIPEMD160 chip
@@ -490,18 +490,18 @@ impl<F: CircuitField> RipeMD160Chip<F> {
         round_const_prime: &AssignedWord<F>,
     ) -> Result<(), Error> {
         let State {
-            h0: ref mut A,
-            h1: ref mut B,
-            h2: ref mut C,
-            h3: ref mut D,
-            h4: ref mut E,
+            h0: A,
+            h1: B,
+            h2: C,
+            h3: D,
+            h4: E,
         } = temp_state;
         let State {
-            h0: ref mut A_prime,
-            h1: ref mut B_prime,
-            h2: ref mut C_prime,
-            h3: ref mut D_prime,
-            h4: ref mut E_prime,
+            h0: A_prime,
+            h1: B_prime,
+            h2: C_prime,
+            h3: D_prime,
+            h4: E_prime,
         } = temp_state_prime;
 
         let rot = S[idx / 16][idx % 16];

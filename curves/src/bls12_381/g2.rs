@@ -16,14 +16,14 @@ use std::{
 use blst::*;
 use ff::{Field, PrimeField};
 use group::{
-    prime::{PrimeCurve, PrimeCurveAffine, PrimeGroup},
     Curve, Group, GroupEncoding, UncompressedEncoding, WnafGroup,
+    prime::{PrimeCurve, PrimeCurveAffine, PrimeGroup},
 };
 use pairing::{Engine, PairingCurveAffine};
 use rand_core::RngCore;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
-use super::{fp::Fp, fp2::Fp2, Bls12, Fq, G1Affine, Gt};
+use super::{Bls12, Fq, G1Affine, Gt, fp::Fp, fp2::Fp2};
 use crate::{
     curve::{Coordinates, CurveAffine, CurveExt},
     serde_traits::SerdeObject,

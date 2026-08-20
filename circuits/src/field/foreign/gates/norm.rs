@@ -22,6 +22,7 @@ use num_bigint::{BigInt as BI, ToBigInt};
 use num_traits::One;
 
 use crate::{
+    CircuitField,
     field::foreign::{
         params::FieldEmulationParams,
         util::{
@@ -33,7 +34,6 @@ use crate::{
     instructions::RangeCheckInstructions,
     types::{AssignedField, AssignedNative},
     utils::util::bigint_to_fe,
-    CircuitField,
 };
 
 /// Foreign-Field Normalization configuration.

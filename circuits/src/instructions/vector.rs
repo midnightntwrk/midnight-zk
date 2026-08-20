@@ -23,10 +23,10 @@ use midnight_proofs::{
 };
 
 use crate::{
+    CircuitField,
     field::AssignedNative,
     types::AssignedBit,
     vec::{AssignedVector, Vectorizable},
-    CircuitField,
 };
 
 /// Indicator of the number of filler elements at the beginning and end of an

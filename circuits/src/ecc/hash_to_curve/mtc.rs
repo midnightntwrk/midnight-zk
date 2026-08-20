@@ -21,6 +21,7 @@ use super::{
     mtc_params::{MapToEdwardsParams, MapToWeierstrassParams},
 };
 use crate::{
+    CircuitField,
     ecc::{
         curves::{CircuitCurve, EdwardsCurve},
         native::{AssignedNativePoint, EccChip},
@@ -30,7 +31,6 @@ use crate::{
         FieldInstructions,
     },
     types::{AssignedBit, InnerConstants, InnerValue, Instantiable},
-    CircuitField,
 };
 
 /// The set of in-circuit instructions for map-to-curve.

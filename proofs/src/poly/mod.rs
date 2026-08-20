@@ -15,7 +15,7 @@ use ff::{BatchInvert, PrimeField, WithSmallOrderMulGroup};
 use group::ff::Field;
 use midnight_curves::serde::SerdeObject;
 
-use crate::utils::{arithmetic::parallelize, SerdeFormat};
+use crate::utils::{SerdeFormat, arithmetic::parallelize};
 
 mod domain;
 mod query;

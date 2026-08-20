@@ -35,11 +35,11 @@ use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
     poly::{
+        PolynomialLabel,
         kzg::{
             msm::{DualMSM, MSMKZG},
             params::ParamsVerifierKZG,
         },
-        PolynomialLabel,
     },
 };
 use num_bigint::BigUint;
@@ -50,12 +50,12 @@ use crate::verifier::utils::powers;
 #[cfg(feature = "truncated-challenges")]
 use crate::verifier::utils::{truncate_off_circuit, truncated_powers};
 use crate::{
-    instructions::{hash::HashCPU, HashInstructions, PublicInputInstructions},
+    instructions::{HashInstructions, PublicInputInstructions, hash::HashCPU},
     types::{AssignedBit, InnerValue, Instantiable},
     verifier::{
+        SelfEmulation,
         msm::{AssignedMsm, Msm, Point},
         utils::AssignedBoundedScalar,
-        SelfEmulation,
     },
 };
 

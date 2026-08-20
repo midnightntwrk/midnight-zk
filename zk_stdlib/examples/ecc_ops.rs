@@ -15,7 +15,7 @@ use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
-use midnight_zk_stdlib::{utils::plonk_api::srs_for_test, Relation, ZkStdLib, ZkStdLibArch};
+use midnight_zk_stdlib::{Relation, ZkStdLib, ZkStdLibArch, utils::plonk_api::srs_for_test};
 use rand::rngs::OsRng;
 
 type F = midnight_curves::Fq;
@@ -110,11 +110,13 @@ fn main() {
         proofs.push(proof);
     }
 
-    assert!(midnight_zk_stdlib::batch_verify::<blake2b_simd::State>(
-        &srs.verifier_params(),
-        &vks,
-        &pis,
-        &proofs
+    assert!(
+        midnight_zk_stdlib::batch_verify::<blake2b_simd::State>(
+            &srs.verifier_params(),
+            &vks,
+            &pis,
+            &proofs
+        )
+        .is_ok()
     )
-    .is_ok())
 }

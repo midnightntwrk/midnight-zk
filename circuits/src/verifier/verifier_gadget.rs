@@ -25,15 +25,16 @@ use ff::Field;
 use midnight_proofs::{
     circuit::{AssignedCell, Chip, Layouter, Value},
     plonk::{ConstraintSystem, Error},
-    poly::{commitment::Labelable, EvaluationDomain, PolynomialLabel, Rotation},
+    poly::{EvaluationDomain, PolynomialLabel, Rotation},
 };
 
 use crate::{
     field::AssignedNative,
     instructions::{
-        assignments::AssignmentInstructions, ArithInstructions, PublicInputInstructions,
+        ArithInstructions, PublicInputInstructions, assignments::AssignmentInstructions,
     },
     verifier::{
+        Accumulator, AssignedAccumulator, AssignedVk, SelfEmulation, VerifyingKey,
         expressions::{
             eval_expression, lookup::lookup_expressions, permutation::permutation_expressions,
             trash::trash_expressions,
@@ -45,7 +46,6 @@ use crate::{
         transcript_gadget::TranscriptGadget,
         trash,
         utils::{evaluate_lagrange_polynomials, inner_product, sum},
-        Accumulator, AssignedAccumulator, AssignedVk, SelfEmulation, VerifyingKey,
     },
 };
 
@@ -351,10 +351,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         // Hash the prover's advice commitments into the transcript and squeeze
         // challenges
         let advice_commitments = (0..cs.num_advice_columns())
-            .map(|i| {
-                PCS::read_commitment(&mut transcript, layouter, 1)
-                    .map(|c| c.label(&[PolynomialLabel::Advice(i)]))
-            })
+            .map(|i| PCS::read_commitment(&mut transcript, layouter, &[PolynomialLabel::Advice(i)]))
             .collect::<Result<Vec<_>, Error>>()?;
 
         // Sample theta challenge for keeping lookup columns linearly independent
@@ -544,20 +541,22 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         #[cfg(feature = "single-h-commitment")]
         let nb_quotient_coms = 1;
         let limb_commitments = {
-            let raw = (0..nb_quotient_coms)
-                .map(|_| PCS::read_commitment(&mut transcript, layouter, 1))
-                .collect::<Result<Vec<_>, Error>>()?;
             #[cfg(not(feature = "single-h-commitment"))]
-            let labeled = raw
-                .into_iter()
-                .enumerate()
-                .map(|(i, c)| c.label(&[PolynomialLabel::QuotientPiece(i)]))
-                .collect::<Vec<_>>();
+            let labeled = (0..nb_quotient_coms)
+                .map(|i| {
+                    PCS::read_commitment(
+                        &mut transcript,
+                        layouter,
+                        &[PolynomialLabel::QuotientPiece(i)],
+                    )
+                })
+                .collect::<Result<Vec<_>, Error>>()?;
             #[cfg(feature = "single-h-commitment")]
-            let labeled = raw
-                .into_iter()
-                .map(|c| c.label(&[PolynomialLabel::Quotient]))
-                .collect::<Vec<_>>();
+            let labeled = (0..nb_quotient_coms)
+                .map(|_| {
+                    PCS::read_commitment(&mut transcript, layouter, &[PolynomialLabel::Quotient])
+                })
+                .collect::<Result<Vec<_>, Error>>()?;
             labeled
         };
 
@@ -896,10 +895,10 @@ pub(crate) mod tests {
     use midnight_proofs::{
         circuit::SimpleFloorPlanner,
         dev::MockProver,
-        plonk::{create_proof, keygen_pk, keygen_vk_with_k, prepare, Circuit, Error},
+        plonk::{Circuit, Error, create_proof, keygen_pk, keygen_vk_with_k, prepare},
         poly::{
-            kzg::{commitment::KZGMultiCommitment, params::ParamsKZG, KZGCommitmentScheme},
             PolynomialLabel,
+            kzg::{KZGCommitmentScheme, commitment::KZGMultiCommitment, params::ParamsKZG},
         },
         transcript::{CircuitTranscript, Transcript},
     };
@@ -911,31 +910,31 @@ pub(crate) mod tests {
         ecc::{
             curves::CircuitCurve,
             foreign::weierstrass_chip::{
-                nb_foreign_ecc_chip_columns, ForeignWeierstrassEccChip, ForeignWeierstrassEccConfig,
+                ForeignWeierstrassEccChip, ForeignWeierstrassEccConfig, nb_foreign_ecc_chip_columns,
             },
         },
         field::{
+            NativeChip, NativeConfig, NativeGadget,
             decomposition::{
                 chip::{P2RDecompositionChip, P2RDecompositionConfig},
                 pow2range::Pow2RangeChip,
             },
             foreign::FieldChip,
             native::NB_EXTRA_ARITH_FIXED_COLS,
-            NativeChip, NativeConfig, NativeGadget,
         },
         hash::poseidon::{
-            PoseidonChip, PoseidonConfig, PoseidonState, NB_POSEIDON_ADVICE_COLS,
-            NB_POSEIDON_FIXED_COLS,
+            NB_POSEIDON_ADVICE_COLS, NB_POSEIDON_FIXED_COLS, PoseidonChip, PoseidonConfig,
+            PoseidonState,
         },
         instructions::{
-            hash::{HashCPU, HashInstructions},
             AssignmentInstructions,
+            hash::{HashCPU, HashInstructions},
         },
         testing_utils::FromScratch,
         types::{ComposableChip, Instantiable},
         verifier::{
-            accumulator::Accumulator, kzg::AssignedKZGMultiCommitment, AssignedKZGCommitment,
-            BlstrsEmulation, InCircuitKZG,
+            AssignedKZGCommitment, BlstrsEmulation, InCircuitKZG, accumulator::Accumulator,
+            kzg::AssignedKZGMultiCommitment,
         },
     };
 

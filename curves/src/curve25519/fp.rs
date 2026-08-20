@@ -51,8 +51,8 @@ use crate::{
     arithmetic::{adc, mac, sbb},
     ff_ext::{inverse::BYInverter, jacobi::jacobi},
     serde::{
-        endian::{Endian, EndianRepr},
         Repr, SerdeObject,
+        endian::{Endian, EndianRepr},
     },
 };
 

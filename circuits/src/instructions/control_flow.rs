@@ -22,8 +22,8 @@ use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use super::AssertionInstructions;
 use crate::{
-    types::{AssignedBit, InnerValue},
     CircuitField,
+    types::{AssignedBit, InnerValue},
 };
 
 /// The set of circuit instructions for control flow operations.

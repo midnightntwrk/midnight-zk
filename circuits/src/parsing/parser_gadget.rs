@@ -22,7 +22,7 @@ use {
 };
 
 use crate::{
-    field::AssignedNative, instructions::NativeInstructions, types::AssignedByte, CircuitField,
+    CircuitField, field::AssignedNative, instructions::NativeInstructions, types::AssignedByte,
 };
 
 #[derive(Clone, Debug)]
@@ -218,7 +218,7 @@ mod tests {
     };
 
     use super::*;
-    use crate::field::{decomposition::chip::P2RDecompositionChip, NativeChip, NativeGadget};
+    use crate::field::{NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip};
 
     #[derive(Clone, Debug)]
     enum Operation {

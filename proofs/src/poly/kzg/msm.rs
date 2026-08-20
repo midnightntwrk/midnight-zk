@@ -1,21 +1,21 @@
 use std::{any::TypeId, fmt::Debug};
 
 use ff::Field;
-use group::{prime::PrimeCurveAffine, Curve, Group};
+use group::{Curve, Group, prime::PrimeCurveAffine};
 use itertools::izip;
 use midnight_curves::{
+    CurveAffine, Fq, G1Affine,
     msm::msm_best,
     pairing::{Engine, MillerLoopResult, MultiMillerLoop},
-    CurveAffine, Fq, G1Affine,
 };
 use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 
 use super::params::ParamsVerifierKZG;
 use crate::{
     poly::{
+        Error, PolynomialLabel,
         commitment::{Guard, PolynomialCommitmentScheme},
         kzg::KZGCommitmentScheme,
-        Error, PolynomialLabel,
     },
     utils::{
         arithmetic::{CurveExt, MSM},

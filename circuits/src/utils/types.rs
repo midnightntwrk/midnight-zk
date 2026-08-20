@@ -17,7 +17,7 @@ use midnight_proofs::circuit::Value;
 #[cfg(any(test, feature = "testing"))]
 use rand::RngCore;
 
-use crate::{field::AssignedNative, CircuitField};
+use crate::{CircuitField, field::AssignedNative};
 
 /// Trait for dealing with public inputs. `Instantiable` is implemented on
 /// off-circuit types to determine the way these types are transformed into

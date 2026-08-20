@@ -32,21 +32,21 @@ use {
     midnight_proofs::plonk::{Advice, Column, ConstraintSystem, Fixed, Instance},
 };
 
-use super::{bound_of_addition, AssignedBigUint};
+use super::{AssignedBigUint, bound_of_addition};
 #[cfg(test)]
 use crate::biguint::types::TEST_NB_BITS;
 #[cfg(test)]
 use crate::instructions::AssignmentInstructions;
 use crate::{
-    biguint::{biguint_to_limbs, LOG2_BASE},
-    field::{foreign::util::big_to_limbs, AssignedBounded},
+    CircuitField,
+    biguint::{LOG2_BASE, biguint_to_limbs},
+    field::{AssignedBounded, foreign::util::big_to_limbs},
     instructions::{
         AssertionInstructions, ControlFlowInstructions, EqualityInstructions, NativeInstructions,
         ZeroInstructions,
     },
     types::{AssignedBit, AssignedByte, AssignedNative},
     utils::{types::InnerValue, util::big_to_fe},
-    CircuitField,
 };
 
 #[derive(Clone, Debug)]
@@ -1020,7 +1020,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        field::{decomposition::chip::P2RDecompositionChip, NativeChip, NativeGadget},
+        field::{NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip},
         instructions::{assertions, control_flow, equality, zero},
         testing_utils::FromScratch,
     };

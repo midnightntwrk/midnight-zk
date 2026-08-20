@@ -33,16 +33,16 @@ use {
 };
 
 use crate::{
+    CircuitField,
     biguint::BigUintGadget,
     ecc::curves::{CircuitCurve, EdwardsCurve},
-    field::{decomposition::chip::P2RDecompositionChip, NativeChip, NativeGadget},
+    field::{NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip},
     instructions::*,
     types::{
         AssignedBigUint, AssignedBit, AssignedByte, AssignedNative, InnerConstants, InnerValue,
         Instantiable,
     },
     utils::ComposableChip,
-    CircuitField,
 };
 
 /// The number of advice columns used by the EccChip.
@@ -1380,7 +1380,9 @@ impl<C: EdwardsCurve>
     for EccChip<C>
 {
     fn convert_value(&self, _x: &C::Base) -> Option<C::ScalarField> {
-        unimplemented!("The caller should decide how to convert the value off-circuit, i.e., what to do with overflows.");
+        unimplemented!(
+            "The caller should decide how to convert the value off-circuit, i.e., what to do with overflows."
+        );
     }
 
     fn convert(

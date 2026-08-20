@@ -31,16 +31,16 @@ use super::{
 use crate::CircuitField;
 use crate::{
     field::{
+        NativeChip,
         decomposition::{
             cpu_utils::{decompose_in_variable_limbsizes, variable_limbsize_coefficients},
             pow2range::Pow2RangeChip,
         },
-        NativeChip,
     },
     instructions::{ArithInstructions, AssertionInstructions, AssignmentInstructions},
     testing_utils::FromScratch,
     types::AssignedNative,
-    utils::{util::bigint_to_fe, ComposableChip},
+    utils::{ComposableChip, util::bigint_to_fe},
 };
 
 #[test]

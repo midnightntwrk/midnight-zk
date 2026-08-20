@@ -52,6 +52,7 @@ use super::gates::weierstrass::{
     tangent::TangentConfig,
 };
 use crate::{
+    CircuitField,
     ecc::{
         curves::WeierstrassCurve,
         foreign::common::{
@@ -70,7 +71,6 @@ use crate::{
     },
     types::{AssignedBit, AssignedField, AssignedNative, InnerConstants, InnerValue, Instantiable},
     utils::util::{big_to_fe, bigint_to_fe, glv_scalar_decomposition},
-    CircuitField,
 };
 
 /// Foreign Weierstrass ECC configuration.
@@ -2110,13 +2110,13 @@ where
 #[cfg(test)]
 mod tests {
     use group::Group;
-    use midnight_curves::{k256::K256, p256::P256, Fq as BlsScalar, G1Projective as BlsG1};
+    use midnight_curves::{Fq as BlsScalar, G1Projective as BlsG1, k256::K256, p256::P256};
 
     use super::*;
     use crate::{
         field::{
-            decomposition::chip::P2RDecompositionChip, foreign::params::MultiEmulationParams,
-            NativeChip, NativeGadget,
+            NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip,
+            foreign::params::MultiEmulationParams,
         },
         instructions::{assertions, control_flow, ecc, equality, public_input, zero},
     };

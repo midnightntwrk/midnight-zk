@@ -29,17 +29,17 @@ use midnight_proofs::{
 };
 
 use crate::{
-    field::{decomposition::chip::P2RDecompositionChip, AssignedNative, NativeChip, NativeGadget},
+    CircuitField,
+    field::{AssignedNative, NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip},
     instructions::{
-        base64::{Base64VarInstructions, Base64Vec},
         ArithInstructions, AssignmentInstructions, Base64Instructions, ControlFlowInstructions,
         DecompositionInstructions, EqualityInstructions, RangeCheckInstructions,
         VectorInstructions, ZeroInstructions,
+        base64::{Base64VarInstructions, Base64Vec},
     },
     types::{AssignedByte, AssignedVector, InnerValue},
     utils::ComposableChip,
     vec::vector_gadget::VectorGadget,
-    CircuitField,
 };
 
 /// Number of advice columns in [Base64Chip].

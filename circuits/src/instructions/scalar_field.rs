@@ -20,9 +20,9 @@ use std::{fmt::Debug, hash::Hash};
 
 use super::FieldInstructions;
 use crate::{
+    CircuitField,
     instructions::DecompositionInstructions,
     types::{InnerConstants, InnerValue, Instantiable},
-    CircuitField,
 };
 
 /// The set of circuit instructions for scalar field operations.

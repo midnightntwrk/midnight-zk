@@ -89,10 +89,10 @@
 
 use ff::{Field, PrimeField};
 use midnight_circuits::{
-    hash::poseidon::{constants::PoseidonField, PoseidonChip},
+    hash::poseidon::{PoseidonChip, constants::PoseidonField},
     instructions::{
-        hash::HashCPU, ArithInstructions, AssignmentInstructions, ControlFlowInstructions,
-        ConversionInstructions, DecompositionInstructions, PublicInputInstructions,
+        ArithInstructions, AssignmentInstructions, ControlFlowInstructions, ConversionInstructions,
+        DecompositionInstructions, PublicInputInstructions, hash::HashCPU,
     },
     types::{AssignedBit, AssignedNative},
 };
@@ -100,8 +100,8 @@ use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
-use midnight_zk_stdlib::{utils::plonk_api::srs_for_test, Relation, ZkStdLib, ZkStdLibArch};
-use rand::{rngs::OsRng, Rng, SeedableRng};
+use midnight_zk_stdlib::{Relation, ZkStdLib, ZkStdLibArch, utils::plonk_api::srs_for_test};
+use rand::{Rng, SeedableRng, rngs::OsRng};
 use rand_chacha::ChaCha8Rng;
 use sha2::Digest;
 

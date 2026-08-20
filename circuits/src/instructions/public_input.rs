@@ -25,8 +25,8 @@ use midnight_proofs::{
 };
 
 use crate::{
-    types::{AssignedNative, Instantiable},
     CircuitField,
+    types::{AssignedNative, Instantiable},
 };
 
 /// The set of circuit instructions for constraining public inputs.
@@ -104,7 +104,7 @@ pub(crate) mod tests {
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem},
     };
-    use rand::{rngs::OsRng, SeedableRng};
+    use rand::{SeedableRng, rngs::OsRng};
     use rand_chacha::ChaCha8Rng;
 
     use super::*;

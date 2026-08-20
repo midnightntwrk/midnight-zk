@@ -23,6 +23,7 @@ use num_bigint::{BigInt as BI, ToBigInt};
 use num_traits::{One, Zero};
 
 use crate::{
+    CircuitField,
     ecc::curves::WeierstrassCurve,
     field::foreign::{
         field_chip::{FieldChip, FieldChipConfig},
@@ -35,7 +36,6 @@ use crate::{
     instructions::{ArithInstructions, NativeInstructions},
     types::{AssignedBit, AssignedField, InnerValue},
     utils::util::bigint_to_fe,
-    CircuitField,
 };
 
 /// Foreign ECC OnCurve configuration.

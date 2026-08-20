@@ -18,8 +18,8 @@ use midnight_proofs::{
 };
 
 use crate::{
-    types::{AssignedByte, AssignedVector},
     CircuitField,
+    types::{AssignedByte, AssignedVector},
 };
 
 /// This trait defines methods for converting data encoded in standard Base64 or

@@ -20,8 +20,8 @@ use midnight_proofs::{
     plonk::Error,
 };
 use midnight_zk_stdlib::{
-    utils::plonk_api::{load_srs, SrsSource},
     ZkStdLib, ZkStdLibArch,
+    utils::plonk_api::{SrsSource, load_srs},
 };
 
 type S = BlstrsEmulation;

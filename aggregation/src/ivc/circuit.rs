@@ -23,7 +23,7 @@ use midnight_proofs::{
 };
 use midnight_zk_stdlib::{Relation, ZkStdLib, ZkStdLibArch};
 
-use super::{Ivc, IvcError, F, S};
+use super::{F, Ivc, IvcError, S};
 
 /// The public instance (statement) of an IVC proof.
 ///

@@ -1,7 +1,8 @@
 [package]
 name = "midnight-zk-stdlib"
 version = "2.2.0"
-edition = "2021"
+edition.workspace = true
+rust-version.workspace = true
 license-file.workspace = true
 description = "Standard library of circuits and utilities for Midnight zero-knowledge proofs"
 

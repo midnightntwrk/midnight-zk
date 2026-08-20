@@ -18,7 +18,7 @@
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use super::EccInstructions;
-use crate::{ecc::curves::CircuitCurve, types::InnerValue, CircuitField};
+use crate::{CircuitField, ecc::curves::CircuitCurve, types::InnerValue};
 
 /// Off-circuit instructions for hashing a given input of type `Input` into a
 /// point of curve `C`.
@@ -66,12 +66,12 @@ pub(crate) mod tests {
 
     use super::{HashToCurveCPU, HashToCurveInstructions};
     use crate::{
+        CircuitField,
         ecc::curves::CircuitCurve,
         instructions::{AssignmentInstructions, EccInstructions},
         testing_utils::{FromScratch, Sampleable},
         types::{InnerConstants, InnerValue},
         utils::circuit_modeling::{circuit_to_json, cost_measure_end, cost_measure_start},
-        CircuitField,
     };
 
     #[derive(Clone, Debug)]

@@ -24,13 +24,13 @@ use midnight_proofs::{
 };
 
 use crate::{
+    CircuitField,
     ecc::curves::CircuitCurve,
-    field::{foreign::field_chip::FieldChipConfig, AssignedNative},
+    field::{AssignedNative, foreign::field_chip::FieldChipConfig},
     instructions::{
         AssignmentInstructions, ControlFlowInstructions, EccInstructions, ScalarFieldInstructions,
     },
     types::InnerValue,
-    CircuitField,
 };
 
 /// Preprocessing of MSM inputs.

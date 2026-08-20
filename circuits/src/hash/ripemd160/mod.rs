@@ -21,13 +21,13 @@ mod utils;
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 use ripemd::Digest;
 pub use ripemd160_chip::{
-    RipeMD160Chip, RipeMD160Config, NB_RIPEMD160_ADVICE_COLS, NB_RIPEMD160_FIXED_COLS,
+    NB_RIPEMD160_ADVICE_COLS, NB_RIPEMD160_FIXED_COLS, RipeMD160Chip, RipeMD160Config,
 };
 
 use crate::{
-    instructions::{hash::HashCPU, DecompositionInstructions, HashInstructions},
-    types::AssignedByte,
     CircuitField,
+    instructions::{DecompositionInstructions, HashInstructions, hash::HashCPU},
+    types::AssignedByte,
 };
 
 impl<F: CircuitField> HashCPU<u8, [u8; 20]> for RipeMD160Chip<F> {

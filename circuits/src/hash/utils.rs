@@ -169,7 +169,7 @@ mod tests {
 
         // Test with 32 limbs of 1 bit each
         let mut rng = rand::thread_rng();
-        let value: u32 = rng.gen();
+        let value: u32 = rng.r#gen();
         let limb_lengths = [1; 32];
         let result = u32_in_be_limbs(value, limb_lengths);
         let expected: [u32; 32] = core::array::from_fn(|i| (value >> (31 - i)) & 1);

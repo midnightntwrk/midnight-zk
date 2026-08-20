@@ -3,7 +3,7 @@ use midnight_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
     dev::cost_model::circuit_model,
     plonk::{Advice, Circuit, Column, ConstraintSystem, Error, Expression, Selector, TableColumn},
-    poly::{kzg::KZGCommitmentScheme, Rotation},
+    poly::{Rotation, kzg::KZGCommitmentScheme},
 };
 
 // We use a lookup example

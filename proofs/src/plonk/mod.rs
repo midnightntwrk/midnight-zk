@@ -16,11 +16,11 @@ use crate::{
     },
     transcript::{Hashable, Transcript},
     utils::{
-        helpers::{
-            polynomial_slice_byte_length, read_polynomial_vec, write_polynomial_slice,
-            ProcessedSerdeObject,
-        },
         SerdeFormat,
+        helpers::{
+            ProcessedSerdeObject, polynomial_slice_byte_length, read_polynomial_vec,
+            write_polynomial_slice,
+        },
     },
 };
 
@@ -51,10 +51,7 @@ use midnight_curves::serde::SerdeObject;
 pub use prover::*;
 pub use verifier::*;
 
-use crate::poly::{
-    commitment::{Labelable, PolynomialCommitmentScheme},
-    PolynomialLabel,
-};
+use crate::poly::{PolynomialLabel, commitment::PolynomialCommitmentScheme};
 
 /// This is a verifying key which allows for the verification of proofs for a
 /// particular circuit.
@@ -181,8 +178,7 @@ where
 
         let fixed_commitments: Vec<_> = (0..num_fixed_columns)
             .map(|i| {
-                CS::Commitment::read(reader, format)
-                    .map(|c| c.label(&[PolynomialLabel::Fixed(i as usize)]))
+                CS::deserialize_commitment(reader, format, &[PolynomialLabel::Fixed(i as usize)])
             })
             .collect::<Result<_, _>>()?;
 

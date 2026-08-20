@@ -1,6 +1,6 @@
 use super::super::regex::{Regex, RegexInstructions};
 #[cfg(test)]
-use crate::parsing::{scanner::automaton::Automaton, StdLibParser};
+use crate::parsing::{StdLibParser, scanner::automaton::Automaton};
 
 /// Regex formalising the spec of `StdLibParser::Icao9309Td3Dg1`.
 pub(super) fn spec_icao9303_td3_dg1() -> Regex {

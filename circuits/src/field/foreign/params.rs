@@ -24,7 +24,7 @@ use midnight_curves::{k256, p256};
 use num_bigint::{BigInt, BigInt as BI, ToBigInt};
 use num_traits::{One, Signed};
 
-use crate::{ecc::curves::CircuitCurve, CircuitField};
+use crate::{CircuitField, ecc::curves::CircuitCurve};
 
 /// Trait for configuring a (foreign) FieldChip. These parameters need to be
 /// manually optimized for each emulation of field K over native field F.

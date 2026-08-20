@@ -1,8 +1,8 @@
 use std::{fs::OpenOptions, io::Read};
 
 use midnight_circuits::{
-    testing_utils::ecdsa::{ECDSASig, Ecdsa, FromBase64},
     CircuitField,
+    testing_utils::ecdsa::{ECDSASig, Ecdsa, FromBase64},
 };
 use midnight_curves::k256::{Fq as K256Scalar, K256};
 use midnight_proofs::plonk::Error;
