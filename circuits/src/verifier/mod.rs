@@ -29,6 +29,7 @@ use crate::{
 };
 
 mod accumulator;
+mod argument;
 mod expressions;
 mod kzg;
 mod lookup;
@@ -37,7 +38,6 @@ pub(crate) mod pcs;
 mod permutation;
 mod traces;
 mod transcript_gadget;
-mod trash;
 mod types;
 mod utils;
 mod verifier_gadget;

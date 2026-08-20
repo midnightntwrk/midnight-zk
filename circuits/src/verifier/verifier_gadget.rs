@@ -34,7 +34,7 @@ use crate::{
         ArithInstructions, PublicInputInstructions, assignments::AssignmentInstructions,
     },
     verifier::{
-        Accumulator, AssignedAccumulator, AssignedVk, SelfEmulation, VerifyingKey,
+        Accumulator, AssignedAccumulator, AssignedVk, SelfEmulation, VerifyingKey, argument,
         expressions::{
             eval_expression, lookup::lookup_expressions, permutation::permutation_expressions,
             trash::trash_expressions,
@@ -44,7 +44,6 @@ use crate::{
         permutation::{self, evaluate_permutation_common},
         traces::VerifierTrace,
         transcript_gadget::TranscriptGadget,
-        trash,
         utils::{evaluate_lagrange_polynomials, inner_product, sum},
     },
 };
@@ -384,12 +383,9 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        let trashcans_committed = cs
-            .trashcans()
-            .iter()
-            .enumerate()
-            .map(|(i, _argument)| trash::read_committed(i, layouter, &mut transcript))
-            .collect::<Result<Vec<_>, _>>()?;
+        let phase2_labels =
+            (0..cs.trashcans().len()).map(PolynomialLabel::Trash).collect::<Vec<_>>();
+        let phase2_committed = argument::read_committed(&phase2_labels, layouter, &mut transcript)?;
 
         // Sample y challenge, which keeps the gates linearly independent
         let y = transcript.squeeze_challenge(layouter)?;
@@ -398,7 +394,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             VerifierTrace {
                 advice_commitments,
                 lookups: lookups_committed,
-                trashcans: trashcans_committed,
+                phase2_committed,
                 permutations: permutation_committed,
                 beta,
                 gamma,
@@ -523,7 +519,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         let VerifierTrace {
             advice_commitments,
             lookups,
-            trashcans,
+            phase2_committed,
             permutations,
             beta,
             gamma,
@@ -630,10 +626,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             .map(|lookup| lookup.evaluate(layouter, &mut transcript))
             .collect::<Result<Vec<_>, Error>>()?;
 
-        let trashcans_evaluated = trashcans
-            .into_iter()
-            .map(|trash| trash.evaluate(layouter, &mut transcript))
-            .collect::<Result<Vec<_>, Error>>()?;
+        let phase2_evaluated = phase2_committed.evaluate(&x, layouter, &mut transcript)?;
 
         // Partially evaluate batched identities
         // (without fixed columns corresponding to simple selectors)
@@ -732,13 +725,14 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         cs.trashcans()
             .iter()
             .enumerate()
-            .map(|(index, _)| {
+            .map(|(index, argument)| {
                 trash_expressions(
                     layouter,
                     &self.scalar_chip,
-                    &trashcans_evaluated[index].evaluated,
-                    cs.trashcans()[index].selector(),
-                    cs.trashcans()[index].constraint_expressions(),
+                    index,
+                    &phase2_evaluated.evals_map,
+                    argument.selector(),
+                    argument.constraint_expressions(),
                     &advice_evals,
                     &fixed_evals,
                     &instance_evals,
@@ -813,7 +807,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             ))
             .chain(permutations_evaluated.queries(&x, &x_next, &x_last))
             .chain(lookups_evaluated.iter().flat_map(|lookup| lookup.queries(&x, &x_next)))
-            .chain(trashcans_evaluated.iter().flat_map(|trash| trash.queries(&x)))
+            .chain(phase2_evaluated.queries())
             .chain(
                 cs.fixed_queries()
                     .iter()
