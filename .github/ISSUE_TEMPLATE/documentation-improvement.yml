@@ -4,17 +4,18 @@ title: "[Docs] "
 type: Task
 labels:
   - status:untriaged
-  - area:documentation
+  - documentation
   - component:zk
 body:
   - type: dropdown
-    id: component
+    id: components
     attributes:
-      label: Component
-      description: Which component does this affect?
+      label: Components
+      description: Which components does this affect?
+      multiple: true
       options:
-        - zk
-        - crypto
+        - component:zk
+        - component:crypto
     validations:
       required: true
 
