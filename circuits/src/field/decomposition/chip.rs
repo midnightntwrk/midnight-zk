@@ -27,15 +27,15 @@ use super::{
     pow2range::{Pow2RangeChip, Pow2RangeConfig},
 };
 use crate::{
+    CircuitField,
     field::{
+        NativeChip, NativeConfig,
         decomposition::cpu_utils::{
             decompose_in_variable_limbsizes, variable_limbsize_coefficients,
         },
-        NativeChip, NativeConfig,
     },
     types::AssignedNative,
     utils::ComposableChip,
-    CircuitField,
 };
 
 #[derive(Clone, Debug)]
@@ -230,7 +230,7 @@ impl<F: CircuitField> P2RDecompositionChip<F> {
                 v.sort();
                 v.dedup();
                 v.reverse(); // zeros at the end
-                             // length at most 2 ==> two possible limb sizes per chunk
+                // length at most 2 ==> two possible limb sizes per chunk
                 let condition1 = v.len() <= 2;
                 // should not panic if length is 1 due to short_circuiting
                 let condition2 = (v.len() == 1) || (v[0] == 0) || (v[1] == 0);

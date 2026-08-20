@@ -1,6 +1,6 @@
 use midnight_proofs::plonk::Expression;
 
-use crate::{utils::util::u128_to_fe, CircuitField};
+use crate::{CircuitField, utils::util::u128_to_fe};
 
 pub(super) const MASK_EVN_128: u128 = 0x5555_5555_5555_5555_5555_5555_5555_5555; // 010101...01 (even positions in u128)
 pub(super) const MASK_ODD_128: u128 = 0xAAAA_AAAA_AAAA_AAAA_AAAA_AAAA_AAAA_AAAA; // 101010...10 (odd positions in u128)
@@ -151,8 +151,18 @@ pub fn spreaded_Sigma_1(spreaded_limbs: [u128; 7]) -> u128 {
 pub fn spreaded_sigma_0(spreaded_limbs: [u128; 10]) -> u128 {
     (spreaded_limbs.into_iter()).for_each(assert_in_valid_spreaded_form);
 
-    let [sW_03a, sW_13a, sW_13b, sW_13c, sW_03b, sW_11, sW_01a, sW_01b, sW_05, sW_01c] =
-        spreaded_limbs;
+    let [
+        sW_03a,
+        sW_13a,
+        sW_13b,
+        sW_13c,
+        sW_03b,
+        sW_11,
+        sW_01a,
+        sW_01b,
+        sW_05,
+        sW_01c,
+    ] = spreaded_limbs;
 
     // As each limb is in valid spreaded form, the sum of three rotations composed
     // by the limbs is at most: 3 * 0b0101..01 = 0b1111..11.
@@ -181,8 +191,18 @@ pub fn spreaded_sigma_0(spreaded_limbs: [u128; 10]) -> u128 {
 pub fn spreaded_sigma_1(spreaded_limbs: [u128; 10]) -> u128 {
     (spreaded_limbs.into_iter()).for_each(assert_in_valid_spreaded_form);
 
-    let [sW_03a, sW_13a, sW_13b, sW_13c, sW_03b, sW_11, sW_01a, sW_01b, sW_05, sW_01c] =
-        spreaded_limbs;
+    let [
+        sW_03a,
+        sW_13a,
+        sW_13b,
+        sW_13c,
+        sW_03b,
+        sW_11,
+        sW_01a,
+        sW_01b,
+        sW_05,
+        sW_01c,
+    ] = spreaded_limbs;
 
     // As each limb is in valid spreaded form, the sum of three rotations composed
     // by the limbs is at most: 3 * 0b0101..01 = 0b1111..11.
@@ -233,7 +253,7 @@ pub(crate) fn expr_pow4_ip<F: CircuitField, const N: usize>(
 #[cfg(test)]
 mod tests {
 
-    use rand::{seq::SliceRandom, Rng};
+    use rand::{Rng, seq::SliceRandom};
 
     use super::*;
 
@@ -296,7 +316,7 @@ mod tests {
 
         // Test with 64 limbs of 1 bit each
         let mut rng = rand::thread_rng();
-        let value: u64 = rng.gen();
+        let value: u64 = rng.r#gen();
         let limb_lengths = [1; 64];
         let result = u64_in_be_limbs(value, limb_lengths);
         let expected: [u64; 64] = core::array::from_fn(|i| (value >> (63 - i)) & 1);
@@ -322,7 +342,7 @@ mod tests {
 
             // Negative test: check that the table does not contain a random triple of
             // (tag, plain, spreaded).
-            let random_triple = to_fe((rng.gen(), rng.gen(), rng.gen()));
+            let random_triple = to_fe((rng.r#gen(), rng.r#gen(), rng.r#gen()));
             assert!(!table.contains(&random_triple));
         }
 
@@ -353,7 +373,7 @@ mod tests {
 
         let mut rng = rand::thread_rng();
         for _ in 0..10 {
-            let vals: [u64; 3] = [rng.gen(), rng.gen(), rng.gen()];
+            let vals: [u64; 3] = [rng.r#gen(), rng.r#gen(), rng.r#gen()];
             assert_odd_of_spreaded_maj(vals);
         }
     }
@@ -378,7 +398,7 @@ mod tests {
 
         let mut rng = rand::thread_rng();
         for _ in 0..10 {
-            assert_even_of_spreaded_Sigma_0(rng.gen());
+            assert_even_of_spreaded_Sigma_0(rng.r#gen());
         }
     }
 
@@ -402,7 +422,7 @@ mod tests {
 
         let mut rng = rand::thread_rng();
         for _ in 0..10 {
-            assert_even_of_spreaded_Sigma_1(rng.gen());
+            assert_even_of_spreaded_Sigma_1(rng.r#gen());
         }
     }
 
@@ -426,7 +446,7 @@ mod tests {
 
         let mut rng = rand::thread_rng();
         for _ in 0..10 {
-            assert_even_of_spreaded_sigma_0(rng.gen());
+            assert_even_of_spreaded_sigma_0(rng.r#gen());
         }
     }
 
@@ -450,7 +470,7 @@ mod tests {
 
         let mut rng = rand::thread_rng();
         for _ in 0..10 {
-            assert_even_of_spreaded_sigma_1(rng.gen());
+            assert_even_of_spreaded_sigma_1(rng.r#gen());
         }
     }
 }

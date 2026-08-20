@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, iter};
+use std::collections::BTreeMap;
 
 use group::ff::Field;
 
@@ -13,9 +13,9 @@ fn padded(p: char, width: usize, text: &str) -> String {
 
     format!(
         "{}{}{}",
-        iter::repeat(p).take(pad - pad / 2).collect::<String>(),
+        std::iter::repeat_n(p, pad - pad / 2).collect::<String>(),
         text,
-        iter::repeat(p).take(pad / 2).collect::<String>(),
+        std::iter::repeat_n(p, pad / 2).collect::<String>(),
     )
 }
 
@@ -65,24 +65,21 @@ pub(super) fn render_cell_layout(
 
     let widths: Vec<usize> = columns
         .keys()
-        .map(|col| {
-            let size = match location {
-                FailureLocation::InRegion { region, offset: _ } => {
-                    if let Some(column_ann) = region.column_annotations.as_ref() {
-                        if let Some(ann) = column_ann.get(col) {
-                            ann.len()
-                        } else {
-                            col_width(column_type_and_idx(col).as_str().len())
-                        }
+        .map(|col| match location {
+            FailureLocation::InRegion { region, offset: _ } => {
+                if let Some(column_ann) = region.column_annotations.as_ref() {
+                    if let Some(ann) = column_ann.get(col) {
+                        ann.len()
                     } else {
                         col_width(column_type_and_idx(col).as_str().len())
                     }
-                }
-                FailureLocation::OutsideRegion { row: _ } => {
+                } else {
                     col_width(column_type_and_idx(col).as_str().len())
                 }
-            };
-            size
+            }
+            FailureLocation::OutsideRegion { row: _ } => {
+                col_width(column_type_and_idx(col).as_str().len())
+            }
         })
         .collect();
 

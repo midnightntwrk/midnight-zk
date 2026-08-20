@@ -20,20 +20,20 @@ use midnight_proofs::{
 use num_bigint::BigUint;
 
 use crate::{
+    CircuitField,
     field::{
-        decomposition::chip::P2RDecompositionChip, AssignedBounded, AssignedNative, NativeChip,
-        NativeGadget,
+        AssignedBounded, AssignedNative, NativeChip, NativeGadget,
+        decomposition::chip::P2RDecompositionChip,
     },
     instructions::{
-        division::DivisionInstructions,
-        vector::{VectorBounds, VectorInstructions},
         ArithInstructions, AssertionInstructions, AssignmentInstructions, BinaryInstructions,
         ComparisonInstructions, ControlFlowInstructions, EqualityInstructions,
         RangeCheckInstructions,
+        division::DivisionInstructions,
+        vector::{VectorBounds, VectorInstructions},
     },
     types::{AssignedBit, AssignedVector, InnerValue, Vectorizable},
     vec::get_lims,
-    CircuitField,
 };
 
 type NG<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
@@ -461,13 +461,13 @@ mod tests {
         dev::MockProver,
         plonk::{Circuit, ConstraintSystem},
     };
-    use rand_chacha::{rand_core::SeedableRng, ChaCha12Rng};
+    use rand_chacha::{ChaCha12Rng, rand_core::SeedableRng};
 
     use super::*;
     use crate::{
         field::{
-            decomposition::chip::{P2RDecompositionChip, P2RDecompositionConfig},
             AssignedNative, NativeChip, NativeGadget,
+            decomposition::chip::{P2RDecompositionChip, P2RDecompositionConfig},
         },
         testing_utils::FromScratch,
         utils::circuit_modeling::{circuit_to_json, cost_measure_end, cost_measure_start},

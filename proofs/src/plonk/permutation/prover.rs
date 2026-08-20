@@ -9,13 +9,12 @@ use rayon::iter::{
 use super::{super::circuit::Any, Argument, ProvingKey};
 use crate::{
     plonk::{
-        self,
+        self, Error,
         permutation::{self, verifier::CommonEvaluated},
-        Error,
     },
     poly::{
-        commitment::PolynomialCommitmentScheme, Coeff, EvaluationDomain, LagrangeCoeff, Polynomial,
-        PolynomialLabel, ProverQuery, Rotation,
+        Coeff, EvaluationDomain, LagrangeCoeff, Polynomial, PolynomialLabel, ProverQuery, Rotation,
+        commitment::PolynomialCommitmentScheme,
     },
     transcript::{Hashable, Transcript},
     utils::arithmetic::{eval_polynomial, eval_polynomial_seq, parallelize},

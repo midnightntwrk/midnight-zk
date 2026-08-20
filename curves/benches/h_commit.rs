@@ -16,7 +16,7 @@ extern crate criterion;
 use criterion::{BenchmarkId, Criterion};
 use ff::Field;
 use group::Group;
-use midnight_curves::{msm::msm_best, Fq, G1Affine, G1Projective};
+use midnight_curves::{Fq, G1Affine, G1Projective, msm::msm_best};
 use rand_core::SeedableRng;
 use rand_xorshift::XorShiftRng;
 use rayon::prelude::*;

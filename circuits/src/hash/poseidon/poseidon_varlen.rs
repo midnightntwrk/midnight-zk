@@ -15,12 +15,12 @@ use midnight_proofs::{circuit::Layouter, plonk::Error};
 use num_bigint::BigUint;
 
 use super::{
-    constants::{PoseidonField, RATE},
     AssignedRegister, PoseidonChip,
+    constants::{PoseidonField, RATE},
 };
 use crate::{
-    field::{decomposition::chip::P2RDecompositionChip, NativeChip, NativeGadget},
-    hash::poseidon::{constants::WIDTH, PoseidonState},
+    field::{NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip},
+    hash::poseidon::{PoseidonState, constants::WIDTH},
     instructions::{
         ArithInstructions, AssignmentInstructions, BinaryInstructions, ControlFlowInstructions,
         DivisionInstructions, EqualityInstructions, RangeCheckInstructions, SpongeCPU,

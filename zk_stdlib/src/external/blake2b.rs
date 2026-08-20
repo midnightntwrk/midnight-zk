@@ -15,16 +15,16 @@
 
 use blake2b::{
     blake2b::{
-        blake2b_chip::{Blake2bChip, Blake2bConfig},
         NB_BLAKE2B_ADVICE_COLS,
+        blake2b_chip::{Blake2bChip, Blake2bConfig},
     },
     types::byte::Byte,
 };
+use midnight_circuits::{CircuitField, ComposableChip, field::AssignedNative, types::AssignedByte};
 #[cfg(test)]
 use midnight_circuits::{
     field::decomposition::chip::P2RDecompositionConfig, testing_utils::FromScratch,
 };
-use midnight_circuits::{field::AssignedNative, types::AssignedByte, CircuitField, ComposableChip};
 #[cfg(test)]
 use midnight_proofs::plonk::Instance;
 use midnight_proofs::{
@@ -32,7 +32,7 @@ use midnight_proofs::{
     plonk::{Advice, Column, ConstraintSystem, Error, Fixed},
 };
 
-use crate::external::{convert_to_bytes, NG};
+use crate::external::{NG, convert_to_bytes};
 
 /// The chip for the external implementation of blake2b.
 #[derive(Clone, Debug)]
@@ -164,11 +164,11 @@ impl<F: CircuitField> FromScratch<F> for Blake2bWrapper<F> {
 mod test {
     use blake2::Blake2b;
     use midnight_circuits::{
-        field::NativeGadget,
-        instructions::{hash::HashCPU, HashInstructions},
-        testing_utils::{test_hash, FromScratch},
-        types::AssignedByte,
         CircuitField,
+        field::NativeGadget,
+        instructions::{HashInstructions, hash::HashCPU},
+        testing_utils::{FromScratch, test_hash},
+        types::AssignedByte,
     };
     use midnight_curves::Fq;
     use midnight_proofs::{
@@ -176,8 +176,8 @@ mod test {
         plonk::{Advice, Column, ConstraintSystem, Error, Fixed, Instance},
     };
     use sha2::{
-        digest::consts::{U32, U64},
         Digest,
+        digest::consts::{U32, U64},
     };
 
     use crate::external::blake2b::Blake2bWrapper;

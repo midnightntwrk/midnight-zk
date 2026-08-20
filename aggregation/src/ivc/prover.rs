@@ -15,15 +15,15 @@ use midnight_circuits::{
 use midnight_proofs::{
     plonk::{self},
     poly::{
-        kzg::{commitment::KZGMultiCommitment, params::ParamsKZG, KZGCommitmentScheme},
         PolynomialLabel,
+        kzg::{KZGCommitmentScheme, commitment::KZGMultiCommitment, params::ParamsKZG},
     },
     transcript::{CircuitTranscript, Transcript},
 };
 use midnight_zk_stdlib::MidnightPK;
 use rand::rngs::OsRng;
 
-use super::{Ivc, IvcCircuit, IvcError, IvcInstance, IvcWitness, E, F, S};
+use super::{E, F, Ivc, IvcCircuit, IvcError, IvcInstance, IvcWitness, S};
 
 /// Stateful IVC prover holding:
 /// - the SRS (params),

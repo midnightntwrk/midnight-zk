@@ -23,11 +23,11 @@ use goldenfile::Mint;
 use midnight_curves::{Bls12, Fq};
 use midnight_proofs::{
     circuit::Layouter,
-    dev::cost_model::{circuit_model_with, CircuitModel, COST_MEASURE_END, COST_MEASURE_START},
+    dev::cost_model::{COST_MEASURE_END, COST_MEASURE_START, CircuitModel, circuit_model_with},
     plonk::Circuit,
     poly::{commitment::PolynomialCommitmentScheme, kzg::KZGCommitmentScheme},
 };
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
 /// Marks the start of the cost-model measurement window inside a `synthesize`
 /// function.

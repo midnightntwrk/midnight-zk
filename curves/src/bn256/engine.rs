@@ -6,14 +6,14 @@ use core::{
 use std::ops::MulAssign;
 
 use ff::PrimeField;
-use group::{cofactor::CofactorCurveAffine, Group};
+use group::{Group, cofactor::CofactorCurveAffine};
 use pairing::{Engine, MillerLoopResult, MultiMillerLoop, PairingCurveAffine};
 use rand_core::RngCore;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq};
 
 use crate::bn256::{
-    curve::*, ext_field::quadratic::QuadSparseMul, fq::*, fq12::*, fq2::*,
-    fq6::FROBENIUS_COEFF_FQ6_C1, fr::*, ExtField,
+    ExtField, curve::*, ext_field::quadratic::QuadSparseMul, fq::*, fq2::*,
+    fq6::FROBENIUS_COEFF_FQ6_C1, fq12::*, fr::*,
 };
 
 #[derive(Copy, Clone, Debug, Default)]

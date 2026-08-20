@@ -39,9 +39,8 @@ use midnight_circuits::{
     verifier::{BlstrsEmulation, SelfEmulation},
 };
 use midnight_zk_stdlib::{
-    cs_degree, prove, setup_pk, setup_vk,
-    utils::plonk_api::{load_srs, SrsSource},
-    ZkStdLibArch,
+    ZkStdLibArch, cs_degree, prove, setup_pk, setup_vk,
+    utils::plonk_api::{SrsSource, load_srs},
 };
 use rand::rngs::OsRng;
 

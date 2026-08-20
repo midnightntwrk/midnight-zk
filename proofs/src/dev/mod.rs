@@ -19,8 +19,8 @@ use rayon::{
 use crate::{
     circuit,
     plonk::{
-        permutation, permutation::keygen::Assembly, Advice, Any, Assignment, Circuit, Column,
-        ConstraintSystem, Error, Expression, Fixed, FloorPlanner, Instance, Selector,
+        Advice, Any, Assignment, Circuit, Column, ConstraintSystem, Error, Expression, Fixed,
+        FloorPlanner, Instance, Selector, permutation, permutation::keygen::Assembly,
     },
 };
 
@@ -1103,11 +1103,7 @@ impl<F: FromUniformBytes<64> + Ord> MockProver<F> {
                                 .map(move |c| load(c, table_row))
                                 .collect();
 
-                            if t != fill_row {
-                                Some(t)
-                            } else {
-                                None
-                            }
+                            if t != fill_row { Some(t) } else { None }
                         })
                         .collect();
                     cached_table.par_sort_unstable();

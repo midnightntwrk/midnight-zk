@@ -4,7 +4,7 @@ use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use super::{ConstraintSystem, Expression};
 use crate::{
-    plonk::{logup, permutation, trash, Any},
+    plonk::{Any, logup, permutation, trash},
     poly::{EvaluationDomain, Polynomial, PolynomialRepresentation, Rotation},
     utils::arithmetic::parallelize,
 };

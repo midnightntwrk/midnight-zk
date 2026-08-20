@@ -22,19 +22,19 @@ use num_bigint::{BigInt as BI, ToBigInt};
 use num_traits::One;
 
 use crate::{
+    CircuitField,
     ecc::curves::CircuitCurve,
     field::foreign::{
+        FieldChip, FieldChipConfig,
         params::FieldEmulationParams,
         util::{
             compute_u, compute_vj, get_advice_vec, get_identity_auxiliary_bounds, pair_wise_prod,
             sum_bigints, sum_exprs, urem,
         },
-        FieldChip, FieldChipConfig,
     },
     instructions::NativeInstructions,
     types::{AssignedBit, AssignedField, InnerValue},
     utils::util::bigint_to_fe,
-    CircuitField,
 };
 
 /// Foreign-Field ECC Lambda-Squared configuration.

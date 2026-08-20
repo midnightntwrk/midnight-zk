@@ -1,8 +1,8 @@
-pub(crate) use crate::hash::utils::{
-    expr_pow2_ip, expr_pow4_ip, get_even_and_odd_bits, negate_spreaded, spread,
-    spread_table_from_lengths, u32_in_be_limbs, MASK_EVN_64,
-};
 use crate::CircuitField;
+pub(crate) use crate::hash::utils::{
+    MASK_EVN_64, expr_pow2_ip, expr_pow4_ip, get_even_and_odd_bits, negate_spreaded, spread,
+    spread_table_from_lengths, u32_in_be_limbs,
+};
 
 const WORD: u8 = 32;
 const MAX_LIMB: u8 = 11;
@@ -137,7 +137,7 @@ mod tests {
         // reconstruct it using the derived coefficients and limb values.
         for rot in 1..16 {
             let mut rng = rand::thread_rng();
-            let val: u32 = rng.gen();
+            let val: u32 = rng.r#gen();
             let (coeffs, coeffs_rot) = limb_coeffs(rot);
             let limbs = limb_values(val, rot);
 
@@ -176,7 +176,7 @@ mod tests {
 
         let mut rng = rand::thread_rng();
         for _ in 0..10 {
-            let vals: [u32; 3] = [rng.gen(), rng.gen(), rng.gen()];
+            let vals: [u32; 3] = [rng.r#gen(), rng.r#gen(), rng.r#gen()];
             assert_even_of_spreaded_type_one(vals);
         }
     }
@@ -195,7 +195,7 @@ mod tests {
 
         let mut rng = rand::thread_rng();
         for _ in 0..10 {
-            let vals: [u32; 3] = [rng.gen(), rng.gen(), rng.gen()];
+            let vals: [u32; 3] = [rng.r#gen(), rng.r#gen(), rng.r#gen()];
             assert_type_two(vals);
         }
     }
@@ -214,7 +214,7 @@ mod tests {
 
         let mut rng = rand::thread_rng();
         for _ in 0..10 {
-            let vals: [u32; 3] = [rng.gen(), rng.gen(), rng.gen()];
+            let vals: [u32; 3] = [rng.r#gen(), rng.r#gen(), rng.r#gen()];
             assert_type_three(vals);
         }
     }
@@ -243,7 +243,7 @@ mod tests {
 
             // Negative test: check that the table does not contain a random triple of
             // (tag, plain, spreaded).
-            let random_triple = to_fe((rng.gen(), rng.gen(), rng.gen()));
+            let random_triple = to_fe((rng.r#gen(), rng.r#gen(), rng.r#gen()));
             assert!(!table.contains(&random_triple));
         }
 

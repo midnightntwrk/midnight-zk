@@ -14,10 +14,10 @@
 use ff::Field;
 use midnight_proofs::plonk::Expression;
 
-use super::{sbox, PoseidonField, NB_SKIPS_CPU};
+use super::{NB_SKIPS_CPU, PoseidonField, sbox};
 use crate::hash::poseidon::{
-    constants::{NB_FULL_ROUNDS, NB_PARTIAL_ROUNDS, WIDTH},
     NB_SKIPS_CIRCUIT,
+    constants::{NB_FULL_ROUNDS, NB_PARTIAL_ROUNDS, WIDTH},
 };
 
 /// Maximal number of partial-round skips performed during Poseidon.

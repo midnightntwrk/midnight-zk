@@ -35,15 +35,14 @@ use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::{self, ConstraintSystem, Error},
     poly::{
-        kzg::{commitment::KZGMultiCommitment, params::ParamsVerifierKZG, KZGCommitmentScheme},
         EvaluationDomain, PolynomialLabel,
+        kzg::{KZGCommitmentScheme, commitment::KZGMultiCommitment, params::ParamsVerifierKZG},
     },
     transcript::{CircuitTranscript, Transcript},
 };
 use midnight_zk_stdlib::{
-    cs_degree, prove, setup_pk, setup_vk,
-    utils::plonk_api::{load_srs, SrsSource},
-    MidnightVK, Relation, ZkStdLib, ZkStdLibArch,
+    MidnightVK, Relation, ZkStdLib, ZkStdLibArch, cs_degree, prove, setup_pk, setup_vk,
+    utils::plonk_api::{SrsSource, load_srs},
 };
 use rand::rngs::OsRng;
 use sha_preimage::ShaPreimageCircuit;

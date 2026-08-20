@@ -64,13 +64,13 @@ pub mod types {
             native::{AssignedNativePoint, AssignedScalarOfNativeCurve},
         },
         field::{
+            AssignedNative,
             foreign::AssignedField,
             native::{AssignedBit, AssignedByte},
-            AssignedNative,
         },
         utils::{
-            types::{InnerConstants, InnerValue, Instantiable},
             ComposableChip,
+            types::{InnerConstants, InnerValue, Instantiable},
         },
         vec::{AssignedVector, Vectorizable},
     };

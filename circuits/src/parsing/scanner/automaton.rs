@@ -67,7 +67,7 @@ impl Letter {
     /// easily as vector indexes. The size of the encoding is polynomial in the
     /// number of different outputs and the alphabet size.
     pub fn encode(&self, alphabet_size: usize, outputs: &[usize]) -> usize {
-        let output = outputs.iter().enumerate().find(|(_, &m)| m == self.output).unwrap().0;
+        let output = outputs.iter().position(|&m| m == self.output).unwrap();
         output * alphabet_size + self.char as usize
     }
 
@@ -1013,14 +1013,14 @@ impl RawAutomaton {
         let mut final_states =
             FxHashSet::with_capacity_and_hasher(self.final_states.len(), FxBuildHasher);
         partition.iter().for_each(|(index, class)| {
-            let elt = class.iter().enumerate().find(|&(_, &b)| b).unwrap().0;
+            let elt = class.iter().position(|&b| b).unwrap();
             if self.final_states.contains(&elt) {
                 final_states.insert(*index);
             }
         });
         let mut transitions = vec![vec![]; partition.len()];
         for (index1, class1) in &partition {
-            let source = class1.iter().enumerate().find(|(_, &b)| b).unwrap().0;
+            let source = class1.iter().position(|&b| b).unwrap();
             for (letter, target) in &self.transitions[source] {
                 let index2 = (partition.iter().find(|(_, class)| class[*target])).unwrap().0;
                 transitions[*index1].push((*letter, index2));
@@ -1091,8 +1091,8 @@ impl RawAutomaton {
                     if letter.output == output2 {
                         panic!(
                             "(bug) determinisation was incorrect: source state {source} was pointing to both targets {target} and {target2} after letter {} (output {})",
-                            letter.char,
-                            letter.output)
+                            letter.char, letter.output
+                        )
                     } else {
                         let bugged_path = base.witness_reachability(source);
                         panic!(

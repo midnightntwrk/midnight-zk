@@ -4,13 +4,13 @@
 
 use group::GroupEncoding;
 use midnight_circuits::{
+    CircuitField,
     field::foreign::params::MultiEmulationParams,
     instructions::{
         AssertionInstructions, AssignmentInstructions, DecompositionInstructions, EccInstructions,
         PublicInputInstructions, ZeroInstructions,
     },
     types::{AssignedByte, AssignedForeignPoint, Instantiable},
-    CircuitField,
 };
 use midnight_curves::k256::{Fp as K256Base, Fq as K256Scalar, K256};
 use midnight_proofs::{
@@ -18,7 +18,7 @@ use midnight_proofs::{
     plonk::Error,
     transcript::Blake2b256,
 };
-use midnight_zk_stdlib::{utils::plonk_api::srs_for_test, Relation, ZkStdLib, ZkStdLibArch};
+use midnight_zk_stdlib::{Relation, ZkStdLib, ZkStdLibArch, utils::plonk_api::srs_for_test};
 use rand::rngs::OsRng;
 use sha2::Digest;
 
@@ -118,12 +118,15 @@ impl Relation for BitcoinSigExample {
             .flatten()
             .collect::<Vec<_>>();
 
-        let gen = secp256k1_curve.assign_fixed(layouter, K256::generator())?;
+        let generator = secp256k1_curve.assign_fixed(layouter, K256::generator())?;
         let s_bits = secp256k1_scalar.assigned_to_le_bits(layouter, &s, None, true)?;
         let neg_pk = secp256k1_curve.negate(layouter, &pk)?;
 
-        let r_point =
-            secp256k1_curve.msm_by_le_bits(layouter, &[s_bits, sha_output_bits], &[gen, neg_pk])?;
+        let r_point = secp256k1_curve.msm_by_le_bits(
+            layouter,
+            &[s_bits, sha_output_bits],
+            &[generator, neg_pk],
+        )?;
 
         // Check the correctness of R:
         //  1. It should not be the identity.
@@ -193,14 +196,16 @@ fn main() {
     )
     .expect("Proof generation should not fail");
 
-    assert!(midnight_zk_stdlib::verify::<BitcoinSigExample, Blake2b256>(
-        &srs.verifier_params(),
-        &vk,
-        &instance,
-        None,
-        &proof
+    assert!(
+        midnight_zk_stdlib::verify::<BitcoinSigExample, Blake2b256>(
+            &srs.verifier_params(),
+            &vk,
+            &instance,
+            None,
+            &proof
+        )
+        .is_ok()
     )
-    .is_ok())
 }
 
 // Bitcoin uses points that only have even y coordinates. The input x_coord is

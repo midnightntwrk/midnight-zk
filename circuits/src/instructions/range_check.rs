@@ -19,7 +19,7 @@ use midnight_proofs::{
 };
 use num_bigint::BigUint;
 
-use crate::{types::InnerValue, CircuitField};
+use crate::{CircuitField, types::InnerValue};
 
 /// The set of circuit instructions for range-check operations.
 pub trait RangeCheckInstructions<F, Assigned>

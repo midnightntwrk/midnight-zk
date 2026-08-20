@@ -20,65 +20,64 @@ pub mod utils;
 
 use std::{cell::RefCell, cmp::max, convert::TryInto, fmt::Debug, io, rc::Rc};
 
-use bincode::{config::standard, Decode, Encode};
+use bincode::{Decode, Encode, config::standard};
 use blake2b::blake2b::{
-    blake2b_chip::{Blake2bChip, Blake2bConfig},
     NB_BLAKE2B_ADVICE_COLS,
+    blake2b_chip::{Blake2bChip, Blake2bConfig},
 };
 pub use interface::*;
-use keccak_sha3::packed_chip::{PackedChip, PackedConfig, PACKED_ADVICE_COLS, PACKED_FIXED_COLS};
+use keccak_sha3::packed_chip::{PACKED_ADVICE_COLS, PACKED_FIXED_COLS, PackedChip, PackedConfig};
 use midnight_circuits::{
     biguint::biguint_gadget::BigUintGadget,
     ecc::{
         foreign::{
             edwards_chip::{
-                nb_foreign_edwards_chip_columns, ForeignEdwardsEccChip, ForeignEdwardsEccConfig,
+                ForeignEdwardsEccChip, ForeignEdwardsEccConfig, nb_foreign_edwards_chip_columns,
             },
             weierstrass_chip::{
-                nb_foreign_ecc_chip_columns, ForeignWeierstrassEccChip, ForeignWeierstrassEccConfig,
+                ForeignWeierstrassEccChip, ForeignWeierstrassEccConfig, nb_foreign_ecc_chip_columns,
             },
         },
         hash_to_curve::HashToCurveGadget,
         native::{EccChip, EccConfig, NB_EDWARDS_COLS},
     },
     field::{
+        NativeChip, NativeConfig, NativeGadget,
         decomposition::{
             chip::{P2RDecompositionChip, P2RDecompositionConfig},
             pow2range::Pow2RangeChip,
         },
         foreign::{
-            nb_field_chip_columns, params::MultiEmulationParams as MEP, FieldChip, FieldChipConfig,
+            FieldChip, FieldChipConfig, nb_field_chip_columns, params::MultiEmulationParams as MEP,
         },
         native::NB_EXTRA_ARITH_FIXED_COLS,
-        NativeChip, NativeConfig, NativeGadget,
     },
     hash::{
         poseidon::{
-            constants::RATE, PoseidonChip, PoseidonConfig, VarLenPoseidonGadget,
-            NB_POSEIDON_ADVICE_COLS, NB_POSEIDON_FIXED_COLS,
+            NB_POSEIDON_ADVICE_COLS, NB_POSEIDON_FIXED_COLS, PoseidonChip, PoseidonConfig,
+            VarLenPoseidonGadget, constants::RATE,
         },
         sha256::{
-            Sha256Chip, Sha256Config, VarLenSha256Gadget, NB_SHA256_ADVICE_COLS,
-            NB_SHA256_FIXED_COLS,
+            NB_SHA256_ADVICE_COLS, NB_SHA256_FIXED_COLS, Sha256Chip, Sha256Config,
+            VarLenSha256Gadget,
         },
-        sha512::{Sha512Chip, Sha512Config, NB_SHA512_ADVICE_COLS, NB_SHA512_FIXED_COLS},
+        sha512::{NB_SHA512_ADVICE_COLS, NB_SHA512_FIXED_COLS, Sha512Chip, Sha512Config},
     },
     instructions::{hash::VarHashInstructions, *},
     map::map_gadget::MapGadget,
     parsing::{
-        self,
-        scanner::{ScannerChip, ScannerConfig, NB_SCANNER_ADVICE_COLS, NB_SCANNER_FIXED_COLS},
-        Base64Chip, Base64Config, ParserGadget, NB_BASE64_ADVICE_COLS,
+        self, Base64Chip, Base64Config, NB_BASE64_ADVICE_COLS, ParserGadget,
+        scanner::{NB_SCANNER_ADVICE_COLS, NB_SCANNER_FIXED_COLS, ScannerChip, ScannerConfig},
     },
     types::{AssignedBit, AssignedByte, AssignedNative, AssignedNativePoint, ComposableChip},
-    vec::{vector_gadget::VectorGadget, AssignedVector},
+    vec::{AssignedVector, vector_gadget::VectorGadget},
     verifier::{BlstrsEmulation, VerifierGadget},
 };
 use midnight_curves::{
+    Fq,
     curve25519::{self as curve25519_mod, Curve25519},
     k256::{self as k256_mod, K256},
     p256::{self as p256_mod, P256},
-    Fq,
 };
 use midnight_proofs::{
     circuit::Layouter,

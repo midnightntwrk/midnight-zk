@@ -26,8 +26,8 @@ use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::{self, ConstraintSystem, Error},
     poly::{
-        kzg::{commitment::KZGMultiCommitment, params::ParamsVerifierKZG, KZGCommitmentScheme},
         EvaluationDomain, PolynomialLabel,
+        kzg::{KZGCommitmentScheme, commitment::KZGMultiCommitment, params::ParamsVerifierKZG},
     },
     transcript::{CircuitTranscript, Transcript},
     utils::SerdeFormat,
@@ -36,10 +36,10 @@ use midnight_zk_stdlib::{ZkStdLib, ZkStdLibArch};
 
 use super::aggregator::AggregationWitness;
 use crate::{
-    ivc::{IvcContext, IvcIO, IvcState, IvcTransition, E, F, S},
+    ivc::{E, F, IvcContext, IvcIO, IvcState, IvcTransition, S},
     multi_circuit_aggregator::{
-        utils::{assign_as_public_inputs_and_hash_vk, compute_vk_hash},
         Claim,
+        utils::{assign_as_public_inputs_and_hash_vk, compute_vk_hash},
     },
 };
 

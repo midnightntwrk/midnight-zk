@@ -4,25 +4,25 @@
 use ff::Field;
 use group::Curve;
 use midnight_circuits::{
-    field::foreign::{params::MultiEmulationParams as MEP, AssignedField},
+    CircuitField,
+    field::foreign::{AssignedField, params::MultiEmulationParams as MEP},
     instructions::{
         ArithInstructions, AssignmentInstructions, DecompositionInstructions, EccInstructions,
         PublicInputInstructions, ZeroInstructions,
     },
     testing_utils::ecdsa::{ECDSASig, Ecdsa},
     types::{AssignedForeignPoint, InnerValue, Instantiable},
-    CircuitField,
 };
 use midnight_curves::{
-    k256::{Fq as K256Scalar, K256},
     Fq as Scalar,
+    k256::{Fq as K256Scalar, K256},
 };
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
-use midnight_zk_stdlib::{utils::plonk_api::srs_for_test, Relation, ZkStdLib, ZkStdLibArch};
-use rand::{prelude::SliceRandom, rngs::OsRng, SeedableRng};
+use midnight_zk_stdlib::{Relation, ZkStdLib, ZkStdLibArch, utils::plonk_api::srs_for_test};
+use rand::{SeedableRng, prelude::SliceRandom, rngs::OsRng};
 use rand_chacha::ChaCha8Rng;
 
 type F = Scalar;
@@ -143,10 +143,10 @@ impl Relation for BitcoinThresholdECDSA {
             .map(|(val, r_i)| {
                 let k_point_y_val = val.zip(instance.unzip().0).zip(r_i.value()).map(
                     |(((pk_i, sig_i), msg_hash), r_i)| {
-                        let gen = K256::generator();
+                        let generator = K256::generator();
                         let r_as_scalar = K256Scalar::from_bytes_le(&sig_i.get_r()).unwrap();
                         let s_inv = sig_i.get_s().invert().unwrap();
-                        let k_point = gen * (s_inv * msg_hash) + pk_i * (s_inv * r_as_scalar);
+                        let k_point = generator * (s_inv * msg_hash) + pk_i * (s_inv * r_as_scalar);
 
                         // CPU sanity check.
                         assert_eq!(r_i, k_point.to_affine().x());
@@ -169,8 +169,8 @@ impl Relation for BitcoinThresholdECDSA {
         let sum_alphas_times_msg_hash =
             secp256k1_scalar.mul(layouter, &sum_alphas, &msg_hash, None)?;
 
-        let gen = secp256k1_curve.assign_fixed(layouter, K256::generator())?;
-        let mut bases = vec![gen];
+        let generator = secp256k1_curve.assign_fixed(layouter, K256::generator())?;
+        let mut bases = vec![generator];
         bases.extend(assigned_selected_pks);
         bases.extend(k_points);
 

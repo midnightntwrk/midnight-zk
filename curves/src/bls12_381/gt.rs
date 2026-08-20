@@ -11,7 +11,7 @@ use group::Group;
 use rand_core::RngCore;
 use subtle::{Choice, ConstantTimeEq};
 
-use super::{fp::Fp, fp12::Fp12, fp2::Fp2, fp6::Fp6, Fq};
+use super::{Fq, fp::Fp, fp2::Fp2, fp6::Fp6, fp12::Fp12};
 
 /// This is an element of $\mathbb{G}_T$, the target group of the pairing
 /// function. As with $\mathbb{G}_1$ and $\mathbb{G}_2$ this group has order
@@ -321,14 +321,14 @@ impl Gt {
 
 #[cfg(test)]
 mod tests {
-    use group::{prime::PrimeCurveAffine, Curve};
+    use group::{Curve, prime::PrimeCurveAffine};
     use pairing::{Engine, MillerLoopResult, MultiMillerLoop};
     use rand_core::SeedableRng;
     use rand_xorshift::XorShiftRng;
 
     use super::*;
     use crate::bls12_381::{
-        pairing, Bls12, G1Affine, G1Projective, G2Affine, G2Prepared, G2Projective,
+        Bls12, G1Affine, G1Projective, G2Affine, G2Prepared, G2Projective, pairing,
     };
 
     #[test]

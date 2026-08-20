@@ -7,8 +7,8 @@
 use std::fmt::Debug;
 
 use crate::{
-    serde::endian::{Endian, EndianRepr},
     CurveAffine,
+    serde::endian::{Endian, EndianRepr},
 };
 
 /// Flag bit helpers, operating on the flag byte of a compressed encoding.

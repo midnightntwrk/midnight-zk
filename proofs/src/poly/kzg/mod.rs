@@ -7,7 +7,11 @@
 //!
 //! For a more detailed explanation, see the [Halo 2 Book](https://zcash.github.io/halo2/design/proving-system/multipoint-opening.html) on Multipoint Openings.
 
-use std::{collections::HashMap, marker::PhantomData};
+use std::{
+    collections::HashMap,
+    io::{self, Read},
+    marker::PhantomData,
+};
 
 use midnight_curves::pairing::Engine;
 use rayon::iter::{
@@ -36,22 +40,22 @@ pub use utils::compute_dummy_queries;
 use crate::utils::arithmetic::{truncate, truncated_powers};
 use crate::{
     poly::{
-        commitment::{Labelable, PolynomialCommitmentScheme},
+        Coeff, Error, Polynomial, PolynomialRepresentation, ProverQuery,
+        commitment::PolynomialCommitmentScheme,
         kzg::{
-            msm::{msm_specific, DualMSM, MSMKZG},
+            msm::{DualMSM, MSMKZG, msm_specific},
             params::{ParamsKZG, ParamsVerifierKZG},
             utils::construct_intermediate_sets,
         },
         query::{PolynomialLabel, VerifierQuery},
-        Coeff, Error, Polynomial, PolynomialRepresentation, ProverQuery,
     },
     transcript::{Hashable, Sampleable, Transcript},
     utils::{
         arithmetic::{
-            eval_polynomial, evals_inner_product, inner_product, kate_division,
-            lagrange_interpolate, parallelize, powers, CurveAffine, CurveExt, MSM,
+            CurveAffine, CurveExt, MSM, eval_polynomial, evals_inner_product, inner_product,
+            kate_division, lagrange_interpolate, parallelize, powers,
         },
-        helpers::ProcessedSerdeObject,
+        helpers::{ProcessedSerdeObject, SerdeFormat},
     },
 };
 
@@ -117,6 +121,44 @@ where
         } else {
             1
         }
+    }
+
+    fn read_commitment<T: Transcript>(
+        transcript: &mut T,
+        labels: &[PolynomialLabel],
+    ) -> io::Result<Self::Commitment>
+    where
+        Self::Commitment: Hashable<T::Hash>,
+    {
+        // KZG commits each polynomial independently, so a commitment to
+        // `labels.len()` polynomials is `labels.len()` points read (and hashed)
+        // one after another, each tagged with its label.
+        let inners = labels
+            .iter()
+            .map(|label| {
+                let com: KZGMultiCommitment<E> = transcript.read()?;
+                Ok(KZGCommitment::Simple(
+                    com.into_single().into_point(),
+                    label.clone(),
+                ))
+            })
+            .collect::<io::Result<Vec<_>>>()?;
+        Ok(KZGMultiCommitment(inners))
+    }
+
+    fn deserialize_commitment<R: Read>(
+        reader: &mut R,
+        format: SerdeFormat,
+        labels: &[PolynomialLabel],
+    ) -> io::Result<Self::Commitment> {
+        let inners = labels
+            .iter()
+            .map(|label| {
+                let point = E::G1::read(reader, format)?;
+                Ok(KZGCommitment::Simple(point, label.clone()))
+            })
+            .collect::<io::Result<Vec<_>>>()?;
+        Ok(KZGMultiCommitment(inners))
     }
 
     fn multi_open<T: Transcript>(
@@ -408,11 +450,12 @@ where
             (q_coms, q_eval_sets, point_sets)
         };
 
-        let f_com = transcript
+        let f_point: E::G1 = transcript
             .read::<KZGMultiCommitment<E>>()
             .map_err(|_| Error::SamplingError)?
-            .label(&[PolynomialLabel::Custom("kzg_batch".into())])
-            .into_single();
+            .into_single()
+            .into_point();
+        let f_com = KZGCommitment::Simple(f_point, PolynomialLabel::Custom("kzg_batch".into()));
 
         // Sample a challenge x_3 for checking that f(X) was committed to
         // correctly.
@@ -510,19 +553,19 @@ mod tests {
 
     use blake2b_simd::State as Blake2bState;
     use ff::WithSmallOrderMulGroup;
-    use midnight_curves::{pairing::MultiMillerLoop, serde::SerdeObject, CurveAffine, CurveExt};
+    use midnight_curves::{CurveAffine, CurveExt, pairing::MultiMillerLoop, serde::SerdeObject};
     use rand_core::OsRng;
 
     use crate::{
         poly::{
-            commitment::{Guard, Labelable, PolynomialCommitmentScheme},
+            EvaluationDomain, PolynomialLabel,
+            commitment::{Guard, PolynomialCommitmentScheme},
             kzg::{
+                KZGCommitmentScheme,
                 commitment::KZGMultiCommitment,
                 params::{ParamsKZG, ParamsVerifierKZG},
-                KZGCommitmentScheme,
             },
             query::{ProverQuery, VerifierQuery},
-            EvaluationDomain, PolynomialLabel,
         },
         transcript::{CircuitTranscript, Hashable, Sampleable, Transcript},
         utils::arithmetic::eval_polynomial,
@@ -555,18 +598,21 @@ mod tests {
     {
         let mut transcript = T::init_from_bytes(proof);
 
-        let a = transcript
-            .read::<KZGMultiCommitment<E>>()
-            .unwrap()
-            .label(&[PolynomialLabel::Custom("a".into())]);
-        let b = transcript
-            .read::<KZGMultiCommitment<E>>()
-            .unwrap()
-            .label(&[PolynomialLabel::Custom("b".into())]);
-        let c = transcript
-            .read::<KZGMultiCommitment<E>>()
-            .unwrap()
-            .label(&[PolynomialLabel::Custom("c".into())]);
+        let a = KZGCommitmentScheme::<E>::read_commitment(
+            &mut transcript,
+            &[PolynomialLabel::Custom("a".into())],
+        )
+        .unwrap();
+        let b = KZGCommitmentScheme::<E>::read_commitment(
+            &mut transcript,
+            &[PolynomialLabel::Custom("b".into())],
+        )
+        .unwrap();
+        let c = KZGCommitmentScheme::<E>::read_commitment(
+            &mut transcript,
+            &[PolynomialLabel::Custom("c".into())],
+        )
+        .unwrap();
 
         let x: E::Fr = transcript.squeeze_challenge();
         let y: E::Fr = transcript.squeeze_challenge();

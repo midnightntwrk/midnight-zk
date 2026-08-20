@@ -6,20 +6,20 @@ use ff::{Field, FromUniformBytes, WithSmallOrderMulGroup};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use super::{
+    Error, LagrangeCoeff, Polynomial, ProvingKey, VerifyingKey,
     circuit::{
         Advice, Any, Assignment, Circuit, Column, ConstraintSystem, Fixed, FloorPlanner, Instance,
         Selector,
     },
     evaluation::Evaluator,
-    permutation, Error, LagrangeCoeff, Polynomial, ProvingKey, VerifyingKey,
+    permutation,
 };
 use crate::{
     circuit::Value,
     dev::cost_model::cost_model_options,
     poly::{
-        batch_invert_rational,
+        EvaluationDomain, ExtendedLagrangeCoeff, PolynomialLabel, batch_invert_rational,
         commitment::{Params, PolynomialCommitmentScheme},
-        EvaluationDomain, ExtendedLagrangeCoeff, PolynomialLabel,
     },
     utils::{arithmetic::parallelize, rational::Rational},
 };

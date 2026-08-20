@@ -22,8 +22,8 @@ use midnight_proofs::{
 };
 
 use crate::{
-    types::{AssignedNative, InnerValue},
     CircuitField,
+    types::{AssignedNative, InnerValue},
 };
 
 /// The set of off-circuit instructions for mapping operations.

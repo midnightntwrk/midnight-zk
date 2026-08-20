@@ -20,7 +20,7 @@
 
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
-use crate::{types::InnerValue, CircuitField};
+use crate::{CircuitField, types::InnerValue};
 
 /// The set of circuit instructions for assertion operations.
 ///

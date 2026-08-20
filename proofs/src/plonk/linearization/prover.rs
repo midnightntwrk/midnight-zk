@@ -4,7 +4,7 @@ use ff::PrimeField;
 
 use crate::{
     plonk::ProvingKey,
-    poly::{commitment::PolynomialCommitmentScheme, Coeff, Polynomial},
+    poly::{Coeff, Polynomial, commitment::PolynomialCommitmentScheme},
 };
 
 /// Construct the linearization polynomial:

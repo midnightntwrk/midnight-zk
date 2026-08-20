@@ -17,11 +17,11 @@
 use std::fmt::Debug;
 
 use ff::WithSmallOrderMulGroup;
-use group::{prime::PrimeCurveAffine, Curve};
+use group::{Curve, prime::PrimeCurveAffine};
 use midnight_curves::{
+    CurveAffine, CurveExt,
     pairing::{Engine, MultiMillerLoop},
     serde::SerdeObject,
-    CurveAffine, CurveExt,
 };
 use midnight_proofs::{
     circuit::{Layouter, Value},
@@ -34,18 +34,18 @@ use crate::instructions::FieldInstructions;
 #[cfg(feature = "truncated-challenges")]
 use crate::instructions::NativeInstructions;
 use crate::{
+    CircuitField,
     ecc::{
         curves::{CircuitCurve, WeierstrassCurve},
         foreign::weierstrass_chip::ForeignWeierstrassEccChip,
     },
-    field::{decomposition::chip::P2RDecompositionChip, AssignedNative, NativeChip, NativeGadget},
+    field::{AssignedNative, NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip},
     hash::poseidon::{PoseidonChip, PoseidonState},
     instructions::{
-        ecc::EccInstructions, public_input::CommittedInstanceInstructions, AssignmentInstructions,
-        HashInstructions, PublicInputInstructions, SpongeInstructions,
+        AssignmentInstructions, HashInstructions, PublicInputInstructions, SpongeInstructions,
+        ecc::EccInstructions, public_input::CommittedInstanceInstructions,
     },
     types::{AssignedForeignPoint, InnerValue, Instantiable},
-    CircuitField,
 };
 
 /// A trait for parametrizing the VerifierGadget.

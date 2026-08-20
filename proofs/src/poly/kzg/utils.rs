@@ -6,7 +6,7 @@ use std::{
 
 use ff::Field;
 
-use crate::poly::{query::PolynomialLabel, Error};
+use crate::poly::{Error, query::PolynomialLabel};
 
 #[derive(Clone, Debug)]
 pub(super) struct CommitmentData<F> {

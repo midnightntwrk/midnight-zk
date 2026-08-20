@@ -66,15 +66,16 @@ use num_traits::Zero;
 #[cfg(any(test, feature = "testing"))]
 use crate::testing_utils::FromScratch;
 use crate::{
+    CircuitField,
     instructions::{
-        public_input::CommittedInstanceInstructions, ArithInstructions, AssertionInstructions,
-        AssignmentInstructions, BinaryInstructions, CanonicityInstructions,
-        ControlFlowInstructions, ConversionInstructions, EqualityInstructions, FieldInstructions,
-        PublicInputInstructions, UnsafeConversionInstructions, ZeroInstructions,
+        ArithInstructions, AssertionInstructions, AssignmentInstructions, BinaryInstructions,
+        CanonicityInstructions, ControlFlowInstructions, ConversionInstructions,
+        EqualityInstructions, FieldInstructions, PublicInputInstructions,
+        UnsafeConversionInstructions, ZeroInstructions,
+        public_input::CommittedInstanceInstructions,
     },
     types::{AssignedNative, InnerValue, Instantiable},
     utils::ComposableChip,
-    CircuitField,
 };
 
 /// Minimum number of arithmetic columns.
@@ -883,10 +884,11 @@ where
         }
 
         // If only one term remains after filtering, we may early return.
-        if let [(coeff, var)] = terms.as_slice() {
-            if *coeff == F::ONE && F::is_zero_vartime(&constant) {
-                return Ok(var.clone());
-            }
+        if let [(coeff, var)] = terms.as_slice()
+            && *coeff == F::ONE
+            && F::is_zero_vartime(&constant)
+        {
+            return Ok(var.clone());
         }
 
         // Maybe a  &[(F, AssignedNative<F>)] (and correspondingly to the aux function.

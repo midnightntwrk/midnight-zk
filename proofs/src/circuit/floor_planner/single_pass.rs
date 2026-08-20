@@ -4,9 +4,9 @@ use ff::Field;
 
 use crate::{
     circuit::{
-        layouter::{RegionColumn, RegionLayouter, RegionShape, SyncDeps, TableLayouter},
-        table_layouter::{compute_table_lengths, SimpleTableLayouter},
         Cell, Layouter, Region, RegionIndex, RegionStart, Table, Value,
+        layouter::{RegionColumn, RegionLayouter, RegionShape, SyncDeps, TableLayouter},
+        table_layouter::{SimpleTableLayouter, compute_table_lengths},
     },
     plonk::{
         Advice, Any, Assignment, Circuit, Column, Error, Fixed, FloorPlanner, Instance, Selector,
