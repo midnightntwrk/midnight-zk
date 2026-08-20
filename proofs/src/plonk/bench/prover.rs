@@ -1,6 +1,6 @@
 //! Benchmarking utilities for the PLONK prover.
 
-use std::hash::Hash;
+use std::{collections::BTreeMap, hash::Hash};
 
 use criterion::BenchmarkGroup;
 use ff::{FromUniformBytes, WithSmallOrderMulGroup};
@@ -11,7 +11,7 @@ use rayon::iter::{
 
 use crate::{
     plonk::{
-        Error, ProvingKey,
+        Error, ProvingKey, argument,
         circuit::Circuit,
         linearization::prover::compute_linearization_poly,
         logup, partially_evaluate_identities,
@@ -20,7 +20,6 @@ use crate::{
             parse_advices, write_evals_to_transcript,
         },
         traces::ProverTrace,
-        trash,
     },
     poly::{PolynomialLabel, commitment::PolynomialCommitmentScheme},
     transcript::{Hashable, Sampleable, Transcript},
@@ -206,6 +205,9 @@ where
     // Sample gamma challenge
     let gamma: F = transcript.squeeze_challenge();
 
+    // Sample the trash challenge after the advices have been committed to
+    let trash_challenge: F = transcript.squeeze_challenge();
+
     // Pre-generate permutation blindings for the per-iteration compute.
     let blinding_factors = pk.vk.cs.blinding_factors();
     let chunk_len = pk.vk.cs_degree - 2;
@@ -356,55 +358,46 @@ where
             .collect()
     };
 
-    // Trash argument
-    let trash_challenge: F = transcript.squeeze_challenge();
-
-    let trashcans: Vec<trash::prover::Committed<F>> = {
-        group.bench_function("Commit trash arguments", |b| {
+    // Phase2 argument group (only the trash arguments, for now)
+    let phase2_committed = {
+        group.bench_function("Commit phase2 arguments", |b| {
             b.iter_batched(
                 || (transcript.clone(), instance.clone(), advice.clone()),
-                |(mut t, inst, adv)| {
-                    let _: Result<Vec<_>, _> = pk
-                        .vk
-                        .cs
-                        .trashcans
-                        .iter()
-                        .enumerate()
-                        .map(|(i, trash)| {
-                            trash.commit::<CS, _>(
-                                i,
-                                params,
-                                domain,
-                                trash_challenge,
-                                &adv.advice_polys,
-                                &pk.fixed_values,
-                                &inst.instance_values,
-                                &mut t,
-                            )
-                        })
-                        .collect();
+                |(mut t, inst, adv)| -> Result<(), Error> {
+                    let mut polys_map = BTreeMap::new();
+                    for (i, trash) in pk.vk.cs.trashcans.iter().enumerate() {
+                        let p = trash.compute_trash_poly(
+                            domain,
+                            trash_challenge,
+                            &adv.advice_polys,
+                            &pk.fixed_values,
+                            &inst.instance_values,
+                        );
+                        if polys_map.insert(PolynomialLabel::Trash(i), p).is_some() {
+                            return Err(Error::DuplicatedLabel);
+                        }
+                    }
+                    argument::prover::Committed::commit::<CS, _>(params, polys_map, &mut t)?;
+                    Ok(())
                 },
                 criterion::BatchSize::LargeInput,
             )
         });
-        pk.vk
-            .cs
-            .trashcans
-            .iter()
-            .enumerate()
-            .map(|(i, trash)| {
-                trash.commit::<CS, _>(
-                    i,
-                    params,
-                    domain,
-                    trash_challenge,
-                    &advice.advice_polys,
-                    &pk.fixed_values,
-                    &instance.instance_values,
-                    transcript,
-                )
-            })
-            .collect::<Result<Vec<_>, _>>()?
+
+        let mut polys_map = BTreeMap::new();
+        for (i, trash) in pk.vk.cs.trashcans.iter().enumerate() {
+            let p = trash.compute_trash_poly(
+                domain,
+                trash_challenge,
+                &advice.advice_polys,
+                &pk.fixed_values,
+                &instance.instance_values,
+            );
+            if polys_map.insert(PolynomialLabel::Trash(i), p).is_some() {
+                return Err(Error::DuplicatedLabel);
+            }
+        }
+        argument::prover::Committed::commit::<CS, T>(params, polys_map, transcript)?
     };
 
     // Obtain challenge for keeping all separate gates linearly independent
@@ -421,7 +414,7 @@ where
         instance_polys,
         instance_values,
         lookups,
-        trashcans,
+        phase2_committed,
         permutations,
         beta,
         gamma,
@@ -495,7 +488,7 @@ where
         advice_polys,
         instance_polys,
         lookups,
-        trashcans,
+        phase2_committed,
         permutations,
         beta,
         gamma,
@@ -559,11 +552,8 @@ where
         .map(|p| p.evaluate(pk, x, transcript))
         .collect::<Result<Vec<_>, _>>()?;
 
-    // Evaluate the trashcans, if any, at x.
-    let trashcans: Vec<trash::prover::Evaluated<F>> = trashcans
-        .into_iter()
-        .map(|p| p.evaluate(x, transcript))
-        .collect::<Result<Vec<_>, _>>()?;
+    // Evaluate the phase2 arguments, if any, at their opening points.
+    let phase2_evaluated = phase2_committed.evaluate(x, transcript)?;
 
     // Partially evaluate batched identities (without fixed columns
     // corresponding to simple, multiplicative selectors)
@@ -579,7 +569,7 @@ where
                     &advice_evals,
                     &permutations.evaluated,
                     lookups.iter().map(|inner| &inner.evaluated),
-                    trashcans.iter().map(|inner| &inner.evaluated),
+                    &phase2_evaluated.evals_map,
                     &permutations_common,
                     x,
                     xn,
@@ -597,7 +587,7 @@ where
             &advice_evals,
             &permutations.evaluated,
             lookups.iter().map(|inner| &inner.evaluated),
-            trashcans.iter().map(|inner| &inner.evaluated),
+            &phase2_evaluated.evals_map,
             &permutations_common,
             x,
             xn,
@@ -641,7 +631,7 @@ where
                     &advice_polys,
                     &permutations,
                     &lookups,
-                    &trashcans,
+                    &phase2_evaluated,
                     x,
                     &lin_poly_non_constant_part,
                 );
@@ -654,7 +644,7 @@ where
             &advice_polys,
             &permutations,
             &lookups,
-            &trashcans,
+            &phase2_evaluated,
             x,
             &lin_poly_non_constant_part,
         )
