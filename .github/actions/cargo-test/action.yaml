@@ -21,10 +21,17 @@ runs:
         restore-keys: |
           ${{ runner.os }}-cargo-
 
-    - uses: Swatinem/rust-cache@v2
+    - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       with:
         cache-on-failure: true
         shared-key: "ci"
 
-    - run: cargo test -p ${{ inputs.package }} ${{ inputs.args }}
+    - name: Run cargo test
       shell: bash
+      env:
+        PACKAGE: ${{ inputs.package }}
+        ARGS: ${{ inputs.args }}
+      # ARGS is deliberately unquoted: it carries multiple cargo flags.
+      run: |
+        # shellcheck disable=SC2086
+        cargo test -p "$PACKAGE" $ARGS
