@@ -24,6 +24,7 @@ use crate::{
     },
 };
 
+pub(crate) mod argument;
 mod circuit;
 mod error;
 pub(crate) mod evaluation;
