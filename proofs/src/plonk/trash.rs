@@ -9,7 +9,7 @@ pub(crate) mod verifier;
 
 #[derive(Clone, Debug)]
 pub struct Argument<F: Field> {
-    name: String,
+    pub(crate) argument_index: usize,
     pub(crate) selector: Expression<F>,
     pub(crate) constraint_expressions: Vec<Expression<F>>,
 }
@@ -17,12 +17,12 @@ pub struct Argument<F: Field> {
 impl<F: Field> Argument<F> {
     /// Constructs a new trash argument.
     pub fn new(
-        name: String,
+        argument_index: usize,
         selector: Expression<F>,
         constraint_expressions: Vec<Expression<F>>,
     ) -> Self {
         Argument {
-            name,
+            argument_index,
             selector,
             constraint_expressions,
         }
@@ -34,8 +34,8 @@ impl<F: Field> Argument<F> {
     }
 
     /// The name of this argument.
-    pub fn name(&self) -> &str {
-        &self.name
+    pub fn name(&self) -> String {
+        format!("trash #{}", self.argument_index + 1)
     }
 
     /// The selector of this trash argument.

@@ -2401,8 +2401,7 @@ impl<'a, F: Field> VirtualCells<'a, F> {
                 let q = self.query_selector(s);
                 let polys: Vec<_> = c.constraints.into_iter().map(|c| c.poly).collect();
                 let index = self.meta.trashcans.len();
-                let name = format!("trash #{}", index + 1);
-                (self.meta.trashcans).push(Argument::new(name, q, polys));
+                (self.meta.trashcans).push(Argument::new(index, q, polys));
 
                 vec![]
             }
