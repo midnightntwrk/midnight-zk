@@ -70,8 +70,8 @@ pub mod types {
             AssignedNative,
         },
         mmr::{
-            cpu::{MmrState, SummitPath},
-            mmr_gadget::{AssignedMmr, AssignedSummitPath},
+            cpu::{MembershipProof, MmrState, SummitPath},
+            mmr_gadget::{AssignedMembershipProof, AssignedMmr, AssignedSummitPath},
         },
         utils::{
             types::{InnerConstants, InnerValue, Instantiable},
