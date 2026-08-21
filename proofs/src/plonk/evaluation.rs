@@ -4,8 +4,10 @@ use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use super::{ConstraintSystem, Expression};
 use crate::{
-    plonk::{Any, logup, permutation, trash},
-    poly::{EvaluationDomain, Polynomial, PolynomialRepresentation, Rotation},
+    plonk::{Any, argument, logup, permutation},
+    poly::{
+        Coeff, EvaluationDomain, Polynomial, PolynomialLabel, PolynomialRepresentation, Rotation,
+    },
     utils::arithmetic::parallelize,
 };
 
@@ -828,7 +830,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
         theta: F,
         trash_challenge: F,
         lookups: &[logup::prover::Committed<F>],
-        trashcans: &[trash::prover::Committed<F>],
+        phase2_committed: &argument::prover::Committed<F, Coeff>,
         permutation: &permutation::prover::Committed<F>,
         l0: &Polynomial<F, B>,
         l_last: &Polynomial<F, B>,
@@ -961,9 +963,13 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
 
         // Pre-compute all trash cosets in parallel (lookup cosets
         // are already pre-computed above).
-        let trash_cosets: Vec<_> = trashcans
+        let trash_cosets: Vec<_> = phase2_committed
+            .polys_map
             .par_iter()
-            .map(|trash| B::coeff_to_self(domain, trash.trash_poly.clone()))
+            .filter_map(|(label, trash_poly)| match label {
+                PolynomialLabel::Trash(_) => Some(B::coeff_to_self(domain, trash_poly.clone())),
+                _ => None,
+            })
             .collect();
 
         // Pre-resolve lookup output indices for the flat evaluator.

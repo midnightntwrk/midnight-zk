@@ -13,12 +13,15 @@
 
 //! A module for in-circuit trash arguments identities (expressions).
 //! This is the in-circuit analog of the expressions from file
-//! proofs/src/plonk/trash/verifier.rs.
+//! proofs/src/plonk/trash.rs.
+
+use std::collections::BTreeMap;
 
 use ff::Field;
 use midnight_proofs::{
     circuit::Layouter,
     plonk::{Error, Expression},
+    poly::PolynomialLabel,
 };
 
 use crate::{
@@ -26,8 +29,8 @@ use crate::{
     instructions::ArithInstructions,
     verifier::{
         SelfEmulation,
+        argument::Evaluation,
         expressions::{compress_expressions, eval_expression},
-        trash::TrashEvaluated,
     },
 };
 
@@ -35,7 +38,8 @@ use crate::{
 pub(crate) fn trash_expressions<S: SelfEmulation>(
     layouter: &mut impl Layouter<S::F>,
     scalar_chip: &S::ScalarChip,
-    trash_evaluated: &TrashEvaluated<S>,
+    argument_index: usize,
+    evals_map: &BTreeMap<PolynomialLabel, Vec<Evaluation<S>>>,
     selector: &Expression<S::F>,
     constraint_expressions: &[Expression<S::F>],
     advice_evals: &[AssignedNative<S::F>],
@@ -43,6 +47,13 @@ pub(crate) fn trash_expressions<S: SelfEmulation>(
     instance_evals: &[AssignedNative<S::F>],
     trash_challenge: &AssignedNative<S::F>,
 ) -> Result<Vec<AssignedNative<S::F>>, Error> {
+    let trash_label = PolynomialLabel::Trash(argument_index);
+    let trash_eval = evals_map
+        .get(&trash_label)
+        .and_then(|evals| evals.first())
+        .ok_or_else(|| Error::Synthesis(format!("missing evaluation for {trash_label}")))?
+        .eval();
+
     let id = {
         let compressed = compress_expressions::<S>(
             layouter,
@@ -67,7 +78,7 @@ pub(crate) fn trash_expressions<S: SelfEmulation>(
         scalar_chip.add_and_mul(
             layouter,
             (S::F::ZERO, &q),
-            (-S::F::ONE, &trash_evaluated.trash_eval),
+            (-S::F::ONE, trash_eval),
             (S::F::ONE, &compressed),
             S::F::ZERO,
             S::F::ONE,

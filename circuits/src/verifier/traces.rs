@@ -8,7 +8,7 @@ use crate::{
 pub struct VerifierTrace<S: SelfEmulation, PCS: InCircuitPCS<S>> {
     pub(crate) advice_commitments: Vec<PCS::AssignedCommitment>,
     pub(crate) lookups: Vec<super::lookup::Committed<S, PCS>>,
-    pub(crate) trashcans: Vec<super::trash::Committed<S, PCS>>,
+    pub(crate) phase2_committed: super::argument::Committed<S, PCS>,
     pub(crate) permutations: super::permutation::Committed<S, PCS>,
     pub(crate) beta: AssignedNative<S::F>,
     pub(crate) gamma: AssignedNative<S::F>,

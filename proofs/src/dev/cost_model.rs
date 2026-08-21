@@ -131,7 +131,9 @@ impl Lookup {
 
 /// Structure holding the Trash argument data for circuit benchmarks.
 ///
-/// Each trash argument contributes 1 commitment and 1 evaluation.
+/// The trash polynomials are committed together as one phase2 argument group,
+/// so they contribute a single commitment over all of them, plus 1 evaluation
+/// each.
 #[derive(Debug, Clone)]
 struct Trash;
 
@@ -241,7 +243,8 @@ pub fn circuit_model_with<F: Ord + Field + FromUniformBytes<64>>(
     // - Per permutation batch: commit(nb_chunks) + 3*scalar per chunk (last chunk
     //   has 2 scalar)
     // - Per lookup argument: commit(num_commitments) + num_evaluations * scalar
-    // - Per trash argument: commit(1) + scalar
+    // - Trash arguments: one group commitment over all of them, commit(n), plus
+    //   scalar bytes per argument
     let nb_perm_chunks =
         (o.permutation.columns.saturating_sub(1) / o.max_degree.saturating_sub(2)) + 1;
     let plonk = commit(o.advice.len())
@@ -258,7 +261,12 @@ pub fn circuit_model_with<F: Ord + Field + FromUniformBytes<64>>(
             .iter()
             .map(|l| commit(l.num_commitments()) + scalar * l.num_evaluations())
             .sum::<usize>()
-        + o.trash.len() * (commit(1) + scalar);
+        + if o.trash.is_empty() {
+            // An empty group is not committed to at all.
+            0
+        } else {
+            commit(o.trash.len()) + o.trash.len() * scalar
+        };
 
     // Commitments to quotient limbs: one per limb.
     let limbs = commit(o.max_degree - 1);

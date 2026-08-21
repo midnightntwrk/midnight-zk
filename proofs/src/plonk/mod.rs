@@ -24,6 +24,7 @@ use crate::{
     },
 };
 
+pub(crate) mod argument;
 mod circuit;
 mod error;
 pub(crate) mod evaluation;
@@ -40,7 +41,7 @@ pub mod bench;
 mod prover;
 mod verifier;
 
-use std::io;
+use std::{collections::BTreeMap, io};
 
 pub use circuit::*;
 pub use error::*;
@@ -502,7 +503,7 @@ pub(crate) fn partially_evaluate_identities<'a, F, CS>(
     advice_evals: &'a [F],
     permutation_evals: &'a [permutation::Evaluated<F>],
     lookup_evals: impl Iterator<Item = &'a logup::Evaluated<F>> + 'a,
-    trashcan_evals: impl Iterator<Item = &'a trash::Evaluated<F>> + 'a,
+    phase2_evals: &BTreeMap<PolynomialLabel, Vec<argument::Evaluation<F>>>,
     permutations_common: &'a CommonEvaluated<F>,
     x: F,
     xn: F,
@@ -587,11 +588,12 @@ where
                 .map(|e| (None, e)),
         )
         .chain(
-            trashcan_evals
-                .zip(vk.cs.trashcans.iter())
-                .flat_map(move |(p, argument)| {
-                    p.expressions(
-                        argument,
+            vk.cs
+                .trashcans
+                .iter()
+                .flat_map(move |argument| {
+                    argument.expressions(
+                        phase2_evals,
                         trash_challenge,
                         advice_evals,
                         fixed_evals,

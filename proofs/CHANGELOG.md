@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Derive `Ord` on `PolynomialLabel`, making it usable as a `BTreeMap` key [#430](https://github.com/midnightntwrk/midnight-zk/pull/430)
 * `commitment_byte_length` method on the `PolynomialCommitmentScheme` trait, defaulting to the per-commitment size times `n` and overridable for schemes that fold polynomials into a single proof element [#440](https://github.com/midnightntwrk/midnight-zk/pull/440)
 * `circuit_model_with` taking an explicit commitment-size closure [#440](https://github.com/midnightntwrk/midnight-zk/pull/440)
+* `Error::DuplicatedLabel`, returned when two polynomials of an argument group claim the same `PolynomialLabel` [#513](https://github.com/midnightntwrk/midnight-zk/pull/513)
 
 ### Fixed
 * Fix verifier evals bug [#356](https://github.com/midnightntwrk/midnight-zk/pull/356)
@@ -30,6 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Fix cost-model [#435](https://github.com/midnightntwrk/midnight-zk/pull/435)
 
 ### Changed
+* Squeeze the trash challenge right after `gamma`, before the permutation and lookup commitments, so the trash polynomials are committed together with the other phase-2 polynomials. This changes the transcript of every proof, including for circuits with no trashcan: proofs produced by earlier versions no longer verify [#513](https://github.com/midnightntwrk/midnight-zk/pull/513)
+* Commit the trash polynomials as a single generic argument group keyed by `PolynomialLabel`, rather than one commitment per trashcan. A new internal `plonk::argument` module owns the group's `Committed`/`Evaluated` types and the per-label opening points; `trash::Argument` is identified by an index instead of a name and looks its own evaluation up by label [#513](https://github.com/midnightntwrk/midnight-zk/pull/513)
 * Migrate to Rust edition 2024; MSRV raised from 1.76 to 1.90. Both are now inherited from the workspace [#508](https://github.com/midnightntwrk/midnight-zk/pull/508)
 * Extend `PolynomialCommitmentScheme` with `squeeze_evaluation_point` and `srs_monomial_blowup` and add a `k` argument to `multi_prepare`, as PCS-agnostic extension points for fflonk [#487](https://github.com/midnightntwrk/midnight-zk/pull/487)
 * `circuit_model` is now parameterized by a `PolynomialCommitmentScheme` (`circuit_model::<_, CS>`) instead of const `COMM`/`SCALAR` byte-size generics [#440](https://github.com/midnightntwrk/midnight-zk/pull/440)
@@ -53,6 +56,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Simplify KZG multiopen verifier to use `KZGCommitment` directly [#430](https://github.com/midnightntwrk/midnight-zk/pull/430)
 
 ### Removed
+* Remove the internal `trash::verifier` module and `trash::Evaluated`; the trash argument no longer carries any transcript plumbing of its own [#513](https://github.com/midnightntwrk/midnight-zk/pull/513)
 * Remove the `Labelable` trait; commitments are now labeled while being read through `read_commitment` / `deserialize_commitment` instead of being re-labeled after deserialization [#491](https://github.com/midnightntwrk/midnight-zk/pull/491)
 * Remove `Query<F>` trait; `construct_intermediate_sets` now accepts `&[(T, F, F)]` (commitment reference, point, eval) tuples with `T: PartialEq + Copy` [#411](https://github.com/midnightntwrk/midnight-zk/pull/411)
 * Remove multi-phase PLONK support: `Phase`, `Challenge`, `FirstPhase`, and `Layouter::get_challenge()` are removed; `Any::Advice` is no longer phase-parameterized; the prover and dev tools synthesize in a single pass [#376](https://github.com/midnightntwrk/midnight-zk/pull/376)

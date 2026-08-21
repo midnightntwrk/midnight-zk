@@ -1,15 +1,15 @@
-use std::{cmp::max, fmt::Debug};
+use std::{cmp::max, collections::BTreeMap, fmt::Debug};
 
 use ff::{Field, PrimeField};
 
 use super::circuit::Expression;
+use crate::{plonk::argument, poly::PolynomialLabel};
 
 pub(crate) mod prover;
-pub(crate) mod verifier;
 
 #[derive(Clone, Debug)]
 pub struct Argument<F: Field> {
-    name: String,
+    pub(crate) argument_index: usize,
     pub(crate) selector: Expression<F>,
     pub(crate) constraint_expressions: Vec<Expression<F>>,
 }
@@ -17,12 +17,12 @@ pub struct Argument<F: Field> {
 impl<F: Field> Argument<F> {
     /// Constructs a new trash argument.
     pub fn new(
-        name: String,
+        argument_index: usize,
         selector: Expression<F>,
         constraint_expressions: Vec<Expression<F>>,
     ) -> Self {
         Argument {
-            name,
+            argument_index,
             selector,
             constraint_expressions,
         }
@@ -34,8 +34,8 @@ impl<F: Field> Argument<F> {
     }
 
     /// The name of this argument.
-    pub fn name(&self) -> &str {
-        &self.name
+    pub fn name(&self) -> String {
+        format!("trash #{}", self.argument_index + 1)
     }
 
     /// The selector of this trash argument.
@@ -49,20 +49,18 @@ impl<F: Field> Argument<F> {
     }
 }
 
-#[derive(Debug)]
-pub struct Evaluated<F: PrimeField> {
-    trash_eval: F,
-}
-
-impl<F: PrimeField> Evaluated<F> {
-    pub(crate) fn expressions<'a>(
-        &'a self,
-        argument: &'a Argument<F>,
+impl<F: PrimeField> Argument<F> {
+    pub(crate) fn expressions(
+        &self,
+        evals_map: &BTreeMap<PolynomialLabel, Vec<argument::Evaluation<F>>>,
         trash_challenge: F,
         advice_evals: &[F],
         fixed_evals: &[F],
         instance_evals: &[F],
-    ) -> impl Iterator<Item = F> + 'a {
+    ) -> impl Iterator<Item = F> {
+        let trash_label = PolynomialLabel::Trash(self.argument_index);
+        let trash_eval = evals_map.get(&trash_label).unwrap()[0].eval();
+
         let evaluate_expression = |expr: &Expression<F>| {
             expr.evaluate(
                 &|scalar| scalar,
@@ -77,11 +75,11 @@ impl<F: PrimeField> Evaluated<F> {
             )
         };
 
-        let compressed_expressions = (argument.constraint_expressions.iter())
+        let compressed_expressions = (self.constraint_expressions.iter())
             .map(evaluate_expression)
             .fold(F::ZERO, |acc, eval| acc * &trash_challenge + &eval);
 
-        let q = evaluate_expression(argument.selector());
-        vec![compressed_expressions - (F::ONE - q) * self.trash_eval].into_iter()
+        let q = evaluate_expression(self.selector());
+        vec![compressed_expressions - (F::ONE - q) * trash_eval].into_iter()
     }
 }

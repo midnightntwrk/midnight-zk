@@ -1,5 +1,5 @@
 use std::{
-    collections::HashSet,
+    collections::{BTreeMap, HashSet},
     hash::Hash,
     iter::{self},
     ops::RangeTo,
@@ -24,8 +24,8 @@ use super::{
 use crate::{
     circuit::Value,
     plonk::{
-        linearization::prover::compute_linearization_poly, partially_evaluate_identities,
-        traces::ProverTrace, trash,
+        argument, linearization::prover::compute_linearization_poly, partially_evaluate_identities,
+        traces::ProverTrace,
     },
     poly::{
         Coeff, EvaluationDomain, ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial, PolynomialLabel,
@@ -162,6 +162,9 @@ where
     // Sample gamma challenge
     let gamma: F = transcript.squeeze_challenge();
 
+    // Sample the trash challenge after the advices have been committed to
+    let trash_challenge: F = transcript.squeeze_challenge();
+
     let blinding_factors = pk.vk.cs.blinding_factors();
     let chunk_len = pk.vk.cs_degree - 2;
     let num_perm_sets = pk.vk.cs.permutation.columns.chunks(chunk_len).len();
@@ -243,28 +246,24 @@ where
         })
         .collect();
 
-    // Trash argument
-    let trash_challenge: F = transcript.squeeze_challenge();
+    let mut phase2_polys_map: BTreeMap<PolynomialLabel, Polynomial<F, Coeff>> = BTreeMap::new();
 
-    let trashcans: Vec<trash::prover::Committed<F>> = pk
-        .vk
-        .cs
-        .trashcans
-        .iter()
-        .enumerate()
-        .map(|(i, trash)| {
-            trash.commit::<CS, _>(
-                i,
-                params,
-                domain,
-                trash_challenge,
-                &advice.advice_polys,
-                &pk.fixed_values,
-                &instance.instance_values,
-                transcript,
-            )
-        })
-        .collect::<Result<Vec<_>, _>>()?;
+    for (i, trash) in pk.vk.cs.trashcans.iter().enumerate() {
+        let p = trash.compute_trash_poly(
+            domain,
+            trash_challenge,
+            &advice.advice_polys,
+            &pk.fixed_values,
+            &instance.instance_values,
+        );
+
+        if phase2_polys_map.insert(PolynomialLabel::Trash(i), p).is_some() {
+            return Err(Error::DuplicatedLabel);
+        }
+    }
+
+    let phase2_committed =
+        argument::prover::Committed::commit::<CS, T>(params, phase2_polys_map, transcript)?;
 
     // Obtain challenge for keeping all separate gates linearly independent
     let y: F = transcript.squeeze_challenge();
@@ -285,7 +284,7 @@ where
         instance_polys,
         instance_values,
         lookups,
-        trashcans,
+        phase2_committed,
         permutations,
         beta,
         gamma,
@@ -333,7 +332,7 @@ where
         advice_polys,
         instance_polys,
         lookups,
-        trashcans,
+        phase2_committed,
         permutations,
         beta,
         gamma,
@@ -371,11 +370,8 @@ where
         .map(|p| p.evaluate(pk, x, transcript))
         .collect::<Result<Vec<_>, _>>()?;
 
-    // Evaluate the trashcans, if any, at x.
-    let trashcans: Vec<trash::prover::Evaluated<F>> = trashcans
-        .into_iter()
-        .map(|p| p.evaluate(x, transcript))
-        .collect::<Result<Vec<_>, _>>()?;
+    let phase2_evaluated: argument::prover::Evaluated<F> =
+        phase2_committed.evaluate(x, transcript)?;
 
     // Partially evaluate batched identities (without fixed columns
     // corresponding to simple, multiplicative selectors)
@@ -388,7 +384,7 @@ where
         &advice_evals,
         &permutations.evaluated,
         lookups.iter().map(|inner| &inner.evaluated),
-        trashcans.iter().map(|inner| &inner.evaluated),
+        &phase2_evaluated.evals_map,
         &permutations_common,
         x,
         xn,
@@ -415,7 +411,7 @@ where
         &advice_polys,
         &permutations,
         &lookups,
-        &trashcans,
+        &phase2_evaluated,
         x,
         &lin_poly_non_constant_part,
     );
@@ -640,7 +636,7 @@ pub(super) fn compute_nu_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommit
         advice_polys,
         instance_polys,
         lookups,
-        trashcans,
+        phase2_committed,
         permutations,
         beta,
         gamma,
@@ -674,7 +670,7 @@ pub(super) fn compute_nu_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommit
         *theta,
         *trash_challenge,
         lookups,
-        trashcans,
+        phase2_committed,
         permutations,
         &pk.l0,
         &pk.l_last,
@@ -880,7 +876,7 @@ pub(super) fn compute_queries<
     advice_polys: &'a [Polynomial<F, Coeff>],
     permutations: &'a permutation::prover::Evaluated<F>,
     lookups: &'a [logup::prover::Evaluated<F>],
-    trashcans: &'a [trash::prover::Evaluated<F>],
+    phase2_evals: &'a argument::prover::Evaluated<F>,
     x: F,
     lin_poly_non_constant_part: &'a Polynomial<F, Coeff>,
 ) -> Vec<ProverQuery<'a, F>> {
@@ -908,7 +904,7 @@ pub(super) fn compute_queries<
         )
         .chain(permutations.open(pk, x))
         .chain(lookups.iter().flat_map(move |p| p.open(pk, x)))
-        .chain(trashcans.iter().flat_map(move |p| p.open(x)))
+        .chain(phase2_evals.open())
         .chain(
             pk.vk
                 .cs
