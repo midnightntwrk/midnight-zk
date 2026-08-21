@@ -26,5 +26,5 @@ runs:
         cache-on-failure: true
         shared-key: "ci"
 
-    - run: cargo test -p ${{ inputs.package }} ${{ inputs.args }}
+    - run: cargo test --locked -p ${{ inputs.package }} ${{ inputs.args }}
       shell: bash
