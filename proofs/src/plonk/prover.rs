@@ -338,6 +338,7 @@ where
         gamma,
         theta,
         trash_challenge,
+        y,
         ..
     } = trace;
 
@@ -394,14 +395,8 @@ where
     );
 
     // Compute linearization polynomial
-    let (lin_poly_non_constant_part, lin_poly_constant_term) = compute_linearization_poly(
-        expressions,
-        pk,
-        trace.y,
-        xn,
-        splitting_factor,
-        quotient_limbs,
-    );
+    let (lin_poly_non_constant_part, lin_poly_constant_term) =
+        compute_linearization_poly(expressions, pk, y, xn, splitting_factor, quotient_limbs);
 
     debug_assert_eq!(
         eval_polynomial(&lin_poly_non_constant_part, x),
