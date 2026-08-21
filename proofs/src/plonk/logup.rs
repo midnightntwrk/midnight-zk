@@ -462,7 +462,7 @@ impl<F: PrimeField> ChunkedArgument<F> {
             .enumerate()
             .map(|(j, chunk)| {
                 let helper_eval = phase2_evals_map
-                    .get(&&PolynomialLabel::LogupHelper(argument_index, j))
+                    .get(&PolynomialLabel::LogupHelper(argument_index, j))
                     .unwrap()[0]
                     .eval();
 

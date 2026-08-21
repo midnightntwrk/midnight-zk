@@ -971,7 +971,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
 
                 let aggregator_poly = phase2_committed
                     .polys_map
-                    .get(&&PolynomialLabel::LogupAggregator(*argument_index))
+                    .get(&PolynomialLabel::LogupAggregator(*argument_index))
                     .unwrap();
 
                 // Compute cosets
