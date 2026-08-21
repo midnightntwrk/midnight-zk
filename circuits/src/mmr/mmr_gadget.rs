@@ -194,20 +194,6 @@ where
         self.enforce_state_invariants(layouter, size, peaks)
     }
 
-    /// Assigns the state of the empty MMR.
-    pub fn assign_empty<const SIZE: usize>(
-        &self,
-        layouter: &mut impl Layouter<F>,
-    ) -> Result<AssignedMmr<F, SIZE>, Error> {
-        self.assign_fixed(
-            layouter,
-            MmrState {
-                size: 0,
-                peaks: [F::ZERO; SIZE],
-            },
-        )
-    }
-
     /// Constrains the given MMR state as a public input, in the order of
     /// [AssignedMmr::as_public_input]: the size followed by the peaks.
     pub fn constrain_as_public_input<const SIZE: usize>(
@@ -341,12 +327,10 @@ where
         layouter: &mut impl Layouter<F>,
         proof: Value<MembershipProof<F, SIZE>>,
     ) -> Result<AssignedMembershipProof<F, SIZE>, Error> {
-        let height = self
-            .native_gadget
-            .assign(layouter, proof.map(|p| F::from(p.height as u64)))?;
-        let leaf_index = self
-            .native_gadget
-            .assign(layouter, proof.map(|p| F::from(p.leaf_index)))?;
+        let height =
+            self.native_gadget.assign(layouter, proof.map(|p| F::from(p.height as u64)))?;
+        let leaf_index =
+            self.native_gadget.assign(layouter, proof.map(|p| F::from(p.leaf_index)))?;
         let siblings = proof.map(|p| p.siblings).transpose_array();
         let siblings = self.native_gadget.assign_many(layouter, &siblings)?;
         Ok(AssignedMembershipProof {
@@ -384,21 +368,17 @@ where
         // as the arity-1 leaf hash, which is the peak of a height-0 mountain.
         let mut node = self.hash_chip.hash(layouter, std::slice::from_ref(elem))?;
 
-        // Set once the climb reaches the claimed height, ensuring that `height`
-        // selects some slot (i.e. lies in `[0, SIZE)`).
+        // Set once the climb reaches the claimed height at a present mountain,
+        // ensuring that `height` selects an existing slot in `[0, SIZE)`.
         let mut matched: AssignedBit<F> = ng.assign_fixed(layouter, false)?;
 
         for (l, (peak, size_bit)) in mmr.peaks.iter().zip(mmr.size_bits.iter()).enumerate() {
-            // On the claimed height, `node` must equal that peak and the
-            // mountain must be present.
+            // On the claimed height, `node` must equal that peak.
             let is_height = ng.is_equal_to_fixed(layouter, &proof.height, F::from(l as u64))?;
             ng.cond_assert_equal(layouter, &is_height, &node, peak)?;
 
-            let absent = ng.not(layouter, size_bit)?;
-            let selects_absent = ng.and(layouter, &[is_height.clone(), absent])?;
-            ng.assert_equal_to_fixed(layouter, &selects_absent, false)?;
-
-            matched = ng.or(layouter, &[matched, is_height])?;
+            let matches_here = ng.and(layouter, &[is_height, size_bit.clone()])?;
+            matched = ng.or(layouter, &[matched, matches_here])?;
 
             // Climb one level (the top height never climbs).
             if l < SIZE - 1 {
@@ -489,12 +469,14 @@ mod tests {
     use super::*;
     use crate::{
         field::{decomposition::chip::P2RDecompositionChip, NativeChip, NativeGadget},
-        hash::poseidon::{constants::PoseidonField, PoseidonChip},
+        hash::poseidon::PoseidonChip,
+        instructions::hash::HashCPU,
         mmr::cpu::Mmr,
         utils::circuit_modeling::{circuit_to_json, cost_measure_end, cost_measure_start},
     };
 
     const SIZE: usize = 5;
+    type Ng<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
 
     #[derive(Clone, Debug)]
     enum MmrTests {
@@ -571,7 +553,7 @@ mod tests {
                     mmr_gadget.constrain_as_public_input(&mut layouter, &small)?;
                     mmr_gadget.constrain_as_public_input(&mut layouter, &big)?;
 
-                    let path = mmr_gadget.assign_summit_path(&mut layouter, self.path.clone())?;
+                    let path = mmr_gadget.assign_summit_path(&mut layouter, self.path)?;
 
                     cost_measure_start(&mut layouter);
                     mmr_gadget.assert_prefix(&mut layouter, &small, &big, &path)?;
@@ -598,7 +580,7 @@ mod tests {
     fn all_mmrs<F, H>(first: u64, max_size: u64) -> Vec<Mmr<F, H, SIZE>>
     where
         F: CircuitField,
-        H: crate::instructions::hash::HashCPU<F, F>,
+        H: HashCPU<F, F>,
     {
         let mut mmrs = vec![Mmr::new()];
         for n in 0..max_size {
@@ -680,7 +662,7 @@ mod tests {
                 "(3, 11) with a tampered step",
             ),
             // A longer MMR is not a prefix of a shorter one.
-            (&mmrs[11], &mmrs[3], empty_path.clone(), false, "(11, 3)"),
+            (&mmrs[11], &mmrs[3], empty_path, false, "(11, 3)"),
             // Same sizes, different content.
             (
                 &shifted_mmrs[3],
@@ -783,14 +765,39 @@ mod tests {
 
         // (elem, proof, expect_ok, description).
         let mut cases: Vec<(F, MembershipProof<F, SIZE>, bool, String)> = vec![
-            (leaves[0], mmr.prove_membership(0), true, "oldest (tallest mountain)".into()),
-            (leaves[7], mmr.prove_membership(7), true, "interior of the tallest".into()),
-            (leaves[16], mmr.prove_membership(16), true, "in a smaller mountain".into()),
-            (leaves[(n - 1) as usize], mmr.prove_membership(n - 1), true, "newest".into()),
+            (
+                leaves[0],
+                mmr.prove_membership(0),
+                true,
+                "oldest (tallest mountain)".into(),
+            ),
+            (
+                leaves[7],
+                mmr.prove_membership(7),
+                true,
+                "interior of the tallest".into(),
+            ),
+            (
+                leaves[16],
+                mmr.prove_membership(16),
+                true,
+                "in a smaller mountain".into(),
+            ),
+            (
+                leaves[(n - 1) as usize],
+                mmr.prove_membership(n - 1),
+                true,
+                "newest".into(),
+            ),
         ];
 
         // Wrong element against an honest path.
-        cases.push((leaves[0] + F::ONE, mmr.prove_membership(0), false, "wrong element".into()));
+        cases.push((
+            leaves[0] + F::ONE,
+            mmr.prove_membership(0),
+            false,
+            "wrong element".into(),
+        ));
 
         // Tampered sibling.
         let mut proof = mmr.prove_membership(5);
@@ -819,9 +826,15 @@ mod tests {
             };
             let prover = MockProver::run(&circuit, vec![vec![], vec![]]).unwrap();
             if expect_ok {
-                assert!(prover.verify().is_ok(), "membership case {description} rejected");
+                assert!(
+                    prover.verify().is_ok(),
+                    "membership case {description} rejected"
+                );
             } else {
-                assert!(prover.verify().is_err(), "membership case {description} accepted");
+                assert!(
+                    prover.verify().is_err(),
+                    "membership case {description} accepted"
+                );
             }
 
             if cost_model && description == "oldest (tallest mountain)" {
@@ -854,25 +867,15 @@ mod tests {
         assert_eq!(AssignedMmr::<F, SIZE>::from_public_input(&tampered), None);
     }
 
-    fn run_poseidon_test<F: PoseidonField + ff::FromUniformBytes<64> + Ord>(cost_model: bool) {
-        test_mmr_gadget::<F, NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>, PoseidonChip<F>>(
-            cost_model,
-        )
-    }
-
     #[test]
     fn test_mmr_gadget_poseidon() {
-        run_poseidon_test::<midnight_curves::Fq>(true);
-    }
-
-    fn run_membership_test<F: PoseidonField + ff::FromUniformBytes<64> + Ord>(cost_model: bool) {
-        test_mmr_membership::<F, NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>, PoseidonChip<F>>(
-            cost_model,
-        )
+        type F = midnight_curves::Fq;
+        test_mmr_gadget::<F, Ng<F>, PoseidonChip<F>>(true);
     }
 
     #[test]
     fn test_mmr_membership_poseidon() {
-        run_membership_test::<midnight_curves::Fq>(true);
+        type F = midnight_curves::Fq;
+        test_mmr_membership::<F, Ng<F>, PoseidonChip<F>>(true);
     }
 }

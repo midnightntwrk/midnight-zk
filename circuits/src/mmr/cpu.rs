@@ -31,7 +31,8 @@ pub struct Mmr<F: CircuitField, H: HashCPU<F, F>, const SIZE: usize> {
 
 /// The succinct state of an [Mmr]: the number of appended elements and the
 /// peak of each mountain. This is the (public) statement form consumed by
-/// the in-circuit MMR operations.
+/// the in-circuit MMR operations. As everywhere in this module, `SIZE` must
+/// be at most 64.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct MmrState<F, const SIZE: usize> {
     /// Number of appended elements. Must be smaller than `2^SIZE`.
@@ -45,7 +46,7 @@ pub struct MmrState<F, const SIZE: usize> {
 /// absorbed when climbing from height `i` to height `i + 1`, on the heights
 /// where the small MMR does not provide a peak of its own. Unused entries
 /// (including `steps[SIZE - 1]`, which can never be consumed) are `F::ZERO`.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SummitPath<F, const SIZE: usize> {
     pub(crate) steps: [F; SIZE],
 }
@@ -59,10 +60,12 @@ pub struct SummitPath<F, const SIZE: usize> {
 ///   gives the left/right direction when climbing from level `l` to `l + 1`.
 /// - `siblings[l]` is the sibling node absorbed at that climb.
 ///
-/// Only the low `height` bits of `leaf_index` and the first `height` entries of
-/// `siblings` are meaningful; the rest are padding (`F::ZERO`). The claim fixes
-/// no absolute position: `height` and `leaf_index` are a hint supplied by the
-/// prover (see [Mmr::verify_membership]).
+/// Only the low `height` bits of `leaf_index` (which must be smaller than
+/// `2^SIZE`) and the first `height` entries of `siblings` are meaningful; the
+/// rest is padding, ignored by verification ([Mmr::prove_membership] emits it
+/// as `F::ZERO`). The claim fixes no absolute position: `height` and
+/// `leaf_index` are a hint supplied by the prover (see
+/// [Mmr::verify_membership]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct MembershipProof<F, const SIZE: usize> {
     pub(crate) height: usize,
@@ -250,8 +253,8 @@ where
         // [0, a_res) of said mountain.
         let a_res = a & ((1u64 << d) - 1);
 
-        // Case 2: All mountains in the small MMR are present identically (without merge)
-        // in the large MMR.
+        // Case 2: All mountains in the small MMR are present identically (without
+        // merge) in the large MMR.
         if a_res == 0 {
             // All the small mountains match one of `self` directly: no climb.
             return SummitPath { steps };
@@ -269,9 +272,10 @@ where
             let absorb_own_peak = i > m && (a >> i) & 1 == 1;
             if !absorb_own_peak {
                 // The climbing node at height i is the block containing the
-                // local leaf `a_res - 1`; absorb its right sibling.
+                // local leaf `a_res - 1`; absorb its right sibling (hence the
+                // `+ 1`).
                 let block = (a_res - 1) >> i;
-                *step = mountain.node(i, block + 1); // +1 because it is always the right side of the block
+                *step = mountain.node(i, block + 1);
             }
         }
         SummitPath { steps }
@@ -418,8 +422,9 @@ where
         elem: F,
         proof: &MembershipProof<F, SIZE>,
     ) -> bool {
-        // States whose size exceeds SIZE bits are not representable in-circuit.
-        if state.size > Self::capacity() {
+        // Sizes and leaf indices exceeding SIZE bits are not representable
+        // in-circuit.
+        if state.size > Self::capacity() || proof.leaf_index > Self::capacity() {
             return false;
         }
 
@@ -566,7 +571,7 @@ mod tests {
     fn test_prefix<F: CircuitField, H: HashCPU<F, F>>() {
         const SIZE: usize = 5;
         const MAX: usize = 24;
-        type M<F, H> = Mmr<F, H, 5>;
+        type M<F, H> = Mmr<F, H, SIZE>;
 
         // All prefix MMRs over the leaves 0, 1, 2, ..., plus variants with
         // shifted content (leaves 1, 2, 3, ...) for mismatch tests.
@@ -604,7 +609,7 @@ mod tests {
                 // padding entries must remain free.
                 let used = used_steps::<SIZE>(a as u64, b as u64);
                 for (i, step_used) in used.iter().enumerate() {
-                    let mut tampered = path.clone();
+                    let mut tampered = path;
                     tampered.steps[i] += F::ONE;
                     let accepted =
                         M::<F, H>::verify_prefix(&small.state(), &big.state(), &tampered);
@@ -634,7 +639,11 @@ mod tests {
         let mut rng = ChaCha8Rng::seed_from_u64(0xfeedbeef);
         let n = 45usize;
         // n = 45 = 0b101101, so the height-1 mountain is absent.
-        assert_eq!(n as u64 & 0b10, 0, "test assumes the height-1 mountain is absent");
+        assert_eq!(
+            n as u64 & 0b10,
+            0,
+            "test assumes the height-1 mountain is absent"
+        );
         let leaves: Vec<F> = (0..n).map(|_| F::random(&mut rng)).collect();
 
         let mut mmr = Mmr::<F, H, SIZE>::new();
