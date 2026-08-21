@@ -1,17 +1,18 @@
-name: Drop status:untriaged once an issue is assigned
+name: Drop untriaged on assign
 
+# Dispatcher — calls the reusable workflow in midnightntwrk/workflows.
+# Removes status:untriaged once an issue is assigned and prioritised.
 on:
   issues:
-    types: [assigned, labeled]
+    types: [assigned]
 
 permissions:
   issues: write
 
 concurrency:
-  group: drop-untriaged-${{ github.event.issue.number }}
+  group: drop-untriaged-on-assign-${{ github.event.issue.number }}
   cancel-in-progress: true
 
 jobs:
-  drop-untriaged:
-    name: Remove status:untriaged from assigned issues
-    uses: midnightntwrk/.github/.github/workflows/drop-untriaged-on-assign.yml@2703a25b1b9d634fffa23f4f7dbc9da73cd5f7fb
+  apply:
+    uses: midnightntwrk/workflows/.github/workflows/drop-untriaged-on-assign.yml@2a516da4425edff87dd8d080bfb1c4125866f727

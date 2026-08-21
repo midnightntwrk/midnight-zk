@@ -6,6 +6,9 @@ on:
       - main
       - next
 
+permissions:
+  contents: read
+
 jobs:
   test-examples:
     if: github.event.pull_request.draft == false

@@ -7,6 +7,9 @@ on:
       - main
       - next
 
+permissions:
+  contents: read
+
 jobs:
   download-srs:
     runs-on: ubuntu-latest
@@ -164,7 +167,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - uses: dtolnay/rust-toolchain@nightly
+      - uses: dtolnay/rust-toolchain@7c8d7d138f5c09cef361f8214cf96882cd029cdb # nightly
+        with:
+          toolchain: nightly
       - run: rustup component add rustfmt --toolchain nightly
       - run: cargo +nightly fmt --all -- --check
 

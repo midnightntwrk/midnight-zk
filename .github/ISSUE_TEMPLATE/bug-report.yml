@@ -3,10 +3,21 @@ description: Report a bug or incorrect behaviour in midnight-zk
 title: "[Bug] "
 type: Bug
 labels:
-  - type:bug
   - status:untriaged
   - component:zk
 body:
+  - type: dropdown
+    id: components
+    attributes:
+      label: Components
+      description: Which components does this affect?
+      multiple: true
+      options:
+        - component:zk
+        - component:crypto
+    validations:
+      required: true
+
   - type: input
     id: version
     attributes:
