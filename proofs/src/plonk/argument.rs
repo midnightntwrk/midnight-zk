@@ -24,8 +24,11 @@ impl<F: PrimeField> Evaluation<F> {
 /// that a single implementation serves the whole group, with no trait to
 /// dispatch on: `PolynomialLabel` is defined outside the arguments and already
 /// names their specifics, so the label alone decides.
-fn eval_points<F: PrimeField>(label: &PolynomialLabel, x: F) -> Vec<F> {
+fn eval_points<F: PrimeField>(label: &PolynomialLabel, x: F, omega: F) -> Vec<F> {
     match label {
+        PolynomialLabel::LogupMultiplicities(_) => vec![x],
+        PolynomialLabel::LogupHelper(_, _) => vec![x],
+        PolynomialLabel::LogupAggregator(_) => vec![x, omega * x],
         PolynomialLabel::Trash(_) => vec![x],
         _ => unreachable!(),
     }
