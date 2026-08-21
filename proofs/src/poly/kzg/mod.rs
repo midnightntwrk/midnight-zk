@@ -130,20 +130,50 @@ where
     where
         Self::Commitment: Hashable<T::Hash>,
     {
-        // KZG commits each polynomial independently, so a commitment to
-        // `labels.len()` polynomials is `labels.len()` points read (and hashed)
-        // one after another, each tagged with its label.
-        let inners = labels
-            .iter()
-            .map(|label| {
-                let com: KZGMultiCommitment<E> = transcript.read()?;
-                Ok(KZGCommitment::Simple(
-                    com.into_single().into_point(),
-                    label.clone(),
-                ))
-            })
-            .collect::<io::Result<Vec<_>>>()?;
-        Ok(KZGMultiCommitment(inners))
+        let commitment: KZGMultiCommitment<E> = transcript.read()?;
+
+        // How many polynomials the group holds is fixed by the verifying key,
+        // so any other number is a malformed proof. The prover declares the
+        // count in the proof itself, and that count is not part of the hashed
+        // transcript: without this check the `zip` below would silently
+        // truncate to the shorter of the two, letting a prover collapse a whole
+        // group onto fewer points than it has labels.
+        if commitment.0.len() != labels.len() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "commitment to {} polynomials, expected {}",
+                    commitment.0.len(),
+                    labels.len()
+                ),
+            ));
+        }
+
+        let commitment = KZGMultiCommitment(
+            commitment
+                .0
+                .iter()
+                .zip(labels.iter())
+                .map(|(com, label)| match com {
+                    KZGCommitment::Simple(point, PolynomialLabel::NoLabel) => {
+                        KZGCommitment::<E>::Simple(*point, label.clone())
+                    }
+                    _ => unreachable!(),
+                })
+                .collect(),
+        );
+
+        Ok(commitment)
+    }
+
+    fn write_commitment<T: Transcript>(
+        transcript: &mut T,
+        commitment: &Self::Commitment,
+    ) -> io::Result<()>
+    where
+        Self::Commitment: Hashable<T::Hash>,
+    {
+        transcript.write(commitment)
     }
 
     fn deserialize_commitment<R: Read>(
@@ -380,21 +410,21 @@ where
         // `KZGCommitment` it targets, keyed by the query label. The rest of the
         // routine then operates on individual `KZGCommitment`s as before.
         //
-        // A length-1 commitment (the common case, including the `Linear`
-        // linearization commitment) peels to its sole inner. A batched
-        // commitment holds several `Simple`s, so we pick the one whose own label
-        // matches the query.
+        // The `Linear` linearization commitment aggregates many polynomials and
+        // carries no single label of its own, so it is taken as it is. Every
+        // `Simple` has to name the queried polynomial, whether it stands alone
+        // or in a batch: matching on the label rather than on the position keeps
+        // a malformed group from aliasing every query onto the same point.
         let label_to_commitment: HashMap<PolynomialLabel, &KZGCommitment<E>> = queries
             .iter()
             .map(|q| {
                 let inners = &q.commitment.0;
-                let inner = if inners.len() == 1 {
-                    &inners[0]
-                } else {
-                    inners
+                let inner = match inners.as_slice() {
+                    [single @ KZGCommitment::Linear(..)] => single,
+                    _ => inners
                         .iter()
                         .find(|c| matches!(c, KZGCommitment::Simple(_, label) if *label == q.label))
-                        .expect("batched commitment has no polynomial matching the query label")
+                        .expect("batched commitment has no polynomial matching the query label"),
                 };
                 (q.label.clone(), inner)
             })

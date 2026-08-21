@@ -301,20 +301,18 @@ where
     E::G1: Hashable<H>,
 {
     fn to_input(&self) -> H::Input {
-        // Without batching every commitment holds a single polynomial, so we
-        // hash its sole inner commitment. Hashing a batched commitment (which
-        // would require concatenating per-polynomial inputs) is left for when
-        // batching is introduced.
-        assert_eq!(
-            self.0.len(),
-            1,
-            "hashing a KZGMultiCommitment with more than one polynomial is not yet supported"
-        );
-        self.0[0].to_input()
+        // The per-polynomial inputs are concatenated with no count prefix,
+        // matching `ProcessedSerdeObject::write`.
+        self.0.iter().flat_map(|c| c.to_input()).collect()
     }
 
     fn to_bytes(&self) -> Vec<u8> {
-        let mut bytes = Vec::new();
+        // The proof declares how many polynomials the group holds, so that
+        // `read` knows where the group ends. The count is not part of the
+        // hashed transcript; `read_commitment` checks it against the labels
+        // the verifying key expects.
+        let nb_polys = u32::try_from(self.0.len()).expect("more than 2^32 polynomials in a group");
+        let mut bytes = nb_polys.to_le_bytes().to_vec();
         for c in &self.0 {
             bytes.extend_from_slice(&c.to_bytes());
         }
@@ -322,7 +320,15 @@ where
     }
 
     fn read(buffer: &mut impl Read) -> io::Result<Self> {
-        Ok(Self(vec![<KZGCommitment<E> as Hashable<H>>::read(buffer)?]))
+        let mut nb_polys_bytes = [0u8; 4];
+        buffer.read_exact(&mut nb_polys_bytes)?;
+        let nb_polys = u32::from_le_bytes(nb_polys_bytes) as usize;
+
+        let mut commitments = Vec::new();
+        for _ in 0..nb_polys {
+            commitments.push(<KZGCommitment<E> as Hashable<H>>::read(buffer)?);
+        }
+        Ok(Self(commitments))
     }
 }
 

@@ -104,6 +104,12 @@ pub trait PolynomialRepresentation: Copy + Debug + Send + Sync {
         poly: Polynomial<F, Coeff>,
     ) -> Polynomial<F, Self>;
 
+    /// Converts a polynomial from its own representation to coefficient form.
+    fn self_to_coeff<F: WithSmallOrderMulGroup<3>>(
+        evaluation_domain: &EvaluationDomain<F>,
+        poly: Polynomial<F, Self>,
+    ) -> Polynomial<F, Coeff>;
+
     /// Returns the multiplicative coset generator `g_coset` if this
     /// representation uses an extended domain.
     fn g_coset<F: WithSmallOrderMulGroup<3>>(_evaluation_domain: &EvaluationDomain<F>) -> F;
@@ -131,6 +137,13 @@ impl PolynomialRepresentation for Coeff {
         _evaluation_domain: &EvaluationDomain<F>,
         poly: Polynomial<F, Coeff>,
     ) -> Polynomial<F, Self> {
+        poly
+    }
+
+    fn self_to_coeff<F: WithSmallOrderMulGroup<3>>(
+        _evaluation_domain: &EvaluationDomain<F>,
+        poly: Polynomial<F, Self>,
+    ) -> Polynomial<F, Coeff> {
         poly
     }
 
@@ -164,6 +177,13 @@ impl PolynomialRepresentation for LagrangeCoeff {
         evaluation_domain.coeff_to_lagrange(poly)
     }
 
+    fn self_to_coeff<F: WithSmallOrderMulGroup<3>>(
+        evaluation_domain: &EvaluationDomain<F>,
+        poly: Polynomial<F, Self>,
+    ) -> Polynomial<F, Coeff> {
+        evaluation_domain.lagrange_to_coeff(poly)
+    }
+
     fn g_coset<F: WithSmallOrderMulGroup<3>>(_evaluation_domain: &EvaluationDomain<F>) -> F {
         F::ONE
     }
@@ -193,6 +213,13 @@ impl PolynomialRepresentation for ExtendedLagrangeCoeff {
         poly: Polynomial<F, Coeff>,
     ) -> Polynomial<F, Self> {
         evaluation_domain.coeff_to_extended(poly)
+    }
+
+    fn self_to_coeff<F: WithSmallOrderMulGroup<3>>(
+        evaluation_domain: &EvaluationDomain<F>,
+        poly: Polynomial<F, Self>,
+    ) -> Polynomial<F, Coeff> {
+        evaluation_domain.coeff_from_vec(evaluation_domain.extended_to_coeff(poly))
     }
 
     fn g_coset<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> F {
@@ -230,6 +257,13 @@ impl PolynomialRepresentation for LagrangeDeltaCoeff {
         _poly: Polynomial<F, Coeff>,
     ) -> Polynomial<F, Self> {
         unimplemented!("LagrangeDelta is constructed from LagrangeCoeff via `to_delta`.")
+    }
+
+    fn self_to_coeff<F: WithSmallOrderMulGroup<3>>(
+        _evaluation_domain: &EvaluationDomain<F>,
+        _poly: Polynomial<F, Self>,
+    ) -> Polynomial<F, Coeff> {
+        unimplemented!("Cannot convert LagrangeDelta basis to coefficient form.")
     }
 
     fn g_coset<F: WithSmallOrderMulGroup<3>>(_evaluation_domain: &EvaluationDomain<F>) -> F {
@@ -271,6 +305,13 @@ impl PolynomialRepresentation for LagrangeDoubleDeltaCoeff {
         unimplemented!(
             "LagrangeDoubleDelta is constructed from LagrangeCoeff via `to_double_delta`."
         )
+    }
+
+    fn self_to_coeff<F: WithSmallOrderMulGroup<3>>(
+        _evaluation_domain: &EvaluationDomain<F>,
+        _poly: Polynomial<F, Self>,
+    ) -> Polynomial<F, Coeff> {
+        unimplemented!("Cannot convert LagrangeCoubleDelta basis to coefficient form.")
     }
 
     fn g_coset<F: WithSmallOrderMulGroup<3>>(_evaluation_domain: &EvaluationDomain<F>) -> F {

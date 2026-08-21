@@ -3,7 +3,7 @@ use ff::WithSmallOrderMulGroup;
 use super::Argument;
 use crate::{
     plonk::evaluation::evaluate,
-    poly::{Coeff, EvaluationDomain, LagrangeCoeff, Polynomial},
+    poly::{EvaluationDomain, LagrangeCoeff, Polynomial},
 };
 
 impl<F: WithSmallOrderMulGroup<3>> Argument<F> {
@@ -15,9 +15,8 @@ impl<F: WithSmallOrderMulGroup<3>> Argument<F> {
         advice_values: &'a [Polynomial<F, LagrangeCoeff>],
         fixed_values: &'a [Polynomial<F, LagrangeCoeff>],
         instance_values: &'a [Polynomial<F, LagrangeCoeff>],
-    ) -> Polynomial<F, Coeff> {
-        let compressed_expression = self
-            .constraint_expressions
+    ) -> Polynomial<F, LagrangeCoeff> {
+        self.constraint_expressions
             .iter()
             .map(|expression| {
                 domain.lagrange_from_vec(evaluate(
@@ -31,8 +30,6 @@ impl<F: WithSmallOrderMulGroup<3>> Argument<F> {
             })
             .fold(domain.empty_lagrange(), |acc, expression| {
                 acc * trash_challenge + &expression
-            });
-
-        domain.lagrange_to_coeff(compressed_expression)
+            })
     }
 }

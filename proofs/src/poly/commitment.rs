@@ -84,6 +84,19 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
     where
         Self::Commitment: Hashable<T::Hash>;
 
+    /// Write a commitment produced by [`commit_many`](Self::commit_many) to the
+    /// proof transcript, absorbing it in exactly the granularity in which
+    /// [`read_commitment`](Self::read_commitment) reads it back.
+    fn write_commitment<T: Transcript>(
+        transcript: &mut T,
+        commitment: &Self::Commitment,
+    ) -> io::Result<()>
+    where
+        Self::Commitment: Hashable<T::Hash>,
+    {
+        transcript.write(commitment)
+    }
+
     /// Deserialize a commitment to `labels.len()` polynomials from `reader`,
     /// tagging each polynomial with its label.
     ///
