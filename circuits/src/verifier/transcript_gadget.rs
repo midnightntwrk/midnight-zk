@@ -14,6 +14,8 @@
 //! Transcript gadget module, for in-circuit Fiat-Shamir.
 //! Shall we adopt the [SAFE API](https://hackmd.io/bHgsH6mMStCVibM_wYvb2w)?
 
+use std::io::Read;
+
 use ff::Field;
 use midnight_proofs::{
     circuit::{Layouter, Value},
@@ -151,6 +153,28 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
         layouter: &mut impl Layouter<S::F>,
         labels: &[PolynomialLabel],
     ) -> Result<AssignedKZGMultiCommitment<S>, Error> {
+        assert!(
+            !labels.is_empty(),
+            "cannot read a commitment to no polynomials"
+        );
+
+        {
+            // The whole group is written to the proof as one commitment
+            // prefixed by the number of polynomials it holds, so that prefix
+            // comes before the points. It is not part of the hashed input, only
+            // the points that follow are. The count itself is discarded: how
+            // many points to read is fixed by `labels`, and out-of-circuit
+            // `read_commitment` is what rejects a proof declaring any other
+            // number. (See `Hashable::to_bytes` for `KZGMultiCommitment`.)
+            let reader =
+                self.transcript_reader.as_mut().expect("You must init the transcript gadget");
+            let mut nb_polys_bytes = [0u8; 4];
+            // If an error, do not fail. The subsequent point reads will fall
+            // back to default commitments. (This allows us to parse dummy
+            // proofs.)
+            let _ = reader.buffer().read_exact(&mut nb_polys_bytes);
+        }
+
         let mut inners = Vec::with_capacity(labels.len());
         for label in labels {
             let reader =
