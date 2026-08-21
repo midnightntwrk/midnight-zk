@@ -1,4 +1,28 @@
 {
+  "MMR gadget": {
+    "Membership": {
+      "advice_columns": "8",
+      "column_queries": "32",
+      "fixed_columns": "32",
+      "lookups": "1",
+      "max_deg": "5",
+      "permutations": "9",
+      "point_sets": "3",
+      "rows": "135",
+      "table_rows": "3"
+    },
+    "Prefix": {
+      "advice_columns": "8",
+      "column_queries": "32",
+      "fixed_columns": "32",
+      "lookups": "1",
+      "max_deg": "5",
+      "permutations": "9",
+      "point_sets": "3",
+      "rows": "169",
+      "table_rows": "3"
+    }
+  },
   "Map gadget": {
     "Get": {
       "advice_columns": "8",
