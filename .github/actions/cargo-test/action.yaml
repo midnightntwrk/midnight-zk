@@ -26,7 +26,7 @@ runs:
         cache-on-failure: true
         shared-key: "ci"
 
-    - name: Run cargo test
+    - run: cargo test --locked
       shell: bash
       env:
         PACKAGE: ${{ inputs.package }}
