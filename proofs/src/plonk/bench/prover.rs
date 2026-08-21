@@ -21,12 +21,13 @@ use crate::{
         },
         traces::ProverTrace,
     },
-    poly::{
-        LagrangeCoeff, Polynomial, PolynomialLabel, commitment::PolynomialCommitmentScheme,
-    },
+    poly::{LagrangeCoeff, Polynomial, PolynomialLabel, commitment::PolynomialCommitmentScheme},
     transcript::{Hashable, Sampleable, Transcript},
     utils::arithmetic::eval_polynomial,
 };
+
+/// The polynomials of one argument phase group, keyed by their label.
+type PhaseGroupPolys<F> = BTreeMap<PolynomialLabel, Polynomial<F, LagrangeCoeff>>;
 
 /// This computes a proof trace for the provided `circuit` when given the
 /// public parameters `params` and the proving key [`ProvingKey`] that was
@@ -138,29 +139,30 @@ where
     // rather than one per lookup argument. Compute and transcript write are
     // separate API calls — measure them together to match the prior
     // `commit_multiplicities` shape.
-    let compute_multiplicities = |advice_polys: &[Polynomial<F, LagrangeCoeff>],
-                                  instance_values: &[Polynomial<F, LagrangeCoeff>],
-                                  blindings: &[Vec<F>]|
-     -> Result<Vec<logup::prover::ComputedMultiplicities<F>>, Error> {
-        let logup_args: Vec<_> =
-            pk.vk.cs.lookups.iter().map(|l| l.chunk_by_degree(pk.vk.cs.degree())).collect();
-        logup_args
-            .par_iter()
-            .enumerate()
-            .zip(blindings.par_iter())
-            .map(|((argument_index, logup), blinds)| {
-                logup.compute_multiplicities_parallel(
-                    argument_index,
-                    pk,
-                    theta,
-                    advice_polys,
-                    &pk.fixed_values,
-                    instance_values,
-                    blinds,
-                )
-            })
-            .collect::<Result<Vec<_>, Error>>()
-    };
+    let compute_multiplicities =
+        |advice_polys: &[Polynomial<F, LagrangeCoeff>],
+         instance_values: &[Polynomial<F, LagrangeCoeff>],
+         blindings: &[Vec<F>]|
+         -> Result<Vec<logup::prover::ComputedMultiplicities<F>>, Error> {
+            let logup_args: Vec<_> =
+                pk.vk.cs.lookups.iter().map(|l| l.chunk_by_degree(pk.vk.cs.degree())).collect();
+            logup_args
+                .par_iter()
+                .enumerate()
+                .zip(blindings.par_iter())
+                .map(|((argument_index, logup), blinds)| {
+                    logup.compute_multiplicities_parallel(
+                        argument_index,
+                        pk,
+                        theta,
+                        advice_polys,
+                        &pk.fixed_values,
+                        instance_values,
+                        blinds,
+                    )
+                })
+                .collect::<Result<Vec<_>, Error>>()
+        };
 
     let phase1_polys_map = |multiplicities: &[logup::prover::ComputedMultiplicities<F>]| {
         BTreeMap::from_iter(multiplicities.iter().map(|c| {
@@ -224,12 +226,6 @@ where
     // Commit to permutations. `Argument::compute` returns z polys + commitments
     // without touching the transcript; `write_and_convert` then writes
     // commitments and converts to coefficient form. Measure both together.
-    //
-    // CAVEAT: in `create_proof` this stage runs inside a `rayon::join` with the
-    // logup logderivative compute, so permutation and logup overlap in wall
-    // time. This benchmark measures each stage in isolation, so the sum of
-    // "Commit permutations" + "Commit lookup products" overstates the combined
-    // cost versus what `create_proof` actually pays.
     let permutations = {
         group.bench_function("Commit permutations", |b| {
             b.iter_batched(
@@ -276,7 +272,7 @@ where
     // they are committed further below, as part of the phase2 argument group.
     let logup_phase2_polys = |multiplicities: Vec<logup::prover::ComputedMultiplicities<F>>,
                               blindings: Vec<Vec<F>>|
-     -> Result<Vec<BTreeMap<PolynomialLabel, Polynomial<F, LagrangeCoeff>>>, Error> {
+     -> Result<Vec<PhaseGroupPolys<F>>, Error> {
         Ok(multiplicities
             .into_par_iter()
             .zip(blindings.into_par_iter())
@@ -301,8 +297,7 @@ where
                             c.aggregator_poly,
                         )],
                     ]
-                    .concat()
-                    .into_iter(),
+                    .concat(),
                 )
             })
             .collect::<Vec<_>>())
@@ -325,12 +320,10 @@ where
     // CAVEAT: this stage used to commit the trash polynomials alone. It now
     // covers the logup polynomials too, so its cost is not comparable with the
     // same line from earlier revisions.
-    let build_phase2_polys_map = |logup_polys_maps: Vec<
-        BTreeMap<PolynomialLabel, Polynomial<F, LagrangeCoeff>>,
-    >,
+    let build_phase2_polys_map = |logup_polys_maps: Vec<PhaseGroupPolys<F>>,
                                   advice_polys: &[Polynomial<F, LagrangeCoeff>],
                                   instance_values: &[Polynomial<F, LagrangeCoeff>]|
-     -> Result<BTreeMap<PolynomialLabel, Polynomial<F, LagrangeCoeff>>, Error> {
+     -> Result<PhaseGroupPolys<F>, Error> {
         let mut phase2_polys_map = BTreeMap::new();
 
         for polys_map in logup_polys_maps {

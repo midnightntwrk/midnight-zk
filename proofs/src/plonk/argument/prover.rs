@@ -29,8 +29,7 @@ impl<F: WithSmallOrderMulGroup<3>, B: PolynomialRepresentation> Committed<F, B> 
                 self.polys_map
                     .into_par_iter()
                     .map(|(label, p)| (label, B::self_to_coeff(domain, p)))
-                    .collect::<Vec<_>>()
-                    .into_iter(),
+                    .collect::<Vec<_>>(),
             ),
         }
     }

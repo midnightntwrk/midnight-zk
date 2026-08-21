@@ -218,8 +218,7 @@ where
                         c.aggregator_poly,
                     )],
                 ]
-                .concat()
-                .into_iter(),
+                .concat(),
             )
         })
         .collect::<Vec<_>>();
@@ -657,8 +656,8 @@ pub(super) fn compute_nu_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommit
         *gamma,
         *theta,
         *trash_challenge,
-        &phase1_committed,
-        &phase2_committed,
+        phase1_committed,
+        phase2_committed,
         permutations,
         &pk.l0,
         &pk.l_last,
