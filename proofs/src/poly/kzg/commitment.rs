@@ -296,6 +296,12 @@ where
     }
 }
 
+/// Width of the little-endian prefix that frames a [`KZGMultiCommitment`] in a
+/// proof transcript, holding the number of polynomials the commitment covers.
+/// Only the points that follow it are hashed; the prefix delimits them for
+/// `Hashable::read`.
+pub(crate) const NB_POLYS_PREFIX_BYTES: usize = 4;
+
 impl<H: TranscriptHash, E: MultiMillerLoop> Hashable<H> for KZGMultiCommitment<E>
 where
     E::G1: Hashable<H>,
@@ -320,10 +326,14 @@ where
     }
 
     fn read(buffer: &mut impl Read) -> io::Result<Self> {
-        let mut nb_polys_bytes = [0u8; 4];
+        let mut nb_polys_bytes = [0u8; NB_POLYS_PREFIX_BYTES];
         buffer.read_exact(&mut nb_polys_bytes)?;
         let nb_polys = u32::from_le_bytes(nb_polys_bytes) as usize;
 
+        // The count is declared by the prover, so grow the vector as the points
+        // arrive instead of reserving `nb_polys` of them upfront: reading each
+        // point consumes proof bytes, which bounds the work by the proof length,
+        // whereas reserving would let a short proof ask for gigabytes.
         let mut commitments = Vec::new();
         for _ in 0..nb_polys {
             commitments.push(<KZGCommitment<E> as Hashable<H>>::read(buffer)?);

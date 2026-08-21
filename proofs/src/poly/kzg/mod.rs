@@ -43,6 +43,7 @@ use crate::{
         Coeff, Error, Polynomial, PolynomialRepresentation, ProverQuery,
         commitment::PolynomialCommitmentScheme,
         kzg::{
+            commitment::NB_POLYS_PREFIX_BYTES,
             msm::{DualMSM, MSMKZG, msm_specific},
             params::{ParamsKZG, ParamsVerifierKZG},
             utils::construct_intermediate_sets,
@@ -174,6 +175,13 @@ where
         Self::Commitment: Hashable<T::Hash>,
     {
         transcript.write(commitment)
+    }
+
+    fn commitment_byte_length(n: usize) -> usize {
+        // A group of `n` polynomials travels through the transcript as one
+        // length-prefixed message: the prefix, then one point per polynomial.
+        // (See `Hashable::to_bytes` for `KZGMultiCommitment`.)
+        NB_POLYS_PREFIX_BYTES + n * Self::Commitment::default().byte_length(SerdeFormat::Processed)
     }
 
     fn deserialize_commitment<R: Read>(
