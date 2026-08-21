@@ -13,13 +13,16 @@
 
 //! In-circuit lookup argument constraint expressions.
 //!
-//! This is the in-circuit analog of the constraint expressions from
-//! `proofs/src/plonk/logup/verifier.rs`.
+//! This is the in-circuit analog of `ChunkedArgument::expressions` from
+//! `proofs/src/plonk/logup.rs`.
+
+use std::collections::BTreeMap;
 
 use ff::Field;
 use midnight_proofs::{
     circuit::Layouter,
     plonk::{Error, Expression},
+    poly::PolynomialLabel,
 };
 
 use crate::{
@@ -27,16 +30,31 @@ use crate::{
     instructions::{ArithInstructions, AssignmentInstructions},
     verifier::{
         SelfEmulation,
+        argument::Evaluation,
         expressions::{compress_expressions, eval_expression},
-        lookup::LookupEvaluated,
     },
 };
+
+/// The `index`-th evaluation of the polynomial labelled `label`.
+fn eval_at<'a, S: SelfEmulation>(
+    evals_map: &'a BTreeMap<PolynomialLabel, Vec<Evaluation<S>>>,
+    label: &PolynomialLabel,
+    index: usize,
+) -> Result<&'a AssignedNative<S::F>, Error> {
+    evals_map
+        .get(label)
+        .and_then(|evals| evals.get(index))
+        .map(|evaluation| evaluation.eval())
+        .ok_or_else(|| Error::Synthesis(format!("missing evaluation {index} for {label}")))
+}
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn lookup_expressions<S: SelfEmulation>(
     layouter: &mut impl Layouter<S::F>,
     scalar_chip: &S::ScalarChip,
-    lookup_evals: &LookupEvaluated<S>,
+    argument_index: usize,
+    phase1_evals_map: &BTreeMap<PolynomialLabel, Vec<Evaluation<S>>>,
+    phase2_evals_map: &BTreeMap<PolynomialLabel, Vec<Evaluation<S>>>,
     selector_expression: &Expression<S::F>,
     per_flat_input_expressions: &[&[Vec<Expression<S::F>>]],
     table_expressions: &[Expression<S::F>],
@@ -49,6 +67,16 @@ pub(crate) fn lookup_expressions<S: SelfEmulation>(
     theta: &AssignedNative<S::F>,
     beta: &AssignedNative<S::F>,
 ) -> Result<Vec<AssignedNative<S::F>>, Error> {
+    let multiplicities_eval = eval_at::<S>(
+        phase1_evals_map,
+        &PolynomialLabel::LogupMultiplicities(argument_index),
+        0,
+    )?;
+
+    let aggregator_label = PolynomialLabel::LogupAggregator(argument_index);
+    let accumulator_eval = eval_at::<S>(phase2_evals_map, &aggregator_label, 0)?;
+    let accumulator_next_eval = eval_at::<S>(phase2_evals_map, &aggregator_label, 1)?;
+
     let active_rows = {
         scalar_chip.linear_combination(
             layouter,
@@ -79,19 +107,18 @@ pub(crate) fn lookup_expressions<S: SelfEmulation>(
 
     // (l_0(x) + l_last(x)) * Z(x) = 0
     let l_0_plus_l_last = scalar_chip.add(layouter, l_0, l_last)?;
-    let boundary = scalar_chip.mul(
-        layouter,
-        &l_0_plus_l_last,
-        &lookup_evals.accumulator_eval,
-        None,
-    )?;
+    let boundary = scalar_chip.mul(layouter, &l_0_plus_l_last, accumulator_eval, None)?;
 
     let mut result = vec![boundary];
     let mut sum_helpers: Option<AssignedNative<S::F>> = None;
 
-    for (input_expressions, h_eval) in
-        per_flat_input_expressions.iter().zip(lookup_evals.helper_evals.iter())
-    {
+    for (j, input_expressions) in per_flat_input_expressions.iter().enumerate() {
+        let h_eval = eval_at::<S>(
+            phase2_evals_map,
+            &PolynomialLabel::LogupHelper(argument_index, j),
+            0,
+        )?;
+
         let compressed_inputs_with_beta = input_expressions
             .iter()
             .map(|input| {
@@ -164,14 +191,10 @@ pub(crate) fn lookup_expressions<S: SelfEmulation>(
     // so the table-side balance is maintained (see module-level docs in
     // logup.rs).
     let acc_constraint = {
-        let z_next_minus_z = scalar_chip.sub(
-            layouter,
-            &lookup_evals.accumulator_next_eval,
-            &lookup_evals.accumulator_eval,
-        )?;
+        let z_next_minus_z = scalar_chip.sub(layouter, accumulator_next_eval, accumulator_eval)?;
         let aux = scalar_chip.sub(layouter, &z_next_minus_z, &sum_helpers)?;
         let acc_step = scalar_chip.mul(layouter, &aux, &compressed_table_with_beta, None)?;
-        let balance = scalar_chip.add(layouter, &acc_step, &lookup_evals.multiplicities_eval)?;
+        let balance = scalar_chip.add(layouter, &acc_step, multiplicities_eval)?;
         scalar_chip.mul(layouter, &balance, &active_rows, None)?
     };
     result.push(acc_constraint);

@@ -56,12 +56,18 @@ impl<S: SelfEmulation> Evaluation<S> {
 /// names their specifics, so the label alone decides.
 ///
 /// It must agree with its off-circuit counterpart in
-/// proofs/src/plonk/argument.rs.
+/// proofs/src/plonk/argument.rs, which takes `omega` and forms `omega * x`
+/// itself. Here `x_next` is passed in already assigned, so that the rotation
+/// costs one multiplication for the whole group rather than one per label.
 fn eval_points<S: SelfEmulation>(
     label: &PolynomialLabel,
     x: &AssignedNative<S::F>,
+    x_next: &AssignedNative<S::F>,
 ) -> Vec<AssignedNative<S::F>> {
     match label {
+        PolynomialLabel::LogupMultiplicities(_) => vec![x.clone()],
+        PolynomialLabel::LogupHelper(_, _) => vec![x.clone()],
+        PolynomialLabel::LogupAggregator(_) => vec![x.clone(), x_next.clone()],
         PolynomialLabel::Trash(_) => vec![x.clone()],
         _ => unreachable!(),
     }
@@ -74,15 +80,39 @@ pub(crate) struct Committed<S: SelfEmulation, PCS: InCircuitPCS<S>> {
     polynomial_labels: BTreeSet<PolynomialLabel>,
 }
 
+/// Reads the commitment to the polynomials of the given labels, or `None` if
+/// there are none: the prover commits to nothing in that case, so there is
+/// nothing in the transcript to read.
+///
+/// TODO: drop this function, and the `Option` it forces on the phase groups of
+/// [crate::verifier::traces::VerifierTrace], once every phase group is
+/// guaranteed to hold at least one polynomial. [read_committed] then becomes
+/// the only entry point.
+pub(crate) fn read_committed_group<S: SelfEmulation, PCS: InCircuitPCS<S>>(
+    labels: &[PolynomialLabel],
+    layouter: &mut impl Layouter<S::F>,
+    transcript_gadget: &mut TranscriptGadget<S>,
+) -> Result<Option<Committed<S, PCS>>, Error> {
+    if labels.is_empty() {
+        return Ok(None);
+    }
+    read_committed(labels, layouter, transcript_gadget).map(Some)
+}
+
 /// Reads the commitment to the polynomials of the given labels.
 pub(crate) fn read_committed<S: SelfEmulation, PCS: InCircuitPCS<S>>(
     labels: &[PolynomialLabel],
     layouter: &mut impl Layouter<S::F>,
     transcript_gadget: &mut TranscriptGadget<S>,
 ) -> Result<Committed<S, PCS>, Error> {
+    // The prover commits to the group in the labels' `Ord` order (its
+    // polynomials live in a `BTreeMap`), so read them in that order, whatever
+    // order the caller listed them in.
+    let polynomial_labels = BTreeSet::from_iter(labels.iter().cloned());
+    let ordered_labels: Vec<_> = polynomial_labels.iter().cloned().collect();
     Ok(Committed {
-        commitment: PCS::read_commitment(transcript_gadget, layouter, labels)?,
-        polynomial_labels: BTreeSet::from_iter(labels.iter().cloned()),
+        commitment: PCS::read_commitment(transcript_gadget, layouter, &ordered_labels)?,
+        polynomial_labels,
     })
 }
 
@@ -100,13 +130,14 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> Committed<S, PCS> {
     pub(crate) fn evaluate(
         self,
         x: &AssignedNative<S::F>,
+        x_next: &AssignedNative<S::F>,
         layouter: &mut impl Layouter<S::F>,
         transcript_gadget: &mut TranscriptGadget<S>,
     ) -> Result<Evaluated<S, PCS>, Error> {
         let mut evals_map: BTreeMap<PolynomialLabel, Vec<Evaluation<S>>> = BTreeMap::new();
 
         for label in &self.polynomial_labels {
-            let eval_points = eval_points::<S>(label, x);
+            let eval_points = eval_points::<S>(label, x, x_next);
             let mut evals = Vec::with_capacity(eval_points.len());
             for point in eval_points {
                 evals.push(Evaluation {

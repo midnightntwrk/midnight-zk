@@ -482,21 +482,22 @@ pub(crate) fn multi_prepare_kzg<S: SelfEmulation>(
     let x2 = transcript_gadget.squeeze_challenge(layouter)?;
 
     // Peel each query's multi-commitment down to the single inner commitment it
-    // targets, keyed by the query label. A length-1 commitment (the common case,
-    // including the `Linear` linearization commitment) peels to its sole inner;
-    // a batched commitment holds several `Simple`s, so we pick the one whose own
-    // label matches the query.
+    // targets, keyed by the query label. The `Linear` linearization commitment
+    // aggregates many polynomials and carries no single label of its own, so it
+    // is taken as it is. Every `Simple` has to name the queried polynomial,
+    // whether it stands alone or in a batch: matching on the label rather than
+    // on the position keeps a malformed group from aliasing every query onto the
+    // same point.
     let label_to_commitment: HashMap<PolynomialLabel, &AssignedKZGCommitment<S>> = queries
         .iter()
         .map(|q| {
             let inners = &q.commitment.0;
-            let inner = if inners.len() == 1 {
-                &inners[0]
-            } else {
-                inners
+            let inner = match inners.as_slice() {
+                [single @ AssignedKZGCommitment::Linear(..)] => single,
+                _ => inners
                     .iter()
                     .find(|c| matches!(c, AssignedKZGCommitment::Simple(_, label) if *label == q.label))
-                    .expect("batched commitment has no polynomial matching the query label")
+                    .expect("batched commitment has no polynomial matching the query label"),
             };
             (q.label.clone(), inner)
         })
