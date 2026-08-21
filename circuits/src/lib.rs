@@ -70,8 +70,8 @@ pub mod types {
             native::{AssignedBit, AssignedByte},
         },
         mmr::{
-            cpu::{MmrState, SummitPath},
-            mmr_gadget::{AssignedMmr, AssignedSummitPath},
+            cpu::{MembershipProof, MmrState, SummitPath},
+            mmr_gadget::{AssignedMembershipProof, AssignedMmr, AssignedSummitPath},
         },
         utils::{
             ComposableChip,
