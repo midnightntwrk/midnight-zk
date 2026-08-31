@@ -477,8 +477,11 @@ impl<S: SelfEmulation> InCircuitPCS<S> for InCircuitFflonk<S> {
 
         // The prover's bundling ceiling. Off-circuit it selects the partition;
         // here the partition is a circuit constant, so the claim is bound to it
-        // instead. See the module doc.
-        let claimed_t_max_log = transcript.read_scalar(layouter)?;
+        // instead. See the module doc. The substitute matters: a dummy proof
+        // (the IVC genesis step) has no bytes to read, and the constraint below
+        // must still be satisfiable.
+        let claimed_t_max_log =
+            transcript.read_scalar_or(layouter, S::F::from(FFLONK_T_MAX_LOG as u64))?;
         scalar_chip.assert_equal_to_fixed(
             layouter,
             &claimed_t_max_log,

@@ -198,6 +198,22 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
         &mut self,
         layouter: &mut impl Layouter<S::F>,
     ) -> Result<AssignedNative<S::F>, Error> {
+        self.read_scalar_or(layouter, S::F::ZERO)
+    }
+
+    /// [`Self::read_scalar`] with a caller-chosen substitute for a failed read.
+    ///
+    /// A read fails only on a dummy proof, which a circuit may still have to
+    /// parse: the IVC genesis step runs the whole verifier over an empty proof
+    /// and neutralises the accumulator afterwards. Any constraint the gadget
+    /// puts on a value it read must therefore hold of the substitute too, so a
+    /// scalar that is constrained against a constant has to fall back to that
+    /// constant rather than to zero.
+    pub fn read_scalar_or(
+        &mut self,
+        layouter: &mut impl Layouter<S::F>,
+        default: S::F,
+    ) -> Result<AssignedNative<S::F>, Error> {
         let reader = self.transcript_reader.as_mut().expect("You must init the transcript gadget");
         // If an error, do not fail, assign a default scalar instead.
         // (This allows us to parse dummy proofs.)
@@ -205,7 +221,7 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
             Ok(scalar) => Value::known(scalar),
             Err(_) => {
                 self.nb_failed_reads += 1;
-                Value::known(S::F::ZERO)
+                Value::known(default)
             }
         };
 
