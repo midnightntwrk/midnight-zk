@@ -34,6 +34,7 @@ mod expressions;
 mod kzg;
 mod lookup;
 mod msm;
+mod multi_open;
 pub(crate) mod pcs;
 mod permutation;
 mod traces;
