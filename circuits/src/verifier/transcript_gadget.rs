@@ -174,6 +174,24 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
         S::assign_without_subgroup_check(layouter, &self.curve_chip, point)
     }
 
+    /// Consumes `n` framing bytes from the proof without absorbing them.
+    ///
+    /// A commitment whose wire format interleaves structural bytes with its
+    /// points (fflonk's bundle counts) needs them skipped: they are not part of
+    /// `Hashable::to_input`, so the off-circuit transcript never absorbs them
+    /// either. The layout they describe is imposed by the gadget, which derives
+    /// it from the labels it expects, so their content is not read.
+    pub fn skip_bytes(&mut self, n: usize) -> Result<(), Error> {
+        let reader = self.transcript_reader.as_mut().expect("You must init the transcript gadget");
+        let mut buf = vec![0u8; n];
+        // As in `read_point`, a failed read is tolerated so that dummy proofs
+        // still parse; `assert_proof_fully_consumed` reports it afterwards.
+        if std::io::Read::read_exact(reader.buffer(), &mut buf).is_err() {
+            self.nb_failed_reads += 1;
+        }
+        Ok(())
+    }
+
     /// Reads a scalar from the reader buffer, and adds it to the transcript.
     /// Think of the read scalar as a witness freely chosen by the prover.
     pub fn read_scalar(
