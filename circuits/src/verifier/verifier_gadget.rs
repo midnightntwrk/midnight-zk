@@ -899,15 +899,23 @@ impl<S: SelfEmulation> VerifierGadget<S> {
 #[cfg(test)]
 pub(crate) mod tests {
 
+    use std::marker::PhantomData;
+
     use group::Group;
     use midnight_proofs::{
         MidnightPCS,
         circuit::SimpleFloorPlanner,
         dev::MockProver,
-        pcs::{kzg::commitment::KZGMultiCommitment, params::ParamsKZG},
+        pcs::{
+            PolynomialCommitmentScheme,
+            fflonk::{FFLONK_T_MAX_LOG, FflonkCommitment, FflonkScheme},
+            kzg::{KZGCommitmentScheme, commitment::KZGMultiCommitment},
+            msm::DualMSM,
+            params::ParamsKZG,
+        },
         plonk::{Circuit, Error, create_proof, keygen_pk, keygen_vk_with_k, prepare},
         poly::PolynomialLabel,
-        transcript::{CircuitTranscript, Transcript},
+        transcript::{CircuitTranscript, Hashable, Transcript},
     };
     use rand::SeedableRng;
     use rand_chacha::ChaCha8Rng;
@@ -939,12 +947,14 @@ pub(crate) mod tests {
         },
         testing_utils::{
             FromScratch,
-            transcript_trace::{TracingTranscript, assert_streams_match, in_circuit},
+            transcript_trace::{
+                TracingTranscript, TranscriptEvent, assert_streams_match, in_circuit,
+            },
         },
         types::{ComposableChip, Instantiable},
         verifier::{
-            AssignedKZGCommitment, BlstrsEmulation, InCircuitKZG, accumulator::Accumulator,
-            kzg::AssignedKZGMultiCommitment,
+            BlstrsEmulation, InCircuitFflonk, InCircuitKZG, SingletonCommitment,
+            accumulator::Accumulator,
         },
     };
 
@@ -1013,16 +1023,18 @@ pub(crate) mod tests {
             poseidon_chip.load_from_scratch(&mut layouter)
         }
     }
-
+    /// The self-verification circuit: verifies an `InnerCircuit` proof produced
+    /// under `PCS::OffCircuit`, and exposes the resulting accumulator.
     #[derive(Clone, Debug)]
-    pub struct TestCircuit {
+    pub struct TestCircuit<PCS: InCircuitPCS<S>> {
         inner_vk: (EvaluationDomain<F>, ConstraintSystem<F>, Value<F>), // (domain, cs, vk_repr)
         inner_committed_instance: Value<C>,
         inner_instances: Value<[F; NB_INNER_INSTANCES]>,
         inner_proof: Value<Vec<u8>>,
+        _marker: PhantomData<PCS>,
     }
 
-    impl Circuit<F> for TestCircuit {
+    impl<PCS: InCircuitPCS<S>> Circuit<F> for TestCircuit<PCS> {
         type Config = (
             NativeConfig,
             P2RDecompositionConfig,
@@ -1111,21 +1123,19 @@ pub(crate) mod tests {
             let verifier_chip =
                 VerifierGadget::<S>::new(&curve_chip, &native_gadget, &poseidon_chip);
 
-            let assigned_inner_vk: AssignedVk<S, InCircuitKZG<S>> = verifier_chip
-                .assign_vk_as_public_input(
-                    &mut layouter,
-                    &self.inner_vk.0,
-                    &self.inner_vk.1,
-                    self.inner_vk.2,
-                )?;
+            let assigned_inner_vk: AssignedVk<S, PCS> = verifier_chip.assign_vk_as_public_input(
+                &mut layouter,
+                &self.inner_vk.0,
+                &self.inner_vk.1,
+                self.inner_vk.2,
+            )?;
 
-            let assigned_committed_instance =
-                AssignedKZGMultiCommitment(vec![AssignedKZGCommitment::assign(
-                    &mut layouter,
-                    &curve_chip,
-                    self.inner_committed_instance,
-                    PolynomialLabel::CommittedInstance(0),
-                )?]);
+            let assigned_committed_instance = PCS::assign_commitment(
+                &mut layouter,
+                &curve_chip,
+                self.inner_committed_instance,
+                PolynomialLabel::CommittedInstance(0),
+            )?;
 
             let assigned_inner_pi = native_gadget
                 .assign_many(&mut layouter, &self.inner_instances.transpose_array())?;
@@ -1146,38 +1156,59 @@ pub(crate) mod tests {
         }
     }
 
-    #[test]
-    fn test_verify_proof() {
+    /// The inner circuit, its key material and a proof of it, over `CS`.
+    ///
+    /// The scalar field is spelled out rather than taken as `F`: a bound stated
+    /// through the `SelfEmulation::F` projection does not normalise, and every
+    /// use of `CS` below then fails to see it.
+    struct InnerProof<CS: PolynomialCommitmentScheme<midnight_curves::Fq>> {
+        vk: midnight_proofs::plonk::VerifyingKey<F, CS>,
+        public_inputs: Vec<F>,
+        proof: Vec<u8>,
+    }
+
+    /// Sets up the inner circuit and proves it under `CS`.
+    ///
+    /// The SRS is `FFLONK_T_MAX_LOG` bits larger than the circuit domain in the
+    /// monomial basis, which is what a bundling scheme needs to reach its
+    /// nominal ceiling (see `effective_t_max_log`); for KZG the extra room is
+    /// simply unused.
+    fn prove_inner<CS>(inner_k: u32) -> (ParamsKZG<E>, InnerProof<CS>)
+    where
+        CS: PolynomialCommitmentScheme<midnight_curves::Fq, Parameters = ParamsKZG<E>>,
+        CS::Commitment: Hashable<PoseidonState<F>>,
+    {
         let mut rng = ChaCha8Rng::from_seed([0u8; 32]);
 
-        let inner_k = 10;
         #[cfg(not(feature = "single-h-commitment"))]
-        let inner_params = ParamsKZG::unsafe_setup(inner_k, &mut rng);
-
+        let extended_k = inner_k + FFLONK_T_MAX_LOG;
         #[cfg(feature = "single-h-commitment")]
-        let inner_params: ParamsKZG<_> = {
+        let extended_k = {
             let inner_cs_degree = 5;
-            let extended_k = inner_k + ((inner_cs_degree - 1) as f64).log2().ceil() as u32;
-            let mut extended = ParamsKZG::unsafe_setup(extended_k, &mut rng);
-            extended.downsize_lagrange(inner_k);
-            extended
+            inner_k + FFLONK_T_MAX_LOG + ((inner_cs_degree - 1) as f64).log2().ceil() as u32
         };
 
-        let inner_vk = keygen_vk_with_k(&inner_params, &InnerCircuit::default(), inner_k).unwrap();
-        let inner_pk = keygen_pk(inner_vk.clone(), &InnerCircuit::default()).unwrap();
+        let mut inner_params: ParamsKZG<E> = ParamsKZG::unsafe_setup(extended_k, &mut rng);
+        if extended_k > inner_k {
+            inner_params.downsize_lagrange(inner_k);
+        }
+
+        let vk =
+            keygen_vk_with_k::<F, CS, _>(&inner_params, &InnerCircuit::default(), inner_k).unwrap();
+        let pk = keygen_pk(vk.clone(), &InnerCircuit::default()).unwrap();
 
         let preimage = [F::random(&mut rng), F::random(&mut rng)];
         let output = <PoseidonChip<F> as HashCPU<F, F>>::hash(&preimage);
-        let inner_public_inputs = vec![output];
+        let public_inputs = vec![output];
 
-        let inner_proof = {
+        let proof = {
             let mut transcript = CircuitTranscript::<PoseidonState<F>>::init();
-            create_proof::<F, MidnightPCS<E>, CircuitTranscript<PoseidonState<F>>, InnerCircuit>(
+            create_proof::<F, CS, CircuitTranscript<PoseidonState<F>>, InnerCircuit>(
                 &inner_params,
-                &inner_pk,
+                &pk,
                 &InnerCircuit::from_witness(preimage),
                 1,
-                &[&[], &inner_public_inputs],
+                &[&[], &public_inputs],
                 &mut transcript,
                 &mut rng,
             )
@@ -1185,19 +1216,27 @@ pub(crate) mod tests {
             transcript.finalize()
         };
 
-        let mut off_circuit_transcript = TracingTranscript::<F>::init_from_bytes(&inner_proof);
-        let inner_dual_msm = prepare::<F, MidnightPCS<E>, TracingTranscript<F>>(
-            &inner_vk,
-            &[KZGMultiCommitment::commitment_to_zero(
-                PolynomialLabel::CommittedInstance(0),
-            )],
-            &[&inner_public_inputs],
-            &mut off_circuit_transcript,
+        (
+            inner_params,
+            InnerProof {
+                vk,
+                public_inputs,
+                proof,
+            },
         )
-        .expect("Problem preparing the inner proof");
+    }
 
-        let fixed_bases = crate::verifier::fixed_bases::<S, _>(&inner_vk);
-
+    /// Runs the self-verification circuit on an inner proof, after checking
+    /// off-circuit that the accumulator it must reproduce is a valid one.
+    fn check_self_verification<PCS: InCircuitPCS<S>>(
+        inner_params: &ParamsKZG<E>,
+        inner: &InnerProof<PCS::OffCircuit>,
+        inner_dual_msm: DualMSM<E>,
+        off_circuit_events: &[TranscriptEvent],
+    ) where
+        <PCS::OffCircuit as PolynomialCommitmentScheme<F>>::Commitment: SingletonCommitment<C>,
+    {
+        let fixed_bases = crate::verifier::fixed_bases::<S, _>(&inner.vk);
         let mut inner_acc = Accumulator::<S>::from_dual_msm(inner_dual_msm.clone(), &fixed_bases);
 
         let inner_verifier_params = inner_params.verifier_params();
@@ -1206,21 +1245,19 @@ pub(crate) mod tests {
 
         inner_acc.collapse();
 
-        // The inner proof is ready.
-        // Now, let us make a proof that we know an inner proof.
-
-        let mut public_inputs = AssignedVk::<S, InCircuitKZG<S>>::as_public_input(&inner_vk);
+        let mut public_inputs = AssignedVk::<S, PCS>::as_public_input(&inner.vk);
         public_inputs.extend(AssignedAccumulator::as_public_input(&inner_acc));
 
-        let circuit = TestCircuit {
+        let circuit = TestCircuit::<PCS> {
             inner_vk: (
-                inner_vk.get_domain().clone(),
-                inner_vk.cs().clone(),
-                Value::known(inner_vk.transcript_repr()),
+                inner.vk.get_domain().clone(),
+                inner.vk.cs().clone(),
+                Value::known(inner.vk.transcript_repr()),
             ),
             inner_committed_instance: Value::known(C::identity()),
-            inner_instances: Value::known([output]),
-            inner_proof: Value::known(inner_proof),
+            inner_instances: Value::known([inner.public_inputs[0]]),
+            inner_proof: Value::known(inner.proof.clone()),
+            _marker: PhantomData,
         };
 
         in_circuit::start();
@@ -1231,8 +1268,54 @@ pub(crate) mod tests {
         // and squeeze at the same points. This diff names the first operation where
         // they part ways; without it a mismatch only shows up as an unsatisfiable
         // circuit at an unrelated row.
-        assert_streams_match(off_circuit_transcript.events(), &in_circuit::take());
+        assert_streams_match(off_circuit_events, &in_circuit::take());
 
         prover.assert_satisfied();
+    }
+
+    #[test]
+    fn test_verify_proof() {
+        let (inner_params, inner) = prove_inner::<KZGCommitmentScheme<E>>(10);
+
+        let mut off_circuit_transcript = TracingTranscript::<F>::init_from_bytes(&inner.proof);
+        let inner_dual_msm = prepare::<F, KZGCommitmentScheme<E>, TracingTranscript<F>>(
+            &inner.vk,
+            &[KZGMultiCommitment::commitment_to_zero(
+                PolynomialLabel::CommittedInstance(0),
+            )],
+            &[&inner.public_inputs],
+            &mut off_circuit_transcript,
+        )
+        .expect("Problem preparing the inner proof");
+
+        check_self_verification::<InCircuitKZG<S>>(
+            &inner_params,
+            &inner,
+            inner_dual_msm,
+            off_circuit_transcript.events(),
+        );
+    }
+
+    #[test]
+    fn test_verify_fflonk_proof() {
+        let (inner_params, inner) = prove_inner::<FflonkScheme<E>>(10);
+
+        let mut off_circuit_transcript = TracingTranscript::<F>::init_from_bytes(&inner.proof);
+        let inner_guard = prepare::<F, FflonkScheme<E>, TracingTranscript<F>>(
+            &inner.vk,
+            &[FflonkCommitment::commitment_to_zero(
+                PolynomialLabel::CommittedInstance(0),
+            )],
+            &[&inner.public_inputs],
+            &mut off_circuit_transcript,
+        )
+        .expect("Problem preparing the inner proof");
+
+        check_self_verification::<InCircuitFflonk<S>>(
+            &inner_params,
+            &inner,
+            inner_guard.into_dual_msm(),
+            off_circuit_transcript.events(),
+        );
     }
 }
