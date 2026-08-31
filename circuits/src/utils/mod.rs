@@ -18,6 +18,8 @@ pub(crate) mod circuit_modeling;
 mod composable;
 pub mod ecdsa;
 mod test_native_gadget;
+#[cfg(any(test, feature = "testing"))]
+pub mod transcript_trace;
 pub mod types;
 pub mod util;
 

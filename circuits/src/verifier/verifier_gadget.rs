@@ -848,13 +848,17 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         // We are now convinced the circuit is satisfied so long as the
         // polynomial commitments open to the correct values, which is true as long
         // as the following accumulator passes the invariant.
-        PCS::multi_prepare(
+        let accumulator = PCS::multi_prepare(
             layouter,
             &self.curve_chip,
             &self.scalar_chip,
             &mut transcript,
             &queries,
-        )
+        )?;
+
+        transcript.assert_proof_fully_consumed()?;
+
+        Ok(accumulator)
     }
 
     /// Prepares a plonk proof into a PCS instance that can be finalized or
@@ -933,7 +937,10 @@ pub(crate) mod tests {
             AssignmentInstructions,
             hash::{HashCPU, HashInstructions},
         },
-        testing_utils::FromScratch,
+        testing_utils::{
+            FromScratch,
+            transcript_trace::{TracingTranscript, assert_streams_match, in_circuit},
+        },
         types::{ComposableChip, Instantiable},
         verifier::{
             AssignedKZGCommitment, BlstrsEmulation, InCircuitKZG, accumulator::Accumulator,
@@ -1178,19 +1185,16 @@ pub(crate) mod tests {
             transcript.finalize()
         };
 
-        let inner_dual_msm = {
-            let mut transcript =
-                CircuitTranscript::<PoseidonState<F>>::init_from_bytes(&inner_proof);
-            prepare::<F, MidnightPCS<E>, CircuitTranscript<PoseidonState<F>>>(
-                &inner_vk,
-                &[KZGMultiCommitment::commitment_to_zero(
-                    PolynomialLabel::CommittedInstance(0),
-                )],
-                &[&inner_public_inputs],
-                &mut transcript,
-            )
-            .expect("Problem preparing the inner proof")
-        };
+        let mut off_circuit_transcript = TracingTranscript::<F>::init_from_bytes(&inner_proof);
+        let inner_dual_msm = prepare::<F, MidnightPCS<E>, TracingTranscript<F>>(
+            &inner_vk,
+            &[KZGMultiCommitment::commitment_to_zero(
+                PolynomialLabel::CommittedInstance(0),
+            )],
+            &[&inner_public_inputs],
+            &mut off_circuit_transcript,
+        )
+        .expect("Problem preparing the inner proof");
 
         let fixed_bases = crate::verifier::fixed_bases::<S>(&inner_vk);
 
@@ -1219,8 +1223,16 @@ pub(crate) mod tests {
             inner_proof: Value::known(inner_proof),
         };
 
+        in_circuit::start();
         let prover =
             MockProver::run(&circuit, vec![vec![], public_inputs]).expect("MockProver failed");
+
+        // The two verifiers must absorb the same field elements in the same order
+        // and squeeze at the same points. This diff names the first operation where
+        // they part ways; without it a mismatch only shows up as an unsatisfiable
+        // circuit at an unrelated row.
+        assert_streams_match(off_circuit_transcript.events(), &in_circuit::take());
+
         prover.assert_satisfied();
     }
 }

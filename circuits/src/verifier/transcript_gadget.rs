@@ -22,6 +22,8 @@ use midnight_proofs::{
     transcript::{CircuitTranscript, Transcript},
 };
 
+#[cfg(any(test, feature = "testing"))]
+use crate::utils::transcript_trace::in_circuit;
 use crate::{
     instructions::{AssignmentInstructions, PublicInputInstructions, SpongeInstructions},
     types::AssignedNative,
@@ -50,6 +52,11 @@ pub struct TranscriptGadget<S: SelfEmulation> {
     // Transcript reader is included, to help parse the proof. This parsing
     // *does not* need to be verified in-circuit.
     transcript_reader: Option<CircuitTranscript<S::Hash>>,
+    // Length in bytes of the proof given to `init_with_proof`, and the number of
+    // reads from it that fell back to a default. Both feed
+    // `assert_proof_fully_consumed`.
+    proof_len: usize,
+    nb_failed_reads: usize,
 }
 
 impl<S: SelfEmulation> TranscriptGadget<S> {
@@ -66,6 +73,8 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
             sponge_state: None,
             input_len: 0,
             transcript_reader: None,
+            proof_len: 0,
+            nb_failed_reads: 0,
         }
     }
 
@@ -86,6 +95,11 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
         // all the relevant bytes have been read. This is not an issue anyway.
         let mut proof_bytes = Vec::new();
         proof.clone().map(|pi| proof_bytes.extend_from_slice(&pi));
+        #[cfg(any(test, feature = "testing"))]
+        in_circuit::new_run();
+
+        self.proof_len = proof_bytes.len();
+        self.nb_failed_reads = 0;
         self.transcript_reader = Some(CircuitTranscript::init_from_bytes(&proof_bytes));
 
         Ok(())
@@ -97,6 +111,9 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
         layouter: &mut impl Layouter<S::F>,
         scalar: &AssignedNative<S::F>,
     ) -> Result<(), Error> {
+        #[cfg(any(test, feature = "testing"))]
+        in_circuit::absorbed(&[scalar.value().copied()]);
+
         self.input_len += 1;
         let state = self.sponge_state.as_mut().expect("You must init the transcript gadget");
         self.sponge_chip.absorb(layouter, state, std::slice::from_ref(scalar))
@@ -122,6 +139,9 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
                 ))),
             }?;
 
+            #[cfg(any(test, feature = "testing"))]
+            in_circuit::absorbed(&pis.iter().map(|pi| pi.value().copied()).collect::<Vec<_>>());
+
             self.input_len += pis.len();
 
             let state = self.sponge_state.as_mut().expect("You must init the transcript gadget");
@@ -135,6 +155,9 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
         &mut self,
         layouter: &mut impl Layouter<S::F>,
     ) -> Result<AssignedNative<S::F>, Error> {
+        #[cfg(any(test, feature = "testing"))]
+        in_circuit::squeezed();
+
         let state = self.sponge_state.as_mut().expect("You must init the transcript gadget");
         self.sponge_chip.squeeze(layouter, state)
     }
@@ -159,7 +182,10 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
             // (This allows us to parse dummy proofs.)
             let point: Value<S::C> = match reader.read::<S::C>() {
                 Ok(point) => Value::known(point),
-                Err(_) => Value::known(S::C::default()),
+                Err(_) => {
+                    self.nb_failed_reads += 1;
+                    Value::known(S::C::default())
+                }
             };
             let assigned_point =
                 S::assign_without_subgroup_check(layouter, &self.curve_chip, point)?;
@@ -183,13 +209,49 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
         // (This allows us to parse dummy proofs.)
         let scalar: Value<S::F> = match reader.read::<S::F>() {
             Ok(scalar) => Value::known(scalar),
-            Err(_) => Value::known(S::F::ZERO),
+            Err(_) => {
+                self.nb_failed_reads += 1;
+                Value::known(S::F::ZERO)
+            }
         };
 
         let assigned_scalar = self.scalar_chip.assign(layouter, scalar)?;
         self.common_scalar(layouter, &assigned_scalar)?;
 
         Ok(assigned_scalar)
+    }
+
+    /// Asserts that the proof was read in full: every read succeeded and no
+    /// bytes are left over.
+    ///
+    /// A diagnostic, not a circuit constraint. Reads that run past the end of
+    /// the proof, or that stop short of it, mean the gadget and the prover
+    /// disagree on the transcript layout; without this check the only symptom
+    /// is an unsatisfiable circuit at some unrelated row, because
+    /// [`Self::read_scalar`] and [`Self::read_commitment`] silently substitute
+    /// defaults on a failed read.
+    ///
+    /// A gadget initialised without a proof (key generation, where every read
+    /// legitimately fails) is exempt.
+    pub fn assert_proof_fully_consumed(&mut self) -> Result<(), Error> {
+        if self.proof_len == 0 {
+            return Ok(());
+        }
+
+        if self.nb_failed_reads > 0 {
+            return Err(Synthesis(format!(
+                "{} transcript read(s) ran past the end of a {}-byte proof",
+                self.nb_failed_reads, self.proof_len
+            )));
+        }
+
+        let reader = self.transcript_reader.as_mut().expect("You must init the transcript gadget");
+        reader.assert_empty().map_err(|_| {
+            Synthesis(format!(
+                "the verifier gadget left trailing bytes in a {}-byte proof",
+                self.proof_len
+            ))
+        })
     }
 }
 

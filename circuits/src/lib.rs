@@ -45,6 +45,8 @@ pub use crate::utils::ComposableChip;
 pub mod testing_utils {
     pub use crate::utils::ecdsa;
     #[cfg(any(test, feature = "testing"))]
+    pub use crate::utils::transcript_trace;
+    #[cfg(any(test, feature = "testing"))]
     pub use crate::{
         instructions::hash::tests::test_hash,
         utils::{
