@@ -18,7 +18,6 @@ use ff::Field;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error::{self, Synthesis},
-    poly::PolynomialLabel,
     transcript::{CircuitTranscript, Transcript},
 };
 
@@ -27,11 +26,7 @@ use crate::utils::transcript_trace::in_circuit;
 use crate::{
     instructions::{AssignmentInstructions, PublicInputInstructions, SpongeInstructions},
     types::AssignedNative,
-    verifier::{
-        SelfEmulation,
-        kzg::{AssignedKZGCommitment, AssignedKZGMultiCommitment},
-        msm::AssignedPoint,
-    },
+    verifier::SelfEmulation,
 };
 
 type SpongeState<S> = <<S as SelfEmulation>::SpongeChip as SpongeInstructions<
@@ -119,35 +114,22 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
         self.sponge_chip.absorb(layouter, state, std::slice::from_ref(scalar))
     }
 
-    /// Absorbs a commitment into the transcript, one inner polynomial point at
-    /// a time, matching the off-circuit `Hashable::to_input`.
-    pub fn common_commitment(
+    /// Absorbs a curve point into the transcript, as the same field elements
+    /// the off-circuit `Hashable::to_input` produces for it.
+    pub fn absorb_point(
         &mut self,
         layouter: &mut impl Layouter<S::F>,
-        commitment: &AssignedKZGMultiCommitment<S>,
+        point: &S::AssignedPoint,
     ) -> Result<(), Error> {
-        for inner in commitment.0.iter() {
-            let pis = match inner {
-                AssignedKZGCommitment::Simple(AssignedPoint::Variable(p), _label) => {
-                    self.curve_chip.as_public_input(layouter, p)
-                }
-                AssignedKZGCommitment::Simple(AssignedPoint::Fixed, label) => Err(Synthesis(
-                    format!("Fixed commitments cannot be added to the transcript: {label}"),
-                )),
-                AssignedKZGCommitment::Linear(_, _, labels) => Err(Synthesis(format!(
-                    "Linear commitments cannot be added to the transcript: {labels:?}"
-                ))),
-            }?;
+        let pis = self.curve_chip.as_public_input(layouter, point)?;
 
-            #[cfg(any(test, feature = "testing"))]
-            in_circuit::absorbed(&pis.iter().map(|pi| pi.value().copied()).collect::<Vec<_>>());
+        #[cfg(any(test, feature = "testing"))]
+        in_circuit::absorbed(&pis.iter().map(|pi| pi.value().copied()).collect::<Vec<_>>());
 
-            self.input_len += pis.len();
+        self.input_len += pis.len();
 
-            let state = self.sponge_state.as_mut().expect("You must init the transcript gadget");
-            self.sponge_chip.absorb(layouter, state, &pis)?;
-        }
-        Ok(())
+        let state = self.sponge_state.as_mut().expect("You must init the transcript gadget");
+        self.sponge_chip.absorb(layouter, state, &pis)
     }
 
     /// Derives a scalar challenge from the current transcript.
@@ -162,40 +144,34 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
         self.sponge_chip.squeeze(layouter, state)
     }
 
-    /// Reads `labels.len()` curve points from the prover transcript (one per
-    /// polynomial held by the commitment), absorbs them into the running hash
-    /// state, and tags each polynomial with its label.
+    /// Reads a curve point from the prover transcript.
+    ///
+    /// Does **not** absorb it: a commitment holding several points absorbs them
+    /// together once all are read, matching the off-circuit
+    /// `Hashable::to_input`, and a scheme whose wire format interleaves
+    /// framing with points needs to read them one at a time. The caller
+    /// must pass every point read here to [`Self::absorb_point`], or
+    /// Fiat-Shamir is broken.
     ///
     /// # Warning
     ///
-    /// The received points are not enforced to be in the prime-order subgroup.
-    pub fn read_commitment(
+    /// The received point is not enforced to be in the prime-order subgroup.
+    pub fn read_point(
         &mut self,
         layouter: &mut impl Layouter<S::F>,
-        labels: &[PolynomialLabel],
-    ) -> Result<AssignedKZGMultiCommitment<S>, Error> {
-        let mut inners = Vec::with_capacity(labels.len());
-        for label in labels {
-            let reader =
-                self.transcript_reader.as_mut().expect("You must init the transcript gadget");
-            // If an error, do not fail, assign a default commitment instead.
-            // (This allows us to parse dummy proofs.)
-            let point: Value<S::C> = match reader.read::<S::C>() {
-                Ok(point) => Value::known(point),
-                Err(_) => {
-                    self.nb_failed_reads += 1;
-                    Value::known(S::C::default())
-                }
-            };
-            let assigned_point =
-                S::assign_without_subgroup_check(layouter, &self.curve_chip, point)?;
-            inners.push(AssignedKZGCommitment::simple(assigned_point, label.clone()));
-        }
+    ) -> Result<S::AssignedPoint, Error> {
+        let reader = self.transcript_reader.as_mut().expect("You must init the transcript gadget");
+        // If an error, do not fail, assign a default point instead.
+        // (This allows us to parse dummy proofs.)
+        let point: Value<S::C> = match reader.read::<S::C>() {
+            Ok(point) => Value::known(point),
+            Err(_) => {
+                self.nb_failed_reads += 1;
+                Value::known(S::C::default())
+            }
+        };
 
-        let assigned_com = AssignedKZGMultiCommitment(inners);
-        self.common_commitment(layouter, &assigned_com)?;
-
-        Ok(assigned_com)
+        S::assign_without_subgroup_check(layouter, &self.curve_chip, point)
     }
 
     /// Reads a scalar from the reader buffer, and adds it to the transcript.
@@ -382,25 +358,22 @@ mod tests {
                 .scalar_chip
                 .assign_many(&mut layouter, &self.scalars.transpose_array())?;
 
-            let assigned_commitments = self
+            let assigned_points = self
                 .points
                 .transpose_array()
                 .iter()
                 .map(|p| {
-                    let assigned_p = S::assign_without_subgroup_check(
+                    S::assign_without_subgroup_check(
                         &mut layouter,
                         &transcript_gadget.curve_chip,
                         *p,
-                    )?;
-                    Ok(AssignedKZGMultiCommitment(vec![
-                        AssignedKZGCommitment::simple(assigned_p, PolynomialLabel::NoLabel),
-                    ]))
+                    )
                 })
                 .collect::<Result<Vec<_>, Error>>()?;
 
             for i in 0..(SIZE / 2) {
                 transcript_gadget.common_scalar(&mut layouter, &assigned_scalars[i])?;
-                transcript_gadget.common_commitment(&mut layouter, &assigned_commitments[i])?;
+                transcript_gadget.absorb_point(&mut layouter, &assigned_points[i])?;
             }
 
             let challenge_1 = transcript_gadget.squeeze_challenge(&mut layouter)?;
@@ -410,7 +383,7 @@ mod tests {
 
             for i in (SIZE / 2)..SIZE {
                 transcript_gadget.common_scalar(&mut layouter, &assigned_scalars[i])?;
-                transcript_gadget.common_commitment(&mut layouter, &assigned_commitments[i])?;
+                transcript_gadget.absorb_point(&mut layouter, &assigned_points[i])?;
             }
 
             let challenge_2 = transcript_gadget.squeeze_challenge(&mut layouter)?;

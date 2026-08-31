@@ -31,7 +31,7 @@ use group::Group;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     pcs::kzg::commitment::KZGCommitment,
-    plonk::Error,
+    plonk::Error::{self, Synthesis},
     poly::PolynomialLabel,
 };
 
@@ -559,9 +559,12 @@ pub(crate) fn multi_prepare_kzg<S: SelfEmulation>(
         (q_coms, q_eval_sets, point_sets)
     };
 
-    let f_com = transcript_gadget
-        .read_commitment(layouter, &[PolynomialLabel::Custom("kzg_batch".into())])?
-        .into_single();
+    let f_com = InCircuitKZG::<S>::read_commitment(
+        transcript_gadget,
+        layouter,
+        &[PolynomialLabel::Custom("kzg_batch".into())],
+    )?
+    .into_single();
 
     let x3 = transcript_gadget.squeeze_challenge(layouter)?;
     #[cfg(feature = "truncated-challenges")]
@@ -638,9 +641,12 @@ pub(crate) fn multi_prepare_kzg<S: SelfEmulation>(
         )
     };
 
-    let pi = transcript_gadget
-        .read_commitment(layouter, &[PolynomialLabel::Custom("π".into())])?
-        .into_single();
+    let pi = InCircuitKZG::<S>::read_commitment(
+        transcript_gadget,
+        layouter,
+        &[PolynomialLabel::Custom("π".into())],
+    )?
+    .into_single();
     let pi_msm = pi.into_msm(layouter, scalar_chip)?;
 
     // Scale zπ
@@ -677,7 +683,23 @@ impl<S: SelfEmulation> InCircuitPCS<S> for InCircuitKZG<S> {
         layouter: &mut impl Layouter<S::F>,
         labels: &[PolynomialLabel],
     ) -> Result<Self::AssignedCommitment, Error> {
-        transcript.read_commitment(layouter, labels)
+        // KZG commits each polynomial independently, so a commitment to
+        // `labels.len()` polynomials is that many points on the wire.
+        let points = labels
+            .iter()
+            .map(|_| transcript.read_point(layouter))
+            .collect::<Result<Vec<_>, Error>>()?;
+
+        let commitment = AssignedKZGMultiCommitment(
+            points
+                .into_iter()
+                .zip(labels)
+                .map(|(point, label)| AssignedKZGCommitment::simple(point, label.clone()))
+                .collect(),
+        );
+        Self::common_commitment(transcript, layouter, &commitment)?;
+
+        Ok(commitment)
     }
 
     fn assign_commitment(
@@ -696,7 +718,20 @@ impl<S: SelfEmulation> InCircuitPCS<S> for InCircuitKZG<S> {
         layouter: &mut impl Layouter<S::F>,
         commitment: &AssignedKZGMultiCommitment<S>,
     ) -> Result<(), Error> {
-        transcript.common_commitment(layouter, commitment)
+        for inner in commitment.0.iter() {
+            match inner {
+                AssignedKZGCommitment::Simple(AssignedPoint::Variable(p), _label) => {
+                    transcript.absorb_point(layouter, p)
+                }
+                AssignedKZGCommitment::Simple(AssignedPoint::Fixed, label) => Err(Synthesis(
+                    format!("Fixed commitments cannot be added to the transcript: {label}"),
+                )),
+                AssignedKZGCommitment::Linear(_, _, labels) => Err(Synthesis(format!(
+                    "Linear commitments cannot be added to the transcript: {labels:?}"
+                ))),
+            }?
+        }
+        Ok(())
     }
 
     fn multi_prepare(
