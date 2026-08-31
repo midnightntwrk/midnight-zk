@@ -31,6 +31,7 @@ use crate::{
 
 mod accumulator;
 mod expressions;
+mod fflonk;
 mod kzg;
 mod lookup;
 mod msm;
@@ -45,6 +46,7 @@ mod utils;
 mod verifier_gadget;
 
 pub use accumulator::{Accumulator, AssignedAccumulator};
+pub use fflonk::{AssignedFflonkCommitment, InCircuitFflonk};
 pub use kzg::{AssignedKZGCommitment, AssignedKZGMultiCommitment, InCircuitKZG};
 pub use msm::{AssignedMsm, AssignedPoint, Msm, Point};
 pub use pcs::{InCircuitHomomorphicCommitment, InCircuitPCS};
