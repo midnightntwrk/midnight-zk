@@ -111,7 +111,7 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> PublicInputInstructions<S::F, Assig
     fn assign_as_public_input(
         &self,
         _layouter: &mut impl Layouter<S::F>,
-        _value: Value<VerifyingKey<S>>,
+        _value: Value<VerifyingKey<S, PCS>>,
     ) -> Result<AssignedVk<S, PCS>, Error> {
         unimplemented!(
             "We intend [assign_vk_as_public_input] to be the only entry point
@@ -1196,7 +1196,7 @@ pub(crate) mod tests {
         )
         .expect("Problem preparing the inner proof");
 
-        let fixed_bases = crate::verifier::fixed_bases::<S>(&inner_vk);
+        let fixed_bases = crate::verifier::fixed_bases::<S, _>(&inner_vk);
 
         let mut inner_acc = Accumulator::<S>::from_dual_msm(inner_dual_msm.clone(), &fixed_bases);
 

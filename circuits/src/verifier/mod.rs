@@ -17,8 +17,8 @@ use std::collections::BTreeMap;
 
 use group::Group;
 use midnight_proofs::{
-    MidnightPCS,
     circuit::Value,
+    pcs::PolynomialCommitmentScheme,
     plonk,
     plonk::ConstraintSystem,
     poly::{EvaluationDomain, PolynomialLabel},
@@ -52,8 +52,9 @@ pub use types::BnEmulation;
 pub use types::{BlstrsEmulation, SelfEmulation};
 pub use verifier_gadget::VerifierGadget;
 
-type VerifyingKey<S> =
-    plonk::VerifyingKey<<S as SelfEmulation>::F, MidnightPCS<<S as SelfEmulation>::Engine>>;
+/// The off-circuit verifying key that a given in-circuit PCS accepts.
+type VerifyingKey<S, PCS> =
+    plonk::VerifyingKey<<S as SelfEmulation>::F, <PCS as InCircuitPCS<S>>::OffCircuit>;
 
 /// Type for in-circuit verifying keys.
 ///
@@ -76,9 +77,9 @@ pub struct AssignedVk<S: SelfEmulation, PCS: InCircuitPCS<S>> {
 }
 
 impl<S: SelfEmulation, PCS: InCircuitPCS<S>> InnerValue for AssignedVk<S, PCS> {
-    type Element = VerifyingKey<S>;
+    type Element = VerifyingKey<S, PCS>;
 
-    fn value(&self) -> Value<VerifyingKey<S>> {
+    fn value(&self) -> Value<VerifyingKey<S, PCS>> {
         unimplemented!(
             "It is not possible to get a full verifying key out of an
              AssignedVk, as the latter does not include fixed commitments."
@@ -87,12 +88,12 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> InnerValue for AssignedVk<S, PCS> {
 }
 
 impl<S: SelfEmulation, PCS: InCircuitPCS<S>> Instantiable<S::F> for AssignedVk<S, PCS> {
-    fn as_public_input(vk: &VerifyingKey<S>) -> Vec<S::F> {
+    fn as_public_input(vk: &VerifyingKey<S, PCS>) -> Vec<S::F> {
         AssignedNative::<S::F>::as_public_input(&vk.transcript_repr())
     }
 
     #[cfg(any(test, feature = "testing"))]
-    fn from_public_input(_fields: &[S::F]) -> Option<VerifyingKey<S>> {
+    fn from_public_input(_fields: &[S::F]) -> Option<VerifyingKey<S, PCS>> {
         unimplemented!("as_public_input encodes the VK as its transcript_repr() — not invertible")
     }
 }
@@ -102,6 +103,20 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> AssignedVk<S, PCS> {
     pub fn transcript_repr(&self) -> &AssignedNative<S::F> {
         &self.transcript_repr
     }
+}
+
+/// An off-circuit commitment to a single polynomial, as a verifying key holds
+/// them.
+///
+/// Every commitment a verifying key carries is to one polynomial: the families
+/// a scheme may bundle are all witnessed, never fixed.
+pub trait SingletonCommitment<C> {
+    /// The curve point of this commitment.
+    ///
+    /// # Panics
+    ///
+    /// If the commitment does not hold exactly one polynomial.
+    fn point(&self) -> C;
 }
 
 /// Builds the map from [`PolynomialLabel`] to curve point for all
@@ -114,18 +129,24 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> AssignedVk<S, PCS> {
 ///   proof.
 ///
 /// Pass this map to [`Accumulator::check`] or [`Msm::eval`].
-pub fn fixed_bases<S: SelfEmulation>(vk: &VerifyingKey<S>) -> BTreeMap<PolynomialLabel, S::C> {
+pub fn fixed_bases<S: SelfEmulation, CS>(
+    vk: &plonk::VerifyingKey<S::F, CS>,
+) -> BTreeMap<PolynomialLabel, S::C>
+where
+    CS: PolynomialCommitmentScheme<S::F>,
+    CS::Commitment: SingletonCommitment<S::C>,
+{
     let mut fixed_bases = BTreeMap::new();
 
     let fixed_commitments = vk.fixed_commitments();
     let perm_commitments = vk.permutation().commitments();
 
     for (i, com) in fixed_commitments.iter().enumerate() {
-        fixed_bases.insert(PolynomialLabel::Fixed(i), *com.0[0].as_point());
+        fixed_bases.insert(PolynomialLabel::Fixed(i), com.point());
     }
 
     for (i, com) in perm_commitments.iter().enumerate() {
-        fixed_bases.insert(PolynomialLabel::PermutationFixed(i), *com.0[0].as_point());
+        fixed_bases.insert(PolynomialLabel::PermutationFixed(i), com.point());
     }
 
     fixed_bases.insert(PolynomialLabel::Custom("-G".into()), -S::C::generator());

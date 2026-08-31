@@ -68,7 +68,7 @@ pub struct InnerCircuitContext {
 
 impl InnerCircuitContext {
     fn fixed_bases(&self) -> BTreeMap<PolynomialLabel, C> {
-        verifier::fixed_bases::<S>(self.vk.vk())
+        verifier::fixed_bases::<S, _>(self.vk.vk())
     }
 }
 

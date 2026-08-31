@@ -19,6 +19,7 @@ use std::fmt::Debug;
 
 use midnight_proofs::{
     circuit::{Layouter, Value},
+    pcs::PolynomialCommitmentScheme,
     plonk::Error,
     poly::PolynomialLabel,
 };
@@ -85,6 +86,10 @@ pub trait InCircuitHomomorphicCommitment<S: SelfEmulation>: Clone + Debug + Size
 /// Analog of [`midnight_proofs::pcs::PolynomialCommitmentScheme`]
 /// for the in-circuit verifier.
 pub trait InCircuitPCS<S: SelfEmulation>: Sized + Clone + Debug {
+    /// The off-circuit scheme whose proofs this gadget verifies. Fixes the
+    /// verifying-key type the gadget accepts.
+    type OffCircuit: PolynomialCommitmentScheme<S::F>;
+
     /// The in-circuit type representing a committed polynomial.
     type AssignedCommitment: InCircuitHomomorphicCommitment<S>;
 

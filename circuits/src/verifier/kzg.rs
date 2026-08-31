@@ -28,9 +28,13 @@ use std::{
 
 use ff::Field;
 use group::Group;
+use midnight_curves::pairing::MultiMillerLoop;
 use midnight_proofs::{
     circuit::{Layouter, Value},
-    pcs::kzg::commitment::KZGCommitment,
+    pcs::kzg::{
+        KZGCommitmentScheme,
+        commitment::{KZGCommitment, KZGMultiCommitment},
+    },
     plonk::Error::{self, Synthesis},
     poly::PolynomialLabel,
 };
@@ -43,7 +47,7 @@ use crate::{
     instructions::{ArithInstructions, AssignmentInstructions},
     types::InnerValue,
     verifier::{
-        AssignedAccumulator, SelfEmulation,
+        AssignedAccumulator, SelfEmulation, SingletonCommitment,
         msm::{AssignedMsm, AssignedPoint},
         pcs::{InCircuitHomomorphicCommitment, InCircuitPCS, VerifierQuery},
         transcript_gadget::TranscriptGadget,
@@ -59,7 +63,7 @@ use crate::{
 // -------------------------------------
 
 /// In-circuit analog of
-/// [`KZGCommitment`](midnight_proofs::pcs::kzg::commitment::KZGCommitment).
+/// [`KZGCommitment`].
 ///
 /// Carries a polynomial commitment (or a lazy linear combination of them)
 /// together with its `PolynomialLabel`(s).
@@ -192,7 +196,7 @@ impl<S: SelfEmulation> AssignedKZGCommitment<S> {
 }
 
 /// In-circuit analog of
-/// [`KZGMultiCommitment`](midnight_proofs::pcs::kzg::commitment::KZGMultiCommitment):
+/// [`KZGMultiCommitment`]:
 /// a commitment to one or more polynomials.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AssignedKZGMultiCommitment<S: SelfEmulation>(pub Vec<AssignedKZGCommitment<S>>);
@@ -671,7 +675,14 @@ pub(crate) fn multi_prepare_kzg<S: SelfEmulation>(
 #[derive(Clone, Copy, Debug)]
 pub struct InCircuitKZG<S: SelfEmulation>(PhantomData<S>);
 
+impl<E: MultiMillerLoop> SingletonCommitment<E::G1> for KZGMultiCommitment<E> {
+    fn point(&self) -> E::G1 {
+        *self.0[0].as_point()
+    }
+}
+
 impl<S: SelfEmulation> InCircuitPCS<S> for InCircuitKZG<S> {
+    type OffCircuit = KZGCommitmentScheme<S::Engine>;
     type AssignedCommitment = AssignedKZGMultiCommitment<S>;
 
     fn fixed_commitment(label: PolynomialLabel) -> Self::AssignedCommitment {

@@ -204,7 +204,7 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
     /// the proof, or that stop short of it, mean the gadget and the prover
     /// disagree on the transcript layout; without this check the only symptom
     /// is an unsatisfiable circuit at some unrelated row, because
-    /// [`Self::read_scalar`] and [`Self::read_commitment`] silently substitute
+    /// [`Self::read_scalar`] and [`Self::read_point`] silently substitute
     /// defaults on a failed read.
     ///
     /// A gadget initialised without a proof (key generation, where every read

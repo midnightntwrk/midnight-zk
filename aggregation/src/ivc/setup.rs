@@ -39,7 +39,7 @@ pub fn setup<T: Ivc>(
     let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
 
     let fixed_base_labels: Vec<PolynomialLabel> =
-        fixed_bases::<S>(vk.vk()).keys().cloned().collect();
+        fixed_bases::<S, _>(vk.vk()).keys().cloned().collect();
 
     let verifier = IvcVerifier {
         ctx: ctx.clone(),

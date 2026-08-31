@@ -274,7 +274,7 @@ impl IvcTransition for ProofAggregation {
                 "invalid inner proof"
             );
 
-            let vk_bases = verifier::fixed_bases::<S>(witness.claim.vk.vk());
+            let vk_bases = verifier::fixed_bases::<S, _>(witness.claim.vk.vk());
             let mut acc = Accumulator::from_dual_msm(dual_msm, &vk_bases);
             acc.collapse();
             acc.resolve_fixed_bases(&vk_bases);
