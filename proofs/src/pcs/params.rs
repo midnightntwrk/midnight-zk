@@ -62,8 +62,10 @@ where
     E::G1Affine: CurveAffine,
 {
     fn max_k(&self) -> u32 {
-        #[cfg(not(feature = "single-h-commitment"))]
-        assert_eq!(self.g.len(), self.g_lagrange.len());
+        // The monomial basis may exceed the circuit domain: `single-h-commitment`
+        // commits an unsplit quotient, and fflonk commits a bundle of `t`
+        // polynomials as one of degree `t * 2^k`. It may never fall short of it.
+        assert!(self.g.len() >= self.g_lagrange.len());
         self.g_lagrange.len().ilog2()
     }
 
