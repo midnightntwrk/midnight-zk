@@ -114,6 +114,21 @@ pub trait InCircuitPCS<S: SelfEmulation>: Sized + Clone + Debug {
         commitment: &Self::AssignedCommitment,
     ) -> Result<(), Error>;
 
+    /// Squeezes the point at which the protocol opens its committed
+    /// polynomials.
+    ///
+    /// The protocol must obtain that point through this method. The default is
+    /// a plain challenge; a scheme whose evaluation point has to satisfy some
+    /// property overrides it (fflonk needs a `t_max`-th power). Mirrors
+    /// [`midnight_proofs::pcs::PolynomialCommitmentScheme::squeeze_evaluation_point`].
+    fn squeeze_evaluation_point(
+        layouter: &mut impl Layouter<S::F>,
+        _scalar_chip: &S::ScalarChip,
+        transcript: &mut TranscriptGadget<S>,
+    ) -> Result<AssignedNative<S::F>, Error> {
+        transcript.squeeze_challenge(layouter)
+    }
+
     /// In-circuit multi-open verification; produces an accumulator.
     fn multi_prepare(
         layouter: &mut impl Layouter<S::F>,

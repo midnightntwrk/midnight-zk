@@ -566,7 +566,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
 
         // Sample x challenge, which is used to ensure the circuit is satisfied with
         // high probability
-        let x = transcript.squeeze_challenge(layouter)?;
+        let x = PCS::squeeze_evaluation_point(layouter, &self.scalar_chip, &mut transcript)?;
 
         let instance_evals = {
             let instance_queries = cs.instance_queries();
