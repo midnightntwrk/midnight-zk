@@ -118,7 +118,7 @@ impl<E: MultiMillerLoop> FflonkCommitment<E> {
 
     /// Canonical synthetic label for a `t > 1` bundle. Both prover and verifier
     /// compute this for the same bundle.
-    pub(super) fn synthetic_bundle_label(bundle_labels: &[PolynomialLabel]) -> PolynomialLabel {
+    pub fn synthetic_bundle_label(bundle_labels: &[PolynomialLabel]) -> PolynomialLabel {
         let first = bundle_labels.first().expect("fflonk: multi-poly bundle must be non-empty");
         PolynomialLabel::Custom(format!("fflonk_bundle[{first}]"))
     }

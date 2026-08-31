@@ -91,9 +91,7 @@ pub(super) struct BundleAcc<E: MultiMillerLoop> {
 /// `fewer-point-sets`'s
 /// `compute_dummy_queries`,
 /// which pads towards multi-point keys only.
-pub(super) fn missing_openings<K: PartialEq, P: PartialEq + Clone>(
-    pairs: &[(K, P)],
-) -> Vec<(usize, P)> {
+pub fn missing_openings<K: PartialEq, P: PartialEq + Clone>(pairs: &[(K, P)]) -> Vec<(usize, P)> {
     // Group by key, tracking each key's first occurrence index.
     let mut groups: Vec<(usize, Vec<P>)> = vec![];
     for (i, (key, point)) in pairs.iter().enumerate() {

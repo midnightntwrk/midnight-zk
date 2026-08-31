@@ -58,7 +58,7 @@ use crate::poly::query::PolynomialLabel;
 ///
 /// TODO: this function should be removed once linearisation and fflonk are made
 /// compatible.
-pub(super) fn poly_is_combinable(label: &PolynomialLabel) -> bool {
+pub fn poly_is_combinable(label: &PolynomialLabel) -> bool {
     matches!(
         label,
         PolynomialLabel::Advice(_)
@@ -92,7 +92,7 @@ fn chunk_family(result: &mut Vec<Vec<usize>>, family_indices: &[usize], t_max: u
 /// per-family canonical key both sides must agree on. This ordering is
 /// independent of the bundling factor; only the chunk boundaries drawn over it
 /// depend on `t_max`.
-pub(super) fn canonical_order(labels: &[PolynomialLabel]) -> Vec<usize> {
+pub fn canonical_order(labels: &[PolynomialLabel]) -> Vec<usize> {
     let mut combinable: Vec<usize> = Vec::new();
     let mut singletons: Vec<usize> = Vec::new();
     for (idx, label) in labels.iter().enumerate() {
@@ -120,7 +120,7 @@ pub(super) fn canonical_order(labels: &[PolynomialLabel]) -> Vec<usize> {
 /// fixed columns, because of their use in linearisation. A multi-poly bundle
 /// exposes only the combined group element, from which the individual
 /// commitments cannot be recovered.
-pub(super) fn partition(t_max: usize, labels: &[PolynomialLabel]) -> Vec<Vec<usize>> {
+pub fn partition(t_max: usize, labels: &[PolynomialLabel]) -> Vec<Vec<usize>> {
     let order = canonical_order(labels);
 
     let mut result: Vec<Vec<usize>> = Vec::new();
@@ -150,7 +150,7 @@ pub(super) fn partition(t_max: usize, labels: &[PolynomialLabel]) -> Vec<Vec<usi
 /// Logical bundle size for a bundle holding `real_count` real polynomials at
 /// ceiling `t_max`. fflonk requires bundle sizes to be a power of two, so
 /// bundles are padded with null polynomials up to the next power.
-pub(super) fn bundle_t(real_count: usize, t_max: usize) -> usize {
+pub fn bundle_t(real_count: usize, t_max: usize) -> usize {
     real_count.next_power_of_two().min(t_max)
 }
 

@@ -49,8 +49,13 @@ mod math;
 mod partition;
 
 pub use commitment::FflonkCommitment;
+// Re-exported for the in-circuit fflonk verifier, which re-derives the same
+// bundle layout and the same `t`-th roots the off-circuit verifier does.
+pub use math::{primitive_root_of_unity, t_th_root};
+pub use partition::{bundle_t, partition};
 
-use self::math::{combine, primitive_root_of_unity, roots as t_th_roots, t_th_root};
+pub use self::bundle_expansion::missing_openings;
+use self::math::{combine, roots as t_th_roots};
 #[cfg(feature = "fewer-point-sets")]
 use crate::pcs::utils::compute_dummy_queries;
 use crate::{

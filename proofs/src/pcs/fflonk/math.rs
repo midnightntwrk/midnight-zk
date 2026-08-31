@@ -39,7 +39,7 @@ pub(super) fn combine<F: Field>(slots: &[&[F]], t: usize) -> Vec<F> {
 ///
 /// # Panics
 /// If `t` is not a power of two, or `log2 t > F::S`.
-pub(super) fn primitive_root_of_unity<F: PrimeField>(t: usize) -> F {
+pub fn primitive_root_of_unity<F: PrimeField>(t: usize) -> F {
     assert!(t.is_power_of_two(), "t must be a power of two");
     let log_t = t.trailing_zeros();
     assert!(log_t <= F::S, "t exceeds field 2-adicity (F::S)");
@@ -83,7 +83,7 @@ pub(super) fn eval_claims_as_poly<F: Field>(claimed: &[F], root: F) -> F {
 /// If `t` is not a power of two, or if `x` is not a `t`-th power in `F`
 /// (an intermediate `sqrt()` returns `None`). For fflonk, the caller guarantees
 /// `x` is a `t`-th power by construction (logical points are `s^t · ω_n^r`).
-pub(super) fn t_th_root<F: PrimeField>(x: F, t: usize) -> F {
+pub fn t_th_root<F: PrimeField>(x: F, t: usize) -> F {
     assert!(t.is_power_of_two(), "t must be a power of two");
     let log_t = t.trailing_zeros();
     let mut r = x;
