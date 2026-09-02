@@ -178,7 +178,10 @@ where
     }
 
     fn read(buffer: &mut impl Read) -> io::Result<Self> {
-        Ok(Self::Simple(E::G1::read(buffer)?, PolynomialLabel::NoLabel))
+        Ok(Self::Simple(
+            <E::G1 as Hashable<H>>::read(buffer)?,
+            PolynomialLabel::NoLabel,
+        ))
     }
 }
 
@@ -296,12 +299,6 @@ where
     }
 }
 
-/// Width of the little-endian prefix that frames a [`KZGMultiCommitment`] in a
-/// proof transcript, holding the number of polynomials the commitment covers.
-/// Only the points that follow it are hashed; the prefix delimits them for
-/// `Hashable::read`.
-pub(crate) const NB_POLYS_PREFIX_BYTES: usize = 4;
-
 impl<H: TranscriptHash, E: MultiMillerLoop> Hashable<H> for KZGMultiCommitment<E>
 where
     E::G1: Hashable<H>,
@@ -313,32 +310,30 @@ where
     }
 
     fn to_bytes(&self) -> Vec<u8> {
-        // The proof declares how many polynomials the group holds, so that
-        // `read` knows where the group ends. The count is not part of the
-        // hashed transcript; `read_commitment` checks it against the labels
-        // the verifying key expects.
-        let nb_polys = u32::try_from(self.0.len()).expect("more than 2^32 polynomials in a group");
-        let mut bytes = nb_polys.to_le_bytes().to_vec();
+        // The inner points, concatenated with no count prefix, matching both
+        // `to_input` and `ProcessedSerdeObject::write`. How many a group holds
+        // is pinned by the verifying key, so `read_sized` is handed the count
+        // by its caller rather than reading it back off the wire.
+        let mut bytes = Vec::new();
         for c in &self.0 {
             bytes.extend_from_slice(&c.to_bytes());
         }
         bytes
     }
 
-    fn read(buffer: &mut impl Read) -> io::Result<Self> {
-        let mut nb_polys_bytes = [0u8; NB_POLYS_PREFIX_BYTES];
-        buffer.read_exact(&mut nb_polys_bytes)?;
-        let nb_polys = u32::from_le_bytes(nb_polys_bytes) as usize;
+    fn read(_buffer: &mut impl Read) -> io::Result<Self> {
+        unimplemented!(
+            "a group's polynomial count is not on the wire; use `read_sized`, or              `PolynomialCommitmentScheme::read_commitment`, which supplies it"
+        )
+    }
 
-        // The count is declared by the prover, so grow the vector as the points
-        // arrive instead of reserving `nb_polys` of them upfront: reading each
-        // point consumes proof bytes, which bounds the work by the proof length,
-        // whereas reserving would let a short proof ask for gigabytes.
-        let mut commitments = Vec::new();
-        for _ in 0..nb_polys {
-            commitments.push(<KZGCommitment<E> as Hashable<H>>::read(buffer)?);
-        }
-        Ok(Self(commitments))
+    /// Reads `n` times from the buffer and returns a multi-commitment
+    /// consisting of the read values.
+    fn read_sized(buffer: &mut impl Read, n: usize) -> io::Result<Self> {
+        (0..n)
+            .map(|_| <KZGCommitment<E> as Hashable<H>>::read(buffer))
+            .collect::<io::Result<Vec<_>>>()
+            .map(Self)
     }
 }
 

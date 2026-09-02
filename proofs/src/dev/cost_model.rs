@@ -196,10 +196,10 @@ pub struct CircuitModel {
 /// Given a Plonk circuit, this function returns a [CircuitModel].
 ///
 /// `commit(n)` returns the byte length of the single transcript message that
-/// commits to `n` polynomials, framing included. The prover writes one such
-/// message per commitment group, so a site that commits `n` polynomials
-/// separately costs `n * commit(1)`, not `commit(n)`. For schemes that fold
-/// multiple polynomials into one proof element, `commit` may be sub-linear.
+/// commits to `n` polynomials. The prover writes one such message per
+/// commitment group, so a site that commits `n` polynomials separately costs
+/// `n * commit(1)`, not `commit(n)`. For schemes that fold multiple
+/// polynomials into one proof element, `commit` may be sub-linear.
 ///
 /// See [`circuit_model`] for the variant that derives `commit` automatically
 /// from a `PolynomialCommitmentScheme`.

@@ -43,7 +43,6 @@ use crate::{
         Coeff, Error, Polynomial, PolynomialRepresentation, ProverQuery,
         commitment::PolynomialCommitmentScheme,
         kzg::{
-            commitment::NB_POLYS_PREFIX_BYTES,
             msm::{DualMSM, MSMKZG, msm_specific},
             params::{ParamsKZG, ParamsVerifierKZG},
             utils::construct_intermediate_sets,
@@ -131,24 +130,12 @@ where
     where
         Self::Commitment: Hashable<T::Hash>,
     {
-        let commitment: KZGMultiCommitment<E> = transcript.read()?;
-
-        // How many polynomials the group holds is fixed by the verifying key,
-        // so any other number is a malformed proof. The prover declares the
-        // count in the proof itself, and that count is not part of the hashed
-        // transcript: without this check the `zip` below would silently
-        // truncate to the shorter of the two, letting a prover collapse a whole
-        // group onto fewer points than it has labels.
-        if commitment.0.len() != labels.len() {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!(
-                    "commitment to {} polynomials, expected {}",
-                    commitment.0.len(),
-                    labels.len()
-                ),
-            ));
-        }
+        // The group holds one polynomial per label, so the caller fixes how
+        // many points to read and nothing about the group's size comes off the
+        // wire: a proof cannot claim a different count, and the `zip` below
+        // cannot truncate. The whole group is absorbed once, over all its
+        // points, matching how the prover wrote it.
+        let commitment: KZGMultiCommitment<E> = transcript.read_sized(labels.len())?;
 
         let commitment = KZGMultiCommitment(
             commitment
@@ -165,23 +152,6 @@ where
         );
 
         Ok(commitment)
-    }
-
-    fn write_commitment<T: Transcript>(
-        transcript: &mut T,
-        commitment: &Self::Commitment,
-    ) -> io::Result<()>
-    where
-        Self::Commitment: Hashable<T::Hash>,
-    {
-        transcript.write(commitment)
-    }
-
-    fn commitment_byte_length(n: usize) -> usize {
-        // A group of `n` polynomials travels through the transcript as one
-        // length-prefixed message: the prefix, then one point per polynomial.
-        // (See `Hashable::to_bytes` for `KZGMultiCommitment`.)
-        NB_POLYS_PREFIX_BYTES + n * Self::Commitment::default().byte_length(SerdeFormat::Processed)
     }
 
     fn deserialize_commitment<R: Read>(
@@ -489,7 +459,7 @@ where
         };
 
         let f_point: E::G1 = transcript
-            .read::<KZGMultiCommitment<E>>()
+            .read_sized::<KZGMultiCommitment<E>>(1)
             .map_err(|_| Error::SamplingError)?
             .into_single()
             .into_point();
@@ -556,7 +526,7 @@ where
         };
 
         let pi: E::G1 = transcript
-            .read::<KZGMultiCommitment<E>>()
+            .read_sized::<KZGMultiCommitment<E>>(1)
             .map_err(|_| Error::SamplingError)?
             .into_single()
             .into_point();

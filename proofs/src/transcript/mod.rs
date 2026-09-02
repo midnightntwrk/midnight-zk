@@ -38,6 +38,16 @@ pub trait Hashable<H: TranscriptHash>: Sized {
 
     /// Reads bytes from a buffer and returns `Self`.
     fn read(buffer: &mut impl Read) -> io::Result<Self>;
+
+    /// Reads a single value made of `n` items from a buffer. Most implementors
+    /// do not use it, and the default implementation therefore panics to avoid
+    /// having to require iterable types in general.
+    ///
+    /// Not to be confused with the free `read_n`, which reads `n` *separate*
+    /// values and absorbs each of them on its own.
+    fn read_sized(_buffer: &mut impl Read, _n: usize) -> io::Result<Self> {
+        unimplemented!("read_sized is not implemented for this type")
+    }
 }
 
 /// Trait to represent values that can be sampled from a `TranscriptHash`
@@ -67,6 +77,15 @@ pub trait Transcript: Clone {
 
     /// Read a hashable element `T` from the prover.
     fn read<T: Hashable<Self::Hash>>(&mut self) -> io::Result<T>;
+
+    /// Read a hashable element `T` made of `n` items from the prover, and
+    /// absorb it as a single value.
+    ///
+    /// The item count comes from the caller instead of from the proof, so a
+    /// composite value needs no count on the wire. It is absorbed once, over
+    /// all `n` items at once, exactly as a single [`write`](Self::write) of
+    /// that value absorbs it.
+    fn read_sized<T: Hashable<Self::Hash>>(&mut self, n: usize) -> io::Result<T>;
 
     /// Write a hashable element `T` to the proof and the transcript.
     fn write<T: Hashable<Self::Hash>>(&mut self, input: &T) -> io::Result<()>;
@@ -124,6 +143,13 @@ impl<H: TranscriptHash> Transcript for CircuitTranscript<H> {
 
     fn read<T: Hashable<H>>(&mut self) -> io::Result<T> {
         let val = T::read(&mut self.buffer)?;
+        self.common(&val)?;
+
+        Ok(val)
+    }
+
+    fn read_sized<T: Hashable<H>>(&mut self, n: usize) -> io::Result<T> {
+        let val = T::read_sized(&mut self.buffer, n)?;
         self.common(&val)?;
 
         Ok(val)
