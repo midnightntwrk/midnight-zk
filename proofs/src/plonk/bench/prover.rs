@@ -29,6 +29,13 @@ use crate::{
 /// The polynomials of one argument phase group, keyed by their label.
 type PhaseGroupPolys<F> = BTreeMap<PolynomialLabel, Polynomial<F, LagrangeCoeff>>;
 
+/// One lookup argument's compressed inputs paired with its multiplicities
+/// polynomial, as `compute_multiplicities_parallel` returns them.
+type ComputedMultiplicitiesPair<F> = (
+    logup::prover::ComputedMultiplicities<F>,
+    Polynomial<F, LagrangeCoeff>,
+);
+
 /// This computes a proof trace for the provided `circuit` when given the
 /// public parameters `params` and the proving key [`ProvingKey`] that was
 /// generated previously for the same circuit. The provided `instances`
@@ -139,38 +146,43 @@ where
     // rather than one per lookup argument. Compute and transcript write are
     // separate API calls — measure them together to match the prior
     // `commit_multiplicities` shape.
-    let compute_multiplicities =
-        |advice_polys: &[Polynomial<F, LagrangeCoeff>],
-         instance_values: &[Polynomial<F, LagrangeCoeff>],
-         blindings: &[Vec<F>]|
-         -> Result<Vec<logup::prover::ComputedMultiplicities<F>>, Error> {
-            let logup_args: Vec<_> =
-                pk.vk.cs.lookups.iter().map(|l| l.chunk_by_degree(pk.vk.cs.degree())).collect();
-            logup_args
-                .par_iter()
-                .enumerate()
-                .zip(blindings.par_iter())
-                .map(|((argument_index, logup), blinds)| {
-                    logup.compute_multiplicities_parallel(
-                        argument_index,
-                        pk,
-                        theta,
-                        advice_polys,
-                        &pk.fixed_values,
-                        instance_values,
-                        blinds,
-                    )
-                })
-                .collect::<Result<Vec<_>, Error>>()
-        };
+    let compute_multiplicities = |advice_polys: &[Polynomial<F, LagrangeCoeff>],
+                                  instance_values: &[Polynomial<F, LagrangeCoeff>],
+                                  blindings: &[Vec<F>]|
+     -> Result<Vec<ComputedMultiplicitiesPair<F>>, Error> {
+        let logup_args: Vec<_> =
+            pk.vk.cs.lookups.iter().map(|l| l.chunk_by_degree(pk.vk.cs.degree())).collect();
+        logup_args
+            .par_iter()
+            .enumerate()
+            .zip(blindings.par_iter())
+            .map(|((argument_index, logup), blinds)| {
+                logup.compute_multiplicities_parallel(
+                    argument_index,
+                    pk,
+                    theta,
+                    advice_polys,
+                    &pk.fixed_values,
+                    instance_values,
+                    blinds,
+                )
+            })
+            .collect::<Result<Vec<_>, Error>>()
+    };
 
-    let phase1_polys_map = |multiplicities: &[logup::prover::ComputedMultiplicities<F>]| {
-        BTreeMap::from_iter(multiplicities.iter().map(|c| {
-            (
+    // Hand the multiplicities polynomials over to the phase1 group, keeping the
+    // rest of each `ComputedMultiplicities` for the phase2 computation.
+    let split_multiplicities = |computed: Vec<ComputedMultiplicitiesPair<F>>| {
+        let mut polys_map = BTreeMap::new();
+        let mut rest = Vec::with_capacity(computed.len());
+        for (c, multiplicities) in computed {
+            polys_map.insert(
                 PolynomialLabel::LogupMultiplicities(c.argument_index),
-                c.multiplicities.clone(),
-            )
-        }))
+                multiplicities,
+            );
+            rest.push(c);
+        }
+        (rest, polys_map)
     };
 
     let (logup_multiplicities, phase1_committed) = {
@@ -178,31 +190,25 @@ where
             b.iter_batched(
                 || (transcript.clone(), mult_blindings.clone()),
                 |(mut t, mult_blinds)| -> Result<(), Error> {
-                    let multiplicities = compute_multiplicities(
+                    let computed = compute_multiplicities(
                         &advice.advice_polys,
                         &instance.instance_values,
                         &mult_blinds,
                     )?;
-                    argument::prover::Committed::commit::<CS, _>(
-                        params,
-                        phase1_polys_map(&multiplicities),
-                        &mut t,
-                    )?;
+                    let (_, polys_map) = split_multiplicities(computed);
+                    argument::prover::Committed::commit::<CS, _>(params, polys_map, &mut t)?;
                     Ok(())
                 },
                 criterion::BatchSize::LargeInput,
             )
         });
-        let multiplicities = compute_multiplicities(
+        let (multiplicities, polys_map) = split_multiplicities(compute_multiplicities(
             &advice.advice_polys,
             &instance.instance_values,
             &mult_blindings,
-        )?;
-        let committed = argument::prover::Committed::commit::<CS, T>(
-            params,
-            phase1_polys_map(&multiplicities),
-            transcript,
-        )?;
+        )?);
+        let committed =
+            argument::prover::Committed::commit::<CS, T>(params, polys_map, transcript)?;
         (multiplicities, committed)
     };
 
@@ -276,7 +282,13 @@ where
         Ok(multiplicities
             .into_par_iter()
             .zip(blindings.into_par_iter())
-            .map(|(lookup, blinds)| lookup.compute_logderivative(pk, beta, blinds))
+            .map(|(lookup, blinds)| {
+                let multiplicities = phase1_committed
+                    .polys_map
+                    .get(&PolynomialLabel::LogupMultiplicities(lookup.argument_index))
+                    .expect("the phase1 group holds every multiplicities polynomial");
+                lookup.compute_logderivative(pk, multiplicities, beta, blinds)
+            })
             .collect::<Result<Vec<_>, Error>>()?
             .into_par_iter()
             .map(|c| {

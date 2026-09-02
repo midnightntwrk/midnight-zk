@@ -40,7 +40,6 @@ use crate::{
 pub(crate) struct ComputedMultiplicities<F: PrimeField> {
     pub(crate) argument_index: usize,
     pub(crate) selector: Polynomial<F, LagrangeCoeff>,
-    pub(crate) multiplicities: Polynomial<F, LagrangeCoeff>,
     pub(crate) chunked_compressed_inputs: Vec<Vec<Polynomial<F, LagrangeCoeff>>>,
     pub(crate) compressed_table_expression: Polynomial<F, LagrangeCoeff>,
 }
@@ -71,7 +70,7 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ChunkedArgument<F> {
         fixed_values: &'a [Polynomial<F, LagrangeCoeff>],
         instance_values: &'a [Polynomial<F, LagrangeCoeff>],
         blinding_values: &[F],
-    ) -> Result<ComputedMultiplicities<F>, Error>
+    ) -> Result<(ComputedMultiplicities<F>, Polynomial<F, LagrangeCoeff>), Error>
     where
         F: WithSmallOrderMulGroup<3> + FromUniformBytes<64>,
     {
@@ -128,13 +127,15 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ChunkedArgument<F> {
 
         let multiplicities = pk.vk.domain.lagrange_from_vec(multiplicities);
 
-        Ok(ComputedMultiplicities {
-            argument_index,
-            selector,
+        Ok((
+            ComputedMultiplicities {
+                argument_index,
+                selector,
+                chunked_compressed_inputs,
+                compressed_table_expression,
+            },
             multiplicities,
-            chunked_compressed_inputs,
-            compressed_table_expression,
-        })
+        ))
     }
 }
 
@@ -146,9 +147,13 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ComputedMultiplicities<F> {
     /// `blinding_values` must contain exactly `blinding_factors` random field
     /// elements. They are provided externally so the caller can pre-generate
     /// them from `&mut rng` and then invoke multiple lookups in parallel.
+    ///
+    /// `multiplicities` is borrowed from the phase1 argument group, which owns
+    /// it once it has been committed.
     pub(crate) fn compute_logderivative<CS: PolynomialCommitmentScheme<F>>(
         self,
         pk: &ProvingKey<F, CS>,
+        multiplicities: &Polynomial<F, LagrangeCoeff>,
         beta: F,
         blinding_values: Vec<F>,
     ) -> Result<ComputedLogderivative<F>, Error>
@@ -216,7 +221,7 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ComputedMultiplicities<F> {
             for (i, coeff) in poly.iter_mut().enumerate() {
                 let i = i + start;
                 let sum_helpers: F = helper_polys_lagrange.iter().map(|h| h[i]).sum();
-                *coeff = self.selector[i] * sum_helpers - self.multiplicities[i] * table_denoms[i];
+                *coeff = self.selector[i] * sum_helpers - multiplicities[i] * table_denoms[i];
             }
         });
 

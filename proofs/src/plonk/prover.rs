@@ -125,7 +125,10 @@ where
 
     // Compute the multiplicities columns in parallel. They are committed to
     // below, as the phase1 argument group.
-    let logup_multiplicities: Vec<logup::prover::ComputedMultiplicities<F>> = {
+    let computed_multiplicities: Vec<(
+        logup::prover::ComputedMultiplicities<F>,
+        Polynomial<F, LagrangeCoeff>,
+    )> = {
         let logup_args: Vec<_> =
             pk.vk.cs.lookups.iter().map(|l| l.chunk_by_degree(pk.vk.cs.degree())).collect();
         logup_args
@@ -146,14 +149,19 @@ where
             .collect::<Result<Vec<_>, Error>>()?
     };
 
-    let logup_multiplicities_len = logup_multiplicities.len();
-    // TODO: Check this clone - see if we can remove it.
-    let phase1_polys_map = BTreeMap::from_iter(logup_multiplicities.iter().map(|c| {
-        (
-            PolynomialLabel::LogupMultiplicities(c.argument_index),
-            c.multiplicities.clone(),
-        )
-    }));
+    let logup_multiplicities_len = computed_multiplicities.len();
+
+    // The phase1 group owns the multiplicities polynomials from here on;
+    // `compute_logderivative` borrows them back below.
+    let mut phase1_polys_map = BTreeMap::new();
+    let mut logup_multiplicities = Vec::with_capacity(logup_multiplicities_len);
+    for (computed, multiplicities) in computed_multiplicities {
+        phase1_polys_map.insert(
+            PolynomialLabel::LogupMultiplicities(computed.argument_index),
+            multiplicities,
+        );
+        logup_multiplicities.push(computed);
+    }
 
     let phase1_committed =
         argument::prover::Committed::commit::<CS, T>(params, phase1_polys_map, transcript)?;
@@ -197,7 +205,13 @@ where
     let logup_polys_maps = logup_multiplicities
         .into_par_iter()
         .zip(logup_blindings.into_par_iter())
-        .map(|(lookup, blindings)| lookup.compute_logderivative(pk, beta, blindings))
+        .map(|(lookup, blindings)| {
+            let multiplicities = phase1_committed
+                .polys_map
+                .get(&PolynomialLabel::LogupMultiplicities(lookup.argument_index))
+                .expect("the phase1 group holds every multiplicities polynomial");
+            lookup.compute_logderivative(pk, multiplicities, beta, blindings)
+        })
         .collect::<Result<Vec<_>, Error>>()?
         .into_par_iter()
         .map(|c| {
