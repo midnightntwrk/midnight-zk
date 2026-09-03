@@ -311,7 +311,7 @@ impl PolynomialRepresentation for LagrangeDoubleDeltaCoeff {
         _evaluation_domain: &EvaluationDomain<F>,
         _poly: Polynomial<F, Self>,
     ) -> Polynomial<F, Coeff> {
-        unimplemented!("Cannot convert LagrangeCoubleDelta basis to coefficient form.")
+        unimplemented!("Cannot convert LagrangeDoubleDelta basis to coefficient form.")
     }
 
     fn g_coset<F: WithSmallOrderMulGroup<3>>(_evaluation_domain: &EvaluationDomain<F>) -> F {

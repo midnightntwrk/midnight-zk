@@ -25,12 +25,11 @@ pub(crate) struct Committed<F: PrimeField, B: PolynomialRepresentation> {
 impl<F: WithSmallOrderMulGroup<3>, B: PolynomialRepresentation> Committed<F, B> {
     pub fn into_coeff(self, domain: &EvaluationDomain<F>) -> Committed<F, Coeff> {
         Committed {
-            polys_map: BTreeMap::from_iter(
-                self.polys_map
-                    .into_par_iter()
-                    .map(|(label, p)| (label, B::self_to_coeff(domain, p)))
-                    .collect::<Vec<_>>(),
-            ),
+            polys_map: self
+                .polys_map
+                .into_par_iter()
+                .map(|(label, p)| (label, B::self_to_coeff(domain, p)))
+                .collect::<BTreeMap<_, _>>(),
         }
     }
 }

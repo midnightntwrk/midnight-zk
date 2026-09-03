@@ -63,15 +63,6 @@ where
 }
 
 impl<E: MultiMillerLoop> KZGCommitment<E> {
-    /// Extracts the inner curve point, panicking if this is a `Linear`
-    /// commitment.
-    pub fn into_point(self) -> E::G1 {
-        match self {
-            Self::Simple(p, _) => p,
-            Self::Linear(..) => panic!("expected KZGCommitment::Simple"),
-        }
-    }
-
     /// Returns a reference to the inner curve point, panicking if this is a
     /// `Linear` commitment.
     pub fn as_point(&self) -> &E::G1 {

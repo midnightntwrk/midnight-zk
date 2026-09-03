@@ -14,7 +14,7 @@
 //! Transcript gadget module, for in-circuit Fiat-Shamir.
 //! Shall we adopt the [SAFE API](https://hackmd.io/bHgsH6mMStCVibM_wYvb2w)?
 
-use std::io::Read;
+use std::{collections::BTreeSet, io::Read};
 
 use ff::Field;
 use midnight_proofs::{
@@ -145,6 +145,10 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
     /// polynomial held by the commitment), absorbs them into the running hash
     /// state, and tags each polynomial with its label.
     ///
+    /// The labels are matched to the points read in their `Ord` order, the
+    /// order the prover commits to them in, so the caller may list them in any
+    /// order.
+    ///
     /// # Warning
     ///
     /// The received points are not enforced to be in the prime-order subgroup.
@@ -157,6 +161,14 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
             !labels.is_empty(),
             "cannot read a commitment to no polynomials"
         );
+
+        let ordered = BTreeSet::from_iter(labels.iter().cloned());
+        assert_eq!(
+            ordered.len(),
+            labels.len(),
+            "duplicated polynomial label in a commitment group"
+        );
+        let labels: Vec<_> = ordered.into_iter().collect();
 
         {
             // The whole group is written to the proof as one commitment
@@ -176,7 +188,7 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
         }
 
         let mut inners = Vec::with_capacity(labels.len());
-        for label in labels {
+        for label in &labels {
             let reader =
                 self.transcript_reader.as_mut().expect("You must init the transcript gadget");
             // If an error, do not fail, assign a default commitment instead.

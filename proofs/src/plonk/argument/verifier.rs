@@ -55,14 +55,9 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> Committed<F, CS> {
             "cannot read a commitment to no polynomials"
         );
 
-        // The prover commits to the group in the labels' `Ord` order (its
-        // polynomials live in a `BTreeMap`), so read them in that order,
-        // whatever order the caller listed them in.
-        let polynomial_labels = BTreeSet::from_iter(labels.iter().cloned());
-        let ordered_labels: Vec<_> = polynomial_labels.iter().cloned().collect();
         Ok(Committed {
-            commitment: CS::read_commitment(transcript, &ordered_labels)?,
-            polynomial_labels,
+            commitment: CS::read_commitment(transcript, labels)?,
+            polynomial_labels: BTreeSet::from_iter(labels.iter().cloned()),
         })
     }
 }

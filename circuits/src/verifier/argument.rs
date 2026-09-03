@@ -105,14 +105,9 @@ pub(crate) fn read_committed<S: SelfEmulation, PCS: InCircuitPCS<S>>(
     layouter: &mut impl Layouter<S::F>,
     transcript_gadget: &mut TranscriptGadget<S>,
 ) -> Result<Committed<S, PCS>, Error> {
-    // The prover commits to the group in the labels' `Ord` order (its
-    // polynomials live in a `BTreeMap`), so read them in that order, whatever
-    // order the caller listed them in.
-    let polynomial_labels = BTreeSet::from_iter(labels.iter().cloned());
-    let ordered_labels: Vec<_> = polynomial_labels.iter().cloned().collect();
     Ok(Committed {
-        commitment: PCS::read_commitment(transcript_gadget, layouter, &ordered_labels)?,
-        polynomial_labels,
+        commitment: PCS::read_commitment(transcript_gadget, layouter, labels)?,
+        polynomial_labels: BTreeSet::from_iter(labels.iter().cloned()),
     })
 }
 

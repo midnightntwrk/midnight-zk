@@ -8,7 +8,7 @@
 //! For a more detailed explanation, see the [Halo 2 Book](https://zcash.github.io/halo2/design/proving-system/multipoint-opening.html) on Multipoint Openings.
 
 use std::{
-    collections::HashMap,
+    collections::{BTreeSet, HashMap},
     io::{self, Read},
     marker::PhantomData,
 };
@@ -44,7 +44,7 @@ use crate::{
         commitment::PolynomialCommitmentScheme,
         kzg::{
             commitment::NB_POLYS_PREFIX_BYTES,
-            msm::{DualMSM, MSMKZG, msm_specific},
+            msm::{DualMSM, msm_specific},
             params::{ParamsKZG, ParamsVerifierKZG},
             utils::construct_intermediate_sets,
         },
@@ -53,7 +53,7 @@ use crate::{
     transcript::{Hashable, Sampleable, Transcript},
     utils::{
         arithmetic::{
-            CurveAffine, CurveExt, MSM, eval_polynomial, evals_inner_product, inner_product,
+            CurveAffine, CurveExt, eval_polynomial, evals_inner_product, inner_product,
             kate_division, lagrange_interpolate, parallelize, powers,
         },
         helpers::{ProcessedSerdeObject, SerdeFormat},
@@ -95,11 +95,20 @@ where
             "polynomials and labels must have the same length"
         );
         assert!(!polynomials.is_empty(), "cannot commit to zero polynomials");
+
+        // The group travels through the transcript in the labels' `Ord` order,
+        // which is the order `read_commitment` tags the points it reads in.
+        let mut pairs: Vec<_> = polynomials.iter().zip(labels).collect();
+        pairs.sort_by(|(_, a), (_, b)| a.cmp(b));
+        assert!(
+            pairs.windows(2).all(|w| w[0].1 != w[1].1),
+            "duplicated polynomial label in a commitment group"
+        );
+
         let bases = params.bases::<B>();
         KZGMultiCommitment(
-            polynomials
-                .iter()
-                .zip(labels)
+            pairs
+                .into_iter()
                 .map(|(polynomial, label)| {
                     let size = polynomial.values.len();
                     assert!(bases.len() >= size);
@@ -132,6 +141,16 @@ where
         Self::Commitment: Hashable<T::Hash>,
     {
         let commitment: KZGMultiCommitment<E> = transcript.read()?;
+
+        // `commit_many` commits to the group in the labels' `Ord` order, so tag
+        // the points in that order, whatever order the caller listed them in.
+        let ordered = BTreeSet::from_iter(labels.iter().cloned());
+        assert_eq!(
+            ordered.len(),
+            labels.len(),
+            "duplicated polynomial label in a commitment group"
+        );
+        let labels: Vec<_> = ordered.into_iter().collect();
 
         // How many polynomials the group holds is fixed by the verifying key,
         // so any other number is a malformed proof. The prover declares the
@@ -488,12 +507,12 @@ where
             (q_coms, q_eval_sets, point_sets)
         };
 
-        let f_point: E::G1 = transcript
-            .read::<KZGMultiCommitment<E>>()
-            .map_err(|_| Error::SamplingError)?
-            .into_single()
-            .into_point();
-        let f_com = KZGCommitment::Simple(f_point, PolynomialLabel::Custom("kzg_batch".into()));
+        let f_com = Self::read_commitment(
+            transcript,
+            &[PolynomialLabel::Custom("kzg_batch".to_string())],
+        )
+        .map_err(|_| Error::SamplingError)?
+        .into_single();
 
         // Sample a challenge x_3 for checking that f(X) was committed to
         // correctly.
@@ -555,33 +574,18 @@ where
             inner_product(&evals, powers)
         };
 
-        let pi: E::G1 = transcript
-            .read::<KZGMultiCommitment<E>>()
+        let pi = Self::read_commitment(transcript, &[PolynomialLabel::Custom("π".to_string())])
             .map_err(|_| Error::SamplingError)?
-            .into_single()
-            .into_point();
+            .into_single();
 
-        let mut pi_msm = MSMKZG::<E>::init();
-        pi_msm.append_term(E::Fr::ONE, pi, PolynomialLabel::Custom("π".into()));
+        // (π, C − vG + zπ), assembled with the scheme's own linear operations:
+        // the terms stay a lazy `Linear` combination until the pairing check
+        // collapses them into one MSM.
+        let minus_g =
+            KZGCommitment::Simple(-E::G1::generator(), PolynomialLabel::Custom("-G".into()));
+        let rhs = final_com + minus_g * v + pi.clone() * x3;
 
-        // - vG + zπ
-        let extra_rhs = MSMKZG::new(
-            &[v, x3],
-            &[-E::G1::generator(), pi],
-            &[
-                PolynomialLabel::Custom("-G".into()),
-                PolynomialLabel::Custom("π".into()),
-            ],
-        );
-
-        // (π, C − vG + zπ)
-        let mut msm_accumulator = DualMSM {
-            left: pi_msm,
-            right: final_com.into(),
-        };
-        msm_accumulator.right.add_msm(&extra_rhs);
-
-        Ok(msm_accumulator)
+        Ok(DualMSM::new(pi.into(), rhs.into()))
     }
 }
 
