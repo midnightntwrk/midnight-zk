@@ -4,7 +4,7 @@ use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use super::{ConstraintSystem, Expression};
 use crate::{
-    plonk::{Any, argument, logup, permutation},
+    plonk::{Any, argument, permutation},
     poly::{
         Coeff, EvaluationDomain, Polynomial, PolynomialLabel, PolynomialRepresentation, Rotation,
     },
@@ -829,7 +829,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
         gamma: F,
         theta: F,
         trash_challenge: F,
-        lookups: &[logup::prover::Committed<F>],
+        phase1_committed: &argument::prover::Committed<F, Coeff>,
         phase2_committed: &argument::prover::Committed<F, Coeff>,
         permutation: &permutation::prover::Committed<F>,
         l0: &Polynomial<F, B>,
@@ -947,17 +947,43 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
 
         // Pre-compute all lookup cosets in parallel. This trades peak memory
         // for parallelism: the FFTs for different lookups can now overlap.
-        let all_lookup_cosets: Vec<_> = lookups
+        let all_lookup_cosets: Vec<_> = cs
+            .lookups
+            .iter()
+            .map(|l| l.chunk_by_degree(cs.degree()))
+            .enumerate()
+            .collect::<Vec<_>>()
             .par_iter()
-            .map(|lookup| {
-                let helper_cosets: Vec<_> = lookup
-                    .helper_polys
-                    .iter()
-                    .map(|h| B::coeff_to_self(domain, h.clone()))
+            .map(|(argument_index, lookup)| {
+                let multiplicities_poly = phase1_committed
+                    .polys_map
+                    .get(&PolynomialLabel::LogupMultiplicities(*argument_index))
+                    .unwrap();
+
+                let helper_polys: Vec<_> = (0..lookup.input_expression_chunks.len())
+                    .map(|j| {
+                        phase2_committed
+                            .polys_map
+                            .get(&PolynomialLabel::LogupHelper(*argument_index, j))
+                            .unwrap()
+                    })
                     .collect();
-                let aggregator_coset = B::coeff_to_self(domain, lookup.aggregator_poly.clone());
-                let multiplicities_coset = B::coeff_to_self(domain, lookup.multiplicities.clone());
-                (helper_cosets, aggregator_coset, multiplicities_coset)
+
+                let aggregator_poly = phase2_committed
+                    .polys_map
+                    .get(&PolynomialLabel::LogupAggregator(*argument_index))
+                    .unwrap();
+
+                // Compute cosets
+
+                let multiplicities_coset = B::coeff_to_self(domain, multiplicities_poly.clone());
+
+                let helper_cosets: Vec<_> =
+                    helper_polys.into_iter().map(|h| B::coeff_to_self(domain, h.clone())).collect();
+
+                let aggregator_poly = B::coeff_to_self(domain, aggregator_poly.clone());
+
+                (helper_cosets, aggregator_poly, multiplicities_coset)
             })
             .collect();
 

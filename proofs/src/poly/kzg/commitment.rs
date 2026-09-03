@@ -63,15 +63,6 @@ where
 }
 
 impl<E: MultiMillerLoop> KZGCommitment<E> {
-    /// Extracts the inner curve point, panicking if this is a `Linear`
-    /// commitment.
-    pub fn into_point(self) -> E::G1 {
-        match self {
-            Self::Simple(p, _) => p,
-            Self::Linear(..) => panic!("expected KZGCommitment::Simple"),
-        }
-    }
-
     /// Returns a reference to the inner curve point, panicking if this is a
     /// `Linear` commitment.
     pub fn as_point(&self) -> &E::G1 {
@@ -296,25 +287,29 @@ where
     }
 }
 
+/// Width of the little-endian prefix that frames a [`KZGMultiCommitment`] in a
+/// proof transcript, holding the number of polynomials the commitment covers.
+/// Only the points that follow it are hashed; the prefix delimits them for
+/// `Hashable::read`.
+pub(crate) const NB_POLYS_PREFIX_BYTES: usize = 4;
+
 impl<H: TranscriptHash, E: MultiMillerLoop> Hashable<H> for KZGMultiCommitment<E>
 where
     E::G1: Hashable<H>,
 {
     fn to_input(&self) -> H::Input {
-        // Without batching every commitment holds a single polynomial, so we
-        // hash its sole inner commitment. Hashing a batched commitment (which
-        // would require concatenating per-polynomial inputs) is left for when
-        // batching is introduced.
-        assert_eq!(
-            self.0.len(),
-            1,
-            "hashing a KZGMultiCommitment with more than one polynomial is not yet supported"
-        );
-        self.0[0].to_input()
+        // The per-polynomial inputs are concatenated with no count prefix,
+        // matching `ProcessedSerdeObject::write`.
+        self.0.iter().flat_map(|c| c.to_input()).collect()
     }
 
     fn to_bytes(&self) -> Vec<u8> {
-        let mut bytes = Vec::new();
+        // The proof declares how many polynomials the group holds, so that
+        // `read` knows where the group ends. The count is not part of the
+        // hashed transcript; `read_commitment` checks it against the labels
+        // the verifying key expects.
+        let nb_polys = u32::try_from(self.0.len()).expect("more than 2^32 polynomials in a group");
+        let mut bytes = nb_polys.to_le_bytes().to_vec();
         for c in &self.0 {
             bytes.extend_from_slice(&c.to_bytes());
         }
@@ -322,7 +317,19 @@ where
     }
 
     fn read(buffer: &mut impl Read) -> io::Result<Self> {
-        Ok(Self(vec![<KZGCommitment<E> as Hashable<H>>::read(buffer)?]))
+        let mut nb_polys_bytes = [0u8; NB_POLYS_PREFIX_BYTES];
+        buffer.read_exact(&mut nb_polys_bytes)?;
+        let nb_polys = u32::from_le_bytes(nb_polys_bytes) as usize;
+
+        // The count is declared by the prover, so grow the vector as the points
+        // arrive instead of reserving `nb_polys` of them upfront: reading each
+        // point consumes proof bytes, which bounds the work by the proof length,
+        // whereas reserving would let a short proof ask for gigabytes.
+        let mut commitments = Vec::new();
+        for _ in 0..nb_polys {
+            commitments.push(<KZGCommitment<E> as Hashable<H>>::read(buffer)?);
+        }
+        Ok(Self(commitments))
     }
 }
 

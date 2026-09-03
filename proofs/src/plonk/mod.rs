@@ -502,7 +502,7 @@ pub(crate) fn partially_evaluate_identities<'a, F, CS>(
     instance_evals: &'a [F],
     advice_evals: &'a [F],
     permutation_evals: &'a [permutation::Evaluated<F>],
-    lookup_evals: impl Iterator<Item = &'a logup::Evaluated<F>> + 'a,
+    phase1_evals: &BTreeMap<PolynomialLabel, Vec<argument::Evaluation<F>>>,
     phase2_evals: &BTreeMap<PolynomialLabel, Vec<argument::Evaluation<F>>>,
     permutations_common: &'a CommonEvaluated<F>,
     x: F,
@@ -569,21 +569,27 @@ where
             .map(|e| (None, e)),
         )
         .chain(
-            lookup_evals
-                .zip(vk.cs.lookups.iter().map(|l| l.chunk_by_degree(vk.cs_degree)))
-                .flat_map(move |(p, argument)| {
-                    p.expressions(
-                        l_0,
-                        l_last,
-                        l_blind,
-                        &argument,
-                        theta,
-                        beta,
-                        advice_evals,
-                        fixed_evals,
-                        instance_evals,
-                    )
-                    .collect::<Vec<_>>()
+            vk.cs
+                .lookups
+                .iter()
+                .map(|l| l.chunk_by_degree(vk.cs_degree))
+                .enumerate()
+                .flat_map(move |(argument_index, argument)| {
+                    argument
+                        .expressions(
+                            argument_index,
+                            phase1_evals,
+                            phase2_evals,
+                            l_0,
+                            l_last,
+                            l_blind,
+                            theta,
+                            beta,
+                            advice_evals,
+                            fixed_evals,
+                            instance_evals,
+                        )
+                        .collect::<Vec<_>>()
                 })
                 .map(|e| (None, e)),
         )

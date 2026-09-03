@@ -50,10 +50,14 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
     /// Commit to one or more polynomials, tagging the result with the
     /// corresponding labels for identification during multi-open accumulation.
     ///
+    /// The polynomials are committed to in the labels' `Ord` order, which is
+    /// the order [`read_commitment`](Self::read_commitment) reads them back in.
+    /// The caller may list them in any order.
+    ///
     /// # Panics
     ///
-    /// Panics if `polynomials` and `labels` have different lengths, or if
-    /// either slice is empty.
+    /// Panics if `polynomials` and `labels` have different lengths, if either
+    /// slice is empty, or if a label is repeated.
     fn commit_many<B: PolynomialRepresentation>(
         params: &Self::Parameters,
         polynomials: &[&Polynomial<F, B>],
@@ -75,8 +79,18 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
     /// transcript, absorbing it into the transcript state and tagging each
     /// polynomial with its label.
     ///
+    /// The labels are matched to the points read in their `Ord` order, the
+    /// order [`commit_many`](Self::commit_many) commits to them in, so the
+    /// caller may list them in any order.
+    ///
     /// Use [`deserialize_commitment`](Self::deserialize_commitment) instead for
     /// commitments that are not part of the proof.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a label is repeated. Labels name the polynomials the
+    /// verifying key expects, so a repeat is a caller bug, not a malformed
+    /// proof.
     fn read_commitment<T: Transcript>(
         transcript: &mut T,
         labels: &[PolynomialLabel],
@@ -84,12 +98,26 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
     where
         Self::Commitment: Hashable<T::Hash>;
 
+    /// Write a commitment produced by [`commit_many`](Self::commit_many) to the
+    /// proof transcript, absorbing it in exactly the granularity in which
+    /// [`read_commitment`](Self::read_commitment) reads it back.
+    fn write_commitment<T: Transcript>(
+        transcript: &mut T,
+        commitment: &Self::Commitment,
+    ) -> io::Result<()>
+    where
+        Self::Commitment: Hashable<T::Hash>,
+    {
+        transcript.write(commitment)
+    }
+
     /// Deserialize a commitment to `labels.len()` polynomials from `reader`,
     /// tagging each polynomial with its label.
     ///
     /// Unlike [`read_commitment`](Self::read_commitment), the bytes come from a
     /// plain reader, typically a serialized verifying key, and nothing is
-    /// absorbed into a transcript.
+    /// absorbed into a transcript. The labels are also matched to the points
+    /// positionally, in the order given, rather than in their `Ord` order.
     fn deserialize_commitment<R: Read>(
         reader: &mut R,
         format: SerdeFormat,
