@@ -1,5 +1,5 @@
 use std::{
-    collections::HashSet,
+    collections::{BTreeMap, HashSet},
     hash::Hash,
     iter::{self},
     ops::RangeTo,
@@ -575,9 +575,12 @@ where
     // Commit to all advice columns in a single batched call, so that schemes
     // able to fold same-phase polynomials (e.g. fflonk) see the whole phase.
     if !advice_values.is_empty() {
-        let advice_refs: Vec<_> = advice_values.iter().collect();
-        let labels: Vec<_> = (0..advice_values.len()).map(PolynomialLabel::Advice).collect();
-        let advice_com = CS::commit_many(params, &advice_refs, &labels);
+        let advice_polys: BTreeMap<_, _> = advice_values
+            .iter()
+            .enumerate()
+            .map(|(i, p)| (PolynomialLabel::Advice(i), p))
+            .collect();
+        let advice_com = CS::commit_many(params, &advice_polys);
         CS::write_commitment(transcript, &advice_com)?;
     }
 

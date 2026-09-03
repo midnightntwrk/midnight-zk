@@ -8,7 +8,8 @@
 //! For a more detailed explanation, see the [Halo 2 Book](https://zcash.github.io/halo2/design/proving-system/multipoint-opening.html) on Multipoint Openings.
 
 use std::{
-    collections::HashMap,
+    borrow::Borrow,
+    collections::{BTreeMap, HashMap},
     io::{self, Read},
     marker::PhantomData,
 };
@@ -83,24 +84,21 @@ where
         params.verifier_params()
     }
 
-    fn commit_many<B: PolynomialRepresentation>(
+    fn commit_many<B: PolynomialRepresentation, P: Borrow<Polynomial<E::Fr, B>> + Sync>(
         params: &Self::Parameters,
-        polynomials: &[&Polynomial<E::Fr, B>],
-        labels: &[PolynomialLabel],
+        polynomials: &BTreeMap<PolynomialLabel, P>,
     ) -> Self::Commitment {
-        assert_eq!(
-            polynomials.len(),
-            labels.len(),
-            "polynomials and labels must have the same length"
-        );
         assert!(!polynomials.is_empty(), "cannot commit to zero polynomials");
         let bases = params.bases::<B>();
+        // The map fixes the order to the labels' `Ord` order, which is the
+        // order `read_commitment` tags the points it reads in.
+        let entries: Vec<(&PolynomialLabel, &Polynomial<E::Fr, B>)> =
+            polynomials.iter().map(|(label, poly)| (label, poly.borrow())).collect();
         // One independent MSM per polynomial, run in parallel.
         KZGMultiCommitment(
-            polynomials
-                .par_iter()
-                .zip(labels.par_iter())
-                .map(|(polynomial, label)| {
+            entries
+                .into_par_iter()
+                .map(|(label, polynomial)| {
                     let size = polynomial.values.len();
                     assert!(bases.len() >= size);
                     KZGCommitment::Simple(

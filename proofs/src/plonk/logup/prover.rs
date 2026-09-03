@@ -20,7 +20,7 @@
 //!   iterates over columns
 //! - **Accumulator `Z(X)`**: Running sum of log-derivative differences
 
-use std::{hash::Hash, iter};
+use std::{collections::BTreeMap, hash::Hash, iter};
 
 use ff::{BatchInvert, FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
 use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
@@ -404,14 +404,16 @@ where
     // equal-value runs, which collapse to zeros in the LagrangeDelta basis;
     // commit in that basis.
     if !computed.is_empty() {
-        let delta_polys =
-            computed.par_iter().map(|c| c.multiplicities.to_delta()).collect::<Vec<_>>();
-        let delta_refs = delta_polys.iter().collect::<Vec<_>>();
-        let labels: Vec<_> = computed
-            .iter()
-            .map(|c| PolynomialLabel::LogupMultiplicities(c.argument_index))
+        let delta_polys: BTreeMap<_, _> = computed
+            .par_iter()
+            .map(|c| {
+                (
+                    PolynomialLabel::LogupMultiplicities(c.argument_index),
+                    c.multiplicities.to_delta(),
+                )
+            })
             .collect();
-        let mult_com = CS::commit_many(params, &delta_refs, &labels);
+        let mult_com = CS::commit_many(params, &delta_polys);
         CS::write_commitment(transcript, &mult_com)?;
     }
 
@@ -435,12 +437,13 @@ where
     T: Transcript,
 {
     let domain = pk.vk.get_domain();
-    let mut helper_polys = Vec::new();
-    let mut labels = Vec::new();
+    let mut helper_polys = BTreeMap::new();
     for c in computed {
         for (chunk_idx, h) in c.helper_polys_lagrange.iter().enumerate() {
-            helper_polys.push(domain.lagrange_from_vec(h.clone()));
-            labels.push(PolynomialLabel::LogupHelper(c.argument_index, chunk_idx));
+            helper_polys.insert(
+                PolynomialLabel::LogupHelper(c.argument_index, chunk_idx),
+                domain.lagrange_from_vec(h.clone()),
+            );
         }
     }
 
@@ -448,8 +451,7 @@ where
         return Ok(());
     }
 
-    let helper_refs: Vec<_> = helper_polys.iter().collect();
-    let helpers_com = CS::commit_many(params, &helper_refs, &labels);
+    let helpers_com = CS::commit_many(params, &helper_polys);
     CS::write_commitment(transcript, &helpers_com)?;
 
     Ok(())
@@ -475,14 +477,16 @@ where
     // The aggregator is a running sum which is locally *linear* over the long
     // contiguous runs of multiplicities (highly contiguous, zero-padded
     // tables), so Δ² collapses those runs to zeros; commit in that basis.
-    let agg_delta_polys: Vec<_> =
-        computed.par_iter().map(|c| c.aggregator_poly.to_double_delta()).collect();
-    let agg_refs: Vec<_> = agg_delta_polys.iter().collect();
-    let agg_labels: Vec<_> = computed
-        .iter()
-        .map(|c| PolynomialLabel::LogupAggregator(c.argument_index))
+    let agg_delta_polys: BTreeMap<_, _> = computed
+        .par_iter()
+        .map(|c| {
+            (
+                PolynomialLabel::LogupAggregator(c.argument_index),
+                c.aggregator_poly.to_double_delta(),
+            )
+        })
         .collect();
-    let aggregators_com = CS::commit_many(params, &agg_refs, &agg_labels);
+    let aggregators_com = CS::commit_many(params, &agg_delta_polys);
     CS::write_commitment(transcript, &aggregators_com)?;
 
     Ok(())

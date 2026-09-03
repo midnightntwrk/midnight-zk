@@ -1,4 +1,4 @@
-use std::iter;
+use std::{collections::BTreeMap, iter};
 
 use ff::{PrimeField, WithSmallOrderMulGroup};
 use group::ff::BatchInvert;
@@ -241,11 +241,12 @@ impl Argument {
         // borrow into a transient delta buffer rather than transforming in place
         // and prefix-summing back. All accumulators are batched into one
         // `commit_many` call.
-        let delta_polys: Vec<_> = z_polys.par_iter().map(|z| z.to_delta()).collect();
-        let delta_refs: Vec<_> = delta_polys.iter().collect();
-        let labels: Vec<_> =
-            (0..z_polys.len()).map(PolynomialLabel::PermutationAccumulator).collect();
-        let commitment = CS::commit_many(params, &delta_refs, &labels);
+        let delta_polys: BTreeMap<_, _> = z_polys
+            .par_iter()
+            .enumerate()
+            .map(|(i, z)| (PolynomialLabel::PermutationAccumulator(i), z.to_delta()))
+            .collect();
+        let commitment = CS::commit_many(params, &delta_polys);
 
         Computed {
             commitment,

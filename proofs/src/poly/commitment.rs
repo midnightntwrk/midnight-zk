@@ -1,6 +1,8 @@
 //! Trait for a commitment scheme
 use core::ops::{Add, Mul};
 use std::{
+    borrow::Borrow,
+    collections::BTreeMap,
     fmt::Debug,
     hash::Hash,
     io::{self, Read},
@@ -47,17 +49,18 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
     /// Extract the `VerifierParameters` from `Parameters`
     fn get_verifier_params(params: &Self::Parameters) -> Self::VerifierParameters;
 
-    /// Commit to one or more polynomials, tagging the result with the
-    /// corresponding labels for identification during multi-open accumulation.
+    /// Commit to one or more polynomials, tagging each with its label for
+    /// identification during multi-open accumulation.
+    ///
+    /// The polynomials are committed to in the labels' `Ord` order, which is
+    /// the order [`read_commitment`](Self::read_commitment) reads them back in.
     ///
     /// # Panics
     ///
-    /// Panics if `polynomials` and `labels` have different lengths, or if
-    /// either slice is empty.
-    fn commit_many<B: PolynomialRepresentation>(
+    /// Panics if `polynomials` is empty.
+    fn commit_many<B: PolynomialRepresentation, P: Borrow<Polynomial<F, B>> + Sync>(
         params: &Self::Parameters,
-        polynomials: &[&Polynomial<F, B>],
-        labels: &[PolynomialLabel],
+        polynomials: &BTreeMap<PolynomialLabel, P>,
     ) -> Self::Commitment;
 
     /// Commit to a single polynomial in coefficient form, tagging the result
@@ -68,7 +71,7 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
         polynomial: &Polynomial<F, B>,
         label: PolynomialLabel,
     ) -> Self::Commitment {
-        Self::commit_many(params, &[polynomial], &[label])
+        Self::commit_many(params, &BTreeMap::from([(label, polynomial)]))
     }
 
     /// Read a commitment to `labels.len()` polynomials from the proof

@@ -65,10 +65,11 @@ pub(in crate::plonk) struct HelpersOnly<F: PrimeField, CS: PolynomialCommitmentS
 }
 
 /// Reads the batched multiplicities commitment for all logup arguments in one
-/// transcript entry (one point per argument) and hands each argument a clone of
-/// the shared commitment. The shared object carries the full label list (one
-/// `LogupMultiplicities(arg)` per arg); per-arg queries route to the correct
-/// sub-bundle via the query label. Mirrors the prover's batched `commit_many`.
+/// transcript entry (one commitment per argument) and hands each argument a
+/// clone of the shared commitment. The shared object carries the full label
+/// list (one `LogupMultiplicities(arg)` per arg); per-arg queries route to the
+/// correct sub-bundle via the query label. Mirrors the prover's batched
+/// `commit_many`.
 pub(in crate::plonk) fn read_multiplicities<F, CS, T>(
     args: &[ChunkedArgument<F>],
     transcript: &mut T,
@@ -137,9 +138,9 @@ where
         .collect())
 }
 
-/// Reads the batched aggregator commitment for all logup arguments (one point
-/// per argument) and assembles one [`Committed`] per arg, each holding a clone
-/// of the shared aggregator commitment.
+/// Reads the batched aggregator commitment for all logup arguments (one
+/// commitment per argument) and assembles one [`Committed`] per arg, each
+/// holding a clone of the shared aggregator commitment.
 pub(in crate::plonk) fn read_aggregators<F, CS, T>(
     helpers: Vec<HelpersOnly<F, CS>>,
     transcript: &mut T,

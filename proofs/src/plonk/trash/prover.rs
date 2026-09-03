@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use ff::{FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
@@ -72,9 +74,12 @@ where
         })
         .collect();
 
-    let refs: Vec<_> = compressed_expressions.iter().collect();
-    let labels: Vec<_> = (0..arguments.len()).map(PolynomialLabel::Trash).collect();
-    let trash_com = CS::commit_many(params, &refs, &labels);
+    let trash_polys: BTreeMap<_, _> = compressed_expressions
+        .iter()
+        .enumerate()
+        .map(|(i, p)| (PolynomialLabel::Trash(i), p))
+        .collect();
+    let trash_com = CS::commit_many(params, &trash_polys);
     CS::write_commitment(transcript, &trash_com)?;
 
     Ok(compressed_expressions
