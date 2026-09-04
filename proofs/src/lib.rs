@@ -19,9 +19,9 @@ pub mod utils;
 
 /// The polynomial commitment scheme Midnight's keys and proofs are built with,
 /// over the pairing engine `E`. Everything that means "the scheme this library
-/// ships" goes through this alias, so switching schemes is a single edit; code
-/// that means KZG specifically keeps naming
-/// [`KZGCommitmentScheme`](pcs::kzg::KZGCommitmentScheme).
+/// ships" goes through this alias, so switching schemes is a single edit. Use
+/// the following line to switch to Fflonk:
+// pub type MidnightPCS<E> = pcs::fflonk::FflonkScheme<E>;
 pub type MidnightPCS<E> = pcs::kzg::KZGCommitmentScheme<E>;
 
 /// The commitment type of [`MidnightPCS`]. Callers that just mean "a commitment
