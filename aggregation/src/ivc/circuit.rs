@@ -13,7 +13,8 @@ use midnight_circuits::{
     instructions::{BinaryInstructions, PublicInputInstructions},
     types::Instantiable,
     verifier::{
-        Accumulator, AssignedAccumulator, AssignedKZGMultiCommitment, AssignedVk, InCircuitKZG,
+        Accumulator, AssignedAccumulator, AssignedVk, MidnightAssignedCommitment,
+        MidnightInCircuitPCS,
     },
 };
 use midnight_proofs::{
@@ -144,7 +145,7 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
         let verifier_gadget = std_lib.verifier();
         let ivc_gadget = T::new(std_lib.clone(), &self.ctx);
 
-        let assigned_self_vk: AssignedVk<S, InCircuitKZG<S>> = verifier_gadget
+        let assigned_self_vk: AssignedVk<S, MidnightInCircuitPCS<S>> = verifier_gadget
             .assign_vk_as_public_input(
                 layouter,
                 &self.domain,
@@ -181,7 +182,7 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
         ]
         .concat();
 
-        let instance_com = AssignedKZGMultiCommitment::commitment_to_zero(
+        let instance_com = MidnightAssignedCommitment::<S>::commitment_to_zero(
             layouter,
             std_lib.bls12_381(),
             PolynomialLabel::CommittedInstance(0),

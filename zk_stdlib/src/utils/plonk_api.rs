@@ -25,10 +25,9 @@ use std::{
 
 use midnight_curves::Bls12;
 use midnight_proofs::{
-    MidnightPCS,
+    MidnightCommitment, MidnightPCS,
     pcs::{
         Guard, PolynomialCommitmentScheme,
-        kzg::commitment::KZGMultiCommitment,
         params::{ParamsKZG, ParamsVerifierKZG},
     },
     plonk::{
@@ -127,7 +126,7 @@ macro_rules! plonk_api {
             pub fn verify<H>(
                 params_verifier: &ParamsVerifierKZG<$engine>,
                 vk: &VerifyingKey<$native, MidnightPCS<$engine>>,
-                instance_commitments: &[KZGMultiCommitment<$engine>],
+                instance_commitments: &[MidnightCommitment<$engine>],
                 pi: &[&[$native]],
                 proof: &[u8],
             ) -> Result<(), Error>

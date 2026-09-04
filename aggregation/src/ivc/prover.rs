@@ -10,11 +10,11 @@
 use midnight_circuits::{
     hash::poseidon::PoseidonState,
     types::Instantiable,
-    verifier::{Accumulator, AssignedAccumulator, AssignedVk, InCircuitKZG},
+    verifier::{Accumulator, AssignedAccumulator, AssignedVk, MidnightInCircuitPCS},
 };
 use midnight_proofs::{
-    MidnightPCS,
-    pcs::{kzg::commitment::KZGMultiCommitment, params::ParamsKZG},
+    MidnightCommitment, MidnightPCS,
+    pcs::params::ParamsKZG,
     plonk::{self},
     poly::PolynomialLabel,
     transcript::{CircuitTranscript, Transcript},
@@ -87,7 +87,7 @@ impl<T: Ivc> IvcProver<T> {
         } else {
             // Construct the public inputs of the previous proof.
             let prev_pi = [
-                AssignedVk::<S, InCircuitKZG<S>>::as_public_input(vk),
+                AssignedVk::<S, MidnightInCircuitPCS<S>>::as_public_input(vk),
                 T::format_public_input(&self.state),
                 AssignedAccumulator::<S>::as_public_input(&self.acc),
             ]
@@ -97,7 +97,7 @@ impl<T: Ivc> IvcProver<T> {
                 CircuitTranscript::<PoseidonState<F>>::init_from_bytes(&self.proof);
             let dual_msm = plonk::prepare::<F, MidnightPCS<E>, CircuitTranscript<PoseidonState<F>>>(
                 vk,
-                &[KZGMultiCommitment::commitment_to_zero(
+                &[MidnightCommitment::<E>::commitment_to_zero(
                     PolynomialLabel::CommittedInstance(0),
                 )],
                 &[&prev_pi],
@@ -108,7 +108,7 @@ impl<T: Ivc> IvcProver<T> {
                 return Err(IvcError::InvalidProof);
             }
 
-            Accumulator::from_dual_msm(dual_msm, &fixed_bases)
+            Accumulator::from_dual_msm(dual_msm.into_dual_msm(), &fixed_bases)
         };
 
         // Accumulate the proof accumulator with the previous accumulator.

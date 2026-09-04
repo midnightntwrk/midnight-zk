@@ -7,8 +7,8 @@
 
 use midnight_circuits::{hash::poseidon::PoseidonState, verifier::Accumulator};
 use midnight_proofs::{
-    MidnightPCS,
-    pcs::{kzg::commitment::KZGMultiCommitment, params::ParamsVerifierKZG},
+    MidnightCommitment, MidnightPCS,
+    pcs::params::ParamsVerifierKZG,
     plonk::{self},
     poly::PolynomialLabel,
     transcript::{CircuitTranscript, Transcript},
@@ -63,7 +63,7 @@ impl<T: Ivc> IvcVerifier<T> {
         let mut transcript = CircuitTranscript::<PoseidonState<F>>::init_from_bytes(proof);
         let dual_msm = plonk::prepare::<F, MidnightPCS<E>, CircuitTranscript<PoseidonState<F>>>(
             self.vk.vk(),
-            &[KZGMultiCommitment::commitment_to_zero(
+            &[MidnightCommitment::<E>::commitment_to_zero(
                 PolynomialLabel::CommittedInstance(0),
             )],
             &[&pi],
@@ -73,7 +73,7 @@ impl<T: Ivc> IvcVerifier<T> {
 
         transcript.assert_empty().map_err(|_| IvcError::TranscriptNotEmpty)?;
 
-        let proof_acc = Accumulator::from_dual_msm(dual_msm, &fixed_bases);
+        let proof_acc = Accumulator::from_dual_msm(dual_msm.into_dual_msm(), &fixed_bases);
 
         // Verify that both `proof_acc` and `instance.acc` satisfy the pairing
         // invariant, with a single pairing, by accumulating them first.

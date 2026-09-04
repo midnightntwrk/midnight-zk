@@ -27,14 +27,14 @@ use midnight_circuits::{
     instructions::{hash::HashCPU, *},
     types::{AssignedNative, Instantiable},
     verifier::{
-        self, Accumulator, AssignedAccumulator, AssignedKZGMultiCommitment, AssignedVk,
-        BlstrsEmulation, InCircuitKZG, SelfEmulation,
+        self, Accumulator, AssignedAccumulator, AssignedVk, BlstrsEmulation,
+        MidnightAssignedCommitment, MidnightInCircuitPCS, SelfEmulation,
     },
 };
 use midnight_proofs::{
-    MidnightPCS,
+    MidnightCommitment, MidnightPCS,
     circuit::{Layouter, Value},
-    pcs::{kzg::commitment::KZGMultiCommitment, params::ParamsVerifierKZG},
+    pcs::params::ParamsVerifierKZG,
     plonk::{self, ConstraintSystem, Error},
     poly::{EvaluationDomain, PolynomialLabel},
     transcript::{CircuitTranscript, Transcript},
@@ -237,7 +237,7 @@ impl IvcTransition for ProofAggregation {
             let dual_msm =
                 plonk::prepare::<F, MidnightPCS<E>, CircuitTranscript<PoseidonState<F>>>(
                     ctx.vk.vk(),
-                    &[KZGMultiCommitment::commitment_to_zero(
+                    &[MidnightCommitment::<E>::commitment_to_zero(
                         PolynomialLabel::CommittedInstance(0),
                     )],
                     &[&statement_pis],
@@ -284,12 +284,13 @@ impl IvcTransition for ProofAggregation {
         witness: Value<Self::Witness>,
     ) -> Result<Self::AssignedState, Error> {
         // Assign inner VK as a hard-coded constant.
-        let inner_vk: AssignedVk<S, InCircuitKZG<S>> = self.std_lib.verifier().assign_fixed_vk(
-            layouter,
-            &self.inner_ctx.domain,
-            &self.inner_ctx.cs,
-            self.inner_ctx.vk.vk().transcript_repr(),
-        )?;
+        let inner_vk: AssignedVk<S, MidnightInCircuitPCS<S>> =
+            self.std_lib.verifier().assign_fixed_vk(
+                layouter,
+                &self.inner_ctx.domain,
+                &self.inner_ctx.cs,
+                self.inner_ctx.vk.vk().transcript_repr(),
+            )?;
 
         // Assign the inner statement as a witness.
         let statement_pis = self.std_lib.assign_many(
@@ -301,7 +302,7 @@ impl IvcTransition for ProofAggregation {
         )?;
 
         // Verify the inner proof in-circuit.
-        let instance_com = AssignedKZGMultiCommitment::commitment_to_zero(
+        let instance_com = MidnightAssignedCommitment::<S>::commitment_to_zero(
             layouter,
             self.std_lib.bls12_381(),
             PolynomialLabel::CommittedInstance(0),

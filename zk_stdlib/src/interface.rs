@@ -19,12 +19,11 @@ use ff::Field;
 use midnight_circuits::types::ComposableChip;
 use midnight_curves::G1Projective;
 use midnight_proofs::{
-    MidnightPCS,
+    MidnightCommitment, MidnightPCS,
     circuit::{Layouter, SimpleFloorPlanner, Value},
     dev::cost_model::{CircuitModel, circuit_model},
     pcs::{
         Guard, Params,
-        kzg::commitment::KZGMultiCommitment,
         params::{ParamsKZG, ParamsVerifierKZG},
     },
     plonk::{
@@ -560,7 +559,7 @@ pub fn verify<R: Relation, H: TranscriptHash>(
     params_verifier: &ParamsVerifierKZG<midnight_curves::Bls12>,
     vk: &MidnightVK,
     instance: &R::Instance,
-    committed_instance: Option<KZGMultiCommitment<midnight_curves::Bls12>>,
+    committed_instance: Option<MidnightCommitment<midnight_curves::Bls12>>,
     proof: &[u8],
 ) -> Result<(), R::Error>
 where
@@ -568,9 +567,11 @@ where
     F: Hashable<H> + Sampleable<H>,
 {
     let pi = R::format_instance(instance)?;
-    let committed_pi = committed_instance.unwrap_or(KZGMultiCommitment::commitment_to_zero(
-        PolynomialLabel::CommittedInstance(0),
-    ));
+    let committed_pi = committed_instance.unwrap_or(
+        MidnightCommitment::<midnight_curves::Bls12>::commitment_to_zero(
+            PolynomialLabel::CommittedInstance(0),
+        ),
+    );
     if pi.len() != vk.nb_public_inputs {
         return Err(Error::InvalidInstances.into());
     }
@@ -625,9 +626,11 @@ where
                 CircuitTranscript<H>,
             >(
                 &vk.vk,
-                &[KZGMultiCommitment::commitment_to_zero(
-                    PolynomialLabel::CommittedInstance(0),
-                )],
+                &[
+                    MidnightCommitment::<midnight_curves::Bls12>::commitment_to_zero(
+                        PolynomialLabel::CommittedInstance(0),
+                    ),
+                ],
                 &[pi],
                 &mut transcript,
             )?;
