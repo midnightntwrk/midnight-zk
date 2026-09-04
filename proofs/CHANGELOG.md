@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Fix cost-model [#435](https://github.com/midnightntwrk/midnight-zk/pull/435)
 
 ### Changed
+* `Params::max_k` accepts a monomial basis longer than the Lagrange one, which is the SRS shape fflonk bundling needs [#518](https://github.com/midnightntwrk/midnight-zk/pull/518)
 * Migrate to Rust edition 2024; MSRV raised from 1.76 to 1.90. Both are now inherited from the workspace [#508](https://github.com/midnightntwrk/midnight-zk/pull/508)
 * Batch cross-argument commitments and add `write_commitment` method on the `PolynomialCommitmentScheme` trait [#493](https://github.com/midnightntwrk/midnight-zk/pull/493)
 * Extend `PolynomialCommitmentScheme` with `squeeze_evaluation_point` and `srs_monomial_blowup` and add a `k` argument to `multi_prepare`, as PCS-agnostic extension points for fflonk [#487](https://github.com/midnightntwrk/midnight-zk/pull/487)
