@@ -184,7 +184,7 @@ pub fn msm_specific<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Cur
     // NOTE: Empirically checked that for MSMs larger than 2**18, the blstrs
     // implementation regresses.
     // TODO: Review this threshold after optimizations.
-    if coeffs.len() <= (2 << 18) && TypeId::of::<C>() == TypeId::of::<G1Affine>() {
+    if TypeId::of::<C>() == TypeId::of::<G1Affine>() {
         // Safe: we just checked the type.
         let coeffs = unsafe { &*(coeffs.as_slice() as *const _ as *const [Fq]) };
         let bases = unsafe { &*(bases.as_slice() as *const _ as *const [G1Affine]) };
