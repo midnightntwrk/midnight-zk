@@ -17,6 +17,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 
 ### Changed
+* The verifier gadget reports a proof it does not fully consume as `Err(Synthesis(..))`, instead of silently producing an unsatisfiable circuit [#516](https://github.com/midnightntwrk/midnight-zk/pull/516)
 * Adapt the in-circuit verifier gadget to the batched cross-argument commitment layout [#493](https://github.com/midnightntwrk/midnight-zk/pull/493)
 * Removes the Labelable trait [#491](https://github.com/midnightntwrk/midnight-zk/pull/491)
 * Migrate to Rust edition 2024; declare MSRV 1.90. Both are now inherited from the workspace [#508](https://github.com/midnightntwrk/midnight-zk/pull/508)
