@@ -23,3 +23,10 @@ pub mod utils;
 /// that means KZG specifically keeps naming
 /// [`KZGCommitmentScheme`](pcs::kzg::KZGCommitmentScheme).
 pub type MidnightPCS<E> = pcs::kzg::KZGCommitmentScheme<E>;
+
+/// The commitment type of [`MidnightPCS`]. Callers that just mean "a commitment
+/// as this library produces them" name this rather than a concrete scheme's
+/// type, so it follows the alias above.
+pub type MidnightCommitment<E> = <MidnightPCS<E> as pcs::PolynomialCommitmentScheme<
+    <E as midnight_curves::pairing::Engine>::Fr,
+>>::Commitment;

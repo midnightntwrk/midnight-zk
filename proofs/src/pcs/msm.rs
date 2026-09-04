@@ -286,6 +286,16 @@ where
         self.right.add_msm(&other.right);
     }
 
+    /// Returns this accumulator unchanged.
+    ///
+    /// The identity exists so that callers can be written against any scheme
+    /// whose verification guard is a `DualMSM` or wraps one: KZG's guard *is*
+    /// this type, fflonk's is a newtype around it, and both answer
+    /// `into_dual_msm`.
+    pub fn into_dual_msm(self) -> Self {
+        self
+    }
+
     /// Performs final pairing check with given verifier params and two channel
     /// linear combination
     pub fn check(self, params: &ParamsVerifierKZG<E>) -> bool {

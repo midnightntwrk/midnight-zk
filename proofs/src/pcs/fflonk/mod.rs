@@ -134,6 +134,21 @@ where
     pub fn into_dual_msm(self) -> DualMSM<E> {
         self.0
     }
+
+    /// Scales both sides of the accumulated pairing check.
+    pub fn scale(&mut self, factor: E::Fr) {
+        self.0.scale(factor)
+    }
+
+    /// Folds another guard into this one, for batch verification.
+    pub fn add_msm(&mut self, other: Self) {
+        self.0.add_msm(other.0)
+    }
+
+    /// Whether the accumulated pairing check holds.
+    pub fn check(self, params: &ParamsVerifierKZG<E>) -> bool {
+        self.0.check(params)
+    }
 }
 
 impl<E: MultiMillerLoop> PolynomialCommitmentScheme<E::Fr> for FflonkScheme<E>

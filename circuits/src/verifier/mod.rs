@@ -55,6 +55,41 @@ pub use types::BnEmulation;
 pub use types::{BlstrsEmulation, SelfEmulation};
 pub use verifier_gadget::VerifierGadget;
 
+/// The in-circuit gadget that verifies proofs of the off-circuit scheme `Self`.
+///
+/// Exists so that a single definition — [`midnight_proofs::MidnightPCS`] —
+/// fixes both halves of the protocol. Without it the two would be named
+/// independently and could silently drift apart.
+pub trait InCircuitCounterpart<S: SelfEmulation>: PolynomialCommitmentScheme<S::F> {
+    /// The gadget verifying this scheme's proofs.
+    type InCircuit: InCircuitPCS<S, OffCircuit = Self>;
+}
+
+impl<S: SelfEmulation> InCircuitCounterpart<S>
+    for midnight_proofs::pcs::kzg::KZGCommitmentScheme<S::Engine>
+{
+    type InCircuit = InCircuitKZG<S>;
+}
+
+impl<S: SelfEmulation> InCircuitCounterpart<S>
+    for midnight_proofs::pcs::fflonk::FflonkScheme<S::Engine>
+{
+    type InCircuit = InCircuitFflonk<S>;
+}
+
+/// The in-circuit counterpart of [`midnight_proofs::MidnightPCS`]: the scheme
+/// the verifier gadget is instantiated at throughout this workspace.
+///
+/// Derived from `MidnightPCS`, so switching the protocol's commitment scheme is
+/// the single edit of that alias; this one follows.
+pub type MidnightInCircuitPCS<S> =
+    <midnight_proofs::MidnightPCS<<S as SelfEmulation>::Engine> as InCircuitCounterpart<S>>::InCircuit;
+
+/// The in-circuit commitment type of [`MidnightInCircuitPCS`], the analog of
+/// [`midnight_proofs::MidnightCommitment`].
+pub type MidnightAssignedCommitment<S> =
+    <MidnightInCircuitPCS<S> as InCircuitPCS<S>>::AssignedCommitment;
+
 /// The off-circuit verifying key that a given in-circuit PCS accepts.
 type VerifyingKey<S, PCS> =
     plonk::VerifyingKey<<S as SelfEmulation>::F, <PCS as InCircuitPCS<S>>::OffCircuit>;

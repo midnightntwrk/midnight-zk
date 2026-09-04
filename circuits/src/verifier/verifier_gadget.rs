@@ -903,7 +903,6 @@ pub(crate) mod tests {
 
     use group::Group;
     use midnight_proofs::{
-        MidnightPCS,
         circuit::SimpleFloorPlanner,
         dev::MockProver,
         pcs::{
