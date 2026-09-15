@@ -65,7 +65,7 @@ pub struct SummitPath<F, const SIZE: usize> {
 /// rest is padding, ignored by verification ([Mmr::prove_membership] emits it
 /// as `F::ZERO`). The claim fixes no absolute position: `height` and
 /// `leaf_index` are a hint supplied by the prover (see
-/// [Mmr::verify_membership]).
+/// [Mmr::is_memeber]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct MembershipProof<F, const SIZE: usize> {
     pub(crate) height: usize,
@@ -228,7 +228,7 @@ where
     /// Produces the witness for the claim that the MMR of the first
     /// `small_size` elements of `self` is a prefix of `self`. The witness
     /// consists of the nodes of `self` that are absorbed while climbing from
-    /// the lowest residual peak of the small MMR (see [Self::verify_prefix]).
+    /// the lowest residual peak of the small MMR (see [Self::is_prefix]).
     ///
     /// # Panics
     ///
@@ -281,14 +281,13 @@ where
         SummitPath { steps }
     }
 
-    /// Verifies that the elements of the MMR with state `small` are a prefix
+    /// Checks that the elements of the MMR with state `small` are a prefix
     /// of the elements of the MMR with state `big`, given a [SummitPath]
     /// witness (produced with [Self::prove_prefix] on the big MMR).
     ///
     /// This function is the off-circuit specification of the in-circuit
     /// check: it mirrors, gate by gate, the constraints of the MMR gadget.
-    /// All its control flow is derived from the bits of the two sizes.
-    pub fn verify_prefix(
+    pub fn is_prefix(
         small: &MmrState<F, SIZE>,
         big: &MmrState<F, SIZE>,
         path: &SummitPath<F, SIZE>,
@@ -410,18 +409,14 @@ where
         }
     }
 
-    /// Verifies that `elem` is one of the elements committed to by `state`,
+    /// Checks if `elem` is one of the elements committed to by `state`,
     /// given a [MembershipProof] (produced with [Self::prove_membership]).
     ///
     /// The element's position is not fixed by this check: `height` and
     /// `leaf_index` are supplied by the proof as a hint. This is the
     /// off-circuit specification of the in-circuit
-    /// [assert_membership](crate::mmr::mmr_gadget::MmrGadget::assert_membership).
-    pub fn verify_membership(
-        state: &MmrState<F, SIZE>,
-        elem: F,
-        proof: &MembershipProof<F, SIZE>,
-    ) -> bool {
+    /// [is_member](crate::mmr::mmr_gadget::MmrGadget::is_member).
+    pub fn is_member(state: &MmrState<F, SIZE>, elem: F, proof: &MembershipProof<F, SIZE>) -> bool {
         // Sizes and leaf indices exceeding SIZE bits are not representable
         // in-circuit.
         if state.size > Self::capacity() || proof.leaf_index > Self::capacity() {
@@ -593,14 +588,14 @@ mod tests {
                 let small = &mmrs[a];
                 let path = big.prove_prefix(a as u64);
                 assert!(
-                    M::<F, H>::verify_prefix(&small.state(), &big.state(), &path),
+                    M::<F, H>::is_prefix(&small.state(), &big.state(), &path),
                     "honest prefix rejected: a = {a}, b = {b}"
                 );
 
                 // A small MMR with different content must be rejected.
                 if a > 0 {
                     assert!(
-                        !M::<F, H>::verify_prefix(&shifted_mmrs[a].state(), &big.state(), &path),
+                        !M::<F, H>::is_prefix(&shifted_mmrs[a].state(), &big.state(), &path),
                         "content mismatch accepted: a = {a}, b = {b}"
                     );
                 }
@@ -611,8 +606,7 @@ mod tests {
                 for (i, step_used) in used.iter().enumerate() {
                     let mut tampered = path;
                     tampered.steps[i] += F::ONE;
-                    let accepted =
-                        M::<F, H>::verify_prefix(&small.state(), &big.state(), &tampered);
+                    let accepted = M::<F, H>::is_prefix(&small.state(), &big.state(), &tampered);
                     assert_eq!(
                         accepted, !step_used,
                         "tampered steps[{i}] misbehaved: a = {a}, b = {b}"
@@ -627,7 +621,7 @@ mod tests {
                     steps: [F::ZERO; SIZE],
                 };
                 assert!(
-                    !M::<F, H>::verify_prefix(&longer.state(), &big.state(), &path),
+                    !M::<F, H>::is_prefix(&longer.state(), &big.state(), &path),
                     "a > b accepted: a = {a}, b = {b}"
                 );
             }
@@ -653,13 +647,13 @@ mod tests {
         for (pos, &leaf) in leaves.iter().enumerate() {
             let proof = mmr.prove_membership(pos as u64);
             assert!(
-                Mmr::<F, H, SIZE>::verify_membership(&state, leaf, &proof),
+                Mmr::<F, H, SIZE>::is_member(&state, leaf, &proof),
                 "honest membership rejected at pos {pos}"
             );
 
             // A wrong element is rejected against an honest path.
             assert!(
-                !Mmr::<F, H, SIZE>::verify_membership(&state, leaf + F::ONE, &proof),
+                !Mmr::<F, H, SIZE>::is_member(&state, leaf + F::ONE, &proof),
                 "wrong element accepted at pos {pos}"
             );
 
@@ -668,7 +662,7 @@ mod tests {
                 let mut tampered = proof;
                 tampered.siblings[l] += F::ONE;
                 assert!(
-                    !Mmr::<F, H, SIZE>::verify_membership(&state, leaf, &tampered),
+                    !Mmr::<F, H, SIZE>::is_member(&state, leaf, &tampered),
                     "tampered sibling[{l}] accepted at pos {pos}"
                 );
             }
@@ -678,7 +672,7 @@ mod tests {
                 let mut tampered = proof;
                 tampered.leaf_index ^= 1;
                 assert!(
-                    !Mmr::<F, H, SIZE>::verify_membership(&state, leaf, &tampered),
+                    !Mmr::<F, H, SIZE>::is_member(&state, leaf, &tampered),
                     "flipped direction bit accepted at pos {pos}"
                 );
             }
@@ -688,7 +682,7 @@ mod tests {
         let outsider = F::random(&mut rng);
         let proof = mmr.prove_membership(0);
         assert!(
-            !Mmr::<F, H, SIZE>::verify_membership(&state, outsider, &proof),
+            !Mmr::<F, H, SIZE>::is_member(&state, outsider, &proof),
             "non-member accepted"
         );
 
@@ -696,7 +690,7 @@ mod tests {
         let mut absent = mmr.prove_membership(0);
         absent.height = 1;
         assert!(
-            !Mmr::<F, H, SIZE>::verify_membership(&state, leaves[0], &absent),
+            !Mmr::<F, H, SIZE>::is_member(&state, leaves[0], &absent),
             "membership against an absent mountain accepted"
         );
     }
