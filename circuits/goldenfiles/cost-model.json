@@ -8,7 +8,7 @@
       "max_deg": "5",
       "permutations": "9",
       "point_sets": "3",
-      "rows": "135",
+      "rows": "155",
       "table_rows": "3"
     },
     "Prefix": {
@@ -19,7 +19,7 @@
       "max_deg": "5",
       "permutations": "9",
       "point_sets": "3",
-      "rows": "169",
+      "rows": "218",
       "table_rows": "3"
     }
   },
