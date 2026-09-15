@@ -65,6 +65,7 @@ use midnight_circuits::{
     },
     instructions::{hash::VarHashInstructions, *},
     map::map_gadget::MapGadget,
+    mmr::mmr_gadget::MmrGadget,
     parsing::{
         self, Base64Chip, Base64Config, NB_BASE64_ADVICE_COLS, ParserGadget,
         scanner::{NB_SCANNER_ADVICE_COLS, NB_SCANNER_FIXED_COLS, ScannerChip, ScannerConfig},
@@ -317,6 +318,7 @@ pub struct ZkStdLib {
     varlen_poseidon_gadget: Option<VarLenPoseidonGadget<F>>,
     htc_gadget: Option<HashToCurveGadget<F, C, AssignedNative<F>, PoseidonChip<F>, EccChip<C>>>,
     map_gadget: Option<MapGadget<F, NG, PoseidonChip<F>>>,
+    mmr_gadget: Option<MmrGadget<F, NG, PoseidonChip<F>>>,
     biguint_gadget: BigUintGadget<F, NG>,
     secp256k1_chip: Option<Secp256k1Chip>,
     p256_chip: Option<P256Chip>,
@@ -372,6 +374,9 @@ impl ZkStdLib {
         let map_gadget = poseidon_gadget
             .as_ref()
             .map(|poseidon_gadget| MapGadget::new(&native_gadget, poseidon_gadget));
+        let mmr_gadget = poseidon_gadget
+            .as_ref()
+            .map(|poseidon_gadget| MmrGadget::new(&native_gadget, poseidon_gadget));
         let secp256k1_scalar_chip = (config.secp256k1_scalar_config.as_ref())
             .map(|scalar_config| FieldChip::new(scalar_config, &native_gadget));
         let secp256k1_chip = (config.secp256k1_config.as_ref())
@@ -430,6 +435,7 @@ impl ZkStdLib {
             poseidon_gadget,
             varlen_poseidon_gadget,
             map_gadget,
+            mmr_gadget,
             htc_gadget,
             biguint_gadget,
             secp256k1_chip,
@@ -735,6 +741,29 @@ impl ZkStdLib {
     /// Gadget for performing map and non-map checks
     pub fn map_gadget(&self) -> &MapGadget<F, NG, PoseidonChip<F>> {
         self.map_gadget
+            .as_ref()
+            .unwrap_or_else(|| panic!("ZkStdLibArch must enable poseidon"))
+    }
+
+    /// Gadget for Merkle Mountain Range (MMR) operations, hashing with Poseidon.
+    ///
+    /// ```
+    /// # midnight_zk_stdlib::run_test_stdlib!(chip, layouter, 13, {
+    /// use midnight_circuits::{hash::poseidon::PoseidonChip, mmr::cpu::Mmr};
+    ///
+    /// let mut mmr = Mmr::<F, PoseidonChip<F>, 5>::new();
+    /// (0..7u64).for_each(|i| mmr.append(F::from(i)));
+    ///
+    /// let mmr_gadget = chip.mmr();
+    /// let state = mmr_gadget.assign(layouter, Value::known(mmr.state()))?;
+    /// let elem: AssignedNative<F> = chip.assign(layouter, Value::known(F::from(3)))?;
+    /// let proof =
+    ///     mmr_gadget.assign_membership_proof(layouter, Value::known(mmr.prove_membership(3)))?;
+    /// mmr_gadget.assert_membership(layouter, &state, &elem, &proof)?;
+    /// # });
+    /// ```
+    pub fn mmr(&self) -> &MmrGadget<F, NG, PoseidonChip<F>> {
+        self.mmr_gadget
             .as_ref()
             .unwrap_or_else(|| panic!("ZkStdLibArch must enable poseidon"))
     }
