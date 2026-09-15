@@ -595,6 +595,84 @@ type BatchGuard = (
     F,
 );
 
+/// A proof that has had the expensive part of verification done already.
+///
+/// Produced by [`prepare_proofs`] and consumed by [`verify_prepared`]. Preparation is
+/// **independent of the rest of the batch**: the batching challenge is derived from the guards'
+/// transcript summaries only when they are folded, so proofs may be prepared as they arrive and
+/// folded into a batch later, in any grouping. That is what lets a caller overlap preparation with
+/// whatever it is waiting on — filling a queue, executing the previous block — and pay only the
+/// fold plus a single pairing check when it finally decides the batch.
+///
+/// The inner guard is deliberately not exposed: it is a deferred `DualMSM` whose representation is
+/// an implementation detail of the commitment scheme.
+#[derive(Clone, Debug)]
+pub struct PreparedProof(BatchGuard);
+
+/// Runs the expensive, per-proof preparation of a batch (transcript replay + deferred MSM guard)
+/// in parallel, returning one [`PreparedProof`] per input.
+///
+/// This is the half of [`batch_verify`] whose cost grows with the number of proofs. Callers that
+/// know their proofs ahead of the moment they must decide can call this early — results are
+/// unaffected by which proofs are eventually batched together — and finish with [`verify_prepared`].
+///
+/// `vks`, `pis` and `proofs` must have equal length, otherwise [`Error::InvalidInstances`].
+pub fn prepare_proofs<H: TranscriptHash + Send + Sync>(
+    vks: &[MidnightVK],
+    pis: &[Vec<F>],
+    proofs: &[Vec<u8>],
+) -> Result<Vec<PreparedProof>, Error>
+where
+    G1Projective: Hashable<H>,
+    F: Hashable<H> + Sampleable<H>,
+{
+    Ok(compute_guards::<H>(vks, pis, proofs)?.into_iter().map(PreparedProof).collect())
+}
+
+/// Checks a set of [`PreparedProof`]s as one batch: folds them into a single random linear
+/// combination and runs one pairing check. This is the half of [`batch_verify`] whose cost is
+/// essentially independent of the number of proofs.
+///
+/// `identify_failures` behaves as in [`batch_verify`]: `false` rejects the batch as a unit,
+/// `true` spends one cheap pairing per proof (in parallel, reusing the preparation) to report the
+/// ascending indices of the offenders in [`Error::BatchOpening`].
+pub fn verify_prepared<H: TranscriptHash + Send + Sync>(
+    params_verifier: &ParamsVerifierKZG<midnight_curves::Bls12>,
+    prepared: &[PreparedProof],
+    identify_failures: bool,
+) -> Result<(), Error>
+where
+    F: Hashable<H> + Sampleable<H>,
+{
+    use rayon::prelude::*;
+
+    let guards: Vec<BatchGuard> = prepared.iter().map(|p| p.0.clone()).collect();
+
+    // Fast path: one combined pairing check for the whole batch.
+    if batch_verify_with_guards::<H>(params_verifier, &guards).is_ok() {
+        return Ok(());
+    }
+    if !identify_failures {
+        return Err(Error::Opening);
+    }
+
+    // The batch failed: pinpoint the offending proofs. A proof is invalid iff the singleton batch
+    // containing only its guard fails; this reuses the prepared guards and costs one pairing per
+    // proof, run in parallel. A batch of valid guards cannot fail while every singleton passes, so
+    // this always finds at least one culprit; the empty-vector guard below is defensive.
+    let mut failures: Vec<usize> = (0..guards.len())
+        .into_par_iter()
+        .filter(|&i| batch_verify_with_guards::<H>(params_verifier, &guards[i..i + 1]).is_err())
+        .collect();
+    failures.sort_unstable();
+
+    if failures.is_empty() {
+        Err(Error::Opening)
+    } else {
+        Err(Error::BatchOpening(failures))
+    }
+}
+
 /// Runs the expensive, per-proof preparation of a batch (transcript replay +
 /// deferred MSM guard) in parallel, returning one [`BatchGuard`] per proof. The
 /// guards can then be checked as a whole batch, or individually, without
@@ -726,36 +804,11 @@ where
     G1Projective: Hashable<H>,
     F: Hashable<H> + Sampleable<H>,
 {
-    use rayon::prelude::*;
-
-    // Expensive per-proof preparation, retained so that, on failure, the search
-    // below can reuse it instead of re-preparing.
-    let prepared = compute_guards::<H>(vks, pis, proofs)?;
-
-    // Fast path: one combined pairing check for the whole batch.
-    if batch_verify_with_guards::<H>(params_verifier, &prepared).is_ok() {
-        return Ok(());
-    }
-    if !identify_failures {
-        return Err(Error::Opening);
-    }
-
-    // The batch failed: pinpoint the offending proofs. A proof is invalid iff
-    // the singleton batch containing only its guard fails; this reuses the
-    // prepared guards and costs one pairing per proof, run in parallel. A batch
-    // of valid guards cannot fail while every singleton passes, so this always
-    // finds at least one culprit; the empty-vector guard below is defensive.
-    let mut failures: Vec<usize> = (0..prepared.len())
-        .into_par_iter()
-        .filter(|&i| batch_verify_with_guards::<H>(params_verifier, &prepared[i..i + 1]).is_err())
-        .collect();
-    failures.sort_unstable();
-
-    if failures.is_empty() {
-        Err(Error::Opening)
-    } else {
-        Err(Error::BatchOpening(failures))
-    }
+    // Split into its two phases: the per-proof preparation that dominates the cost, and the
+    // fold plus single pairing check. Callers that can prepare early should call
+    // [`prepare_proofs`] and [`verify_prepared`] directly instead.
+    let prepared = prepare_proofs::<H>(vks, pis, proofs)?;
+    verify_prepared::<H>(params_verifier, &prepared, identify_failures)
 }
 
 /// Returns the constraint-system degree relative to the given [`ZkStdLibArch`].

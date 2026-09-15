@@ -117,5 +117,30 @@ fn main() {
         &proofs,
         false
     )
-    .is_ok())
+    .is_ok());
+
+    // The same batch, prepared incrementally: one proof at a time, as they would arrive, then
+    // folded once at the end. Preparation does not depend on which proofs share a batch, so this
+    // must agree with preparing them all together above — that is what lets a caller overlap the
+    // expensive per-proof work with whatever it is waiting on.
+    let mut prepared = Vec::new();
+    for i in 0..N {
+        prepared.extend(
+            midnight_zk_stdlib::prepare_proofs::<blake2b_simd::State>(
+                &vks[i..i + 1],
+                &pis[i..i + 1],
+                &proofs[i..i + 1],
+            )
+            .expect("Incremental preparation should not fail"),
+        );
+    }
+    assert!(
+        midnight_zk_stdlib::verify_prepared::<blake2b_simd::State>(
+            &srs.verifier_params(),
+            &prepared,
+            false
+        )
+        .is_ok(),
+        "incrementally prepared proofs must verify as one batch"
+    );
 }
