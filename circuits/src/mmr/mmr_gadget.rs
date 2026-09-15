@@ -233,27 +233,23 @@ where
         })
     }
 
-    /// Asserts that the elements of the MMR with state `small` are a prefix
+    /// Checks if the elements of the MMR with state `small` are a prefix
     /// of the elements of the MMR with state `big`, given a summit path
     /// witness (produced off-circuit with
     /// [Mmr::prove_prefix](crate::mmr::cpu::Mmr::prove_prefix) on the big
-    /// MMR).
+    /// MMR), and returns the result as a bit.
+    /// [Self::assert_prefix] is the asserting form which may be cheaper
+    /// than a call to this method plus an assertion on the resulting bit.
     ///
     /// This is the in-circuit counterpart of
-    /// [Mmr::verify_prefix](crate::mmr::cpu::Mmr::verify_prefix), which
-    /// specifies the constraints implemented here.
-    ///
-    /// # Unsatisfiable Circuit
-    ///
-    /// If `small` is not a prefix of `big` (in particular, whenever
-    /// `small.size > big.size`), or if the summit path steps are incorrect.
-    pub fn assert_prefix<const SIZE: usize>(
+    /// [Mmr::is_prefix](crate::mmr::cpu::Mmr::is_prefix).
+    pub fn is_prefix<const SIZE: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
         small: &AssignedMmr<F, SIZE>,
         big: &AssignedMmr<F, SIZE>,
         path: &AssignedSummitPath<F, SIZE>,
-    ) -> Result<(), Error> {
+    ) -> Result<AssignedBit<F>, Error> {
         let ng = &self.native_gadget;
         let a_bits = &small.size_bits;
         let b_bits = &big.size_bits;
@@ -282,6 +278,9 @@ where
         // consumed before being overwritten by a starting peak).
         let mut cur: AssignedNative<F> = ng.assign_fixed(layouter, F::ZERO)?;
 
+        // The verdict, narrowed as the climb advances.
+        let mut ok: AssignedBit<F> = ng.assign_fixed(layouter, true)?;
+
         for i in 0..SIZE {
             // The sizes agree above height i and both MMRs have a mountain
             // here: their peaks must match directly.
@@ -289,7 +288,9 @@ where
                 layouter,
                 &[agree[i + 1].clone(), a_bits[i].clone(), b_bits[i].clone()],
             )?;
-            ng.cond_assert_equal(layouter, &direct_match, &small.peaks[i], &big.peaks[i])?;
+            let peaks_equal = ng.is_equal(layouter, &small.peaks[i], &big.peaks[i])?;
+            let direct_ok = self.implies(layouter, &direct_match, &peaks_equal)?;
+            ok = ng.and(layouter, &[ok, direct_ok])?;
 
             // fin: highest bit where the sizes differ (at most one height).
             let bits_differ = ng.xor(layouter, &[a_bits[i].clone(), b_bits[i].clone()])?;
@@ -298,7 +299,8 @@ where
             // At said height, the small size must have the unset bit;
             // otherwise small > big and it cannot be a prefix.
             let violation = ng.and(layouter, &[fin.clone(), a_bits[i].clone()])?;
-            ng.assert_equal_to_fixed(layouter, &violation, false)?;
+            let no_violation = ng.not(layouter, &violation)?;
+            ok = ng.and(layouter, &[ok, no_violation])?;
 
             // The climb starts at the lowest peak of the small MMR.
             let not_started = ng.not(layouter, &started[i])?;
@@ -308,7 +310,9 @@ where
             // If a climb took place, it must land exactly on big's peak at
             // the height of the first size disagreement.
             let must_land = ng.and(layouter, &[fin, started[i].clone()])?;
-            ng.cond_assert_equal(layouter, &must_land, &input, &big.peaks[i])?;
+            let lands = ng.is_equal(layouter, &input, &big.peaks[i])?;
+            let landing_ok = self.implies(layouter, &must_land, &lands)?;
+            ok = ng.and(layouter, &[ok, landing_ok])?;
 
             // Climb one level up: the node at height i is combined either
             // with small's own peak at this height (as left sibling) or with
@@ -326,7 +330,28 @@ where
             }
         }
 
-        Ok(())
+        Ok(ok)
+    }
+
+    /// Asserts that the elements of the MMR with state `small` are a prefix of
+    /// the elements of the MMR with state `big`: [Self::is_prefix]'s
+    /// result, asserted.
+    ///
+    /// # Unsatisfiable Circuit
+    ///
+    /// If `small` is not a prefix of `big` (in particular, whenever
+    /// `small.size > big.size`), or if the summit path steps are incorrect.
+    pub fn assert_prefix<const SIZE: usize>(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        small: &AssignedMmr<F, SIZE>,
+        big: &AssignedMmr<F, SIZE>,
+        path: &AssignedSummitPath<F, SIZE>,
+    ) -> Result<(), Error> {
+        // NOTE: This instruction is not optimized. Using asserts directly
+        // in the logic of is_prefix saves ~20% rows.
+        let ok = self.is_prefix(layouter, small, big, path)?;
+        self.native_gadget.assert_equal_to_fixed(layouter, &ok, true)
     }
 
     /// Assigns a [MembershipProof] as a private input.
@@ -351,24 +376,30 @@ where
         })
     }
 
-    /// Asserts that `elem` is one of the elements committed to by `mmr`, given
-    /// a membership proof (produced off-circuit with
-    /// [Mmr::prove_membership](crate::mmr::cpu::Mmr::prove_membership)).
+    /// Checks that `elem` is one of the elements committed to by `mmr`,
+    /// given a membership proof (produced off-circuit with
+    /// [Mmr::prove_membership](crate::mmr::cpu::Mmr::prove_membership)), and
+    /// returns the result as a bit.
+    /// [Self::assert_membership] is the asserting form, which may be cheaper
+    /// than calling this method and constraining the result.
     ///
     /// The element's position is not fixed: `height` and `leaf_index` are
     /// supplied by the proof as a hint. This is the in-circuit counterpart of
-    /// [Mmr::verify_membership](crate::mmr::cpu::Mmr::verify_membership).
+    /// [Mmr::is_member](crate::mmr::cpu::Mmr::is_member).
     ///
     /// # Unsatisfiable Circuit
     ///
-    /// If `elem` is not a member of `mmr`, or if the proof is malformed.
-    pub fn assert_membership<const SIZE: usize>(
+    /// If `leaf_index` does not fit in `SIZE` bits. The index is a hint the
+    /// prover is free to choose, so it is range-checked outright rather than
+    /// folded into the verdict; every semantic failure — wrong element, wrong
+    /// siblings, a height pointing at an absent mountain — returns `0`.
+    pub fn is_member<const SIZE: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
         mmr: &AssignedMmr<F, SIZE>,
         elem: &AssignedNative<F>,
         proof: &AssignedMembershipProof<F, SIZE>,
-    ) -> Result<(), Error> {
+    ) -> Result<AssignedBit<F>, Error> {
         let ng = &self.native_gadget;
 
         // Little-endian bits of the leaf index; bit `l` is the left/right
@@ -383,10 +414,15 @@ where
         // ensuring that `height` selects an existing slot in `[0, SIZE)`.
         let mut matched: AssignedBit<F> = ng.assign_fixed(layouter, false)?;
 
+        // The verdict so far: on the claimed height, the climb must have
+        // reproduced that mountain's peak.
+        let mut ok: AssignedBit<F> = ng.assign_fixed(layouter, true)?;
+
         for (l, (peak, size_bit)) in mmr.peaks.iter().zip(mmr.size_bits.iter()).enumerate() {
-            // On the claimed height, `node` must equal that peak.
             let is_height = ng.is_equal_to_fixed(layouter, &proof.height, F::from(l as u64))?;
-            ng.cond_assert_equal(layouter, &is_height, &node, peak)?;
+            let peak_equal = ng.is_equal(layouter, &node, peak)?;
+            let level_ok = self.implies(layouter, &is_height, &peak_equal)?;
+            ok = ng.and(layouter, &[ok, level_ok])?;
 
             let matches_here = ng.and(layouter, &[is_height, size_bit.clone()])?;
             matched = ng.or(layouter, &[matched, matches_here])?;
@@ -400,7 +436,39 @@ where
             }
         }
 
-        ng.assert_equal_to_fixed(layouter, &matched, true)
+        // The climb must also have matched a present mountain.
+        ng.and(layouter, &[ok, matched])
+    }
+
+    /// Asserts that `elem` is one of the elements committed to by `mmr`.
+    ///
+    /// # Unsatisfiable Circuit
+    ///
+    /// If `elem` is not a member of `mmr`, or if the proof is malformed.
+    pub fn assert_membership<const SIZE: usize>(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        mmr: &AssignedMmr<F, SIZE>,
+        elem: &AssignedNative<F>,
+        proof: &AssignedMembershipProof<F, SIZE>,
+    ) -> Result<(), Error> {
+        // NOTE: This instruction is not optimized. Using asserts directly
+        // in the logic of is_member saves ~20% rows.
+        let ok = self.is_member(layouter, mmr, elem, proof)?;
+        self.native_gadget.assert_equal_to_fixed(layouter, &ok, true)
+    }
+
+    /// The implication `antecedent => consequent`, as a bit.
+    // TODO: Helper for the prefix check. If found useful may be worth moving
+    // to the logic chip.
+    fn implies(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        antecedent: &AssignedBit<F>,
+        consequent: &AssignedBit<F>,
+    ) -> Result<AssignedBit<F>, Error> {
+        let excused = self.native_gadget.not(layouter, antecedent)?;
+        self.native_gadget.or(layouter, &[excused, consequent.clone()])
     }
 
     /// Enforces the [AssignedMmr] invariants over an assigned size and
@@ -508,6 +576,8 @@ mod tests {
         elem: Value<F>,
         membership: Value<MembershipProof<F, SIZE>>,
         mode: MmrTests,
+        // None uses the asserting forms; Some(b) the verifying forms.
+        verdict: Option<bool>,
         _marker: PhantomData<(N, H)>,
     }
 
@@ -529,6 +599,7 @@ mod tests {
                 elem: Value::unknown(),
                 membership: Value::unknown(),
                 mode: self.mode.clone(),
+                verdict: self.verdict,
                 _marker: PhantomData,
             }
         }
@@ -577,7 +648,13 @@ mod tests {
                     let path = mmr_gadget.assign_summit_path(&mut layouter, self.path)?;
 
                     cost_measure_start(&mut layouter);
-                    mmr_gadget.assert_prefix(&mut layouter, &small, &big, &path)?;
+                    match self.verdict {
+                        None => mmr_gadget.assert_prefix(&mut layouter, &small, &big, &path)?,
+                        Some(expected) => {
+                            let ok = mmr_gadget.is_prefix(&mut layouter, &small, &big, &path)?;
+                            native_gadget.assert_equal_to_fixed(&mut layouter, &ok, expected)?;
+                        }
+                    }
                     cost_measure_end(&mut layouter);
                 }
                 MmrTests::Membership => {
@@ -587,7 +664,13 @@ mod tests {
                         mmr_gadget.assign_membership_proof(&mut layouter, self.membership)?;
 
                     cost_measure_start(&mut layouter);
-                    mmr_gadget.assert_membership(&mut layouter, &mmr, &elem, &proof)?;
+                    match self.verdict {
+                        None => mmr_gadget.assert_membership(&mut layouter, &mmr, &elem, &proof)?,
+                        Some(expected) => {
+                            let ok = mmr_gadget.is_member(&mut layouter, &mmr, &elem, &proof)?;
+                            native_gadget.assert_equal_to_fixed(&mut layouter, &ok, expected)?;
+                        }
+                    }
                     cost_measure_end(&mut layouter);
                 }
             }
@@ -703,37 +786,49 @@ mod tests {
         ];
 
         for (small, big, path, expect_ok, description) in prefix_cases.into_iter() {
-            let circuit = TestCircuit::<F, N, H> {
-                small: Value::known(small.state()),
-                big: Value::known(big.state()),
-                path: Value::known(path),
-                elem: Value::unknown(),
-                membership: Value::unknown(),
-                mode: MmrTests::Prefix,
-                _marker: PhantomData,
-            };
+            // Each case runs through the asserting form (accepted exactly on
+            // the true cases) and through the verifying form twice: asserting
+            // the true verdict must satisfy the circuit, asserting its
+            // negation must not — which is what shows the returned bit is
+            // constrained rather than merely witnessed.
+            for verdict in [None, Some(expect_ok), Some(!expect_ok)] {
+                let circuit = TestCircuit::<F, N, H> {
+                    small: Value::known(small.state()),
+                    big: Value::known(big.state()),
+                    path: Value::known(path),
+                    elem: Value::unknown(),
+                    membership: Value::unknown(),
+                    mode: MmrTests::Prefix,
+                    verdict,
+                    _marker: PhantomData,
+                };
 
-            let pi = [
-                <AssignedMmr<F, SIZE> as Instantiable<F>>::as_public_input(&small.state()),
-                <AssignedMmr<F, SIZE> as Instantiable<F>>::as_public_input(&big.state()),
-            ]
-            .concat();
+                let pi = [
+                    <AssignedMmr<F, SIZE> as Instantiable<F>>::as_public_input(&small.state()),
+                    <AssignedMmr<F, SIZE> as Instantiable<F>>::as_public_input(&big.state()),
+                ]
+                .concat();
 
-            let prover = MockProver::run(&circuit, vec![vec![], pi]).unwrap();
-            if expect_ok {
-                assert!(
-                    prover.verify().is_ok(),
-                    "prefix case {description} rejected"
-                );
-            } else {
-                assert!(
-                    prover.verify().is_err(),
-                    "prefix case {description} accepted"
-                );
-            }
+                let accepts = match verdict {
+                    None => expect_ok,
+                    Some(expected) => expected == expect_ok,
+                };
+                let prover = MockProver::run(&circuit, vec![vec![], pi]).unwrap();
+                if accepts {
+                    assert!(
+                        prover.verify().is_ok(),
+                        "prefix case {description} (verdict {verdict:?}) rejected"
+                    );
+                } else {
+                    assert!(
+                        prover.verify().is_err(),
+                        "prefix case {description} (verdict {verdict:?}) accepted"
+                    );
+                }
 
-            if cost_model && description == "(3, 11)" {
-                circuit_to_json::<F>("MMR gadget", "Prefix", circuit);
+                if cost_model && verdict.is_none() && description == "(3, 11)" {
+                    circuit_to_json::<F>("MMR gadget", "Prefix", circuit);
+                }
             }
         }
 
@@ -753,6 +848,7 @@ mod tests {
                 elem: Value::unknown(),
                 membership: Value::unknown(),
                 mode: MmrTests::Assign,
+                verdict: None,
                 _marker: PhantomData,
             };
             let mut pi = pi.clone();
@@ -836,31 +932,66 @@ mod tests {
         cases.push((leaves[0], proof, false, "absent mountain".into()));
 
         for (elem, proof, expect_ok, description) in cases.into_iter() {
+            // Each case runs through the asserting form (accepted exactly on
+            // the true cases) and through the verifying form twice: asserting
+            // the true verdict must satisfy the circuit, asserting its
+            // negation must not — which is what shows the returned bit is
+            // constrained rather than merely witnessed.
+            for verdict in [None, Some(expect_ok), Some(!expect_ok)] {
+                let circuit = TestCircuit::<F, N, H> {
+                    small: Value::known(state),
+                    big: Value::unknown(),
+                    path: Value::unknown(),
+                    elem: Value::known(elem),
+                    membership: Value::known(proof),
+                    mode: MmrTests::Membership,
+                    verdict,
+                    _marker: PhantomData,
+                };
+                let accepts = match verdict {
+                    None => expect_ok,
+                    Some(expected) => expected == expect_ok,
+                };
+                let prover = MockProver::run(&circuit, vec![vec![], vec![]]).unwrap();
+                if accepts {
+                    assert!(
+                        prover.verify().is_ok(),
+                        "membership case {description} (verdict {verdict:?}) rejected"
+                    );
+                } else {
+                    assert!(
+                        prover.verify().is_err(),
+                        "membership case {description} (verdict {verdict:?}) accepted"
+                    );
+                }
+
+                if cost_model && verdict.is_none() && description == "oldest (tallest mountain)" {
+                    circuit_to_json::<F>("MMR gadget", "Membership", circuit);
+                }
+            }
+        }
+
+        // An index hint beyond SIZE bits fails its range-checked
+        // decomposition outright — the hint is the prover's to choose, so it
+        // is not part of the verdict, and both forms reject it.
+        let mut proof = mmr.prove_membership(5);
+        proof.leaf_index = u64::MAX;
+        for verdict in [None, Some(true), Some(false)] {
             let circuit = TestCircuit::<F, N, H> {
                 small: Value::known(state),
                 big: Value::unknown(),
                 path: Value::unknown(),
-                elem: Value::known(elem),
+                elem: Value::known(leaves[5]),
                 membership: Value::known(proof),
                 mode: MmrTests::Membership,
+                verdict,
                 _marker: PhantomData,
             };
             let prover = MockProver::run(&circuit, vec![vec![], vec![]]).unwrap();
-            if expect_ok {
-                assert!(
-                    prover.verify().is_ok(),
-                    "membership case {description} rejected"
-                );
-            } else {
-                assert!(
-                    prover.verify().is_err(),
-                    "membership case {description} accepted"
-                );
-            }
-
-            if cost_model && description == "oldest (tallest mountain)" {
-                circuit_to_json::<F>("MMR gadget", "Membership", circuit);
-            }
+            assert!(
+                prover.verify().is_err(),
+                "out-of-range leaf index (verdict {verdict:?}) accepted"
+            );
         }
     }
 
