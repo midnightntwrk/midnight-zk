@@ -55,6 +55,17 @@ pub struct AssignedMmr<F: CircuitField, const SIZE: usize> {
     pub(crate) peaks: [AssignedNative<F>; SIZE],
 }
 
+impl<F: CircuitField, const SIZE: usize> AssignedMmr<F, SIZE> {
+    /// MMR state in its public input representation: size
+    /// followed by the peaks as SIZE+1 field elements. Agrees with
+    /// [Instantiable::as_public_input].
+    pub fn as_public_input(&self) -> Vec<AssignedNative<F>> {
+        let mut cells = vec![self.size.clone()];
+        cells.extend(self.peaks.iter().cloned());
+        cells
+    }
+}
+
 impl<F: CircuitField, const SIZE: usize> InnerValue for AssignedMmr<F, SIZE> {
     type Element = MmrState<F, SIZE>;
 
@@ -546,6 +557,16 @@ mod tests {
                 MmrTests::Assign => {
                     let mmr = mmr_gadget.assign(&mut layouter, self.small)?;
                     mmr_gadget.constrain_as_public_input(&mut layouter, &mmr)?;
+
+                    let cells = mmr.as_public_input();
+                    assert_eq!(cells.len(), SIZE + 1);
+                    self.small.map(|state| {
+                        let expected =
+                            <AssignedMmr<F, SIZE> as Instantiable<F>>::as_public_input(&state);
+                        cells.iter().zip(expected).for_each(|(cell, expected)| {
+                            cell.value().map(|v| assert_eq!(*v, expected));
+                        });
+                    });
                 }
                 MmrTests::Prefix => {
                     let small = mmr_gadget.assign(&mut layouter, self.small)?;
@@ -693,8 +714,8 @@ mod tests {
             };
 
             let pi = [
-                AssignedMmr::<F, SIZE>::as_public_input(&small.state()),
-                AssignedMmr::<F, SIZE>::as_public_input(&big.state()),
+                <AssignedMmr<F, SIZE> as Instantiable<F>>::as_public_input(&small.state()),
+                <AssignedMmr<F, SIZE> as Instantiable<F>>::as_public_input(&big.state()),
             ]
             .concat();
 
@@ -721,7 +742,7 @@ mod tests {
         // with the (zero) entry of an absent slot must fail: the assignment
         // canonicalizes absent peaks to zero.
         let state = mmrs[11].state();
-        let pi = AssignedMmr::<F, SIZE>::as_public_input(&state);
+        let pi = <AssignedMmr<F, SIZE> as Instantiable<F>>::as_public_input(&state);
         // 11 = 0b01011: slot 2 is absent (entry 3 of the public input).
         let absent_slot_entry = 1 + 2;
         for tampered_entry in [None, Some(1), Some(absent_slot_entry)] {
@@ -849,7 +870,7 @@ mod tests {
         type H = PoseidonChip<F>;
 
         let state = all_mmrs::<F, H>(0, 11)[11].state();
-        let pi = AssignedMmr::<F, SIZE>::as_public_input(&state);
+        let pi = <AssignedMmr<F, SIZE> as Instantiable<F>>::as_public_input(&state);
         assert_eq!(pi.len(), SIZE + 1);
         assert_eq!(AssignedMmr::<F, SIZE>::from_public_input(&pi), Some(state));
 
