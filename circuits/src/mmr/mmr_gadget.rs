@@ -233,12 +233,12 @@ where
         })
     }
 
-    /// Chefks if the elements of the MMR with state `small` are a prefix
+    /// Checks if the elements of the MMR with state `small` are a prefix
     /// of the elements of the MMR with state `big`, given a summit path
     /// witness (produced off-circuit with
     /// [Mmr::prove_prefix](crate::mmr::cpu::Mmr::prove_prefix) on the big
     /// MMR), and returns the result as a bit.
-    /// [Self::assert_prefix] is the asserting form which may be more cheaper
+    /// [Self::assert_prefix] is the asserting form which may be cheaper
     /// than a call to this method plus an assertion on the resulting bit.
     ///
     /// This is the in-circuit counterpart of

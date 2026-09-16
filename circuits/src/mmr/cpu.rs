@@ -65,7 +65,7 @@ pub struct SummitPath<F, const SIZE: usize> {
 /// rest is padding, ignored by verification ([Mmr::prove_membership] emits it
 /// as `F::ZERO`). The claim fixes no absolute position: `height` and
 /// `leaf_index` are a hint supplied by the prover (see
-/// [Mmr::is_memeber]).
+/// [Mmr::is_member]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct MembershipProof<F, const SIZE: usize> {
     pub(crate) height: usize,
