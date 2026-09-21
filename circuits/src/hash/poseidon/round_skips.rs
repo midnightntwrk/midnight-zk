@@ -11,6 +11,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use core::any::{Any, TypeId};
+use std::{cell::RefCell, collections::HashMap};
+
 use ff::Field;
 use midnight_proofs::plonk::Expression;
 
@@ -337,7 +340,33 @@ impl<F: PoseidonField> RoundId<F> {
 impl<F: PoseidonField> PreComputedRoundCPU<F> {
     /// Pre-computes partial rounds and the associated round contants for
     /// Poseidon's using NB_SKIPS_CPU round skips.
-    pub fn init() -> Self {
+    ///
+    /// `SpongeCPU::init` calls this on every hash, and the result depends only
+    /// on `F`, so it is derived once per field and cached.
+    ///
+    /// Keyed by `TypeId`: a `static` in a generic function is shared across all
+    /// instantiations, and the constants differ by field. Thread-local rather
+    /// than locked, because this is on the hashing path.
+    pub fn init() -> Self
+    where
+        F: 'static,
+    {
+        thread_local! {
+            static CACHE: RefCell<HashMap<TypeId, Box<dyn Any>>> =
+                RefCell::new(HashMap::new());
+        }
+        CACHE.with(|cache| {
+            *cache
+                .borrow_mut()
+                .entry(TypeId::of::<F>())
+                .or_insert_with(|| Box::new(Self::derive()))
+                .downcast_ref::<Self>()
+                .expect("keyed by TypeId::of::<F>")
+        })
+    }
+
+    /// Uncached; `init` calls this once per field.
+    fn derive() -> Self {
         let partial_round_id = RoundId::<F>::generate(NB_SKIPS_CPU);
         let round_constants = partial_round_id.round_constants_cpu();
         PreComputedRoundCPU {
