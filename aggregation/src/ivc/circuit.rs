@@ -47,6 +47,11 @@ impl<T: Ivc> IvcInstance<T> {
     pub fn state(&self) -> &T::State {
         &self.state
     }
+
+    /// Returns the accumulator summarising all steps up to [`Self::state`].
+    pub fn acc(&self) -> &Accumulator<S> {
+        &self.acc
+    }
 }
 
 /// The private witness for a single IVC step.
