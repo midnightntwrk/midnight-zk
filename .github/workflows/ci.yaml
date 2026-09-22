@@ -164,9 +164,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
-      - uses: dtolnay/rust-toolchain@nightly
-      - run: rustup component add rustfmt --toolchain nightly
-      - run: cargo +nightly fmt --all -- --check
+      # An unpinned @nightly makes this job fail on untouched files.
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de
+        with:
+          toolchain: nightly-2026-08-05
+          components: rustfmt
+      - run: cargo +nightly-2026-08-05 fmt --all -- --check
 
   clippy:
     if: github.event.pull_request.draft == false
