@@ -35,6 +35,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Share the `z` and `m` polynomials across all logup instances [#279](https://github.com/midnightntwrk/midnight-zk/pull/279)
 * Optimize the vector gadget's `padding_flag` to only check `A`-aligned chunk boundaries [#462](https://github.com/midnightntwrk/midnight-zk/pull/462)
 * Replace string-based VK-name keys with `PolynomialLabel`-keyed `fixed_bases` maps throughout the verifier gadget [#430](https://github.com/midnightntwrk/midnight-zk/pull/430)
+* Limb-size DP (`compute_optimal_limb_sizes`) compares candidates by length and clones only the winner; same limbs, same VKs. Cuts the serial configure path (runs in keygen and prove) [#TBD]
 
 ### Removed
 * Remove `Expression::Challenge` variant and phase-parameterized `Any::Advice`; multi-phase advice columns are no longer supported [#376](https://github.com/midnightntwrk/midnight-zk/pull/376)
