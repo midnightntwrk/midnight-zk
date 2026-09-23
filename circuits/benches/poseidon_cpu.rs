@@ -1,8 +1,7 @@
 use criterion::{Criterion, criterion_group, criterion_main};
 use ff::Field;
-use midnight_circuits::{
-    hash::poseidon::{PoseidonChip, permutation_cpu, round_skips::PreComputedRoundCPU},
-    instructions::hash::HashCPU,
+use midnight_circuits::hash::poseidon::{
+    PoseidonChip, permutation_cpu, round_skips::PreComputedRoundCPU,
 };
 use rand::SeedableRng;
 use rand_chacha::ChaCha12Rng;
@@ -22,7 +21,7 @@ fn bench_poseidon_cpu(c: &mut Criterion) {
         b.iter(|| {
             let mut input: [F; WIDTH] = core::array::from_fn(|_| F::random(&mut rng));
             std::hint::black_box({
-                permutation_cpu(&pre_computed, &mut input);
+                permutation_cpu(pre_computed, &mut input);
                 input
             })
         });

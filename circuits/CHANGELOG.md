@@ -17,7 +17,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 
 ### Changed
-* `PreComputedRoundCPU::init` derives Poseidon's round constants once per field and caches them; `HashCPU::hash` was re-deriving them on every call. Adds an `F: 'static` bound to `init` [#527](https://github.com/midnightntwrk/midnight-zk/pull/527)
+* `PreComputedRoundCPU::init` derives Poseidon's CPU partial-round pre-computation once per field and caches it [#527](https://github.com/midnightntwrk/midnight-zk/pull/527)
 * Adapt the verifier gadget to the generic argument groups introduced in `midnight-proofs`: read one commitment for the whole trash group instead of one per trashcan, and read the trash challenge in its new earlier position. The internal `verifier/trash.rs` is folded into a new `verifier/argument.rs`. Changes the VK of every circuit that uses the verifier gadget [#513](https://github.com/midnightntwrk/midnight-zk/pull/513)
 * Removes the Labelable trait [#491](https://github.com/midnightntwrk/midnight-zk/pull/491)
 * Migrate to Rust edition 2024; declare MSRV 1.90. Both are now inherited from the workspace [#508](https://github.com/midnightntwrk/midnight-zk/pull/508)
