@@ -593,7 +593,7 @@ where
     ConcreteCircuit::FloorPlanner::synthesize_with_cached_regions(
         &mut witness,
         circuit,
-        config.clone(),
+        config,
         meta.constants.clone(),
         pk.region_starts.as_deref(),
     )?;

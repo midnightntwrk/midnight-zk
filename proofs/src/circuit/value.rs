@@ -49,7 +49,7 @@ impl<V> Value<V> {
     ///
     /// Returns `Error::Synthesis` if this is [`Value::unknown()`].
     pub(crate) fn assign(self) -> Result<V, Error> {
-        self.inner.ok_or(Error::Synthesis("witness not provided".into()))
+        self.inner.ok_or_else(|| Error::Synthesis("witness not provided".into()))
     }
 
     /// Converts from `&Value<V>` to `Value<&V>`.
