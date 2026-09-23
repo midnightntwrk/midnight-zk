@@ -15,7 +15,7 @@ rustdoc-args = ["--html-in-header", "katex-header.html"]
 
 [dependencies]
 blst = { version = "0.3.15", default-features = true }
-pairing = { version = "0.23" }
+pairing = { version = "0.24" }
 subtle = "2.6"
 bitvec = "1.0.1"
 byte-slice-cast = "1.2.3"
