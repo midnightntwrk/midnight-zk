@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Fix cost-model [#435](https://github.com/midnightntwrk/midnight-zk/pull/435)
 
 ### Changed
+* Prove path: `Value::assign` builds its `Error::Synthesis` lazily (it allocated a String per assigned advice cell), and the circuit config / flattened custom gates are moved rather than cloned [#TBD]
 * Squeeze the trash challenge right after `gamma`, before the permutation and lookup commitments, so the trash polynomials are committed together with the other phase-2 polynomials. This changes the transcript of every proof, including for circuits with no trashcan: proofs produced by earlier versions no longer verify [#513](https://github.com/midnightntwrk/midnight-zk/pull/513)
 * Commit the trash polynomials as a single generic argument group keyed by `PolynomialLabel`, rather than one commitment per trashcan. A new internal `plonk::argument` module owns the group's `Committed`/`Evaluated` types and the per-label opening points; `trash::Argument` is identified by an index instead of a name and looks its own evaluation up by label [#513](https://github.com/midnightntwrk/midnight-zk/pull/513)
 * Migrate to Rust edition 2024; MSRV raised from 1.76 to 1.90. Both are now inherited from the workspace [#508](https://github.com/midnightntwrk/midnight-zk/pull/508)

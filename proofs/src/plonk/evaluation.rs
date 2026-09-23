@@ -671,7 +671,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
         };
         let mut ev = Evaluator {
             custom_gates: GraphEvaluator::default(),
-            custom_gates_flat: dummy_flat.clone(),
+            custom_gates_flat: dummy_flat,
             lookups: Vec::new(),
             lookups_flat: Vec::new(),
             trashcans: Vec::new(),
