@@ -124,7 +124,7 @@ impl<F: CircuitField, const CAPACITY: usize> InnerValue for AssignedSummitPath<F
 #[derive(Clone, Debug)]
 pub struct AssignedMembershipProof<F: CircuitField, const CAPACITY: usize> {
     pub(crate) height: AssignedNative<F>,
-    pub(crate) leaf_index: AssignedNative<F>,
+    pub(crate) index_bits: [AssignedBit<F>; CAPACITY],
     pub(crate) siblings: [AssignedNative<F>; CAPACITY],
 }
 
@@ -136,12 +136,14 @@ impl<F: CircuitField, const CAPACITY: usize> InnerValue for AssignedMembershipPr
             .height
             .value()
             .map(|h| u64::try_from(h.to_biguint()).expect("MMR height fits in u64") as usize);
-        let leaf_index = self
-            .leaf_index
-            .value()
-            .map(|i| u64::try_from(i.to_biguint()).expect("MMR leaf index fits in u64"));
+        let index_bits = self.index_bits.value();
         let siblings = self.siblings.value();
-        (height.zip(leaf_index).zip(siblings)).map(|((height, leaf_index), siblings)| {
+        (height.zip(index_bits).zip(siblings)).map(|((height, index_bits), siblings)| {
+            let leaf_index =
+                (index_bits.iter().enumerate()).fold(
+                    0u64,
+                    |acc, (l, bit)| if *bit { acc | (1 << l) } else { acc },
+                );
             MembershipProof {
                 height,
                 leaf_index,
@@ -380,7 +382,8 @@ where
     /// Assigns a [MembershipProof] as a private input.
     ///
     /// The proof is not constrained here; its fields are verified when consumed
-    /// by [Self::assert_membership].
+    /// by [Self::assert_membership]. Only the low `CAPACITY` bits of the leaf
+    /// index are assigned; a larger index is not representable.
     pub fn assign_membership_proof<const CAPACITY: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -388,13 +391,16 @@ where
     ) -> Result<AssignedMembershipProof<F, CAPACITY>, Error> {
         let height =
             self.native_gadget.assign(layouter, proof.map(|p| F::from(p.height as u64)))?;
-        let leaf_index =
-            self.native_gadget.assign(layouter, proof.map(|p| F::from(p.leaf_index)))?;
+        let index_bits = proof
+            .map(|p| std::array::from_fn::<bool, CAPACITY, _>(|l| (p.leaf_index >> l) & 1 == 1))
+            .transpose_array();
+        let index_bits: Vec<AssignedBit<F>> =
+            self.native_gadget.assign_many(layouter, &index_bits)?;
         let siblings = proof.map(|p| p.siblings).transpose_array();
         let siblings = self.native_gadget.assign_many(layouter, &siblings)?;
         Ok(AssignedMembershipProof {
             height,
-            leaf_index,
+            index_bits: index_bits.try_into().unwrap(),
             siblings: siblings.try_into().unwrap(),
         })
     }
@@ -410,12 +416,9 @@ where
     /// supplied by the proof as a hint. This is the in-circuit counterpart of
     /// [Mmr::is_member](crate::mmr::cpu::Mmr::is_member).
     ///
-    /// # Unsatisfiable Circuit
-    ///
-    /// If `leaf_index` does not fit in `CAPACITY` bits. The index is a hint the
-    /// prover is free to choose, so it is range-checked outright rather than
-    /// folded into the verdict; every semantic failure — wrong element, wrong
-    /// siblings, a height pointing at an absent mountain — returns `0`.
+    /// The check has no unsatisfiable case: every failure (wrong element,
+    /// wrong siblings, a height pointing at an absent mountain, a wrong leaf
+    /// index) returns `0`.
     pub fn is_member<const CAPACITY: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -458,9 +461,9 @@ where
     ) -> Result<(), Error> {
         let ng = &self.native_gadget;
 
-        // Little-endian bits of the leaf index; bit `l` is the left/right
-        // direction of the climb from level `l` to `l + 1`.
-        let index_bits = ng.assigned_to_le_bits(layouter, &proof.leaf_index, Some(CAPACITY), true)?;
+        // Bit `l` of the leaf index is the left/right direction of the climb
+        // from level `l` to `l + 1`.
+        let index_bits = &proof.index_bits;
 
         // `node` is the root of the height-`l` subtree over the leaf. It starts
         // as the arity-1 leaf hash, which is the peak of a height-0 mountain.
@@ -1074,9 +1077,8 @@ mod tests {
             }
         }
 
-        // An index hint beyond CAPACITY bits fails its range-checked
-        // decomposition outright — the hint is the prover's to choose, so it
-        // is not part of the verdict, and both forms reject it.
+        // An index hint beyond CAPACITY bits keeps only its low bits, so it is
+        // just a wrong hint and the verdict is false.
         let mut proof = mmr.prove_membership(5);
         proof.leaf_index = u64::MAX;
         for verdict in [None, Some(true), Some(false)] {
@@ -1091,10 +1093,17 @@ mod tests {
                 _marker: PhantomData,
             };
             let prover = MockProver::run(&circuit, vec![vec![], vec![]]).unwrap();
-            assert!(
-                prover.verify().is_err(),
-                "out-of-range leaf index (verdict {verdict:?}) accepted"
-            );
+            if verdict == Some(false) {
+                assert!(
+                    prover.verify().is_ok(),
+                    "out-of-range leaf index (verdict {verdict:?}) rejected"
+                );
+            } else {
+                assert!(
+                    prover.verify().is_err(),
+                    "out-of-range leaf index (verdict {verdict:?}) accepted"
+                );
+            }
         }
     }
 
