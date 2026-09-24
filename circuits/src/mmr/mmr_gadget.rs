@@ -113,8 +113,8 @@ impl<F: CircuitField, const CAPACITY: usize> InnerValue for AssignedSummitPath<F
 ///
 /// The claimed height is carried as a one-hot selector, `height_bits[l]` being
 /// set for the height of the mountain that contains the leaf. A height outside
-/// `[0, CAPACITY)` is not representable: it leaves the selector all zero, which no
-/// membership claim satisfies.
+/// `[0, CAPACITY)` is not representable: it leaves the selector all zero, which
+/// no membership claim satisfies.
 #[derive(Clone, Debug)]
 pub struct AssignedMembershipProof<F: CircuitField, const CAPACITY: usize> {
     pub(crate) height_bits: [AssignedBit<F>; CAPACITY],
@@ -187,8 +187,8 @@ where
     }
 
     /// Assigns an MMR state as a private input, enforcing the [AssignedMmr]
-    /// invariants: the assigned size is range-checked to `CAPACITY` bits and the
-    /// peaks at absent slots are (re)set to zero.
+    /// invariants: the assigned size is range-checked to `CAPACITY` bits and
+    /// the peaks at absent slots are (re)set to zero.
     pub fn assign<const CAPACITY: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -214,7 +214,7 @@ where
     /// Assigns a [SummitPath] as a private input.
     ///
     /// The path is not constrained in any way: its steps get verified when
-    /// consumed by [Self::assert_prefix].
+    /// consumed by [Self::is_prefix] or [Self::assert_prefix].
     pub fn assign_summit_path<const CAPACITY: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -237,6 +237,13 @@ where
     ///
     /// This is the in-circuit counterpart of
     /// [Mmr::is_prefix](crate::mmr::cpu::Mmr::is_prefix).
+    ///
+    /// # Soundness
+    ///
+    /// The verdict is one-sided. A `1` proves that `small` is a prefix of
+    /// `big`; a `0` only says that this witness does not prove it, as the
+    /// prover chooses the summit path and may always supply a wrong one. A
+    /// caller must not read `0` as a proof that the claim is false.
     pub fn is_prefix<const CAPACITY: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -353,9 +360,10 @@ where
 
     /// Assigns a [MembershipProof] as a private input.
     ///
-    /// The proof is not constrained here; its fields are verified when consumed
-    /// by [Self::assert_membership]. Only the low `CAPACITY` bits of the leaf
-    /// index are assigned; a larger index is not representable.
+    /// The proof is not constrained here; its fields are verified when
+    /// consumed by [Self::is_member] or [Self::assert_membership]. Only the
+    /// low `CAPACITY` bits of the leaf index are assigned; a larger index is
+    /// not representable.
     pub fn assign_membership_proof<const CAPACITY: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -394,6 +402,13 @@ where
     /// The check has no unsatisfiable case: every failure (wrong element,
     /// wrong siblings, a height pointing at an absent mountain, a wrong leaf
     /// index) returns `0`.
+    ///
+    /// # Soundness
+    ///
+    /// The verdict is one-sided. A `1` proves that `elem` is committed to by
+    /// `mmr`; a `0` only says that this witness does not prove it, as the
+    /// prover chooses the proof and may always supply a wrong one. A caller
+    /// must not read `0` as a proof of non-membership.
     pub fn is_member<const CAPACITY: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -946,8 +961,12 @@ mod tests {
                     );
                 }
 
-                if cost_model && verdict.is_none() && description == "(3, 11)" {
-                    circuit_to_json::<F>("MMR gadget", "Prefix", circuit);
+                if cost_model && description == "(3, 11)" {
+                    match verdict {
+                        None => circuit_to_json::<F>("MMR gadget", "Prefix", circuit),
+                        Some(true) => circuit_to_json::<F>("MMR gadget", "Prefix (bit)", circuit),
+                        Some(false) => {}
+                    }
                 }
             }
         }
@@ -1085,8 +1104,14 @@ mod tests {
                     );
                 }
 
-                if cost_model && verdict.is_none() && description == "oldest (tallest mountain)" {
-                    circuit_to_json::<F>("MMR gadget", "Membership", circuit);
+                if cost_model && description == "oldest (tallest mountain)" {
+                    match verdict {
+                        None => circuit_to_json::<F>("MMR gadget", "Membership", circuit),
+                        Some(true) => {
+                            circuit_to_json::<F>("MMR gadget", "Membership (bit)", circuit)
+                        }
+                        Some(false) => {}
+                    }
                 }
             }
         }
@@ -1129,20 +1154,32 @@ mod tests {
         let state = all_mmrs::<F, H>(0, 11)[11].state();
         let pi = AssignedMmr::<F, CAPACITY>::as_public_input(&state);
         assert_eq!(pi.len(), CAPACITY + 1);
-        assert_eq!(AssignedMmr::<F, CAPACITY>::from_public_input(&pi), Some(state));
+        assert_eq!(
+            AssignedMmr::<F, CAPACITY>::from_public_input(&pi),
+            Some(state)
+        );
 
         // Wrong length.
-        assert_eq!(AssignedMmr::<F, CAPACITY>::from_public_input(&pi[1..]), None);
+        assert_eq!(
+            AssignedMmr::<F, CAPACITY>::from_public_input(&pi[1..]),
+            None
+        );
 
         // Nonzero peak at an absent slot (11 = 0b01011: slot 2 is absent).
         let mut tampered = pi.clone();
         tampered[1 + 2] = F::ONE;
-        assert_eq!(AssignedMmr::<F, CAPACITY>::from_public_input(&tampered), None);
+        assert_eq!(
+            AssignedMmr::<F, CAPACITY>::from_public_input(&tampered),
+            None
+        );
 
         // Size out of range.
         let mut tampered = pi.clone();
         tampered[0] = F::from(1 << CAPACITY);
-        assert_eq!(AssignedMmr::<F, CAPACITY>::from_public_input(&tampered), None);
+        assert_eq!(
+            AssignedMmr::<F, CAPACITY>::from_public_input(&tampered),
+            None
+        );
     }
 
     #[test]

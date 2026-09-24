@@ -23,7 +23,7 @@ use midnight_proofs::{
 };
 
 use crate::{
-    field::{decomposition::chip::P2RDecompositionChip, NativeChip, NativeGadget},
+    field::{NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip},
     hash::poseidon::PoseidonChip,
     instructions::hash::HashCPU,
     mmr::{
@@ -68,7 +68,11 @@ impl Circuit<F> for PrefixCircuit {
         )
     }
 
-    fn synthesize(&self, config: Self::Config, mut layouter: impl Layouter<F>) -> Result<(), Error> {
+    fn synthesize(
+        &self,
+        config: Self::Config,
+        mut layouter: impl Layouter<F>,
+    ) -> Result<(), Error> {
         let ng = Ng::new_from_scratch(&config.0);
         let hash = H::new_from_scratch(&config.1);
         let gadget = MmrGadget::<F, Ng, H>::new(&ng, &hash);
@@ -80,7 +84,11 @@ impl Circuit<F> for PrefixCircuit {
     }
 }
 
-fn circuit_ok(small: MmrState<F, CAPACITY>, big: MmrState<F, CAPACITY>, path: SummitPath<F, CAPACITY>) -> bool {
+fn circuit_ok(
+    small: MmrState<F, CAPACITY>,
+    big: MmrState<F, CAPACITY>,
+    path: SummitPath<F, CAPACITY>,
+) -> bool {
     let circuit = PrefixCircuit {
         small: Value::known(small),
         big: Value::known(big),
@@ -119,7 +127,7 @@ fn consistency_prefix_cpu_vs_circuit() {
             if a > 0 {
                 cases.push(("shifted-content", shifted[a].state(), honest));
             }
-            if b + 1 <= MAX as usize {
+            if b < MAX as usize {
                 cases.push((
                     "reversed",
                     mmrs[b + 1].state(),
@@ -130,7 +138,10 @@ fn consistency_prefix_cpu_vs_circuit() {
             for (tag, small, path) in cases {
                 let cpu = Mmr::<F, H, CAPACITY>::is_prefix(&small, &mmrs[b].state(), &path);
                 let zk = circuit_ok(small, mmrs[b].state(), path);
-                assert_eq!(cpu, zk, "DISAGREE a={a} b={b} case={tag}: cpu={cpu} circuit={zk}");
+                assert_eq!(
+                    cpu, zk,
+                    "DISAGREE a={a} b={b} case={tag}: cpu={cpu} circuit={zk}"
+                );
             }
         }
     }
@@ -178,7 +189,11 @@ fn prefix_residual_peaks_are_position_bound() {
     let (a, b) = (3usize, 11usize);
     let path = mmrs[b].prove_prefix(a as u64);
     let good = mmrs[a].state();
-    assert!(Mmr::<F, H, CAPACITY>::is_prefix(&good, &mmrs[b].state(), &path));
+    assert!(Mmr::<F, H, CAPACITY>::is_prefix(
+        &good,
+        &mmrs[b].state(),
+        &path
+    ));
 
     // The height-1 node covering leaves 2-3: a real node of B, wrong position.
     let mut forged = good;
@@ -186,12 +201,20 @@ fn prefix_residual_peaks_are_position_bound() {
         <H as HashCPU<F, F>>::hash(&[F::from(2)]),
         <H as HashCPU<F, F>>::hash(&[F::from(3)]),
     ]);
-    assert!(!Mmr::<F, H, CAPACITY>::is_prefix(&forged, &mmrs[b].state(), &path));
+    assert!(!Mmr::<F, H, CAPACITY>::is_prefix(
+        &forged,
+        &mmrs[b].state(),
+        &path
+    ));
     assert!(!circuit_ok(forged, mmrs[b].state(), path));
 
     let mut swapped = good;
     swapped.peaks.swap(0, 1);
-    assert!(!Mmr::<F, H, CAPACITY>::is_prefix(&swapped, &mmrs[b].state(), &path));
+    assert!(!Mmr::<F, H, CAPACITY>::is_prefix(
+        &swapped,
+        &mmrs[b].state(),
+        &path
+    ));
     assert!(!circuit_ok(swapped, mmrs[b].state(), path));
 }
 

@@ -17,9 +17,9 @@ use std::{array, marker::PhantomData};
 
 use crate::{CircuitField, instructions::hash::HashCPU};
 
-/// A Merkle Mountain Range of at most `CAPACITY` mountains, with a capacity of
-/// `2^CAPACITY - 1` elements. See the [module documentation](crate::mmr) for the
-/// structure.
+/// A Merkle Mountain Range of at most `CAPACITY` mountains, with room for
+/// `2^CAPACITY - 1` elements. See the [module documentation](crate::mmr) for
+/// the structure.
 ///
 /// Slot `i` of `mountains` holds the mountain of height `i`, or `None` when
 /// bit `i` of `size` is unset.
@@ -44,8 +44,11 @@ pub struct MmrState<F, const CAPACITY: usize> {
 
 /// Witness for a prefix claim: `steps[i]` is the node of the big MMR that is
 /// absorbed when climbing from height `i` to height `i + 1`, on the heights
-/// where the small MMR does not provide a peak of its own. Unused entries
-/// (including `steps[CAPACITY - 1]`, which can never be consumed) are `F::ZERO`.
+/// where the small MMR does not supply a left sibling of its own. At the
+/// height where the climb starts its peak is the climbing node itself, so a
+/// sibling is witnessed there too. Unused entries
+/// (including `steps[CAPACITY - 1]`, which can never be consumed) are
+/// `F::ZERO`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SummitPath<F, const CAPACITY: usize> {
     pub(crate) steps: [F; CAPACITY],
@@ -145,7 +148,6 @@ fn merge_mountains<F: CircuitField, H: HashCPU<F, F>>(
     let peak = <H as HashCPU<F, F>>::hash(&[left.peak(), right.peak()]);
     // Thanks to the in-order layout, merging is a concatenation. We reuse
     // the left buffer to avoid a fresh allocation on every merge.
-    left.nodes.reserve(right.nodes.len() + 1);
     left.nodes.push(peak);
     left.nodes.extend_from_slice(&right.nodes);
     left
@@ -169,7 +171,8 @@ where
         }
     }
 
-    /// The maximum number of elements the MMR can hold: `2^CAPACITY - 1`.
+    /// The maximum number of elements the MMR can hold, `2^CAPACITY - 1`
+    /// (the `CAPACITY` parameter counts mountains, not elements).
     fn capacity() -> u64 {
         if CAPACITY >= 64 {
             u64::MAX
@@ -211,7 +214,7 @@ where
 
     /// The peak of each mountain; `None` iff bit `i` of `size` is unset.
     pub fn peaks(&self) -> [Option<F>; CAPACITY] {
-        array::from_fn(|i| self.mountains[i].as_ref().map(|m| m.peak()))
+        array::from_fn(|i| self.mountains[i].as_ref().map(Mountain::peak))
     }
 
     /// The succinct state of the MMR, with absent peaks encoded as `F::ZERO`.
@@ -289,8 +292,8 @@ where
         big: &MmrState<F, CAPACITY>,
         path: &SummitPath<F, CAPACITY>,
     ) -> bool {
-        // States whose size exceeds CAPACITY bits are not representable
-        // in-circuit and are rejected outright.
+        // States whose size does not fit in CAPACITY bits are not
+        // representable in-circuit and are rejected outright.
         if small.size > Self::capacity() || big.size > Self::capacity() {
             return false;
         }
@@ -414,10 +417,14 @@ where
     /// `leaf_index` are supplied by the proof as a hint. This is the
     /// off-circuit specification of the in-circuit
     /// [is_member](crate::mmr::mmr_gadget::MmrGadget::is_member).
-    pub fn is_member(state: &MmrState<F, CAPACITY>, elem: F, proof: &MembershipProof<F, CAPACITY>) -> bool {
-        // A size exceeding CAPACITY bits is not representable in-circuit. The leaf
-        // index needs no such check: only its bits below `height` are read,
-        // here as in the gadget.
+    pub fn is_member(
+        state: &MmrState<F, CAPACITY>,
+        elem: F,
+        proof: &MembershipProof<F, CAPACITY>,
+    ) -> bool {
+        // A size that does not fit in CAPACITY bits is not representable
+        // in-circuit. The leaf index needs no such check: only its bits below
+        // `height` are read, here as in the gadget.
         if state.size > Self::capacity() {
             return false;
         }

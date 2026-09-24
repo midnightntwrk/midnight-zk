@@ -8,7 +8,18 @@
       "max_deg": "5",
       "permutations": "9",
       "point_sets": "3",
-      "rows": "155",
+      "rows": "116",
+      "table_rows": "3"
+    },
+    "Membership (bit)": {
+      "advice_columns": "8",
+      "column_queries": "32",
+      "fixed_columns": "32",
+      "lookups": "1",
+      "max_deg": "5",
+      "permutations": "9",
+      "point_sets": "3",
+      "rows": "133",
       "table_rows": "3"
     },
     "Prefix": {
@@ -19,7 +30,18 @@
       "max_deg": "5",
       "permutations": "9",
       "point_sets": "3",
-      "rows": "218",
+      "rows": "141",
+      "table_rows": "3"
+    },
+    "Prefix (bit)": {
+      "advice_columns": "8",
+      "column_queries": "32",
+      "fixed_columns": "32",
+      "lookups": "1",
+      "max_deg": "5",
+      "permutations": "9",
+      "point_sets": "3",
+      "rows": "167",
       "table_rows": "3"
     }
   },

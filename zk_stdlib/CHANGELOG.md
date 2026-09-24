@@ -8,6 +8,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 ### Added
+* Expose the Merkle Mountain Range gadget through `ZkStdLib::mmr` [#509](https://github.com/midnightntwrk/midnight-zk/pull/509)
 * `single-h-commitment` feature and improved SRS loading for tests [#276](https://github.com/midnightntwrk/midnight-zk/pull/276)
 * Added an example verifying an ethereum signature [#177](https://github.com/midnightntwrk/midnight-zk/pull/177)
 * `setup_vk_with_k` for generating a verifying key with an explicit circuit size parameter [#227](https://github.com/midnightntwrk/midnight-zk/pull/227)
