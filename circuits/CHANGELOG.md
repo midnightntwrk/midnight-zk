@@ -17,6 +17,10 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 
 ### Changed
+* `TranscriptGadget::read_commitment` orders the labels of a group by their `Ord` itself, mirroring the off-circuit `read_commitment`, so `verifier/argument.rs` no longer sorts them before reading. A repeated label panics [#515](https://github.com/midnightntwrk/midnight-zk/pull/515)
+* Adapt the verifier gadget to the logup polynomials moving into the generic argument phase groups: read one commitment for the phase-1 group holding every multiplicities polynomial and one for the phase-2 group holding every aggregator, helper and trashcan polynomial, and look each logup evaluation up by label. `verifier/lookup.rs` is folded into `verifier/argument.rs`, while the constraint expressions stay in `verifier/expressions/lookup.rs`. Changes the VK of every circuit that uses the verifier gadget [#515](https://github.com/midnightntwrk/midnight-zk/pull/515)
+* Skip the little-endian `u32` byte-length prefix that now frames each commitment group in the proof when parsing it in `TranscriptGadget::read_commitment`. The prefix is not hashed, and the gadget still reads exactly one point per label [#515](https://github.com/midnightntwrk/midnight-zk/pull/515)
+* Resolve a query's commitment by matching its `PolynomialLabel` even when the group holds a single polynomial, mirroring the off-circuit change. Only the `Linear` linearization commitment is taken as it is [#515](https://github.com/midnightntwrk/midnight-zk/pull/515)
 * Adapt the verifier gadget to the generic argument groups introduced in `midnight-proofs`: read one commitment for the whole trash group instead of one per trashcan, and read the trash challenge in its new earlier position. The internal `verifier/trash.rs` is folded into a new `verifier/argument.rs`. Changes the VK of every circuit that uses the verifier gadget [#513](https://github.com/midnightntwrk/midnight-zk/pull/513)
 * Removes the Labelable trait [#491](https://github.com/midnightntwrk/midnight-zk/pull/491)
 * Migrate to Rust edition 2024; declare MSRV 1.90. Both are now inherited from the workspace [#508](https://github.com/midnightntwrk/midnight-zk/pull/508)
@@ -37,6 +41,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Replace string-based VK-name keys with `PolynomialLabel`-keyed `fixed_bases` maps throughout the verifier gadget [#430](https://github.com/midnightntwrk/midnight-zk/pull/430)
 
 ### Removed
+* Remove the internal `verifier/lookup.rs` module and its `Committed`/`Evaluated`/`LookupEvaluated` types; the in-circuit lookup argument no longer carries any transcript plumbing of its own [#515](https://github.com/midnightntwrk/midnight-zk/pull/515)
 * Remove `Expression::Challenge` variant and phase-parameterized `Any::Advice`; multi-phase advice columns are no longer supported [#376](https://github.com/midnightntwrk/midnight-zk/pull/376)
 * Remove `LabeledPoint`, `fixed_commitment_name`, `perm_commitment_name`, and `vk_name` helpers from the verifier module [#430](https://github.com/midnightntwrk/midnight-zk/pull/430)
 

@@ -3,7 +3,7 @@
 use ff::PrimeField;
 
 use crate::{
-    plonk::{argument, logup, permutation},
+    plonk::{argument, permutation},
     poly::{Coeff, LagrangeCoeff, Polynomial, commitment::PolynomialCommitmentScheme},
 };
 
@@ -15,7 +15,7 @@ pub struct ProverTrace<F: PrimeField> {
     #[allow(dead_code)]
     // This field will be useful for split accumulation
     pub(crate) instance_values: Vec<Polynomial<F, LagrangeCoeff>>,
-    pub(crate) lookups: Vec<logup::prover::Committed<F>>,
+    pub(crate) phase1_committed: argument::prover::Committed<F, Coeff>,
     pub(crate) phase2_committed: argument::prover::Committed<F, Coeff>,
     pub(crate) permutations: permutation::prover::Committed<F>,
     pub(crate) beta: F,
@@ -29,8 +29,12 @@ pub struct ProverTrace<F: PrimeField> {
 #[derive(Debug)]
 pub struct VerifierTrace<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> {
     pub(crate) advice_commitments: Vec<PCS::Commitment>,
-    pub(crate) lookups: Vec<logup::verifier::Committed<F, PCS>>,
-    pub(crate) phase2_committed: argument::verifier::Committed<F, PCS>,
+    /// `None` when the group has no polynomials, which the prover does not
+    /// commit to.
+    pub(crate) phase1_committed: Option<argument::verifier::Committed<F, PCS>>,
+    /// `None` when the group has no polynomials, which the prover does not
+    /// commit to.
+    pub(crate) phase2_committed: Option<argument::verifier::Committed<F, PCS>>,
     pub(crate) permutations: permutation::verifier::Committed<F, PCS>,
     pub(crate) beta: F,
     pub(crate) gamma: F,

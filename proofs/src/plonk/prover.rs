@@ -123,13 +123,12 @@ where
     let mult_blinding_count = pk.vk.cs.blinding_factors() + 1;
     let mult_blindings: Vec<Vec<F>> = sample_blindings(num_lookups, mult_blinding_count);
 
-    // Commit to the multiplicities columns.
-    // Computation in parallel, then sequential transcript writes.
-    let lookups: Vec<logup::prover::ComputedMultiplicities<F>> = {
+    // Compute the multiplicities columns in parallel. They are committed to
+    // below, as the phase1 argument group.
+    let logup_multiplicities: Vec<logup::prover::ComputedMultiplicities<F>> = {
         let logup_args: Vec<_> =
             pk.vk.cs.lookups.iter().map(|l| l.chunk_by_degree(pk.vk.cs.degree())).collect();
-        // Compute all lookups in parallel (no transcript access, no rng).
-        let results: Vec<_> = logup_args
+        logup_args
             .par_iter()
             .enumerate()
             .zip(mult_blindings.par_iter())
@@ -137,7 +136,6 @@ where
                 logup.compute_multiplicities_parallel(
                     argument_index,
                     pk,
-                    params,
                     theta,
                     &advice.advice_polys,
                     &pk.fixed_values,
@@ -145,16 +143,20 @@ where
                     blinds,
                 )
             })
-            .collect::<Result<Vec<_>, Error>>()?;
-        // Sequential transcript writes to preserve Fiat-Shamir ordering.
-        results
-            .into_iter()
-            .map(|(computed, commitment)| {
-                transcript.write(&commitment)?;
-                Ok(computed)
-            })
             .collect::<Result<Vec<_>, Error>>()?
     };
+
+    let logup_multiplicities_len = logup_multiplicities.len();
+    // TODO: Check this clone - see if we can remove it.
+    let phase1_polys_map = BTreeMap::from_iter(logup_multiplicities.iter().map(|c| {
+        (
+            PolynomialLabel::LogupMultiplicities(c.argument_index),
+            c.multiplicities.clone(),
+        )
+    }));
+
+    let phase1_committed =
+        argument::prover::Committed::commit::<CS, T>(params, phase1_polys_map, transcript)?;
 
     // Sample beta challenge
     let beta: F = transcript.squeeze_challenge();
@@ -169,84 +171,65 @@ where
     let chunk_len = pk.vk.cs_degree - 2;
     let num_perm_sets = pk.vk.cs.permutation.columns.chunks(chunk_len).len();
     let perm_blindings: Vec<Vec<F>> = sample_blindings(num_perm_sets, blinding_factors);
-    let logup_blindings: Vec<Vec<F>> = sample_blindings(lookups.len(), blinding_factors);
+    let logup_blindings: Vec<Vec<F>> = sample_blindings(logup_multiplicities_len, blinding_factors);
 
     // Overlap permutation and logup computation.
     // Both only need β (and γ for permutation). Neither touches the transcript.
     // Transcript writes preserve the original ordering:
     // permutation commitments first, then logup commitments.
-    let (perm_computed, logup_computed) = rayon::join(
-        || {
-            pk.vk.cs.permutation.compute::<F, CS>(
-                params,
-                pk,
-                &pk.permutation,
-                &advice.advice_polys,
-                &pk.fixed_values,
-                &instance.instance_values,
-                beta,
-                gamma,
-                perm_blindings,
-            )
-        },
-        || -> Result<_, Error> {
-            let computed: Vec<_> = lookups
-                .into_par_iter()
-                .zip(logup_blindings.into_par_iter())
-                .map(|(lookup, blindings)| {
-                    lookup.compute_logderivative(pk, params, beta, blindings)
-                })
-                .collect::<Result<Vec<_>, _>>()?;
-            let all_helper_commitments: Vec<Vec<CS::Commitment>> = computed
-                .par_iter()
-                .map(|c| {
-                    c.helper_polys_lagrange
-                        .par_iter()
-                        .enumerate()
-                        .map(|(j, h)| {
-                            let h_poly = domain.lagrange_from_vec(h.clone());
-                            CS::commit(
-                                params,
-                                &h_poly,
-                                PolynomialLabel::LogupHelper(c.argument_index, j),
-                            )
-                        })
-                        .collect()
-                })
-                .collect();
-            Ok((computed, all_helper_commitments))
-        },
+    let perm_computed = pk.vk.cs.permutation.compute::<F, CS>(
+        params,
+        pk,
+        &pk.permutation,
+        &advice.advice_polys,
+        &pk.fixed_values,
+        &instance.instance_values,
+        beta,
+        gamma,
+        perm_blindings,
     );
 
-    // Write permutation commitments first.
     let permutations = perm_computed.write_and_convert(domain, transcript)?;
 
-    // Then write logup commitments and convert to coefficient form.
-    let (computed, all_helper_commitments) = logup_computed?;
-    for (c, helper_commitments) in computed.iter().zip(all_helper_commitments.iter()) {
-        for h_commitment in helper_commitments {
-            transcript.write(h_commitment)?;
-        }
-        transcript.write(&c.aggregator_commitment)?;
-    }
-    let lookups: Vec<logup::prover::Committed<F>> = computed
+    let mut phase2_polys_map: BTreeMap<PolynomialLabel, Polynomial<F, LagrangeCoeff>> =
+        BTreeMap::new();
+
+    let logup_polys_maps = logup_multiplicities
+        .into_par_iter()
+        .zip(logup_blindings.into_par_iter())
+        .map(|(lookup, blindings)| lookup.compute_logderivative(pk, beta, blindings))
+        .collect::<Result<Vec<_>, Error>>()?
         .into_par_iter()
         .map(|c| {
-            let helper_polys = c
-                .helper_polys_lagrange
-                .into_iter()
-                .map(|h| domain.lagrange_to_coeff(domain.lagrange_from_vec(h)))
-                .collect();
-            logup::prover::Committed {
-                argument_index: c.argument_index,
-                multiplicities: domain.lagrange_to_coeff(c.multiplicities),
-                helper_polys,
-                aggregator_poly: domain.lagrange_to_coeff(c.aggregator_poly),
-            }
+            BTreeMap::from_iter(
+                [
+                    c.helper_polys_lagrange
+                        .into_par_iter()
+                        .enumerate()
+                        .map(|(j, p)| {
+                            (
+                                PolynomialLabel::LogupHelper(c.argument_index, j),
+                                domain.lagrange_from_vec(p),
+                            )
+                        })
+                        .collect::<Vec<_>>(),
+                    vec![(
+                        PolynomialLabel::LogupAggregator(c.argument_index),
+                        c.aggregator_poly,
+                    )],
+                ]
+                .concat(),
+            )
         })
-        .collect();
+        .collect::<Vec<_>>();
 
-    let mut phase2_polys_map: BTreeMap<PolynomialLabel, Polynomial<F, Coeff>> = BTreeMap::new();
+    for polys_map in logup_polys_maps {
+        for (label, p) in polys_map {
+            if phase2_polys_map.insert(label, p).is_some() {
+                return Err(Error::DuplicatedLabel);
+            }
+        }
+    }
 
     for (i, trash) in pk.vk.cs.trashcans.iter().enumerate() {
         let p = trash.compute_trash_poly(
@@ -279,11 +262,16 @@ where
         .map(|p| domain.lagrange_to_coeff(p))
         .collect();
 
+    let domain = pk.vk.get_domain();
+
+    let phase1_committed = phase1_committed.into_coeff(domain);
+    let phase2_committed = phase2_committed.into_coeff(domain);
+
     Ok(ProverTrace {
         advice_polys,
         instance_polys,
         instance_values,
-        lookups,
+        phase1_committed,
         phase2_committed,
         permutations,
         beta,
@@ -331,7 +319,7 @@ where
     let ProverTrace {
         advice_polys,
         instance_polys,
-        lookups,
+        phase1_committed,
         phase2_committed,
         permutations,
         beta,
@@ -343,6 +331,7 @@ where
     } = trace;
 
     let x: F = CS::squeeze_evaluation_point(transcript);
+    let domain = pk.vk.get_domain();
 
     let Evals {
         fixed_evals,
@@ -364,14 +353,11 @@ where
     // Evaluate the permutations, if any, at omega^i x.
     let permutations = permutations.evaluate(pk, x, transcript)?;
 
-    // Evaluate the lookups, if any, at omega^i x.
-    let lookups: Vec<logup::prover::Evaluated<F>> = lookups
-        .into_iter()
-        .map(|p| p.evaluate(pk, x, transcript))
-        .collect::<Result<Vec<_>, _>>()?;
+    let phase1_evaluated: argument::prover::Evaluated<F> =
+        phase1_committed.evaluate(domain, x, transcript)?;
 
     let phase2_evaluated: argument::prover::Evaluated<F> =
-        phase2_committed.evaluate(x, transcript)?;
+        phase2_committed.evaluate(domain, x, transcript)?;
 
     // Partially evaluate batched identities (without fixed columns
     // corresponding to simple, multiplicative selectors)
@@ -383,7 +369,7 @@ where
         &instance_evals,
         &advice_evals,
         &permutations.evaluated,
-        lookups.iter().map(|inner| &inner.evaluated),
+        &phase1_evaluated.evals_map,
         &phase2_evaluated.evals_map,
         &permutations_common,
         x,
@@ -410,7 +396,7 @@ where
         &instance_polys,
         &advice_polys,
         &permutations,
-        &lookups,
+        &phase1_evaluated,
         &phase2_evaluated,
         x,
         &lin_poly_non_constant_part,
@@ -635,7 +621,7 @@ pub(super) fn compute_nu_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommit
     let ProverTrace {
         advice_polys,
         instance_polys,
-        lookups,
+        phase1_committed,
         phase2_committed,
         permutations,
         beta,
@@ -645,14 +631,15 @@ pub(super) fn compute_nu_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommit
         y,
         ..
     } = &trace;
+    let domain = pk.vk.get_domain();
     // Calculate the advice and instance cosets
     let advice_cosets: Vec<Polynomial<F, ExtendedLagrangeCoeff>> = advice_polys
         .par_iter()
-        .map(|poly| pk.vk.get_domain().coeff_to_extended(poly.clone()))
+        .map(|poly| domain.coeff_to_extended(poly.clone()))
         .collect();
     let instance_cosets: Vec<Polynomial<F, ExtendedLagrangeCoeff>> = instance_polys
         .par_iter()
-        .map(|poly| pk.vk.get_domain().coeff_to_extended(poly.clone()))
+        .map(|poly| domain.coeff_to_extended(poly.clone()))
         .collect();
 
     // Evaluate the numerator polynomial nu(X) of the quotient polynomial
@@ -669,7 +656,7 @@ pub(super) fn compute_nu_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommit
         *gamma,
         *theta,
         *trash_challenge,
-        lookups,
+        phase1_committed,
         phase2_committed,
         permutations,
         &pk.l0,
@@ -875,7 +862,7 @@ pub(super) fn compute_queries<
     instance_polys: &'a [Polynomial<F, Coeff>],
     advice_polys: &'a [Polynomial<F, Coeff>],
     permutations: &'a permutation::prover::Evaluated<F>,
-    lookups: &'a [logup::prover::Evaluated<F>],
+    phase1_evals: &'a argument::prover::Evaluated<F>,
     phase2_evals: &'a argument::prover::Evaluated<F>,
     x: F,
     lin_poly_non_constant_part: &'a Polynomial<F, Coeff>,
@@ -903,7 +890,7 @@ pub(super) fn compute_queries<
             }),
         )
         .chain(permutations.open(pk, x))
-        .chain(lookups.iter().flat_map(move |p| p.open(pk, x)))
+        .chain(phase1_evals.open())
         .chain(phase2_evals.open())
         .chain(
             pk.vk

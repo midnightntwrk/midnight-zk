@@ -39,7 +39,6 @@ use crate::{
             eval_expression, lookup::lookup_expressions, permutation::permutation_expressions,
             trash::trash_expressions,
         },
-        lookup,
         pcs::{InCircuitHomomorphicCommitment, InCircuitPCS, VerifierQuery},
         permutation::{self, evaluate_permutation_common},
         traces::VerifierTrace,
@@ -356,12 +355,17 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         // Sample theta challenge for keeping lookup columns linearly independent
         let theta = transcript.squeeze_challenge(layouter)?;
 
-        let multiplicities_committed = cs
+        let logups = cs
             .lookups()
             .iter()
-            .enumerate()
-            .map(|(i, _l)| lookup::read_multiplicities(i, layouter, &mut transcript))
-            .collect::<Result<Vec<_>, Error>>()?;
+            .map(|l| l.chunk_by_degree(assigned_vk.cs_degree))
+            .collect::<Vec<_>>();
+
+        let phase1_labels =
+            (0..logups.len()).map(PolynomialLabel::LogupMultiplicities).collect::<Vec<_>>();
+
+        let phase1_committed =
+            argument::read_committed_group(&phase1_labels, layouter, &mut transcript)?;
 
         let beta = transcript.squeeze_challenge(layouter)?;
         let gamma = transcript.squeeze_challenge(layouter)?;
@@ -372,20 +376,23 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             // Hash each permutation product commitment
             permutation::read_product_commitments(layouter, &mut transcript, cs)?;
 
-        let lookups_committed = multiplicities_committed
-            .into_iter()
-            .zip(cs.lookups().iter())
-            .enumerate()
-            .map(|(i, (m, batch))| {
-                let nb_flat = batch.num_chunks(assigned_vk.cs_degree);
-                // Hash each lookup product commitment
-                m.read_commitment(i, nb_flat, layouter, &mut transcript)
-            })
-            .collect::<Result<Vec<_>, _>>()?;
+        // The label order does not matter here, labels are ordered in
+        // `read_committed`.
+        let mut phase2_labels = Vec::new();
 
-        let phase2_labels =
-            (0..cs.trashcans().len()).map(PolynomialLabel::Trash).collect::<Vec<_>>();
-        let phase2_committed = argument::read_committed(&phase2_labels, layouter, &mut transcript)?;
+        for (argument_index, logup_argument) in logups.iter().enumerate() {
+            phase2_labels.push(PolynomialLabel::LogupAggregator(argument_index));
+            for j in 0..logup_argument.num_chunks() {
+                phase2_labels.push(PolynomialLabel::LogupHelper(argument_index, j));
+            }
+        }
+
+        for argument_index in 0..cs.trashcans().len() {
+            phase2_labels.push(PolynomialLabel::Trash(argument_index));
+        }
+
+        let phase2_committed =
+            argument::read_committed_group(&phase2_labels, layouter, &mut transcript)?;
 
         // Sample y challenge, which keeps the gates linearly independent
         let y = transcript.squeeze_challenge(layouter)?;
@@ -393,7 +400,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         Ok((
             VerifierTrace {
                 advice_commitments,
-                lookups: lookups_committed,
+                phase1_committed,
                 phase2_committed,
                 permutations: permutation_committed,
                 beta,
@@ -518,7 +525,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
 
         let VerifierTrace {
             advice_commitments,
-            lookups,
+            phase1_committed,
             phase2_committed,
             permutations,
             beta,
@@ -621,12 +628,25 @@ impl<S: SelfEmulation> VerifierGadget<S> {
 
         let permutations_evaluated = permutations.evaluate(layouter, &mut transcript)?;
 
-        let lookups_evaluated = lookups
-            .into_iter()
-            .map(|lookup| lookup.evaluate(layouter, &mut transcript))
-            .collect::<Result<Vec<_>, Error>>()?;
+        let omega = assigned_vk.domain.get_omega();
+        let omega_inv = omega.invert().unwrap();
+        let omega_last = omega_inv.pow([cs.blinding_factors() as u64 + 1]);
+        let x_next = self.scalar_chip.mul_by_constant(layouter, &x, omega)?;
+        let x_prev = self.scalar_chip.mul_by_constant(layouter, &x, omega_inv)?;
+        let x_last = self.scalar_chip.mul_by_constant(layouter, &x, omega_last)?;
 
-        let phase2_evaluated = phase2_committed.evaluate(&x, layouter, &mut transcript)?;
+        let phase1_evaluated = phase1_committed
+            .map(|committed| committed.evaluate(&x, &x_next, layouter, &mut transcript))
+            .transpose()?;
+
+        let phase2_evaluated = phase2_committed
+            .map(|committed| committed.evaluate(&x, &x_next, layouter, &mut transcript))
+            .transpose()?;
+
+        // An empty group contributes no evaluations and no queries.
+        let no_evals = BTreeMap::new();
+        let phase1_evals = phase1_evaluated.as_ref().map_or(&no_evals, |e| &e.evals_map);
+        let phase2_evals = phase2_evaluated.as_ref().map_or(&no_evals, |e| &e.evals_map);
 
         // Partially evaluate batched identities
         // (without fixed columns corresponding to simple selectors)
@@ -692,17 +712,19 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         .for_each(|perm_id| expressions.push((None, perm_id)));
 
         // Evaluate polys from lookup argument
-        lookups_evaluated
+        cs.lookups()
             .iter()
-            .zip(cs.lookups().iter())
-            .map(|(p, argument)| {
-                let argument = argument.chunk_by_degree(assigned_vk.cs_degree);
+            .map(|l| l.chunk_by_degree(assigned_vk.cs_degree))
+            .enumerate()
+            .map(|(argument_index, argument)| {
                 let per_flat_inputs: Vec<&[Vec<_>]> =
                     argument.input_expression_chunks().iter().map(|c| c.as_slice()).collect();
                 lookup_expressions(
                     layouter,
                     &self.scalar_chip,
-                    &p.evaluated,
+                    argument_index,
+                    phase1_evals,
+                    phase2_evals,
                     argument.selector_expression(),
                     &per_flat_inputs,
                     argument.table_expressions(),
@@ -730,7 +752,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                     layouter,
                     &self.scalar_chip,
                     index,
-                    &phase2_evaluated.evals_map,
+                    phase2_evals,
                     argument.selector(),
                     argument.constraint_expressions(),
                     &advice_evals,
@@ -758,13 +780,6 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             splitting_factor,
             &limb_commitments,
         )?;
-
-        let omega = assigned_vk.domain.get_omega();
-        let omega_inv = omega.invert().unwrap();
-        let omega_last = omega_inv.pow([cs.blinding_factors() as u64 + 1]);
-        let x_next = self.scalar_chip.mul_by_constant(layouter, &x, omega)?;
-        let x_prev = self.scalar_chip.mul_by_constant(layouter, &x, omega_inv)?;
-        let x_last = self.scalar_chip.mul_by_constant(layouter, &x, omega_last)?;
 
         // Gets the evaluation point for a query at the given rotation.
         let get_point = |rotation: &Rotation| -> &AssignedNative<S::F> {
@@ -806,8 +821,8 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                 },
             ))
             .chain(permutations_evaluated.queries(&x, &x_next, &x_last))
-            .chain(lookups_evaluated.iter().flat_map(|lookup| lookup.queries(&x, &x_next)))
-            .chain(phase2_evaluated.queries())
+            .chain(phase1_evaluated.iter().flat_map(|evaluated| evaluated.queries()))
+            .chain(phase2_evaluated.iter().flat_map(|evaluated| evaluated.queries()))
             .chain(
                 cs.fixed_queries()
                     .iter()

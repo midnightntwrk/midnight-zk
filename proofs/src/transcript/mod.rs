@@ -13,8 +13,10 @@ const BLAKE2B_PREFIX_COMMON: u8 = 1;
 
 /// Hash function that can be used for transcript
 pub trait TranscriptHash: Clone {
-    /// Input type of the hash function
-    type Input;
+    /// Input type of the hash function. It is a collection, so that the input
+    /// of a composite value can be built by concatenating the inputs of its
+    /// parts.
+    type Input: IntoIterator + FromIterator<<Self::Input as IntoIterator>::Item>;
     /// Output type of the hash function
     type Output;
 

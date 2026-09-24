@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeMap,
     hash::Hash,
     iter::{self},
 };
@@ -71,14 +72,17 @@ where
     // Sample theta challenge for keeping lookup columns linearly independent
     let theta: F = transcript.squeeze_challenge();
 
-    // Read multiplicities
-    let lookup_multiplicities: Vec<_> = vk
+    let logups = vk
         .cs
         .lookups
         .iter()
-        .enumerate()
-        .map(|(i, l)| l.chunk_by_degree(vk.cs_degree).read_multiplicities::<_, CS>(i, transcript))
-        .collect::<Result<Vec<_>, _>>()?;
+        .map(|l| l.chunk_by_degree(vk.cs_degree))
+        .collect::<Vec<_>>();
+
+    let phase1_labels =
+        (0..logups.len()).map(PolynomialLabel::LogupMultiplicities).collect::<Vec<_>>();
+
+    let phase1_committed = argument::verifier::Committed::read_group(&phase1_labels, transcript)?;
 
     // Sample beta challenge
     let beta: F = transcript.squeeze_challenge();
@@ -91,27 +95,28 @@ where
 
     let permutations_committed = vk.cs.permutation.read_product_commitments(vk, transcript)?;
 
-    let lookups_committed: Vec<_> = lookup_multiplicities
-        .into_iter()
-        .zip(vk.cs.lookups.iter().map(|l| l.chunk_by_degree(vk.cs_degree)))
-        .enumerate()
-        .map(|(i, (m, batch))| m.read_commitment(i, batch.num_chunks(), transcript))
-        .collect::<Result<Vec<_>, _>>()?;
+    // The label order does not matter here, labels are ordered in `read`.
+    let mut phase2_labels = Vec::new();
 
-    let phase2_labels = vk
-        .cs
-        .trashcans
-        .iter()
-        .map(|argument| PolynomialLabel::Trash(argument.argument_index))
-        .collect::<Vec<_>>();
-    let phase2_committed = argument::verifier::Committed::read(&phase2_labels, transcript)?;
+    for (argument_index, logup_argument) in logups.iter().enumerate() {
+        phase2_labels.push(PolynomialLabel::LogupAggregator(argument_index));
+        for j in 0..logup_argument.num_chunks() {
+            phase2_labels.push(PolynomialLabel::LogupHelper(argument_index, j));
+        }
+    }
+
+    for trash_argument in vk.cs.trashcans.iter() {
+        phase2_labels.push(PolynomialLabel::Trash(trash_argument.argument_index))
+    }
+
+    let phase2_committed = argument::verifier::Committed::read_group(&phase2_labels, transcript)?;
 
     // Sample y challenge, which keeps the gates linearly independent.
     let y: F = transcript.squeeze_challenge();
 
     Ok(VerifierTrace {
         advice_commitments,
-        lookups: lookups_committed,
+        phase1_committed,
         phase2_committed,
         permutations: permutations_committed,
         beta,
@@ -155,7 +160,7 @@ where
 
     let VerifierTrace {
         advice_commitments,
-        lookups,
+        phase1_committed,
         phase2_committed,
         permutations,
         beta,
@@ -252,12 +257,20 @@ where
 
     let permutations_evaluated = permutations.evaluate(transcript)?;
 
-    let lookups_evaluated: Vec<_> = lookups
-        .into_iter()
-        .map(|lookup| lookup.evaluate(transcript))
-        .collect::<Result<Vec<_>, _>>()?;
+    let domain = vk.get_domain();
 
-    let phase2_evaluated = phase2_committed.evaluate(x, transcript)?;
+    let phase1_evaluated = phase1_committed
+        .map(|committed| committed.evaluate(x, domain, transcript))
+        .transpose()?;
+
+    let phase2_evaluated = phase2_committed
+        .map(|committed| committed.evaluate(x, domain, transcript))
+        .transpose()?;
+
+    // An empty group contributes no evaluations and no queries.
+    let no_evals = BTreeMap::new();
+    let phase1_evals = phase1_evaluated.as_ref().map_or(&no_evals, |e| &e.evals_map);
+    let phase2_evals = phase2_evaluated.as_ref().map_or(&no_evals, |e| &e.evals_map);
 
     // Partially evaluate batched identities
     // (without fixed columns corresponding to simple, multiplicative selectors)
@@ -267,8 +280,8 @@ where
         &instance_evals,
         &advice_evals,
         &permutations_evaluated.sets,
-        lookups_evaluated.iter().map(|inner| &inner.evaluated),
-        &phase2_evaluated.evals_map,
+        phase1_evals,
+        phase2_evals,
         &permutations_common,
         x,
         xn,
@@ -317,8 +330,8 @@ where
             },
         ))
         .chain(permutations_evaluated.queries(vk, x))
-        .chain(lookups_evaluated.iter().flat_map(|p| p.queries(vk, x)))
-        .chain(phase2_evaluated.queries())
+        .chain(phase1_evaluated.iter().flat_map(|e| e.queries()))
+        .chain(phase2_evaluated.iter().flat_map(|e| e.queries()))
         .chain(
             vk.cs
                 .fixed_queries
