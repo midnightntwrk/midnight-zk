@@ -472,9 +472,8 @@ where
 
             // Climb one level (the top height never climbs).
             if l < CAPACITY - 1 {
-                let dir = &index_bits[l];
-                let left = ng.select(layouter, dir, &proof.siblings[l], &node)?;
-                let right = ng.select(layouter, dir, &node, &proof.siblings[l])?;
+                let (left, right) =
+                    ng.cond_swap(layouter, &index_bits[l], &node, &proof.siblings[l])?;
                 node = self.hash_chip.hash(layouter, &[left, right])?;
             }
         }
