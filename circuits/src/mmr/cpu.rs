@@ -60,11 +60,10 @@ pub struct SummitPath<F, const CAPACITY: usize> {
 ///   gives the left/right direction when climbing from level `l` to `l + 1`.
 /// - `siblings[l]` is the sibling node absorbed at that climb.
 ///
-/// Only the low `height` bits of `leaf_index` (which must be smaller than
-/// `2^CAPACITY`) and the first `height` entries of `siblings` are meaningful; the
-/// rest is padding, ignored by verification ([Mmr::prove_membership] emits it
-/// as `F::ZERO`). The claim fixes no absolute position: `height` and
-/// `leaf_index` are a hint supplied by the prover (see
+/// Only the low `height` bits of `leaf_index` and the first `height` entries
+/// of `siblings` are meaningful; the rest is padding, ignored by verification
+/// ([Mmr::prove_membership] emits it as `F::ZERO`). The claim fixes no absolute
+/// position: `height` and `leaf_index` are a hint supplied by the prover (see
 /// [Mmr::is_member]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct MembershipProof<F, const CAPACITY: usize> {
@@ -417,9 +416,10 @@ where
     /// off-circuit specification of the in-circuit
     /// [is_member](crate::mmr::mmr_gadget::MmrGadget::is_member).
     pub fn is_member(state: &MmrState<F, CAPACITY>, elem: F, proof: &MembershipProof<F, CAPACITY>) -> bool {
-        // Sizes and leaf indices exceeding CAPACITY bits are not representable
-        // in-circuit.
-        if state.size > Self::capacity() || proof.leaf_index > Self::capacity() {
+        // A size exceeding CAPACITY bits is not representable in-circuit. The leaf
+        // index needs no such check: only its bits below `height` are read,
+        // here as in the gadget.
+        if state.size > Self::capacity() {
             return false;
         }
 
