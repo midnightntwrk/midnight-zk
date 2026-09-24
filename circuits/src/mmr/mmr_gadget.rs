@@ -332,9 +332,9 @@ where
             // zero, so the check is vacuous rather than wrong.
             self.record_eq(layouter, mode, &agree[i], &small.peaks[i], &big.peaks[i])?;
 
-            // fin: highest bit where the sizes differ (at most one height).
-            let bits_differ = ng.xor(layouter, &[a_bits[i].clone(), b_bits[i].clone()])?;
-            let fin = ng.and(layouter, &[agree[i + 1].clone(), bits_differ])?;
+            // fin: highest bit where the sizes differ (at most one height),
+            // i.e. the single step where the agree chain drops.
+            let fin = ng.xor(layouter, &[agree[i + 1].clone(), agree[i].clone()])?;
 
             // At said height, the small size must have the unset bit;
             // otherwise small > big and it cannot be a prefix.
