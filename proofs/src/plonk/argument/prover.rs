@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
-use ff::PrimeField;
+use ff::{PrimeField, WithSmallOrderMulGroup};
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 use crate::{
     plonk::{
@@ -8,8 +9,8 @@ use crate::{
         argument::{self, Evaluation},
     },
     poly::{
-        Coeff, Polynomial, PolynomialLabel, PolynomialRepresentation, ProverQuery,
-        commitment::PolynomialCommitmentScheme,
+        Coeff, EvaluationDomain, Polynomial, PolynomialLabel, PolynomialRepresentation,
+        ProverQuery, commitment::PolynomialCommitmentScheme,
     },
     transcript::{Hashable, Transcript},
     utils::arithmetic::eval_polynomial,
@@ -19,6 +20,18 @@ use crate::{
 #[derive(Debug)]
 pub(crate) struct Committed<F: PrimeField, B: PolynomialRepresentation> {
     pub(crate) polys_map: BTreeMap<PolynomialLabel, Polynomial<F, B>>,
+}
+
+impl<F: WithSmallOrderMulGroup<3>, B: PolynomialRepresentation> Committed<F, B> {
+    pub fn into_coeff(self, domain: &EvaluationDomain<F>) -> Committed<F, Coeff> {
+        Committed {
+            polys_map: self
+                .polys_map
+                .into_par_iter()
+                .map(|(label, p)| (label, B::self_to_coeff(domain, p)))
+                .collect::<BTreeMap<_, _>>(),
+        }
+    }
 }
 
 impl<F: PrimeField, B: PolynomialRepresentation> Committed<F, B> {
@@ -43,7 +56,8 @@ impl<F: PrimeField, B: PolynomialRepresentation> Committed<F, B> {
             &polys_map.values().collect::<Vec<_>>(),
             &polys_map.keys().cloned().collect::<Vec<_>>(),
         );
-        transcript.write(&commitment)?;
+
+        CS::write_commitment(transcript, &commitment)?;
 
         Ok(Self { polys_map })
     }
@@ -55,11 +69,18 @@ pub(crate) struct Evaluated<F: PrimeField> {
 }
 
 impl<F: PrimeField> Committed<F, Coeff> {
-    pub(crate) fn evaluate<T>(self, x: F, transcript: &mut T) -> Result<Evaluated<F>, Error>
+    pub(crate) fn evaluate<T>(
+        self,
+        domain: &EvaluationDomain<F>,
+        x: F,
+        transcript: &mut T,
+    ) -> Result<Evaluated<F>, Error>
     where
-        F: Hashable<T::Hash>,
+        F: Hashable<T::Hash> + WithSmallOrderMulGroup<3>,
         T: Transcript,
     {
+        let omega = domain.get_omega();
+
         let evaluate = |poly: &Polynomial<F, Coeff>, x: F| -> Evaluation<F> {
             Evaluation {
                 point: x,
@@ -71,7 +92,7 @@ impl<F: PrimeField> Committed<F, Coeff> {
             .polys_map
             .iter()
             .map(|(label, poly)| {
-                let eval_points = argument::eval_points(label, x);
+                let eval_points = argument::eval_points(label, x, omega);
                 (
                     label.clone(),
                     eval_points.into_iter().map(|point| evaluate(poly, point)).collect(),

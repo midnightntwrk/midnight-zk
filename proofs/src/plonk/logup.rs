@@ -132,15 +132,20 @@
 //! (Z(ωX) - Z(X) - s(X)·Σᵢhᵢ(X))·(t(X) + β) + m(X) = 0.
 //! ```
 
-use std::fmt::{self, Debug};
+use std::{
+    collections::BTreeMap,
+    fmt::{self, Debug},
+};
 
 use ff::{Field, PrimeField};
 
 use super::circuit::Expression;
-use crate::plonk::Selector;
+use crate::{
+    plonk::{Selector, argument},
+    poly::PolynomialLabel,
+};
 
 pub(crate) mod prover;
-pub(crate) mod verifier;
 
 /// A `BatchedArgument` collects all lookups that query the same table. For
 /// multi-column lookups (e.g., checking `(a, b) ∈ (t_1, t_2)`), columns are
@@ -376,15 +381,7 @@ impl<F: Field> ChunkedArgument<F> {
     }
 }
 
-#[derive(Debug)]
-pub(crate) struct Evaluated<F: PrimeField> {
-    multiplicities_eval: F,
-    helper_evals: Vec<F>,
-    accumulator_eval: F,
-    accumulator_next_eval: F,
-}
-
-impl<F: PrimeField> Evaluated<F> {
+impl<F: PrimeField> ChunkedArgument<F> {
     #[allow(clippy::too_many_arguments)]
     /// Computes the constraint expressions.
     ///
@@ -404,10 +401,12 @@ impl<F: PrimeField> Evaluated<F> {
     #[allow(clippy::too_many_arguments)]
     pub(in crate::plonk) fn expressions<'a>(
         &'a self,
+        argument_index: usize,
+        phase1_evals_map: &BTreeMap<PolynomialLabel, Vec<argument::Evaluation<F>>>,
+        phase2_evals_map: &BTreeMap<PolynomialLabel, Vec<argument::Evaluation<F>>>,
         l_0: F,
         l_last: F,
         l_blind: F,
-        argument: &'a ChunkedArgument<F>,
         theta: F,
         beta: F,
         advice_evals: &[F],
@@ -441,18 +440,32 @@ impl<F: PrimeField> Evaluated<F> {
                 .fold(F::ZERO, |acc, eval| acc * theta + eval)
         };
 
-        let compressed_table = compress_expressions(&argument.table_expressions);
-        let selector =
-            evaluate_expressions(std::slice::from_ref(&argument.selector)).swap_remove(0);
+        let compressed_table = compress_expressions(&self.table_expressions);
+        let selector = evaluate_expressions(std::slice::from_ref(&self.selector)).swap_remove(0);
 
-        let boundary = (l_0 + l_last) * self.accumulator_eval;
+        let multiplicities_eval = phase1_evals_map
+            .get(&PolynomialLabel::LogupMultiplicities(argument_index))
+            .unwrap()[0]
+            .eval();
+
+        let accumulator_evals =
+            phase2_evals_map.get(&PolynomialLabel::LogupAggregator(argument_index)).unwrap();
+        let accumulator_eval = accumulator_evals[0].eval();
+        let accumulator_next_eval = accumulator_evals[1].eval();
+
+        let boundary = (l_0 + l_last) * accumulator_eval;
 
         let mut sum_helpers = F::ZERO;
-        let helper_constraints: Vec<F> = argument
+        let helper_constraints: Vec<F> = self
             .input_expression_chunks()
             .iter()
-            .zip(self.helper_evals.iter())
-            .map(|(chunk, &helper_eval)| {
+            .enumerate()
+            .map(|(j, chunk)| {
+                let helper_eval = phase2_evals_map
+                    .get(&PolynomialLabel::LogupHelper(argument_index, j))
+                    .unwrap()[0]
+                    .eval();
+
                 let compressed_inputs_with_beta: Vec<F> =
                     chunk.iter().map(|input| compress_expressions(input) + beta).collect();
 
@@ -472,10 +485,9 @@ impl<F: PrimeField> Evaluated<F> {
         // LogUp accumulator constraint with shared m and Z:
         // (Z(ωx) - Z(x) - s·Σᵢhᵢ)·(t(x) + β) + m(x) = 0, on active rows
         let accumulator_constraint = {
-            let diff =
-                (self.accumulator_next_eval - self.accumulator_eval - selector * sum_helpers)
-                    * (compressed_table + beta)
-                    + self.multiplicities_eval;
+            let diff = (accumulator_next_eval - accumulator_eval - selector * sum_helpers)
+                * (compressed_table + beta)
+                + multiplicities_eval;
             diff * active_rows
         };
 

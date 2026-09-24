@@ -167,14 +167,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      # Pinned: rust-lang/rustfmt#6802 (nightly >= 2026-08-27) made `wrap_comments`
-      # indent-aware and rewraps ~550 comments across 120 files. Bump this date in
-      # a dedicated reformat PR, not as a side effect of unrelated work.
+      # Unstable rustfmt options change behaviour across nightlies, so bump this pin deliberately.
       - uses: dtolnay/rust-toolchain@7c8d7d138f5c09cef361f8214cf96882cd029cdb # nightly
         with:
-          toolchain: nightly-2026-08-25
-      - run: rustup component add rustfmt --toolchain nightly-2026-08-25
-      - run: cargo +nightly-2026-08-25 fmt --all -- --check
+          toolchain: nightly-2026-05-29
+          components: rustfmt
+      - run: cargo +nightly-2026-05-29 fmt --all -- --check
 
   clippy:
     if: github.event.pull_request.draft == false
