@@ -325,8 +325,9 @@ where
                 ok &= small.peaks[i] == big.peaks[i];
             }
 
-            // Highest bit where the sizes differ (at most one height).
-            let fin = agree[i + 1] && (a_bits[i] != b_bits[i]);
+            // Highest bit where the sizes differ (at most one height): the
+            // single step where the agree chain drops.
+            let fin = agree[i + 1] != agree[i];
 
             // At said height, the small size must have the unset bit;
             // otherwise small > big and it cannot be a prefix.
