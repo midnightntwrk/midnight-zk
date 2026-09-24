@@ -745,7 +745,8 @@ impl ZkStdLib {
             .unwrap_or_else(|| panic!("ZkStdLibArch must enable poseidon"))
     }
 
-    /// Gadget for Merkle Mountain Range (MMR) operations, hashing with Poseidon.
+    /// Gadget for Merkle Mountain Range (MMR) operations, hashing with
+    /// Poseidon.
     ///
     /// ```
     /// # midnight_zk_stdlib::run_test_stdlib!(chip, layouter, 13, {
