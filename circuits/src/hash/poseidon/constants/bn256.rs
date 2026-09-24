@@ -7,9 +7,14 @@
 //! $ sage generate_parameters_grain.sage 1 0 255 3 8 60 0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001 --rust
 //! ```
 
+use std::sync::OnceLock;
+
 use midnight_curves::bn256;
 
-use crate::hash::poseidon::constants::{NB_FULL_ROUNDS, NB_PARTIAL_ROUNDS, PoseidonField, WIDTH};
+use crate::hash::poseidon::{
+    constants::{NB_FULL_ROUNDS, NB_PARTIAL_ROUNDS, PoseidonField, WIDTH},
+    round_skips::PreComputedRoundCPU,
+};
 
 impl PoseidonField for bn256::Fr {
     // Number of round constants: 204 = (8 + 60) * 3
@@ -1449,4 +1454,9 @@ impl PoseidonField for bn256::Fr {
             ]),
         ],
     ];
+
+    fn pre_computed_round_cpu_cell() -> &'static OnceLock<PreComputedRoundCPU<Self>> {
+        static CELL: OnceLock<PreComputedRoundCPU<bn256::Fr>> = OnceLock::new();
+        &CELL
+    }
 }

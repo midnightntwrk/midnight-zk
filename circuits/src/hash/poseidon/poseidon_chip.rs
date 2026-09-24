@@ -675,7 +675,7 @@ mod tests {
     {
         let pre_computed = PreComputedRoundCPU::init();
         let mut expected = inputs;
-        permutation_cpu(&pre_computed, &mut expected);
+        permutation_cpu(pre_computed, &mut expected);
 
         let circuit = PermCircuit {
             inputs: inputs.map(Value::known),
