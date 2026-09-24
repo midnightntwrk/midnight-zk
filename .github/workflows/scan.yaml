@@ -30,6 +30,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  #v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Scan code
         uses: midnightntwrk/upload-sarif-github-action@362d0346b194663004cb371e8e8523bd1c910917
