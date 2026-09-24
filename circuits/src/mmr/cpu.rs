@@ -335,8 +335,9 @@ where
                 ok = false;
             }
 
-            // The climb starts at the lowest peak of the small MMR.
-            let is_start = a_bits[i] && !started[i];
+            // The climb starts at the lowest peak of the small MMR: the
+            // single step where the started chain rises.
+            let is_start = started[i + 1] != started[i];
             let input = if is_start { small.peaks[i] } else { cur };
 
             // If a climb took place, it must land exactly on big's peak at

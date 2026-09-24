@@ -341,9 +341,9 @@ where
             let violation = ng.and(layouter, &[fin.clone(), a_bits[i].clone()])?;
             self.record_false(layouter, mode, &violation)?;
 
-            // The climb starts at the lowest peak of the small MMR.
-            let not_started = ng.not(layouter, &started[i])?;
-            let is_start = ng.and(layouter, &[a_bits[i].clone(), not_started])?;
+            // The climb starts at the lowest peak of the small MMR: the
+            // single step where the started chain rises.
+            let is_start = ng.xor(layouter, &[started[i + 1].clone(), started[i].clone()])?;
             let input = ng.select(layouter, &is_start, &small.peaks[i], &cur)?;
 
             // If a climb took place, it must land exactly on big's peak at
