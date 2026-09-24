@@ -327,19 +327,10 @@ where
         let mut cur: AssignedNative<F> = ng.assign_fixed(layouter, F::ZERO)?;
 
         for i in 0..CAPACITY {
-            // The sizes agree above height i and both MMRs have a mountain
-            // here: their peaks must match directly.
-            let direct_match = ng.and(
-                layouter,
-                &[agree[i + 1].clone(), a_bits[i].clone(), b_bits[i].clone()],
-            )?;
-            self.record_eq(
-                layouter,
-                mode,
-                &direct_match,
-                &small.peaks[i],
-                &big.peaks[i],
-            )?;
+            // The sizes agree from height i up: the peaks must match. When
+            // neither MMR has a mountain here both peaks are the canonical
+            // zero, so the check is vacuous rather than wrong.
+            self.record_eq(layouter, mode, &agree[i], &small.peaks[i], &big.peaks[i])?;
 
             // fin: highest bit where the sizes differ (at most one height).
             let bits_differ = ng.xor(layouter, &[a_bits[i].clone(), b_bits[i].clone()])?;

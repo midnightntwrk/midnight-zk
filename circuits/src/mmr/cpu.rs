@@ -317,9 +317,10 @@ where
         let mut cur = F::ZERO;
 
         for i in 0..CAPACITY {
-            // The sizes agree above height i and both MMRs have a mountain
-            // here: their peaks must match directly.
-            let direct_match = agree[i + 1] && a_bits[i] && b_bits[i];
+            // The sizes agree from height i up and the small MMR has a
+            // mountain here (hence so does the big one): the peaks must
+            // match directly.
+            let direct_match = agree[i] && a_bits[i];
             if direct_match {
                 ok &= small.peaks[i] == big.peaks[i];
             }
