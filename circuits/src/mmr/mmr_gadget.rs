@@ -35,10 +35,10 @@ use {
 };
 
 use crate::{
+    CircuitField,
     instructions::{HashInstructions, NativeInstructions},
     mmr::cpu::{MembershipProof, MmrState, SummitPath},
     types::{AssignedBit, AssignedNative, InnerValue, Instantiable},
-    CircuitField,
 };
 
 /// An assigned Merkle Mountain Range state (see [MmrState]).
@@ -468,7 +468,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        field::{decomposition::chip::P2RDecompositionChip, NativeChip, NativeGadget},
+        field::{NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip},
         hash::poseidon::PoseidonChip,
         instructions::hash::HashCPU,
         mmr::cpu::Mmr,
@@ -862,7 +862,7 @@ mod tests {
         assert_eq!(AssignedMmr::<F, SIZE>::from_public_input(&tampered), None);
 
         // Size out of range.
-        let mut tampered = pi.clone();
+        let mut tampered = pi;
         tampered[0] = F::from(1 << SIZE);
         assert_eq!(AssignedMmr::<F, SIZE>::from_public_input(&tampered), None);
     }

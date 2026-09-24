@@ -15,7 +15,7 @@
 
 use std::{array, marker::PhantomData};
 
-use crate::{instructions::hash::HashCPU, CircuitField};
+use crate::{CircuitField, instructions::hash::HashCPU};
 
 /// A Merkle Mountain Range of at most `SIZE` mountains, with a capacity of
 /// `2^SIZE - 1` elements. See the [module documentation](crate::mmr) for the
@@ -465,7 +465,7 @@ mod tests {
     use rand_chacha::ChaCha8Rng;
 
     use super::*;
-    use crate::hash::poseidon::{constants::PoseidonField, PoseidonChip};
+    use crate::hash::poseidon::{PoseidonChip, constants::PoseidonField};
 
     /// Recomputes the root of a complete Merkle tree over the given leaves by
     /// direct recursion.

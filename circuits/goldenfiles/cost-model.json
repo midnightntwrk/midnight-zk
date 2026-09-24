@@ -2,7 +2,7 @@
   "MMR gadget": {
     "Membership": {
       "advice_columns": "8",
-      "column_queries": "32",
+      "column_queries": "39",
       "fixed_columns": "32",
       "lookups": "1",
       "max_deg": "5",
@@ -13,7 +13,7 @@
     },
     "Prefix": {
       "advice_columns": "8",
-      "column_queries": "32",
+      "column_queries": "39",
       "fixed_columns": "32",
       "lookups": "1",
       "max_deg": "5",
