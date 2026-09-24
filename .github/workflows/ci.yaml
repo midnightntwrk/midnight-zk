@@ -14,7 +14,7 @@ jobs:
   download-srs:
     runs-on: ubuntu-latest
     outputs:
-      srs-cache-hit: ${{ steps.cache-srs.outputs.cache-hit }}
+      srs-cache-hit: ${{ steps.restore-srs.outputs.cache-hit }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 

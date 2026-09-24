@@ -21,7 +21,7 @@ fn bench_poseidon_cpu(c: &mut Criterion) {
         b.iter(|| {
             let mut input: [F; WIDTH] = core::array::from_fn(|_| F::random(&mut rng));
             std::hint::black_box({
-                permutation_cpu(&pre_computed, &mut input);
+                permutation_cpu(pre_computed, &mut input);
                 input
             })
         });

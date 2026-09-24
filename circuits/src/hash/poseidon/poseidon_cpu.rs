@@ -38,7 +38,7 @@ pub(crate) const NB_SKIPS_CPU: usize = 2;
 /// Off-circuit Poseidon state.
 #[derive(Clone, Debug)]
 pub struct PoseidonState<F: PoseidonField> {
-    pre_computed: PreComputedRoundCPU<F>,
+    pre_computed: &'static PreComputedRoundCPU<F>,
     register: [F; WIDTH],
     queue: Vec<F>,
     squeeze_position: usize,
@@ -131,9 +131,8 @@ impl<F: PoseidonField> SpongeCPU<F, F> for PoseidonChip<F> {
     fn init(input_len: Option<usize>) -> Self::StateCPU {
         let mut register = [F::ZERO; WIDTH];
         register[RATE] = F::from_u128(input_len.map(|l| l as u128).unwrap_or(1 << 64));
-        let pre_computed = PreComputedRoundCPU::init();
         PoseidonState {
-            pre_computed,
+            pre_computed: PreComputedRoundCPU::init(),
             register,
             queue: Vec::new(),
             squeeze_position: 0,
@@ -178,7 +177,7 @@ impl<F: PoseidonField> SpongeCPU<F, F> for PoseidonChip<F> {
             for (entry, value) in state.register.iter_mut().zip(chunk.iter()) {
                 *entry += value;
             }
-            permutation_cpu(&state.pre_computed, &mut state.register);
+            permutation_cpu(state.pre_computed, &mut state.register);
         }
 
         state.queue = Vec::new();
@@ -348,7 +347,7 @@ mod tests {
                 let mut res1 = input;
                 let mut res2 = input;
                 permutation_cpu_raw(&mut res1);
-                permutation_cpu(&pre_computed, &mut res2);
+                permutation_cpu(pre_computed, &mut res2);
                 if res1 != res2 {
                     panic!("=> Inconsistencies between the cpu implementations of the permutations.\n\nOn input x = {:?},\n\npermutation_cpu_no_skip(x) = {:?}\n\npermutation_cpu_with_skips(x) = {:?}\n", input, res1, res2)
                 }
