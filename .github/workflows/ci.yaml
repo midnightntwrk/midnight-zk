@@ -185,11 +185,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
+
+      # Unstable rustfmt options change behaviour across nightlies, so bump this pin deliberately.
       - uses: dtolnay/rust-toolchain@7c8d7d138f5c09cef361f8214cf96882cd029cdb # nightly
         with:
-          toolchain: nightly
-      - run: rustup component add rustfmt --toolchain nightly
-      - run: cargo +nightly fmt --all -- --check
+          toolchain: nightly-2026-05-29
+          components: rustfmt
+      - run: cargo +nightly-2026-05-29 fmt --all -- --check
 
   clippy:
     if: github.event.pull_request.draft == false

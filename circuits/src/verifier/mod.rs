@@ -32,7 +32,6 @@ mod accumulator;
 mod argument;
 mod expressions;
 mod kzg;
-mod lookup;
 mod msm;
 pub(crate) mod pcs;
 mod permutation;

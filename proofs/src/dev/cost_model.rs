@@ -116,12 +116,6 @@ impl Lookup {
             .chain(iter::once(aggregator))
     }
 
-    /// Number of commitments:
-    /// 1 (multiplicities) + num_chunks (helpers) + 1 (Z).
-    fn num_commitments(&self) -> usize {
-        self.num_chunks + 2
-    }
-
     /// Number of evaluations:
     /// 1 (multiplicities) + num_chunks (helpers) + 1 (Z at x) + 1 (Z at ωx).
     fn num_evaluations(&self) -> usize {
@@ -131,9 +125,9 @@ impl Lookup {
 
 /// Structure holding the Trash argument data for circuit benchmarks.
 ///
-/// The trash polynomials are committed together as one phase2 argument group,
-/// so they contribute a single commitment over all of them, plus 1 evaluation
-/// each.
+/// The trash polynomials share the phase2 argument group with the logup
+/// aggregators and helpers, so they add one polynomial to that group's single
+/// commitment, plus 1 evaluation each.
 #[derive(Debug, Clone)]
 struct Trash;
 
@@ -201,10 +195,11 @@ pub struct CircuitModel {
 
 /// Given a Plonk circuit, this function returns a [CircuitModel].
 ///
-/// `commit(n)` returns the total byte length of committing to `n` polynomials.
-/// For schemes where each polynomial is committed independently (e.g. KZG),
-/// this is `n * per_commitment_size`. For schemes that fold multiple
-/// polynomials into one proof element, it may be sub-linear in `n`.
+/// `commit(n)` returns the byte length of the single transcript message that
+/// commits to `n` polynomials, framing included. The prover writes one such
+/// message per commitment group, so a site that commits `n` polynomials
+/// separately costs `n * commit(1)`, not `commit(n)`. For schemes that fold
+/// multiple polynomials into one proof element, `commit` may be sub-linear.
 ///
 /// See [`circuit_model`] for the variant that derives `commit` automatically
 /// from a `PolynomialCommitmentScheme`.
@@ -234,20 +229,29 @@ pub fn circuit_model_with<F: Ord + Field + FromUniformBytes<64>>(
     queries.dedup();
     let point_sets = queries.len();
 
+    // The byte length of the commitment group holding `n` polynomials. An empty
+    // group is not committed to at all, so it costs nothing.
+    let group = |n: usize| if n == 0 { 0 } else { commit(n) };
+
+    // The logup polynomials are split over the two argument phases: every
+    // multiplicities polynomial goes in the phase1 group, and every aggregator,
+    // helper and trash polynomial in the phase2 group. Each phase is a single
+    // commitment group, whatever the number of arguments feeding it.
+    let nb_phase1_polys = o.lookup.len();
+    let nb_phase2_polys = o.lookup.iter().map(|l| l.num_chunks + 1).sum::<usize>() + o.trash.len();
+
     // PLONK:
-    // - commit(advice.len()) bytes for all advice commitments
+    // - commit(1) bytes per advice commitment, each written on its own
     // - scalar bytes per advice column per query
     // - scalar bytes per committed instance column per query
     // - scalar bytes per fixed column per query
     // - scalar bytes per permutation column
-    // - Per permutation batch: commit(nb_chunks) + 3*scalar per chunk (last chunk
-    //   has 2 scalar)
-    // - Per lookup argument: commit(num_commitments) + num_evaluations * scalar
-    // - Trash arguments: one group commitment over all of them, commit(n), plus
-    //   scalar bytes per argument
+    // - Per permutation batch: commit(1) + 3*scalar per chunk, each chunk committed
+    //   on its own (last chunk has 2 scalar)
+    // - The two argument phase groups, plus scalar bytes per evaluation they hold
     let nb_perm_chunks =
         (o.permutation.columns.saturating_sub(1) / o.max_degree.saturating_sub(2)) + 1;
-    let plonk = commit(o.advice.len())
+    let plonk = o.advice.len() * commit(1)
         + o.advice.iter().map(|p| p.rotations.len() * scalar).sum::<usize>()
         + o.instance
             .iter()
@@ -256,25 +260,23 @@ pub fn circuit_model_with<F: Ord + Field + FromUniformBytes<64>>(
             .sum::<usize>()
         + o.fixed.iter().map(|p| p.rotations.len() * scalar).sum::<usize>()
         + scalar * o.permutation.columns
-        + (commit(nb_perm_chunks) + scalar * 3 * nb_perm_chunks).saturating_sub(scalar) // last chunk has 2 evals
-        + o.lookup
-            .iter()
-            .map(|l| commit(l.num_commitments()) + scalar * l.num_evaluations())
-            .sum::<usize>()
-        + if o.trash.is_empty() {
-            // An empty group is not committed to at all.
-            0
-        } else {
-            commit(o.trash.len()) + o.trash.len() * scalar
-        };
+        + (nb_perm_chunks * commit(1) + scalar * 3 * nb_perm_chunks).saturating_sub(scalar) // last chunk has 2 evals
+        + group(nb_phase1_polys)
+        + group(nb_phase2_polys)
+        + o.lookup.iter().map(|l| scalar * l.num_evaluations()).sum::<usize>()
+        + scalar * o.trash.len();
 
-    // Commitments to quotient limbs: one per limb.
-    let limbs = commit(o.max_degree - 1);
+    // Commitments to the quotient polynomial, each written on its own: one per
+    // limb, or a single one when the prover does not split h(X).
+    #[cfg(not(feature = "single-h-commitment"))]
+    let limbs = (o.max_degree - 1) * commit(1);
+    #[cfg(feature = "single-h-commitment")]
+    let limbs = commit(1);
 
     // Multiopening argument:
-    // - commit(2) bytes for f_commitment and opening proof
+    // - commit(1) bytes each for f_commitment and the opening proof
     // - scalar bytes per set of points
-    let multiopen = commit(2) + scalar * point_sets;
+    let multiopen = 2 * commit(1) + scalar * point_sets;
 
     CircuitModel {
         k: o.min_k,
