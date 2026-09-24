@@ -151,6 +151,16 @@ impl<F: CircuitField, const CAPACITY: usize> InnerValue for AssignedMembershipPr
     }
 }
 
+/// How a check reports each of its conditions.
+enum CheckMode<F: CircuitField> {
+    /// Constrain each condition on the spot; the circuit becomes
+    /// unsatisfiable if one fails.
+    Assert,
+    /// Constrain nothing; accumulate one indicator per possible failure,
+    /// folded by `finish` into the returned bit. More expensive than `Assert`.
+    CollectFailures(Vec<AssignedBit<F>>),
+}
+
 /// Stateless gadget for in-circuit MMR operations.
 /// Keeps no internal state: all operands are explicit [AssignedMmr] values.
 #[derive(Clone, Debug)]
@@ -250,6 +260,42 @@ where
         big: &AssignedMmr<F, CAPACITY>,
         path: &AssignedSummitPath<F, CAPACITY>,
     ) -> Result<AssignedBit<F>, Error> {
+        let mut mode = CheckMode::CollectFailures(vec![]);
+        self.prefix_check(layouter, small, big, path, &mut mode)?;
+        Ok(self.finish(layouter, mode)?.expect("collecting failures"))
+    }
+
+    /// Asserts that the elements of the MMR with state `small` are a prefix of
+    /// the elements of the MMR with state `big`: [Self::is_prefix]'s
+    /// result, asserted.
+    ///
+    /// # Unsatisfiable Circuit
+    ///
+    /// If `small` is not a prefix of `big` (in particular, whenever
+    /// `small.size > big.size`), or if the summit path steps are incorrect.
+    pub fn assert_prefix<const CAPACITY: usize>(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        small: &AssignedMmr<F, CAPACITY>,
+        big: &AssignedMmr<F, CAPACITY>,
+        path: &AssignedSummitPath<F, CAPACITY>,
+    ) -> Result<(), Error> {
+        self.prefix_check(layouter, small, big, path, &mut CheckMode::Assert)
+    }
+
+    /// Main function implementing the bulk of what `is_prefix` and
+    /// `assert_prefix` do. The body is made modular by using `record_*`
+    /// functions that behave differently depending on `mode` (either by
+    /// asserting a constraint or collecting a boolean in the mutable `mode`
+    /// accumulator).
+    fn prefix_check<const CAPACITY: usize>(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        small: &AssignedMmr<F, CAPACITY>,
+        big: &AssignedMmr<F, CAPACITY>,
+        path: &AssignedSummitPath<F, CAPACITY>,
+        mode: &mut CheckMode<F>,
+    ) -> Result<(), Error> {
         let ng = &self.native_gadget;
         let a_bits = &small.size_bits;
         let b_bits = &big.size_bits;
@@ -278,9 +324,6 @@ where
         // consumed before being overwritten by a starting peak).
         let mut cur: AssignedNative<F> = ng.assign_fixed(layouter, F::ZERO)?;
 
-        // The verdict, narrowed as the climb advances.
-        let mut ok: AssignedBit<F> = ng.assign_fixed(layouter, true)?;
-
         for i in 0..CAPACITY {
             // The sizes agree above height i and both MMRs have a mountain
             // here: their peaks must match directly.
@@ -288,9 +331,13 @@ where
                 layouter,
                 &[agree[i + 1].clone(), a_bits[i].clone(), b_bits[i].clone()],
             )?;
-            let peaks_equal = ng.is_equal(layouter, &small.peaks[i], &big.peaks[i])?;
-            let direct_ok = self.implies(layouter, &direct_match, &peaks_equal)?;
-            ok = ng.and(layouter, &[ok, direct_ok])?;
+            self.record_eq(
+                layouter,
+                mode,
+                &direct_match,
+                &small.peaks[i],
+                &big.peaks[i],
+            )?;
 
             // fin: highest bit where the sizes differ (at most one height).
             let bits_differ = ng.xor(layouter, &[a_bits[i].clone(), b_bits[i].clone()])?;
@@ -299,8 +346,7 @@ where
             // At said height, the small size must have the unset bit;
             // otherwise small > big and it cannot be a prefix.
             let violation = ng.and(layouter, &[fin.clone(), a_bits[i].clone()])?;
-            let no_violation = ng.not(layouter, &violation)?;
-            ok = ng.and(layouter, &[ok, no_violation])?;
+            self.record_false(layouter, mode, &violation)?;
 
             // The climb starts at the lowest peak of the small MMR.
             let not_started = ng.not(layouter, &started[i])?;
@@ -310,9 +356,7 @@ where
             // If a climb took place, it must land exactly on big's peak at
             // the height of the first size disagreement.
             let must_land = ng.and(layouter, &[fin, started[i].clone()])?;
-            let lands = ng.is_equal(layouter, &input, &big.peaks[i])?;
-            let landing_ok = self.implies(layouter, &must_land, &lands)?;
-            ok = ng.and(layouter, &[ok, landing_ok])?;
+            self.record_eq(layouter, mode, &must_land, &input, &big.peaks[i])?;
 
             // Climb one level up: the node at height i is combined either
             // with small's own peak at this height (as left sibling) or with
@@ -330,28 +374,7 @@ where
             }
         }
 
-        Ok(ok)
-    }
-
-    /// Asserts that the elements of the MMR with state `small` are a prefix of
-    /// the elements of the MMR with state `big`: [Self::is_prefix]'s
-    /// result, asserted.
-    ///
-    /// # Unsatisfiable Circuit
-    ///
-    /// If `small` is not a prefix of `big` (in particular, whenever
-    /// `small.size > big.size`), or if the summit path steps are incorrect.
-    pub fn assert_prefix<const CAPACITY: usize>(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        small: &AssignedMmr<F, CAPACITY>,
-        big: &AssignedMmr<F, CAPACITY>,
-        path: &AssignedSummitPath<F, CAPACITY>,
-    ) -> Result<(), Error> {
-        // NOTE: This instruction is not optimized. Using asserts directly
-        // in the logic of is_prefix saves ~20% rows.
-        let ok = self.is_prefix(layouter, small, big, path)?;
-        self.native_gadget.assert_equal_to_fixed(layouter, &ok, true)
+        Ok(())
     }
 
     /// Assigns a [MembershipProof] as a private input.
@@ -400,44 +423,9 @@ where
         elem: &AssignedNative<F>,
         proof: &AssignedMembershipProof<F, CAPACITY>,
     ) -> Result<AssignedBit<F>, Error> {
-        let ng = &self.native_gadget;
-
-        // Little-endian bits of the leaf index; bit `l` is the left/right
-        // direction of the climb from level `l` to `l + 1`.
-        let index_bits = ng.assigned_to_le_bits(layouter, &proof.leaf_index, Some(CAPACITY), true)?;
-
-        // `node` is the root of the height-`l` subtree over the leaf. It starts
-        // as the arity-1 leaf hash, which is the peak of a height-0 mountain.
-        let mut node = self.hash_chip.hash(layouter, std::slice::from_ref(elem))?;
-
-        // Set once the climb reaches the claimed height at a present mountain,
-        // ensuring that `height` selects an existing slot in `[0, CAPACITY)`.
-        let mut matched: AssignedBit<F> = ng.assign_fixed(layouter, false)?;
-
-        // The verdict so far: on the claimed height, the climb must have
-        // reproduced that mountain's peak.
-        let mut ok: AssignedBit<F> = ng.assign_fixed(layouter, true)?;
-
-        for (l, (peak, size_bit)) in mmr.peaks.iter().zip(mmr.size_bits.iter()).enumerate() {
-            let is_height = ng.is_equal_to_fixed(layouter, &proof.height, F::from(l as u64))?;
-            let peak_equal = ng.is_equal(layouter, &node, peak)?;
-            let level_ok = self.implies(layouter, &is_height, &peak_equal)?;
-            ok = ng.and(layouter, &[ok, level_ok])?;
-
-            let matches_here = ng.and(layouter, &[is_height, size_bit.clone()])?;
-            matched = ng.or(layouter, &[matched, matches_here])?;
-
-            // Climb one level (the top height never climbs).
-            if l < CAPACITY - 1 {
-                let dir = &index_bits[l];
-                let left = ng.select(layouter, dir, &proof.siblings[l], &node)?;
-                let right = ng.select(layouter, dir, &node, &proof.siblings[l])?;
-                node = self.hash_chip.hash(layouter, &[left, right])?;
-            }
-        }
-
-        // The climb must also have matched a present mountain.
-        ng.and(layouter, &[ok, matched])
+        let mut mode = CheckMode::CollectFailures(vec![]);
+        self.member_check(layouter, mmr, elem, proof, &mut mode)?;
+        Ok(self.finish(layouter, mode)?.expect("collecting failures"))
     }
 
     /// Asserts that `elem` is one of the elements committed to by `mmr`.
@@ -452,23 +440,138 @@ where
         elem: &AssignedNative<F>,
         proof: &AssignedMembershipProof<F, CAPACITY>,
     ) -> Result<(), Error> {
-        // NOTE: This instruction is not optimized. Using asserts directly
-        // in the logic of is_member saves ~20% rows.
-        let ok = self.is_member(layouter, mmr, elem, proof)?;
-        self.native_gadget.assert_equal_to_fixed(layouter, &ok, true)
+        self.member_check(layouter, mmr, elem, proof, &mut CheckMode::Assert)
     }
 
-    /// The implication `antecedent => consequent`, as a bit.
-    // TODO: Helper for the prefix check. If found useful may be worth moving
-    // to the logic chip.
-    fn implies(
+    /// Main function implementing the bulk of what `is_member` and
+    /// `assert_membership` do. The body is made modular by using `record_*`
+    /// functions that behave differently depending on `mode` (either by
+    /// asserting a constraint or collecting a boolean in the mutable `mode`
+    /// accumulator).
+    fn member_check<const CAPACITY: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
-        antecedent: &AssignedBit<F>,
-        consequent: &AssignedBit<F>,
-    ) -> Result<AssignedBit<F>, Error> {
-        let excused = self.native_gadget.not(layouter, antecedent)?;
-        self.native_gadget.or(layouter, &[excused, consequent.clone()])
+        mmr: &AssignedMmr<F, CAPACITY>,
+        elem: &AssignedNative<F>,
+        proof: &AssignedMembershipProof<F, CAPACITY>,
+        mode: &mut CheckMode<F>,
+    ) -> Result<(), Error> {
+        let ng = &self.native_gadget;
+
+        // Little-endian bits of the leaf index; bit `l` is the left/right
+        // direction of the climb from level `l` to `l + 1`.
+        let index_bits = ng.assigned_to_le_bits(layouter, &proof.leaf_index, Some(CAPACITY), true)?;
+
+        // `node` is the root of the height-`l` subtree over the leaf. It starts
+        // as the arity-1 leaf hash, which is the peak of a height-0 mountain.
+        let mut node = self.hash_chip.hash(layouter, std::slice::from_ref(elem))?;
+
+        // Set once the climb reaches the claimed height at a present mountain,
+        // ensuring that `height` selects an existing slot in `[0, CAPACITY)`.
+        let mut matched: AssignedBit<F> = ng.assign_fixed(layouter, false)?;
+
+        for (l, (peak, size_bit)) in mmr.peaks.iter().zip(mmr.size_bits.iter()).enumerate() {
+            let is_height = ng.is_equal_to_fixed(layouter, &proof.height, F::from(l as u64))?;
+            self.record_eq(layouter, mode, &is_height, &node, peak)?;
+
+            let matches_here = ng.and(layouter, &[is_height, size_bit.clone()])?;
+            matched = ng.or(layouter, &[matched, matches_here])?;
+
+            // Climb one level (the top height never climbs).
+            if l < CAPACITY - 1 {
+                let dir = &index_bits[l];
+                let left = ng.select(layouter, dir, &proof.siblings[l], &node)?;
+                let right = ng.select(layouter, dir, &node, &proof.siblings[l])?;
+                node = self.hash_chip.hash(layouter, &[left, right])?;
+            }
+        }
+
+        // The climb must also have matched a present mountain.
+        self.record_eq_fixed(layouter, mode, &matched.0, F::ONE)
+    }
+
+    /// Records `cond => x == y`.
+    fn record_eq(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        mode: &mut CheckMode<F>,
+        cond: &AssignedBit<F>,
+        x: &AssignedNative<F>,
+        y: &AssignedNative<F>,
+    ) -> Result<(), Error> {
+        let ng = &self.native_gadget;
+        match mode {
+            CheckMode::Assert => ng.cond_assert_equal(layouter, cond, x, y),
+            CheckMode::CollectFailures(failures) => {
+                let equal = ng.is_equal(layouter, x, y)?;
+                // `cond AND NOT equal` (written as an `add_and_mul` to save one row).
+                failures.push(AssignedBit(ng.add_and_mul(
+                    layouter,
+                    (F::ONE, &cond.0),
+                    (F::ZERO, &equal.0),
+                    (F::ZERO, &cond.0),
+                    F::ZERO,
+                    -F::ONE,
+                )?));
+                Ok(())
+            }
+        }
+    }
+
+    /// Records that `bit` must be false.
+    fn record_false(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        mode: &mut CheckMode<F>,
+        bit: &AssignedBit<F>,
+    ) -> Result<(), Error> {
+        let ng = &self.native_gadget;
+        match mode {
+            CheckMode::Assert => ng.assert_equal_to_fixed(layouter, bit, false),
+            CheckMode::CollectFailures(failures) => {
+                failures.push(bit.clone());
+                Ok(())
+            }
+        }
+    }
+
+    /// Records that `x` must equal the constant `c`.
+    fn record_eq_fixed(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        mode: &mut CheckMode<F>,
+        x: &AssignedNative<F>,
+        c: F,
+    ) -> Result<(), Error> {
+        let ng = &self.native_gadget;
+        match mode {
+            CheckMode::Assert => ng.assert_equal_to_fixed(layouter, x, c),
+            CheckMode::CollectFailures(failures) => {
+                let equal = ng.is_equal_to_fixed(layouter, x, c)?;
+                failures.push(ng.not(layouter, &equal)?);
+                Ok(())
+            }
+        }
+    }
+
+    /// Closes a verdict: `None` in asserting mode, otherwise the bit stating
+    /// that no failure was recorded.
+    fn finish(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        mode: CheckMode<F>,
+    ) -> Result<Option<AssignedBit<F>>, Error> {
+        match mode {
+            CheckMode::Assert => Ok(None),
+            CheckMode::CollectFailures(failures) => {
+                // At most 3 terms per height, so the sum cannot wrap around
+                // the field.
+                let terms: Vec<(F, AssignedNative<F>)> =
+                    failures.into_iter().map(|f| (F::ONE, f.0)).collect();
+                let total = self.native_gadget.linear_combination(layouter, &terms, F::ZERO)?;
+                self.native_gadget.is_zero(layouter, &total).map(Some)
+            }
+        }
     }
 
     /// Enforces the [AssignedMmr] invariants over an assigned size and
