@@ -192,18 +192,16 @@ where
             self.size < Self::capacity(),
             "MMR is full. No more mountains to climb."
         );
+        // The carry of the binary increment stops at the lowest unset bit,
+        // which the capacity check above guarantees to exist.
+        let trail = self.size.trailing_ones() as usize;
         let mut carried = Mountain::new(elem);
-        for slot in self.mountains.iter_mut() {
-            match slot.take() {
-                Some(mountain) => carried = merge_mountains(mountain, carried),
-                None => {
-                    *slot = Some(carried);
-                    self.size += 1;
-                    return;
-                }
-            }
+        for slot in self.mountains.iter_mut().take(trail) {
+            let mountain = slot.take().expect("a set bit of size has its mountain");
+            carried = merge_mountains(mountain, carried);
         }
-        unreachable!("the capacity check guarantees an empty slot")
+        self.mountains[trail] = Some(carried);
+        self.size += 1;
     }
 
     /// The number of elements appended so far.
