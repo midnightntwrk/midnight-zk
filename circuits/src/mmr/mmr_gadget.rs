@@ -36,7 +36,7 @@ use {
 
 use crate::{
     CircuitField,
-    instructions::{HashInstructions, NativeInstructions},
+    instructions::{HashInstructions, NativeInstructions, PublicInputInstructions},
     mmr::cpu::{MembershipProof, MmrState, SummitPath},
     types::{AssignedBit, AssignedNative, InnerValue, Instantiable},
 };
@@ -53,17 +53,6 @@ pub struct AssignedMmr<F: CircuitField, const CAPACITY: usize> {
     pub(crate) size: AssignedNative<F>,
     pub(crate) size_bits: [AssignedBit<F>; CAPACITY],
     pub(crate) peaks: [AssignedNative<F>; CAPACITY],
-}
-
-impl<F: CircuitField, const CAPACITY: usize> AssignedMmr<F, CAPACITY> {
-    /// MMR state in its public input representation: size
-    /// followed by the peaks as CAPACITY+1 field elements. Agrees with
-    /// [Instantiable::as_public_input].
-    pub fn as_public_input(&self) -> Vec<AssignedNative<F>> {
-        let mut cells = vec![self.size.clone()];
-        cells.extend(self.peaks.iter().cloned());
-        cells
-    }
 }
 
 impl<F: CircuitField, const CAPACITY: usize> InnerValue for AssignedMmr<F, CAPACITY> {
@@ -220,18 +209,6 @@ where
         let size = self.native_gadget.assign_fixed(layouter, F::from(state.size))?;
         let peaks = self.native_gadget.assign_many_fixed(layouter, &state.peaks)?;
         self.enforce_state_invariants(layouter, size, peaks)
-    }
-
-    /// Constrains the given MMR state as a public input, in the order of
-    /// [AssignedMmr::as_public_input]: the size followed by the peaks.
-    pub fn constrain_as_public_input<const CAPACITY: usize>(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        mmr: &AssignedMmr<F, CAPACITY>,
-    ) -> Result<(), Error> {
-        self.native_gadget.constrain_as_public_input(layouter, &mmr.size)?;
-        (mmr.peaks.iter())
-            .try_for_each(|peak| self.native_gadget.constrain_as_public_input(layouter, peak))
     }
 
     /// Assigns a [SummitPath] as a private input.
@@ -606,6 +583,45 @@ where
     }
 }
 
+impl<F, N, H, const CAPACITY: usize> PublicInputInstructions<F, AssignedMmr<F, CAPACITY>>
+    for MmrGadget<F, N, H>
+where
+    F: CircuitField,
+    N: NativeInstructions<F>,
+    H: HashInstructions<F, AssignedNative<F>, AssignedNative<F>>,
+{
+    /// The cells of the MMR state in public input order: the size followed by
+    /// the peaks.
+    fn as_public_input(
+        &self,
+        _layouter: &mut impl Layouter<F>,
+        assigned: &AssignedMmr<F, CAPACITY>,
+    ) -> Result<Vec<AssignedNative<F>>, Error> {
+        let mut cells = vec![assigned.size.clone()];
+        cells.extend(assigned.peaks.iter().cloned());
+        Ok(cells)
+    }
+
+    fn constrain_as_public_input(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        assigned: &AssignedMmr<F, CAPACITY>,
+    ) -> Result<(), Error> {
+        (self.as_public_input(layouter, assigned)?.iter())
+            .try_for_each(|cell| self.native_gadget.constrain_as_public_input(layouter, cell))
+    }
+
+    fn assign_as_public_input(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        value: Value<MmrState<F, CAPACITY>>,
+    ) -> Result<AssignedMmr<F, CAPACITY>, Error> {
+        let assigned = self.assign(layouter, value)?;
+        self.constrain_as_public_input(layouter, &assigned)?;
+        Ok(assigned)
+    }
+}
+
 #[cfg(any(test, feature = "testing"))]
 impl<F, N, H> FromScratch<F> for MmrGadget<F, N, H>
 where
@@ -734,11 +750,10 @@ mod tests {
                     let mmr = mmr_gadget.assign(&mut layouter, self.small)?;
                     mmr_gadget.constrain_as_public_input(&mut layouter, &mmr)?;
 
-                    let cells = mmr.as_public_input();
+                    let cells = mmr_gadget.as_public_input(&mut layouter, &mmr)?;
                     assert_eq!(cells.len(), CAPACITY + 1);
                     self.small.map(|state| {
-                        let expected =
-                            <AssignedMmr<F, CAPACITY> as Instantiable<F>>::as_public_input(&state);
+                        let expected = AssignedMmr::<F, CAPACITY>::as_public_input(&state);
                         cells.iter().zip(expected).for_each(|(cell, expected)| {
                             cell.value().map(|v| assert_eq!(*v, expected));
                         });
@@ -909,8 +924,8 @@ mod tests {
                 };
 
                 let pi = [
-                    <AssignedMmr<F, CAPACITY> as Instantiable<F>>::as_public_input(&small.state()),
-                    <AssignedMmr<F, CAPACITY> as Instantiable<F>>::as_public_input(&big.state()),
+                    AssignedMmr::<F, CAPACITY>::as_public_input(&small.state()),
+                    AssignedMmr::<F, CAPACITY>::as_public_input(&big.state()),
                 ]
                 .concat();
 
@@ -942,7 +957,7 @@ mod tests {
         // with the (zero) entry of an absent slot must fail: the assignment
         // canonicalizes absent peaks to zero.
         let state = mmrs[11].state();
-        let pi = <AssignedMmr<F, CAPACITY> as Instantiable<F>>::as_public_input(&state);
+        let pi = AssignedMmr::<F, CAPACITY>::as_public_input(&state);
         // 11 = 0b01011: slot 2 is absent (entry 3 of the public input).
         let absent_slot_entry = 1 + 2;
         for tampered_entry in [None, Some(1), Some(absent_slot_entry)] {
@@ -1112,7 +1127,7 @@ mod tests {
         type H = PoseidonChip<F>;
 
         let state = all_mmrs::<F, H>(0, 11)[11].state();
-        let pi = <AssignedMmr<F, CAPACITY> as Instantiable<F>>::as_public_input(&state);
+        let pi = AssignedMmr::<F, CAPACITY>::as_public_input(&state);
         assert_eq!(pi.len(), CAPACITY + 1);
         assert_eq!(AssignedMmr::<F, CAPACITY>::from_public_input(&pi), Some(state));
 
