@@ -121,9 +121,14 @@ impl<F: CircuitField, const CAPACITY: usize> InnerValue for AssignedSummitPath<F
 }
 
 /// An assigned [MembershipProof]: the witness of a membership claim.
+///
+/// The claimed height is carried as a one-hot selector, `height_bits[l]` being
+/// set for the height of the mountain that contains the leaf. A height outside
+/// `[0, CAPACITY)` is not representable: it leaves the selector all zero, which no
+/// membership claim satisfies.
 #[derive(Clone, Debug)]
 pub struct AssignedMembershipProof<F: CircuitField, const CAPACITY: usize> {
-    pub(crate) height: AssignedNative<F>,
+    pub(crate) height_bits: [AssignedBit<F>; CAPACITY],
     pub(crate) index_bits: [AssignedBit<F>; CAPACITY],
     pub(crate) siblings: [AssignedNative<F>; CAPACITY],
 }
@@ -132,13 +137,13 @@ impl<F: CircuitField, const CAPACITY: usize> InnerValue for AssignedMembershipPr
     type Element = MembershipProof<F, CAPACITY>;
 
     fn value(&self) -> Value<MembershipProof<F, CAPACITY>> {
-        let height = self
-            .height
-            .value()
-            .map(|h| u64::try_from(h.to_biguint()).expect("MMR height fits in u64") as usize);
+        let height_bits = self.height_bits.value();
         let index_bits = self.index_bits.value();
         let siblings = self.siblings.value();
-        (height.zip(index_bits).zip(siblings)).map(|((height, index_bits), siblings)| {
+        (height_bits.zip(index_bits).zip(siblings)).map(|((height_bits, index_bits), siblings)| {
+            // The selector is one-hot on any accepted proof; a malformed one
+            // reads back as height zero.
+            let height = height_bits.iter().position(|bit| *bit).unwrap_or(0);
             let leaf_index =
                 (index_bits.iter().enumerate()).fold(
                     0u64,
@@ -379,8 +384,11 @@ where
         layouter: &mut impl Layouter<F>,
         proof: Value<MembershipProof<F, CAPACITY>>,
     ) -> Result<AssignedMembershipProof<F, CAPACITY>, Error> {
-        let height =
-            self.native_gadget.assign(layouter, proof.map(|p| F::from(p.height as u64)))?;
+        let height_bits = proof
+            .map(|p| std::array::from_fn::<bool, CAPACITY, _>(|l| l == p.height))
+            .transpose_array();
+        let height_bits: Vec<AssignedBit<F>> =
+            self.native_gadget.assign_many(layouter, &height_bits)?;
         let index_bits = proof
             .map(|p| std::array::from_fn::<bool, CAPACITY, _>(|l| (p.leaf_index >> l) & 1 == 1))
             .transpose_array();
@@ -389,7 +397,7 @@ where
         let siblings = proof.map(|p| p.siblings).transpose_array();
         let siblings = self.native_gadget.assign_many(layouter, &siblings)?;
         Ok(AssignedMembershipProof {
-            height,
+            height_bits: height_bits.try_into().unwrap(),
             index_bits: index_bits.try_into().unwrap(),
             siblings: siblings.try_into().unwrap(),
         })
@@ -459,16 +467,13 @@ where
         // as the arity-1 leaf hash, which is the peak of a height-0 mountain.
         let mut node = self.hash_chip.hash(layouter, std::slice::from_ref(elem))?;
 
-        // Set once the climb reaches the claimed height at a present mountain,
-        // ensuring that `height` selects an existing slot in `[0, CAPACITY)`.
-        let mut matched: AssignedBit<F> = ng.assign_fixed(layouter, false)?;
+        // selected[l]: the claimed height is l and that mountain exists.
+        let mut selected: Vec<AssignedBit<F>> = Vec::with_capacity(CAPACITY);
 
         for (l, (peak, size_bit)) in mmr.peaks.iter().zip(mmr.size_bits.iter()).enumerate() {
-            let is_height = ng.is_equal_to_fixed(layouter, &proof.height, F::from(l as u64))?;
-            self.record_eq(layouter, mode, &is_height, &node, peak)?;
-
-            let matches_here = ng.and(layouter, &[is_height, size_bit.clone()])?;
-            matched = ng.or(layouter, &[matched, matches_here])?;
+            let at_height = &proof.height_bits[l];
+            self.record_eq(layouter, mode, at_height, &node, peak)?;
+            selected.push(ng.and(layouter, &[at_height.clone(), size_bit.clone()])?);
 
             // Climb one level (the top height never climbs).
             if l < CAPACITY - 1 {
@@ -478,8 +483,13 @@ where
             }
         }
 
-        // The climb must also have matched a present mountain.
-        self.record_eq_fixed(layouter, mode, &matched.0, F::ONE)
+        // Exactly one present mountain is selected, which is what makes the
+        // peak check above fire on a mountain the MMR really has. A further
+        // height bit at an absent mountain can only add constraints.
+        let terms: Vec<(F, AssignedNative<F>)> =
+            (selected.iter()).map(|bit| (F::ONE, bit.0.clone())).collect();
+        let total = ng.linear_combination(layouter, &terms, F::ZERO)?;
+        self.record_eq_fixed(layouter, mode, &total, F::ONE)
     }
 
     /// Records `cond => x == y`.
