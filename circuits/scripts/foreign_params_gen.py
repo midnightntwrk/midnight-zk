@@ -645,6 +645,9 @@ def parse_modulus(m):
     if fetched != None:
         return fetched
 
+    # argv from the local invoker, who already has a shell: no trust boundary.
+    # eval lets NATIVE/EMULATED be expressions such as 2**255-19.
+    # nosemgrep: python.lang.security.audit.eval-detected.eval-detected
     return eval(m)
 
 

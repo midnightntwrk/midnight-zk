@@ -1,0 +1,6 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Sample verifiable-credential JWTs for the zk_stdlib identity examples. Synthetic subject (Alice Wonderland, nationalId 12345), expired 2025-02-25; a signed demo token the example circuits must read, not a key or live credential."
+paths = ['''^zk_stdlib/examples/identity/jwt/credentials/[^/]+$''']

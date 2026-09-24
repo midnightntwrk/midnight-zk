@@ -1,0 +1,7 @@
+# Read by opengrep (upload-sarif-github-action). A .semgrepignore replaces
+# the built-in ignore list, so keep .gitignore'd paths out too.
+:include .gitignore
+
+# Synthetic, expired sample JWTs for the zk_stdlib identity examples - no
+# comment syntax, so an inline nosemgrep is impossible. See .gitleaks.toml.
+zk_stdlib/examples/identity/jwt/credentials/
