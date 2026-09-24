@@ -359,11 +359,10 @@ where
                 let absorb_own_peak = ng.and(layouter, &[a_bits[i].clone(), started[i].clone()])?;
                 let left = ng.select(layouter, &absorb_own_peak, &small.peaks[i], &input)?;
                 let right = ng.select(layouter, &absorb_own_peak, &input, &path.steps[i])?;
-                let hash = self.hash_chip.hash(layouter, &[left, right])?;
-
-                let not_agree = ng.not(layouter, &agree[i + 1])?;
-                let climbing = ng.and(layouter, &[started[i + 1].clone(), not_agree])?;
-                cur = ng.select(layouter, &climbing, &hash, &input)?;
+                // Hashed unconditionally: outside a climb the result is
+                // never read, as the landing check is only ever reached
+                // through an unbroken chain of climbing steps.
+                cur = self.hash_chip.hash(layouter, &[left, right])?;
             }
         }
 

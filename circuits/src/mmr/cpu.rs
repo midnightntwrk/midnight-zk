@@ -357,12 +357,10 @@ where
                 } else {
                     (input, path.steps[i])
                 };
-                let climbing = started[i + 1] && !agree[i + 1];
-                cur = if climbing {
-                    <H as HashCPU<F, F>>::hash(&[left, right])
-                } else {
-                    input
-                };
+                // Hashed unconditionally: outside a climb the result is
+                // never read, as the landing check is only ever reached
+                // through an unbroken chain of climbing steps.
+                cur = <H as HashCPU<F, F>>::hash(&[left, right]);
             }
         }
         ok
