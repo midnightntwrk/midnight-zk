@@ -36,7 +36,7 @@ use {
 
 use crate::{
     CircuitField,
-    instructions::{HashInstructions, NativeInstructions},
+    instructions::{HashInstructions, NativeInstructions, PublicInputInstructions},
     mmr::cpu::{MembershipProof, MmrState, SummitPath},
     types::{AssignedBit, AssignedNative, InnerValue, Instantiable},
 };
@@ -45,31 +45,20 @@ use crate::{
 ///
 /// The following invariants are enforced at construction:
 /// - `size` equals `sum_i size_bits[i] * 2^i` (in particular, the size is
-///   range-checked to be smaller than `2^SIZE`),
+///   range-checked to be smaller than `2^CAPACITY`),
 /// - `peaks[i]` is zero whenever `size_bits[i]` is zero (canonical encoding of
 ///   absent mountains).
 #[derive(Clone, Debug)]
-pub struct AssignedMmr<F: CircuitField, const SIZE: usize> {
+pub struct AssignedMmr<F: CircuitField, const CAPACITY: usize> {
     pub(crate) size: AssignedNative<F>,
-    pub(crate) size_bits: [AssignedBit<F>; SIZE],
-    pub(crate) peaks: [AssignedNative<F>; SIZE],
+    pub(crate) size_bits: [AssignedBit<F>; CAPACITY],
+    pub(crate) peaks: [AssignedNative<F>; CAPACITY],
 }
 
-impl<F: CircuitField, const SIZE: usize> AssignedMmr<F, SIZE> {
-    /// MMR state in its public input representation: size
-    /// followed by the peaks as SIZE+1 field elements. Agrees with
-    /// [Instantiable::as_public_input].
-    pub fn as_public_input(&self) -> Vec<AssignedNative<F>> {
-        let mut cells = vec![self.size.clone()];
-        cells.extend(self.peaks.iter().cloned());
-        cells
-    }
-}
+impl<F: CircuitField, const CAPACITY: usize> InnerValue for AssignedMmr<F, CAPACITY> {
+    type Element = MmrState<F, CAPACITY>;
 
-impl<F: CircuitField, const SIZE: usize> InnerValue for AssignedMmr<F, SIZE> {
-    type Element = MmrState<F, SIZE>;
-
-    fn value(&self) -> Value<MmrState<F, SIZE>> {
+    fn value(&self) -> Value<MmrState<F, CAPACITY>> {
         let size = self.size.value().copied();
         let peaks = self.peaks.value();
         size.zip(peaks).map(|(size, peaks)| MmrState {
@@ -79,23 +68,23 @@ impl<F: CircuitField, const SIZE: usize> InnerValue for AssignedMmr<F, SIZE> {
     }
 }
 
-impl<F: CircuitField, const SIZE: usize> Instantiable<F> for AssignedMmr<F, SIZE> {
-    fn as_public_input(element: &MmrState<F, SIZE>) -> Vec<F> {
+impl<F: CircuitField, const CAPACITY: usize> Instantiable<F> for AssignedMmr<F, CAPACITY> {
+    fn as_public_input(element: &MmrState<F, CAPACITY>) -> Vec<F> {
         let mut public_input = vec![F::from(element.size)];
         public_input.extend(element.peaks);
         public_input
     }
 
     #[cfg(any(test, feature = "testing"))]
-    fn from_public_input(fields: &[F]) -> Option<MmrState<F, SIZE>> {
-        if fields.len() != SIZE + 1 {
+    fn from_public_input(fields: &[F]) -> Option<MmrState<F, CAPACITY>> {
+        if fields.len() != CAPACITY + 1 {
             return None;
         }
         let size = u64::try_from(fields[0].to_biguint()).ok()?;
-        if SIZE < 64 && size >= (1u64 << SIZE) {
+        if CAPACITY < 64 && size >= (1u64 << CAPACITY) {
             return None;
         }
-        let peaks: [F; SIZE] = fields[1..].try_into().ok()?;
+        let peaks: [F; CAPACITY] = fields[1..].try_into().ok()?;
         // Absent peaks must be encoded as zero.
         for (i, peak) in peaks.iter().enumerate() {
             if (size >> i) & 1 == 0 && *peak != F::ZERO {
@@ -108,40 +97,47 @@ impl<F: CircuitField, const SIZE: usize> Instantiable<F> for AssignedMmr<F, SIZE
 
 /// An assigned [SummitPath]: the witness of a prefix claim.
 #[derive(Clone, Debug)]
-pub struct AssignedSummitPath<F: CircuitField, const SIZE: usize> {
-    pub(crate) steps: [AssignedNative<F>; SIZE],
+pub struct AssignedSummitPath<F: CircuitField, const CAPACITY: usize> {
+    pub(crate) steps: [AssignedNative<F>; CAPACITY],
 }
 
-impl<F: CircuitField, const SIZE: usize> InnerValue for AssignedSummitPath<F, SIZE> {
-    type Element = SummitPath<F, SIZE>;
+impl<F: CircuitField, const CAPACITY: usize> InnerValue for AssignedSummitPath<F, CAPACITY> {
+    type Element = SummitPath<F, CAPACITY>;
 
-    fn value(&self) -> Value<SummitPath<F, SIZE>> {
+    fn value(&self) -> Value<SummitPath<F, CAPACITY>> {
         self.steps.value().map(|steps| SummitPath { steps })
     }
 }
 
 /// An assigned [MembershipProof]: the witness of a membership claim.
+///
+/// The claimed height is carried as a one-hot selector, `height_bits[l]` being
+/// set for the height of the mountain that contains the leaf. A height outside
+/// `[0, CAPACITY)` is not representable: it leaves the selector all zero, which
+/// no membership claim satisfies.
 #[derive(Clone, Debug)]
-pub struct AssignedMembershipProof<F: CircuitField, const SIZE: usize> {
-    pub(crate) height: AssignedNative<F>,
-    pub(crate) leaf_index: AssignedNative<F>,
-    pub(crate) siblings: [AssignedNative<F>; SIZE],
+pub struct AssignedMembershipProof<F: CircuitField, const CAPACITY: usize> {
+    pub(crate) height_bits: [AssignedBit<F>; CAPACITY],
+    pub(crate) index_bits: [AssignedBit<F>; CAPACITY],
+    pub(crate) siblings: [AssignedNative<F>; CAPACITY],
 }
 
-impl<F: CircuitField, const SIZE: usize> InnerValue for AssignedMembershipProof<F, SIZE> {
-    type Element = MembershipProof<F, SIZE>;
+impl<F: CircuitField, const CAPACITY: usize> InnerValue for AssignedMembershipProof<F, CAPACITY> {
+    type Element = MembershipProof<F, CAPACITY>;
 
-    fn value(&self) -> Value<MembershipProof<F, SIZE>> {
-        let height = self
-            .height
-            .value()
-            .map(|h| u64::try_from(h.to_biguint()).expect("MMR height fits in u64") as usize);
-        let leaf_index = self
-            .leaf_index
-            .value()
-            .map(|i| u64::try_from(i.to_biguint()).expect("MMR leaf index fits in u64"));
+    fn value(&self) -> Value<MembershipProof<F, CAPACITY>> {
+        let height_bits = self.height_bits.value();
+        let index_bits = self.index_bits.value();
         let siblings = self.siblings.value();
-        (height.zip(leaf_index).zip(siblings)).map(|((height, leaf_index), siblings)| {
+        (height_bits.zip(index_bits).zip(siblings)).map(|((height_bits, index_bits), siblings)| {
+            // The selector is one-hot on any accepted proof; a malformed one
+            // reads back as height zero.
+            let height = height_bits.iter().position(|bit| *bit).unwrap_or(0);
+            let leaf_index =
+                (index_bits.iter().enumerate()).fold(
+                    0u64,
+                    |acc, (l, bit)| if *bit { acc | (1 << l) } else { acc },
+                );
             MembershipProof {
                 height,
                 leaf_index,
@@ -149,6 +145,16 @@ impl<F: CircuitField, const SIZE: usize> InnerValue for AssignedMembershipProof<
             }
         })
     }
+}
+
+/// How a check reports each of its conditions.
+enum CheckMode<F: CircuitField> {
+    /// Constrain each condition on the spot; the circuit becomes
+    /// unsatisfiable if one fails.
+    Assert,
+    /// Constrain nothing; accumulate one indicator per possible failure,
+    /// folded by `finish` into the returned bit. More expensive than `Assert`.
+    CollectFailures(Vec<AssignedBit<F>>),
 }
 
 /// Stateless gadget for in-circuit MMR operations.
@@ -181,13 +187,13 @@ where
     }
 
     /// Assigns an MMR state as a private input, enforcing the [AssignedMmr]
-    /// invariants: the assigned size is range-checked to `SIZE` bits and the
-    /// peaks at absent slots are (re)set to zero.
-    pub fn assign<const SIZE: usize>(
+    /// invariants: the assigned size is range-checked to `CAPACITY` bits and
+    /// the peaks at absent slots are (re)set to zero.
+    pub fn assign<const CAPACITY: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
-        state: Value<MmrState<F, SIZE>>,
-    ) -> Result<AssignedMmr<F, SIZE>, Error> {
+        state: Value<MmrState<F, CAPACITY>>,
+    ) -> Result<AssignedMmr<F, CAPACITY>, Error> {
         let size = self.native_gadget.assign(layouter, state.map(|s| F::from(s.size)))?;
         let peaks = state.map(|s| s.peaks).transpose_array();
         let peaks = self.native_gadget.assign_many(layouter, &peaks)?;
@@ -195,37 +201,25 @@ where
     }
 
     /// Assigns a fixed (constant) MMR state.
-    pub fn assign_fixed<const SIZE: usize>(
+    pub fn assign_fixed<const CAPACITY: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
-        state: MmrState<F, SIZE>,
-    ) -> Result<AssignedMmr<F, SIZE>, Error> {
+        state: MmrState<F, CAPACITY>,
+    ) -> Result<AssignedMmr<F, CAPACITY>, Error> {
         let size = self.native_gadget.assign_fixed(layouter, F::from(state.size))?;
         let peaks = self.native_gadget.assign_many_fixed(layouter, &state.peaks)?;
         self.enforce_state_invariants(layouter, size, peaks)
     }
 
-    /// Constrains the given MMR state as a public input, in the order of
-    /// [AssignedMmr::as_public_input]: the size followed by the peaks.
-    pub fn constrain_as_public_input<const SIZE: usize>(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        mmr: &AssignedMmr<F, SIZE>,
-    ) -> Result<(), Error> {
-        self.native_gadget.constrain_as_public_input(layouter, &mmr.size)?;
-        (mmr.peaks.iter())
-            .try_for_each(|peak| self.native_gadget.constrain_as_public_input(layouter, peak))
-    }
-
     /// Assigns a [SummitPath] as a private input.
     ///
     /// The path is not constrained in any way: its steps get verified when
-    /// consumed by [Self::assert_prefix].
-    pub fn assign_summit_path<const SIZE: usize>(
+    /// consumed by [Self::is_prefix] or [Self::assert_prefix].
+    pub fn assign_summit_path<const CAPACITY: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
-        path: Value<SummitPath<F, SIZE>>,
-    ) -> Result<AssignedSummitPath<F, SIZE>, Error> {
+        path: Value<SummitPath<F, CAPACITY>>,
+    ) -> Result<AssignedSummitPath<F, CAPACITY>, Error> {
         let steps = path.map(|p| p.steps).transpose_array();
         let steps = self.native_gadget.assign_many(layouter, &steps)?;
         Ok(AssignedSummitPath {
@@ -243,94 +237,23 @@ where
     ///
     /// This is the in-circuit counterpart of
     /// [Mmr::is_prefix](crate::mmr::cpu::Mmr::is_prefix).
-    pub fn is_prefix<const SIZE: usize>(
+    ///
+    /// # Soundness
+    ///
+    /// The verdict is one-sided. A `1` proves that `small` is a prefix of
+    /// `big`; a `0` only says that this witness does not prove it, as the
+    /// prover chooses the summit path and may always supply a wrong one. A
+    /// caller must not read `0` as a proof that the claim is false.
+    pub fn is_prefix<const CAPACITY: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
-        small: &AssignedMmr<F, SIZE>,
-        big: &AssignedMmr<F, SIZE>,
-        path: &AssignedSummitPath<F, SIZE>,
+        small: &AssignedMmr<F, CAPACITY>,
+        big: &AssignedMmr<F, CAPACITY>,
+        path: &AssignedSummitPath<F, CAPACITY>,
     ) -> Result<AssignedBit<F>, Error> {
-        let ng = &self.native_gadget;
-        let a_bits = &small.size_bits;
-        let b_bits = &big.size_bits;
-
-        // agree[i]: the two sizes agree on all bits at positions >= i
-        // (computed top-down; agree[SIZE] is trivially true).
-        let mut agree: Vec<AssignedBit<F>> = Vec::with_capacity(SIZE + 1);
-        agree.push(ng.assign_fixed(layouter, true)?);
-        for i in (0..SIZE).rev() {
-            let bits_equal = ng.is_equal(layouter, &a_bits[i], &b_bits[i])?;
-            let and = ng.and(layouter, &[agree.last().unwrap().clone(), bits_equal])?;
-            agree.push(and);
-        }
-        agree.reverse();
-
-        // started[i]: the small MMR has a peak at some height < i, i.e. the
-        // climb is underway when reaching height i.
-        let mut started: Vec<AssignedBit<F>> = Vec::with_capacity(SIZE + 1);
-        started.push(ng.assign_fixed(layouter, false)?);
-        for a_bit in a_bits.iter() {
-            let or = ng.or(layouter, &[started.last().unwrap().clone(), a_bit.clone()])?;
-            started.push(or);
-        }
-
-        // The climbing node; its initial value is irrelevant (it is never
-        // consumed before being overwritten by a starting peak).
-        let mut cur: AssignedNative<F> = ng.assign_fixed(layouter, F::ZERO)?;
-
-        // The verdict, narrowed as the climb advances.
-        let mut ok: AssignedBit<F> = ng.assign_fixed(layouter, true)?;
-
-        for i in 0..SIZE {
-            // The sizes agree above height i and both MMRs have a mountain
-            // here: their peaks must match directly.
-            let direct_match = ng.and(
-                layouter,
-                &[agree[i + 1].clone(), a_bits[i].clone(), b_bits[i].clone()],
-            )?;
-            let peaks_equal = ng.is_equal(layouter, &small.peaks[i], &big.peaks[i])?;
-            let direct_ok = self.implies(layouter, &direct_match, &peaks_equal)?;
-            ok = ng.and(layouter, &[ok, direct_ok])?;
-
-            // fin: highest bit where the sizes differ (at most one height).
-            let bits_differ = ng.xor(layouter, &[a_bits[i].clone(), b_bits[i].clone()])?;
-            let fin = ng.and(layouter, &[agree[i + 1].clone(), bits_differ])?;
-
-            // At said height, the small size must have the unset bit;
-            // otherwise small > big and it cannot be a prefix.
-            let violation = ng.and(layouter, &[fin.clone(), a_bits[i].clone()])?;
-            let no_violation = ng.not(layouter, &violation)?;
-            ok = ng.and(layouter, &[ok, no_violation])?;
-
-            // The climb starts at the lowest peak of the small MMR.
-            let not_started = ng.not(layouter, &started[i])?;
-            let is_start = ng.and(layouter, &[a_bits[i].clone(), not_started])?;
-            let input = ng.select(layouter, &is_start, &small.peaks[i], &cur)?;
-
-            // If a climb took place, it must land exactly on big's peak at
-            // the height of the first size disagreement.
-            let must_land = ng.and(layouter, &[fin, started[i].clone()])?;
-            let lands = ng.is_equal(layouter, &input, &big.peaks[i])?;
-            let landing_ok = self.implies(layouter, &must_land, &lands)?;
-            ok = ng.and(layouter, &[ok, landing_ok])?;
-
-            // Climb one level up: the node at height i is combined either
-            // with small's own peak at this height (as left sibling) or with
-            // a witnessed node of the big MMR (as right sibling). The top
-            // height never climbs.
-            if i < SIZE - 1 {
-                let absorb_own_peak = ng.and(layouter, &[a_bits[i].clone(), started[i].clone()])?;
-                let left = ng.select(layouter, &absorb_own_peak, &small.peaks[i], &input)?;
-                let right = ng.select(layouter, &absorb_own_peak, &input, &path.steps[i])?;
-                let hash = self.hash_chip.hash(layouter, &[left, right])?;
-
-                let not_agree = ng.not(layouter, &agree[i + 1])?;
-                let climbing = ng.and(layouter, &[started[i + 1].clone(), not_agree])?;
-                cur = ng.select(layouter, &climbing, &hash, &input)?;
-            }
-        }
-
-        Ok(ok)
+        let mut mode = CheckMode::CollectFailures(vec![]);
+        self.prefix_check(layouter, small, big, path, &mut mode)?;
+        Ok(self.finish(layouter, mode)?.expect("collecting failures"))
     }
 
     /// Asserts that the elements of the MMR with state `small` are a prefix of
@@ -341,37 +264,126 @@ where
     ///
     /// If `small` is not a prefix of `big` (in particular, whenever
     /// `small.size > big.size`), or if the summit path steps are incorrect.
-    pub fn assert_prefix<const SIZE: usize>(
+    pub fn assert_prefix<const CAPACITY: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
-        small: &AssignedMmr<F, SIZE>,
-        big: &AssignedMmr<F, SIZE>,
-        path: &AssignedSummitPath<F, SIZE>,
+        small: &AssignedMmr<F, CAPACITY>,
+        big: &AssignedMmr<F, CAPACITY>,
+        path: &AssignedSummitPath<F, CAPACITY>,
     ) -> Result<(), Error> {
-        // NOTE: This instruction is not optimized. Using asserts directly
-        // in the logic of is_prefix saves ~20% rows.
-        let ok = self.is_prefix(layouter, small, big, path)?;
-        self.native_gadget.assert_equal_to_fixed(layouter, &ok, true)
+        self.prefix_check(layouter, small, big, path, &mut CheckMode::Assert)
+    }
+
+    /// Main function implementing the bulk of what `is_prefix` and
+    /// `assert_prefix` do. The body is made modular by using `record_*`
+    /// functions that behave differently depending on `mode` (either by
+    /// asserting a constraint or collecting a boolean in the mutable `mode`
+    /// accumulator).
+    fn prefix_check<const CAPACITY: usize>(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        small: &AssignedMmr<F, CAPACITY>,
+        big: &AssignedMmr<F, CAPACITY>,
+        path: &AssignedSummitPath<F, CAPACITY>,
+        mode: &mut CheckMode<F>,
+    ) -> Result<(), Error> {
+        let ng = &self.native_gadget;
+        let a_bits = &small.size_bits;
+        let b_bits = &big.size_bits;
+
+        // agree[i]: the two sizes agree on all bits at positions >= i
+        // (computed top-down; agree[CAPACITY] is trivially true).
+        let mut agree: Vec<AssignedBit<F>> = Vec::with_capacity(CAPACITY + 1);
+        agree.push(ng.assign_fixed(layouter, true)?);
+        for i in (0..CAPACITY).rev() {
+            let bits_equal = ng.is_equal(layouter, &a_bits[i], &b_bits[i])?;
+            let and = ng.and(layouter, &[agree.last().unwrap().clone(), bits_equal])?;
+            agree.push(and);
+        }
+        agree.reverse();
+
+        // started[i]: the small MMR has a peak at some height < i, i.e. the
+        // climb is underway when reaching height i.
+        let mut started: Vec<AssignedBit<F>> = Vec::with_capacity(CAPACITY + 1);
+        started.push(ng.assign_fixed(layouter, false)?);
+        for a_bit in a_bits.iter() {
+            let or = ng.or(layouter, &[started.last().unwrap().clone(), a_bit.clone()])?;
+            started.push(or);
+        }
+
+        // The climbing node; its initial value is irrelevant (it is never
+        // consumed before being overwritten by a starting peak).
+        let mut cur: AssignedNative<F> = ng.assign_fixed(layouter, F::ZERO)?;
+
+        for i in 0..CAPACITY {
+            // The sizes agree from height i up: the peaks must match. When
+            // neither MMR has a mountain here both peaks are the canonical
+            // zero, so the check is vacuous rather than wrong.
+            self.record_eq(layouter, mode, &agree[i], &small.peaks[i], &big.peaks[i])?;
+
+            // fin: highest bit where the sizes differ (at most one height),
+            // i.e. the single step where the agree chain drops.
+            let fin = ng.xor(layouter, &[agree[i + 1].clone(), agree[i].clone()])?;
+
+            // At said height, the small size must have the unset bit;
+            // otherwise small > big and it cannot be a prefix.
+            let violation = ng.and(layouter, &[fin.clone(), a_bits[i].clone()])?;
+            self.record_false(layouter, mode, &violation)?;
+
+            // The climb starts at the lowest peak of the small MMR: the
+            // single step where the started chain rises.
+            let is_start = ng.xor(layouter, &[started[i + 1].clone(), started[i].clone()])?;
+            let input = ng.select(layouter, &is_start, &small.peaks[i], &cur)?;
+
+            // If a climb took place, it must land exactly on big's peak at
+            // the height of the first size disagreement.
+            let must_land = ng.and(layouter, &[fin, started[i].clone()])?;
+            self.record_eq(layouter, mode, &must_land, &input, &big.peaks[i])?;
+
+            // Climb one level up: the node at height i is combined either
+            // with small's own peak at this height (as left sibling) or with
+            // a witnessed node of the big MMR (as right sibling). The top
+            // height never climbs.
+            if i < CAPACITY - 1 {
+                let absorb_own_peak = ng.and(layouter, &[a_bits[i].clone(), started[i].clone()])?;
+                let left = ng.select(layouter, &absorb_own_peak, &small.peaks[i], &input)?;
+                let right = ng.select(layouter, &absorb_own_peak, &input, &path.steps[i])?;
+                // Hashed unconditionally: outside a climb the result is
+                // never read, as the landing check is only ever reached
+                // through an unbroken chain of climbing steps.
+                cur = self.hash_chip.hash(layouter, &[left, right])?;
+            }
+        }
+
+        Ok(())
     }
 
     /// Assigns a [MembershipProof] as a private input.
     ///
-    /// The proof is not constrained here; its fields are verified when consumed
-    /// by [Self::assert_membership].
-    pub fn assign_membership_proof<const SIZE: usize>(
+    /// The proof is not constrained here; its fields are verified when
+    /// consumed by [Self::is_member] or [Self::assert_membership]. Only the
+    /// low `CAPACITY` bits of the leaf index are assigned; a larger index is
+    /// not representable.
+    pub fn assign_membership_proof<const CAPACITY: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
-        proof: Value<MembershipProof<F, SIZE>>,
-    ) -> Result<AssignedMembershipProof<F, SIZE>, Error> {
-        let height =
-            self.native_gadget.assign(layouter, proof.map(|p| F::from(p.height as u64)))?;
-        let leaf_index =
-            self.native_gadget.assign(layouter, proof.map(|p| F::from(p.leaf_index)))?;
+        proof: Value<MembershipProof<F, CAPACITY>>,
+    ) -> Result<AssignedMembershipProof<F, CAPACITY>, Error> {
+        let height_bits = proof
+            .map(|p| std::array::from_fn::<bool, CAPACITY, _>(|l| l == p.height))
+            .transpose_array();
+        let height_bits: Vec<AssignedBit<F>> =
+            self.native_gadget.assign_many(layouter, &height_bits)?;
+        let index_bits = proof
+            .map(|p| std::array::from_fn::<bool, CAPACITY, _>(|l| (p.leaf_index >> l) & 1 == 1))
+            .transpose_array();
+        let index_bits: Vec<AssignedBit<F>> =
+            self.native_gadget.assign_many(layouter, &index_bits)?;
         let siblings = proof.map(|p| p.siblings).transpose_array();
         let siblings = self.native_gadget.assign_many(layouter, &siblings)?;
         Ok(AssignedMembershipProof {
-            height,
-            leaf_index,
+            height_bits: height_bits.try_into().unwrap(),
+            index_bits: index_bits.try_into().unwrap(),
             siblings: siblings.try_into().unwrap(),
         })
     }
@@ -387,57 +399,26 @@ where
     /// supplied by the proof as a hint. This is the in-circuit counterpart of
     /// [Mmr::is_member](crate::mmr::cpu::Mmr::is_member).
     ///
-    /// # Unsatisfiable Circuit
+    /// The check has no unsatisfiable case: every failure (wrong element,
+    /// wrong siblings, a height pointing at an absent mountain, a wrong leaf
+    /// index) returns `0`.
     ///
-    /// If `leaf_index` does not fit in `SIZE` bits. The index is a hint the
-    /// prover is free to choose, so it is range-checked outright rather than
-    /// folded into the verdict; every semantic failure — wrong element, wrong
-    /// siblings, a height pointing at an absent mountain — returns `0`.
-    pub fn is_member<const SIZE: usize>(
+    /// # Soundness
+    ///
+    /// The verdict is one-sided. A `1` proves that `elem` is committed to by
+    /// `mmr`; a `0` only says that this witness does not prove it, as the
+    /// prover chooses the proof and may always supply a wrong one. A caller
+    /// must not read `0` as a proof of non-membership.
+    pub fn is_member<const CAPACITY: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
-        mmr: &AssignedMmr<F, SIZE>,
+        mmr: &AssignedMmr<F, CAPACITY>,
         elem: &AssignedNative<F>,
-        proof: &AssignedMembershipProof<F, SIZE>,
+        proof: &AssignedMembershipProof<F, CAPACITY>,
     ) -> Result<AssignedBit<F>, Error> {
-        let ng = &self.native_gadget;
-
-        // Little-endian bits of the leaf index; bit `l` is the left/right
-        // direction of the climb from level `l` to `l + 1`.
-        let index_bits = ng.assigned_to_le_bits(layouter, &proof.leaf_index, Some(SIZE), true)?;
-
-        // `node` is the root of the height-`l` subtree over the leaf. It starts
-        // as the arity-1 leaf hash, which is the peak of a height-0 mountain.
-        let mut node = self.hash_chip.hash(layouter, std::slice::from_ref(elem))?;
-
-        // Set once the climb reaches the claimed height at a present mountain,
-        // ensuring that `height` selects an existing slot in `[0, SIZE)`.
-        let mut matched: AssignedBit<F> = ng.assign_fixed(layouter, false)?;
-
-        // The verdict so far: on the claimed height, the climb must have
-        // reproduced that mountain's peak.
-        let mut ok: AssignedBit<F> = ng.assign_fixed(layouter, true)?;
-
-        for (l, (peak, size_bit)) in mmr.peaks.iter().zip(mmr.size_bits.iter()).enumerate() {
-            let is_height = ng.is_equal_to_fixed(layouter, &proof.height, F::from(l as u64))?;
-            let peak_equal = ng.is_equal(layouter, &node, peak)?;
-            let level_ok = self.implies(layouter, &is_height, &peak_equal)?;
-            ok = ng.and(layouter, &[ok, level_ok])?;
-
-            let matches_here = ng.and(layouter, &[is_height, size_bit.clone()])?;
-            matched = ng.or(layouter, &[matched, matches_here])?;
-
-            // Climb one level (the top height never climbs).
-            if l < SIZE - 1 {
-                let dir = &index_bits[l];
-                let left = ng.select(layouter, dir, &proof.siblings[l], &node)?;
-                let right = ng.select(layouter, dir, &node, &proof.siblings[l])?;
-                node = self.hash_chip.hash(layouter, &[left, right])?;
-            }
-        }
-
-        // The climb must also have matched a present mountain.
-        ng.and(layouter, &[ok, matched])
+        let mut mode = CheckMode::CollectFailures(vec![]);
+        self.member_check(layouter, mmr, elem, proof, &mut mode)?;
+        Ok(self.finish(layouter, mode)?.expect("collecting failures"))
     }
 
     /// Asserts that `elem` is one of the elements committed to by `mmr`.
@@ -445,44 +426,160 @@ where
     /// # Unsatisfiable Circuit
     ///
     /// If `elem` is not a member of `mmr`, or if the proof is malformed.
-    pub fn assert_membership<const SIZE: usize>(
+    pub fn assert_membership<const CAPACITY: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
-        mmr: &AssignedMmr<F, SIZE>,
+        mmr: &AssignedMmr<F, CAPACITY>,
         elem: &AssignedNative<F>,
-        proof: &AssignedMembershipProof<F, SIZE>,
+        proof: &AssignedMembershipProof<F, CAPACITY>,
     ) -> Result<(), Error> {
-        // NOTE: This instruction is not optimized. Using asserts directly
-        // in the logic of is_member saves ~20% rows.
-        let ok = self.is_member(layouter, mmr, elem, proof)?;
-        self.native_gadget.assert_equal_to_fixed(layouter, &ok, true)
+        self.member_check(layouter, mmr, elem, proof, &mut CheckMode::Assert)
     }
 
-    /// The implication `antecedent => consequent`, as a bit.
-    // TODO: Helper for the prefix check. If found useful may be worth moving
-    // to the logic chip.
-    fn implies(
+    /// Main function implementing the bulk of what `is_member` and
+    /// `assert_membership` do. The body is made modular by using `record_*`
+    /// functions that behave differently depending on `mode` (either by
+    /// asserting a constraint or collecting a boolean in the mutable `mode`
+    /// accumulator).
+    fn member_check<const CAPACITY: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
-        antecedent: &AssignedBit<F>,
-        consequent: &AssignedBit<F>,
-    ) -> Result<AssignedBit<F>, Error> {
-        let excused = self.native_gadget.not(layouter, antecedent)?;
-        self.native_gadget.or(layouter, &[excused, consequent.clone()])
+        mmr: &AssignedMmr<F, CAPACITY>,
+        elem: &AssignedNative<F>,
+        proof: &AssignedMembershipProof<F, CAPACITY>,
+        mode: &mut CheckMode<F>,
+    ) -> Result<(), Error> {
+        let ng = &self.native_gadget;
+
+        // Bit `l` of the leaf index is the left/right direction of the climb
+        // from level `l` to `l + 1`.
+        let index_bits = &proof.index_bits;
+
+        // `node` is the root of the height-`l` subtree over the leaf. It starts
+        // as the arity-1 leaf hash, which is the peak of a height-0 mountain.
+        let mut node = self.hash_chip.hash(layouter, std::slice::from_ref(elem))?;
+
+        // selected[l]: the claimed height is l and that mountain exists.
+        let mut selected: Vec<AssignedBit<F>> = Vec::with_capacity(CAPACITY);
+
+        for (l, (peak, size_bit)) in mmr.peaks.iter().zip(mmr.size_bits.iter()).enumerate() {
+            let at_height = &proof.height_bits[l];
+            self.record_eq(layouter, mode, at_height, &node, peak)?;
+            selected.push(ng.and(layouter, &[at_height.clone(), size_bit.clone()])?);
+
+            // Climb one level (the top height never climbs).
+            if l < CAPACITY - 1 {
+                let (left, right) =
+                    ng.cond_swap(layouter, &index_bits[l], &node, &proof.siblings[l])?;
+                node = self.hash_chip.hash(layouter, &[left, right])?;
+            }
+        }
+
+        // Exactly one present mountain is selected, which is what makes the
+        // peak check above fire on a mountain the MMR really has. A further
+        // height bit at an absent mountain can only add constraints.
+        let terms: Vec<(F, AssignedNative<F>)> =
+            (selected.iter()).map(|bit| (F::ONE, bit.0.clone())).collect();
+        let total = ng.linear_combination(layouter, &terms, F::ZERO)?;
+        self.record_eq_fixed(layouter, mode, &total, F::ONE)
+    }
+
+    /// Records `cond => x == y`.
+    fn record_eq(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        mode: &mut CheckMode<F>,
+        cond: &AssignedBit<F>,
+        x: &AssignedNative<F>,
+        y: &AssignedNative<F>,
+    ) -> Result<(), Error> {
+        let ng = &self.native_gadget;
+        match mode {
+            CheckMode::Assert => ng.cond_assert_equal(layouter, cond, x, y),
+            CheckMode::CollectFailures(failures) => {
+                let equal = ng.is_equal(layouter, x, y)?;
+                // `cond AND NOT equal` (written as an `add_and_mul` to save one row).
+                failures.push(AssignedBit(ng.add_and_mul(
+                    layouter,
+                    (F::ONE, &cond.0),
+                    (F::ZERO, &equal.0),
+                    (F::ZERO, &cond.0),
+                    F::ZERO,
+                    -F::ONE,
+                )?));
+                Ok(())
+            }
+        }
+    }
+
+    /// Records that `bit` must be false.
+    fn record_false(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        mode: &mut CheckMode<F>,
+        bit: &AssignedBit<F>,
+    ) -> Result<(), Error> {
+        let ng = &self.native_gadget;
+        match mode {
+            CheckMode::Assert => ng.assert_equal_to_fixed(layouter, bit, false),
+            CheckMode::CollectFailures(failures) => {
+                failures.push(bit.clone());
+                Ok(())
+            }
+        }
+    }
+
+    /// Records that `x` must equal the constant `c`.
+    fn record_eq_fixed(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        mode: &mut CheckMode<F>,
+        x: &AssignedNative<F>,
+        c: F,
+    ) -> Result<(), Error> {
+        let ng = &self.native_gadget;
+        match mode {
+            CheckMode::Assert => ng.assert_equal_to_fixed(layouter, x, c),
+            CheckMode::CollectFailures(failures) => {
+                let equal = ng.is_equal_to_fixed(layouter, x, c)?;
+                failures.push(ng.not(layouter, &equal)?);
+                Ok(())
+            }
+        }
+    }
+
+    /// Closes a verdict: `None` in asserting mode, otherwise the bit stating
+    /// that no failure was recorded.
+    fn finish(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        mode: CheckMode<F>,
+    ) -> Result<Option<AssignedBit<F>>, Error> {
+        match mode {
+            CheckMode::Assert => Ok(None),
+            CheckMode::CollectFailures(failures) => {
+                // At most 3 terms per height, so the sum cannot wrap around
+                // the field.
+                let terms: Vec<(F, AssignedNative<F>)> =
+                    failures.into_iter().map(|f| (F::ONE, f.0)).collect();
+                let total = self.native_gadget.linear_combination(layouter, &terms, F::ZERO)?;
+                self.native_gadget.is_zero(layouter, &total).map(Some)
+            }
+        }
     }
 
     /// Enforces the [AssignedMmr] invariants over an assigned size and
-    /// assigned peaks: the size is linked to its `SIZE`-bit decomposition
+    /// assigned peaks: the size is linked to its `CAPACITY`-bit decomposition
     /// (hence range-checked) and the peaks at absent slots are set to zero.
-    fn enforce_state_invariants<const SIZE: usize>(
+    fn enforce_state_invariants<const CAPACITY: usize>(
         &self,
         layouter: &mut impl Layouter<F>,
         size: AssignedNative<F>,
         peaks: Vec<AssignedNative<F>>,
-    ) -> Result<AssignedMmr<F, SIZE>, Error> {
-        let size_bits: [AssignedBit<F>; SIZE] = self
+    ) -> Result<AssignedMmr<F, CAPACITY>, Error> {
+        let size_bits: [AssignedBit<F>; CAPACITY] = self
             .native_gadget
-            .assigned_to_le_bits(layouter, &size, Some(SIZE), true)?
+            .assigned_to_le_bits(layouter, &size, Some(CAPACITY), true)?
             .try_into()
             .unwrap();
 
@@ -498,6 +595,45 @@ where
             size_bits,
             peaks: peaks.try_into().unwrap(),
         })
+    }
+}
+
+impl<F, N, H, const CAPACITY: usize> PublicInputInstructions<F, AssignedMmr<F, CAPACITY>>
+    for MmrGadget<F, N, H>
+where
+    F: CircuitField,
+    N: NativeInstructions<F>,
+    H: HashInstructions<F, AssignedNative<F>, AssignedNative<F>>,
+{
+    /// The cells of the MMR state in public input order: the size followed by
+    /// the peaks.
+    fn as_public_input(
+        &self,
+        _layouter: &mut impl Layouter<F>,
+        assigned: &AssignedMmr<F, CAPACITY>,
+    ) -> Result<Vec<AssignedNative<F>>, Error> {
+        let mut cells = vec![assigned.size.clone()];
+        cells.extend(assigned.peaks.iter().cloned());
+        Ok(cells)
+    }
+
+    fn constrain_as_public_input(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        assigned: &AssignedMmr<F, CAPACITY>,
+    ) -> Result<(), Error> {
+        (self.as_public_input(layouter, assigned)?.iter())
+            .try_for_each(|cell| self.native_gadget.constrain_as_public_input(layouter, cell))
+    }
+
+    fn assign_as_public_input(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        value: Value<MmrState<F, CAPACITY>>,
+    ) -> Result<AssignedMmr<F, CAPACITY>, Error> {
+        let assigned = self.assign(layouter, value)?;
+        self.constrain_as_public_input(layouter, &assigned)?;
+        Ok(assigned)
     }
 }
 
@@ -554,7 +690,7 @@ mod tests {
         utils::circuit_modeling::{circuit_to_json, cost_measure_end, cost_measure_start},
     };
 
-    const SIZE: usize = 5;
+    const CAPACITY: usize = 5;
     type Ng<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
 
     #[derive(Clone, Debug)]
@@ -570,11 +706,11 @@ mod tests {
         N: NativeInstructions<F>,
         H: HashInstructions<F, AssignedNative<F>, AssignedNative<F>>,
     {
-        small: Value<MmrState<F, SIZE>>,
-        big: Value<MmrState<F, SIZE>>,
-        path: Value<SummitPath<F, SIZE>>,
+        small: Value<MmrState<F, CAPACITY>>,
+        big: Value<MmrState<F, CAPACITY>>,
+        path: Value<SummitPath<F, CAPACITY>>,
         elem: Value<F>,
-        membership: Value<MembershipProof<F, SIZE>>,
+        membership: Value<MembershipProof<F, CAPACITY>>,
         mode: MmrTests,
         // None uses the asserting forms; Some(b) the verifying forms.
         verdict: Option<bool>,
@@ -629,11 +765,10 @@ mod tests {
                     let mmr = mmr_gadget.assign(&mut layouter, self.small)?;
                     mmr_gadget.constrain_as_public_input(&mut layouter, &mmr)?;
 
-                    let cells = mmr.as_public_input();
-                    assert_eq!(cells.len(), SIZE + 1);
+                    let cells = mmr_gadget.as_public_input(&mut layouter, &mmr)?;
+                    assert_eq!(cells.len(), CAPACITY + 1);
                     self.small.map(|state| {
-                        let expected =
-                            <AssignedMmr<F, SIZE> as Instantiable<F>>::as_public_input(&state);
+                        let expected = AssignedMmr::<F, CAPACITY>::as_public_input(&state);
                         cells.iter().zip(expected).for_each(|(cell, expected)| {
                             cell.value().map(|v| assert_eq!(*v, expected));
                         });
@@ -681,7 +816,7 @@ mod tests {
 
     /// Builds the MMRs over the leaves `first, first + 1, ...` of all sizes
     /// up to `max_size`.
-    fn all_mmrs<F, H>(first: u64, max_size: u64) -> Vec<Mmr<F, H, SIZE>>
+    fn all_mmrs<F, H>(first: u64, max_size: u64) -> Vec<Mmr<F, H, CAPACITY>>
     where
         F: CircuitField,
         H: HashCPU<F, F>,
@@ -706,7 +841,7 @@ mod tests {
         let shifted_mmrs = all_mmrs::<F, H>(1, 4);
 
         let empty_path = SummitPath {
-            steps: [F::ZERO; SIZE],
+            steps: [F::ZERO; CAPACITY],
         };
 
         // (small, big, path, expect_ok, description).
@@ -745,7 +880,7 @@ mod tests {
                 true,
                 "(0, 11)",
             ),
-            // Direct match at the top slot (bit SIZE - 1) plus a climb.
+            // Direct match at the top slot (bit CAPACITY - 1) plus a climb.
             (
                 &mmrs[20],
                 &mmrs[24],
@@ -804,8 +939,8 @@ mod tests {
                 };
 
                 let pi = [
-                    <AssignedMmr<F, SIZE> as Instantiable<F>>::as_public_input(&small.state()),
-                    <AssignedMmr<F, SIZE> as Instantiable<F>>::as_public_input(&big.state()),
+                    AssignedMmr::<F, CAPACITY>::as_public_input(&small.state()),
+                    AssignedMmr::<F, CAPACITY>::as_public_input(&big.state()),
                 ]
                 .concat();
 
@@ -826,8 +961,12 @@ mod tests {
                     );
                 }
 
-                if cost_model && verdict.is_none() && description == "(3, 11)" {
-                    circuit_to_json::<F>("MMR gadget", "Prefix", circuit);
+                if cost_model && description == "(3, 11)" {
+                    match verdict {
+                        None => circuit_to_json::<F>("MMR gadget", "Prefix", circuit),
+                        Some(true) => circuit_to_json::<F>("MMR gadget", "Prefix (bit)", circuit),
+                        Some(false) => {}
+                    }
                 }
             }
         }
@@ -837,7 +976,7 @@ mod tests {
         // with the (zero) entry of an absent slot must fail: the assignment
         // canonicalizes absent peaks to zero.
         let state = mmrs[11].state();
-        let pi = <AssignedMmr<F, SIZE> as Instantiable<F>>::as_public_input(&state);
+        let pi = AssignedMmr::<F, CAPACITY>::as_public_input(&state);
         // 11 = 0b01011: slot 2 is absent (entry 3 of the public input).
         let absent_slot_entry = 1 + 2;
         for tampered_entry in [None, Some(1), Some(absent_slot_entry)] {
@@ -881,7 +1020,7 @@ mod tests {
         let state = mmr.state();
 
         // (elem, proof, expect_ok, description).
-        let mut cases: Vec<(F, MembershipProof<F, SIZE>, bool, String)> = vec![
+        let mut cases: Vec<(F, MembershipProof<F, CAPACITY>, bool, String)> = vec![
             (
                 leaves[0],
                 mmr.prove_membership(0),
@@ -965,15 +1104,20 @@ mod tests {
                     );
                 }
 
-                if cost_model && verdict.is_none() && description == "oldest (tallest mountain)" {
-                    circuit_to_json::<F>("MMR gadget", "Membership", circuit);
+                if cost_model && description == "oldest (tallest mountain)" {
+                    match verdict {
+                        None => circuit_to_json::<F>("MMR gadget", "Membership", circuit),
+                        Some(true) => {
+                            circuit_to_json::<F>("MMR gadget", "Membership (bit)", circuit)
+                        }
+                        Some(false) => {}
+                    }
                 }
             }
         }
 
-        // An index hint beyond SIZE bits fails its range-checked
-        // decomposition outright — the hint is the prover's to choose, so it
-        // is not part of the verdict, and both forms reject it.
+        // An index hint beyond CAPACITY bits keeps only its low bits, so it is
+        // just a wrong hint and the verdict is false.
         let mut proof = mmr.prove_membership(5);
         proof.leaf_index = u64::MAX;
         for verdict in [None, Some(true), Some(false)] {
@@ -988,10 +1132,17 @@ mod tests {
                 _marker: PhantomData,
             };
             let prover = MockProver::run(&circuit, vec![vec![], vec![]]).unwrap();
-            assert!(
-                prover.verify().is_err(),
-                "out-of-range leaf index (verdict {verdict:?}) accepted"
-            );
+            if verdict == Some(false) {
+                assert!(
+                    prover.verify().is_ok(),
+                    "out-of-range leaf index (verdict {verdict:?}) rejected"
+                );
+            } else {
+                assert!(
+                    prover.verify().is_err(),
+                    "out-of-range leaf index (verdict {verdict:?}) accepted"
+                );
+            }
         }
     }
 
@@ -1001,22 +1152,34 @@ mod tests {
         type H = PoseidonChip<F>;
 
         let state = all_mmrs::<F, H>(0, 11)[11].state();
-        let pi = <AssignedMmr<F, SIZE> as Instantiable<F>>::as_public_input(&state);
-        assert_eq!(pi.len(), SIZE + 1);
-        assert_eq!(AssignedMmr::<F, SIZE>::from_public_input(&pi), Some(state));
+        let pi = AssignedMmr::<F, CAPACITY>::as_public_input(&state);
+        assert_eq!(pi.len(), CAPACITY + 1);
+        assert_eq!(
+            AssignedMmr::<F, CAPACITY>::from_public_input(&pi),
+            Some(state)
+        );
 
         // Wrong length.
-        assert_eq!(AssignedMmr::<F, SIZE>::from_public_input(&pi[1..]), None);
+        assert_eq!(
+            AssignedMmr::<F, CAPACITY>::from_public_input(&pi[1..]),
+            None
+        );
 
         // Nonzero peak at an absent slot (11 = 0b01011: slot 2 is absent).
         let mut tampered = pi.clone();
         tampered[1 + 2] = F::ONE;
-        assert_eq!(AssignedMmr::<F, SIZE>::from_public_input(&tampered), None);
+        assert_eq!(
+            AssignedMmr::<F, CAPACITY>::from_public_input(&tampered),
+            None
+        );
 
         // Size out of range.
         let mut tampered = pi.clone();
-        tampered[0] = F::from(1 << SIZE);
-        assert_eq!(AssignedMmr::<F, SIZE>::from_public_input(&tampered), None);
+        tampered[0] = F::from(1 << CAPACITY);
+        assert_eq!(
+            AssignedMmr::<F, CAPACITY>::from_public_input(&tampered),
+            None
+        );
     }
 
     #[test]
