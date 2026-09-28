@@ -15,6 +15,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
+* Convert virtual selectors to fixed columns when assigning a verifying key as a constant, so single-circuit IVC aggregation can verify selector-bearing circuits [#519](https://github.com/midnightntwrk/midnight-zk/issues/519)
 
 ### Changed
 * `TranscriptGadget::read_commitment` orders the labels of a group by their `Ord` itself, mirroring the off-circuit `read_commitment`, so `verifier/argument.rs` no longer sorts them before reading. A repeated label panics [#515](https://github.com/midnightntwrk/midnight-zk/pull/515)
