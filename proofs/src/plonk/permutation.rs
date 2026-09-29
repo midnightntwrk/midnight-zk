@@ -173,9 +173,9 @@ impl<F: WithSmallOrderMulGroup<3> + SerdeObject> ProvingKey<F> {
 impl<F: PrimeField> ProvingKey<F> {
     /// Gets the total number of bytes in the serialization of `self`
     pub(super) fn bytes_length(&self) -> usize {
+        // The coefficient form and the cosets are not written: [`Self::read`]
+        // recomputes them from the permutation polynomials.
         polynomial_slice_byte_length(&self.permutations)
-            + polynomial_slice_byte_length(&self.polys)
-            + polynomial_slice_byte_length(&self.cosets)
     }
 }
 #[derive(Debug)]

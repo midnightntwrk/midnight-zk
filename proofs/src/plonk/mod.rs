@@ -217,7 +217,12 @@ where
 impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> VerifyingKey<F, CS> {
     /// Return the bytes_length of a VerifyingKey
     pub fn bytes_length(&self, format: SerdeFormat) -> usize {
-        10 + (self.fixed_commitments.iter().map(|c| c.byte_length(format)).sum::<usize>())
+        // The header [`Self::write`] emits: the version byte, `k`, and the
+        // number of fixed commitments as a `u32`.
+        const HEADER_BYTES: usize = 1 + 1 + 4;
+
+        HEADER_BYTES
+            + (self.fixed_commitments.iter().map(|c| c.byte_length(format)).sum::<usize>())
             + self.permutation.bytes_length(format)
     }
 
@@ -363,8 +368,9 @@ where
 
     /// Gets the total number of bytes in the serialization of `self`
     pub fn bytes_length(&self, format: SerdeFormat) -> usize {
+        // `l0`, `l_last`, `l_active_row`, the fixed polynomials and their
+        // cosets are not written: [`Self::read`] recomputes them.
         self.vk.bytes_length(format)
-            + 12 // bytes used for encoding the length(u32) of "l0", "l_last" & "l_active_row" polys
             + polynomial_slice_byte_length(&self.fixed_values)
             + self.permutation.bytes_length()
     }
