@@ -66,6 +66,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Simplify KZG multiopen verifier to use `KZGCommitment` directly [#430](https://github.com/midnightntwrk/midnight-zk/pull/430)
 
 ### Removed
+* `Clone` on `ProvingKey`, so that the polynomials it holds are never copied [#537](https://github.com/midnightntwrk/midnight-zk/pull/537)
 * Remove `KZGCommitment::into_point`; use `as_point`, which borrows the point instead of consuming (and often cloning) the commitment [#515](https://github.com/midnightntwrk/midnight-zk/pull/515)
 * Remove the internal `logup::verifier` module and `logup::Evaluated`; the lookup argument no longer carries any transcript plumbing of its own [#515](https://github.com/midnightntwrk/midnight-zk/pull/515)
 * Remove the internal `trash::verifier` module and `trash::Evaluated`; the trash argument no longer carries any transcript plumbing of its own [#513](https://github.com/midnightntwrk/midnight-zk/pull/513)

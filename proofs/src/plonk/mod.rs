@@ -334,7 +334,7 @@ pub struct PinnedVerificationKey<'a, F: PrimeField, CS: PolynomialCommitmentSche
 }
 /// This is a proving key which allows for the creation of proofs for a
 /// particular circuit.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct ProvingKey<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
     pub(crate) vk: VerifyingKey<F, CS>,
     pub(crate) l0: Polynomial<F, ExtendedLagrangeCoeff>,

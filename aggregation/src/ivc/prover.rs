@@ -33,7 +33,7 @@ use super::{E, F, Ivc, IvcCircuit, IvcError, IvcInstance, IvcWitness, S};
 ///
 /// Created via [`super::setup()`]. Use [`IvcProver::prove_step`] to advance
 /// the state and [`IvcProver::instance`] to obtain the latest instance.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct IvcProver<T: Ivc> {
     pub(crate) params: ParamsKZG<E>,
     pub(crate) relation: IvcCircuit<T>,

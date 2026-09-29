@@ -137,7 +137,7 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> VerifyingKey<F, CS> {
 }
 
 /// The proving key for a single permutation argument.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub(crate) struct ProvingKey<F: PrimeField> {
     pub(crate) permutations: Vec<Polynomial<F, LagrangeCoeff>>,
     pub(crate) polys: Vec<Polynomial<F, Coeff>>,
