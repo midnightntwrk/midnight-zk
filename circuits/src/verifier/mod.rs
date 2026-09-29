@@ -28,13 +28,13 @@ use crate::{
     types::{InnerValue, Instantiable},
 };
 
+mod absorbed_vk;
 mod accumulator;
 mod argument;
 mod expressions;
 mod kzg;
 mod msm;
 pub(crate) mod pcs;
-mod permutation;
 mod traces;
 mod transcript_gadget;
 mod types;
@@ -67,7 +67,9 @@ type VerifyingKey<S> =
 pub struct AssignedVk<S: SelfEmulation, PCS: InCircuitPCS<S>> {
     domain: EvaluationDomain<S::F>,
     fixed_commitments: Vec<PCS::AssignedCommitment>,
-    perm_commitments: Vec<PCS::AssignedCommitment>,
+    /// REVIEW-ONLY: The commitment to the fixed permutation polynomials, as one
+    /// group.
+    fixed_perm_commitment: PCS::AssignedCommitment,
     cs: ConstraintSystem<S::F>,
     cs_degree: usize,
     transcript_repr: AssignedNative<S::F>,

@@ -13,32 +13,34 @@
 
 //! A module for the in-circuit permutation argument identities (expressions).
 //! This is the in-circuit analog of the expressions from file
-//! proofs/src/plonk/permutation/verifier.rs.
+//! proofs/src/plonk/permutation.rs.
+//!
+//! The permutation polynomials are opened as the phase-0 group and the
+//! accumulators as part of the phase-2 group, so both sets of evaluations are
+//! looked up by label.
+
+use std::collections::BTreeMap;
 
 use ff::{Field, PrimeField};
 use midnight_proofs::{
     circuit::Layouter,
     plonk::{Any, Column, ColumnType, ConstraintSystem, Error},
-    poly::Rotation,
+    poly::{PolynomialLabel, Rotation},
 };
 
 use crate::{
     field::AssignedNative,
     instructions::ArithInstructions,
-    verifier::{
-        SelfEmulation,
-        pcs::InCircuitPCS,
-        permutation::{CommonEvaluated, Evaluated},
-    },
+    verifier::{SelfEmulation, argument::Evaluation, expressions::eval_at},
 };
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn permutation_expressions<S: SelfEmulation, PCS: InCircuitPCS<S>>(
+pub(crate) fn permutation_expressions<S: SelfEmulation>(
     layouter: &mut impl Layouter<S::F>,
     scalar_chip: &S::ScalarChip,
     cs: &ConstraintSystem<S::F>,
-    permutation_evals: &Evaluated<S, PCS>,
-    permutations_common: &CommonEvaluated<S>,
+    fixed_perm_evals_map: &BTreeMap<PolynomialLabel, Vec<Evaluation<S>>>,
+    phase2_evals_map: &BTreeMap<PolynomialLabel, Vec<Evaluation<S>>>,
     advice_evals: &[AssignedNative<S::F>],
     fixed_evals: &[AssignedNative<S::F>],
     instance_evals: &[AssignedNative<S::F>],
@@ -50,12 +52,54 @@ pub(crate) fn permutation_expressions<S: SelfEmulation, PCS: InCircuitPCS<S>>(
     x: &AssignedNative<S::F>,
 ) -> Result<Vec<AssignedNative<S::F>>, Error> {
     let chunk_len = cs.degree() - 2;
+    let num_sets = cs.permutation().num_sets(cs.degree());
+
+    // REVIEW-ONLY: A circuit with no copy constraints has no permutation
+    // identities, as off-circuit.
+    if num_sets == 0 {
+        return Ok(vec![]);
+    }
+
+    // Per set: z_i(x), z_i(omega x) and, for every set but the last,
+    // z_i(omega^last x). See `eval_points` in verifier/argument.rs.
+    let z = |i: usize| -> Result<&AssignedNative<S::F>, Error> {
+        eval_at::<S>(
+            phase2_evals_map,
+            &PolynomialLabel::PermutationAccumulator(i),
+            0,
+        )
+    };
+    let z_next = |i: usize| -> Result<&AssignedNative<S::F>, Error> {
+        eval_at::<S>(
+            phase2_evals_map,
+            &PolynomialLabel::PermutationAccumulator(i),
+            1,
+        )
+    };
+    let z_last = |i: usize| -> Result<&AssignedNative<S::F>, Error> {
+        eval_at::<S>(
+            phase2_evals_map,
+            &PolynomialLabel::PermutationAccumulator(i),
+            2,
+        )
+    };
+
+    // REVIEW-ONLY: The permutation polynomial evaluations, in column order.
+    let permutation_evals = (0..cs.permutation().columns.len())
+        .map(|i| {
+            eval_at::<S>(
+                fixed_perm_evals_map,
+                &PolynomialLabel::PermutationFixed(i),
+                0,
+            )
+            .cloned()
+        })
+        .collect::<Result<Vec<_>, Error>>()?;
 
     // Enforce only for the first set.
     // l_0(X) * (1 - z_0(X)) = 0
     let id_1 = {
-        let first_set = permutation_evals.sets.first().unwrap();
-        let z_0 = &first_set.permutation_product_eval;
+        let z_0 = z(0)?;
 
         // l_0 * (1 - z_0) computed as l_0 - l_0 * z_0
         scalar_chip.add_and_mul(
@@ -71,8 +115,7 @@ pub(crate) fn permutation_expressions<S: SelfEmulation, PCS: InCircuitPCS<S>>(
     // Enforce only for the last set.
     // l_last(X) * (z_l(X)^2 - z_l(X)) = 0
     let id_2 = {
-        let last_set = permutation_evals.sets.last().unwrap();
-        let z_l = &last_set.permutation_product_eval;
+        let z_l = z(num_sets - 1)?;
 
         // z_l**2 - z_l
         let aux = scalar_chip.add_and_mul(
@@ -88,14 +131,10 @@ pub(crate) fn permutation_expressions<S: SelfEmulation, PCS: InCircuitPCS<S>>(
 
     // Except for the first set, enforce.
     // l_0(X) * (z_i(X) - z_{i-1}(\omega^(last) X)) = 0
-    let ids_3 = permutation_evals
-        .sets
-        .iter()
-        .skip(1)
-        .zip(permutation_evals.sets.iter())
-        .map(|(set, prev_set)| {
-            let z_i = &set.permutation_product_eval;
-            let z_i_prev = &prev_set.permutation_product_last_eval.clone().unwrap();
+    let ids_3 = (1..num_sets)
+        .map(|i| {
+            let z_i = z(i)?;
+            let z_i_prev = z_last(i - 1)?;
 
             // l_0 * (z_i - z_i_prev)
             scalar_chip.add_and_double_mul(
@@ -114,14 +153,14 @@ pub(crate) fn permutation_expressions<S: SelfEmulation, PCS: InCircuitPCS<S>>(
     //   z_i(\omega X) \prod (p(X) + \beta s_i(X) + \gamma)
     // - z_i(X) \prod (p(X) + \delta^i \beta X + \gamma)
     // )
-    let ids_4 = permutation_evals
-        .sets
-        .iter()
-        .zip(cs.permutation().get_columns().chunks(chunk_len))
-        .zip(permutations_common.permutation_evals.chunks(chunk_len))
+    let ids_4 = cs
+        .permutation()
+        .get_columns()
+        .chunks(chunk_len)
+        .zip(permutation_evals.chunks(chunk_len))
         .enumerate()
-        .map(move |(chunk_index, ((set, columns), permutation_evals))| {
-            let mut left = set.permutation_product_next_eval.clone();
+        .map(move |(chunk_index, (columns, permutation_evals))| {
+            let mut left = z_next(chunk_index)?.clone();
             for (eval, permutation_eval) in columns
                 .iter()
                 .map(|&column| match column.column_type() {
@@ -150,7 +189,7 @@ pub(crate) fn permutation_expressions<S: SelfEmulation, PCS: InCircuitPCS<S>>(
                 left = scalar_chip.mul(layouter, &left, &aux, None)?;
             }
 
-            let mut right = set.permutation_product_eval.clone();
+            let mut right = z(chunk_index)?.clone();
 
             let mut current_delta = {
                 let delta_power = S::F::DELTA.pow_vartime([(chunk_index * chunk_len) as u64]);

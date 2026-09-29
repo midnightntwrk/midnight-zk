@@ -22,12 +22,17 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use midnight_proofs::{circuit::Layouter, plonk::Error, poly::PolynomialLabel};
+use midnight_proofs::{
+    circuit::Layouter,
+    plonk::{ConstraintSystem, Error},
+    poly::PolynomialLabel,
+};
 
 use crate::{
     field::AssignedNative,
     verifier::{
         SelfEmulation,
+        absorbed_vk::AbsorbedVk,
         pcs::{InCircuitPCS, VerifierQuery},
         transcript_gadget::TranscriptGadget,
     },
@@ -56,15 +61,25 @@ impl<S: SelfEmulation> Evaluation<S> {
 /// names their specifics, so the label alone decides.
 ///
 /// It must agree with its off-circuit counterpart in
-/// proofs/src/plonk/argument.rs, which takes `omega` and forms `omega * x`
-/// itself. Here `x_next` is passed in already assigned, so that the rotation
-/// costs one multiplication for the whole group rather than one per label.
+/// proofs/src/plonk/argument.rs.
 fn eval_points<S: SelfEmulation>(
+    cs: &ConstraintSystem<S::F>,
     label: &PolynomialLabel,
     x: &AssignedNative<S::F>,
     x_next: &AssignedNative<S::F>,
+    x_last: &AssignedNative<S::F>,
 ) -> Vec<AssignedNative<S::F>> {
     match label {
+        PolynomialLabel::PermutationFixed(_) => vec![x.clone()],
+        PolynomialLabel::PermutationAccumulator(i) => {
+            // Every set but the last is also opened at the last usable row, to
+            // chain it to the next one.
+            if i + 1 < cs.permutation().num_sets(cs.degree()) {
+                vec![x.clone(), x_next.clone(), x_last.clone()]
+            } else {
+                vec![x.clone(), x_next.clone()]
+            }
+        }
         PolynomialLabel::LogupMultiplicities(_) => vec![x.clone()],
         PolynomialLabel::LogupHelper(_, _) => vec![x.clone()],
         PolynomialLabel::LogupAggregator(_) => vec![x.clone(), x_next.clone()],
@@ -78,6 +93,19 @@ fn eval_points<S: SelfEmulation>(
 pub(crate) struct Committed<S: SelfEmulation, PCS: InCircuitPCS<S>> {
     commitment: PCS::AssignedCommitment,
     polynomial_labels: BTreeSet<PolynomialLabel>,
+}
+
+/// Builds the group of `labels` from the fixed group commitment of the absorbed
+/// verifying key, which binds it to the transcript as reading a commitment from
+/// the proof does.
+pub(crate) fn committed_from_key<S: SelfEmulation, PCS: InCircuitPCS<S>>(
+    vk: &AbsorbedVk<'_, S, PCS>,
+    labels: &[PolynomialLabel],
+) -> Committed<S, PCS> {
+    Committed {
+        commitment: vk.fixed_group_commitment().clone(),
+        polynomial_labels: BTreeSet::from_iter(labels.iter().cloned()),
+    }
 }
 
 /// Reads the commitment to the polynomials of the given labels.
@@ -105,15 +133,17 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> Committed<S, PCS> {
     /// evaluation points.
     pub(crate) fn evaluate(
         self,
+        cs: &ConstraintSystem<S::F>,
         x: &AssignedNative<S::F>,
         x_next: &AssignedNative<S::F>,
+        x_last: &AssignedNative<S::F>,
         layouter: &mut impl Layouter<S::F>,
         transcript_gadget: &mut TranscriptGadget<S>,
     ) -> Result<Evaluated<S, PCS>, Error> {
         let mut evals_map: BTreeMap<PolynomialLabel, Vec<Evaluation<S>>> = BTreeMap::new();
 
         for label in &self.polynomial_labels {
-            let eval_points = eval_points::<S>(label, x, x_next);
+            let eval_points = eval_points::<S>(cs, label, x, x_next, x_last);
             let mut evals = Vec::with_capacity(eval_points.len());
             for point in eval_points {
                 evals.push(Evaluation {
