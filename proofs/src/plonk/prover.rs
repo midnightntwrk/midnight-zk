@@ -118,9 +118,6 @@ where
             .collect()
     };
 
-    // Sample theta challenge for keeping lookup columns linearly independent
-    let theta: F = transcript.squeeze_challenge();
-
     let num_lookups = pk.vk.cs.lookups.len();
     let mult_blinding_count = pk.vk.cs.blinding_factors() + 1;
     let mult_blindings: Vec<Vec<F>> = sample_blindings(num_lookups, mult_blinding_count);
@@ -138,7 +135,6 @@ where
                 logup.compute_multiplicities_parallel(
                     argument_index,
                     pk,
-                    theta,
                     &advice.advice_polys,
                     &pk.fixed_values,
                     &instance.instance_values,
@@ -159,6 +155,9 @@ where
 
     let phase1_committed =
         argument::prover::Committed::commit::<CS, T>(params, phase1_polys_map, transcript)?;
+
+    // Sample theta challenge for keeping lookup columns linearly independent
+    let theta: F = transcript.squeeze_challenge();
 
     // Sample beta challenge
     let beta: F = transcript.squeeze_challenge();
@@ -199,7 +198,7 @@ where
     let logup_polys_maps = logup_multiplicities
         .into_par_iter()
         .zip(logup_blindings.into_par_iter())
-        .map(|(lookup, blindings)| lookup.compute_logderivative(pk, beta, blindings))
+        .map(|(lookup, blindings)| lookup.compute_logderivative(pk, theta, beta, blindings))
         .collect::<Result<Vec<_>, Error>>()?
         .into_par_iter()
         .map(|c| {

@@ -69,9 +69,6 @@ where
         .map(|i| CS::read_commitment(transcript, &[PolynomialLabel::Advice(i)]))
         .collect::<Result<_, _>>()?;
 
-    // Sample theta challenge for keeping lookup columns linearly independent
-    let theta: F = transcript.squeeze_challenge();
-
     let logups = vk
         .cs
         .lookups
@@ -83,6 +80,17 @@ where
         (0..logups.len()).map(PolynomialLabel::LogupMultiplicities).collect::<Vec<_>>();
 
     let phase1_committed = argument::verifier::Committed::read(&phase1_labels, transcript)?;
+
+    // REVIEW-ONLY: `theta` is now squeezed after the multiplicities are read,
+    // instead of before. In general, postponing a challenge cannot hinder
+    // soundness, it can only break completeness: a prover that cheats while
+    // committing to the multiplicities before seeing `theta` would also cheat
+    // if it saw `theta` first, by simply ignoring it. Completeness still holds,
+    // since the honest prover counts the multiplicities without `theta` (see
+    // `compute_multiplicities_parallel`).
+
+    // Sample theta challenge for keeping lookup columns linearly independent
+    let theta: F = transcript.squeeze_challenge();
 
     // Sample beta challenge
     let beta: F = transcript.squeeze_challenge();

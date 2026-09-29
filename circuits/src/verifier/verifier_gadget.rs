@@ -362,9 +362,6 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             .map(|i| PCS::read_commitment(&mut transcript, layouter, &[PolynomialLabel::Advice(i)]))
             .collect::<Result<Vec<_>, Error>>()?;
 
-        // Sample theta challenge for keeping lookup columns linearly independent
-        let theta = transcript.squeeze_challenge(layouter)?;
-
         let logups = cs
             .lookups()
             .iter()
@@ -375,6 +372,9 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             (0..logups.len()).map(PolynomialLabel::LogupMultiplicities).collect::<Vec<_>>();
 
         let phase1_committed = argument::read_committed(&phase1_labels, layouter, &mut transcript)?;
+
+        // Sample theta challenge for keeping lookup columns linearly independent
+        let theta = transcript.squeeze_challenge(layouter)?;
 
         let beta = transcript.squeeze_challenge(layouter)?;
         let gamma = transcript.squeeze_challenge(layouter)?;

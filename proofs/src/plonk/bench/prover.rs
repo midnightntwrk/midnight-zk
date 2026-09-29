@@ -127,9 +127,6 @@ where
         parse_advices(params, pk, circuit, instances, transcript, &mut rng)?
     };
 
-    // Sample theta challenge for keeping lookup columns linearly independent
-    let theta: F = transcript.squeeze_challenge();
-
     // Pre-generate multiplicities blindings so the measured closures don't need
     // `&mut rng`. One extra value beyond `blinding_factors` is required by
     // `compute_multiplicities` (see the assert on `table.len() - usable_rows`).
@@ -159,7 +156,6 @@ where
                     logup.compute_multiplicities_parallel(
                         argument_index,
                         pk,
-                        theta,
                         advice_polys,
                         &pk.fixed_values,
                         instance_values,
@@ -210,6 +206,9 @@ where
         )?;
         (multiplicities, committed)
     };
+
+    // Sample theta challenge for keeping lookup columns linearly independent
+    let theta: F = transcript.squeeze_challenge();
 
     // Sample beta challenge
     let beta: F = transcript.squeeze_challenge();
@@ -266,7 +265,7 @@ where
         Ok(multiplicities
             .into_par_iter()
             .zip(blindings.into_par_iter())
-            .map(|(lookup, blinds)| lookup.compute_logderivative(pk, beta, blinds))
+            .map(|(lookup, blinds)| lookup.compute_logderivative(pk, theta, beta, blinds))
             .collect::<Result<Vec<_>, Error>>()?
             .into_par_iter()
             .map(|c| {
