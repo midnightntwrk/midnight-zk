@@ -80,25 +80,6 @@ pub(crate) struct Committed<S: SelfEmulation, PCS: InCircuitPCS<S>> {
     polynomial_labels: BTreeSet<PolynomialLabel>,
 }
 
-/// Reads the commitment to the polynomials of the given labels, or `None` if
-/// there are none: the prover commits to nothing in that case, so there is
-/// nothing in the transcript to read.
-///
-/// TODO: drop this function, and the `Option` it forces on the phase groups of
-/// [crate::verifier::traces::VerifierTrace], once every phase group is
-/// guaranteed to hold at least one polynomial. [read_committed] then becomes
-/// the only entry point.
-pub(crate) fn read_committed_group<S: SelfEmulation, PCS: InCircuitPCS<S>>(
-    labels: &[PolynomialLabel],
-    layouter: &mut impl Layouter<S::F>,
-    transcript_gadget: &mut TranscriptGadget<S>,
-) -> Result<Option<Committed<S, PCS>>, Error> {
-    if labels.is_empty() {
-        return Ok(None);
-    }
-    read_committed(labels, layouter, transcript_gadget).map(Some)
-}
-
 /// Reads the commitment to the polynomials of the given labels.
 pub(crate) fn read_committed<S: SelfEmulation, PCS: InCircuitPCS<S>>(
     labels: &[PolynomialLabel],

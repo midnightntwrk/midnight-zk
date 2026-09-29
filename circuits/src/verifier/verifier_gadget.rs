@@ -364,8 +364,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         let phase1_labels =
             (0..logups.len()).map(PolynomialLabel::LogupMultiplicities).collect::<Vec<_>>();
 
-        let phase1_committed =
-            argument::read_committed_group(&phase1_labels, layouter, &mut transcript)?;
+        let phase1_committed = argument::read_committed(&phase1_labels, layouter, &mut transcript)?;
 
         let beta = transcript.squeeze_challenge(layouter)?;
         let gamma = transcript.squeeze_challenge(layouter)?;
@@ -391,8 +390,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             phase2_labels.push(PolynomialLabel::Trash(argument_index));
         }
 
-        let phase2_committed =
-            argument::read_committed_group(&phase2_labels, layouter, &mut transcript)?;
+        let phase2_committed = argument::read_committed(&phase2_labels, layouter, &mut transcript)?;
 
         // Sample y challenge, which keeps the gates linearly independent
         let y = transcript.squeeze_challenge(layouter)?;
@@ -635,18 +633,11 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         let x_prev = self.scalar_chip.mul_by_constant(layouter, &x, omega_inv)?;
         let x_last = self.scalar_chip.mul_by_constant(layouter, &x, omega_last)?;
 
-        let phase1_evaluated = phase1_committed
-            .map(|committed| committed.evaluate(&x, &x_next, layouter, &mut transcript))
-            .transpose()?;
+        let phase1_evaluated = phase1_committed.evaluate(&x, &x_next, layouter, &mut transcript)?;
+        let phase2_evaluated = phase2_committed.evaluate(&x, &x_next, layouter, &mut transcript)?;
 
-        let phase2_evaluated = phase2_committed
-            .map(|committed| committed.evaluate(&x, &x_next, layouter, &mut transcript))
-            .transpose()?;
-
-        // An empty group contributes no evaluations and no queries.
-        let no_evals = BTreeMap::new();
-        let phase1_evals = phase1_evaluated.as_ref().map_or(&no_evals, |e| &e.evals_map);
-        let phase2_evals = phase2_evaluated.as_ref().map_or(&no_evals, |e| &e.evals_map);
+        let phase1_evals = &phase1_evaluated.evals_map;
+        let phase2_evals = &phase2_evaluated.evals_map;
 
         // Partially evaluate batched identities
         // (without fixed columns corresponding to simple selectors)
@@ -821,8 +812,8 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                 },
             ))
             .chain(permutations_evaluated.queries(&x, &x_next, &x_last))
-            .chain(phase1_evaluated.iter().flat_map(|evaluated| evaluated.queries()))
-            .chain(phase2_evaluated.iter().flat_map(|evaluated| evaluated.queries()))
+            .chain(phase1_evaluated.queries())
+            .chain(phase2_evaluated.queries())
             .chain(
                 cs.fixed_queries()
                     .iter()

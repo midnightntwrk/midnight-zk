@@ -48,9 +48,9 @@ pub fn compute_vk_hash(vk: &MidnightVK) -> F {
 
     let vk_repr = vec![vk.transcript_repr()];
     let fixed_coms: Vec<F> = vk.fixed_commitments().iter().flat_map(to_raw).collect();
-    let perm_coms: Vec<F> = vk.permutation().commitments().iter().flat_map(to_raw).collect();
+    let fixed_polys_coms: Vec<F> = vk.permutation().commitments().iter().flat_map(to_raw).collect();
 
-    <PoseidonChip<F> as HashCPU<F, F>>::hash(&[vk_repr, fixed_coms, perm_coms].concat())
+    <PoseidonChip<F> as HashCPU<F, F>>::hash(&[vk_repr, fixed_coms, fixed_polys_coms].concat())
 }
 
 /// In-circuit counterpart of [`compute_vk_hash`].

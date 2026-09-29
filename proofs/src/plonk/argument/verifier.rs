@@ -20,27 +20,6 @@ pub struct Committed<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
 }
 
 impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> Committed<F, CS> {
-    /// Reads the commitment to the group of the given labels, or `None` if the
-    /// group holds no polynomials: the prover commits to nothing in that case,
-    /// so there is nothing in the transcript to read.
-    ///
-    /// TODO: drop this function, and the `Option` it forces on the phase groups
-    /// of [`crate::plonk::traces::VerifierTrace`], once every phase group is
-    /// guaranteed to hold at least one polynomial. [`Self::read`] then becomes
-    /// the only entry point.
-    pub(crate) fn read_group<T: Transcript>(
-        labels: &[PolynomialLabel],
-        transcript: &mut T,
-    ) -> Result<Option<Committed<F, CS>>, Error>
-    where
-        CS::Commitment: Hashable<T::Hash>,
-    {
-        if labels.is_empty() {
-            return Ok(None);
-        }
-        Self::read(labels, transcript).map(Some)
-    }
-
     pub(crate) fn read<T: Transcript>(
         labels: &[PolynomialLabel],
         transcript: &mut T,
@@ -48,13 +27,6 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> Committed<F, CS> {
     where
         CS::Commitment: Hashable<T::Hash>,
     {
-        // A group with no polynomials is not committed to by the prover, so
-        // reading one would consume bytes that are not there.
-        assert!(
-            !labels.is_empty(),
-            "cannot read a commitment to no polynomials"
-        );
-
         Ok(Committed {
             commitment: CS::read_commitment(transcript, labels)?,
             polynomial_labels: BTreeSet::from_iter(labels.iter().cloned()),

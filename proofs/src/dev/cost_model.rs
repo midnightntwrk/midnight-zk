@@ -196,8 +196,9 @@ pub struct CircuitModel {
 /// Given a Plonk circuit, this function returns a [CircuitModel].
 ///
 /// `commit(n)` returns the byte length of the single transcript message that
-/// commits to `n` polynomials, framing included. The prover writes one such
-/// message per commitment group, so a site that commits `n` polynomials
+/// commits to `n` polynomials, framing included, and 0 for `n = 0`: an empty
+/// group is not written at all. The prover writes one such message per
+/// commitment group, so a site that commits `n` polynomials
 /// separately costs `n * commit(1)`, not `commit(n)`. For schemes that fold
 /// multiple polynomials into one proof element, `commit` may be sub-linear.
 ///
@@ -229,10 +230,6 @@ pub fn circuit_model_with<F: Ord + Field + FromUniformBytes<64>>(
     queries.dedup();
     let point_sets = queries.len();
 
-    // The byte length of the commitment group holding `n` polynomials. An empty
-    // group is not committed to at all, so it costs nothing.
-    let group = |n: usize| if n == 0 { 0 } else { commit(n) };
-
     // The logup polynomials are split over the two argument phases: every
     // multiplicities polynomial goes in the phase1 group, and every aggregator,
     // helper and trash polynomial in the phase2 group. Each phase is a single
@@ -261,8 +258,8 @@ pub fn circuit_model_with<F: Ord + Field + FromUniformBytes<64>>(
         + o.fixed.iter().map(|p| p.rotations.len() * scalar).sum::<usize>()
         + scalar * o.permutation.columns
         + (nb_perm_chunks * commit(1) + scalar * 3 * nb_perm_chunks).saturating_sub(scalar) // last chunk has 2 evals
-        + group(nb_phase1_polys)
-        + group(nb_phase2_polys)
+        + commit(nb_phase1_polys)
+        + commit(nb_phase2_polys)
         + o.lookup.iter().map(|l| scalar * l.num_evaluations()).sum::<usize>()
         + scalar * o.trash.len();
 

@@ -1,5 +1,4 @@
 use std::{
-    collections::BTreeMap,
     hash::Hash,
     iter::{self},
 };
@@ -82,7 +81,7 @@ where
     let phase1_labels =
         (0..logups.len()).map(PolynomialLabel::LogupMultiplicities).collect::<Vec<_>>();
 
-    let phase1_committed = argument::verifier::Committed::read_group(&phase1_labels, transcript)?;
+    let phase1_committed = argument::verifier::Committed::read(&phase1_labels, transcript)?;
 
     // Sample beta challenge
     let beta: F = transcript.squeeze_challenge();
@@ -109,7 +108,7 @@ where
         phase2_labels.push(PolynomialLabel::Trash(trash_argument.argument_index))
     }
 
-    let phase2_committed = argument::verifier::Committed::read_group(&phase2_labels, transcript)?;
+    let phase2_committed = argument::verifier::Committed::read(&phase2_labels, transcript)?;
 
     // Sample y challenge, which keeps the gates linearly independent.
     let y: F = transcript.squeeze_challenge();
@@ -259,18 +258,11 @@ where
 
     let domain = vk.get_domain();
 
-    let phase1_evaluated = phase1_committed
-        .map(|committed| committed.evaluate(x, domain, transcript))
-        .transpose()?;
+    let phase1_evaluated = phase1_committed.evaluate(x, domain, transcript)?;
+    let phase2_evaluated = phase2_committed.evaluate(x, domain, transcript)?;
 
-    let phase2_evaluated = phase2_committed
-        .map(|committed| committed.evaluate(x, domain, transcript))
-        .transpose()?;
-
-    // An empty group contributes no evaluations and no queries.
-    let no_evals = BTreeMap::new();
-    let phase1_evals = phase1_evaluated.as_ref().map_or(&no_evals, |e| &e.evals_map);
-    let phase2_evals = phase2_evaluated.as_ref().map_or(&no_evals, |e| &e.evals_map);
+    let phase1_evals = &phase1_evaluated.evals_map;
+    let phase2_evals = &phase2_evaluated.evals_map;
 
     // Partially evaluate batched identities
     // (without fixed columns corresponding to simple, multiplicative selectors)
@@ -330,8 +322,8 @@ where
             },
         ))
         .chain(permutations_evaluated.queries(vk, x))
-        .chain(phase1_evaluated.iter().flat_map(|e| e.queries()))
-        .chain(phase2_evaluated.iter().flat_map(|e| e.queries()))
+        .chain(phase1_evaluated.queries())
+        .chain(phase2_evaluated.queries())
         .chain(
             vk.cs
                 .fixed_queries

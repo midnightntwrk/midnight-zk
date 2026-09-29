@@ -29,12 +29,8 @@ pub struct ProverTrace<F: PrimeField> {
 #[derive(Debug)]
 pub struct VerifierTrace<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> {
     pub(crate) advice_commitments: Vec<PCS::Commitment>,
-    /// `None` when the group has no polynomials, which the prover does not
-    /// commit to.
-    pub(crate) phase1_committed: Option<argument::verifier::Committed<F, PCS>>,
-    /// `None` when the group has no polynomials, which the prover does not
-    /// commit to.
-    pub(crate) phase2_committed: Option<argument::verifier::Committed<F, PCS>>,
+    pub(crate) phase1_committed: argument::verifier::Committed<F, PCS>,
+    pub(crate) phase2_committed: argument::verifier::Committed<F, PCS>,
     pub(crate) permutations: permutation::verifier::Committed<F, PCS>,
     pub(crate) beta: F,
     pub(crate) gamma: F,

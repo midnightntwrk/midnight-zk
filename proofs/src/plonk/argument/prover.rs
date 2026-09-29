@@ -45,12 +45,6 @@ impl<F: PrimeField, B: PolynomialRepresentation> Committed<F, B> {
         CS::Commitment: Hashable<T::Hash>,
         T: Transcript,
     {
-        // Be general and protect ourselves against a group with no enabled
-        // arguments, which has nothing to commit to.
-        if polys_map.is_empty() {
-            return Ok(Self { polys_map });
-        }
-
         let commitment = CS::commit_many(
             params,
             &polys_map.values().collect::<Vec<_>>(),
