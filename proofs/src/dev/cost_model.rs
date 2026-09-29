@@ -141,6 +141,11 @@ struct Permutation {
 }
 
 impl Permutation {
+    /// The number of accumulator polynomials: one per chunk of columns.
+    fn num_sets(&self) -> usize {
+        self.columns.div_ceil(self.chunk_len)
+    }
+
     /// Returns the queries of the Permutation argument
     fn queries(&self) -> impl Iterator<Item = Poly> {
         // - at wX, X, uwX for all (except the last)
@@ -150,12 +155,14 @@ impl Permutation {
 
         let last_chunk: Poly = "0,1".parse().unwrap();
 
+        // REVIEW-ONLY: A circuit with no permutation columns has no accumulator, and so
+        // no queries at all.
         iter::empty()
             .chain(std::iter::repeat_n(
                 chunks,
-                (self.columns - 1) / self.chunk_len,
+                self.num_sets().saturating_sub(1),
             ))
-            .chain(Some(last_chunk))
+            .chain((self.num_sets() > 0).then_some(last_chunk))
     }
 }
 
@@ -246,8 +253,7 @@ pub fn circuit_model_with<F: Ord + Field + FromUniformBytes<64>>(
     // - Per permutation batch: commit(1) + 3*scalar per chunk, each chunk committed
     //   on its own (last chunk has 2 scalar)
     // - The two argument phase groups, plus scalar bytes per evaluation they hold
-    let nb_perm_chunks =
-        (o.permutation.columns.saturating_sub(1) / o.max_degree.saturating_sub(2)) + 1;
+    let nb_perm_chunks = o.permutation.num_sets();
     let plonk = o.advice.len() * commit(1)
         + o.advice.iter().map(|p| p.rotations.len() * scalar).sum::<usize>()
         + o.instance
@@ -832,6 +838,78 @@ mod tests {
                 },
             )
         }
+    }
+
+    /// A circuit with no copy constraints has no permutation accumulator, so
+    /// the permutation argument contributes neither queries nor proof bytes.
+    #[test]
+    fn cost_model_without_copy_constraints() {
+        #[derive(Default)]
+        struct NoCopyConstraints;
+
+        impl Circuit<Fq> for NoCopyConstraints {
+            type Config = (Column<Advice>, Column<Fixed>);
+            type FloorPlanner = SimpleFloorPlanner;
+            #[cfg(feature = "circuit-params")]
+            type Params = ();
+
+            fn without_witnesses(&self) -> Self {
+                Self
+            }
+
+            fn configure(meta: &mut ConstraintSystem<Fq>) -> Self::Config {
+                let a = meta.advice_column();
+                let q = meta.fixed_column();
+                meta.create_gate("q * a", |meta| {
+                    let a = meta.query_advice(a, Rotation::cur());
+                    let q = meta.query_fixed(q, Rotation::cur());
+                    Constraints::without_selector(vec![q * a])
+                });
+                (a, q)
+            }
+
+            fn synthesize(
+                &self,
+                config: Self::Config,
+                mut layouter: impl Layouter<Fq>,
+            ) -> Result<(), Error> {
+                layouter.assign_region(
+                    || "",
+                    |mut region| {
+                        region.assign_advice(|| "", config.0, 0, || Value::known(Fq::ZERO))?;
+                        region.assign_fixed(|| "", config.1, 0, || Value::known(Fq::ZERO))?;
+                        Ok(())
+                    },
+                )
+            }
+        }
+
+        let model = circuit_model::<_, KZGCommitmentScheme<Bls12>>(&NoCopyConstraints, 0);
+        assert_eq!(model.permutations, 0);
+        // The advice and fixed queries, and the linearization polynomial's.
+        assert_eq!(model.column_queries, 3);
+
+        let k = 6;
+        let params = ParamsKZG::<Bls12>::unsafe_setup(k, OsRng);
+        let vk =
+            keygen_vk_with_k::<_, KZGCommitmentScheme<Bls12>, _>(&params, &NoCopyConstraints, k)
+                .expect("vk should not fail");
+        let pk = keygen_pk(vk, &NoCopyConstraints).expect("pk should not fail");
+
+        let mut transcript = CircuitTranscript::<State>::init();
+        create_proof::<Fq, KZGCommitmentScheme<Bls12>, _, _>(
+            &params,
+            &pk,
+            &NoCopyConstraints,
+            #[cfg(feature = "committed-instances")]
+            0,
+            &[],
+            &mut transcript,
+            OsRng,
+        )
+        .expect("proof generation should not fail");
+
+        assert_eq!(model.size, transcript.finalize().len());
     }
 
     #[test]
