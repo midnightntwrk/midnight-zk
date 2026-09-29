@@ -1,6 +1,6 @@
 use ff::{PrimeField, WithSmallOrderMulGroup};
 use group::ff::Field;
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
 use super::{ConstraintSystem, Expression};
 use crate::{
@@ -865,9 +865,10 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
             let chunk_len = cs.degree() - 2;
             let delta_start = beta * &B::g_coset(domain);
 
-            let num_sets = cs.permutation().columns.len().div_ceil(chunk_len);
+            let num_sets = cs.permutation().num_sets(cs.degree());
 
             let permutation_product_cosets: Vec<Polynomial<F, B>> = (0..num_sets)
+                .into_par_iter()
                 .map(|i| {
                     let poly =
                         phase2_committed.poly(&PolynomialLabel::PermutationAccumulator(i)).expect(

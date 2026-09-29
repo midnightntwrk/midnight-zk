@@ -365,20 +365,31 @@ pub struct ProvingKey<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
 /// The fixed permutation polynomials of a proving key, in coefficient form and
 /// labeled by the column they permute, together with the same polynomials in
 /// the bases the prover reads them in. Both are derived
-/// from `values`: those polynomials in Lagrange form.
+/// from `values`: those polynomials in Lagrange form. `vk_repr` is the
+/// `transcript_repr` of the verifying key holding their commitment.
+///
+/// # Panics
+///
+/// Panics if `values` does not hold one polynomial per column of the
+/// permutation argument.
 pub(in crate::plonk) fn build_fixed_perm_polys<F: WithSmallOrderMulGroup<3>>(
     domain: &EvaluationDomain<F>,
     cs: &ConstraintSystem<F>,
+    vk_repr: F,
     values: Vec<Polynomial<F, LagrangeCoeff>>,
 ) -> (argument::prover::KeyGroup<F>, permutation::Sigmas<F>) {
     let labels = cs.permutation.polynomial_labels();
-    assert_eq!(values.len(), labels.len());
+    assert_eq!(
+        values.len(),
+        labels.len(),
+        "the number of permutation polynomials does not match the number of permutation columns"
+    );
 
     let (polys, cosets) =
         permutation::keygen::compute_polys_and_cosets(domain, &cs.permutation, &values);
 
     (
-        argument::prover::KeyGroup::new(labels.into_iter().zip(polys).collect()),
+        argument::prover::KeyGroup::new(labels.into_iter().zip(polys).collect(), vk_repr),
         permutation::Sigmas { values, cosets },
     )
 }
@@ -462,8 +473,19 @@ where
             .iter()
             .map(|poly| vk.domain.coeff_to_extended(poly.clone()))
             .collect();
-        let permutations = read_polynomial_vec(reader, format)?;
-        let (fixed_perm_polys, sigmas) = build_fixed_perm_polys(&vk.domain, &vk.cs, permutations);
+        let permutations: Vec<_> = read_polynomial_vec(reader, format)?;
+        if permutations.len() != vk.cs.permutation.columns.len() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "{} permutation polynomials, expected {}",
+                    permutations.len(),
+                    vk.cs.permutation.columns.len()
+                ),
+            ));
+        }
+        let (fixed_perm_polys, sigmas) =
+            build_fixed_perm_polys(&vk.domain, &vk.cs, vk.transcript_repr, permutations);
         let ev = Evaluator::new(vk.cs());
         Ok(Self {
             vk,

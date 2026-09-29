@@ -71,30 +71,45 @@ impl<F: PrimeField, B: PolynomialRepresentation> Committed<F, B> {
 }
 
 /// A group whose polynomials are committed to in the verifying key rather than
-/// in the proof. It takes part in a proof, as a [`Committed`], only once a
+/// in the proof. It takes part in a proof, as a [`Committed`], only once that
 /// verifying key has been absorbed into the transcript; see
 /// [`Self::committed`].
-///
-/// # Caveat
-///
-/// The [`AbsorbedVk`] witness shows that *a* verifying key was absorbed, not
-/// that it is the key holding this group's commitment. Pairing the two is left
-/// to the caller.
 #[derive(Debug)]
-pub(crate) struct KeyGroup<F: PrimeField>(Committed<F, Coeff>);
+pub(crate) struct KeyGroup<F: PrimeField> {
+    committed: Committed<F, Coeff>,
+    /// The `transcript_repr` of the verifying key holding the group's
+    /// commitment.
+    vk_repr: F,
+}
 
 impl<F: PrimeField> KeyGroup<F> {
-    pub(crate) fn new(polys_map: BTreeMap<PolynomialLabel, Polynomial<F, Coeff>>) -> Self {
-        KeyGroup(Committed { polys_map })
+    /// The group of `polys_map`, whose commitment is held by the verifying key
+    /// of `transcript_repr` `vk_repr`.
+    pub(crate) fn new(
+        polys_map: BTreeMap<PolynomialLabel, Polynomial<F, Coeff>>,
+        vk_repr: F,
+    ) -> Self {
+        KeyGroup {
+            committed: Committed { polys_map },
+            vk_repr,
+        }
     }
 
-    /// The group as a [`Committed`], given the witness that its verifying key
-    /// has been absorbed (see the caveat on [`KeyGroup`]).
+    /// The group as a [`Committed`], given the witness that the verifying key
+    /// holding its commitment has been absorbed.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `vk` is the witness of a different verifying key.
     pub(crate) fn committed<CS: PolynomialCommitmentScheme<F>>(
         &self,
-        _vk: &AbsorbedVk<'_, F, CS>,
+        vk: &AbsorbedVk<'_, F, CS>,
     ) -> &Committed<F, Coeff> {
-        &self.0
+        assert!(
+            vk.transcript_repr() == self.vk_repr,
+            "the absorbed verifying key does not hold the commitment to this group"
+        );
+        &self.committed
     }
 }
 

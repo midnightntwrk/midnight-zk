@@ -13,6 +13,8 @@ use crate::{
 /// A verifying key whose `transcript_repr` has been absorbed into a
 /// transcript.
 ///
+/// The witness records which key was absorbed, not into which transcript.
+///
 /// The `transcript_repr` hashes every commitment the key holds, so those
 /// commitments are bound to the transcript as much as the ones read from the
 /// proof. The field is private to this module, so the only way to obtain one is
@@ -23,6 +25,11 @@ pub(crate) struct AbsorbedVk<'a, F: PrimeField, CS: PolynomialCommitmentScheme<F
 );
 
 impl<'a, F: PrimeField, CS: PolynomialCommitmentScheme<F>> AbsorbedVk<'a, F, CS> {
+    /// The `transcript_repr` of the absorbed key.
+    pub(crate) fn transcript_repr(&self) -> F {
+        self.0.transcript_repr
+    }
+
     /// The commitment the absorbed key holds to a group of fixed polynomials,
     /// as opposed to the per-column `fixed_commitments`.
     ///

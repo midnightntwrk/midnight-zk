@@ -343,7 +343,8 @@ where
         .collect();
 
     let permutations = assembly.permutation.into_permutations::<F>(&vk.domain, &cs.permutation);
-    let (fixed_perm_polys, sigmas) = super::build_fixed_perm_polys(&vk.domain, &cs, permutations);
+    let (fixed_perm_polys, sigmas) =
+        super::build_fixed_perm_polys(&vk.domain, &cs, vk.transcript_repr, permutations);
 
     let [l0, l_last, l_active_row] = compute_lagrange_polys(&vk, &cs);
     // Compute the optimized evaluation data structure
