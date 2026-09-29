@@ -229,10 +229,6 @@ where
         .collect();
 
     // Compute the permutation accumulators.
-    // REVIEW-ONLY: They are committed to further below, as part of the phase2
-    // argument group, so this stage does not touch the transcript. It used to
-    // commit them as well, so its cost is not comparable with the same line
-    // from earlier revisions.
     let compute_perm_z_polys = |perm_blindings: Vec<Vec<F>>| {
         pk.vk.cs.permutation.compute_z_polys::<F, CS>(
             pk,
@@ -524,7 +520,6 @@ where
 
     let domain = pk.vk.get_domain();
     let cs = pk.vk.cs();
-    // REVIEW-ONLY: The points at which the argument groups are opened, besides `x`.
     let x_next = domain.rotate_omega(x, Rotation::next());
     let x_last = domain.rotate_omega(x, Rotation(-((cs.blinding_factors() + 1) as i32)));
 

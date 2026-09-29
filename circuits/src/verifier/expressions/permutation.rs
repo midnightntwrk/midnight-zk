@@ -54,8 +54,6 @@ pub(crate) fn permutation_expressions<S: SelfEmulation>(
     let chunk_len = cs.degree() - 2;
     let num_sets = cs.permutation().num_sets(cs.degree());
 
-    // REVIEW-ONLY: A circuit with no copy constraints has no permutation
-    // identities, as off-circuit.
     if num_sets == 0 {
         return Ok(vec![]);
     }
@@ -84,7 +82,6 @@ pub(crate) fn permutation_expressions<S: SelfEmulation>(
         )
     };
 
-    // REVIEW-ONLY: The permutation polynomial evaluations, in column order.
     let permutation_evals = (0..cs.permutation().columns.len())
         .map(|i| {
             eval_at::<S>(

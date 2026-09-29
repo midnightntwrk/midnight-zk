@@ -48,9 +48,6 @@ pub fn compute_vk_hash(vk: &MidnightVK) -> F {
 
     let vk_repr = vec![vk.transcript_repr()];
     let fixed_coms: Vec<F> = vk.fixed_commitments().iter().flat_map(to_raw).collect();
-    // REVIEW-ONLY: The fixed permutation polynomials are all committed to at the
-    // same time, as one group, whose hash input is its polynomials' inputs back
-    // to back.
     let fixed_perm_com: Vec<F> = to_raw(vk.fixed_perm_commitment());
 
     <PoseidonChip<F> as HashCPU<F, F>>::hash(&[vk_repr, fixed_coms, fixed_perm_com].concat())

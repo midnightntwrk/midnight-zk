@@ -867,8 +867,6 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
 
             let num_sets = cs.permutation().columns.len().div_ceil(chunk_len);
 
-            // REVIEW-ONLY: The accumulators are held by the phase-2 group in coefficient
-            // form; the identities below index them over the extended domain.
             let permutation_product_cosets: Vec<Polynomial<F, B>> = (0..num_sets)
                 .map(|i| {
                     let poly =

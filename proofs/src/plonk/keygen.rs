@@ -274,8 +274,6 @@ where
     let (cs, selector_polys) = cs.directly_convert_selectors_to_fixed(selectors);
     fixed.extend(selector_polys.into_iter().map(|poly| domain.lagrange_from_vec(poly)));
 
-    // REVIEW-ONLY: The fixed permutation polynomials are all committed to at the
-    // same time, as one group.
     let fixed_perm_com =
         assembly
             .permutation

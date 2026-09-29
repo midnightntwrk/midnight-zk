@@ -67,8 +67,6 @@ type VerifyingKey<S> =
 pub struct AssignedVk<S: SelfEmulation, PCS: InCircuitPCS<S>> {
     domain: EvaluationDomain<S::F>,
     fixed_commitments: Vec<PCS::AssignedCommitment>,
-    /// REVIEW-ONLY: The commitment to the fixed permutation polynomials, as one
-    /// group.
     fixed_perm_commitment: PCS::AssignedCommitment,
     cs: ConstraintSystem<S::F>,
     cs_degree: usize,

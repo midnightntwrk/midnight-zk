@@ -105,8 +105,6 @@ impl Assembly {
         Ok(())
     }
 
-    /// REVIEW-ONLY: The commitment to the fixed permutation polynomials, as one
-    /// group.
     pub(crate) fn build_fixed_perm_commitment<
         F: WithSmallOrderMulGroup<3>,
         CS: PolynomialCommitmentScheme<F>,

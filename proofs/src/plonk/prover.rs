@@ -350,12 +350,9 @@ where
         transcript,
     )?;
 
-    // REVIEW-ONLY: The points at which the argument groups are opened, besides `x`.
     let x_next = domain.rotate_omega(x, Rotation::next());
     let x_last = domain.rotate_omega(x, Rotation(-((cs.blinding_factors() + 1) as i32)));
 
-    // REVIEW-ONLY: Evaluate the polynomials committed to in the verifying key: the
-    // fixed permutation polynomials.
     let fixed_perm_evaluated = fixed_perm_committed.evaluate(cs, x, x_next, x_last, transcript)?;
 
     let phase1_evaluated = phase1_committed.evaluate(cs, x, x_next, x_last, transcript)?;

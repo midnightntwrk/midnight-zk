@@ -49,8 +49,6 @@ where
     }
 
     // Hash verification key into transcript.
-    // REVIEW-ONLY: This binds the commitments it holds, so the fixed permutation
-    // polynomials, committed to in the key, are formed into a group here.
     let vk_absorbed = vk.absorb_into(transcript)?;
     let fixed_perm_committed = argument::verifier::Committed::from_key(
         &vk_absorbed,
@@ -259,7 +257,6 @@ where
     let domain = vk.get_domain();
     let cs = vk.cs();
 
-    // REVIEW-ONLY: The points at which the argument groups are opened, besides `x`.
     let x_next = domain.rotate_omega(x, Rotation::next());
     let x_last = domain.rotate_omega(x, Rotation(-((cs.blinding_factors() + 1) as i32)));
 

@@ -62,8 +62,6 @@ use crate::poly::{PolynomialLabel, commitment::PolynomialCommitmentScheme};
 pub struct VerifyingKey<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
     domain: EvaluationDomain<F>,
     fixed_commitments: Vec<CS::Commitment>,
-    /// REVIEW-ONLY: The commitment to the fixed permutation polynomials, as one
-    /// group.
     fixed_perm_commitment: CS::Commitment,
     cs: ConstraintSystem<F>,
     /// Cached maximum degree of `cs` (which doesn't change after construction).
@@ -105,9 +103,6 @@ where
         for commitment in &self.fixed_commitments {
             commitment.write(writer, format)?;
         }
-        // REVIEW-ONLY: The group is written as its polynomials' commitments back to
-        // back, so this is the same byte string as one commitment per
-        // permutation polynomial.
         self.fixed_perm_commitment.write(writer, format)?;
 
         Ok(())
@@ -277,9 +272,6 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> VerifyingK
                 .expect("Failed to write to buffer - this is a bug.");
         }
 
-        // REVIEW-ONLY: The fixed permutation polynomials are committed to as one group,
-        // but the group is serialized as its polynomials' commitments back to
-        // back, so the count written here is still the number of polynomials.
         buffer.extend_from_slice(&(vk.cs.permutation.columns.len() as u32).to_le_bytes());
         vk.fixed_perm_commitment
             .write(&mut buffer, SerdeFormat::RawBytesUnchecked)
@@ -360,13 +352,7 @@ pub struct ProvingKey<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
     pub(crate) fixed_values: Vec<Polynomial<F, LagrangeCoeff>>,
     pub(crate) fixed_polys: Vec<Polynomial<F, Coeff>>,
     pub(crate) fixed_cosets: Vec<Polynomial<F, ExtendedLagrangeCoeff>>,
-    /// REVIEW-ONLY: The group of polynomials that are committed to in the
-    /// verifying key rather than in the proof: the permutation polynomials.
-    /// The prover never commits to them, it only evaluates and opens them.
     pub(crate) fixed_perm_polys: argument::prover::KeyGroup<F>,
-    /// REVIEW-ONLY: The polynomials of [`Self::fixed_perm_polys`] in the bases
-    /// the prover reads them in, derived from the group and cached beside
-    /// it.
     pub(crate) sigmas: permutation::Sigmas<F>,
     pub(crate) ev: Evaluator<F>,
     /// Region layout captured during keygen, consumed during proving to skip
@@ -380,13 +366,6 @@ pub struct ProvingKey<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
 /// labeled by the column they permute, together with the same polynomials in
 /// the bases the prover reads them in. Both are derived
 /// from `values`: those polynomials in Lagrange form.
-///
-/// REVIEW-ONLY: The group's commitment is the one held by the verifying key, so
-/// the group is never committed to nor written by the prover, which only
-/// evaluates and opens it.
-///
-/// REVIEW-ONLY: Keygen calls it with the polynomials it just computed, and
-/// [`ProvingKey::read`] with the ones it deserialized.
 pub(in crate::plonk) fn build_fixed_perm_polys<F: WithSmallOrderMulGroup<3>>(
     domain: &EvaluationDomain<F>,
     cs: &ConstraintSystem<F>,

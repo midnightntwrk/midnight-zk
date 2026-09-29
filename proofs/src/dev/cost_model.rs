@@ -155,8 +155,6 @@ impl Permutation {
 
         let last_chunk: Poly = "0,1".parse().unwrap();
 
-        // REVIEW-ONLY: A circuit with no permutation columns has no accumulator, and so
-        // no queries at all.
         iter::empty()
             .chain(std::iter::repeat_n(
                 chunks,
@@ -237,8 +235,6 @@ pub fn circuit_model_with<F: Ord + Field + FromUniformBytes<64>>(
     queries.dedup();
     let point_sets = queries.len();
 
-    // REVIEW-ONLY: The permutation argument splits its columns into chunks, one
-    // accumulator polynomial each.
     let nb_perm_chunks = o.permutation.num_sets();
 
     // The polynomials committed to in the proof are split over the two argument

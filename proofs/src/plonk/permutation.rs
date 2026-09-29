@@ -144,7 +144,6 @@ pub(in crate::plonk) fn expressions<F: PrimeField, CS: PolynomialCommitmentSchem
         return vec![].into_iter();
     }
 
-    // REVIEW-ONLY: The permutation polynomial evaluations, in column order.
     let permutation_evals: Vec<F> = (0..p.columns.len())
         .map(|i| fixed_perm_evals[&PolynomialLabel::PermutationFixed(i)][0].eval())
         .collect();

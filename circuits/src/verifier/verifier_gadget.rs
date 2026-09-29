@@ -294,8 +294,6 @@ impl<S: SelfEmulation> VerifierGadget<S> {
     }
 }
 
-/// REVIEW-ONLY: The commitment to the fixed permutation polynomials, as one
-/// group.
 fn fixed_perm_commitment<S: SelfEmulation, PCS: InCircuitPCS<S>>(
     cs: &ConstraintSystem<S::F>,
 ) -> PCS::AssignedCommitment {
@@ -337,8 +335,6 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         transcript.init_with_proof(layouter, proof)?;
 
         // Hash verification key into transcript.
-        // REVIEW-ONLY: This binds the commitments it holds, so the fixed permutation
-        // polynomials, committed to in the key, are formed into a group here.
         let vk_absorbed = assigned_vk.absorb_into(layouter, &mut transcript)?;
         let fixed_perm_committed =
             argument::committed_from_key(&vk_absorbed, &cs.permutation().polynomial_labels());
