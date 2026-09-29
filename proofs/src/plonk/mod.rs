@@ -556,7 +556,6 @@ pub(crate) fn partially_evaluate_identities<'a, F, CS>(
     vk: &'a VerifyingKey<F, CS>,
     fixed_evals: &'a [F],
     instance_evals: &'a [F],
-    advice_evals: &'a [F],
     phase0_evals: &BTreeMap<PolynomialLabel, Vec<argument::Evaluation<F>>>,
     phase1_evals: &BTreeMap<PolynomialLabel, Vec<argument::Evaluation<F>>>,
     phase2_evals: &BTreeMap<PolynomialLabel, Vec<argument::Evaluation<F>>>,
@@ -571,6 +570,23 @@ where
     F: WithSmallOrderMulGroup<3> + FromUniformBytes<64>,
     CS: PolynomialCommitmentScheme<F>,
 {
+    // The advice evaluations in the order of `cs.advice_queries`, which is how
+    // the identities index them. In the phase1 group, each column's follow the
+    // order of its queries.
+    let mut next = vec![0; vk.cs.num_advice_columns];
+    let advice_evals: Vec<F> = vk
+        .cs
+        .advice_queries
+        .iter()
+        .map(|(column, _)| {
+            let i = column.index();
+            let eval = phase1_evals[&PolynomialLabel::Advice(i)][next[i]].eval();
+            next[i] += 1;
+            eval
+        })
+        .collect();
+    let advice_evals = &advice_evals[..];
+
     let blinding_factors = vk.cs.blinding_factors();
     let l_evals = vk.domain.l_i_range(x, xn, (-((blinding_factors + 1) as i32))..=0);
     assert_eq!(l_evals.len(), 2 + blinding_factors);

@@ -64,12 +64,6 @@ where
         }
     }
 
-    // Hash the prover's advice commitments into the transcript and squeeze
-    // challenges
-    let advice_commitments: Vec<_> = (0..vk.cs.num_advice_columns)
-        .map(|i| CS::read_commitment(transcript, &[PolynomialLabel::Advice(i)]))
-        .collect::<Result<_, _>>()?;
-
     let logups = vk
         .cs
         .lookups
@@ -77,8 +71,13 @@ where
         .map(|l| l.chunk_by_degree(vk.cs_degree))
         .collect::<Vec<_>>();
 
-    let phase1_labels =
-        (0..logups.len()).map(PolynomialLabel::LogupMultiplicities).collect::<Vec<_>>();
+    // The advice columns and the logup multiplicities form the phase1 group.
+    let phase1_labels = vk
+        .cs
+        .advice_labels()
+        .into_iter()
+        .chain((0..logups.len()).map(PolynomialLabel::LogupMultiplicities))
+        .collect::<Vec<_>>();
 
     let phase1_committed = argument::verifier::Committed::read(&phase1_labels, transcript)?;
 
@@ -122,7 +121,6 @@ where
     let y: F = transcript.squeeze_challenge();
 
     Ok(VerifierTrace {
-        advice_commitments,
         phase0_committed,
         phase1_committed,
         phase2_committed,
@@ -166,7 +164,6 @@ where
     let nb_committed_instances = committed_instances.len();
 
     let VerifierTrace {
-        advice_commitments,
         phase0_committed,
         phase1_committed,
         phase2_committed,
@@ -243,8 +240,6 @@ where
             .collect::<Result<Vec<_>, _>>()?
     };
 
-    let advice_evals: Vec<F> = read_n(transcript, vk.cs.advice_queries.len())?;
-
     // Read one eval per non-simple-selector fixed query from the transcript,
     // then fill the "missing" places with 1 (the transcript doesn't contain evals
     // corresponding to multiplicative, simple selectors).
@@ -283,7 +278,6 @@ where
         vk,
         &fixed_evals,
         &instance_evals,
-        &advice_evals,
         phase0_evals,
         phase1_evals,
         phase2_evals,
@@ -309,16 +303,6 @@ where
     // NB: Queries corresponding to simple, multiplicative selectors need not be
     // checked
     let queries = iter::empty()
-        .chain(
-            vk.cs.advice_queries.iter().enumerate().map(|(query_index, &(column, at))| {
-                VerifierQuery::new(
-                    x_rotations[&at],
-                    &advice_commitments[column.index()],
-                    PolynomialLabel::Advice(column.index()),
-                    advice_evals[query_index],
-                )
-            }),
-        )
         .chain(vk.cs.instance_queries.iter().enumerate().filter_map(
             |(query_index, &(column, at))| {
                 if column.index() < nb_committed_instances {

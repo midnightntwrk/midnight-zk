@@ -356,20 +356,17 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             instance.iter().try_for_each(|pi| transcript.common_scalar(layouter, pi))?;
         }
 
-        // Hash the prover's advice commitments into the transcript and squeeze
-        // challenges
-        let advice_commitments = (0..cs.num_advice_columns())
-            .map(|i| PCS::read_commitment(&mut transcript, layouter, &[PolynomialLabel::Advice(i)]))
-            .collect::<Result<Vec<_>, Error>>()?;
-
         let logups = cs
             .lookups()
             .iter()
             .map(|l| l.chunk_by_degree(assigned_vk.cs_degree))
             .collect::<Vec<_>>();
 
-        let phase1_labels =
-            (0..logups.len()).map(PolynomialLabel::LogupMultiplicities).collect::<Vec<_>>();
+        // The advice columns and the logup multiplicities form the phase1 group.
+        let phase1_labels = (0..cs.num_advice_columns())
+            .map(PolynomialLabel::Advice)
+            .chain((0..logups.len()).map(PolynomialLabel::LogupMultiplicities))
+            .collect::<Vec<_>>();
 
         let phase1_committed = argument::read_committed(&phase1_labels, layouter, &mut transcript)?;
 
@@ -403,7 +400,6 @@ impl<S: SelfEmulation> VerifierGadget<S> {
 
         Ok((
             VerifierTrace {
-                advice_commitments,
                 phase0_committed,
                 phase1_committed,
                 phase2_committed,
@@ -528,7 +524,6 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         let nb_committed_instances = assigned_committed_instances.len();
 
         let VerifierTrace {
-            advice_commitments,
             phase0_committed,
             phase1_committed,
             phase2_committed,
@@ -607,10 +602,6 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                 .collect::<Result<Vec<_>, Error>>()?
         };
 
-        let advice_evals = (0..cs.advice_queries().len())
-            .map(|_| transcript.read_scalar(layouter))
-            .collect::<Result<Vec<_>, _>>()?;
-
         // The transcript doesn't contain evals of fixed cols corresponding to simple
         // selectors. Fill up the "missing" places with 1, to align with the
         // fixed queries
@@ -648,6 +639,21 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         let phase0_evals = &phase0_evaluated.evals_map;
         let phase1_evals = &phase1_evaluated.evals_map;
         let phase2_evals = &phase2_evaluated.evals_map;
+
+        // The advice evaluations in the order of `cs.advice_queries`, which is how
+        // the identities index them. In the phase1 group, each column's follow the
+        // order of its queries.
+        let mut next = vec![0; cs.num_advice_columns()];
+        let advice_evals: Vec<AssignedNative<S::F>> = cs
+            .advice_queries()
+            .iter()
+            .map(|(column, _)| {
+                let i = column.index();
+                let eval = phase1_evals[&PolynomialLabel::Advice(i)][next[i]].eval().clone();
+                next[i] += 1;
+                eval
+            })
+            .collect();
 
         // Partially evaluate batched identities
         // (without fixed columns corresponding to simple selectors)
@@ -787,16 +793,6 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         // NB: Queries corresponding to simple, multiplicative selectors need not be
         // checked
         let queries = iter::empty()
-            .chain(
-                cs.advice_queries().iter().enumerate().map(|(query_index, &(column, rot))| {
-                    VerifierQuery::<S, PCS>::new(
-                        &x_rotations[&rot],
-                        &advice_commitments[column.index()],
-                        PolynomialLabel::Advice(column.index()),
-                        &advice_evals[query_index],
-                    )
-                }),
-            )
             .chain(cs.instance_queries().iter().enumerate().filter_map(
                 |(query_index, &(column, rot))| {
                     if column.index() < nb_committed_instances {

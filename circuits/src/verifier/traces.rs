@@ -6,7 +6,6 @@ use crate::{
 /// In-circuit verifier trace of a proof.
 #[derive(Debug)]
 pub struct VerifierTrace<S: SelfEmulation, PCS: InCircuitPCS<S>> {
-    pub(crate) advice_commitments: Vec<PCS::AssignedCommitment>,
     pub(crate) phase0_committed: super::argument::Committed<S, PCS>,
     pub(crate) phase1_committed: super::argument::Committed<S, PCS>,
     pub(crate) phase2_committed: super::argument::Committed<S, PCS>,
