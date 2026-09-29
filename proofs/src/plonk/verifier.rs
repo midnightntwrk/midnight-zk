@@ -11,7 +11,7 @@ use crate::{
         argument, linearization::verifier::compute_linearization_commitment,
         partially_evaluate_identities, traces::VerifierTrace,
     },
-    poly::{PolynomialLabel, VerifierQuery, commitment::PolynomialCommitmentScheme},
+    poly::{PolynomialLabel, Rotation, VerifierQuery, commitment::PolynomialCommitmentScheme},
     transcript::{Hashable, Sampleable, Transcript, read_n},
     utils::arithmetic::compute_inner_product,
 };
@@ -48,8 +48,14 @@ where
         return Err(Error::InvalidInstances);
     }
 
-    // Hash verification key into transcript
-    vk.hash_into(transcript)?;
+    // Hash verification key into transcript.
+    // REVIEW-ONLY: This binds the commitments it holds, so the fixed permutation
+    // polynomials, committed to in the key, are formed into a group here.
+    let vk_absorbed = vk.absorb_into(transcript)?;
+    let fixed_perm_committed = argument::verifier::Committed::from_key(
+        &vk_absorbed,
+        &vk.cs.permutation.polynomial_labels(),
+    );
 
     for commitment in committed_instances.iter() {
         transcript.common(commitment)?
@@ -92,10 +98,8 @@ where
     // Sample the trash challenge after the advices have been committed to
     let trash_challenge: F = transcript.squeeze_challenge();
 
-    let permutations_committed = vk.cs.permutation.read_product_commitments(vk, transcript)?;
-
     // The label order does not matter here, labels are ordered in `read`.
-    let mut phase2_labels = Vec::new();
+    let mut phase2_labels = vk.cs.permutation.accumulator_labels(vk.cs_degree);
 
     for (argument_index, logup_argument) in logups.iter().enumerate() {
         phase2_labels.push(PolynomialLabel::LogupAggregator(argument_index));
@@ -115,9 +119,9 @@ where
 
     Ok(VerifierTrace {
         advice_commitments,
+        fixed_perm_committed,
         phase1_committed,
         phase2_committed,
-        permutations: permutations_committed,
         beta,
         gamma,
         theta,
@@ -159,9 +163,9 @@ where
 
     let VerifierTrace {
         advice_commitments,
+        fixed_perm_committed,
         phase1_committed,
         phase2_committed,
-        permutations,
         beta,
         gamma,
         theta,
@@ -252,15 +256,19 @@ where
         }
     }
 
-    let permutations_common = vk.permutation.evaluate(transcript)?;
-
-    let permutations_evaluated = permutations.evaluate(transcript)?;
-
     let domain = vk.get_domain();
+    let cs = vk.cs();
 
-    let phase1_evaluated = phase1_committed.evaluate(x, domain, transcript)?;
-    let phase2_evaluated = phase2_committed.evaluate(x, domain, transcript)?;
+    // REVIEW-ONLY: The points at which the argument groups are opened, besides `x`.
+    let x_next = domain.rotate_omega(x, Rotation::next());
+    let x_last = domain.rotate_omega(x, Rotation(-((cs.blinding_factors() + 1) as i32)));
 
+    let fixed_perm_evaluated = fixed_perm_committed.evaluate(cs, x, x_next, x_last, transcript)?;
+
+    let phase1_evaluated = phase1_committed.evaluate(cs, x, x_next, x_last, transcript)?;
+    let phase2_evaluated = phase2_committed.evaluate(cs, x, x_next, x_last, transcript)?;
+
+    let fixed_perm_evals = &fixed_perm_evaluated.evals_map;
     let phase1_evals = &phase1_evaluated.evals_map;
     let phase2_evals = &phase2_evaluated.evals_map;
 
@@ -271,10 +279,9 @@ where
         &fixed_evals,
         &instance_evals,
         &advice_evals,
-        &permutations_evaluated.sets,
+        fixed_perm_evals,
         phase1_evals,
         phase2_evals,
-        &permutations_common,
         x,
         xn,
         beta,
@@ -321,7 +328,7 @@ where
                 }
             },
         ))
-        .chain(permutations_evaluated.queries(vk, x))
+        .chain(fixed_perm_evaluated.queries())
         .chain(phase1_evaluated.queries())
         .chain(phase2_evaluated.queries())
         .chain(
@@ -340,7 +347,6 @@ where
                     )
                 }),
         )
-        .chain(permutations_common.queries(&vk.permutation, x))
         .chain(iter::once(VerifierQuery::new(
             x,
             &lin_commitment,

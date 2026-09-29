@@ -19,7 +19,7 @@ use super::{
         Advice, Any, Assignment, Circuit, Column, ConstraintSystem, Fixed, FloorPlanner, Instance,
         Selector,
     },
-    logup, permutation,
+    logup,
 };
 use crate::{
     circuit::Value,
@@ -65,13 +65,14 @@ where
 ///
 /// The trace can then be used to finalise the proof.
 pub(crate) fn compute_trace<
+    'a,
     F,
     CS: PolynomialCommitmentScheme<F>,
     T: Transcript,
     ConcreteCircuit: Circuit<F>,
 >(
     params: &CS::Parameters,
-    pk: &ProvingKey<F, CS>,
+    pk: &'a ProvingKey<F, CS>,
     circuit: &ConcreteCircuit,
     // The prover needs to get all instances in non-committed form. However,
     // the first `nb_committed_instances` instance columns are dedicated for
@@ -80,7 +81,7 @@ pub(crate) fn compute_trace<
     instances: &[&[F]],
     transcript: &mut T,
     mut rng: impl RngCore + CryptoRng,
-) -> Result<ProverTrace<F>, Error>
+) -> Result<ProverTrace<'a, F>, Error>
 where
     CS::Commitment: Hashable<T::Hash>,
     F: WithSmallOrderMulGroup<3>
@@ -99,7 +100,8 @@ where
     }
 
     // Hash verification key into transcript
-    pk.vk.hash_into(transcript)?;
+    let vk_absorbed = pk.vk.absorb_into(transcript)?;
+    let fixed_perm_committed = pk.fixed_perm_polys.committed(&vk_absorbed);
 
     let domain = &pk.vk.domain;
 
@@ -168,19 +170,15 @@ where
     let trash_challenge: F = transcript.squeeze_challenge();
 
     let blinding_factors = pk.vk.cs.blinding_factors();
-    let chunk_len = pk.vk.cs_degree - 2;
-    let num_perm_sets = pk.vk.cs.permutation.columns.chunks(chunk_len).len();
+    let num_perm_sets = pk.vk.cs.permutation.num_sets(pk.vk.cs_degree);
     let perm_blindings: Vec<Vec<F>> = sample_blindings(num_perm_sets, blinding_factors);
     let logup_blindings: Vec<Vec<F>> = sample_blindings(logup_multiplicities_len, blinding_factors);
 
-    // Overlap permutation and logup computation.
-    // Both only need β (and γ for permutation). Neither touches the transcript.
-    // Transcript writes preserve the original ordering:
-    // permutation commitments first, then logup commitments.
-    let perm_computed = pk.vk.cs.permutation.compute::<F, CS>(
-        params,
+    let mut phase2_polys_map: BTreeMap<PolynomialLabel, Polynomial<F, LagrangeCoeff>> =
+        BTreeMap::new();
+
+    let perm_z_polys = pk.vk.cs.permutation.compute_z_polys::<F, CS>(
         pk,
-        &pk.permutation,
         &advice.advice_polys,
         &pk.fixed_values,
         &instance.instance_values,
@@ -189,10 +187,14 @@ where
         perm_blindings,
     );
 
-    let permutations = perm_computed.write_and_convert(domain, transcript)?;
-
-    let mut phase2_polys_map: BTreeMap<PolynomialLabel, Polynomial<F, LagrangeCoeff>> =
-        BTreeMap::new();
+    for (i, poly) in perm_z_polys.into_iter().enumerate() {
+        if phase2_polys_map
+            .insert(PolynomialLabel::PermutationAccumulator(i), poly)
+            .is_some()
+        {
+            return Err(Error::DuplicatedLabel);
+        }
+    }
 
     let logup_polys_maps = logup_multiplicities
         .into_par_iter()
@@ -271,9 +273,9 @@ where
         advice_polys,
         instance_polys,
         instance_values,
+        fixed_perm_committed,
         phase1_committed,
         phase2_committed,
-        permutations,
         beta,
         gamma,
         theta,
@@ -294,7 +296,7 @@ pub(crate) fn finalise_proof<'a, F, CS: PolynomialCommitmentScheme<F>, T: Transc
     // the first `nb_committed_instances` instance columns are dedicated for
     // instances that the verifier receives in committed form.
     #[cfg(feature = "committed-instances")] nb_committed_instances: usize,
-    trace: ProverTrace<F>,
+    trace: ProverTrace<'a, F>,
     transcript: &mut T,
 ) -> Result<(), Error>
 where
@@ -319,9 +321,9 @@ where
     let ProverTrace {
         advice_polys,
         instance_polys,
+        fixed_perm_committed,
         phase1_committed,
         phase2_committed,
-        permutations,
         beta,
         gamma,
         theta,
@@ -332,6 +334,7 @@ where
 
     let x: F = CS::squeeze_evaluation_point(transcript);
     let domain = pk.vk.get_domain();
+    let cs = pk.vk.cs();
 
     let Evals {
         fixed_evals,
@@ -347,17 +350,17 @@ where
         transcript,
     )?;
 
-    // Evaluate common permutation data
-    let permutations_common = pk.permutation.evaluate(x, transcript)?;
+    // REVIEW-ONLY: The points at which the argument groups are opened, besides `x`.
+    let x_next = domain.rotate_omega(x, Rotation::next());
+    let x_last = domain.rotate_omega(x, Rotation(-((cs.blinding_factors() + 1) as i32)));
 
-    // Evaluate the permutations, if any, at omega^i x.
-    let permutations = permutations.evaluate(pk, x, transcript)?;
+    // REVIEW-ONLY: Evaluate the polynomials committed to in the verifying key: the
+    // fixed permutation polynomials.
+    let fixed_perm_evaluated = fixed_perm_committed.evaluate(cs, x, x_next, x_last, transcript)?;
 
-    let phase1_evaluated: argument::prover::Evaluated<F> =
-        phase1_committed.evaluate(domain, x, transcript)?;
+    let phase1_evaluated = phase1_committed.evaluate(cs, x, x_next, x_last, transcript)?;
 
-    let phase2_evaluated: argument::prover::Evaluated<F> =
-        phase2_committed.evaluate(domain, x, transcript)?;
+    let phase2_evaluated = phase2_committed.evaluate(cs, x, x_next, x_last, transcript)?;
 
     // Partially evaluate batched identities (without fixed columns
     // corresponding to simple, multiplicative selectors)
@@ -368,10 +371,9 @@ where
         &fixed_evals,
         &instance_evals,
         &advice_evals,
-        &permutations.evaluated,
+        &fixed_perm_evaluated.evals_map,
         &phase1_evaluated.evals_map,
         &phase2_evaluated.evals_map,
-        &permutations_common,
         x,
         xn,
         beta,
@@ -395,7 +397,7 @@ where
         nb_committed_instances,
         &instance_polys,
         &advice_polys,
-        &permutations,
+        &fixed_perm_evaluated,
         &phase1_evaluated,
         &phase2_evaluated,
         x,
@@ -616,14 +618,13 @@ where
 
 pub(super) fn compute_nu_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>>(
     pk: &ProvingKey<F, CS>,
-    trace: &ProverTrace<F>,
+    trace: &ProverTrace<'_, F>,
 ) -> Polynomial<F, ExtendedLagrangeCoeff> {
     let ProverTrace {
         advice_polys,
         instance_polys,
         phase1_committed,
         phase2_committed,
-        permutations,
         beta,
         gamma,
         theta,
@@ -658,11 +659,10 @@ pub(super) fn compute_nu_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommit
         *trash_challenge,
         phase1_committed,
         phase2_committed,
-        permutations,
         &pk.l0,
         &pk.l_last,
         &pk.l_active_row,
-        &pk.permutation.cosets,
+        &pk.sigmas.cosets,
     )
 }
 
@@ -861,9 +861,9 @@ pub(super) fn compute_queries<
     nb_committed_instances: usize,
     instance_polys: &'a [Polynomial<F, Coeff>],
     advice_polys: &'a [Polynomial<F, Coeff>],
-    permutations: &'a permutation::prover::Evaluated<F>,
-    phase1_evals: &'a argument::prover::Evaluated<F>,
-    phase2_evals: &'a argument::prover::Evaluated<F>,
+    fixed_perm_evals: &'a argument::prover::Evaluated<'a, F>,
+    phase1_evals: &'a argument::prover::Evaluated<'a, F>,
+    phase2_evals: &'a argument::prover::Evaluated<'a, F>,
     x: F,
     lin_poly_non_constant_part: &'a Polynomial<F, Coeff>,
 ) -> Vec<ProverQuery<'a, F>> {
@@ -889,7 +889,7 @@ pub(super) fn compute_queries<
                 }
             }),
         )
-        .chain(permutations.open(pk, x))
+        .chain(fixed_perm_evals.open())
         .chain(phase1_evals.open())
         .chain(phase2_evals.open())
         .chain(
@@ -907,7 +907,6 @@ pub(super) fn compute_queries<
                     )
                 }),
         )
-        .chain(pk.permutation.open(x))
         .chain(iter::once(ProverQuery::new(
             domain.rotate_omega(x, Rotation::cur()),
             lin_poly_non_constant_part,

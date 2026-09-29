@@ -3,11 +3,11 @@ use rayon::iter::{
     IndexedParallelIterator, IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelIterator,
 };
 
-use super::{Argument, ProvingKey, VerifyingKey};
+use super::Argument;
 use crate::{
     plonk::{Any, Column, Error},
     poly::{
-        Coeff, EvaluationDomain, ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial, PolynomialLabel,
+        Coeff, EvaluationDomain, ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial,
         commitment::PolynomialCommitmentScheme,
     },
     utils::arithmetic::parallelize,
@@ -105,41 +105,33 @@ impl Assembly {
         Ok(())
     }
 
-    pub(crate) fn build_vk<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>>(
+    /// REVIEW-ONLY: The commitment to the fixed permutation polynomials, as one
+    /// group.
+    pub(crate) fn build_fixed_perm_commitment<
+        F: WithSmallOrderMulGroup<3>,
+        CS: PolynomialCommitmentScheme<F>,
+    >(
         self,
         params: &CS::Parameters,
         domain: &EvaluationDomain<F>,
         p: &Argument,
-    ) -> VerifyingKey<F, CS> {
+    ) -> CS::Commitment {
         let permutations = compute_permutations(domain, p, &self.mapping);
-
-        // Pre-compute commitments for the URS.
-        let mut commitments = Vec::with_capacity(p.columns.len());
-        for (i, permutation) in permutations.iter().enumerate() {
-            // Compute commitment to permutation polynomial
-            commitments.push(CS::commit(
-                params,
-                permutation,
-                PolynomialLabel::PermutationFixed(i),
-            ));
-        }
-
-        VerifyingKey { commitments }
+        CS::commit_many(
+            params,
+            &permutations.iter().collect::<Vec<_>>(),
+            &p.polynomial_labels(),
+        )
     }
 
-    pub(crate) fn build_pk<F: WithSmallOrderMulGroup<3>>(
+    /// The permutation polynomials in Lagrange form, one per column of the
+    /// argument.
+    pub(crate) fn into_permutations<F: WithSmallOrderMulGroup<3>>(
         self,
         domain: &EvaluationDomain<F>,
         p: &Argument,
-    ) -> ProvingKey<F> {
-        let permutations = compute_permutations(domain, p, &self.mapping);
-        let (polys, cosets) = compute_polys_and_cosets::<F>(domain, p, &permutations);
-
-        ProvingKey {
-            permutations,
-            polys,
-            cosets,
-        }
+    ) -> Vec<Polynomial<F, LagrangeCoeff>> {
+        compute_permutations(domain, p, &self.mapping)
     }
 
     /// Returns columns that participate in the permutation argument.

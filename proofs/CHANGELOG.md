@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+* `permutation::Argument::polynomial_labels`, `num_sets` and `accumulator_labels` are public [#537](https://github.com/midnightntwrk/midnight-zk/pull/537)
 * changed `sha256` name in benches to account for the change of naming convention in `circuits` [#135](https://github.com/midnightntwrk/midnight-zk/pull/135)
 * optional names on VerifierQuery commitments [#205](https://github.com/midnightntwrk/midnight-zk/pull/205)
 * `padded_add` and `padded_sub` polynomial operations [#276](https://github.com/midnightntwrk/midnight-zk/pull/276)
@@ -37,6 +38,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Fix cost-model [#435](https://github.com/midnightntwrk/midnight-zk/pull/435)
 
 ### Changed
+* Commit the permutation accumulators as part of the phase-2 argument group, and open the permutation polynomials as a phase-0 group, whose commitment lives in the verifying key rather than in the proof. `permutation::expressions` looks both sets of evaluations up by label, as the other arguments do, and the cost model counts the accumulators in the phase-2 group. This changes the transcript of every proof over a circuit with copy constraints: proofs produced by earlier versions no longer verify [#537](https://github.com/midnightntwrk/midnight-zk/pull/537)
+* The permutation polynomials are committed to as one group, in place of one commitment per polynomial. The verifying key holds that commitment directly, as `VerifyingKey::fixed_perm_commitment() -> &CS::Commitment`; `permutation::VerifyingKey`, which held one commitment per polynomial, and the `VerifyingKey::permutation` accessor that returned it, are removed. A group is serialized as its polynomials' commitments back to back, so the verifying key's bytes and its `transcript_repr` are unchanged [#537](https://github.com/midnightntwrk/midnight-zk/pull/537)
+* `permutation::ProvingKey` is removed. The permutation polynomials belong to the proving key's phase-0 group, which holds them in coefficient form; the Lagrange form and the cosets that the prover reads once per proof are derived from it and cached beside it as `permutation::Sigmas`. `build_fixed_perm_polys` derives the group and the `Sigmas` together, both at keygen and in `ProvingKey::read`, and is the only way to obtain either. The serialized key is unchanged: the Lagrange form is still the only one written [#537](https://github.com/midnightntwrk/midnight-zk/pull/537)
+* `compute_z_polys` and `Evaluator::evaluate_numerator` read the permutation polynomials from the proving key instead of taking the permutation proving key and its cosets as arguments [#537](https://github.com/midnightntwrk/midnight-zk/pull/537)
 * `commit_many` and `read_commitment` order a group's polynomials by their labels' `Ord` themselves, rather than requiring the caller to pass the labels in that order. Callers list the labels of a group in whatever order suits them and both sides agree on the on-wire order. A repeated label in a group now panics, in both, rather than being silently collapsed [#515](https://github.com/midnightntwrk/midnight-zk/pull/515)
 * Commit the logup polynomials as generic argument groups: every multiplicities polynomial in the phase-1 group, and every aggregator, helper and trash polynomial in the phase-2 group, instead of one commitment per polynomial. `ChunkedArgument::expressions` takes the two evaluation maps and looks its own evaluations up by label. This changes the transcript of every proof over a circuit with a lookup: proofs produced by earlier versions no longer verify [#515](https://github.com/midnightntwrk/midnight-zk/pull/515)
 * Frame each commitment group written to the proof with a little-endian `u32` byte-length prefix, so that `Hashable::read` for `KZGMultiCommitment` is self-delimiting. The prefix is not part of the hashed transcript; how many polynomials a group holds is pinned by the verifying key and checked on read. Proofs grow by 4 bytes per commitment group, and `KZGCommitmentScheme::commitment_byte_length` accounts for it [#515](https://github.com/midnightntwrk/midnight-zk/pull/515)
@@ -67,6 +72,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 * `Clone` on `ProvingKey`, so that the polynomials it holds are never copied [#537](https://github.com/midnightntwrk/midnight-zk/pull/537)
+* Remove the internal `permutation::verifier` module and `permutation::Evaluated`; the permutation argument no longer carries any transcript plumbing of its own [#537](https://github.com/midnightntwrk/midnight-zk/pull/537)
 * Remove `KZGCommitment::into_point`; use `as_point`, which borrows the point instead of consuming (and often cloning) the commitment [#515](https://github.com/midnightntwrk/midnight-zk/pull/515)
 * Remove the internal `logup::verifier` module and `logup::Evaluated`; the lookup argument no longer carries any transcript plumbing of its own [#515](https://github.com/midnightntwrk/midnight-zk/pull/515)
 * Remove the internal `trash::verifier` module and `trash::Evaluated`; the trash argument no longer carries any transcript plumbing of its own [#513](https://github.com/midnightntwrk/midnight-zk/pull/513)

@@ -5,7 +5,7 @@ use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterato
 
 use crate::{
     plonk::{
-        Error,
+        AbsorbedVk, ConstraintSystem, Error,
         argument::{self, Evaluation},
     },
     poly::{
@@ -16,7 +16,6 @@ use crate::{
     utils::arithmetic::eval_polynomial,
 };
 
-#[cfg_attr(feature = "bench-internal", derive(Clone))]
 #[derive(Debug)]
 pub(crate) struct Committed<F: PrimeField, B: PolynomialRepresentation> {
     polys_map: BTreeMap<PolynomialLabel, Polynomial<F, B>>,
@@ -71,24 +70,57 @@ impl<F: PrimeField, B: PolynomialRepresentation> Committed<F, B> {
     }
 }
 
-pub(crate) struct Evaluated<F: PrimeField> {
-    committed: Committed<F, Coeff>,
+/// A group whose polynomials are committed to in the verifying key rather than
+/// in the proof. It takes part in a proof, as a [`Committed`], only once a
+/// verifying key has been absorbed into the transcript; see
+/// [`Self::committed`].
+///
+/// # Caveat
+///
+/// The [`AbsorbedVk`] witness shows that *a* verifying key was absorbed, not
+/// that it is the key holding this group's commitment. Pairing the two is left
+/// to the caller.
+#[derive(Debug)]
+pub(crate) struct KeyGroup<F: PrimeField>(Committed<F, Coeff>);
+
+impl<F: PrimeField> KeyGroup<F> {
+    pub(crate) fn new(polys_map: BTreeMap<PolynomialLabel, Polynomial<F, Coeff>>) -> Self {
+        KeyGroup(Committed { polys_map })
+    }
+
+    /// The group as a [`Committed`], given the witness that its verifying key
+    /// has been absorbed (see the caveat on [`KeyGroup`]).
+    pub(crate) fn committed<CS: PolynomialCommitmentScheme<F>>(
+        &self,
+        _vk: &AbsorbedVk<'_, F, CS>,
+    ) -> &Committed<F, Coeff> {
+        &self.0
+    }
+}
+
+pub(crate) struct Evaluated<'a, F: PrimeField> {
+    committed: &'a Committed<F, Coeff>,
     pub(crate) evals_map: BTreeMap<PolynomialLabel, Vec<Evaluation<F>>>,
 }
 
 impl<F: PrimeField> Committed<F, Coeff> {
+    /// Evaluates every polynomial of the group at each of its evaluation
+    /// points and writes the evaluations to the proof, in the labels' `Ord`
+    /// order.
+    ///
+    /// Borrows the group rather than consuming it.
     pub(crate) fn evaluate<T>(
-        self,
-        domain: &EvaluationDomain<F>,
+        &self,
+        cs: &ConstraintSystem<F>,
         x: F,
+        x_next: F,
+        x_last: F,
         transcript: &mut T,
-    ) -> Result<Evaluated<F>, Error>
+    ) -> Result<Evaluated<'_, F>, Error>
     where
         F: Hashable<T::Hash> + WithSmallOrderMulGroup<3>,
         T: Transcript,
     {
-        let omega = domain.get_omega();
-
         let evaluate = |poly: &Polynomial<F, Coeff>, x: F| -> Evaluation<F> {
             Evaluation {
                 point: x,
@@ -100,7 +132,7 @@ impl<F: PrimeField> Committed<F, Coeff> {
             .polys_map
             .iter()
             .map(|(label, poly)| {
-                let eval_points = argument::eval_points(label, x, omega);
+                let eval_points = argument::eval_points(cs, label, x, x_next, x_last);
                 (
                     label.clone(),
                     eval_points.into_iter().map(|point| evaluate(poly, point)).collect(),
@@ -121,7 +153,7 @@ impl<F: PrimeField> Committed<F, Coeff> {
     }
 }
 
-impl<F: PrimeField> Evaluated<F> {
+impl<F: PrimeField> Evaluated<'_, F> {
     pub(crate) fn open(&self) -> impl Iterator<Item = ProverQuery<'_, F>> + Clone {
         self.evals_map.iter().flat_map(|(label, evaluations)| {
             evaluations.iter().map(|evaluation| {

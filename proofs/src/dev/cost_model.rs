@@ -237,12 +237,20 @@ pub fn circuit_model_with<F: Ord + Field + FromUniformBytes<64>>(
     queries.dedup();
     let point_sets = queries.len();
 
-    // The logup polynomials are split over the two argument phases: every
-    // multiplicities polynomial goes in the phase1 group, and every aggregator,
-    // helper and trash polynomial in the phase2 group. Each phase is a single
-    // commitment group, whatever the number of arguments feeding it.
+    // REVIEW-ONLY: The permutation argument splits its columns into chunks, one
+    // accumulator polynomial each.
+    let nb_perm_chunks = o.permutation.num_sets();
+
+    // The polynomials committed to in the proof are split over the two argument
+    // phases: every multiplicities polynomial goes in the phase1 group, and
+    // every aggregator, helper, trash and permutation accumulator polynomial in
+    // the phase2 group. Each phase is a single commitment group, whatever the
+    // number of arguments feeding it. (The permutation polynomials themselves
+    // belong to the phase0 group, which is committed to in the verifying key
+    // and so costs no proof bytes.)
     let nb_phase1_polys = o.lookup.len();
-    let nb_phase2_polys = o.lookup.iter().map(|l| l.num_chunks + 1).sum::<usize>() + o.trash.len();
+    let nb_phase2_polys =
+        o.lookup.iter().map(|l| l.num_chunks + 1).sum::<usize>() + o.trash.len() + nb_perm_chunks;
 
     // PLONK:
     // - commit(1) bytes per advice commitment, each written on its own
@@ -250,10 +258,8 @@ pub fn circuit_model_with<F: Ord + Field + FromUniformBytes<64>>(
     // - scalar bytes per committed instance column per query
     // - scalar bytes per fixed column per query
     // - scalar bytes per permutation column
-    // - Per permutation batch: commit(1) + 3*scalar per chunk, each chunk committed
-    //   on its own (last chunk has 2 scalar)
+    // - 3*scalar per permutation chunk (the last chunk has 2)
     // - The two argument phase groups, plus scalar bytes per evaluation they hold
-    let nb_perm_chunks = o.permutation.num_sets();
     let plonk = o.advice.len() * commit(1)
         + o.advice.iter().map(|p| p.rotations.len() * scalar).sum::<usize>()
         + o.instance
@@ -263,7 +269,7 @@ pub fn circuit_model_with<F: Ord + Field + FromUniformBytes<64>>(
             .sum::<usize>()
         + o.fixed.iter().map(|p| p.rotations.len() * scalar).sum::<usize>()
         + scalar * o.permutation.columns
-        + (nb_perm_chunks * commit(1) + scalar * 3 * nb_perm_chunks).saturating_sub(scalar) // last chunk has 2 evals
+        + (scalar * 3 * nb_perm_chunks).saturating_sub(scalar) // last chunk has 2 evals
         + commit(nb_phase1_polys)
         + commit(nb_phase2_polys)
         + o.lookup.iter().map(|l| scalar * l.num_evaluations()).sum::<usize>()

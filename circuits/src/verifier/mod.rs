@@ -116,14 +116,15 @@ pub fn fixed_bases<S: SelfEmulation>(vk: &VerifyingKey<S>) -> BTreeMap<Polynomia
     let mut fixed_bases = BTreeMap::new();
 
     let fixed_commitments = vk.fixed_commitments();
-    let perm_commitments = vk.permutation().commitments();
 
     for (i, com) in fixed_commitments.iter().enumerate() {
         fixed_bases.insert(PolynomialLabel::Fixed(i), *com.0[0].as_point());
     }
 
-    for (i, com) in perm_commitments.iter().enumerate() {
-        fixed_bases.insert(PolynomialLabel::PermutationFixed(i), *com.0[0].as_point());
+    // The permutation polynomials are committed to as one group, in the labels'
+    // order, so the i-th point of that commitment is `PermutationFixed(i)`.
+    for (i, com) in vk.fixed_perm_commitment().0.iter().enumerate() {
+        fixed_bases.insert(PolynomialLabel::PermutationFixed(i), *com.as_point());
     }
 
     fixed_bases.insert(PolynomialLabel::Custom("-G".into()), -S::C::generator());

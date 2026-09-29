@@ -4,12 +4,10 @@ use ff::{PrimeField, WithSmallOrderMulGroup};
 
 use crate::{
     plonk::{
-        Error,
+        AbsorbedVk, ConstraintSystem, Error,
         argument::{self, Evaluation},
     },
-    poly::{
-        EvaluationDomain, PolynomialLabel, VerifierQuery, commitment::PolynomialCommitmentScheme,
-    },
+    poly::{PolynomialLabel, VerifierQuery, commitment::PolynomialCommitmentScheme},
     transcript::{Hashable, Transcript},
 };
 
@@ -20,6 +18,19 @@ pub struct Committed<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
 }
 
 impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> Committed<F, CS> {
+    /// Builds the group of `labels` from the fixed group commitment of the
+    /// absorbed verifying key, which binds it to the transcript as reading a
+    /// commitment from the proof does.
+    pub(crate) fn from_key(
+        vk: &AbsorbedVk<'_, F, CS>,
+        labels: &[PolynomialLabel],
+    ) -> Committed<F, CS> {
+        Committed {
+            commitment: vk.fixed_group_commitment().clone(),
+            polynomial_labels: BTreeSet::from_iter(labels.iter().cloned()),
+        }
+    }
+
     pub(crate) fn read<T: Transcript>(
         labels: &[PolynomialLabel],
         transcript: &mut T,
@@ -43,8 +54,10 @@ pub struct Evaluated<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
 impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Committed<F, CS> {
     pub(crate) fn evaluate<T: Transcript>(
         self,
+        cs: &ConstraintSystem<F>,
         x: F,
-        domain: &EvaluationDomain<F>,
+        x_next: F,
+        x_last: F,
         transcript: &mut T,
     ) -> Result<Evaluated<F, CS>, Error>
     where
@@ -53,7 +66,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Committed<
         let mut evals_map: BTreeMap<PolynomialLabel, Vec<Evaluation<F>>> = BTreeMap::new();
 
         for label in &self.polynomial_labels {
-            let eval_points = argument::eval_points(label, x, domain.get_omega());
+            let eval_points = argument::eval_points(cs, label, x, x_next, x_last);
             let mut evals = Vec::with_capacity(eval_points.len());
             for point in eval_points {
                 evals.push(Evaluation {
