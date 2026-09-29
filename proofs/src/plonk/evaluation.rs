@@ -956,22 +956,19 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
             .par_iter()
             .map(|(argument_index, lookup)| {
                 let multiplicities_poly = phase1_committed
-                    .polys_map
-                    .get(&PolynomialLabel::LogupMultiplicities(*argument_index))
+                    .poly(&PolynomialLabel::LogupMultiplicities(*argument_index))
                     .unwrap();
 
                 let helper_polys: Vec<_> = (0..lookup.input_expression_chunks.len())
                     .map(|j| {
                         phase2_committed
-                            .polys_map
-                            .get(&PolynomialLabel::LogupHelper(*argument_index, j))
+                            .poly(&PolynomialLabel::LogupHelper(*argument_index, j))
                             .unwrap()
                     })
                     .collect();
 
                 let aggregator_poly = phase2_committed
-                    .polys_map
-                    .get(&PolynomialLabel::LogupAggregator(*argument_index))
+                    .poly(&PolynomialLabel::LogupAggregator(*argument_index))
                     .unwrap();
 
                 // Compute cosets
@@ -990,8 +987,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
         // Pre-compute all trash cosets in parallel (lookup cosets
         // are already pre-computed above).
         let trash_cosets: Vec<_> = phase2_committed
-            .polys_map
-            .par_iter()
+            .par_polys()
             .filter_map(|(label, trash_poly)| match label {
                 PolynomialLabel::Trash(_) => Some(B::coeff_to_self(domain, trash_poly.clone())),
                 _ => None,
