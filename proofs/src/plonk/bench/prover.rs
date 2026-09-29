@@ -487,6 +487,13 @@ where
     // PCS-aware squeeze (see plonk/prover.rs).
     let x: F = CS::squeeze_evaluation_point(transcript);
 
+    let domain = pk.vk.get_domain();
+    let cs = pk.vk.cs();
+    let x_rotations: BTreeMap<Rotation, F> = argument::rotations(cs)
+        .into_iter()
+        .map(|rotation| (rotation, domain.rotate_omega(x, rotation)))
+        .collect();
+
     group.bench_function("Write evals to transcript", |b| {
         b.iter_batched(
             || transcript.clone(),
@@ -496,7 +503,7 @@ where
                     nb_committed_instances,
                     &instance_polys,
                     &advice_polys,
-                    x,
+                    &x_rotations,
                     &mut t,
                 );
             },
@@ -513,14 +520,9 @@ where
         nb_committed_instances,
         &instance_polys,
         &advice_polys,
-        x,
+        &x_rotations,
         transcript,
     )?;
-
-    let domain = pk.vk.get_domain();
-    let cs = pk.vk.cs();
-    let x_next = domain.rotate_omega(x, Rotation::next());
-    let x_last = domain.rotate_omega(x, Rotation(-((cs.blinding_factors() + 1) as i32)));
 
     // Evaluate the fixed permutation polynomials, committed to in the verifying
     // key.
@@ -528,16 +530,16 @@ where
         b.iter_batched(
             || transcript.clone(),
             |mut t| {
-                let _ = phase0_committed.evaluate(cs, x, x_next, x_last, &mut t);
+                let _ = phase0_committed.evaluate(cs, &x_rotations, &mut t);
             },
             criterion::BatchSize::SmallInput,
         )
     });
-    let phase0_evaluated = phase0_committed.evaluate(cs, x, x_next, x_last, transcript)?;
+    let phase0_evaluated = phase0_committed.evaluate(cs, &x_rotations, transcript)?;
 
     // Evaluate the phase1 and phase2 arguments, if any, at their opening points.
-    let phase1_evaluated = phase1_committed.evaluate(cs, x, x_next, x_last, transcript)?;
-    let phase2_evaluated = phase2_committed.evaluate(cs, x, x_next, x_last, transcript)?;
+    let phase1_evaluated = phase1_committed.evaluate(cs, &x_rotations, transcript)?;
+    let phase2_evaluated = phase2_committed.evaluate(cs, &x_rotations, transcript)?;
 
     // Partially evaluate batched identities (without fixed columns
     // corresponding to simple, multiplicative selectors)
@@ -614,7 +616,7 @@ where
                     &phase0_evaluated,
                     &phase1_evaluated,
                     &phase2_evaluated,
-                    x,
+                    &x_rotations,
                     &lin_poly_non_constant_part,
                 );
             })
@@ -627,7 +629,7 @@ where
             &phase0_evaluated,
             &phase1_evaluated,
             &phase2_evaluated,
-            x,
+            &x_rotations,
             &lin_poly_non_constant_part,
         )
     };

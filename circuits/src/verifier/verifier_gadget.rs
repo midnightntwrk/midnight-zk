@@ -627,19 +627,23 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             }
         }
 
-        let omega = assigned_vk.domain.get_omega();
-        let omega_inv = omega.invert().unwrap();
-        let omega_last = omega_inv.pow([cs.blinding_factors() as u64 + 1]);
-        let x_next = self.scalar_chip.mul_by_constant(layouter, &x, omega)?;
-        let x_prev = self.scalar_chip.mul_by_constant(layouter, &x, omega_inv)?;
-        let x_last = self.scalar_chip.mul_by_constant(layouter, &x, omega_last)?;
+        let mut x_rotations = BTreeMap::new();
+        for rotation in argument::rotations::<S>(cs) {
+            let point = if rotation == Rotation::cur() {
+                x.clone()
+            } else {
+                let rotated_omega = assigned_vk.domain.rotate_omega(S::F::ONE, rotation);
+                self.scalar_chip.mul_by_constant(layouter, &x, rotated_omega)?
+            };
+            x_rotations.insert(rotation, point);
+        }
 
         let phase0_evaluated =
-            phase0_committed.evaluate(cs, &x, &x_next, &x_last, layouter, &mut transcript)?;
+            phase0_committed.evaluate(cs, &x_rotations, layouter, &mut transcript)?;
         let phase1_evaluated =
-            phase1_committed.evaluate(cs, &x, &x_next, &x_last, layouter, &mut transcript)?;
+            phase1_committed.evaluate(cs, &x_rotations, layouter, &mut transcript)?;
         let phase2_evaluated =
-            phase2_committed.evaluate(cs, &x, &x_next, &x_last, layouter, &mut transcript)?;
+            phase2_committed.evaluate(cs, &x_rotations, layouter, &mut transcript)?;
 
         let phase0_evals = &phase0_evaluated.evals_map;
         let phase1_evals = &phase1_evaluated.evals_map;
@@ -778,16 +782,6 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             &limb_commitments,
         )?;
 
-        // Gets the evaluation point for a query at the given rotation.
-        let get_point = |rotation: &Rotation| -> &AssignedNative<S::F> {
-            match rotation.0 {
-                -1 => &x_prev,
-                0 => &x,
-                1 => &x_next,
-                _ => panic!("We do not support other rotations"),
-            }
-        };
-
         // Collect queries that are checked in the multi-open argument
         //
         // NB: Queries corresponding to simple, multiplicative selectors need not be
@@ -796,7 +790,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             .chain(
                 cs.advice_queries().iter().enumerate().map(|(query_index, &(column, rot))| {
                     VerifierQuery::<S, PCS>::new(
-                        get_point(&rot),
+                        &x_rotations[&rot],
                         &advice_commitments[column.index()],
                         PolynomialLabel::Advice(column.index()),
                         &advice_evals[query_index],
@@ -807,7 +801,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                 |(query_index, &(column, rot))| {
                     if column.index() < nb_committed_instances {
                         Some(VerifierQuery::<S, PCS>::new(
-                            get_point(&rot),
+                            &x_rotations[&rot],
                             &assigned_committed_instances[column.index()],
                             PolynomialLabel::CommittedInstance(column.index()),
                             &instance_evals[query_index],
@@ -828,7 +822,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                     .filter(|(_, (col, _))| !cs.has_simple_selector_col(col.index()))
                     .map(|(query_index, &(column, rot))| {
                         VerifierQuery::new(
-                            get_point(&rot),
+                            &x_rotations[&rot],
                             &assigned_vk.fixed_commitments[column.index()],
                             PolynomialLabel::Fixed(column.index()),
                             &fixed_evals[query_index],

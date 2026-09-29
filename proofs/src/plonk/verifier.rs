@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeMap,
     hash::Hash,
     iter::{self},
 };
@@ -262,13 +263,15 @@ where
     let domain = vk.get_domain();
     let cs = vk.cs();
 
-    let x_next = domain.rotate_omega(x, Rotation::next());
-    let x_last = domain.rotate_omega(x, Rotation(-((cs.blinding_factors() + 1) as i32)));
+    let x_rotations: BTreeMap<Rotation, F> = argument::rotations(cs)
+        .into_iter()
+        .map(|rotation| (rotation, domain.rotate_omega(x, rotation)))
+        .collect();
 
-    let phase0_evaluated = phase0_committed.evaluate(cs, x, x_next, x_last, transcript)?;
+    let phase0_evaluated = phase0_committed.evaluate(cs, &x_rotations, transcript)?;
 
-    let phase1_evaluated = phase1_committed.evaluate(cs, x, x_next, x_last, transcript)?;
-    let phase2_evaluated = phase2_committed.evaluate(cs, x, x_next, x_last, transcript)?;
+    let phase1_evaluated = phase1_committed.evaluate(cs, &x_rotations, transcript)?;
+    let phase2_evaluated = phase2_committed.evaluate(cs, &x_rotations, transcript)?;
 
     let phase0_evals = &phase0_evaluated.evals_map;
     let phase1_evals = &phase1_evaluated.evals_map;
@@ -309,7 +312,7 @@ where
         .chain(
             vk.cs.advice_queries.iter().enumerate().map(|(query_index, &(column, at))| {
                 VerifierQuery::new(
-                    vk.domain.rotate_omega(x, at),
+                    x_rotations[&at],
                     &advice_commitments[column.index()],
                     PolynomialLabel::Advice(column.index()),
                     advice_evals[query_index],
@@ -320,7 +323,7 @@ where
             |(query_index, &(column, at))| {
                 if column.index() < nb_committed_instances {
                     Some(VerifierQuery::new(
-                        vk.domain.rotate_omega(x, at),
+                        x_rotations[&at],
                         &committed_instances[column.index()],
                         PolynomialLabel::CommittedInstance(column.index()),
                         instance_evals[query_index],
@@ -342,7 +345,7 @@ where
                 .filter(|(_, (col, _))| !vk.cs.has_simple_selector_col(col.index()))
                 .map(|(query_index, &(column, at))| {
                     VerifierQuery::new(
-                        vk.domain.rotate_omega(x, at),
+                        x_rotations[&at],
                         &vk.fixed_commitments[column.index()],
                         PolynomialLabel::Fixed(column.index()),
                         fixed_evals[query_index],

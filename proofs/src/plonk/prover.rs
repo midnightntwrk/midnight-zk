@@ -335,6 +335,11 @@ where
     let domain = pk.vk.get_domain();
     let cs = pk.vk.cs();
 
+    let x_rotations: BTreeMap<Rotation, F> = argument::rotations(cs)
+        .into_iter()
+        .map(|rotation| (rotation, domain.rotate_omega(x, rotation)))
+        .collect();
+
     let Evals {
         fixed_evals,
         instance_evals,
@@ -345,18 +350,15 @@ where
         nb_committed_instances,
         &instance_polys,
         &advice_polys,
-        x,
+        &x_rotations,
         transcript,
     )?;
 
-    let x_next = domain.rotate_omega(x, Rotation::next());
-    let x_last = domain.rotate_omega(x, Rotation(-((cs.blinding_factors() + 1) as i32)));
+    let phase0_evaluated = phase0_committed.evaluate(cs, &x_rotations, transcript)?;
 
-    let phase0_evaluated = phase0_committed.evaluate(cs, x, x_next, x_last, transcript)?;
+    let phase1_evaluated = phase1_committed.evaluate(cs, &x_rotations, transcript)?;
 
-    let phase1_evaluated = phase1_committed.evaluate(cs, x, x_next, x_last, transcript)?;
-
-    let phase2_evaluated = phase2_committed.evaluate(cs, x, x_next, x_last, transcript)?;
+    let phase2_evaluated = phase2_committed.evaluate(cs, &x_rotations, transcript)?;
 
     // Partially evaluate batched identities (without fixed columns
     // corresponding to simple, multiplicative selectors)
@@ -396,7 +398,7 @@ where
         &phase0_evaluated,
         &phase1_evaluated,
         &phase2_evaluated,
-        x,
+        &x_rotations,
         &lin_poly_non_constant_part,
     );
 
@@ -780,7 +782,7 @@ pub(super) fn write_evals_to_transcript<F, CS, T>(
     nb_committed_instances: usize,
     instance_polys: &[Polynomial<F, Coeff>],
     advice_polys: &[Polynomial<F, Coeff>],
-    x: F,
+    x_rotations: &BTreeMap<Rotation, F>,
     transcript: &mut T,
 ) -> Result<Evals<F>, Error>
 where
@@ -788,7 +790,6 @@ where
     CS: PolynomialCommitmentScheme<F>,
     T: Transcript,
 {
-    let domain = &pk.vk.domain;
     let meta = &pk.vk.cs;
 
     // Batch-evaluate all polynomials with outer parallelism and sequential
@@ -797,17 +798,13 @@ where
     let instance_evals: Vec<F> = meta
         .instance_queries
         .par_iter()
-        .map(|&(column, at)| {
-            eval_polynomial_seq(&instance_polys[column.index()], domain.rotate_omega(x, at))
-        })
+        .map(|&(column, at)| eval_polynomial_seq(&instance_polys[column.index()], x_rotations[&at]))
         .collect();
 
     let advice_evals: Vec<F> = meta
         .advice_queries
         .par_iter()
-        .map(|&(column, at)| {
-            eval_polynomial_seq(&advice_polys[column.index()], domain.rotate_omega(x, at))
-        })
+        .map(|&(column, at)| eval_polynomial_seq(&advice_polys[column.index()], x_rotations[&at]))
         .collect();
 
     let fixed_evals: Vec<F> = meta
@@ -818,7 +815,7 @@ where
             if meta.has_simple_selector_col(col_idx) {
                 F::ONE
             } else {
-                eval_polynomial_seq(&pk.fixed_polys[col_idx], domain.rotate_omega(x, at))
+                eval_polynomial_seq(&pk.fixed_polys[col_idx], x_rotations[&at])
             }
         })
         .collect();
@@ -860,14 +857,13 @@ pub(super) fn compute_queries<
     phase0_evals: &'a argument::prover::Evaluated<'a, F>,
     phase1_evals: &'a argument::prover::Evaluated<'a, F>,
     phase2_evals: &'a argument::prover::Evaluated<'a, F>,
-    x: F,
+    x_rotations: &'a BTreeMap<Rotation, F>,
     lin_poly_non_constant_part: &'a Polynomial<F, Coeff>,
 ) -> Vec<ProverQuery<'a, F>> {
-    let domain = pk.vk.get_domain();
     iter::empty()
         .chain(pk.vk.cs.advice_queries.iter().map(move |&(column, at)| {
             ProverQuery::new(
-                domain.rotate_omega(x, at),
+                x_rotations[&at],
                 &advice_polys[column.index()],
                 PolynomialLabel::Advice(column.index()),
             )
@@ -876,7 +872,7 @@ pub(super) fn compute_queries<
             pk.vk.cs.instance_queries.iter().filter_map(move |&(column, at)| {
                 if column.index() < nb_committed_instances {
                     Some(ProverQuery::new(
-                        domain.rotate_omega(x, at),
+                        x_rotations[&at],
                         &instance_polys[column.index()],
                         PolynomialLabel::CommittedInstance(column.index()),
                     ))
@@ -897,14 +893,14 @@ pub(super) fn compute_queries<
                 .filter(|(col, _)| !pk.vk.cs.has_simple_selector_col(col.index()))
                 .map(|&(column, at)| {
                     ProverQuery::new(
-                        domain.rotate_omega(x, at),
+                        x_rotations[&at],
                         &pk.fixed_polys[column.index()],
                         PolynomialLabel::Fixed(column.index()),
                     )
                 }),
         )
         .chain(iter::once(ProverQuery::new(
-            domain.rotate_omega(x, Rotation::cur()),
+            x_rotations[&Rotation::cur()],
             lin_poly_non_constant_part,
             PolynomialLabel::Linearization,
         )))

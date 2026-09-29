@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+* `Rotation` derives `PartialOrd` and `Ord` [#543](https://github.com/midnightntwrk/midnight-zk/pull/543)
 * `permutation::Argument::polynomial_labels`, `num_sets` and `accumulator_labels` are public [#537](https://github.com/midnightntwrk/midnight-zk/pull/537)
 * changed `sha256` name in benches to account for the change of naming convention in `circuits` [#135](https://github.com/midnightntwrk/midnight-zk/pull/135)
 * optional names on VerifierQuery commitments [#205](https://github.com/midnightntwrk/midnight-zk/pull/205)

@@ -10,7 +10,7 @@ use crate::{
     },
     poly::{
         Coeff, EvaluationDomain, Polynomial, PolynomialLabel, PolynomialRepresentation,
-        ProverQuery, commitment::PolynomialCommitmentScheme,
+        ProverQuery, Rotation, commitment::PolynomialCommitmentScheme,
     },
     transcript::{Hashable, Transcript},
     utils::arithmetic::eval_polynomial,
@@ -120,9 +120,7 @@ impl<F: PrimeField> Committed<F, Coeff> {
     pub(crate) fn evaluate<T>(
         &self,
         cs: &ConstraintSystem<F>,
-        x: F,
-        x_next: F,
-        x_last: F,
+        x_rotations: &BTreeMap<Rotation, F>,
         transcript: &mut T,
     ) -> Result<Evaluated<'_, F>, Error>
     where
@@ -140,7 +138,7 @@ impl<F: PrimeField> Committed<F, Coeff> {
             .polys_map
             .iter()
             .map(|(label, poly)| {
-                let eval_points = argument::eval_points(cs, label, x, x_next, x_last);
+                let eval_points = argument::eval_points(cs, label, x_rotations);
                 (
                     label.clone(),
                     eval_points.into_iter().map(|point| evaluate(poly, point)).collect(),
