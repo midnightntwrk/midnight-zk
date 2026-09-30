@@ -169,8 +169,8 @@ where
 }
 
 #[allow(unsafe_code)]
-/// Wrapper over the MSM function to use the blstrs underlying function.
-/// Bases are passed as affine points.
+/// Wrapper over the MSM function:
+/// Bls12-381 uses blstrs [`G1Affine::multi_exp_affine`], other curves use `msm_best`.
 pub fn msm_specific<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
     // We remove zeros (keep only non-zero coefficients).
     let (coeffs, bases): (Vec<C::Scalar>, Vec<C>) = coeffs
@@ -184,11 +184,7 @@ pub fn msm_specific<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Cur
         return C::Curve::identity();
     }
 
-    // NOTE: Empirically checked that for MSMs larger than 2**18, the blstrs
-    // implementation regresses.
-    // TODO: Review this threshold after optimizations.
-    if coeffs.len() <= (2 << 18) && TypeId::of::<C>() == TypeId::of::<G1Affine>() {
-        // Safe: we just checked the type.
+    if TypeId::of::<C>() == TypeId::of::<G1Affine>() {
         let coeffs = unsafe { &*(coeffs.as_slice() as *const _ as *const [Fq]) };
         let bases = unsafe { &*(bases.as_slice() as *const _ as *const [G1Affine]) };
         // TODO: 255 is fine because type is checked. Another option is propagating
