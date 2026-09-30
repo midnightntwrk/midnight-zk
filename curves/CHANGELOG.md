@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 
 ### Fixed
 * Add prime-order subgroup check in `G1Affine::from_uncompressed` [#425](https://github.com/midnightntwrk/midnight-zk/pull/425)
+* `G1Affine::coordinates` skips the subgroup check. [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 
 ### Removed
 * Removed `serde::{Serialize, Deserialize}` impls and the `serde` feature [#412](https://github.com/midnightntwrk/midnight-zk/pull/412)
