@@ -81,14 +81,6 @@ where
 
     let phase1_committed = argument::verifier::Committed::read(&phase1_labels, transcript)?;
 
-    // REVIEW-ONLY: `theta` is now squeezed after the multiplicities are read,
-    // instead of before. In general, postponing a challenge cannot hinder
-    // soundness, it can only break completeness: a prover that cheats while
-    // committing to the multiplicities before seeing `theta` would also cheat
-    // if it saw `theta` first, by simply ignoring it. Completeness still holds,
-    // since the honest prover counts the multiplicities without `theta` (see
-    // `compute_multiplicities_parallel`).
-
     // Sample theta challenge for keeping lookup columns linearly independent
     let theta: F = transcript.squeeze_challenge();
 
@@ -306,9 +298,6 @@ where
     // The multi-open scales the first commitment by 1, which is best spent on
     // one read from the proof: the phase-0 commitments are known in advance and
     // a committed instance may be a constant, so both go after phases 1 and 2.
-    //
-    // REVIEW-ONLY: With the instances or phase 0 first, the IVC example needs
-    // 1,963 more rows and no longer fits in k = 17.
     let queries = iter::empty()
         .chain(phase1_evaluated.queries())
         .chain(phase2_evaluated.queries())

@@ -99,12 +99,6 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ChunkedArgument<F> {
                     .collect()
             };
 
-        // REVIEW-ONLY: The input and table expressions used to be compressed
-        // with `theta` right away, and the multiplicities counted from the
-        // compressed values. They are now only evaluated here: the
-        // multiplicities are counted by comparing the tuples of evaluations
-        // directly (see `compute_multiplicities`), before `theta` is known, and
-        // the compression with `theta` moves to `compute_logderivative`.
         let chunked_input_evals: Vec<Vec<Vec<Polynomial<F, LagrangeCoeff>>>> = self
             .input_expression_chunks
             .iter()

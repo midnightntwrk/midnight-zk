@@ -18,9 +18,6 @@ use crate::{
     utils::arithmetic::eval_polynomial,
 };
 
-/// REVIEW-ONLY: The polynomials are kept in their labels' `Ord` order,
-/// `labels[i]` being the label of `polys[i]`, so that the group can lend them
-/// out as a slice.
 #[derive(Debug)]
 pub(crate) struct Committed<F: PrimeField, B: PolynomialRepresentation> {
     labels: Vec<PolynomialLabel>,

@@ -796,9 +796,6 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         // The multi-open scales the first commitment by 1, which is best spent on
         // one read from the proof: the phase-0 commitments are known in advance and
         // a committed instance may be a constant, so both go after phases 1 and 2.
-        //
-        // REVIEW-ONLY: With the instances or phase 0 first, the IVC example needs
-        // 1,963 more rows and no longer fits in k = 17.
         let queries = iter::empty()
             .chain(phase1_evaluated.queries())
             .chain(phase2_evaluated.queries())
