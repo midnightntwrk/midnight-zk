@@ -90,6 +90,8 @@ impl<T: Ivc> IvcCircuit<T> {
     ///
     /// The `ctx` contains metadata that parametrizes the IVC computation
     /// (transition function). See [`IvcContext`](super::IvcContext).
+    ///
+    /// `cs` must be finalized, see [`ConstraintSystem::into_finalized`].
     pub fn new(domain: EvaluationDomain<F>, cs: ConstraintSystem<F>, ctx: T::Context) -> Self {
         IvcCircuit { domain, cs, ctx }
     }
@@ -163,7 +165,7 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
         ivc_gadget.constrain_as_public_input(layouter, &next_state)?;
 
         let fixed_base_labels = midnight_circuits::verifier::fixed_base_labels::<S>(
-            self.cs.num_fixed_columns() + self.cs.num_selectors(),
+            self.cs.num_fixed_columns(),
             self.cs.permutation().columns.len(),
         );
 
@@ -239,6 +241,10 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
         ZkStdLib::configure(&mut cs, (Self::arch(), (k - 1) as u8));
         let domain = EvaluationDomain::new(cs.degree() as u32, k);
 
-        Ok(IvcCircuit { domain, cs, ctx })
+        Ok(IvcCircuit {
+            domain,
+            cs: cs.into_finalized(),
+            ctx,
+        })
     }
 }
