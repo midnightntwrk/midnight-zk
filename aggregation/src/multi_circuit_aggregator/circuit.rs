@@ -93,7 +93,7 @@ impl InnerCircuitsContext {
         ZkStdLib::configure(&mut cs, (arch, (k - 1) as u8));
         let domain = EvaluationDomain::new(cs.degree() as u32, k);
         InnerCircuitsContext {
-            cs,
+            cs: cs.into_finalized(),
             domain,
             params_verifier,
             arch,

@@ -39,6 +39,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Share the `z` and `m` polynomials across all logup instances [#279](https://github.com/midnightntwrk/midnight-zk/pull/279)
 * Optimize the vector gadget's `padding_flag` to only check `A`-aligned chunk boundaries [#462](https://github.com/midnightntwrk/midnight-zk/pull/462)
 * Replace string-based VK-name keys with `PolynomialLabel`-keyed `fixed_bases` maps throughout the verifier gadget [#430](https://github.com/midnightntwrk/midnight-zk/pull/430)
+* `VerifierGadget::assign_vk_as_public_input` and `VerifierGadget::assign_fixed_vk` take a finalized constraint system (e.g. `vk.cs()` or `ConstraintSystem::into_finalized`) and return `Error::Synthesis` if it has selectors. `assign_vk_as_public_input` no longer converts the selectors itself [#546](https://github.com/midnightntwrk/midnight-zk/pull/546)
 
 ### Removed
 * Remove the internal `verifier/lookup.rs` module and its `Committed`/`Evaluated`/`LookupEvaluated` types; the in-circuit lookup argument no longer carries any transcript plumbing of its own [#515](https://github.com/midnightntwrk/midnight-zk/pull/515)

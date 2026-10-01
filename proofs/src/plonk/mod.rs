@@ -185,11 +185,12 @@ where
 
         let permutation = permutation::VerifyingKey::read(reader, &cs.permutation, format)?;
 
-        // we still need to replace selectors with fixed Expressions in `cs`
-        let fake_selectors = vec![vec![]; cs.num_selectors];
-        let (cs, _) = cs.directly_convert_selectors_to_fixed(fake_selectors);
-
-        Ok(Self::from_parts(domain, fixed_commitments, permutation, cs))
+        Ok(Self::from_parts(
+            domain,
+            fixed_commitments,
+            permutation,
+            cs.into_finalized(),
+        ))
     }
 
     /// Writes a verifying key to a vector of bytes using [`Self::write`].
