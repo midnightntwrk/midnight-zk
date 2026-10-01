@@ -167,7 +167,7 @@ impl MidnightVK {
 }
 
 /// A proving key of a Midnight circuit.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct MidnightPK<R: Relation> {
     k: u8,
     relation: R,

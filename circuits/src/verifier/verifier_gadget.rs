@@ -40,7 +40,6 @@ use crate::{
             trash::trash_expressions,
         },
         pcs::{InCircuitHomomorphicCommitment, InCircuitPCS, VerifierQuery},
-        permutation::{self, evaluate_permutation_common},
         traces::VerifierTrace,
         transcript_gadget::TranscriptGadget,
         utils::{evaluate_lagrange_polynomials, inner_product, sum},
@@ -246,17 +245,15 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             self.scalar_chip.assign_as_public_input(layouter, transcript_repr_value)?;
 
         let fixed_commitments = (0..cs.num_fixed_columns())
-            .map(|i| PCS::fixed_commitment(PolynomialLabel::Fixed(i)))
+            .map(|i| PCS::fixed_commitment(&[PolynomialLabel::Fixed(i)]))
             .collect();
 
-        let perm_commitments = (0..cs.permutation().columns.len())
-            .map(|i| PCS::fixed_commitment(PolynomialLabel::PermutationFixed(i)))
-            .collect();
+        let phase0_com = phase0_commitment::<S, PCS>(cs);
 
         let assigned_vk = AssignedVk {
             domain: domain.clone(),
             fixed_commitments,
-            perm_commitments,
+            phase0_commitment: phase0_com,
             cs: cs.clone(),
             cs_degree: cs.degree(),
             transcript_repr,
@@ -287,17 +284,15 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         let transcript_repr = self.scalar_chip.assign_fixed(layouter, transcript_repr_constant)?;
 
         let fixed_commitments = (0..cs.num_fixed_columns())
-            .map(|i| PCS::fixed_commitment(PolynomialLabel::Fixed(i)))
+            .map(|i| PCS::fixed_commitment(&[PolynomialLabel::Fixed(i)]))
             .collect();
 
-        let perm_commitments = (0..cs.permutation().columns.len())
-            .map(|i| PCS::fixed_commitment(PolynomialLabel::PermutationFixed(i)))
-            .collect();
+        let phase0_com = phase0_commitment::<S, PCS>(cs);
 
         let assigned_vk = AssignedVk {
             domain: domain.clone(),
             fixed_commitments,
-            perm_commitments,
+            phase0_commitment: phase0_com,
             cs: cs.clone(),
             cs_degree: cs.degree(),
             transcript_repr,
@@ -305,6 +300,12 @@ impl<S: SelfEmulation> VerifierGadget<S> {
 
         Ok(assigned_vk)
     }
+}
+
+fn phase0_commitment<S: SelfEmulation, PCS: InCircuitPCS<S>>(
+    cs: &ConstraintSystem<S::F>,
+) -> PCS::AssignedCommitment {
+    PCS::fixed_commitment(&cs.permutation().polynomial_labels())
 }
 
 impl<S: SelfEmulation> VerifierGadget<S> {
@@ -341,8 +342,9 @@ impl<S: SelfEmulation> VerifierGadget<S> {
 
         transcript.init_with_proof(layouter, proof)?;
 
-        // Hash verification key into transcript
-        transcript.common_scalar(layouter, &assigned_vk.transcript_repr)?;
+        // Hash verification key into transcript.
+        let vk_absorbed = assigned_vk.absorb_into(layouter, &mut transcript)?;
+        let phase0_committed = argument::committed_from_key(&vk_absorbed);
 
         assigned_committed_instances
             .iter()
@@ -372,21 +374,16 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         let phase1_labels =
             (0..logups.len()).map(PolynomialLabel::LogupMultiplicities).collect::<Vec<_>>();
 
-        let phase1_committed =
-            argument::read_committed_group(&phase1_labels, layouter, &mut transcript)?;
+        let phase1_committed = argument::read_committed(&phase1_labels, layouter, &mut transcript)?;
 
         let beta = transcript.squeeze_challenge(layouter)?;
         let gamma = transcript.squeeze_challenge(layouter)?;
 
         let trash_challenge = transcript.squeeze_challenge(layouter)?;
 
-        let permutation_committed =
-            // Hash each permutation product commitment
-            permutation::read_product_commitments(layouter, &mut transcript, cs)?;
-
         // The label order does not matter here, labels are ordered in
         // `read_committed`.
-        let mut phase2_labels = Vec::new();
+        let mut phase2_labels = cs.permutation().accumulator_labels(cs.degree());
 
         for (argument_index, logup_argument) in logups.iter().enumerate() {
             phase2_labels.push(PolynomialLabel::LogupAggregator(argument_index));
@@ -399,8 +396,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             phase2_labels.push(PolynomialLabel::Trash(argument_index));
         }
 
-        let phase2_committed =
-            argument::read_committed_group(&phase2_labels, layouter, &mut transcript)?;
+        let phase2_committed = argument::read_committed(&phase2_labels, layouter, &mut transcript)?;
 
         // Sample y challenge, which keeps the gates linearly independent
         let y = transcript.squeeze_challenge(layouter)?;
@@ -408,9 +404,9 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         Ok((
             VerifierTrace {
                 advice_commitments,
+                phase0_committed,
                 phase1_committed,
                 phase2_committed,
-                permutations: permutation_committed,
                 beta,
                 gamma,
                 theta,
@@ -533,9 +529,9 @@ impl<S: SelfEmulation> VerifierGadget<S> {
 
         let VerifierTrace {
             advice_commitments,
+            phase0_committed,
             phase1_committed,
             phase2_committed,
-            permutations,
             beta,
             gamma,
             theta,
@@ -631,11 +627,6 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             }
         }
 
-        let permutations_common =
-            evaluate_permutation_common(layouter, &mut transcript, cs.permutation().columns.len())?;
-
-        let permutations_evaluated = permutations.evaluate(layouter, &mut transcript)?;
-
         let omega = assigned_vk.domain.get_omega();
         let omega_inv = omega.invert().unwrap();
         let omega_last = omega_inv.pow([cs.blinding_factors() as u64 + 1]);
@@ -643,18 +634,16 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         let x_prev = self.scalar_chip.mul_by_constant(layouter, &x, omega_inv)?;
         let x_last = self.scalar_chip.mul_by_constant(layouter, &x, omega_last)?;
 
-        let phase1_evaluated = phase1_committed
-            .map(|committed| committed.evaluate(&x, &x_next, layouter, &mut transcript))
-            .transpose()?;
+        let phase0_evaluated =
+            phase0_committed.evaluate(cs, &x, &x_next, &x_last, layouter, &mut transcript)?;
+        let phase1_evaluated =
+            phase1_committed.evaluate(cs, &x, &x_next, &x_last, layouter, &mut transcript)?;
+        let phase2_evaluated =
+            phase2_committed.evaluate(cs, &x, &x_next, &x_last, layouter, &mut transcript)?;
 
-        let phase2_evaluated = phase2_committed
-            .map(|committed| committed.evaluate(&x, &x_next, layouter, &mut transcript))
-            .transpose()?;
-
-        // An empty group contributes no evaluations and no queries.
-        let no_evals = BTreeMap::new();
-        let phase1_evals = phase1_evaluated.as_ref().map_or(&no_evals, |e| &e.evals_map);
-        let phase2_evals = phase2_evaluated.as_ref().map_or(&no_evals, |e| &e.evals_map);
+        let phase0_evals = &phase0_evaluated.evals_map;
+        let phase1_evals = &phase1_evaluated.evals_map;
+        let phase2_evals = &phase2_evaluated.evals_map;
 
         // Partially evaluate batched identities
         // (without fixed columns corresponding to simple selectors)
@@ -704,8 +693,8 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             layouter,
             &self.scalar_chip,
             cs,
-            &permutations_evaluated,
-            &permutations_common,
+            phase0_evals,
+            phase2_evals,
             &advice_evals,
             &fixed_evals,
             &instance_evals,
@@ -828,9 +817,9 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                     }
                 },
             ))
-            .chain(permutations_evaluated.queries(&x, &x_next, &x_last))
-            .chain(phase1_evaluated.iter().flat_map(|evaluated| evaluated.queries()))
-            .chain(phase2_evaluated.iter().flat_map(|evaluated| evaluated.queries()))
+            .chain(phase0_evaluated.queries())
+            .chain(phase1_evaluated.queries())
+            .chain(phase2_evaluated.queries())
             .chain(
                 cs.fixed_queries()
                     .iter()
@@ -845,10 +834,6 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                             &fixed_evals[query_index],
                         )
                     }),
-            )
-            .chain(
-                permutations_common
-                    .queries(&assigned_vk.perm_commitments.iter().collect::<Vec<_>>(), &x),
             )
             .chain(iter::once(VerifierQuery::new(
                 &x,

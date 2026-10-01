@@ -1,5 +1,4 @@
 use std::{
-    collections::BTreeMap,
     hash::Hash,
     iter::{self},
 };
@@ -12,7 +11,7 @@ use crate::{
         argument, linearization::verifier::compute_linearization_commitment,
         partially_evaluate_identities, traces::VerifierTrace,
     },
-    poly::{PolynomialLabel, VerifierQuery, commitment::PolynomialCommitmentScheme},
+    poly::{PolynomialLabel, Rotation, VerifierQuery, commitment::PolynomialCommitmentScheme},
     transcript::{Hashable, Sampleable, Transcript, read_n},
     utils::arithmetic::compute_inner_product,
 };
@@ -49,8 +48,9 @@ where
         return Err(Error::InvalidInstances);
     }
 
-    // Hash verification key into transcript
-    vk.hash_into(transcript)?;
+    // Hash verification key into transcript.
+    let vk_absorbed = vk.absorb_into(transcript)?;
+    let phase0_committed = argument::verifier::Committed::from_key(&vk_absorbed);
 
     for commitment in committed_instances.iter() {
         transcript.common(commitment)?
@@ -82,7 +82,7 @@ where
     let phase1_labels =
         (0..logups.len()).map(PolynomialLabel::LogupMultiplicities).collect::<Vec<_>>();
 
-    let phase1_committed = argument::verifier::Committed::read_group(&phase1_labels, transcript)?;
+    let phase1_committed = argument::verifier::Committed::read(&phase1_labels, transcript)?;
 
     // Sample beta challenge
     let beta: F = transcript.squeeze_challenge();
@@ -93,10 +93,8 @@ where
     // Sample the trash challenge after the advices have been committed to
     let trash_challenge: F = transcript.squeeze_challenge();
 
-    let permutations_committed = vk.cs.permutation.read_product_commitments(vk, transcript)?;
-
     // The label order does not matter here, labels are ordered in `read`.
-    let mut phase2_labels = Vec::new();
+    let mut phase2_labels = vk.cs.permutation.accumulator_labels(vk.cs_degree);
 
     for (argument_index, logup_argument) in logups.iter().enumerate() {
         phase2_labels.push(PolynomialLabel::LogupAggregator(argument_index));
@@ -109,16 +107,16 @@ where
         phase2_labels.push(PolynomialLabel::Trash(trash_argument.argument_index))
     }
 
-    let phase2_committed = argument::verifier::Committed::read_group(&phase2_labels, transcript)?;
+    let phase2_committed = argument::verifier::Committed::read(&phase2_labels, transcript)?;
 
     // Sample y challenge, which keeps the gates linearly independent.
     let y: F = transcript.squeeze_challenge();
 
     Ok(VerifierTrace {
         advice_commitments,
+        phase0_committed,
         phase1_committed,
         phase2_committed,
-        permutations: permutations_committed,
         beta,
         gamma,
         theta,
@@ -160,9 +158,9 @@ where
 
     let VerifierTrace {
         advice_commitments,
+        phase0_committed,
         phase1_committed,
         phase2_committed,
-        permutations,
         beta,
         gamma,
         theta,
@@ -253,24 +251,20 @@ where
         }
     }
 
-    let permutations_common = vk.permutation.evaluate(transcript)?;
-
-    let permutations_evaluated = permutations.evaluate(transcript)?;
-
     let domain = vk.get_domain();
+    let cs = vk.cs();
 
-    let phase1_evaluated = phase1_committed
-        .map(|committed| committed.evaluate(x, domain, transcript))
-        .transpose()?;
+    let x_next = domain.rotate_omega(x, Rotation::next());
+    let x_last = domain.rotate_omega(x, Rotation(-((cs.blinding_factors() + 1) as i32)));
 
-    let phase2_evaluated = phase2_committed
-        .map(|committed| committed.evaluate(x, domain, transcript))
-        .transpose()?;
+    let phase0_evaluated = phase0_committed.evaluate(cs, x, x_next, x_last, transcript)?;
 
-    // An empty group contributes no evaluations and no queries.
-    let no_evals = BTreeMap::new();
-    let phase1_evals = phase1_evaluated.as_ref().map_or(&no_evals, |e| &e.evals_map);
-    let phase2_evals = phase2_evaluated.as_ref().map_or(&no_evals, |e| &e.evals_map);
+    let phase1_evaluated = phase1_committed.evaluate(cs, x, x_next, x_last, transcript)?;
+    let phase2_evaluated = phase2_committed.evaluate(cs, x, x_next, x_last, transcript)?;
+
+    let phase0_evals = &phase0_evaluated.evals_map;
+    let phase1_evals = &phase1_evaluated.evals_map;
+    let phase2_evals = &phase2_evaluated.evals_map;
 
     // Partially evaluate batched identities
     // (without fixed columns corresponding to simple, multiplicative selectors)
@@ -279,10 +273,9 @@ where
         &fixed_evals,
         &instance_evals,
         &advice_evals,
-        &permutations_evaluated.sets,
+        phase0_evals,
         phase1_evals,
         phase2_evals,
-        &permutations_common,
         x,
         xn,
         beta,
@@ -329,9 +322,9 @@ where
                 }
             },
         ))
-        .chain(permutations_evaluated.queries(vk, x))
-        .chain(phase1_evaluated.iter().flat_map(|e| e.queries()))
-        .chain(phase2_evaluated.iter().flat_map(|e| e.queries()))
+        .chain(phase0_evaluated.queries())
+        .chain(phase1_evaluated.queries())
+        .chain(phase2_evaluated.queries())
         .chain(
             vk.cs
                 .fixed_queries
@@ -348,7 +341,6 @@ where
                     )
                 }),
         )
-        .chain(permutations_common.queries(&vk.permutation, x))
         .chain(iter::once(VerifierQuery::new(
             x,
             &lin_commitment,

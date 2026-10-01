@@ -48,9 +48,9 @@ pub fn compute_vk_hash(vk: &MidnightVK) -> F {
 
     let vk_repr = vec![vk.transcript_repr()];
     let fixed_coms: Vec<F> = vk.fixed_commitments().iter().flat_map(to_raw).collect();
-    let perm_coms: Vec<F> = vk.permutation().commitments().iter().flat_map(to_raw).collect();
+    let phase0_com: Vec<F> = to_raw(vk.phase0_commitment());
 
-    <PoseidonChip<F> as HashCPU<F, F>>::hash(&[vk_repr, fixed_coms, perm_coms].concat())
+    <PoseidonChip<F> as HashCPU<F, F>>::hash(&[vk_repr, fixed_coms, phase0_com].concat())
 }
 
 /// In-circuit counterpart of [`compute_vk_hash`].
@@ -73,10 +73,7 @@ pub fn assign_as_public_inputs_and_hash_vk(
     // Witness the VK commitment points.
     let base_values: Vec<Value<C>> = (0..nb_fixed)
         .map(|i| vk.map(|vk| *vk.vk().fixed_commitments()[i].0[0].as_point()))
-        .chain(
-            (0..nb_perm)
-                .map(|i| vk.map(|vk| *vk.vk().permutation().commitments()[i].0[0].as_point())),
-        )
+        .chain((0..nb_perm).map(|i| vk.map(|vk| *vk.vk().phase0_commitment().0[i].as_point())))
         .collect();
 
     let assigned_bases = base_values

@@ -31,22 +31,9 @@ use crate::{
     verifier::{
         SelfEmulation,
         argument::Evaluation,
-        expressions::{compress_expressions, eval_expression},
+        expressions::{compress_expressions, eval_at, eval_expression},
     },
 };
-
-/// The `index`-th evaluation of the polynomial labelled `label`.
-fn eval_at<'a, S: SelfEmulation>(
-    evals_map: &'a BTreeMap<PolynomialLabel, Vec<Evaluation<S>>>,
-    label: &PolynomialLabel,
-    index: usize,
-) -> Result<&'a AssignedNative<S::F>, Error> {
-    evals_map
-        .get(label)
-        .and_then(|evals| evals.get(index))
-        .map(|evaluation| evaluation.eval())
-        .ok_or_else(|| Error::Synthesis(format!("missing evaluation {index} for {label}")))
-}
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn lookup_expressions<S: SelfEmulation>(

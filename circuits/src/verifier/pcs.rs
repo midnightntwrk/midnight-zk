@@ -88,8 +88,16 @@ pub trait InCircuitPCS<S: SelfEmulation>: Sized + Clone + Debug {
     /// The in-circuit type representing a committed polynomial.
     type AssignedCommitment: InCircuitHomomorphicCommitment<S>;
 
-    /// Creates a fixed (VK-embedded) commitment identified by `label`.
-    fn fixed_commitment(label: PolynomialLabel) -> Self::AssignedCommitment;
+    /// Creates the fixed (VK-embedded) commitment to the group of `labels`.
+    ///
+    /// The labels are matched to the group's polynomials in their `Ord` order,
+    /// as in [`Self::read_commitment`], so the caller may list them in any
+    /// order.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a label is repeated.
+    fn fixed_commitment(labels: &[PolynomialLabel]) -> Self::AssignedCommitment;
 
     /// Assigns a commitment from an off-circuit curve point.
     fn assign_commitment(
