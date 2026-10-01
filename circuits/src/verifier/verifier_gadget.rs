@@ -356,25 +356,22 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             instance.iter().try_for_each(|pi| transcript.common_scalar(layouter, pi))?;
         }
 
-        // Hash the prover's advice commitments into the transcript and squeeze
-        // challenges
-        let advice_commitments = (0..cs.num_advice_columns())
-            .map(|i| PCS::read_commitment(&mut transcript, layouter, &[PolynomialLabel::Advice(i)]))
-            .collect::<Result<Vec<_>, Error>>()?;
-
-        // Sample theta challenge for keeping lookup columns linearly independent
-        let theta = transcript.squeeze_challenge(layouter)?;
-
         let logups = cs
             .lookups()
             .iter()
             .map(|l| l.chunk_by_degree(assigned_vk.cs_degree))
             .collect::<Vec<_>>();
 
-        let phase1_labels =
-            (0..logups.len()).map(PolynomialLabel::LogupMultiplicities).collect::<Vec<_>>();
+        // The advice columns and the logup multiplicities form the phase1 group.
+        let phase1_labels = (0..cs.num_advice_columns())
+            .map(PolynomialLabel::Advice)
+            .chain((0..logups.len()).map(PolynomialLabel::LogupMultiplicities))
+            .collect::<Vec<_>>();
 
         let phase1_committed = argument::read_committed(&phase1_labels, layouter, &mut transcript)?;
+
+        // Sample theta challenge for keeping lookup columns linearly independent
+        let theta = transcript.squeeze_challenge(layouter)?;
 
         let beta = transcript.squeeze_challenge(layouter)?;
         let gamma = transcript.squeeze_challenge(layouter)?;
@@ -403,7 +400,6 @@ impl<S: SelfEmulation> VerifierGadget<S> {
 
         Ok((
             VerifierTrace {
-                advice_commitments,
                 phase0_committed,
                 phase1_committed,
                 phase2_committed,
@@ -528,7 +524,6 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         let nb_committed_instances = assigned_committed_instances.len();
 
         let VerifierTrace {
-            advice_commitments,
             phase0_committed,
             phase1_committed,
             phase2_committed,
@@ -607,10 +602,6 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                 .collect::<Result<Vec<_>, Error>>()?
         };
 
-        let advice_evals = (0..cs.advice_queries().len())
-            .map(|_| transcript.read_scalar(layouter))
-            .collect::<Result<Vec<_>, _>>()?;
-
         // The transcript doesn't contain evals of fixed cols corresponding to simple
         // selectors. Fill up the "missing" places with 1, to align with the
         // fixed queries
@@ -627,23 +618,42 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             }
         }
 
-        let omega = assigned_vk.domain.get_omega();
-        let omega_inv = omega.invert().unwrap();
-        let omega_last = omega_inv.pow([cs.blinding_factors() as u64 + 1]);
-        let x_next = self.scalar_chip.mul_by_constant(layouter, &x, omega)?;
-        let x_prev = self.scalar_chip.mul_by_constant(layouter, &x, omega_inv)?;
-        let x_last = self.scalar_chip.mul_by_constant(layouter, &x, omega_last)?;
+        let mut x_rotations = BTreeMap::new();
+        for rotation in argument::rotations::<S>(cs) {
+            let point = if rotation == Rotation::cur() {
+                x.clone()
+            } else {
+                let rotated_omega = assigned_vk.domain.rotate_omega(S::F::ONE, rotation);
+                self.scalar_chip.mul_by_constant(layouter, &x, rotated_omega)?
+            };
+            x_rotations.insert(rotation, point);
+        }
 
         let phase0_evaluated =
-            phase0_committed.evaluate(cs, &x, &x_next, &x_last, layouter, &mut transcript)?;
+            phase0_committed.evaluate(cs, &x_rotations, layouter, &mut transcript)?;
         let phase1_evaluated =
-            phase1_committed.evaluate(cs, &x, &x_next, &x_last, layouter, &mut transcript)?;
+            phase1_committed.evaluate(cs, &x_rotations, layouter, &mut transcript)?;
         let phase2_evaluated =
-            phase2_committed.evaluate(cs, &x, &x_next, &x_last, layouter, &mut transcript)?;
+            phase2_committed.evaluate(cs, &x_rotations, layouter, &mut transcript)?;
 
         let phase0_evals = &phase0_evaluated.evals_map;
         let phase1_evals = &phase1_evaluated.evals_map;
         let phase2_evals = &phase2_evaluated.evals_map;
+
+        // The advice evaluations in the order of `cs.advice_queries`, which is how
+        // the identities index them. In the phase1 group, each column's follow the
+        // order of its queries.
+        let mut next = vec![0; cs.num_advice_columns()];
+        let advice_evals: Vec<AssignedNative<S::F>> = cs
+            .advice_queries()
+            .iter()
+            .map(|(column, _)| {
+                let i = column.index();
+                let eval = phase1_evals[&PolynomialLabel::Advice(i)][next[i]].eval().clone();
+                next[i] += 1;
+                eval
+            })
+            .collect();
 
         // Partially evaluate batched identities
         // (without fixed columns corresponding to simple selectors)
@@ -778,36 +788,23 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             &limb_commitments,
         )?;
 
-        // Gets the evaluation point for a query at the given rotation.
-        let get_point = |rotation: &Rotation| -> &AssignedNative<S::F> {
-            match rotation.0 {
-                -1 => &x_prev,
-                0 => &x,
-                1 => &x_next,
-                _ => panic!("We do not support other rotations"),
-            }
-        };
-
         // Collect queries that are checked in the multi-open argument
         //
         // NB: Queries corresponding to simple, multiplicative selectors need not be
         // checked
+        //
+        // The multi-open scales the first commitment by 1, which is best spent on
+        // one read from the proof: the phase-0 commitments are known in advance and
+        // a committed instance may be a constant, so both go after phases 1 and 2.
         let queries = iter::empty()
-            .chain(
-                cs.advice_queries().iter().enumerate().map(|(query_index, &(column, rot))| {
-                    VerifierQuery::<S, PCS>::new(
-                        get_point(&rot),
-                        &advice_commitments[column.index()],
-                        PolynomialLabel::Advice(column.index()),
-                        &advice_evals[query_index],
-                    )
-                }),
-            )
+            .chain(phase1_evaluated.queries())
+            .chain(phase2_evaluated.queries())
+            .chain(phase0_evaluated.queries())
             .chain(cs.instance_queries().iter().enumerate().filter_map(
                 |(query_index, &(column, rot))| {
                     if column.index() < nb_committed_instances {
                         Some(VerifierQuery::<S, PCS>::new(
-                            get_point(&rot),
+                            &x_rotations[&rot],
                             &assigned_committed_instances[column.index()],
                             PolynomialLabel::CommittedInstance(column.index()),
                             &instance_evals[query_index],
@@ -817,9 +814,6 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                     }
                 },
             ))
-            .chain(phase0_evaluated.queries())
-            .chain(phase1_evaluated.queries())
-            .chain(phase2_evaluated.queries())
             .chain(
                 cs.fixed_queries()
                     .iter()
@@ -828,7 +822,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                     .filter(|(_, (col, _))| !cs.has_simple_selector_col(col.index()))
                     .map(|(query_index, &(column, rot))| {
                         VerifierQuery::new(
-                            get_point(&rot),
+                            &x_rotations[&rot],
                             &assigned_vk.fixed_commitments[column.index()],
                             PolynomialLabel::Fixed(column.index()),
                             &fixed_evals[query_index],

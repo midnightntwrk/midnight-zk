@@ -17,7 +17,7 @@ use crate::{
     circuit::{Layouter, Region, RegionStart, Value, layouter::SyncDeps},
     dev::metadata,
     plonk::trash::Argument,
-    poly::Rotation,
+    poly::{PolynomialLabel, Rotation},
     utils::rational::Rational,
 };
 
@@ -2304,6 +2304,11 @@ impl<F: Field> ConstraintSystem<F> {
     /// Returns advice queries
     pub fn advice_queries(&self) -> &Vec<(Column<Advice>, Rotation)> {
         &self.advice_queries
+    }
+
+    /// The labels of the advice columns, in column order.
+    pub(crate) fn advice_labels(&self) -> Vec<PolynomialLabel> {
+        (0..self.num_advice_columns).map(PolynomialLabel::Advice).collect()
     }
 
     /// Returns instance queries

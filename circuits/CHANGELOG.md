@@ -17,6 +17,9 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 
 ### Changed
+* Adapt the verifier gadget to the advice columns being committed as part of the phase-1 argument group: the advice commitments are read with the logup multiplicities as one group, and the advice evaluations are read and opened through it [#543](https://github.com/midnightntwrk/midnight-zk/pull/543)
+* The verifier gadget squeezes `theta` after reading the logup multiplicities, as the off-circuit verifier does [#543](https://github.com/midnightntwrk/midnight-zk/pull/543)
+* The verifier gadget follows the off-circuit order of the multi-open queries: the phase-1 and phase-2 groups first, then the phase-0 group and the committed instances [#543](https://github.com/midnightntwrk/midnight-zk/pull/543)
 * Adapt the verifier gadget to the permutation argument moving into the generic phase groups: the permutation polynomials are read as a phase-0 group, whose commitment comes from the assigned verifying key instead of the proof, the accumulators arrive within the phase-2 group, and the identities look both sets of evaluations up by label. `verifier/permutation.rs` is folded into `verifier/argument.rs`, while the constraint expressions stay in `verifier/expressions/permutation.rs`. Changes the VK of every circuit that uses the verifier gadget [#537](https://github.com/midnightntwrk/midnight-zk/pull/537)
 * `InCircuitPCS::fixed_commitment` takes the labels of a whole group and returns the single commitment covering them, instead of one label at a time [#537](https://github.com/midnightntwrk/midnight-zk/pull/537)
 * `verifier::fixed_bases` reads the permutation group's commitment from `VerifyingKey::phase0_commitment`, following the removal of `permutation::VerifyingKey` in `midnight-proofs` [#537](https://github.com/midnightntwrk/midnight-zk/pull/537)

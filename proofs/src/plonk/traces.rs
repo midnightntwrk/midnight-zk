@@ -10,7 +10,6 @@ use crate::{
 /// Prover's trace of a proof.
 #[derive(Debug)]
 pub struct ProverTrace<'a, F: PrimeField> {
-    pub(crate) advice_polys: Vec<Polynomial<F, Coeff>>,
     pub(crate) instance_polys: Vec<Polynomial<F, Coeff>>,
     #[allow(dead_code)]
     // This field will be useful for split accumulation
@@ -28,7 +27,6 @@ pub struct ProverTrace<'a, F: PrimeField> {
 /// Verifier's trace of a proof.
 #[derive(Debug)]
 pub struct VerifierTrace<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> {
-    pub(crate) advice_commitments: Vec<PCS::Commitment>,
     pub(crate) phase0_committed: argument::verifier::Committed<F, PCS>,
     pub(crate) phase1_committed: argument::verifier::Committed<F, PCS>,
     pub(crate) phase2_committed: argument::verifier::Committed<F, PCS>,

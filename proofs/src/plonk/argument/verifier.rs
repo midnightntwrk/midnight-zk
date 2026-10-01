@@ -7,7 +7,7 @@ use crate::{
         AbsorbedVk, ConstraintSystem, Error,
         argument::{self, Evaluation},
     },
-    poly::{PolynomialLabel, VerifierQuery, commitment::PolynomialCommitmentScheme},
+    poly::{PolynomialLabel, Rotation, VerifierQuery, commitment::PolynomialCommitmentScheme},
     transcript::{Hashable, Transcript},
 };
 
@@ -51,9 +51,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Committed<
     pub(crate) fn evaluate<T: Transcript>(
         self,
         cs: &ConstraintSystem<F>,
-        x: F,
-        x_next: F,
-        x_last: F,
+        x_rotations: &BTreeMap<Rotation, F>,
         transcript: &mut T,
     ) -> Result<Evaluated<F, CS>, Error>
     where
@@ -62,7 +60,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Committed<
         let mut evals_map: BTreeMap<PolynomialLabel, Vec<Evaluation<F>>> = BTreeMap::new();
 
         for label in &self.polynomial_labels {
-            let eval_points = argument::eval_points(cs, label, x, x_next, x_last);
+            let eval_points = argument::eval_points(cs, label, x_rotations);
             let mut evals = Vec::with_capacity(eval_points.len());
             for point in eval_points {
                 evals.push(Evaluation {

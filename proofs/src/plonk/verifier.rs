@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeMap,
     hash::Hash,
     iter::{self},
 };
@@ -63,15 +64,6 @@ where
         }
     }
 
-    // Hash the prover's advice commitments into the transcript and squeeze
-    // challenges
-    let advice_commitments: Vec<_> = (0..vk.cs.num_advice_columns)
-        .map(|i| CS::read_commitment(transcript, &[PolynomialLabel::Advice(i)]))
-        .collect::<Result<_, _>>()?;
-
-    // Sample theta challenge for keeping lookup columns linearly independent
-    let theta: F = transcript.squeeze_challenge();
-
     let logups = vk
         .cs
         .lookups
@@ -79,10 +71,18 @@ where
         .map(|l| l.chunk_by_degree(vk.cs_degree))
         .collect::<Vec<_>>();
 
-    let phase1_labels =
-        (0..logups.len()).map(PolynomialLabel::LogupMultiplicities).collect::<Vec<_>>();
+    // The advice columns and the logup multiplicities form the phase1 group.
+    let phase1_labels = vk
+        .cs
+        .advice_labels()
+        .into_iter()
+        .chain((0..logups.len()).map(PolynomialLabel::LogupMultiplicities))
+        .collect::<Vec<_>>();
 
     let phase1_committed = argument::verifier::Committed::read(&phase1_labels, transcript)?;
+
+    // Sample theta challenge for keeping lookup columns linearly independent
+    let theta: F = transcript.squeeze_challenge();
 
     // Sample beta challenge
     let beta: F = transcript.squeeze_challenge();
@@ -113,7 +113,6 @@ where
     let y: F = transcript.squeeze_challenge();
 
     Ok(VerifierTrace {
-        advice_commitments,
         phase0_committed,
         phase1_committed,
         phase2_committed,
@@ -157,7 +156,6 @@ where
     let nb_committed_instances = committed_instances.len();
 
     let VerifierTrace {
-        advice_commitments,
         phase0_committed,
         phase1_committed,
         phase2_committed,
@@ -234,8 +232,6 @@ where
             .collect::<Result<Vec<_>, _>>()?
     };
 
-    let advice_evals: Vec<F> = read_n(transcript, vk.cs.advice_queries.len())?;
-
     // Read one eval per non-simple-selector fixed query from the transcript,
     // then fill the "missing" places with 1 (the transcript doesn't contain evals
     // corresponding to multiplicative, simple selectors).
@@ -254,13 +250,15 @@ where
     let domain = vk.get_domain();
     let cs = vk.cs();
 
-    let x_next = domain.rotate_omega(x, Rotation::next());
-    let x_last = domain.rotate_omega(x, Rotation(-((cs.blinding_factors() + 1) as i32)));
+    let x_rotations: BTreeMap<Rotation, F> = argument::rotations(cs)
+        .into_iter()
+        .map(|rotation| (rotation, domain.rotate_omega(x, rotation)))
+        .collect();
 
-    let phase0_evaluated = phase0_committed.evaluate(cs, x, x_next, x_last, transcript)?;
+    let phase0_evaluated = phase0_committed.evaluate(cs, &x_rotations, transcript)?;
 
-    let phase1_evaluated = phase1_committed.evaluate(cs, x, x_next, x_last, transcript)?;
-    let phase2_evaluated = phase2_committed.evaluate(cs, x, x_next, x_last, transcript)?;
+    let phase1_evaluated = phase1_committed.evaluate(cs, &x_rotations, transcript)?;
+    let phase2_evaluated = phase2_committed.evaluate(cs, &x_rotations, transcript)?;
 
     let phase0_evals = &phase0_evaluated.evals_map;
     let phase1_evals = &phase1_evaluated.evals_map;
@@ -272,7 +270,6 @@ where
         vk,
         &fixed_evals,
         &instance_evals,
-        &advice_evals,
         phase0_evals,
         phase1_evals,
         phase2_evals,
@@ -297,22 +294,19 @@ where
     //
     // NB: Queries corresponding to simple, multiplicative selectors need not be
     // checked
+    //
+    // The multi-open scales the first commitment by 1, which is best spent on
+    // one read from the proof: the phase-0 commitments are known in advance and
+    // a committed instance may be a constant, so both go after phases 1 and 2.
     let queries = iter::empty()
-        .chain(
-            vk.cs.advice_queries.iter().enumerate().map(|(query_index, &(column, at))| {
-                VerifierQuery::new(
-                    vk.domain.rotate_omega(x, at),
-                    &advice_commitments[column.index()],
-                    PolynomialLabel::Advice(column.index()),
-                    advice_evals[query_index],
-                )
-            }),
-        )
+        .chain(phase1_evaluated.queries())
+        .chain(phase2_evaluated.queries())
+        .chain(phase0_evaluated.queries())
         .chain(vk.cs.instance_queries.iter().enumerate().filter_map(
             |(query_index, &(column, at))| {
                 if column.index() < nb_committed_instances {
                     Some(VerifierQuery::new(
-                        vk.domain.rotate_omega(x, at),
+                        x_rotations[&at],
                         &committed_instances[column.index()],
                         PolynomialLabel::CommittedInstance(column.index()),
                         instance_evals[query_index],
@@ -322,9 +316,6 @@ where
                 }
             },
         ))
-        .chain(phase0_evaluated.queries())
-        .chain(phase1_evaluated.queries())
-        .chain(phase2_evaluated.queries())
         .chain(
             vk.cs
                 .fixed_queries
@@ -334,7 +325,7 @@ where
                 .filter(|(_, (col, _))| !vk.cs.has_simple_selector_col(col.index()))
                 .map(|(query_index, &(column, at))| {
                     VerifierQuery::new(
-                        vk.domain.rotate_omega(x, at),
+                        x_rotations[&at],
                         &vk.fixed_commitments[column.index()],
                         PolynomialLabel::Fixed(column.index()),
                         fixed_evals[query_index],

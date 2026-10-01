@@ -25,7 +25,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use midnight_proofs::{
     circuit::Layouter,
     plonk::{ConstraintSystem, Error},
-    poly::PolynomialLabel,
+    poly::{PolynomialLabel, Rotation},
 };
 
 use crate::{
@@ -52,6 +52,21 @@ impl<S: SelfEmulation> Evaluation<S> {
     }
 }
 
+/// Every rotation of `x` at which a polynomial of `cs` is opened: those
+/// [eval_points] may use, and those of the instance and fixed queries.
+pub(crate) fn rotations<S: SelfEmulation>(cs: &ConstraintSystem<S::F>) -> BTreeSet<Rotation> {
+    [
+        Rotation::cur(),
+        Rotation::next(),
+        Rotation(-((cs.blinding_factors() + 1) as i32)),
+    ]
+    .into_iter()
+    .chain(cs.advice_queries().iter().map(|&(_, rotation)| rotation))
+    .chain(cs.instance_queries().iter().map(|&(_, rotation)| rotation))
+    .chain(cs.fixed_queries().iter().map(|&(_, rotation)| rotation))
+    .collect()
+}
+
 /// The evaluation points at which the polynomial of the given label needs to be
 /// evaluated.
 ///
@@ -65,25 +80,34 @@ impl<S: SelfEmulation> Evaluation<S> {
 fn eval_points<S: SelfEmulation>(
     cs: &ConstraintSystem<S::F>,
     label: &PolynomialLabel,
-    x: &AssignedNative<S::F>,
-    x_next: &AssignedNative<S::F>,
-    x_last: &AssignedNative<S::F>,
+    x_rotations: &BTreeMap<Rotation, AssignedNative<S::F>>,
 ) -> Vec<AssignedNative<S::F>> {
+    let at = |rotation: Rotation| x_rotations[&rotation].clone();
     match label {
-        PolynomialLabel::PermutationFixed(_) => vec![x.clone()],
+        PolynomialLabel::Advice(i) => cs
+            .advice_queries()
+            .iter()
+            .filter(|(column, _)| column.index() == *i)
+            .map(|&(_, rotation)| at(rotation))
+            .collect(),
+        PolynomialLabel::PermutationFixed(_) => vec![at(Rotation::cur())],
         PolynomialLabel::PermutationAccumulator(i) => {
             // Every set but the last is also opened at the last usable row, to
             // chain it to the next one.
             if i + 1 < cs.permutation().num_sets(cs.degree()) {
-                vec![x.clone(), x_next.clone(), x_last.clone()]
+                vec![
+                    at(Rotation::cur()),
+                    at(Rotation::next()),
+                    at(Rotation(-((cs.blinding_factors() + 1) as i32))),
+                ]
             } else {
-                vec![x.clone(), x_next.clone()]
+                vec![at(Rotation::cur()), at(Rotation::next())]
             }
         }
-        PolynomialLabel::LogupMultiplicities(_) => vec![x.clone()],
-        PolynomialLabel::LogupHelper(_, _) => vec![x.clone()],
-        PolynomialLabel::LogupAggregator(_) => vec![x.clone(), x_next.clone()],
-        PolynomialLabel::Trash(_) => vec![x.clone()],
+        PolynomialLabel::LogupMultiplicities(_) => vec![at(Rotation::cur())],
+        PolynomialLabel::LogupHelper(_, _) => vec![at(Rotation::cur())],
+        PolynomialLabel::LogupAggregator(_) => vec![at(Rotation::cur()), at(Rotation::next())],
+        PolynomialLabel::Trash(_) => vec![at(Rotation::cur())],
         _ => unreachable!(),
     }
 }
@@ -132,16 +156,14 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> Committed<S, PCS> {
     pub(crate) fn evaluate(
         self,
         cs: &ConstraintSystem<S::F>,
-        x: &AssignedNative<S::F>,
-        x_next: &AssignedNative<S::F>,
-        x_last: &AssignedNative<S::F>,
+        x_rotations: &BTreeMap<Rotation, AssignedNative<S::F>>,
         layouter: &mut impl Layouter<S::F>,
         transcript_gadget: &mut TranscriptGadget<S>,
     ) -> Result<Evaluated<S, PCS>, Error> {
         let mut evals_map: BTreeMap<PolynomialLabel, Vec<Evaluation<S>>> = BTreeMap::new();
 
         for label in &self.polynomial_labels {
-            let eval_points = eval_points::<S>(cs, label, x, x_next, x_last);
+            let eval_points = eval_points::<S>(cs, label, x_rotations);
             let mut evals = Vec::with_capacity(eval_points.len());
             for point in eval_points {
                 evals.push(Evaluation {
