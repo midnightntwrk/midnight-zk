@@ -150,11 +150,3 @@ impl<H: TranscriptHash> Transcript for CircuitTranscript<H> {
         ))
     }
 }
-
-pub(crate) fn read_n<C, T>(transcript: &mut T, n: usize) -> io::Result<Vec<C>>
-where
-    T: Transcript,
-    C: Hashable<T::Hash>,
-{
-    (0..n).map(|_| transcript.read()).collect()
-}

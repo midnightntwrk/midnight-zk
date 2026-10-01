@@ -52,6 +52,7 @@ use ff::{PrimeField, WithSmallOrderMulGroup};
 pub use keygen::*;
 use midnight_curves::serde::SerdeObject;
 pub use prover::*;
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 pub use verifier::*;
 
 use crate::poly::{PolynomialLabel, commitment::PolynomialCommitmentScheme};
@@ -351,11 +352,14 @@ pub struct ProvingKey<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
     pub(crate) l_last: Polynomial<F, ExtendedLagrangeCoeff>,
     pub(crate) l_active_row: Polynomial<F, ExtendedLagrangeCoeff>,
     pub(crate) fixed_values: Vec<Polynomial<F, LagrangeCoeff>>,
-    pub(crate) fixed_polys: Vec<Polynomial<F, Coeff>>,
     pub(crate) fixed_cosets: Vec<Polynomial<F, ExtendedLagrangeCoeff>>,
-    /// The phase-0 group: the fixed permutation polynomials, in coefficient
-    /// form, whose commitment the verifying key holds.
+    // REVIEW-ONLY: The phase-0 group: every fixed column but the simple
+    // selectors, then the fixed permutation polynomials, in coefficient form,
+    // whose commitment the verifying key holds.
     pub(crate) phase0_polys: argument::prover::KeyGroup<F>,
+    // REVIEW-ONLY: The simple-selector fixed columns, in coefficient form, keyed
+    // by column index.
+    pub(crate) simple_selector_polys: BTreeMap<usize, Polynomial<F, Coeff>>,
     pub(crate) sigmas: permutation::Sigmas<F>,
     pub(crate) ev: Evaluator<F>,
     /// Region layout captured during keygen, consumed during proving to skip
@@ -365,35 +369,71 @@ pub struct ProvingKey<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
     pub(crate) region_starts: Option<Vec<crate::circuit::RegionStart>>,
 }
 
-/// The fixed permutation polynomials of a proving key, in coefficient form and
-/// labeled by the column they permute, together with the same polynomials in
-/// the bases the prover reads them in. Both are derived
-/// from `values`: those polynomials in Lagrange form. `vk_repr` is the
-/// `transcript_repr` of the verifying key holding their commitment.
+/// The fixed polynomials of a proving key, derived from `fixed_values`, the
+/// fixed columns in Lagrange form, and `perm_polys`, the fixed permutation
+/// polynomials in Lagrange form:
+/// * the phase-0 group, of [`ConstraintSystem::fixed_polys_labels`], in
+///   coefficient form; `vk_repr` is the `transcript_repr` of the verifying key
+///   holding its commitment;
+/// * the simple-selector columns, in coefficient form, keyed by column index;
+/// * every fixed column over the extended domain;
+/// * the permutation polynomials in the bases the prover reads them in.
 ///
 /// # Panics
 ///
-/// Panics if `values` does not hold one polynomial per column of the
+/// Panics if `perm_polys` does not hold one polynomial per column of the
 /// permutation argument.
+#[allow(clippy::type_complexity)]
 pub(in crate::plonk) fn build_phase0_polys<F: WithSmallOrderMulGroup<3>>(
     domain: &EvaluationDomain<F>,
     cs: &ConstraintSystem<F>,
     vk_repr: F,
-    values: Vec<Polynomial<F, LagrangeCoeff>>,
-) -> (argument::prover::KeyGroup<F>, permutation::Sigmas<F>) {
-    let labels = cs.permutation.polynomial_labels();
+    fixed_values: &[Polynomial<F, LagrangeCoeff>],
+    perm_polys: Vec<Polynomial<F, LagrangeCoeff>>,
+) -> (
+    argument::prover::KeyGroup<F>,
+    BTreeMap<usize, Polynomial<F, Coeff>>,
+    Vec<Polynomial<F, ExtendedLagrangeCoeff>>,
+    permutation::Sigmas<F>,
+) {
+    let perm_labels = cs.permutation.polynomial_labels();
     assert_eq!(
-        values.len(),
-        labels.len(),
+        perm_polys.len(),
+        perm_labels.len(),
         "the number of permutation polynomials does not match the number of permutation columns"
     );
 
-    let (polys, cosets) =
-        permutation::keygen::compute_polys_and_cosets(domain, &cs.permutation, &values);
+    let fixed_coeffs: Vec<_> = fixed_values
+        .par_iter()
+        .map(|poly| domain.lagrange_to_coeff(poly.clone()))
+        .collect();
+    let fixed_cosets = fixed_coeffs
+        .par_iter()
+        .map(|poly| domain.coeff_to_extended(poly.clone()))
+        .collect();
+
+    let mut group = BTreeMap::new();
+    let mut simple_selector_polys = BTreeMap::new();
+    for (i, poly) in fixed_coeffs.into_iter().enumerate() {
+        if cs.has_simple_selector_col(i) {
+            simple_selector_polys.insert(i, poly);
+        } else {
+            group.insert(PolynomialLabel::Fixed(i), poly);
+        }
+    }
+
+    let (perm_coeffs, perm_cosets) =
+        permutation::keygen::compute_polys_and_cosets(domain, &cs.permutation, &perm_polys);
+    group.extend(perm_labels.into_iter().zip(perm_coeffs));
 
     (
-        argument::prover::KeyGroup::new(labels.into_iter().zip(polys).collect(), vk_repr),
-        permutation::Sigmas { values, cosets },
+        argument::prover::KeyGroup::new(group, vk_repr),
+        simple_selector_polys,
+        fixed_cosets,
+        permutation::Sigmas {
+            values: perm_polys,
+            cosets: perm_cosets,
+        },
     )
 }
 
@@ -467,15 +507,7 @@ where
             params,
         )?;
         let [l0, l_last, l_active_row] = compute_lagrange_polys(&vk, &vk.cs);
-        let fixed_values = read_polynomial_vec(reader, format)?;
-        let fixed_polys: Vec<_> = fixed_values
-            .iter()
-            .map(|poly| vk.domain.lagrange_to_coeff(poly.clone()))
-            .collect();
-        let fixed_cosets = fixed_polys
-            .iter()
-            .map(|poly| vk.domain.coeff_to_extended(poly.clone()))
-            .collect();
+        let fixed_values: Vec<_> = read_polynomial_vec(reader, format)?;
         let permutations: Vec<_> = read_polynomial_vec(reader, format)?;
         if permutations.len() != vk.cs.permutation.columns.len() {
             return Err(io::Error::new(
@@ -487,8 +519,13 @@ where
                 ),
             ));
         }
-        let (phase0_polys, sigmas) =
-            build_phase0_polys(&vk.domain, &vk.cs, vk.transcript_repr, permutations);
+        let (phase0_polys, simple_selector_polys, fixed_cosets, sigmas) = build_phase0_polys(
+            &vk.domain,
+            &vk.cs,
+            vk.transcript_repr,
+            &fixed_values,
+            permutations,
+        );
         let ev = Evaluator::new(vk.cs());
         Ok(Self {
             vk,
@@ -496,9 +533,9 @@ where
             l_last,
             l_active_row,
             fixed_values,
-            fixed_polys,
             fixed_cosets,
             phase0_polys,
+            simple_selector_polys,
             sigmas,
             ev,
             // The region layout is not serialized: the first proof produced
@@ -558,7 +595,6 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> VerifyingKey<F, CS> {
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn partially_evaluate_identities<'a, F, CS>(
     vk: &'a VerifyingKey<F, CS>,
-    fixed_evals: &'a [F],
     instance_evals: &'a [F],
     phase0_evals: &BTreeMap<PolynomialLabel, Vec<argument::Evaluation<F>>>,
     phase1_evals: &BTreeMap<PolynomialLabel, Vec<argument::Evaluation<F>>>,
@@ -590,6 +626,33 @@ where
         })
         .collect();
     let advice_evals = &advice_evals[..];
+
+    // Likewise for the fixed evaluations, from the phase-0 group. Simple
+    // selectors are not opened.
+    //
+    // REVIEW-ONLY: The fixed evaluations used to be written to the proof one per
+    // fixed query, in query order, skipping the simple selectors. They are now
+    // written with the phase-0 group, in label order, and put back in query
+    // order here. Their number does not change.
+    let mut next = vec![0; vk.cs.num_fixed_columns];
+    let fixed_evals: Vec<F> = vk
+        .cs
+        .fixed_queries
+        .iter()
+        .map(|(column, _)| {
+            let i = column.index();
+            if vk.cs.has_simple_selector_col(i) {
+                // The linearization scales the selector's commitment by this
+                // evaluation, so the selector must contribute 1 here: another
+                // value breaks completeness, and 0 lets the gate go unenforced.
+                return F::ONE;
+            }
+            let eval = phase0_evals[&PolynomialLabel::Fixed(i)][next[i]].eval();
+            next[i] += 1;
+            eval
+        })
+        .collect();
+    let fixed_evals = &fixed_evals[..];
 
     let blinding_factors = vk.cs.blinding_factors();
     let l_evals = vk.domain.l_i_range(x, xn, (-((blinding_factors + 1) as i32))..=0);
