@@ -30,20 +30,16 @@ impl<'a, F: PrimeField, CS: PolynomialCommitmentScheme<F>> AbsorbedVk<'a, F, CS>
         self.0.transcript_repr
     }
 
-    /// The commitment the absorbed key holds to a group of fixed polynomials,
-    /// as opposed to the per-column `fixed_commitments`.
-    ///
-    /// The key holds a single such group, the fixed permutation polynomials;
-    /// this is to be generalized once other groups are committed to in the
-    /// key.
-    pub(crate) fn fixed_group_commitment(&self) -> &'a CS::Commitment {
+    /// The commitment the absorbed key holds to its phase-0 group; see
+    /// [`VerifyingKey::phase0_commitment`].
+    pub(crate) fn phase0_commitment(&self) -> &'a CS::Commitment {
         &self.0.phase0_commitment
     }
 
     /// The labels of the polynomials committed to by
-    /// [`Self::fixed_group_commitment`].
-    pub(crate) fn fixed_group_labels(&self) -> Vec<PolynomialLabel> {
-        self.0.cs.permutation.polynomial_labels()
+    /// [`Self::phase0_commitment`].
+    pub(crate) fn phase0_labels(&self) -> Vec<PolynomialLabel> {
+        self.0.cs.fixed_polys_labels()
     }
 }
 

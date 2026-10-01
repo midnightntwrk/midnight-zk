@@ -6,10 +6,7 @@ use rayon::iter::{
 use super::Argument;
 use crate::{
     plonk::{Any, Column, Error},
-    poly::{
-        Coeff, EvaluationDomain, ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial,
-        commitment::PolynomialCommitmentScheme,
-    },
+    poly::{Coeff, EvaluationDomain, ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial},
     utils::arithmetic::parallelize,
 };
 
@@ -103,23 +100,6 @@ impl Assembly {
         self.mapping[right_column][right_row] = tmp;
 
         Ok(())
-    }
-
-    pub(crate) fn build_phase0_commitment<
-        F: WithSmallOrderMulGroup<3>,
-        CS: PolynomialCommitmentScheme<F>,
-    >(
-        self,
-        params: &CS::Parameters,
-        domain: &EvaluationDomain<F>,
-        p: &Argument,
-    ) -> CS::Commitment {
-        let permutations = compute_permutations(domain, p, &self.mapping);
-        CS::commit_many(
-            params,
-            &permutations.iter().collect::<Vec<_>>(),
-            &p.polynomial_labels(),
-        )
     }
 
     /// The permutation polynomials in Lagrange form, one per column of the

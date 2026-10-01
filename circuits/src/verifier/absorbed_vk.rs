@@ -34,13 +34,13 @@ impl<'a, S: SelfEmulation, PCS: InCircuitPCS<S>> AbsorbedVk<'a, S, PCS> {
     /// The key holds a single such group, the fixed permutation polynomials;
     /// this is to be generalized once other groups are committed to in the
     /// key.
-    pub(crate) fn fixed_group_commitment(&self) -> &'a PCS::AssignedCommitment {
+    pub(crate) fn phase0_commitment(&self) -> &'a PCS::AssignedCommitment {
         &self.0.phase0_commitment
     }
 
     /// The labels of the polynomials committed to by
-    /// [`Self::fixed_group_commitment`].
-    pub(crate) fn fixed_group_labels(&self) -> Vec<PolynomialLabel> {
+    /// [`Self::phase0_commitment`].
+    pub(crate) fn phase0_labels(&self) -> Vec<PolynomialLabel> {
         self.0.cs.permutation().polynomial_labels()
     }
 }

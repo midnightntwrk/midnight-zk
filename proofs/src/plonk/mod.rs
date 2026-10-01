@@ -61,8 +61,8 @@ use crate::poly::{PolynomialLabel, commitment::PolynomialCommitmentScheme};
 #[derive(Clone, Debug)]
 pub struct VerifyingKey<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
     domain: EvaluationDomain<F>,
-    fixed_commitments: Vec<CS::Commitment>,
     phase0_commitment: CS::Commitment,
+    simple_selector_commitments: BTreeMap<usize, CS::Commitment>,
     cs: ConstraintSystem<F>,
     /// Cached maximum degree of `cs` (which doesn't change after construction).
     cs_degree: usize,
@@ -99,11 +99,10 @@ where
         assert!(*k <= F::S);
         // k value fits in 1 byte
         writer.write_all(&[*k as u8])?;
-        writer.write_all(&(self.fixed_commitments.len() as u32).to_le_bytes())?;
-        for commitment in &self.fixed_commitments {
+        self.phase0_commitment.write(writer, format)?;
+        for commitment in self.simple_selector_commitments.values() {
             commitment.write(writer, format)?;
         }
-        self.phase0_commitment.write(writer, format)?;
 
         Ok(())
     }
@@ -175,24 +174,28 @@ where
 
         let domain = EvaluationDomain::new(cs.degree() as u32, k.into());
 
-        let mut num_fixed_columns = [0u8; 4];
-        reader.read_exact(&mut num_fixed_columns)?;
-        let num_fixed_columns = u32::from_le_bytes(num_fixed_columns);
+        // Finalizing `cs` replaces its selectors with fixed columns, which
+        // decides which fixed columns are simple selectors.
+        let cs = cs.into_finalized();
 
-        let fixed_commitments: Vec<_> = (0..num_fixed_columns)
+        let phase0_commitment =
+            CS::deserialize_commitment(reader, format, &cs.fixed_polys_labels())?;
+
+        let simple_selector_commitments = cs
+            .simple_selector_columns()
+            .into_iter()
             .map(|i| {
-                CS::deserialize_commitment(reader, format, &[PolynomialLabel::Fixed(i as usize)])
+                let commitment =
+                    CS::deserialize_commitment(reader, format, &[PolynomialLabel::Fixed(i)])?;
+                Ok((i, commitment))
             })
-            .collect::<Result<_, _>>()?;
-
-        let phase0_com =
-            CS::deserialize_commitment(reader, format, &cs.permutation.polynomial_labels())?;
+            .collect::<io::Result<_>>()?;
 
         Ok(Self::from_parts(
             domain,
-            fixed_commitments,
-            phase0_com,
-            cs.into_finalized(),
+            phase0_commitment,
+            simple_selector_commitments,
+            cs,
         ))
     }
 
@@ -221,19 +224,20 @@ where
 impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> VerifyingKey<F, CS> {
     /// Return the bytes_length of a VerifyingKey
     pub fn bytes_length(&self, format: SerdeFormat) -> usize {
-        // The header [`Self::write`] emits: the version byte, `k`, and the
-        // number of fixed commitments as a `u32`.
-        const HEADER_BYTES: usize = 1 + 1 + 4;
+        // The header [`Self::write`] emits: the version byte and `k`.
+        const HEADER_BYTES: usize = 1 + 1;
 
         HEADER_BYTES
-            + (self.fixed_commitments.iter().map(|c| c.byte_length(format)).sum::<usize>())
             + self.phase0_commitment.byte_length(format)
+            + (self.simple_selector_commitments.values())
+                .map(|c| c.byte_length(format))
+                .sum::<usize>()
     }
 
     fn from_parts(
         domain: EvaluationDomain<F>,
-        fixed_commitments: Vec<CS::Commitment>,
         phase0_commitment: CS::Commitment,
+        simple_selector_commitments: BTreeMap<usize, CS::Commitment>,
         cs: ConstraintSystem<F>,
     ) -> Self
     where
@@ -244,8 +248,8 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> VerifyingK
 
         let mut vk = Self {
             domain,
-            fixed_commitments,
             phase0_commitment,
+            simple_selector_commitments,
             cs,
             cs_degree,
             // Temporary, this is not pinned.
@@ -261,17 +265,14 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> VerifyingK
         let k = &vk.domain.k();
         assert!(*k <= F::S);
         buffer.push(*k as u8);
-        buffer.extend_from_slice(&(vk.fixed_commitments.len() as u32).to_le_bytes());
-        for commitment in &vk.fixed_commitments {
+        vk.phase0_commitment
+            .write(&mut buffer, SerdeFormat::RawBytesUnchecked)
+            .expect("Failed to write to buffer - this is a bug.");
+        for commitment in vk.simple_selector_commitments.values() {
             commitment
                 .write(&mut buffer, SerdeFormat::RawBytesUnchecked)
                 .expect("Failed to write to buffer - this is a bug.");
         }
-
-        buffer.extend_from_slice(&(vk.cs.permutation.columns.len() as u32).to_le_bytes());
-        vk.phase0_commitment
-            .write(&mut buffer, SerdeFormat::RawBytesUnchecked)
-            .expect("Failed to write to buffer - this is a bug.");
 
         // We use the debug implementation to add the gates and domain to the hashed
         // buffer. We should eventually move away from debug implementation for
@@ -300,21 +301,24 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> VerifyingK
     pub fn pinned(&self) -> PinnedVerificationKey<'_, F, CS> {
         PinnedVerificationKey {
             domain: self.domain.pinned(),
-            fixed_commitments: &self.fixed_commitments,
             phase0_commitment: &self.phase0_commitment,
+            simple_selector_commitments: &self.simple_selector_commitments,
             cs: self.cs.pinned(),
         }
     }
 
-    /// Returns commitments of fixed polynomials
-    pub fn fixed_commitments(&self) -> &Vec<CS::Commitment> {
-        &self.fixed_commitments
-    }
-
-    /// The commitment to the phase-0 group: the fixed permutation polynomials,
-    /// as one group.
+    /// The commitment to the phase-0 group, the polynomials of
+    /// [`ConstraintSystem::fixed_polys_labels`]: every fixed column but the
+    /// simple selectors, then the fixed permutation polynomials.
     pub fn phase0_commitment(&self) -> &CS::Commitment {
         &self.phase0_commitment
+    }
+
+    /// The commitment to each simple-selector fixed column, keyed by column
+    /// index. They are kept apart from the group: the linearization scales
+    /// each by its own evaluated identity.
+    pub fn simple_selector_commitments(&self) -> &BTreeMap<usize, CS::Commitment> {
+        &self.simple_selector_commitments
     }
 
     /// Returns `ConstraintSystem`
@@ -335,8 +339,8 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> VerifyingK
 pub struct PinnedVerificationKey<'a, F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
     domain: PinnedEvaluationDomain<'a, F>,
     cs: PinnedConstraintSystem<'a, F>,
-    fixed_commitments: &'a Vec<CS::Commitment>,
     phase0_commitment: &'a CS::Commitment,
+    simple_selector_commitments: &'a BTreeMap<usize, CS::Commitment>,
 }
 /// This is a proving key which allows for the creation of proofs for a
 /// particular circuit.

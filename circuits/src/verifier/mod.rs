@@ -115,16 +115,16 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> AssignedVk<S, PCS> {
 pub fn fixed_bases<S: SelfEmulation>(vk: &VerifyingKey<S>) -> BTreeMap<PolynomialLabel, S::C> {
     let mut fixed_bases = BTreeMap::new();
 
-    let fixed_commitments = vk.fixed_commitments();
-
-    for (i, com) in fixed_commitments.iter().enumerate() {
-        fixed_bases.insert(PolynomialLabel::Fixed(i), *com.0[0].as_point());
+    // REVIEW-ONLY: The fixed polynomials are committed to as one group, in the
+    // order of `fixed_polys_labels`, so the i-th point of that commitment is the
+    // i-th label's.
+    let fixed_coms = vk.phase0_commitment().0.iter();
+    for (label, com) in vk.cs().fixed_polys_labels().into_iter().zip(fixed_coms) {
+        fixed_bases.insert(label, *com.as_point());
     }
 
-    // The permutation polynomials are committed to as one group, in the labels'
-    // order, so the i-th point of that commitment is `PermutationFixed(i)`.
-    for (i, com) in vk.phase0_commitment().0.iter().enumerate() {
-        fixed_bases.insert(PolynomialLabel::PermutationFixed(i), *com.as_point());
+    for (i, com) in vk.simple_selector_commitments() {
+        fixed_bases.insert(PolynomialLabel::Fixed(*i), *com.0[0].as_point());
     }
 
     fixed_bases.insert(PolynomialLabel::Custom("-G".into()), -S::C::generator());

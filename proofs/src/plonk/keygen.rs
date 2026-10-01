@@ -274,21 +274,27 @@ where
     let (cs, selector_polys) = cs.directly_convert_selectors_to_fixed(selectors);
     fixed.extend(selector_polys.into_iter().map(|poly| domain.lagrange_from_vec(poly)));
 
-    let phase0_com =
-        assembly
-            .permutation
-            .build_phase0_commitment::<F, CS>(params, &domain, &cs.permutation);
+    let permutations = assembly.permutation.into_permutations::<F>(&domain, &cs.permutation);
 
-    let fixed_commitments = fixed
+    let fixed_polys: Vec<_> = fixed
         .iter()
         .enumerate()
-        .map(|(i, poly)| CS::commit(params, poly, PolynomialLabel::Fixed(i)))
+        .filter(|(i, _)| !cs.has_simple_selector_col(*i))
+        .map(|(_, poly)| poly)
+        .chain(permutations.iter())
+        .collect();
+    let phase0_commitment = CS::commit_many(params, &fixed_polys, &cs.fixed_polys_labels());
+
+    let simple_selector_commitments = cs
+        .simple_selector_columns()
+        .into_iter()
+        .map(|i| (i, CS::commit(params, &fixed[i], PolynomialLabel::Fixed(i))))
         .collect();
 
     Ok(VerifyingKey::from_parts(
         domain,
-        fixed_commitments,
-        phase0_com,
+        phase0_commitment,
+        simple_selector_commitments,
         cs,
     ))
 }

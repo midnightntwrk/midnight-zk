@@ -2311,6 +2311,24 @@ impl<F: Field> ConstraintSystem<F> {
         (0..self.num_advice_columns).map(PolynomialLabel::Advice).collect()
     }
 
+    /// The fixed columns that are simple selectors, in column order.
+    pub fn simple_selector_columns(&self) -> Vec<usize> {
+        (0..self.num_fixed_columns)
+            .filter(|&i| self.has_simple_selector_col(i))
+            .collect()
+    }
+
+    /// The labels of the polynomials committed to in the verifying key as one
+    /// group: every fixed column but the simple selectors, then the fixed
+    /// permutation polynomials, in their `Ord` order.
+    pub fn fixed_polys_labels(&self) -> Vec<PolynomialLabel> {
+        (0..self.num_fixed_columns)
+            .filter(|&i| !self.has_simple_selector_col(i))
+            .map(PolynomialLabel::Fixed)
+            .chain(self.permutation.polynomial_labels())
+            .collect()
+    }
+
     /// Returns instance queries
     pub fn instance_queries(&self) -> &Vec<(Column<Instance>, Rotation)> {
         &self.instance_queries

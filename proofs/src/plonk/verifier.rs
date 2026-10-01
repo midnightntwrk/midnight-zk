@@ -326,7 +326,7 @@ where
                 .map(|(query_index, &(column, at))| {
                     VerifierQuery::new(
                         x_rotations[&at],
-                        &vk.fixed_commitments[column.index()],
+                        &vk.phase0_commitment,
                         PolynomialLabel::Fixed(column.index()),
                         fixed_evals[query_index],
                     )
