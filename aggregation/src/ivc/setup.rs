@@ -29,7 +29,7 @@ pub fn setup<T: Ivc>(
     let mut cs = ConstraintSystem::default();
     ZkStdLib::configure(&mut cs, (IvcCircuit::<T>::arch(), (k - 1) as u8));
     let domain = EvaluationDomain::new(cs.degree() as u32, k);
-    let relation = IvcCircuit::<T>::new(domain, cs, ctx.clone());
+    let relation = IvcCircuit::<T>::new(domain, cs.into_finalized(), ctx.clone());
 
     // Uncomment for visualizing the size of this IVC circuit.
     // dbg!(midnight_zk_stdlib::cost_model(&relation, Some(k)));
