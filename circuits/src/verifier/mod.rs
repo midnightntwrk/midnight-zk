@@ -115,9 +115,6 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> AssignedVk<S, PCS> {
 pub fn fixed_bases<S: SelfEmulation>(vk: &VerifyingKey<S>) -> BTreeMap<PolynomialLabel, S::C> {
     let mut fixed_bases = BTreeMap::new();
 
-    // REVIEW-ONLY: The fixed polynomials are committed to as one group, in the
-    // order of `fixed_polys_labels`, so the i-th point of that commitment is the
-    // i-th label's.
     let fixed_coms = vk.phase0_commitment().0.iter();
     for (label, com) in vk.cs().fixed_polys_labels().into_iter().zip(fixed_coms) {
         fixed_bases.insert(label, *com.as_point());

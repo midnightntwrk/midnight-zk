@@ -639,9 +639,6 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         // evaluation is taken as 1, as the linearization scales the selector's
         // commitment instead: another value breaks completeness, and 0 lets the
         // gate go unenforced.
-        //
-        // REVIEW-ONLY: As off-circuit, the fixed evaluations are now read with the
-        // phase-0 group, in label order, instead of one per fixed query.
         let one: AssignedNative<S::F> = self.scalar_chip.assign_fixed(layouter, S::F::ONE)?;
         let mut next = vec![0; cs.num_fixed_columns()];
         let fixed_evals: Vec<AssignedNative<S::F>> = cs

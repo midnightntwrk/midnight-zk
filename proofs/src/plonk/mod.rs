@@ -353,12 +353,7 @@ pub struct ProvingKey<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
     pub(crate) l_active_row: Polynomial<F, ExtendedLagrangeCoeff>,
     pub(crate) fixed_values: Vec<Polynomial<F, LagrangeCoeff>>,
     pub(crate) fixed_cosets: Vec<Polynomial<F, ExtendedLagrangeCoeff>>,
-    // REVIEW-ONLY: The phase-0 group: every fixed column but the simple
-    // selectors, then the fixed permutation polynomials, in coefficient form,
-    // whose commitment the verifying key holds.
     pub(crate) phase0_polys: argument::prover::KeyGroup<F>,
-    // REVIEW-ONLY: The simple-selector fixed columns, in coefficient form, keyed
-    // by column index.
     pub(crate) simple_selector_polys: BTreeMap<usize, Polynomial<F, Coeff>>,
     pub(crate) sigmas: permutation::Sigmas<F>,
     pub(crate) ev: Evaluator<F>,
@@ -629,11 +624,6 @@ where
 
     // Likewise for the fixed evaluations, from the phase-0 group. Simple
     // selectors are not opened.
-    //
-    // REVIEW-ONLY: The fixed evaluations used to be written to the proof one per
-    // fixed query, in query order, skipping the simple selectors. They are now
-    // written with the phase-0 group, in label order, and put back in query
-    // order here. Their number does not change.
     let mut next = vec![0; vk.cs.num_fixed_columns];
     let fixed_evals: Vec<F> = vk
         .cs

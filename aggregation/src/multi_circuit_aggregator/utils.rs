@@ -39,10 +39,6 @@ pub type VkHashAndBases = (
 
 /// The labels of the VK's fixed bases, in the order they are hashed: every
 /// fixed column, then every fixed permutation polynomial.
-///
-/// REVIEW-ONLY: This is the order in which `fixed_commitments` and then
-/// `phase0_commitment` used to be hashed, so the hash covers the same
-/// points, in the same order, as before.
 fn hashed_base_labels(nb_fixed: usize, nb_perm: usize) -> Vec<PolynomialLabel> {
     (0..nb_fixed)
         .map(PolynomialLabel::Fixed)
