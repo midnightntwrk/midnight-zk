@@ -23,7 +23,7 @@ use std::{
 
 use ff::Field;
 use midnight_proofs::{
-    circuit::{AssignedCell, Chip, Layouter, Value},
+    circuit::{Chip, Layouter, Value},
     plonk::{ConstraintSystem, Error},
     poly::{EvaluationDomain, PolynomialLabel, Rotation},
 };
@@ -244,16 +244,10 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         let transcript_repr: AssignedNative<S::F> =
             self.scalar_chip.assign_as_public_input(layouter, transcript_repr_value)?;
 
-        let fixed_commitments = (0..cs.num_fixed_columns())
-            .map(|i| PCS::fixed_commitment(&[PolynomialLabel::Fixed(i)]))
-            .collect();
-
-        let phase0_com = phase0_commitment::<S, PCS>(cs);
-
         let assigned_vk = AssignedVk {
             domain: domain.clone(),
-            fixed_commitments,
-            phase0_commitment: phase0_com,
+            phase0_commitment: PCS::fixed_commitment(&cs.fixed_polys_labels()),
+            simple_selector_commitments: simple_selector_commitments::<S, PCS>(cs),
             cs: cs.clone(),
             cs_degree: cs.degree(),
             transcript_repr,
@@ -283,16 +277,10 @@ impl<S: SelfEmulation> VerifierGadget<S> {
 
         let transcript_repr = self.scalar_chip.assign_fixed(layouter, transcript_repr_constant)?;
 
-        let fixed_commitments = (0..cs.num_fixed_columns())
-            .map(|i| PCS::fixed_commitment(&[PolynomialLabel::Fixed(i)]))
-            .collect();
-
-        let phase0_com = phase0_commitment::<S, PCS>(cs);
-
         let assigned_vk = AssignedVk {
             domain: domain.clone(),
-            fixed_commitments,
-            phase0_commitment: phase0_com,
+            phase0_commitment: PCS::fixed_commitment(&cs.fixed_polys_labels()),
+            simple_selector_commitments: simple_selector_commitments::<S, PCS>(cs),
             cs: cs.clone(),
             cs_degree: cs.degree(),
             transcript_repr,
@@ -302,10 +290,13 @@ impl<S: SelfEmulation> VerifierGadget<S> {
     }
 }
 
-fn phase0_commitment<S: SelfEmulation, PCS: InCircuitPCS<S>>(
+fn simple_selector_commitments<S: SelfEmulation, PCS: InCircuitPCS<S>>(
     cs: &ConstraintSystem<S::F>,
-) -> PCS::AssignedCommitment {
-    PCS::fixed_commitment(&cs.permutation().polynomial_labels())
+) -> BTreeMap<usize, PCS::AssignedCommitment> {
+    cs.simple_selector_columns()
+        .into_iter()
+        .map(|i| (i, PCS::fixed_commitment(&[PolynomialLabel::Fixed(i)])))
+        .collect()
 }
 
 impl<S: SelfEmulation> VerifierGadget<S> {
@@ -490,7 +481,11 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             commitment,
             |acc, (col_idx, eval)| match col_idx {
                 Some(idx) => {
-                    let t = vk.fixed_commitments[idx].clone().mul(layouter, scalar_chip, &eval)?;
+                    let t = vk.simple_selector_commitments[&idx].clone().mul(
+                        layouter,
+                        scalar_chip,
+                        &eval,
+                    )?;
                     acc.add(layouter, scalar_chip, t)
                 }
                 None => {
@@ -602,22 +597,6 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                 .collect::<Result<Vec<_>, Error>>()?
         };
 
-        // The transcript doesn't contain evals of fixed cols corresponding to simple
-        // selectors. Fill up the "missing" places with 1, to align with the
-        // fixed queries
-        let one: AssignedCell<<S as SelfEmulation>::F, <S as SelfEmulation>::F> =
-            self.scalar_chip.assign_fixed(layouter, S::F::ONE)?;
-
-        let num_evaluated_fix_queries = cs.num_fixed_columns() - cs.num_simple_selectors();
-        let mut fixed_evals = (0..num_evaluated_fix_queries)
-            .map(|_| transcript.read_scalar(layouter))
-            .collect::<Result<Vec<_>, _>>()?;
-        for (idx, (col, _)) in assigned_vk.cs.fixed_queries().iter().enumerate() {
-            if assigned_vk.cs.has_simple_selector_col(col.index()) {
-                fixed_evals.insert(idx, one.clone())
-            }
-        }
-
         let mut x_rotations = BTreeMap::new();
         for rotation in argument::rotations::<S>(cs) {
             let point = if rotation == Rotation::cur() {
@@ -650,6 +629,30 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             .map(|(column, _)| {
                 let i = column.index();
                 let eval = phase1_evals[&PolynomialLabel::Advice(i)][next[i]].eval().clone();
+                next[i] += 1;
+                eval
+            })
+            .collect();
+
+        // The fixed evaluations in the order of `cs.fixed_queries`, which is how
+        // the identities index them. A simple selector is never opened; its
+        // evaluation is taken as 1, as the linearization scales the selector's
+        // commitment instead: another value breaks completeness, and 0 lets the
+        // gate go unenforced.
+        //
+        // REVIEW-ONLY: As off-circuit, the fixed evaluations are now read with the
+        // phase-0 group, in label order, instead of one per fixed query.
+        let one: AssignedNative<S::F> = self.scalar_chip.assign_fixed(layouter, S::F::ONE)?;
+        let mut next = vec![0; cs.num_fixed_columns()];
+        let fixed_evals: Vec<AssignedNative<S::F>> = cs
+            .fixed_queries()
+            .iter()
+            .map(|(column, _)| {
+                let i = column.index();
+                if cs.has_simple_selector_col(i) {
+                    return one.clone();
+                }
+                let eval = phase0_evals[&PolynomialLabel::Fixed(i)][next[i]].eval().clone();
                 next[i] += 1;
                 eval
             })
@@ -814,21 +817,6 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                     }
                 },
             ))
-            .chain(
-                cs.fixed_queries()
-                    .iter()
-                    .enumerate()
-                    // Filter out queries for simple, multiplicative selectors
-                    .filter(|(_, (col, _))| !cs.has_simple_selector_col(col.index()))
-                    .map(|(query_index, &(column, rot))| {
-                        VerifierQuery::new(
-                            &x_rotations[&rot],
-                            &assigned_vk.fixed_commitments[column.index()],
-                            PolynomialLabel::Fixed(column.index()),
-                            &fixed_evals[query_index],
-                        )
-                    }),
-            )
             .chain(iter::once(VerifierQuery::new(
                 &x,
                 &lin_commitment,

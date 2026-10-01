@@ -84,6 +84,12 @@ fn eval_points<S: SelfEmulation>(
 ) -> Vec<AssignedNative<S::F>> {
     let at = |rotation: Rotation| x_rotations[&rotation].clone();
     match label {
+        PolynomialLabel::Fixed(i) => cs
+            .fixed_queries()
+            .iter()
+            .filter(|(column, _)| column.index() == *i)
+            .map(|&(_, rotation)| at(rotation))
+            .collect(),
         PolynomialLabel::Advice(i) => cs
             .advice_queries()
             .iter()

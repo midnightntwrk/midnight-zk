@@ -28,12 +28,8 @@ use super::{AssignedVk, SelfEmulation, pcs::InCircuitPCS, transcript_gadget::Tra
 pub(crate) struct AbsorbedVk<'a, S: SelfEmulation, PCS: InCircuitPCS<S>>(&'a AssignedVk<S, PCS>);
 
 impl<'a, S: SelfEmulation, PCS: InCircuitPCS<S>> AbsorbedVk<'a, S, PCS> {
-    /// The commitment the absorbed key holds to a group of fixed polynomials,
-    /// as opposed to the per-column `fixed_commitments`.
-    ///
-    /// The key holds a single such group, the fixed permutation polynomials;
-    /// this is to be generalized once other groups are committed to in the
-    /// key.
+    /// The commitment the absorbed key holds to its phase-0 group: every fixed
+    /// column but the simple selectors, and the fixed permutation polynomials.
     pub(crate) fn phase0_commitment(&self) -> &'a PCS::AssignedCommitment {
         &self.0.phase0_commitment
     }
@@ -41,7 +37,7 @@ impl<'a, S: SelfEmulation, PCS: InCircuitPCS<S>> AbsorbedVk<'a, S, PCS> {
     /// The labels of the polynomials committed to by
     /// [`Self::phase0_commitment`].
     pub(crate) fn phase0_labels(&self) -> Vec<PolynomialLabel> {
-        self.0.cs.permutation().polynomial_labels()
+        self.0.cs.fixed_polys_labels()
     }
 }
 

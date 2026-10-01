@@ -66,8 +66,8 @@ type VerifyingKey<S> =
 #[derive(Clone, Debug)]
 pub struct AssignedVk<S: SelfEmulation, PCS: InCircuitPCS<S>> {
     domain: EvaluationDomain<S::F>,
-    fixed_commitments: Vec<PCS::AssignedCommitment>,
     phase0_commitment: PCS::AssignedCommitment,
+    simple_selector_commitments: BTreeMap<usize, PCS::AssignedCommitment>,
     cs: ConstraintSystem<S::F>,
     cs_degree: usize,
     transcript_repr: AssignedNative<S::F>,
