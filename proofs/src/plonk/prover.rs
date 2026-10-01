@@ -29,8 +29,7 @@ use crate::{
     },
     poly::{
         Coeff, EvaluationDomain, ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial, PolynomialLabel,
-        PolynomialRepresentation, ProverQuery, Rotation, batch_invert_rational,
-        commitment::PolynomialCommitmentScheme,
+        ProverQuery, Rotation, batch_invert_rational, commitment::PolynomialCommitmentScheme,
     },
     transcript::{Hashable, Sampleable, Transcript},
     utils::{
@@ -107,7 +106,7 @@ where
 
     let instance = compute_instances(params, pk, instances, nb_committed_instances, transcript)?;
 
-    let advice = parse_advices(params, pk, circuit, instances, transcript, &mut rng)?;
+    let advice_polys = parse_advices(pk, circuit, instances, &mut rng)?;
 
     // Helper: sample `num_sets` blinding vectors, each of length `inner_len`.
     // Used to pre-generate every blinding the parallel compute sections below
@@ -117,9 +116,6 @@ where
             .map(|_| (0..inner_len).map(|_| F::random(&mut rng)).collect())
             .collect()
     };
-
-    // Sample theta challenge for keeping lookup columns linearly independent
-    let theta: F = transcript.squeeze_challenge();
 
     let num_lookups = pk.vk.cs.lookups.len();
     let mult_blinding_count = pk.vk.cs.blinding_factors() + 1;
@@ -138,8 +134,7 @@ where
                 logup.compute_multiplicities_parallel(
                     argument_index,
                     pk,
-                    theta,
-                    &advice.advice_polys,
+                    &advice_polys,
                     &pk.fixed_values,
                     &instance.instance_values,
                     blinds,
@@ -149,16 +144,30 @@ where
     };
 
     let logup_multiplicities_len = logup_multiplicities.len();
-    // TODO: Check this clone - see if we can remove it.
-    let phase1_polys_map = BTreeMap::from_iter(logup_multiplicities.iter().map(|c| {
-        (
-            PolynomialLabel::LogupMultiplicities(c.argument_index),
-            c.multiplicities.clone(),
-        )
-    }));
+    // The advice columns and the multiplicities form the phase1 group.
+    // TODO: Check the multiplicities clone - see if we can remove it.
+    let advice_labels = pk.vk.cs.advice_labels();
+    let mut phase1_polys_map: BTreeMap<PolynomialLabel, Polynomial<F, LagrangeCoeff>> =
+        BTreeMap::new();
+
+    for (label, poly) in advice_labels.iter().cloned().zip(advice_polys) {
+        if phase1_polys_map.insert(label, poly).is_some() {
+            return Err(Error::DuplicatedLabel);
+        }
+    }
+
+    for c in logup_multiplicities.iter() {
+        let label = PolynomialLabel::LogupMultiplicities(c.argument_index);
+        if phase1_polys_map.insert(label, c.multiplicities.clone()).is_some() {
+            return Err(Error::DuplicatedLabel);
+        }
+    }
 
     let phase1_committed =
         argument::prover::Committed::commit::<CS, T>(params, phase1_polys_map, transcript)?;
+
+    // Sample theta challenge for keeping lookup columns linearly independent
+    let theta: F = transcript.squeeze_challenge();
 
     // Sample beta challenge
     let beta: F = transcript.squeeze_challenge();
@@ -179,7 +188,7 @@ where
 
     let perm_z_polys = pk.vk.cs.permutation.compute_z_polys::<F, CS>(
         pk,
-        &advice.advice_polys,
+        phase1_committed.polys_of(&advice_labels),
         &pk.fixed_values,
         &instance.instance_values,
         beta,
@@ -199,7 +208,7 @@ where
     let logup_polys_maps = logup_multiplicities
         .into_par_iter()
         .zip(logup_blindings.into_par_iter())
-        .map(|(lookup, blindings)| lookup.compute_logderivative(pk, beta, blindings))
+        .map(|(lookup, blindings)| lookup.compute_logderivative(pk, theta, beta, blindings))
         .collect::<Result<Vec<_>, Error>>()?
         .into_par_iter()
         .map(|c| {
@@ -237,7 +246,7 @@ where
         let p = trash.compute_trash_poly(
             domain,
             trash_challenge,
-            &advice.advice_polys,
+            phase1_committed.polys_of(&advice_labels),
             &pk.fixed_values,
             &instance.instance_values,
         );
@@ -258,19 +267,12 @@ where
         instance_values,
     } = instance;
 
-    let advice_polys: Vec<_> = advice
-        .advice_polys
-        .into_par_iter()
-        .map(|p| domain.lagrange_to_coeff(p))
-        .collect();
-
     let domain = pk.vk.get_domain();
 
     let phase1_committed = phase1_committed.into_coeff(domain);
     let phase2_committed = phase2_committed.into_coeff(domain);
 
     Ok(ProverTrace {
-        advice_polys,
         instance_polys,
         instance_values,
         phase0_committed,
@@ -319,7 +321,6 @@ where
         compute_h_poly::<F, CS, T>(params, pk.get_vk().get_domain(), nu_poly, transcript)?;
 
     let ProverTrace {
-        advice_polys,
         instance_polys,
         phase0_committed,
         phase1_committed,
@@ -336,28 +337,27 @@ where
     let domain = pk.vk.get_domain();
     let cs = pk.vk.cs();
 
+    let x_rotations: BTreeMap<Rotation, F> = argument::rotations(cs)
+        .into_iter()
+        .map(|rotation| (rotation, domain.rotate_omega(x, rotation)))
+        .collect();
+
     let Evals {
         fixed_evals,
         instance_evals,
-        advice_evals,
-        ..
     } = write_evals_to_transcript(
         pk,
         nb_committed_instances,
         &instance_polys,
-        &advice_polys,
-        x,
+        &x_rotations,
         transcript,
     )?;
 
-    let x_next = domain.rotate_omega(x, Rotation::next());
-    let x_last = domain.rotate_omega(x, Rotation(-((cs.blinding_factors() + 1) as i32)));
+    let phase0_evaluated = phase0_committed.evaluate(cs, &x_rotations, transcript)?;
 
-    let phase0_evaluated = phase0_committed.evaluate(cs, x, x_next, x_last, transcript)?;
+    let phase1_evaluated = phase1_committed.evaluate(cs, &x_rotations, transcript)?;
 
-    let phase1_evaluated = phase1_committed.evaluate(cs, x, x_next, x_last, transcript)?;
-
-    let phase2_evaluated = phase2_committed.evaluate(cs, x, x_next, x_last, transcript)?;
+    let phase2_evaluated = phase2_committed.evaluate(cs, &x_rotations, transcript)?;
 
     // Partially evaluate batched identities (without fixed columns
     // corresponding to simple, multiplicative selectors)
@@ -367,7 +367,6 @@ where
         &pk.vk,
         &fixed_evals,
         &instance_evals,
-        &advice_evals,
         &phase0_evaluated.evals_map,
         &phase1_evaluated.evals_map,
         &phase2_evaluated.evals_map,
@@ -393,11 +392,10 @@ where
         pk,
         nb_committed_instances,
         &instance_polys,
-        &advice_polys,
         &phase0_evaluated,
         &phase1_evaluated,
         &phase2_evaluated,
-        x,
+        &x_rotations,
         &lin_poly_non_constant_part,
     );
 
@@ -520,26 +518,16 @@ where
     })
 }
 
-pub(super) fn parse_advices<F, CS, ConcreteCircuit, T>(
-    params: &CS::Parameters,
+pub(super) fn parse_advices<F, CS, ConcreteCircuit>(
     pk: &ProvingKey<F, CS>,
     circuit: &ConcreteCircuit,
     instances: &[&[F]],
-    transcript: &mut T,
     rng: &mut (impl RngCore + CryptoRng),
-) -> Result<AdviceSingle<F, LagrangeCoeff>, Error>
+) -> Result<Vec<Polynomial<F, LagrangeCoeff>>, Error>
 where
-    F: WithSmallOrderMulGroup<3> + Sampleable<T::Hash>,
+    F: WithSmallOrderMulGroup<3>,
     CS: PolynomialCommitmentScheme<F>,
     ConcreteCircuit: Circuit<F>,
-    T: Transcript,
-    CS::Commitment: Hashable<T::Hash>,
-    F: WithSmallOrderMulGroup<3>
-        + Sampleable<T::Hash>
-        + Hashable<T::Hash>
-        + Hash
-        + Ord
-        + FromUniformBytes<64>,
 {
     let mut meta = ConstraintSystem::default();
     #[cfg(feature = "circuit-params")]
@@ -551,10 +539,6 @@ where
     // Selector optimizations cannot be applied here; use the ConstraintSystem
     // from the verification key.
     let meta = &pk.vk.cs;
-
-    let mut advice = AdviceSingle::<F, LagrangeCoeff> {
-        advice_polys: vec![domain.empty_lagrange(); meta.num_advice_columns],
-    };
 
     let unusable_rows_start = domain.n as usize - (meta.blinding_factors() + 1);
 
@@ -583,34 +567,22 @@ where
         pk.region_starts.as_deref(),
     )?;
 
-    let mut advice_values = batch_invert_rational::<F>(witness.advice);
+    let mut advice_polys = batch_invert_rational::<F>(witness.advice);
 
-    for (i, advice_values) in advice_values.iter_mut().enumerate() {
+    for (i, advice_polys) in advice_polys.iter_mut().enumerate() {
         if !witness.unblinded_advice.contains(&i) {
-            for cell in &mut advice_values[unusable_rows_start..] {
+            for cell in &mut advice_polys[unusable_rows_start..] {
                 *cell = F::random(&mut *rng);
             }
         } else {
             #[cfg(debug_assertions)]
-            for cell in &advice_values[unusable_rows_start..] {
+            for cell in &advice_polys[unusable_rows_start..] {
                 assert_eq!(*cell, F::ZERO);
             }
         }
     }
 
-    let advice_commitments: Vec<_> = advice_values
-        .par_iter()
-        .enumerate()
-        .map(|(i, poly)| CS::commit(params, poly, PolynomialLabel::Advice(i)))
-        .collect();
-
-    for commitment in &advice_commitments {
-        transcript.write(commitment)?;
-    }
-
-    advice.advice_polys = advice_values;
-
-    Ok(advice)
+    Ok(advice_polys)
 }
 
 pub(super) fn compute_nu_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>>(
@@ -618,7 +590,6 @@ pub(super) fn compute_nu_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommit
     trace: &ProverTrace<'_, F>,
 ) -> Polynomial<F, ExtendedLagrangeCoeff> {
     let ProverTrace {
-        advice_polys,
         instance_polys,
         phase1_committed,
         phase2_committed,
@@ -631,7 +602,8 @@ pub(super) fn compute_nu_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommit
     } = &trace;
     let domain = pk.vk.get_domain();
     // Calculate the advice and instance cosets
-    let advice_cosets: Vec<Polynomial<F, ExtendedLagrangeCoeff>> = advice_polys
+    let advice_cosets: Vec<Polynomial<F, ExtendedLagrangeCoeff>> = phase1_committed
+        .polys_of(&pk.vk.cs.advice_labels())
         .par_iter()
         .map(|poly| domain.coeff_to_extended(poly.clone()))
         .collect();
@@ -773,15 +745,13 @@ where
 {
     pub(crate) fixed_evals: Vec<F>,
     pub(crate) instance_evals: Vec<F>,
-    pub(crate) advice_evals: Vec<F>,
 }
 
 pub(super) fn write_evals_to_transcript<F, CS, T>(
     pk: &ProvingKey<F, CS>,
     nb_committed_instances: usize,
     instance_polys: &[Polynomial<F, Coeff>],
-    advice_polys: &[Polynomial<F, Coeff>],
-    x: F,
+    x_rotations: &BTreeMap<Rotation, F>,
     transcript: &mut T,
 ) -> Result<Evals<F>, Error>
 where
@@ -789,7 +759,6 @@ where
     CS: PolynomialCommitmentScheme<F>,
     T: Transcript,
 {
-    let domain = &pk.vk.domain;
     let meta = &pk.vk.cs;
 
     // Batch-evaluate all polynomials with outer parallelism and sequential
@@ -798,17 +767,7 @@ where
     let instance_evals: Vec<F> = meta
         .instance_queries
         .par_iter()
-        .map(|&(column, at)| {
-            eval_polynomial_seq(&instance_polys[column.index()], domain.rotate_omega(x, at))
-        })
-        .collect();
-
-    let advice_evals: Vec<F> = meta
-        .advice_queries
-        .par_iter()
-        .map(|&(column, at)| {
-            eval_polynomial_seq(&advice_polys[column.index()], domain.rotate_omega(x, at))
-        })
+        .map(|&(column, at)| eval_polynomial_seq(&instance_polys[column.index()], x_rotations[&at]))
         .collect();
 
     let fixed_evals: Vec<F> = meta
@@ -819,7 +778,7 @@ where
             if meta.has_simple_selector_col(col_idx) {
                 F::ONE
             } else {
-                eval_polynomial_seq(&pk.fixed_polys[col_idx], domain.rotate_omega(x, at))
+                eval_polynomial_seq(&pk.fixed_polys[col_idx], x_rotations[&at])
             }
         })
         .collect();
@@ -831,10 +790,6 @@ where
         }
     }
 
-    for eval in &advice_evals {
-        transcript.write(eval)?;
-    }
-
     for (eval, &(column, _)) in fixed_evals.iter().zip(meta.fixed_queries.iter()) {
         if !meta.has_simple_selector_col(column.index()) {
             transcript.write(eval)?;
@@ -844,7 +799,6 @@ where
     Ok(Evals {
         fixed_evals,
         instance_evals,
-        advice_evals,
     })
 }
 
@@ -857,27 +811,24 @@ pub(super) fn compute_queries<
     pk: &'a ProvingKey<F, CS>,
     nb_committed_instances: usize,
     instance_polys: &'a [Polynomial<F, Coeff>],
-    advice_polys: &'a [Polynomial<F, Coeff>],
     phase0_evals: &'a argument::prover::Evaluated<'a, F>,
     phase1_evals: &'a argument::prover::Evaluated<'a, F>,
     phase2_evals: &'a argument::prover::Evaluated<'a, F>,
-    x: F,
+    x_rotations: &'a BTreeMap<Rotation, F>,
     lin_poly_non_constant_part: &'a Polynomial<F, Coeff>,
 ) -> Vec<ProverQuery<'a, F>> {
-    let domain = pk.vk.get_domain();
+    // The multi-open scales the first commitment by 1, which is best spent on
+    // one read from the proof: the phase-0 commitments are known in advance and
+    // a committed instance may be a constant, so both go after phases 1 and 2.
     iter::empty()
-        .chain(pk.vk.cs.advice_queries.iter().map(move |&(column, at)| {
-            ProverQuery::new(
-                domain.rotate_omega(x, at),
-                &advice_polys[column.index()],
-                PolynomialLabel::Advice(column.index()),
-            )
-        }))
+        .chain(phase1_evals.open())
+        .chain(phase2_evals.open())
+        .chain(phase0_evals.open())
         .chain(
             pk.vk.cs.instance_queries.iter().filter_map(move |&(column, at)| {
                 if column.index() < nb_committed_instances {
                     Some(ProverQuery::new(
-                        domain.rotate_omega(x, at),
+                        x_rotations[&at],
                         &instance_polys[column.index()],
                         PolynomialLabel::CommittedInstance(column.index()),
                     ))
@@ -886,9 +837,6 @@ pub(super) fn compute_queries<
                 }
             }),
         )
-        .chain(phase0_evals.open())
-        .chain(phase1_evals.open())
-        .chain(phase2_evals.open())
         .chain(
             pk.vk
                 .cs
@@ -898,14 +846,14 @@ pub(super) fn compute_queries<
                 .filter(|(col, _)| !pk.vk.cs.has_simple_selector_col(col.index()))
                 .map(|&(column, at)| {
                     ProverQuery::new(
-                        domain.rotate_omega(x, at),
+                        x_rotations[&at],
                         &pk.fixed_polys[column.index()],
                         PolynomialLabel::Fixed(column.index()),
                     )
                 }),
         )
         .chain(iter::once(ProverQuery::new(
-            domain.rotate_omega(x, Rotation::cur()),
+            x_rotations[&Rotation::cur()],
             lin_poly_non_constant_part,
             PolynomialLabel::Linearization,
         )))
@@ -916,11 +864,6 @@ pub(super) fn compute_queries<
 pub(super) struct InstanceSingle<F: PrimeField> {
     pub instance_values: Vec<Polynomial<F, LagrangeCoeff>>,
     pub instance_polys: Vec<Polynomial<F, Coeff>>,
-}
-
-#[derive(Clone)]
-pub(super) struct AdviceSingle<F: PrimeField, B: PolynomialRepresentation> {
-    pub advice_polys: Vec<Polynomial<F, B>>,
 }
 
 struct WitnessCollection<'a, F: Field> {

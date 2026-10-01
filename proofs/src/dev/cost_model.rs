@@ -237,27 +237,25 @@ pub fn circuit_model_with<F: Ord + Field + FromUniformBytes<64>>(
 
     let nb_perm_chunks = o.permutation.num_sets();
 
-    // The polynomials committed to in the proof are split over the two argument
-    // phases: every multiplicities polynomial goes in the phase1 group, and
-    // every aggregator, helper, trash and permutation accumulator polynomial in
-    // the phase2 group. Each phase is a single commitment group, whatever the
-    // number of arguments feeding it. (The permutation polynomials themselves
-    // belong to the phase0 group, which is committed to in the verifying key
-    // and so costs no proof bytes.)
-    let nb_phase1_polys = o.lookup.len();
+    // The polynomials committed to in the proof are split over two phases:
+    // every advice column and multiplicities polynomial goes in the phase1
+    // group, and every aggregator, helper, trash and permutation accumulator
+    // polynomial in the phase2 group. Each phase is a single commitment group,
+    // whatever the number of columns or arguments feeding it. (The permutation
+    // polynomials themselves belong to the phase0 group, which is committed to
+    // in the verifying key and so costs no proof bytes.)
+    let nb_phase1_polys = o.advice.len() + o.lookup.len();
     let nb_phase2_polys =
         o.lookup.iter().map(|l| l.num_chunks + 1).sum::<usize>() + o.trash.len() + nb_perm_chunks;
 
     // PLONK:
-    // - commit(1) bytes per advice commitment, each written on its own
     // - scalar bytes per advice column per query
     // - scalar bytes per committed instance column per query
     // - scalar bytes per fixed column per query
     // - scalar bytes per permutation column
     // - 3*scalar per permutation chunk (the last chunk has 2)
     // - The two argument phase groups, plus scalar bytes per evaluation they hold
-    let plonk = o.advice.len() * commit(1)
-        + o.advice.iter().map(|p| p.rotations.len() * scalar).sum::<usize>()
+    let plonk = o.advice.iter().map(|p| p.rotations.len() * scalar).sum::<usize>()
         + o.instance
             .iter()
             .take(o.nb_committed_instances)
