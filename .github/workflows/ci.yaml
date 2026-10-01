@@ -95,33 +95,11 @@ jobs:
         with:
           package: midnight-zk-stdlib
           args: --release --test serialization -- --test-threads=1
-
-  test-vk-consistency:
-    needs: download-srs
-    if: github.event.pull_request.draft == false
-    name: Test VK consistency
-    runs-on: ubuntu-latest-16-core-x64
-
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          persist-credentials: false
-      - name: Restore SRS from cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-        with:
-          path: zk_stdlib/examples/assets/bls_filecoin_2p19
-          key: fixed-srs-cache
-
-      - uses: ./.github/actions/cargo-test
-        with:
-          package: midnight-zk-stdlib
-          args: --release -- --ignored
-
       - name: Check for changes in goldenfiles/examples.
         run: |
           if ! git diff --quiet -- zk_stdlib/goldenfiles/examples; then
             echo "Files in zk_stdlib/goldenfiles/examples have changed"
-            echo "Run "cargo test --release -- --ignored" locally and commit the changes"
+            echo 'Run "cargo test -p midnight-zk-stdlib --release --test check_vks" locally and commit the changes'
             git diff -- zk_stdlib/goldenfiles/examples
             exit 1
           else
