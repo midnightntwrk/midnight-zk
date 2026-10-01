@@ -67,7 +67,7 @@ type VerifyingKey<S> =
 pub struct AssignedVk<S: SelfEmulation, PCS: InCircuitPCS<S>> {
     domain: EvaluationDomain<S::F>,
     fixed_commitments: Vec<PCS::AssignedCommitment>,
-    fixed_perm_commitment: PCS::AssignedCommitment,
+    phase0_commitment: PCS::AssignedCommitment,
     cs: ConstraintSystem<S::F>,
     cs_degree: usize,
     transcript_repr: AssignedNative<S::F>,
@@ -123,7 +123,7 @@ pub fn fixed_bases<S: SelfEmulation>(vk: &VerifyingKey<S>) -> BTreeMap<Polynomia
 
     // The permutation polynomials are committed to as one group, in the labels'
     // order, so the i-th point of that commitment is `PermutationFixed(i)`.
-    for (i, com) in vk.fixed_perm_commitment().0.iter().enumerate() {
+    for (i, com) in vk.phase0_commitment().0.iter().enumerate() {
         fixed_bases.insert(PolynomialLabel::PermutationFixed(i), *com.as_point());
     }
 

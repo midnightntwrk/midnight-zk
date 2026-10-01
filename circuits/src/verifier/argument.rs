@@ -95,16 +95,14 @@ pub(crate) struct Committed<S: SelfEmulation, PCS: InCircuitPCS<S>> {
     polynomial_labels: BTreeSet<PolynomialLabel>,
 }
 
-/// Builds the group of `labels` from the fixed group commitment of the absorbed
-/// verifying key, which binds it to the transcript as reading a commitment from
-/// the proof does.
+/// Builds the fixed group of the absorbed verifying key, which binds it to the
+/// transcript as reading a commitment from the proof does.
 pub(crate) fn committed_from_key<S: SelfEmulation, PCS: InCircuitPCS<S>>(
     vk: &AbsorbedVk<'_, S, PCS>,
-    labels: &[PolynomialLabel],
 ) -> Committed<S, PCS> {
     Committed {
         commitment: vk.fixed_group_commitment().clone(),
-        polynomial_labels: BTreeSet::from_iter(labels.iter().cloned()),
+        polynomial_labels: BTreeSet::from_iter(vk.fixed_group_labels()),
     }
 }
 

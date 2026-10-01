@@ -62,7 +62,7 @@ use crate::poly::{PolynomialLabel, commitment::PolynomialCommitmentScheme};
 pub struct VerifyingKey<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
     domain: EvaluationDomain<F>,
     fixed_commitments: Vec<CS::Commitment>,
-    fixed_perm_commitment: CS::Commitment,
+    phase0_commitment: CS::Commitment,
     cs: ConstraintSystem<F>,
     /// Cached maximum degree of `cs` (which doesn't change after construction).
     cs_degree: usize,
@@ -103,7 +103,7 @@ where
         for commitment in &self.fixed_commitments {
             commitment.write(writer, format)?;
         }
-        self.fixed_perm_commitment.write(writer, format)?;
+        self.phase0_commitment.write(writer, format)?;
 
         Ok(())
     }
@@ -185,19 +185,14 @@ where
             })
             .collect::<Result<_, _>>()?;
 
-        let fixed_perm_com =
+        let phase0_com =
             CS::deserialize_commitment(reader, format, &cs.permutation.polynomial_labels())?;
 
         // we still need to replace selectors with fixed Expressions in `cs`
         let fake_selectors = vec![vec![]; cs.num_selectors];
         let (cs, _) = cs.directly_convert_selectors_to_fixed(fake_selectors);
 
-        Ok(Self::from_parts(
-            domain,
-            fixed_commitments,
-            fixed_perm_com,
-            cs,
-        ))
+        Ok(Self::from_parts(domain, fixed_commitments, phase0_com, cs))
     }
 
     /// Writes a verifying key to a vector of bytes using [`Self::write`].
@@ -231,13 +226,13 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> VerifyingK
 
         HEADER_BYTES
             + (self.fixed_commitments.iter().map(|c| c.byte_length(format)).sum::<usize>())
-            + self.fixed_perm_commitment.byte_length(format)
+            + self.phase0_commitment.byte_length(format)
     }
 
     fn from_parts(
         domain: EvaluationDomain<F>,
         fixed_commitments: Vec<CS::Commitment>,
-        fixed_perm_commitment: CS::Commitment,
+        phase0_commitment: CS::Commitment,
         cs: ConstraintSystem<F>,
     ) -> Self
     where
@@ -249,7 +244,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> VerifyingK
         let mut vk = Self {
             domain,
             fixed_commitments,
-            fixed_perm_commitment,
+            phase0_commitment,
             cs,
             cs_degree,
             // Temporary, this is not pinned.
@@ -273,7 +268,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> VerifyingK
         }
 
         buffer.extend_from_slice(&(vk.cs.permutation.columns.len() as u32).to_le_bytes());
-        vk.fixed_perm_commitment
+        vk.phase0_commitment
             .write(&mut buffer, SerdeFormat::RawBytesUnchecked)
             .expect("Failed to write to buffer - this is a bug.");
 
@@ -305,7 +300,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> VerifyingK
         PinnedVerificationKey {
             domain: self.domain.pinned(),
             fixed_commitments: &self.fixed_commitments,
-            fixed_perm_commitment: &self.fixed_perm_commitment,
+            phase0_commitment: &self.phase0_commitment,
             cs: self.cs.pinned(),
         }
     }
@@ -315,9 +310,10 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> VerifyingK
         &self.fixed_commitments
     }
 
-    /// The commitment to the fixed permutation polynomials, as one group.
-    pub fn fixed_perm_commitment(&self) -> &CS::Commitment {
-        &self.fixed_perm_commitment
+    /// The commitment to the phase-0 group: the fixed permutation polynomials,
+    /// as one group.
+    pub fn phase0_commitment(&self) -> &CS::Commitment {
+        &self.phase0_commitment
     }
 
     /// Returns `ConstraintSystem`
@@ -339,7 +335,7 @@ pub struct PinnedVerificationKey<'a, F: PrimeField, CS: PolynomialCommitmentSche
     domain: PinnedEvaluationDomain<'a, F>,
     cs: PinnedConstraintSystem<'a, F>,
     fixed_commitments: &'a Vec<CS::Commitment>,
-    fixed_perm_commitment: &'a CS::Commitment,
+    phase0_commitment: &'a CS::Commitment,
 }
 /// This is a proving key which allows for the creation of proofs for a
 /// particular circuit.
@@ -352,7 +348,9 @@ pub struct ProvingKey<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
     pub(crate) fixed_values: Vec<Polynomial<F, LagrangeCoeff>>,
     pub(crate) fixed_polys: Vec<Polynomial<F, Coeff>>,
     pub(crate) fixed_cosets: Vec<Polynomial<F, ExtendedLagrangeCoeff>>,
-    pub(crate) fixed_perm_polys: argument::prover::KeyGroup<F>,
+    /// The phase-0 group: the fixed permutation polynomials, in coefficient
+    /// form, whose commitment the verifying key holds.
+    pub(crate) phase0_polys: argument::prover::KeyGroup<F>,
     pub(crate) sigmas: permutation::Sigmas<F>,
     pub(crate) ev: Evaluator<F>,
     /// Region layout captured during keygen, consumed during proving to skip
@@ -372,7 +370,7 @@ pub struct ProvingKey<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
 ///
 /// Panics if `values` does not hold one polynomial per column of the
 /// permutation argument.
-pub(in crate::plonk) fn build_fixed_perm_polys<F: WithSmallOrderMulGroup<3>>(
+pub(in crate::plonk) fn build_phase0_polys<F: WithSmallOrderMulGroup<3>>(
     domain: &EvaluationDomain<F>,
     cs: &ConstraintSystem<F>,
     vk_repr: F,
@@ -484,8 +482,8 @@ where
                 ),
             ));
         }
-        let (fixed_perm_polys, sigmas) =
-            build_fixed_perm_polys(&vk.domain, &vk.cs, vk.transcript_repr, permutations);
+        let (phase0_polys, sigmas) =
+            build_phase0_polys(&vk.domain, &vk.cs, vk.transcript_repr, permutations);
         let ev = Evaluator::new(vk.cs());
         Ok(Self {
             vk,
@@ -495,7 +493,7 @@ where
             fixed_values,
             fixed_polys,
             fixed_cosets,
-            fixed_perm_polys,
+            phase0_polys,
             sigmas,
             ev,
             // The region layout is not serialized: the first proof produced
@@ -558,7 +556,7 @@ pub(crate) fn partially_evaluate_identities<'a, F, CS>(
     fixed_evals: &'a [F],
     instance_evals: &'a [F],
     advice_evals: &'a [F],
-    fixed_perm_evals: &BTreeMap<PolynomialLabel, Vec<argument::Evaluation<F>>>,
+    phase0_evals: &BTreeMap<PolynomialLabel, Vec<argument::Evaluation<F>>>,
     phase1_evals: &BTreeMap<PolynomialLabel, Vec<argument::Evaluation<F>>>,
     phase2_evals: &BTreeMap<PolynomialLabel, Vec<argument::Evaluation<F>>>,
     x: F,
@@ -610,7 +608,7 @@ where
             expressions(
                 vk,
                 &vk.cs.permutation,
-                fixed_perm_evals,
+                phase0_evals,
                 phase2_evals,
                 advice_evals,
                 fixed_evals,

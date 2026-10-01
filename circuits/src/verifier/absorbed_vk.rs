@@ -13,7 +13,7 @@
 
 //! An assigned verifying key that has been absorbed into a transcript.
 
-use midnight_proofs::{circuit::Layouter, plonk::Error};
+use midnight_proofs::{circuit::Layouter, plonk::Error, poly::PolynomialLabel};
 
 use super::{AssignedVk, SelfEmulation, pcs::InCircuitPCS, transcript_gadget::TranscriptGadget};
 
@@ -35,7 +35,13 @@ impl<'a, S: SelfEmulation, PCS: InCircuitPCS<S>> AbsorbedVk<'a, S, PCS> {
     /// this is to be generalized once other groups are committed to in the
     /// key.
     pub(crate) fn fixed_group_commitment(&self) -> &'a PCS::AssignedCommitment {
-        &self.0.fixed_perm_commitment
+        &self.0.phase0_commitment
+    }
+
+    /// The labels of the polynomials committed to by
+    /// [`Self::fixed_group_commitment`].
+    pub(crate) fn fixed_group_labels(&self) -> Vec<PolynomialLabel> {
+        self.0.cs.permutation().polynomial_labels()
     }
 }
 

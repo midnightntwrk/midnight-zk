@@ -18,16 +18,12 @@ pub struct Committed<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
 }
 
 impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> Committed<F, CS> {
-    /// Builds the group of `labels` from the fixed group commitment of the
-    /// absorbed verifying key, which binds it to the transcript as reading a
-    /// commitment from the proof does.
-    pub(crate) fn from_key(
-        vk: &AbsorbedVk<'_, F, CS>,
-        labels: &[PolynomialLabel],
-    ) -> Committed<F, CS> {
+    /// Builds the fixed group of the absorbed verifying key, which binds it to
+    /// the transcript as reading a commitment from the proof does.
+    pub(crate) fn from_key(vk: &AbsorbedVk<'_, F, CS>) -> Committed<F, CS> {
         Committed {
             commitment: vk.fixed_group_commitment().clone(),
-            polynomial_labels: BTreeSet::from_iter(labels.iter().cloned()),
+            polynomial_labels: BTreeSet::from_iter(vk.fixed_group_labels()),
         }
     }
 

@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use ff::{PrimeField, WithSmallOrderMulGroup};
-use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 use crate::{
     plonk::{
@@ -22,16 +22,9 @@ pub(crate) struct Committed<F: PrimeField, B: PolynomialRepresentation> {
 }
 
 impl<F: PrimeField, B: PolynomialRepresentation> Committed<F, B> {
-    /// The polynomial the group holds under `label`, if any.
-    pub(crate) fn poly(&self, label: &PolynomialLabel) -> Option<&Polynomial<F, B>> {
-        self.polys_map.get(label)
-    }
-
-    /// The group's labeled polynomials, in parallel.
-    pub(crate) fn par_polys(
-        &self,
-    ) -> impl ParallelIterator<Item = (&PolynomialLabel, &Polynomial<F, B>)> {
-        self.polys_map.par_iter()
+    /// The group's polynomials, by label.
+    pub(crate) fn polys_map(&self) -> &BTreeMap<PolynomialLabel, Polynomial<F, B>> {
+        &self.polys_map
     }
 }
 

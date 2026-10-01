@@ -6,7 +6,7 @@ use ff::PrimeField;
 
 use super::VerifyingKey;
 use crate::{
-    poly::commitment::PolynomialCommitmentScheme,
+    poly::{PolynomialLabel, commitment::PolynomialCommitmentScheme},
     transcript::{Hashable, Transcript},
 };
 
@@ -37,7 +37,13 @@ impl<'a, F: PrimeField, CS: PolynomialCommitmentScheme<F>> AbsorbedVk<'a, F, CS>
     /// this is to be generalized once other groups are committed to in the
     /// key.
     pub(crate) fn fixed_group_commitment(&self) -> &'a CS::Commitment {
-        &self.0.fixed_perm_commitment
+        &self.0.phase0_commitment
+    }
+
+    /// The labels of the polynomials committed to by
+    /// [`Self::fixed_group_commitment`].
+    pub(crate) fn fixed_group_labels(&self) -> Vec<PolynomialLabel> {
+        self.0.cs.permutation.polynomial_labels()
     }
 }
 

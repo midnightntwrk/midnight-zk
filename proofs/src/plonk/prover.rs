@@ -101,7 +101,7 @@ where
 
     // Hash verification key into transcript
     let vk_absorbed = pk.vk.absorb_into(transcript)?;
-    let fixed_perm_committed = pk.fixed_perm_polys.committed(&vk_absorbed);
+    let phase0_committed = pk.phase0_polys.committed(&vk_absorbed);
 
     let domain = &pk.vk.domain;
 
@@ -273,7 +273,7 @@ where
         advice_polys,
         instance_polys,
         instance_values,
-        fixed_perm_committed,
+        phase0_committed,
         phase1_committed,
         phase2_committed,
         beta,
@@ -321,7 +321,7 @@ where
     let ProverTrace {
         advice_polys,
         instance_polys,
-        fixed_perm_committed,
+        phase0_committed,
         phase1_committed,
         phase2_committed,
         beta,
@@ -353,7 +353,7 @@ where
     let x_next = domain.rotate_omega(x, Rotation::next());
     let x_last = domain.rotate_omega(x, Rotation(-((cs.blinding_factors() + 1) as i32)));
 
-    let fixed_perm_evaluated = fixed_perm_committed.evaluate(cs, x, x_next, x_last, transcript)?;
+    let phase0_evaluated = phase0_committed.evaluate(cs, x, x_next, x_last, transcript)?;
 
     let phase1_evaluated = phase1_committed.evaluate(cs, x, x_next, x_last, transcript)?;
 
@@ -368,7 +368,7 @@ where
         &fixed_evals,
         &instance_evals,
         &advice_evals,
-        &fixed_perm_evaluated.evals_map,
+        &phase0_evaluated.evals_map,
         &phase1_evaluated.evals_map,
         &phase2_evaluated.evals_map,
         x,
@@ -394,7 +394,7 @@ where
         nb_committed_instances,
         &instance_polys,
         &advice_polys,
-        &fixed_perm_evaluated,
+        &phase0_evaluated,
         &phase1_evaluated,
         &phase2_evaluated,
         x,
@@ -858,7 +858,7 @@ pub(super) fn compute_queries<
     nb_committed_instances: usize,
     instance_polys: &'a [Polynomial<F, Coeff>],
     advice_polys: &'a [Polynomial<F, Coeff>],
-    fixed_perm_evals: &'a argument::prover::Evaluated<'a, F>,
+    phase0_evals: &'a argument::prover::Evaluated<'a, F>,
     phase1_evals: &'a argument::prover::Evaluated<'a, F>,
     phase2_evals: &'a argument::prover::Evaluated<'a, F>,
     x: F,
@@ -886,7 +886,7 @@ pub(super) fn compute_queries<
                 }
             }),
         )
-        .chain(fixed_perm_evals.open())
+        .chain(phase0_evals.open())
         .chain(phase1_evals.open())
         .chain(phase2_evals.open())
         .chain(

@@ -103,7 +103,7 @@ impl Argument {
 ///
 /// The polynomials themselves belong to the proving key's phase-0 group, which
 /// holds them in coefficient form; these are derived from it and cached beside
-/// it by [`crate::plonk::build_fixed_perm_polys`].
+/// it by [`crate::plonk::build_phase0_polys`].
 #[derive(Debug)]
 pub(crate) struct Sigmas<F: PrimeField> {
     /// Evaluations over the domain, read row-wise when computing the
@@ -125,7 +125,7 @@ pub(crate) struct Sigmas<F: PrimeField> {
 pub(in crate::plonk) fn expressions<F: PrimeField, CS: PolynomialCommitmentScheme<F>>(
     vk: &plonk::VerifyingKey<F, CS>,
     p: &Argument,
-    fixed_perm_evals: &BTreeMap<PolynomialLabel, Vec<argument::Evaluation<F>>>,
+    phase0_evals: &BTreeMap<PolynomialLabel, Vec<argument::Evaluation<F>>>,
     phase2_evals: &BTreeMap<PolynomialLabel, Vec<argument::Evaluation<F>>>,
     advice_evals: &[F],
     fixed_evals: &[F],
@@ -145,7 +145,7 @@ pub(in crate::plonk) fn expressions<F: PrimeField, CS: PolynomialCommitmentSchem
     }
 
     let permutation_evals: Vec<F> = (0..p.columns.len())
-        .map(|i| fixed_perm_evals[&PolynomialLabel::PermutationFixed(i)][0].eval())
+        .map(|i| phase0_evals[&PolynomialLabel::PermutationFixed(i)][0].eval())
         .collect();
 
     // Per set: z_i(x), z_i(omega x) and, for every set but the last,

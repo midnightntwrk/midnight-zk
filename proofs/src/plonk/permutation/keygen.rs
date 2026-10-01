@@ -105,7 +105,7 @@ impl Assembly {
         Ok(())
     }
 
-    pub(crate) fn build_fixed_perm_commitment<
+    pub(crate) fn build_phase0_commitment<
         F: WithSmallOrderMulGroup<3>,
         CS: PolynomialCommitmentScheme<F>,
     >(

@@ -50,10 +50,7 @@ where
 
     // Hash verification key into transcript.
     let vk_absorbed = vk.absorb_into(transcript)?;
-    let fixed_perm_committed = argument::verifier::Committed::from_key(
-        &vk_absorbed,
-        &vk.cs.permutation.polynomial_labels(),
-    );
+    let phase0_committed = argument::verifier::Committed::from_key(&vk_absorbed);
 
     for commitment in committed_instances.iter() {
         transcript.common(commitment)?
@@ -117,7 +114,7 @@ where
 
     Ok(VerifierTrace {
         advice_commitments,
-        fixed_perm_committed,
+        phase0_committed,
         phase1_committed,
         phase2_committed,
         beta,
@@ -161,7 +158,7 @@ where
 
     let VerifierTrace {
         advice_commitments,
-        fixed_perm_committed,
+        phase0_committed,
         phase1_committed,
         phase2_committed,
         beta,
@@ -260,12 +257,12 @@ where
     let x_next = domain.rotate_omega(x, Rotation::next());
     let x_last = domain.rotate_omega(x, Rotation(-((cs.blinding_factors() + 1) as i32)));
 
-    let fixed_perm_evaluated = fixed_perm_committed.evaluate(cs, x, x_next, x_last, transcript)?;
+    let phase0_evaluated = phase0_committed.evaluate(cs, x, x_next, x_last, transcript)?;
 
     let phase1_evaluated = phase1_committed.evaluate(cs, x, x_next, x_last, transcript)?;
     let phase2_evaluated = phase2_committed.evaluate(cs, x, x_next, x_last, transcript)?;
 
-    let fixed_perm_evals = &fixed_perm_evaluated.evals_map;
+    let phase0_evals = &phase0_evaluated.evals_map;
     let phase1_evals = &phase1_evaluated.evals_map;
     let phase2_evals = &phase2_evaluated.evals_map;
 
@@ -276,7 +273,7 @@ where
         &fixed_evals,
         &instance_evals,
         &advice_evals,
-        fixed_perm_evals,
+        phase0_evals,
         phase1_evals,
         phase2_evals,
         x,
@@ -325,7 +322,7 @@ where
                 }
             },
         ))
-        .chain(fixed_perm_evaluated.queries())
+        .chain(phase0_evaluated.queries())
         .chain(phase1_evaluated.queries())
         .chain(phase2_evaluated.queries())
         .chain(

@@ -39,7 +39,7 @@ pub(crate) fn permutation_expressions<S: SelfEmulation>(
     layouter: &mut impl Layouter<S::F>,
     scalar_chip: &S::ScalarChip,
     cs: &ConstraintSystem<S::F>,
-    fixed_perm_evals_map: &BTreeMap<PolynomialLabel, Vec<Evaluation<S>>>,
+    phase0_evals_map: &BTreeMap<PolynomialLabel, Vec<Evaluation<S>>>,
     phase2_evals_map: &BTreeMap<PolynomialLabel, Vec<Evaluation<S>>>,
     advice_evals: &[AssignedNative<S::F>],
     fixed_evals: &[AssignedNative<S::F>],
@@ -83,14 +83,7 @@ pub(crate) fn permutation_expressions<S: SelfEmulation>(
     };
 
     let permutation_evals = (0..cs.permutation().columns.len())
-        .map(|i| {
-            eval_at::<S>(
-                fixed_perm_evals_map,
-                &PolynomialLabel::PermutationFixed(i),
-                0,
-            )
-            .cloned()
-        })
+        .map(|i| eval_at::<S>(phase0_evals_map, &PolynomialLabel::PermutationFixed(i), 0).cloned())
         .collect::<Result<Vec<_>, Error>>()?;
 
     // Enforce only for the first set.

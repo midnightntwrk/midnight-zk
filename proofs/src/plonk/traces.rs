@@ -15,7 +15,7 @@ pub struct ProverTrace<'a, F: PrimeField> {
     #[allow(dead_code)]
     // This field will be useful for split accumulation
     pub(crate) instance_values: Vec<Polynomial<F, LagrangeCoeff>>,
-    pub(crate) fixed_perm_committed: &'a argument::prover::Committed<F, Coeff>,
+    pub(crate) phase0_committed: &'a argument::prover::Committed<F, Coeff>,
     pub(crate) phase1_committed: argument::prover::Committed<F, Coeff>,
     pub(crate) phase2_committed: argument::prover::Committed<F, Coeff>,
     pub(crate) beta: F,
@@ -29,7 +29,7 @@ pub struct ProverTrace<'a, F: PrimeField> {
 #[derive(Debug)]
 pub struct VerifierTrace<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> {
     pub(crate) advice_commitments: Vec<PCS::Commitment>,
-    pub(crate) fixed_perm_committed: argument::verifier::Committed<F, PCS>,
+    pub(crate) phase0_committed: argument::verifier::Committed<F, PCS>,
     pub(crate) phase1_committed: argument::verifier::Committed<F, PCS>,
     pub(crate) phase2_committed: argument::verifier::Committed<F, PCS>,
     pub(crate) beta: F,

@@ -249,12 +249,12 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             .map(|i| PCS::fixed_commitment(&[PolynomialLabel::Fixed(i)]))
             .collect();
 
-        let fixed_perm_com = fixed_perm_commitment::<S, PCS>(&cs);
+        let phase0_com = phase0_commitment::<S, PCS>(&cs);
 
         let assigned_vk = AssignedVk {
             domain: domain.clone(),
             fixed_commitments,
-            fixed_perm_commitment: fixed_perm_com,
+            phase0_commitment: phase0_com,
             cs: cs.clone(),
             cs_degree: cs.degree(),
             transcript_repr,
@@ -279,12 +279,12 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             .map(|i| PCS::fixed_commitment(&[PolynomialLabel::Fixed(i)]))
             .collect();
 
-        let fixed_perm_com = fixed_perm_commitment::<S, PCS>(cs);
+        let phase0_com = phase0_commitment::<S, PCS>(cs);
 
         let assigned_vk = AssignedVk {
             domain: domain.clone(),
             fixed_commitments,
-            fixed_perm_commitment: fixed_perm_com,
+            phase0_commitment: phase0_com,
             cs: cs.clone(),
             cs_degree: cs.degree(),
             transcript_repr,
@@ -294,7 +294,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
     }
 }
 
-fn fixed_perm_commitment<S: SelfEmulation, PCS: InCircuitPCS<S>>(
+fn phase0_commitment<S: SelfEmulation, PCS: InCircuitPCS<S>>(
     cs: &ConstraintSystem<S::F>,
 ) -> PCS::AssignedCommitment {
     PCS::fixed_commitment(&cs.permutation().polynomial_labels())
@@ -336,8 +336,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
 
         // Hash verification key into transcript.
         let vk_absorbed = assigned_vk.absorb_into(layouter, &mut transcript)?;
-        let fixed_perm_committed =
-            argument::committed_from_key(&vk_absorbed, &cs.permutation().polynomial_labels());
+        let phase0_committed = argument::committed_from_key(&vk_absorbed);
 
         assigned_committed_instances
             .iter()
@@ -397,7 +396,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         Ok((
             VerifierTrace {
                 advice_commitments,
-                fixed_perm_committed,
+                phase0_committed,
                 phase1_committed,
                 phase2_committed,
                 beta,
@@ -522,7 +521,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
 
         let VerifierTrace {
             advice_commitments,
-            fixed_perm_committed,
+            phase0_committed,
             phase1_committed,
             phase2_committed,
             beta,
@@ -627,14 +626,14 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         let x_prev = self.scalar_chip.mul_by_constant(layouter, &x, omega_inv)?;
         let x_last = self.scalar_chip.mul_by_constant(layouter, &x, omega_last)?;
 
-        let fixed_perm_evaluated =
-            fixed_perm_committed.evaluate(cs, &x, &x_next, &x_last, layouter, &mut transcript)?;
+        let phase0_evaluated =
+            phase0_committed.evaluate(cs, &x, &x_next, &x_last, layouter, &mut transcript)?;
         let phase1_evaluated =
             phase1_committed.evaluate(cs, &x, &x_next, &x_last, layouter, &mut transcript)?;
         let phase2_evaluated =
             phase2_committed.evaluate(cs, &x, &x_next, &x_last, layouter, &mut transcript)?;
 
-        let fixed_perm_evals = &fixed_perm_evaluated.evals_map;
+        let phase0_evals = &phase0_evaluated.evals_map;
         let phase1_evals = &phase1_evaluated.evals_map;
         let phase2_evals = &phase2_evaluated.evals_map;
 
@@ -686,7 +685,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             layouter,
             &self.scalar_chip,
             cs,
-            fixed_perm_evals,
+            phase0_evals,
             phase2_evals,
             &advice_evals,
             &fixed_evals,
@@ -810,7 +809,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                     }
                 },
             ))
-            .chain(fixed_perm_evaluated.queries())
+            .chain(phase0_evaluated.queries())
             .chain(phase1_evaluated.queries())
             .chain(phase2_evaluated.queries())
             .chain(
