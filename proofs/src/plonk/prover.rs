@@ -817,7 +817,16 @@ pub(super) fn compute_queries<
     x_rotations: &'a BTreeMap<Rotation, F>,
     lin_poly_non_constant_part: &'a Polynomial<F, Coeff>,
 ) -> Vec<ProverQuery<'a, F>> {
+    // The multi-open scales the first commitment by 1, which is best spent on
+    // one read from the proof: the phase-0 commitments are known in advance and
+    // a committed instance may be a constant, so both go after phases 1 and 2.
+    //
+    // REVIEW-ONLY: With the instances or phase 0 first, the IVC example needs
+    // 1,963 more rows and no longer fits in k = 17.
     iter::empty()
+        .chain(phase1_evals.open())
+        .chain(phase2_evals.open())
+        .chain(phase0_evals.open())
         .chain(
             pk.vk.cs.instance_queries.iter().filter_map(move |&(column, at)| {
                 if column.index() < nb_committed_instances {
@@ -831,9 +840,6 @@ pub(super) fn compute_queries<
                 }
             }),
         )
-        .chain(phase0_evals.open())
-        .chain(phase1_evals.open())
-        .chain(phase2_evals.open())
         .chain(
             pk.vk
                 .cs
