@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 * Add `assign_without_subgroup_check` to `SelfEmulation` trait [#284](https://github.com/midnightntwrk/midnight-zk/pull/284)
 ### Changed
 * Follow the grouped verifying-key commitment in `compute_vk_hash` and in the in-circuit witnessing of the verifying-key points: the permutation polynomials are committed to as one group, read from `VerifyingKey::phase0_commitment`. The hash is unchanged, a group's hash input being its polynomials' inputs back to back [#537](https://github.com/midnightntwrk/midnight-zk/pull/537)
+* `IvcCircuit::new` takes a finalized constraint system, see `ConstraintSystem::into_finalized`. The IVC circuit and the multi-circuit aggregator finalize the constraint systems they configure [#546](https://github.com/midnightntwrk/midnight-zk/pull/546)
 * Migrate to Rust edition 2024; MSRV raised from 1.76 to 1.90. Both are now inherited from the workspace [#508](https://github.com/midnightntwrk/midnight-zk/pull/508)
 * Adapt to single-proof prover API [#375](https://github.com/midnightntwrk/midnight-zk/pull/375)
 * Adapt to new `ZkStdLib` curve accessors [#335](https://github.com/midnightntwrk/midnight-zk/pull/335)
@@ -34,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 ### Fixed
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 * Run 'prepare' function in-circuit for the multi-circuit aggregator [416](https://github.com/midnightntwrk/midnight-zk/pull/416)
+* The single-circuit aggregation example passes the finalized constraint system of the inner verifying key to `assign_fixed_vk`, instead of a constraint system that still has selectors, which made the in-circuit verifier panic [#546](https://github.com/midnightntwrk/midnight-zk/pull/546)
 
 ### Changed
 * Adapt `LightAggregator` to affine SRS storage [#350](https://github.com/midnightntwrk/midnight-zk/pull/350)

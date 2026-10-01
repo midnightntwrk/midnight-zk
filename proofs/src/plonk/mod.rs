@@ -188,11 +188,12 @@ where
         let phase0_com =
             CS::deserialize_commitment(reader, format, &cs.permutation.polynomial_labels())?;
 
-        // we still need to replace selectors with fixed Expressions in `cs`
-        let fake_selectors = vec![vec![]; cs.num_selectors];
-        let (cs, _) = cs.directly_convert_selectors_to_fixed(fake_selectors);
-
-        Ok(Self::from_parts(domain, fixed_commitments, phase0_com, cs))
+        Ok(Self::from_parts(
+            domain,
+            fixed_commitments,
+            phase0_com,
+            cs.into_finalized(),
+        ))
     }
 
     /// Writes a verifying key to a vector of bytes using [`Self::write`].

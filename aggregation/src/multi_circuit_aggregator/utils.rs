@@ -67,7 +67,7 @@ pub fn assign_as_public_inputs_and_hash_vk(
 ) -> Result<VkHashAndBases, Error> {
     let curve_chip = std_lib.bls12_381();
 
-    let nb_fixed = cs.num_fixed_columns() + cs.num_selectors();
+    let nb_fixed = cs.num_fixed_columns();
     let nb_perm = cs.permutation().columns.len();
 
     // Witness the VK commitment points.

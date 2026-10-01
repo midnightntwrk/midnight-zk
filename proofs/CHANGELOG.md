@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `commitment_byte_length` method on the `PolynomialCommitmentScheme` trait, defaulting to the per-commitment size times `n` and overridable for schemes that fold polynomials into a single proof element [#440](https://github.com/midnightntwrk/midnight-zk/pull/440)
 * `circuit_model_with` taking an explicit commitment-size closure [#440](https://github.com/midnightntwrk/midnight-zk/pull/440)
 * `Error::DuplicatedLabel`, returned when two polynomials of an argument group claim the same `PolynomialLabel` [#513](https://github.com/midnightntwrk/midnight-zk/pull/513)
+* `ConstraintSystem::into_finalized`, converting the selectors of a constraint system to fixed columns without their polynomials, as in the constraint system of a verifying key [#546](https://github.com/midnightntwrk/midnight-zk/pull/546)
 
 ### Fixed
 * Cost model: a circuit with no permutation columns no longer underflows when counting the permutation queries, and is no longer charged for an accumulator commitment and its evaluations, which the prover does not produce [#537](https://github.com/midnightntwrk/midnight-zk/pull/537)

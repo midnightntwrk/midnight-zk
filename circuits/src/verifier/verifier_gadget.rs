@@ -225,6 +225,9 @@ impl<S: SelfEmulation> VerifierGadget<S> {
 impl<S: SelfEmulation> VerifierGadget<S> {
     /// Assigns a verifying key as a public input. All the necessary information
     /// is required off-circuit, except for the `transcript_repr` value.
+    ///
+    /// `cs` must be finalized, i.e. its selectors must have been converted to
+    /// fixed columns, as in the constraint system of a verifying key.
     pub fn assign_vk_as_public_input<PCS: InCircuitPCS<S>>(
         &self,
         layouter: &mut impl Layouter<S::F>,
@@ -232,24 +235,20 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         cs: &ConstraintSystem<S::F>,
         transcript_repr_value: Value<S::F>,
     ) -> Result<AssignedVk<S, PCS>, Error> {
+        if cs.num_selectors() != 0 {
+            return Err(Error::Synthesis(
+                "the constraint system has selectors, it must be finalized".into(),
+            ));
+        }
+
         let transcript_repr: AssignedNative<S::F> =
             self.scalar_chip.assign_as_public_input(layouter, transcript_repr_value)?;
 
-        // We expect a finalized cs with no selectors, i.e. whose selectors have been
-        // converted into fixed columns. In the context of IVC, the constraint system
-        // might still contain selectors.
-        let cs = if cs.num_selectors() > 0 {
-            let selectors = vec![vec![false]; cs.num_selectors()];
-            cs.clone().directly_convert_selectors_to_fixed(selectors).0
-        } else {
-            cs.clone()
-        };
-
-        let fixed_commitments = (0..cs.num_fixed_columns() + cs.num_selectors())
+        let fixed_commitments = (0..cs.num_fixed_columns())
             .map(|i| PCS::fixed_commitment(&[PolynomialLabel::Fixed(i)]))
             .collect();
 
-        let phase0_com = phase0_commitment::<S, PCS>(&cs);
+        let phase0_com = phase0_commitment::<S, PCS>(cs);
 
         let assigned_vk = AssignedVk {
             domain: domain.clone(),
@@ -266,6 +265,9 @@ impl<S: SelfEmulation> VerifierGadget<S> {
     /// Assigns a verifying key as a constant. All the necessary information is
     /// available off-circuit, except for the `transcript_repr` which is
     /// "assigned fixed".
+    ///
+    /// `cs` must be finalized, i.e. its selectors must have been converted to
+    /// fixed columns, as in the constraint system of a verifying key.
     pub fn assign_fixed_vk<PCS: InCircuitPCS<S>>(
         &self,
         layouter: &mut impl Layouter<S::F>,
@@ -273,9 +275,15 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         cs: &ConstraintSystem<S::F>,
         transcript_repr_constant: S::F,
     ) -> Result<AssignedVk<S, PCS>, Error> {
+        if cs.num_selectors() != 0 {
+            return Err(Error::Synthesis(
+                "the constraint system has selectors, it must be finalized".into(),
+            ));
+        }
+
         let transcript_repr = self.scalar_chip.assign_fixed(layouter, transcript_repr_constant)?;
 
-        let fixed_commitments = (0..cs.num_fixed_columns() + cs.num_selectors())
+        let fixed_commitments = (0..cs.num_fixed_columns())
             .map(|i| PCS::fixed_commitment(&[PolynomialLabel::Fixed(i)]))
             .collect();
 
