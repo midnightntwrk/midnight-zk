@@ -292,28 +292,14 @@ where
     let width = table.len();
     assert_eq!(blinding_values.len(), n - usable_rows);
 
-    // The first `usable_rows` tuples of `columns`, row after row, so that each
-    // tuple is a contiguous slice that can key a hash map.
-    let rows = |columns: &[Polynomial<F, LagrangeCoeff>]| -> Vec<F> {
-        assert_eq!(
-            columns.len(),
-            width,
-            "an input and the table have different widths"
-        );
-        let mut rows = vec![F::ZERO; usable_rows * width];
-        parallelize(&mut rows, |chunk, start| {
-            for (k, cell) in chunk.iter_mut().enumerate() {
-                let (row, column) = ((start + k) / width, (start + k) % width);
-                *cell = columns[column][row];
-            }
-        });
-        rows
+    let tuple_at = |columns: &[Polynomial<F, LagrangeCoeff>], row: usize| -> Vec<F> {
+        columns.iter().map(|column| column[row]).collect()
     };
 
     // Count how many times each tuple appears in the table (active rows only)
-    let table_rows = rows(table);
+    let table_tuples: Vec<Vec<F>> = (0..usable_rows).map(|row| tuple_at(table, row)).collect();
     let mut table_counts: FxHashMap<&[F], u32> = FxHashMap::default();
-    for tuple in table_rows.chunks_exact(width) {
+    for tuple in table_tuples.iter() {
         *table_counts.entry(tuple).or_default() += 1;
     }
 
@@ -322,16 +308,17 @@ where
     let mut input_counts: FxHashMap<&[F], u32> =
         table_counts.keys().map(|tuple| (*tuple, 0)).collect();
     for input in values.iter() {
-        let input_rows = rows(input);
-        input_rows
-            .chunks_exact(width)
-            .zip(selector.iter())
-            .filter(|(_, sel)| !sel.is_zero_vartime())
-            .for_each(|(tuple, _)| {
-                *input_counts.get_mut(tuple).unwrap_or_else(|| {
-                    panic!("input tuple {tuple:?} not found in lookup table")
-                }) += 1;
-            });
+        assert_eq!(
+            input.len(),
+            width,
+            "an input and the table have different widths"
+        );
+        for row in (0..usable_rows).filter(|&row| !selector[row].is_zero_vartime()) {
+            let tuple = tuple_at(input, row);
+            *input_counts
+                .get_mut(tuple.as_slice())
+                .unwrap_or_else(|| panic!("input tuple {tuple:?} not found in lookup table")) += 1;
+        }
     }
 
     // Build vector of table counts for batch inversion (only for active table
@@ -339,7 +326,7 @@ where
     let mut table_count_inverses: Vec<F> = (0..n)
         .map(|i| {
             if i < usable_rows {
-                let tuple = &table_rows[i * width..(i + 1) * width];
+                let tuple = table_tuples[i].as_slice();
                 F::from(*table_counts.get(tuple).unwrap_or(&1) as u64)
             } else {
                 F::ONE // Random blinding factors will be applied later
@@ -355,7 +342,7 @@ where
         .enumerate()
         .map(|(i, table_count_inv)| {
             if i < usable_rows {
-                let tuple = &table_rows[i * width..(i + 1) * width];
+                let tuple = table_tuples[i].as_slice();
                 let input_count = *input_counts.get(tuple).unwrap_or(&0);
                 F::from(input_count as u64) * table_count_inv
             } else {
