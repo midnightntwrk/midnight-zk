@@ -342,7 +342,7 @@ where
         .map(|rotation| (rotation, domain.rotate_omega(x, rotation)))
         .collect();
 
-    let instance_evals = write_evals_to_transcript(
+    let instance_evals = write_instance_evals_to_transcript(
         pk,
         nb_committed_instances,
         &instance_polys,
@@ -733,7 +733,7 @@ fn blind_quotient_limbs<F: PrimeField>(quotient_limbs: &mut [Vec<F>]) {
     quotient_limbs[nr_limbs - 1].push(F::ZERO);
 }
 
-pub(super) fn write_evals_to_transcript<F, CS, T>(
+pub(super) fn write_instance_evals_to_transcript<F, CS, T>(
     pk: &ProvingKey<F, CS>,
     nb_committed_instances: usize,
     instance_polys: &[Polynomial<F, Coeff>],

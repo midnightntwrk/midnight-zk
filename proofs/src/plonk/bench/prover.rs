@@ -17,7 +17,7 @@ use crate::{
         logup, partially_evaluate_identities,
         prover::{
             compute_h_poly, compute_instances, compute_nu_poly, compute_queries, parse_advices,
-            write_evals_to_transcript,
+            write_instance_evals_to_transcript,
         },
         traces::ProverTrace,
     },
@@ -505,7 +505,7 @@ where
         b.iter_batched(
             || transcript.clone(),
             |mut t| {
-                let _ = write_evals_to_transcript(
+                let _ = write_instance_evals_to_transcript(
                     pk,
                     nb_committed_instances,
                     &instance_polys,
@@ -516,7 +516,7 @@ where
             criterion::BatchSize::SmallInput,
         )
     });
-    let instance_evals = write_evals_to_transcript(
+    let instance_evals = write_instance_evals_to_transcript(
         pk,
         nb_committed_instances,
         &instance_polys,
