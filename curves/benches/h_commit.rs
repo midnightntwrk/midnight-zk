@@ -4,9 +4,9 @@
 //! * "chunked"      : `m` MSMs of size `n`, all reusing the SAME `n` bases
 //!   (default mode), run in parallel like the prover does.
 //! * "single_blst"  : ONE MSM of size `m*n` over `m*n` distinct bases via blst
-//!   `multi_exp_affine` (only valid when m*n <= 2^19).
+//!   `multi_exp_affine` (the path `msm_specific` takes for G1 at every size).
 //! * "single_best"  : ONE MSM of size `m*n` over `m*n` distinct bases via
-//!   `msm_best` (the path `msm_specific` takes above 2^19).
+//!   `msm_best` (the generic path, kept as a reference point).
 //!
 //! Run with:  cargo bench --bench h_commit -p midnight-curves
 
@@ -72,14 +72,12 @@ fn bench(c: &mut Criterion) {
             })
         });
 
-        // Single via blst (what the prover does when total <= 2^19).
-        if total <= (2 << 18) {
-            group.bench_function(BenchmarkId::new("single_blst", &id), |b| {
-                b.iter(|| G1Affine::multi_exp_affine(&bases[..total], &coeffs[..total]))
-            });
-        }
+        // Single via blst (what the prover does for G1 at every size).
+        group.bench_function(BenchmarkId::new("single_blst", &id), |b| {
+            b.iter(|| G1Affine::multi_exp_affine(&bases[..total], &coeffs[..total]))
+        });
 
-        // Single via msm_best (what msm_specific falls back to above 2^19).
+        // Single via msm_best (generic path, no longer used by the prover for G1).
         group.bench_function(BenchmarkId::new("single_msm_best", &id), |b| {
             b.iter(|| msm_best(&coeffs[..total], &bases[..total]))
         });

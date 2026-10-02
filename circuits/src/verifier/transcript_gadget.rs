@@ -149,6 +149,9 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
     /// order the prover commits to them in, so the caller may list them in any
     /// order.
     ///
+    /// With no labels, nothing is read nor absorbed: the prover writes nothing
+    /// for a commitment to no polynomials.
+    ///
     /// # Warning
     ///
     /// The received points are not enforced to be in the prime-order subgroup.
@@ -157,10 +160,9 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
         layouter: &mut impl Layouter<S::F>,
         labels: &[PolynomialLabel],
     ) -> Result<AssignedKZGMultiCommitment<S>, Error> {
-        assert!(
-            !labels.is_empty(),
-            "cannot read a commitment to no polynomials"
-        );
+        if labels.is_empty() {
+            return Ok(AssignedKZGMultiCommitment(vec![]));
+        }
 
         let ordered = BTreeSet::from_iter(labels.iter().cloned());
         assert_eq!(
