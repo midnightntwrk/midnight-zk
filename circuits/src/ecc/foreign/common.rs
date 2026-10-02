@@ -203,7 +203,7 @@ pub(crate) fn configure_multi_select_lookup<F: CircuitField>(
 
     meta.lookup_any("multi_select lookup", None, |meta| {
         let sel = meta.query_selector(q_multi_select);
-        let not_sel = Expression::from(1) - sel.clone();
+        let not_sel = Expression::from(1) - sel;
 
         // This is a lookup of a column (set) on itself!
         //

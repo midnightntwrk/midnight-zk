@@ -556,7 +556,7 @@ pub(crate) mod tests {
         let circuit = TestCircuit::<F, Assigned, ArithChip> {
             inputs: inputs.to_vec(),
             expected,
-            operation: operation.clone(),
+            operation,
             _marker: PhantomData,
         };
         let public_inputs = vec![vec![], vec![]];
@@ -887,7 +887,7 @@ pub(crate) mod tests {
             let expected: Assigned::Element = i64_to_element(expected);
             run::<F, Assigned, ArithChip>(
                 &inputs,
-                expected.clone(),
+                expected,
                 Operation::Pow(*n),
                 *must_pass,
                 cost_model,
@@ -991,7 +991,7 @@ pub(crate) mod tests {
             let expected: Assigned::Element = i64_to_element(expected);
             run::<F, Assigned, ArithChip>(
                 &inputs,
-                expected.clone(),
+                expected,
                 Operation::AddAndMul,
                 *must_pass,
                 cost_model,

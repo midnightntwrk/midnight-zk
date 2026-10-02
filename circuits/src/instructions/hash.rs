@@ -185,11 +185,7 @@ pub(crate) mod tests {
         let input = (0..size).map(|_| Input::sample_inner(&mut rng)).collect::<Vec<_>>();
         let expected_output = <HashChip as HashCPU<Input::Element, Output::Element>>::hash(&input);
 
-        println!(
-            "[{}] Preimage circuit test on input {:?}",
-            chip_name,
-            input.clone()
-        );
+        println!("[{}] Preimage circuit test on input {:?}", chip_name, input);
         let circuit = TestCircuit::<F, Input, Output, HashChip, AssignChip> {
             input: input.into_iter().map(Value::known).collect(),
             expected_output,

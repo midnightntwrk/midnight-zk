@@ -321,12 +321,9 @@ mod tests {
             (test_vector_pairs.clone(), 84065_u64, true),
             "(Vec<(usize,u8)>, u64, bool)",
         );
+        serialization_one_test(FxHashSet::from_iter(test_vector), "FxHashSet<usize>");
         serialization_one_test(
-            FxHashSet::from_iter(test_vector.clone()),
-            "FxHashSet<usize>",
-        );
-        serialization_one_test(
-            FxHashMap::from_iter(test_vector_pairs.clone()),
+            FxHashMap::from_iter(test_vector_pairs),
             "FxHashMap<usize,u8>",
         );
     }

@@ -812,12 +812,7 @@ impl<F: FromUniformBytes<64> + Ord> MockProver<F> {
             usable_rows: 0..usable_rows,
         };
 
-        ConcreteCircuit::FloorPlanner::synthesize(
-            &mut prover,
-            circuit,
-            config.clone(),
-            constants.clone(),
-        )?;
+        ConcreteCircuit::FloorPlanner::synthesize(&mut prover, circuit, config, constants)?;
 
         let (cs, selector_polys) =
             prover.cs.directly_convert_selectors_to_fixed(prover.selectors.clone());

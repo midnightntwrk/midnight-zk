@@ -1535,7 +1535,6 @@ where
 
         // Witness the selected indices.
         let assigned_selected_idxs = selected_idxs
-            .clone()
             .iter()
             .map(|i_value| self.native_gadget.assign(layouter, i_value.map(|i| F::from(i as u64))))
             .collect::<Result<Vec<AssignedNative<F>>, Error>>()?;

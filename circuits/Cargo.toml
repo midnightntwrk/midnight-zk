@@ -8,6 +8,9 @@ description = "Circuit and gadget implementations for Midnight zero-knowledge pr
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[lints]
+workspace = true
+
 [dependencies]
 group = { workspace = true }
 ff = { workspace = true }

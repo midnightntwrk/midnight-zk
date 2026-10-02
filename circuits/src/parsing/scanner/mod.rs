@@ -482,7 +482,7 @@ where
                 let query = meta.query_advice(advice_cols[base + 1], Rotation::cur());
 
                 vec![
-                    (tag.clone(), sel.clone() * tag.clone()),
+                    (tag.clone(), sel.clone() * tag),
                     (
                         query.clone(),
                         sel * (index * shift + table) + not_sel * query,

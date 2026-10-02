@@ -89,7 +89,7 @@ fn main() -> std::io::Result<()> {
         EvaluationDomain::from_coeffs(g1s.clone()).expect("Failed to generate Evaluation domain");
     eval_domain_1.fft(worker);
     let mut eval_domain_2 =
-        EvaluationDomain::from_coeffs(g2s.clone()).expect("Failed to generate Evaluation domain");
+        EvaluationDomain::from_coeffs(g2s).expect("Failed to generate Evaluation domain");
     eval_domain_2.fft(worker);
 
     let g1 = eval_domain_1.into_coeffs().into_iter().map(|p| p.0.into()).collect::<Vec<_>>();

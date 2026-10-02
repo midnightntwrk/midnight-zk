@@ -337,7 +337,7 @@ impl IvcTransition for ProofAggregation {
                 &assigned_vk,
                 &[instance_com],
                 &[std::slice::from_ref(&statement)],
-                witness.map(|w| w.inner_proof.clone()),
+                witness.map(|w| w.inner_proof),
             )?;
 
             // Collapse before resolving, mirroring the off-circuit `transition`

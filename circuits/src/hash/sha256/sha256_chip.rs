@@ -696,7 +696,7 @@ impl<F: CircuitField> Sha256Chip<F> {
             state.h.clone(),
             Sigma_1_of_e,
             Ch_of_e_f_g,
-            round_k.clone(),
+            round_k,
             round_w.clone(),
         ];
 

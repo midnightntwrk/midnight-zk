@@ -253,7 +253,7 @@ where
             let sum_z = zs.clone().map(|v| sum_bigints(&base_powers, &v));
 
             let (k_min, u_max) = norm_config.u_bounds.clone();
-            let expr = &sum_shifted_x.clone() - &sum_z - Value::known(sum_shifts.clone());
+            let expr = &sum_shifted_x - &sum_z - Value::known(sum_shifts.clone());
 
             let u = expr.map(|e| compute_u(m, &e, (&k_min, &u_max), Value::known(true)));
 
@@ -299,7 +299,7 @@ where
 
             offset += 1;
 
-            let u_value = u.clone().map(|u| bigint_to_fe::<F>(&u));
+            let u_value = u.map(|u| bigint_to_fe::<F>(&u));
             let u_cell =
                 region.assign_advice(|| "norm u", norm_config.z_cols[0], offset, || u_value)?;
 
@@ -324,8 +324,7 @@ where
             let u_range_check = (u_cell, u_max);
 
             // Every vj_cell will be range-checked in [0, vj_max)
-            let vs_max =
-                norm_config.vs_bounds.clone().into_iter().map(|(_, vj_max)| vj_max.clone());
+            let vs_max = norm_config.vs_bounds.clone().into_iter().map(|(_, vj_max)| vj_max);
             let vs_range_checks =
                 vs_cells.into_iter().zip(vs_max.collect::<Vec<_>>()).collect::<Vec<_>>();
 
