@@ -365,7 +365,7 @@ pub struct ProvingKey<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
 }
 
 /// The fixed polynomials of a proving key, derived from `fixed_values`, the
-/// fixed columns in Lagrange form, and `perm_polys`, the fixed permutation
+/// fixed columns in Lagrange form, and `sigmas`, the fixed permutation
 /// polynomials in Lagrange form:
 /// * the phase-0 group, of [`ConstraintSystem::fixed_polys_labels`], in
 ///   coefficient form; `vk_repr` is the `transcript_repr` of the verifying key
@@ -376,7 +376,7 @@ pub struct ProvingKey<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
 ///
 /// # Panics
 ///
-/// Panics if `perm_polys` does not hold one polynomial per column of the
+/// Panics if `sigmas` does not hold one polynomial per column of the
 /// permutation argument.
 #[allow(clippy::type_complexity)]
 pub(in crate::plonk) fn build_phase0_polys<F: WithSmallOrderMulGroup<3>>(
@@ -384,17 +384,17 @@ pub(in crate::plonk) fn build_phase0_polys<F: WithSmallOrderMulGroup<3>>(
     cs: &ConstraintSystem<F>,
     vk_repr: F,
     fixed_values: &[Polynomial<F, LagrangeCoeff>],
-    perm_polys: Vec<Polynomial<F, LagrangeCoeff>>,
+    sigmas: Vec<Polynomial<F, LagrangeCoeff>>,
 ) -> (
     argument::prover::KeyGroup<F>,
     BTreeMap<usize, Polynomial<F, Coeff>>,
     Vec<Polynomial<F, ExtendedLagrangeCoeff>>,
     permutation::Sigmas<F>,
 ) {
-    let perm_labels = cs.permutation.polynomial_labels();
+    let sigma_labels = cs.permutation.polynomial_labels();
     assert_eq!(
-        perm_polys.len(),
-        perm_labels.len(),
+        sigmas.len(),
+        sigma_labels.len(),
         "the number of permutation polynomials does not match the number of permutation columns"
     );
 
@@ -417,17 +417,17 @@ pub(in crate::plonk) fn build_phase0_polys<F: WithSmallOrderMulGroup<3>>(
         }
     }
 
-    let (perm_coeffs, perm_cosets) =
-        permutation::keygen::compute_polys_and_cosets(domain, &cs.permutation, &perm_polys);
-    group.extend(perm_labels.into_iter().zip(perm_coeffs));
+    let (sigma_coeffs, sigma_cosets) =
+        permutation::keygen::compute_polys_and_cosets(domain, &cs.permutation, &sigmas);
+    group.extend(sigma_labels.into_iter().zip(sigma_coeffs));
 
     (
         argument::prover::KeyGroup::new(group, vk_repr),
         simple_selector_polys,
         fixed_cosets,
         permutation::Sigmas {
-            values: perm_polys,
-            cosets: perm_cosets,
+            values: sigmas,
+            cosets: sigma_cosets,
         },
     )
 }
