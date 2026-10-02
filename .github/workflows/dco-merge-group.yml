@@ -1,0 +1,34 @@
+name: DCO
+
+# The DCO app only reports on pull_request events, never on merge groups. Once
+# "DCO" is a required status check on main, every merge group would wait out
+# check_response_timeout_minutes for a check that never arrives and be
+# dequeued - freezing the merge queue (midnight-node hit exactly this).
+#
+# This shim reports a passing check named "DCO" on merge-group commits only.
+# It is not a bypass: a PR cannot enter the queue until its own required
+# checks - including the real DCO app check - are green, and the merge group
+# holds those same validated commits. Re-validating sign-offs here would
+# false-fail: the queue's squash commit is GitHub-generated and its message
+# may lack Signed-off-by.
+#
+# Required checks match by name, so a PR that extended this trigger to
+# pull_request would forge its own DCO pass. CODEOWNERS routes .github/ to
+# mn-security and mn-sre, which is what stops that.
+
+on:
+  merge_group:
+
+# no top level default permissions for security reasons
+permissions: {}
+
+jobs:
+  dco:
+    # Must match the required status check context string exactly.
+    name: DCO
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Report success
+        run: echo "DCO already validated on the pull request; merge-group shim."
