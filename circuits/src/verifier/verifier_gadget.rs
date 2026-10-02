@@ -40,7 +40,6 @@ use crate::{
             trash::trash_expressions,
         },
         pcs::{InCircuitHomomorphicCommitment, InCircuitPCS, VerifierQuery},
-        permutation::{self, evaluate_permutation_common},
         traces::VerifierTrace,
         transcript_gadget::TranscriptGadget,
         utils::{evaluate_lagrange_polynomials, inner_product, sum},
@@ -226,6 +225,9 @@ impl<S: SelfEmulation> VerifierGadget<S> {
 impl<S: SelfEmulation> VerifierGadget<S> {
     /// Assigns a verifying key as a public input. All the necessary information
     /// is required off-circuit, except for the `transcript_repr` value.
+    ///
+    /// `cs` must be finalized, i.e. its selectors must have been converted to
+    /// fixed columns, as in the constraint system of a verifying key.
     pub fn assign_vk_as_public_input<PCS: InCircuitPCS<S>>(
         &self,
         layouter: &mut impl Layouter<S::F>,
@@ -233,31 +235,25 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         cs: &ConstraintSystem<S::F>,
         transcript_repr_value: Value<S::F>,
     ) -> Result<AssignedVk<S, PCS>, Error> {
+        if cs.num_selectors() != 0 {
+            return Err(Error::Synthesis(
+                "the constraint system has selectors, it must be finalized".into(),
+            ));
+        }
+
         let transcript_repr: AssignedNative<S::F> =
             self.scalar_chip.assign_as_public_input(layouter, transcript_repr_value)?;
 
-        // We expect a finalized cs with no selectors, i.e. whose selectors have been
-        // converted into fixed columns. In the context of IVC, the constraint system
-        // might still contain selectors.
-        let cs = if cs.num_selectors() > 0 {
-            let selectors = vec![vec![false]; cs.num_selectors()];
-            cs.clone().directly_convert_selectors_to_fixed(selectors).0
-        } else {
-            cs.clone()
-        };
-
-        let fixed_commitments = (0..cs.num_fixed_columns() + cs.num_selectors())
-            .map(|i| PCS::fixed_commitment(PolynomialLabel::Fixed(i)))
+        let fixed_commitments = (0..cs.num_fixed_columns())
+            .map(|i| PCS::fixed_commitment(&[PolynomialLabel::Fixed(i)]))
             .collect();
 
-        let perm_commitments = (0..cs.permutation().columns.len())
-            .map(|i| PCS::fixed_commitment(PolynomialLabel::PermutationFixed(i)))
-            .collect();
+        let phase0_com = phase0_commitment::<S, PCS>(cs);
 
         let assigned_vk = AssignedVk {
             domain: domain.clone(),
             fixed_commitments,
-            perm_commitments,
+            phase0_commitment: phase0_com,
             cs: cs.clone(),
             cs_degree: cs.degree(),
             transcript_repr,
@@ -269,6 +265,9 @@ impl<S: SelfEmulation> VerifierGadget<S> {
     /// Assigns a verifying key as a constant. All the necessary information is
     /// available off-circuit, except for the `transcript_repr` which is
     /// "assigned fixed".
+    ///
+    /// `cs` must be finalized, i.e. its selectors must have been converted to
+    /// fixed columns, as in the constraint system of a verifying key.
     pub fn assign_fixed_vk<PCS: InCircuitPCS<S>>(
         &self,
         layouter: &mut impl Layouter<S::F>,
@@ -276,20 +275,24 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         cs: &ConstraintSystem<S::F>,
         transcript_repr_constant: S::F,
     ) -> Result<AssignedVk<S, PCS>, Error> {
+        if cs.num_selectors() != 0 {
+            return Err(Error::Synthesis(
+                "the constraint system has selectors, it must be finalized".into(),
+            ));
+        }
+
         let transcript_repr = self.scalar_chip.assign_fixed(layouter, transcript_repr_constant)?;
 
-        let fixed_commitments = (0..cs.num_fixed_columns() + cs.num_selectors())
-            .map(|i| PCS::fixed_commitment(PolynomialLabel::Fixed(i)))
+        let fixed_commitments = (0..cs.num_fixed_columns())
+            .map(|i| PCS::fixed_commitment(&[PolynomialLabel::Fixed(i)]))
             .collect();
 
-        let perm_commitments = (0..cs.permutation().columns.len())
-            .map(|i| PCS::fixed_commitment(PolynomialLabel::PermutationFixed(i)))
-            .collect();
+        let phase0_com = phase0_commitment::<S, PCS>(cs);
 
         let assigned_vk = AssignedVk {
             domain: domain.clone(),
             fixed_commitments,
-            perm_commitments,
+            phase0_commitment: phase0_com,
             cs: cs.clone(),
             cs_degree: cs.degree(),
             transcript_repr,
@@ -297,6 +300,12 @@ impl<S: SelfEmulation> VerifierGadget<S> {
 
         Ok(assigned_vk)
     }
+}
+
+fn phase0_commitment<S: SelfEmulation, PCS: InCircuitPCS<S>>(
+    cs: &ConstraintSystem<S::F>,
+) -> PCS::AssignedCommitment {
+    PCS::fixed_commitment(&cs.permutation().polynomial_labels())
 }
 
 impl<S: SelfEmulation> VerifierGadget<S> {
@@ -333,8 +342,9 @@ impl<S: SelfEmulation> VerifierGadget<S> {
 
         transcript.init_with_proof(layouter, proof)?;
 
-        // Hash verification key into transcript
-        transcript.common_scalar(layouter, &assigned_vk.transcript_repr)?;
+        // Hash verification key into transcript.
+        let vk_absorbed = assigned_vk.absorb_into(layouter, &mut transcript)?;
+        let phase0_committed = argument::committed_from_key(&vk_absorbed);
 
         assigned_committed_instances
             .iter()
@@ -346,39 +356,31 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             instance.iter().try_for_each(|pi| transcript.common_scalar(layouter, pi))?;
         }
 
-        // Hash the prover's advice commitments into the transcript and squeeze
-        // challenges
-        let advice_commitments = (0..cs.num_advice_columns())
-            .map(|i| PCS::read_commitment(&mut transcript, layouter, &[PolynomialLabel::Advice(i)]))
-            .collect::<Result<Vec<_>, Error>>()?;
-
-        // Sample theta challenge for keeping lookup columns linearly independent
-        let theta = transcript.squeeze_challenge(layouter)?;
-
         let logups = cs
             .lookups()
             .iter()
             .map(|l| l.chunk_by_degree(assigned_vk.cs_degree))
             .collect::<Vec<_>>();
 
-        let phase1_labels =
-            (0..logups.len()).map(PolynomialLabel::LogupMultiplicities).collect::<Vec<_>>();
+        // The advice columns and the logup multiplicities form the phase1 group.
+        let phase1_labels = (0..cs.num_advice_columns())
+            .map(PolynomialLabel::Advice)
+            .chain((0..logups.len()).map(PolynomialLabel::LogupMultiplicities))
+            .collect::<Vec<_>>();
 
-        let phase1_committed =
-            argument::read_committed_group(&phase1_labels, layouter, &mut transcript)?;
+        let phase1_committed = argument::read_committed(&phase1_labels, layouter, &mut transcript)?;
+
+        // Sample theta challenge for keeping lookup columns linearly independent
+        let theta = transcript.squeeze_challenge(layouter)?;
 
         let beta = transcript.squeeze_challenge(layouter)?;
         let gamma = transcript.squeeze_challenge(layouter)?;
 
         let trash_challenge = transcript.squeeze_challenge(layouter)?;
 
-        let permutation_committed =
-            // Hash each permutation product commitment
-            permutation::read_product_commitments(layouter, &mut transcript, cs)?;
-
         // The label order does not matter here, labels are ordered in
         // `read_committed`.
-        let mut phase2_labels = Vec::new();
+        let mut phase2_labels = cs.permutation().accumulator_labels(cs.degree());
 
         for (argument_index, logup_argument) in logups.iter().enumerate() {
             phase2_labels.push(PolynomialLabel::LogupAggregator(argument_index));
@@ -391,18 +393,16 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             phase2_labels.push(PolynomialLabel::Trash(argument_index));
         }
 
-        let phase2_committed =
-            argument::read_committed_group(&phase2_labels, layouter, &mut transcript)?;
+        let phase2_committed = argument::read_committed(&phase2_labels, layouter, &mut transcript)?;
 
         // Sample y challenge, which keeps the gates linearly independent
         let y = transcript.squeeze_challenge(layouter)?;
 
         Ok((
             VerifierTrace {
-                advice_commitments,
+                phase0_committed,
                 phase1_committed,
                 phase2_committed,
-                permutations: permutation_committed,
                 beta,
                 gamma,
                 theta,
@@ -524,10 +524,9 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         let nb_committed_instances = assigned_committed_instances.len();
 
         let VerifierTrace {
-            advice_commitments,
+            phase0_committed,
             phase1_committed,
             phase2_committed,
-            permutations,
             beta,
             gamma,
             theta,
@@ -603,10 +602,6 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                 .collect::<Result<Vec<_>, Error>>()?
         };
 
-        let advice_evals = (0..cs.advice_queries().len())
-            .map(|_| transcript.read_scalar(layouter))
-            .collect::<Result<Vec<_>, _>>()?;
-
         // The transcript doesn't contain evals of fixed cols corresponding to simple
         // selectors. Fill up the "missing" places with 1, to align with the
         // fixed queries
@@ -623,30 +618,42 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             }
         }
 
-        let permutations_common =
-            evaluate_permutation_common(layouter, &mut transcript, cs.permutation().columns.len())?;
+        let mut x_rotations = BTreeMap::new();
+        for rotation in argument::rotations::<S>(cs) {
+            let point = if rotation == Rotation::cur() {
+                x.clone()
+            } else {
+                let rotated_omega = assigned_vk.domain.rotate_omega(S::F::ONE, rotation);
+                self.scalar_chip.mul_by_constant(layouter, &x, rotated_omega)?
+            };
+            x_rotations.insert(rotation, point);
+        }
 
-        let permutations_evaluated = permutations.evaluate(layouter, &mut transcript)?;
+        let phase0_evaluated =
+            phase0_committed.evaluate(cs, &x_rotations, layouter, &mut transcript)?;
+        let phase1_evaluated =
+            phase1_committed.evaluate(cs, &x_rotations, layouter, &mut transcript)?;
+        let phase2_evaluated =
+            phase2_committed.evaluate(cs, &x_rotations, layouter, &mut transcript)?;
 
-        let omega = assigned_vk.domain.get_omega();
-        let omega_inv = omega.invert().unwrap();
-        let omega_last = omega_inv.pow([cs.blinding_factors() as u64 + 1]);
-        let x_next = self.scalar_chip.mul_by_constant(layouter, &x, omega)?;
-        let x_prev = self.scalar_chip.mul_by_constant(layouter, &x, omega_inv)?;
-        let x_last = self.scalar_chip.mul_by_constant(layouter, &x, omega_last)?;
+        let phase0_evals = &phase0_evaluated.evals_map;
+        let phase1_evals = &phase1_evaluated.evals_map;
+        let phase2_evals = &phase2_evaluated.evals_map;
 
-        let phase1_evaluated = phase1_committed
-            .map(|committed| committed.evaluate(&x, &x_next, layouter, &mut transcript))
-            .transpose()?;
-
-        let phase2_evaluated = phase2_committed
-            .map(|committed| committed.evaluate(&x, &x_next, layouter, &mut transcript))
-            .transpose()?;
-
-        // An empty group contributes no evaluations and no queries.
-        let no_evals = BTreeMap::new();
-        let phase1_evals = phase1_evaluated.as_ref().map_or(&no_evals, |e| &e.evals_map);
-        let phase2_evals = phase2_evaluated.as_ref().map_or(&no_evals, |e| &e.evals_map);
+        // The advice evaluations in the order of `cs.advice_queries`, which is how
+        // the identities index them. In the phase1 group, each column's follow the
+        // order of its queries.
+        let mut next = vec![0; cs.num_advice_columns()];
+        let advice_evals: Vec<AssignedNative<S::F>> = cs
+            .advice_queries()
+            .iter()
+            .map(|(column, _)| {
+                let i = column.index();
+                let eval = phase1_evals[&PolynomialLabel::Advice(i)][next[i]].eval().clone();
+                next[i] += 1;
+                eval
+            })
+            .collect();
 
         // Partially evaluate batched identities
         // (without fixed columns corresponding to simple selectors)
@@ -696,8 +703,8 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             layouter,
             &self.scalar_chip,
             cs,
-            &permutations_evaluated,
-            &permutations_common,
+            phase0_evals,
+            phase2_evals,
             &advice_evals,
             &fixed_evals,
             &instance_evals,
@@ -781,36 +788,23 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             &limb_commitments,
         )?;
 
-        // Gets the evaluation point for a query at the given rotation.
-        let get_point = |rotation: &Rotation| -> &AssignedNative<S::F> {
-            match rotation.0 {
-                -1 => &x_prev,
-                0 => &x,
-                1 => &x_next,
-                _ => panic!("We do not support other rotations"),
-            }
-        };
-
         // Collect queries that are checked in the multi-open argument
         //
         // NB: Queries corresponding to simple, multiplicative selectors need not be
         // checked
+        //
+        // The multi-open scales the first commitment by 1, which is best spent on
+        // one read from the proof: the phase-0 commitments are known in advance and
+        // a committed instance may be a constant, so both go after phases 1 and 2.
         let queries = iter::empty()
-            .chain(
-                cs.advice_queries().iter().enumerate().map(|(query_index, &(column, rot))| {
-                    VerifierQuery::<S, PCS>::new(
-                        get_point(&rot),
-                        &advice_commitments[column.index()],
-                        PolynomialLabel::Advice(column.index()),
-                        &advice_evals[query_index],
-                    )
-                }),
-            )
+            .chain(phase1_evaluated.queries())
+            .chain(phase2_evaluated.queries())
+            .chain(phase0_evaluated.queries())
             .chain(cs.instance_queries().iter().enumerate().filter_map(
                 |(query_index, &(column, rot))| {
                     if column.index() < nb_committed_instances {
                         Some(VerifierQuery::<S, PCS>::new(
-                            get_point(&rot),
+                            &x_rotations[&rot],
                             &assigned_committed_instances[column.index()],
                             PolynomialLabel::CommittedInstance(column.index()),
                             &instance_evals[query_index],
@@ -820,9 +814,6 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                     }
                 },
             ))
-            .chain(permutations_evaluated.queries(&x, &x_next, &x_last))
-            .chain(phase1_evaluated.iter().flat_map(|evaluated| evaluated.queries()))
-            .chain(phase2_evaluated.iter().flat_map(|evaluated| evaluated.queries()))
             .chain(
                 cs.fixed_queries()
                     .iter()
@@ -831,16 +822,12 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                     .filter(|(_, (col, _))| !cs.has_simple_selector_col(col.index()))
                     .map(|(query_index, &(column, rot))| {
                         VerifierQuery::new(
-                            get_point(&rot),
+                            &x_rotations[&rot],
                             &assigned_vk.fixed_commitments[column.index()],
                             PolynomialLabel::Fixed(column.index()),
                             &fixed_evals[query_index],
                         )
                     }),
-            )
-            .chain(
-                permutations_common
-                    .queries(&assigned_vk.perm_commitments.iter().collect::<Vec<_>>(), &x),
             )
             .chain(iter::once(VerifierQuery::new(
                 &x,

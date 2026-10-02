@@ -94,7 +94,6 @@ where
             labels.len(),
             "polynomials and labels must have the same length"
         );
-        assert!(!polynomials.is_empty(), "cannot commit to zero polynomials");
 
         // The group travels through the transcript in the labels' `Ord` order,
         // which is the order `read_commitment` tags the points it reads in.
@@ -140,6 +139,11 @@ where
     where
         Self::Commitment: Hashable<T::Hash>,
     {
+        // An empty group is never written to the transcript.
+        if labels.is_empty() {
+            return Ok(KZGMultiCommitment(vec![]));
+        }
+
         let commitment: KZGMultiCommitment<E> = transcript.read()?;
 
         // `commit_many` commits to the group in the labels' `Ord` order, so tag
@@ -193,13 +197,22 @@ where
     where
         Self::Commitment: Hashable<T::Hash>,
     {
+        // An empty group is neither written nor absorbed, so the transcript
+        // carries no prefix for it and `read_commitment` reads nothing back.
+        if commitment.0.is_empty() {
+            return Ok(());
+        }
         transcript.write(commitment)
     }
 
     fn commitment_byte_length(n: usize) -> usize {
-        // A group of `n` polynomials travels through the transcript as one
-        // length-prefixed message: the prefix, then one point per polynomial.
-        // (See `Hashable::to_bytes` for `KZGMultiCommitment`.)
+        // A non-empty group of `n` polynomials travels through the transcript
+        // as one length-prefixed message: the prefix, then one point per
+        // polynomial. (See `Hashable::to_bytes` for `KZGMultiCommitment`.) An
+        // empty group is not written at all.
+        if n == 0 {
+            return 0;
+        }
         NB_POLYS_PREFIX_BYTES + n * Self::Commitment::default().byte_length(SerdeFormat::Processed)
     }
 
@@ -600,7 +613,7 @@ mod tests {
 
     use crate::{
         poly::{
-            EvaluationDomain, PolynomialLabel,
+            Coeff, EvaluationDomain, PolynomialLabel,
             commitment::{Guard, PolynomialCommitmentScheme},
             kzg::{
                 KZGCommitmentScheme,
@@ -627,6 +640,54 @@ mod tests {
         verify::<Bls12, CircuitTranscript<Blake2bState>>(&verifier_params, &proof[..], K, false);
 
         verify::<Bls12, CircuitTranscript<Blake2bState>>(&verifier_params, &proof[..], K, true);
+    }
+
+    #[test]
+    fn test_empty_commitment_group() {
+        use midnight_curves::{Bls12, Fq};
+
+        type CS = KZGCommitmentScheme<Bls12>;
+        type T = CircuitTranscript<Blake2bState>;
+
+        let params: ParamsKZG<Bls12> = ParamsKZG::unsafe_setup(4, OsRng);
+        let commitment = CS::commit_many::<Coeff>(&params, &[], &[]);
+        assert!(commitment.0.is_empty());
+
+        let fresh_challenge: Fq = T::init().squeeze_challenge();
+
+        // Writing an empty group neither writes nor absorbs anything.
+        let mut transcript = T::init();
+        CS::write_commitment(&mut transcript, &commitment).unwrap();
+        let prover_challenge: Fq = transcript.squeeze_challenge();
+        let proof = transcript.finalize();
+        assert!(proof.is_empty());
+        assert_eq!(prover_challenge, fresh_challenge);
+
+        // Reading an empty group neither reads nor absorbs anything.
+        let mut transcript = T::init_from_bytes(&proof);
+        let read = CS::read_commitment(&mut transcript, &[]).unwrap();
+        assert!(read.0.is_empty());
+        let verifier_challenge: Fq = transcript.squeeze_challenge();
+        assert_eq!(verifier_challenge, fresh_challenge);
+        transcript.assert_empty().unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "batched commitment has no polynomial matching the query label")]
+    fn test_query_on_empty_commitment_group() {
+        use ff::Field;
+        use midnight_curves::{Bls12, Fq};
+
+        let empty = KZGMultiCommitment::<Bls12>(vec![]);
+        let query = VerifierQuery::new(
+            Fq::ONE,
+            &empty,
+            PolynomialLabel::Custom("a".into()),
+            Fq::ONE,
+        );
+
+        let mut transcript = CircuitTranscript::<Blake2bState>::init();
+        let _ = KZGCommitmentScheme::<Bls12>::multi_prepare(&[query], 4, &mut transcript);
     }
 
     fn verify<E, T>(verifier_params: &ParamsVerifierKZG<E>, proof: &[u8], k: u32, should_fail: bool)
