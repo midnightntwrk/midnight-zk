@@ -761,6 +761,10 @@ impl ZkStdLib {
     /// let proof =
     ///     mmr_gadget.assign_membership_proof(layouter, Value::known(mmr.prove_membership(3)))?;
     /// mmr_gadget.assert_membership(layouter, &state, &elem, &proof)?;
+    ///
+    /// // The same claim as a bit, for composing with other checks.
+    /// let ok = mmr_gadget.is_member(layouter, &state, &elem, &proof)?;
+    /// chip.assert_equal_to_fixed(layouter, &ok, true)?;
     /// # });
     /// ```
     pub fn mmr(&self) -> &MmrGadget<F, NG, PoseidonChip<F>> {
