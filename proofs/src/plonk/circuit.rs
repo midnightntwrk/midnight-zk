@@ -17,7 +17,7 @@ use crate::{
     circuit::{Layouter, Region, RegionStart, Value, layouter::SyncDeps},
     dev::metadata,
     plonk::trash::Argument,
-    poly::Rotation,
+    poly::{PolynomialLabel, Rotation},
     utils::rational::Rational,
 };
 
@@ -1965,6 +1965,22 @@ impl<F: Field> ConstraintSystem<F> {
         });
     }
 
+    /// Replaces every selector with a fixed column, as keygen does, without
+    /// computing the selector polynomials. The result is the constraint system
+    /// held by a verifying key of this circuit.
+    ///
+    /// # Panics
+    ///
+    /// If the selectors of `self` have already been converted to fixed columns.
+    pub fn into_finalized(self) -> Self {
+        assert!(
+            self.num_selectors > 0 || self.gates.iter().all(|g| g.queried_selectors.is_empty()),
+            "the selectors of the constraint system have already been converted to fixed columns"
+        );
+        let fake_selectors = vec![vec![]; self.num_selectors];
+        self.directly_convert_selectors_to_fixed(fake_selectors).0
+    }
+
     /// Does not combine selectors and directly replaces them everywhere with
     /// fixed columns.
     pub fn directly_convert_selectors_to_fixed(
@@ -2288,6 +2304,11 @@ impl<F: Field> ConstraintSystem<F> {
     /// Returns advice queries
     pub fn advice_queries(&self) -> &Vec<(Column<Advice>, Rotation)> {
         &self.advice_queries
+    }
+
+    /// The labels of the advice columns, in column order.
+    pub(crate) fn advice_labels(&self) -> Vec<PolynomialLabel> {
+        (0..self.num_advice_columns).map(PolynomialLabel::Advice).collect()
     }
 
     /// Returns instance queries

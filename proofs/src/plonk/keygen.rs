@@ -274,7 +274,10 @@ where
     let (cs, selector_polys) = cs.directly_convert_selectors_to_fixed(selectors);
     fixed.extend(selector_polys.into_iter().map(|poly| domain.lagrange_from_vec(poly)));
 
-    let permutation_vk = assembly.permutation.build_vk(params, &domain, &cs.permutation);
+    let phase0_com =
+        assembly
+            .permutation
+            .build_phase0_commitment::<F, CS>(params, &domain, &cs.permutation);
 
     let fixed_commitments = fixed
         .iter()
@@ -285,7 +288,7 @@ where
     Ok(VerifyingKey::from_parts(
         domain,
         fixed_commitments,
-        permutation_vk,
+        phase0_com,
         cs,
     ))
 }
@@ -339,7 +342,9 @@ where
         .map(|poly| vk.domain.coeff_to_extended(poly.clone()))
         .collect();
 
-    let permutation_pk = assembly.permutation.build_pk::<F>(&vk.domain, &cs.permutation);
+    let permutations = assembly.permutation.into_permutations::<F>(&vk.domain, &cs.permutation);
+    let (phase0_polys, sigmas) =
+        super::build_phase0_polys(&vk.domain, &cs, vk.transcript_repr, permutations);
 
     let [l0, l_last, l_active_row] = compute_lagrange_polys(&vk, &cs);
     // Compute the optimized evaluation data structure
@@ -352,7 +357,8 @@ where
         fixed_values: fixed,
         fixed_polys,
         fixed_cosets,
-        permutation: permutation_pk,
+        phase0_polys,
+        sigmas,
         ev,
         region_starts,
     })

@@ -34,6 +34,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Parallelise batch_verifier [#236](https://github.com/midnightntwrk/midnight-zk/pull/236)
 
 ### Removed
+* `Clone` on `MidnightPK`, which holds a proving key, no longer `Clone` [#537](https://github.com/midnightntwrk/midnight-zk/pull/537)
 
 ## [2.2.0]
 ### Changed

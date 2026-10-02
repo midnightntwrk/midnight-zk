@@ -47,17 +47,22 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
     /// Extract the `VerifierParameters` from `Parameters`
     fn get_verifier_params(params: &Self::Parameters) -> Self::VerifierParameters;
 
-    /// Commit to one or more polynomials, tagging the result with the
+    /// Commit to several polynomials, tagging the result with the
     /// corresponding labels for identification during multi-open accumulation.
     ///
     /// The polynomials are committed to in the labels' `Ord` order, which is
     /// the order [`read_commitment`](Self::read_commitment) reads them back in.
     /// The caller may list them in any order.
     ///
+    /// Committing to no polynomials does not fail: it returns an empty
+    /// commitment, which [`write_commitment`](Self::write_commitment) does not
+    /// write to the transcript. An empty commitment holds no polynomial, so it
+    /// cannot be queried: the multi-open rejects any query against it.
+    ///
     /// # Panics
     ///
-    /// Panics if `polynomials` and `labels` have different lengths, if either
-    /// slice is empty, or if a label is repeated.
+    /// Panics if `polynomials` and `labels` have different lengths, or if a
+    /// label is repeated.
     fn commit_many<B: PolynomialRepresentation>(
         params: &Self::Parameters,
         polynomials: &[&Polynomial<F, B>],
@@ -101,6 +106,9 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
     /// Write a commitment produced by [`commit_many`](Self::commit_many) to the
     /// proof transcript, absorbing it in exactly the granularity in which
     /// [`read_commitment`](Self::read_commitment) reads it back.
+    ///
+    /// A commitment to no polynomials writes and absorbs nothing, and
+    /// [`read_commitment`](Self::read_commitment) with no labels reads nothing.
     fn write_commitment<T: Transcript>(
         transcript: &mut T,
         commitment: &Self::Commitment,
@@ -161,7 +169,8 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
         F: Sampleable<T::Hash> + Hash + Ord + Hashable<T::Hash>,
         Self::Commitment: Hashable<T::Hash>;
 
-    /// Total byte length when committing to `n` polynomials.
+    /// Total byte length when committing to `n` polynomials, which is 0 when
+    /// `n` is 0.
     ///
     /// For schemes that commit each polynomial independently (e.g. KZG), this
     /// equals `n` times the per-commitment size. Override for schemes that fold
