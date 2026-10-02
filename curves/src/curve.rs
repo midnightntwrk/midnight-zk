@@ -93,6 +93,11 @@ impl<C: CurveAffine> Coordinates<C> {
         // We use CurveAffine::from_xy to validate the coordinates.
         C::from_xy(x, y).map(|_| Coordinates { x, y })
     }
+
+    pub(crate) fn from_xy_unchecked(x: C::Base, y: C::Base) -> Self {
+        Coordinates { x, y }
+    }
+
     /// Returns the x-coordinate.
     pub fn x(&self) -> &C::Base {
         &self.x
