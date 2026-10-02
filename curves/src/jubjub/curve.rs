@@ -1161,6 +1161,12 @@ impl ConditionallySelectable for JubjubSubgroup {
 }
 
 impl JubjubSubgroup {
+    /// Returns the affine `(u, v)` coordinates of this point.
+    pub fn coordinates(&self) -> (Base, Base) {
+        let affine = JubjubAffine::from(self.0);
+        (affine.get_u(), affine.get_v())
+    }
+
     /// Constructs an AffinePoint given `u` and `v` without checking that the
     /// point is on the curve or in the prime-order subgroup.
     ///
