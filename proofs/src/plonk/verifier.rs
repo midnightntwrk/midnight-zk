@@ -13,7 +13,7 @@ use crate::{
         partially_evaluate_identities, traces::VerifierTrace,
     },
     poly::{PolynomialLabel, Rotation, VerifierQuery, commitment::PolynomialCommitmentScheme},
-    transcript::{Hashable, Sampleable, Transcript, read_n},
+    transcript::{Hashable, Sampleable, Transcript},
     utils::arithmetic::compute_inner_product,
 };
 
@@ -232,21 +232,6 @@ where
             .collect::<Result<Vec<_>, _>>()?
     };
 
-    // Read one eval per non-simple-selector fixed query from the transcript,
-    // then fill the "missing" places with 1 (the transcript doesn't contain evals
-    // corresponding to multiplicative, simple selectors).
-    // We count queries (not unique columns) because the same column can appear
-    // multiple times in fixed_queries at different rotation points.
-    let mut fixed_evals = read_n(
-        transcript,
-        vk.cs.fixed_queries().len() - vk.cs.num_simple_selectors(),
-    )?;
-    for (idx, (col, _)) in vk.cs.fixed_queries().iter().enumerate() {
-        if vk.cs.has_simple_selector_col(col.index()) {
-            fixed_evals.insert(idx, F::ONE)
-        }
-    }
-
     let domain = vk.get_domain();
     let cs = vk.cs();
 
@@ -268,7 +253,6 @@ where
     // (without fixed columns corresponding to simple, multiplicative selectors)
     let expressions = partially_evaluate_identities(
         vk,
-        &fixed_evals,
         &instance_evals,
         phase0_evals,
         phase1_evals,
@@ -316,22 +300,6 @@ where
                 }
             },
         ))
-        .chain(
-            vk.cs
-                .fixed_queries
-                .iter()
-                .enumerate()
-                // Filter out queries for simple, multiplicative selectors
-                .filter(|(_, (col, _))| !vk.cs.has_simple_selector_col(col.index()))
-                .map(|(query_index, &(column, at))| {
-                    VerifierQuery::new(
-                        x_rotations[&at],
-                        &vk.fixed_commitments[column.index()],
-                        PolynomialLabel::Fixed(column.index()),
-                        fixed_evals[query_index],
-                    )
-                }),
-        )
         .chain(iter::once(VerifierQuery::new(
             x,
             &lin_commitment,

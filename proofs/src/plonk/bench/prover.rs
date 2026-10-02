@@ -16,8 +16,8 @@ use crate::{
         linearization::prover::compute_linearization_poly,
         logup, partially_evaluate_identities,
         prover::{
-            Evals, compute_h_poly, compute_instances, compute_nu_poly, compute_queries,
-            parse_advices, write_evals_to_transcript,
+            compute_h_poly, compute_instances, compute_nu_poly, compute_queries, parse_advices,
+            write_instance_evals_to_transcript,
         },
         traces::ProverTrace,
     },
@@ -505,7 +505,7 @@ where
         b.iter_batched(
             || transcript.clone(),
             |mut t| {
-                let _ = write_evals_to_transcript(
+                let _ = write_instance_evals_to_transcript(
                     pk,
                     nb_committed_instances,
                     &instance_polys,
@@ -516,10 +516,7 @@ where
             criterion::BatchSize::SmallInput,
         )
     });
-    let Evals {
-        fixed_evals,
-        instance_evals,
-    } = write_evals_to_transcript(
+    let instance_evals = write_instance_evals_to_transcript(
         pk,
         nb_committed_instances,
         &instance_polys,
@@ -553,7 +550,6 @@ where
             b.iter(|| {
                 let _ = partially_evaluate_identities(
                     &pk.vk,
-                    &fixed_evals,
                     &instance_evals,
                     &phase0_evaluated.evals_map,
                     &phase1_evaluated.evals_map,
@@ -569,7 +565,6 @@ where
         });
         partially_evaluate_identities(
             &pk.vk,
-            &fixed_evals,
             &instance_evals,
             &phase0_evaluated.evals_map,
             &phase1_evaluated.evals_map,

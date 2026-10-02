@@ -342,10 +342,7 @@ where
         .map(|rotation| (rotation, domain.rotate_omega(x, rotation)))
         .collect();
 
-    let Evals {
-        fixed_evals,
-        instance_evals,
-    } = write_evals_to_transcript(
+    let instance_evals = write_instance_evals_to_transcript(
         pk,
         nb_committed_instances,
         &instance_polys,
@@ -365,7 +362,6 @@ where
     let xn = splitting_factor * x;
     let expressions = partially_evaluate_identities(
         &pk.vk,
-        &fixed_evals,
         &instance_evals,
         &phase0_evaluated.evals_map,
         &phase1_evaluated.evals_map,
@@ -737,23 +733,13 @@ fn blind_quotient_limbs<F: PrimeField>(quotient_limbs: &mut [Vec<F>]) {
     quotient_limbs[nr_limbs - 1].push(F::ZERO);
 }
 
-// Structure for holding evaluations of fixed, instance, and advice columns.
-#[derive(Debug, Clone)]
-pub(super) struct Evals<F>
-where
-    F: WithSmallOrderMulGroup<3>,
-{
-    pub(crate) fixed_evals: Vec<F>,
-    pub(crate) instance_evals: Vec<F>,
-}
-
-pub(super) fn write_evals_to_transcript<F, CS, T>(
+pub(super) fn write_instance_evals_to_transcript<F, CS, T>(
     pk: &ProvingKey<F, CS>,
     nb_committed_instances: usize,
     instance_polys: &[Polynomial<F, Coeff>],
     x_rotations: &BTreeMap<Rotation, F>,
     transcript: &mut T,
-) -> Result<Evals<F>, Error>
+) -> Result<Vec<F>, Error>
 where
     F: WithSmallOrderMulGroup<3> + Hashable<T::Hash>,
     CS: PolynomialCommitmentScheme<F>,
@@ -770,19 +756,6 @@ where
         .map(|&(column, at)| eval_polynomial_seq(&instance_polys[column.index()], x_rotations[&at]))
         .collect();
 
-    let fixed_evals: Vec<F> = meta
-        .fixed_queries
-        .par_iter()
-        .map(|&(column, at)| {
-            let col_idx = column.index();
-            if meta.has_simple_selector_col(col_idx) {
-                F::ONE
-            } else {
-                eval_polynomial_seq(&pk.fixed_polys[col_idx], x_rotations[&at])
-            }
-        })
-        .collect();
-
     // Write evaluations to transcript in the canonical order.
     for (eval, &(column, _)) in instance_evals.iter().zip(meta.instance_queries.iter()) {
         if column.index() < nb_committed_instances {
@@ -790,16 +763,7 @@ where
         }
     }
 
-    for (eval, &(column, _)) in fixed_evals.iter().zip(meta.fixed_queries.iter()) {
-        if !meta.has_simple_selector_col(column.index()) {
-            transcript.write(eval)?;
-        }
-    }
-
-    Ok(Evals {
-        fixed_evals,
-        instance_evals,
-    })
+    Ok(instance_evals)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -836,21 +800,6 @@ pub(super) fn compute_queries<
                     None
                 }
             }),
-        )
-        .chain(
-            pk.vk
-                .cs
-                .fixed_queries
-                .iter()
-                // Filter out queries for simple, multiplicative selectors
-                .filter(|(col, _)| !pk.vk.cs.has_simple_selector_col(col.index()))
-                .map(|&(column, at)| {
-                    ProverQuery::new(
-                        x_rotations[&at],
-                        &pk.fixed_polys[column.index()],
-                        PolynomialLabel::Fixed(column.index()),
-                    )
-                }),
         )
         .chain(iter::once(ProverQuery::new(
             x_rotations[&Rotation::cur()],

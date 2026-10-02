@@ -22,8 +22,8 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> Committed<F, CS> {
     /// the transcript as reading a commitment from the proof does.
     pub(crate) fn from_key(vk: &AbsorbedVk<'_, F, CS>) -> Committed<F, CS> {
         Committed {
-            commitment: vk.fixed_group_commitment().clone(),
-            polynomial_labels: BTreeSet::from_iter(vk.fixed_group_labels()),
+            commitment: vk.phase0_commitment().clone(),
+            polynomial_labels: BTreeSet::from_iter(vk.phase0_labels()),
         }
     }
 

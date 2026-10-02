@@ -14,9 +14,12 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Add tests compile time generics checks for `VectorGadget` and tests for `resize` [#464](https://github.com/midnightntwrk/midnight-zk/pull/465)
 
 ### Fixed
+* The verifier gadget no longer misreads the fixed evaluations of a circuit with a fixed column queried at more than one rotation [#547](https://github.com/midnightntwrk/midnight-zk/pull/547)
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 
 ### Changed
+* `verifier::fixed_bases` reads the fixed bases from `VerifyingKey::phase0_commitment` and `VerifyingKey::simple_selector_commitments` [#547](https://github.com/midnightntwrk/midnight-zk/pull/547)
+* The verifier gadget reads and opens the fixed evaluations through the phase-0 group, matching the off-circuit verifier. `AssignedVk` holds the group commitment and one commitment per simple selector, in place of one commitment per fixed column [#547](https://github.com/midnightntwrk/midnight-zk/pull/547)
 * Adapt the verifier gadget to the advice columns being committed as part of the phase-1 argument group: the advice commitments are read with the logup multiplicities as one group, and the advice evaluations are read and opened through it [#543](https://github.com/midnightntwrk/midnight-zk/pull/543)
 * The verifier gadget squeezes `theta` after reading the logup multiplicities, as the off-circuit verifier does [#543](https://github.com/midnightntwrk/midnight-zk/pull/543)
 * The verifier gadget follows the off-circuit order of the multi-open queries: the phase-1 and phase-2 groups first, then the phase-0 group and the committed instances [#543](https://github.com/midnightntwrk/midnight-zk/pull/543)

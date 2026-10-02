@@ -15,7 +15,7 @@ use midnight_circuits::{
     hash::poseidon::{PoseidonChip, PoseidonState},
     instructions::{hash::HashCPU, *},
     types::AssignedNative,
-    verifier::{AssignedVk, InCircuitKZG, SelfEmulation},
+    verifier::{AssignedVk, InCircuitKZG, SelfEmulation, fixed_bases},
 };
 use midnight_proofs::{
     circuit::{Layouter, Value},
@@ -37,6 +37,15 @@ pub type VkHashAndBases = (
     BTreeMap<PolynomialLabel, <S as SelfEmulation>::AssignedPoint>,
 );
 
+/// The labels of the VK's fixed bases, in the order they are hashed: every
+/// fixed column, then every fixed permutation polynomial.
+fn hashed_base_labels(nb_fixed: usize, nb_perm: usize) -> Vec<PolynomialLabel> {
+    (0..nb_fixed)
+        .map(PolynomialLabel::Fixed)
+        .chain((0..nb_perm).map(PolynomialLabel::PermutationFixed))
+        .collect()
+}
+
 /// Computes the VK hash off-circuit: `Poseidon(transcript_repr || bases)`.
 ///
 /// Each curve point is serialized as its foreign-field limb representation
@@ -47,10 +56,14 @@ pub fn compute_vk_hash(vk: &MidnightVK) -> F {
     let to_raw = Hashable::<PoseidonState<F>>::to_input;
 
     let vk_repr = vec![vk.transcript_repr()];
-    let fixed_coms: Vec<F> = vk.fixed_commitments().iter().flat_map(to_raw).collect();
-    let phase0_com: Vec<F> = to_raw(vk.phase0_commitment());
+    let bases = fixed_bases::<S>(vk);
+    let labels = hashed_base_labels(
+        vk.cs().num_fixed_columns(),
+        vk.cs().permutation().columns.len(),
+    );
+    let base_inputs: Vec<F> = labels.iter().flat_map(|label| to_raw(&bases[label])).collect();
 
-    <PoseidonChip<F> as HashCPU<F, F>>::hash(&[vk_repr, fixed_coms, phase0_com].concat())
+    <PoseidonChip<F> as HashCPU<F, F>>::hash(&[vk_repr, base_inputs].concat())
 }
 
 /// In-circuit counterpart of [`compute_vk_hash`].
@@ -71,10 +84,10 @@ pub fn assign_as_public_inputs_and_hash_vk(
     let nb_perm = cs.permutation().columns.len();
 
     // Witness the VK commitment points.
-    let base_values: Vec<Value<C>> = (0..nb_fixed)
-        .map(|i| vk.map(|vk| *vk.vk().fixed_commitments()[i].0[0].as_point()))
-        .chain((0..nb_perm).map(|i| vk.map(|vk| *vk.vk().phase0_commitment().0[i].as_point())))
-        .collect();
+    let labels = hashed_base_labels(nb_fixed, nb_perm);
+    let bases = vk.map(|vk| fixed_bases::<S>(vk.vk()));
+    let base_values: Vec<Value<C>> =
+        labels.iter().map(|label| bases.as_ref().map(|bases| bases[label])).collect();
 
     let assigned_bases = base_values
         .into_iter()
@@ -98,18 +111,8 @@ pub fn assign_as_public_inputs_and_hash_vk(
     let hash = std_lib.poseidon(layouter, &input)?;
 
     // Build the named fixed-bases map (including -G).
-    let mut labels_map: BTreeMap<PolynomialLabel, _> = assigned_bases
-        .iter()
-        .enumerate()
-        .map(|(i, base)| {
-            let label = if i < nb_fixed {
-                PolynomialLabel::Fixed(i)
-            } else {
-                PolynomialLabel::PermutationFixed(i - nb_fixed)
-            };
-            (label, base.clone())
-        })
-        .collect();
+    let mut labels_map: BTreeMap<PolynomialLabel, _> =
+        labels.into_iter().zip(assigned_bases.iter().cloned()).collect();
 
     let neg_g = curve_chip.assign_fixed(layouter, -C::generator())?;
     labels_map.insert(PolynomialLabel::Custom("-G".into()), neg_g);

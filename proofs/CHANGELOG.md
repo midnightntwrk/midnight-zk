@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+* `ConstraintSystem::fixed_polys_labels` and `ConstraintSystem::simple_selector_columns` [#547](https://github.com/midnightntwrk/midnight-zk/pull/547)
 * `Rotation` derives `PartialOrd` and `Ord` [#543](https://github.com/midnightntwrk/midnight-zk/pull/543)
 * `permutation::Argument::polynomial_labels`, `num_sets` and `accumulator_labels` are public [#537](https://github.com/midnightntwrk/midnight-zk/pull/537)
 * changed `sha256` name in benches to account for the change of naming convention in `circuits` [#135](https://github.com/midnightntwrk/midnight-zk/pull/135)
@@ -40,6 +41,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Fix cost-model [#435](https://github.com/midnightntwrk/midnight-zk/pull/435)
 
 ### Changed
+* `ConstraintSystem::create_gate` panics on a gate whose polynomials are not all multiples of the same simple selector, or that queries a simple selector none of its polynomials is a multiple of. The verifier takes the evaluation of a simple selector as 1, which relies on that shape [#547](https://github.com/midnightntwrk/midnight-zk/pull/547)
+* The verifying key commits to every fixed column but the simple selectors as one group, together with the fixed permutation polynomials, in the phase-0 group exposed as `VerifyingKey::phase0_commitment`, and to each simple selector on its own, as `VerifyingKey::simple_selector_commitments`. The serialized key changes to that layout, so every verifying key and its `transcript_repr` change [#547](https://github.com/midnightntwrk/midnight-zk/pull/547)
+* The fixed columns are evaluated and opened through the phase-0 group: their evaluations are written to the proof with the group's, in label order, rather than once per fixed query. A simple selector is never opened, as before. Proof sizes do not change [#547](https://github.com/midnightntwrk/midnight-zk/pull/547)
 * `msm_specific` always uses blst's `multi_exp_affine` for BLS12-381 G1,`msm_best`is a fallback for all other curves [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 * Commit the advice columns as part of the phase-1 argument group, together with the logup multiplicities, instead of one commitment per column, and open them through it at the rotations the circuit queries them at. This changes the transcript of every proof, which shrinks by 4 bytes per advice column (one fewer if the circuit has no lookup) [#543](https://github.com/midnightntwrk/midnight-zk/pull/543)
 * Commit the logup multiplicities before squeezing `theta`, instead of after. The prover counts them by comparing the input and table tuples directly, and compresses the tuples with `theta` only when computing the helpers and aggregators. This changes the transcript of every proof over a circuit with a lookup [#543](https://github.com/midnightntwrk/midnight-zk/pull/543)
@@ -77,6 +81,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Simplify KZG multiopen verifier to use `KZGCommitment` directly [#430](https://github.com/midnightntwrk/midnight-zk/pull/430)
 
 ### Removed
+* `VerifyingKey::fixed_commitments`, replaced by `phase0_commitment` and `simple_selector_commitments` [#547](https://github.com/midnightntwrk/midnight-zk/pull/547)
 * `Clone` on `ProvingKey`, so that the polynomials it holds are never copied [#537](https://github.com/midnightntwrk/midnight-zk/pull/537)
 * Remove the internal `permutation::verifier` module and `permutation::Evaluated`; the permutation argument no longer carries any transcript plumbing of its own [#537](https://github.com/midnightntwrk/midnight-zk/pull/537)
 * Remove `KZGCommitment::into_point`; use `as_point`, which borrows the point instead of consuming (and often cloning) the commitment [#515](https://github.com/midnightntwrk/midnight-zk/pull/515)

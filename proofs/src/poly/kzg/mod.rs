@@ -98,7 +98,7 @@ where
         // The group travels through the transcript in the labels' `Ord` order,
         // which is the order `read_commitment` tags the points it reads in.
         let mut pairs: Vec<_> = polynomials.iter().zip(labels).collect();
-        pairs.sort_by(|(_, a), (_, b)| a.cmp(b));
+        pairs.sort_by_key(|(_, a)| *a);
         assert!(
             pairs.windows(2).all(|w| w[0].1 != w[1].1),
             "duplicated polynomial label in a commitment group"

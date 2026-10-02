@@ -84,6 +84,12 @@ fn eval_points<S: SelfEmulation>(
 ) -> Vec<AssignedNative<S::F>> {
     let at = |rotation: Rotation| x_rotations[&rotation].clone();
     match label {
+        PolynomialLabel::Fixed(i) => cs
+            .fixed_queries()
+            .iter()
+            .filter(|(column, _)| column.index() == *i)
+            .map(|&(_, rotation)| at(rotation))
+            .collect(),
         PolynomialLabel::Advice(i) => cs
             .advice_queries()
             .iter()
@@ -125,8 +131,8 @@ pub(crate) fn committed_from_key<S: SelfEmulation, PCS: InCircuitPCS<S>>(
     vk: &AbsorbedVk<'_, S, PCS>,
 ) -> Committed<S, PCS> {
     Committed {
-        commitment: vk.fixed_group_commitment().clone(),
-        polynomial_labels: BTreeSet::from_iter(vk.fixed_group_labels()),
+        commitment: vk.phase0_commitment().clone(),
+        polynomial_labels: BTreeSet::from_iter(vk.phase0_labels()),
     }
 }
 

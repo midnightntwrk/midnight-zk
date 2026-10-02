@@ -51,6 +51,12 @@ pub(crate) fn eval_points<F: PrimeField>(
 ) -> Vec<F> {
     let at = |rotation: Rotation| x_rotations[&rotation];
     match label {
+        PolynomialLabel::Fixed(i) => cs
+            .fixed_queries
+            .iter()
+            .filter(|(column, _)| column.index() == *i)
+            .map(|&(_, rotation)| at(rotation))
+            .collect(),
         PolynomialLabel::Advice(i) => cs
             .advice_queries
             .iter()

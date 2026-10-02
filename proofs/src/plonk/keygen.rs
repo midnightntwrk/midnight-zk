@@ -3,7 +3,6 @@
 use std::ops::Range;
 
 use ff::{Field, FromUniformBytes, WithSmallOrderMulGroup};
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use super::{
     Error, LagrangeCoeff, Polynomial, ProvingKey, VerifyingKey,
@@ -274,21 +273,27 @@ where
     let (cs, selector_polys) = cs.directly_convert_selectors_to_fixed(selectors);
     fixed.extend(selector_polys.into_iter().map(|poly| domain.lagrange_from_vec(poly)));
 
-    let phase0_com =
-        assembly
-            .permutation
-            .build_phase0_commitment::<F, CS>(params, &domain, &cs.permutation);
+    let permutations = assembly.permutation.into_permutations::<F>(&domain, &cs.permutation);
 
-    let fixed_commitments = fixed
+    let fixed_polys: Vec<_> = fixed
         .iter()
         .enumerate()
-        .map(|(i, poly)| CS::commit(params, poly, PolynomialLabel::Fixed(i)))
+        .filter(|(i, _)| !cs.has_simple_selector_col(*i))
+        .map(|(_, poly)| poly)
+        .chain(permutations.iter())
+        .collect();
+    let phase0_commitment = CS::commit_many(params, &fixed_polys, &cs.fixed_polys_labels());
+
+    let simple_selector_commitments = cs
+        .simple_selector_columns()
+        .into_iter()
+        .map(|i| (i, CS::commit(params, &fixed[i], PolynomialLabel::Fixed(i))))
         .collect();
 
     Ok(VerifyingKey::from_parts(
         domain,
-        fixed_commitments,
-        phase0_com,
+        phase0_commitment,
+        simple_selector_commitments,
         cs,
     ))
 }
@@ -334,17 +339,9 @@ where
     let (cs, selector_polys) = cs.directly_convert_selectors_to_fixed(assembly.selectors);
     fixed.extend(selector_polys.into_iter().map(|poly| vk.domain.lagrange_from_vec(poly)));
 
-    let fixed_polys: Vec<_> =
-        fixed.par_iter().map(|poly| vk.domain.lagrange_to_coeff(poly.clone())).collect();
-
-    let fixed_cosets = fixed_polys
-        .par_iter()
-        .map(|poly| vk.domain.coeff_to_extended(poly.clone()))
-        .collect();
-
     let permutations = assembly.permutation.into_permutations::<F>(&vk.domain, &cs.permutation);
-    let (phase0_polys, sigmas) =
-        super::build_phase0_polys(&vk.domain, &cs, vk.transcript_repr, permutations);
+    let (phase0_polys, simple_selector_polys, fixed_cosets, sigmas) =
+        super::build_phase0_polys(&vk.domain, &cs, vk.transcript_repr, &fixed, permutations);
 
     let [l0, l_last, l_active_row] = compute_lagrange_polys(&vk, &cs);
     // Compute the optimized evaluation data structure
@@ -355,9 +352,9 @@ where
         l_last,
         l_active_row,
         fixed_values: fixed,
-        fixed_polys,
         fixed_cosets,
         phase0_polys,
+        simple_selector_polys,
         sigmas,
         ev,
         region_starts,

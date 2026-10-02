@@ -67,7 +67,7 @@ pub(crate) fn compute_linearization_commitment<
         grouped_points
             .into_iter()
             .fold(commitment, |acc, (col_idx, eval)| match col_idx {
-                Some(idx) => acc + vk.fixed_commitments[idx].clone() * eval,
+                Some(idx) => acc + vk.simple_selector_commitments[&idx].clone() * eval,
                 None => {
                     expected_eval -= eval;
                     acc
