@@ -4,7 +4,7 @@ resolver = "2"
 members = ["proofs", "curves", "circuits", "aggregation", "zk_stdlib"]
 
 [workspace.package]
-license-file = "LICENSE"
+license = "Apache-2.0"
 edition = "2024"
 rust-version = "1.90.0"
 
