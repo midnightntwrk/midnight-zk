@@ -2,6 +2,16 @@
 
 Contributions are welcome. Before submitting a PR, please read through this document.
 
+## Developer Certificate of Origin (DCO)
+
+Every human-authored commit in a pull request must include a `Signed-off-by` trailer certifying the right to submit the contribution under this repository's license. Add it when committing:
+
+```sh
+git commit -s -m "docs: describe your change"
+```
+
+This adds `Signed-off-by: Your Name <your@email.com>` to the commit message. By signing off, you agree to the [Developer Certificate of Origin (version 1.1)](https://developercertificate.org/). If you missed a sign-off, amend your own last commit with `git commit --amend -s --no-edit`, or use `git rebase --signoff` for earlier commits. The DCO GitHub App checks pull requests for the required trailers.
+
 ## Before you start
 
 Search the issue tracker to see if your bug or feature request already exists. For larger changes - refactors, new subsystems, significant API changes - open an issue first and discuss it with us.
