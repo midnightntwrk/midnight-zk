@@ -87,7 +87,7 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
         // be able to verify that the proof did not include extra bytes after
         // all the relevant bytes have been read. This is not an issue anyway.
         let mut proof_bytes = Vec::new();
-        proof.clone().map(|pi| proof_bytes.extend_from_slice(&pi));
+        proof.map(|pi| proof_bytes.extend_from_slice(&pi));
         self.transcript_reader = Some(CircuitTranscript::init_from_bytes(&proof_bytes));
 
         Ok(())

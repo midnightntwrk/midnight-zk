@@ -989,7 +989,7 @@ where
         // admits two representations: (w = 0, e = 0) and (w = (p-1)/2, e = 1).
         let x_val = x.value().copied().map(|v| v.to_biguint());
         let w_val = x_val.clone().map(|x| &x / BigUint::from(2u8));
-        let e_val = x_val.clone().map(|x| x.bit(0));
+        let e_val = x_val.map(|x| x.bit(0));
 
         let e: AssignedBit<F> = self.assign(layouter, e_val)?;
         let w = self.assign_lower_than_fixed(
@@ -999,7 +999,7 @@ where
         )?;
         let must_be_x = self.linear_combination(
             layouter,
-            &[(F::ONE, e.clone().into()), (F::from(2), w.clone())],
+            &[(F::ONE, e.clone().into()), (F::from(2), w)],
             F::ZERO,
         )?;
         self.assert_equal(layouter, x, &must_be_x)?;
@@ -1171,12 +1171,12 @@ where
     ) -> Result<(), Error> {
         let x_bound_opt = self.constrained_cells.borrow().get(x).cloned();
         if let Some(x_bound) = x_bound_opt {
-            self.update_bound(y, x_bound.clone());
+            self.update_bound(y, x_bound);
         }
 
         let y_bound_opt = self.constrained_cells.borrow().get(y).cloned();
         if let Some(y_bound) = y_bound_opt {
-            self.update_bound(x, y_bound.clone());
+            self.update_bound(x, y_bound);
         }
 
         self.native_chip.assert_equal(layouter, x, y)

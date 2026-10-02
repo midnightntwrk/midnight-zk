@@ -171,7 +171,7 @@ where
         });
 
         let assigned_new_root: AssignedNative<F> = self.native_gadget.assign(layouter, new_root)?;
-        state.succinct_repr = assigned_new_root.clone();
+        state.succinct_repr = assigned_new_root;
 
         self.state = Some(state.clone());
 

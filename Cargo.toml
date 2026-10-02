@@ -25,6 +25,10 @@ sha2 = "0.10.9"
 sha3 = "0.12.0"
 ripemd = "0.2.0"
 
+# Members opt in with `[lints] workspace = true`. Crate-level `#![deny(...)]` attributes still win.
+[workspace.lints.clippy]
+redundant_clone = "warn"
+
 # Avoids type unification errors when third-party repos are integrated to midnight-circuits. Since
 # both such repos and midnight-circuits import midnight-proofs, they end up with an isomorphic
 # (but different) copy of their midnight-proofs dependency. The below version enforces that they

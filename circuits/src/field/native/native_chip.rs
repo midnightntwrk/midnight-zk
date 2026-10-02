@@ -602,7 +602,7 @@ where
         )?;
 
         // Save the assigned constant in the cache.
-        self.cached_fixed.borrow_mut().insert(constant_big.clone(), x.clone());
+        self.cached_fixed.borrow_mut().insert(constant_big, x.clone());
 
         Ok(x)
     }

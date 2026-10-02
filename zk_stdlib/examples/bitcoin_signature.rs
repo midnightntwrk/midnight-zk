@@ -100,7 +100,7 @@ impl Relation for BitcoinSigExample {
         // Prepare the SHA input with the prefix: (tag || tag || rx || pk_x || msg).
         let sha_input = (tag.clone().into_iter())
             .chain(tag)
-            .chain(rx_bytes.clone())
+            .chain(rx_bytes)
             .chain(pk_x_bytes)
             .chain(msg_bytes)
             .collect::<Vec<_>>();

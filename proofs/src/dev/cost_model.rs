@@ -499,12 +499,7 @@ impl<F: FromUniformBytes<64> + Ord> DevAssembly<F> {
             has_measured_regions: false,
         };
 
-        ConcreteCircuit::FloorPlanner::synthesize(
-            &mut prover,
-            circuit,
-            config.clone(),
-            constants.clone(),
-        )?;
+        ConcreteCircuit::FloorPlanner::synthesize(&mut prover, circuit, config, constants)?;
 
         let selectors = vec![vec![]; prover.cs.num_selectors];
         let (cs, _selector_polys) = prover.cs.directly_convert_selectors_to_fixed(selectors);

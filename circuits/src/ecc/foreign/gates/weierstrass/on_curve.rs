@@ -118,8 +118,7 @@ impl<C: WeierstrassCurve> OnCurveConfig<C> {
         // curve. We use max/min with 0 to route it into the correct bound
         // without branching on the sign of (a+1).
         let expr_min =
-            -(&max_sum_xz + &max_sum_z + (&a_plus_1 * &max_sum_x).clone().max(BI::zero()))
-                - &a_plus_b;
+            -(&max_sum_xz + &max_sum_z + (&a_plus_1 * &max_sum_x).max(BI::zero())) - &a_plus_b;
         let expr_max = BI::from(2) * &max_sum_y + &max_sum_y2
             - (&a_plus_1 * &max_sum_x).min(BI::zero())
             - &a_plus_b;

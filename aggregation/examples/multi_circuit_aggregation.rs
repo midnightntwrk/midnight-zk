@@ -111,8 +111,7 @@ fn main() {
         OsRng,
     )
     .expect("Poseidon proof generation should not fail");
-    let witness =
-        AggregationWitness::new::<PoseidonCircuit>(poseidon_vk.clone(), poseidon_x, inner_proof);
+    let witness = AggregationWitness::new::<PoseidonCircuit>(poseidon_vk, poseidon_x, inner_proof);
 
     let start = Instant::now();
     aggregator.aggregate(witness).unwrap();
