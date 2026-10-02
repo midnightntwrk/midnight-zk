@@ -876,7 +876,7 @@ pub(crate) mod tests {
     use midnight_proofs::{
         circuit::SimpleFloorPlanner,
         dev::MockProver,
-        plonk::{Circuit, Error, create_proof, keygen_pk, keygen_vk_with_k, prepare},
+        plonk::{Circuit, Constraints, Error, create_proof, keygen_pk, keygen_vk_with_k, prepare},
         poly::{
             PolynomialLabel,
             kzg::{KZGCommitmentScheme, commitment::KZGMultiCommitment, params::ParamsKZG},
@@ -956,6 +956,15 @@ pub(crate) mod tests {
         }
 
         fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+            // A fixed column queried at two rotations, so that the inner
+            // circuit has more fixed queries than fixed columns.
+            let fixed_column = meta.fixed_column();
+            meta.create_gate("fixed column at two rotations", |meta| {
+                let cur = meta.query_fixed(fixed_column, Rotation::cur());
+                let next = meta.query_fixed(fixed_column, Rotation::next());
+                Constraints::without_selector(vec![cur * next])
+            });
+
             let committed_instance_column = meta.instance_column();
             let instance_column = meta.instance_column();
             PoseidonChip::configure_from_scratch(

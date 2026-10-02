@@ -14,6 +14,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Add tests compile time generics checks for `VectorGadget` and tests for `resize` [#464](https://github.com/midnightntwrk/midnight-zk/pull/465)
 
 ### Fixed
+* The verifier gadget no longer misreads the fixed evaluations of a circuit with a fixed column queried at more than one rotation [#547](https://github.com/midnightntwrk/midnight-zk/pull/547)
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 
 ### Changed

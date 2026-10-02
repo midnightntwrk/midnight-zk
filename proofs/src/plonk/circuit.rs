@@ -1119,6 +1119,39 @@ impl<F: Field> Expression<F> {
             &|a, _| a,
         )
     }
+
+    /// Returns the simple `Selector` this expression is a multiple of, if any.
+    ///
+    /// # Panics
+    ///
+    /// If a simple selector appears other than as a single factor of a product,
+    /// i.e. under a sum or twice in the same product.
+    fn simple_selector_factor(&self) -> Option<Selector> {
+        match self {
+            Expression::Selector(selector) if selector.is_simple() => Some(*selector),
+            Expression::Constant(_)
+            | Expression::Selector(_)
+            | Expression::Fixed(_)
+            | Expression::Advice(_)
+            | Expression::Instance(_) => None,
+            Expression::Negated(a) | Expression::Scaled(a, _) => a.simple_selector_factor(),
+            Expression::Sum(..) => {
+                assert!(
+                    !self.contains_simple_selector(),
+                    "a simple selector was used in a sum"
+                );
+                None
+            }
+            Expression::Product(a, b) => {
+                match (a.simple_selector_factor(), b.simple_selector_factor()) {
+                    (Some(_), Some(_)) => {
+                        panic!("two expressions containing simple selectors were multiplied")
+                    }
+                    (selector, None) | (None, selector) => selector,
+                }
+            }
+        }
+    }
 }
 
 impl<F: std::fmt::Debug> std::fmt::Debug for Expression<F> {
@@ -1956,6 +1989,22 @@ impl<F: Field> ConstraintSystem<F> {
         let queried_selectors = cells.queried_selectors;
         let queried_cells = cells.queried_cells;
 
+        // The verifier takes the evaluation of a gate's simple selector as 1 and
+        // scales the selector's commitment instead, so every polynomial of the
+        // gate must be that selector times an expression free of simple selectors.
+        let simple_selector = polys.first().and_then(|poly| poly.simple_selector_factor());
+        assert!(
+            polys.iter().all(|poly| poly.simple_selector_factor() == simple_selector),
+            "the polynomials of gate {name} are not all multiples of the same simple selector"
+        );
+        assert!(
+            queried_selectors
+                .iter()
+                .filter(|selector| selector.is_simple())
+                .all(|selector| Some(*selector) == simple_selector),
+            "gate {name} queries a simple selector that its polynomials are not multiples of"
+        );
+
         self.gates.push(Gate {
             name: name.into(),
             constraint_names,
@@ -2453,7 +2502,8 @@ impl<'a, F: Field> VirtualCells<'a, F> {
 mod tests {
     use midnight_curves::Fq as Scalar;
 
-    use super::Expression;
+    use super::{ConstraintSystem, Constraints, Expression};
+    use crate::poly::Rotation;
 
     #[test]
     fn iter_sum() {
@@ -2491,5 +2541,84 @@ mod tests {
         );
 
         assert_eq!(happened, expected);
+    }
+
+    #[test]
+    fn create_gate_accepts_multiples_of_one_simple_selector() {
+        let mut meta = ConstraintSystem::<Scalar>::default();
+        let (q, a) = (meta.selector(), meta.advice_column());
+        meta.create_gate("with_selector", |cells| {
+            let a = cells.query_advice(a, Rotation::cur());
+            Constraints::with_selector(q, vec![a.clone(), a.clone() * a])
+        });
+        meta.create_gate("without_selector", |cells| {
+            let (q, a) = (
+                cells.query_selector(q),
+                cells.query_advice(a, Rotation::cur()),
+            );
+            Constraints::without_selector(vec![q.clone() * a.clone(), -(q * a.clone()) * a])
+        });
+        let s = meta.complex_selector();
+        meta.create_gate("with_additive_selector", |cells| {
+            let a = cells.query_advice(a, Rotation::cur());
+            Constraints::with_additive_selector(s, vec![a])
+        });
+    }
+
+    #[test]
+    #[should_panic(expected = "are not all multiples of the same simple selector")]
+    fn create_gate_rejects_a_polynomial_without_the_simple_selector() {
+        let mut meta = ConstraintSystem::<Scalar>::default();
+        let (q, a) = (meta.selector(), meta.advice_column());
+        meta.create_gate("gate", |cells| {
+            let (q, a) = (
+                cells.query_selector(q),
+                cells.query_advice(a, Rotation::cur()),
+            );
+            Constraints::without_selector(vec![q * a.clone(), a])
+        });
+    }
+
+    #[test]
+    #[should_panic(expected = "are not all multiples of the same simple selector")]
+    fn create_gate_rejects_two_simple_selectors() {
+        let mut meta = ConstraintSystem::<Scalar>::default();
+        let (q1, q2, a) = (meta.selector(), meta.selector(), meta.advice_column());
+        meta.create_gate("gate", |cells| {
+            let (q1, q2) = (cells.query_selector(q1), cells.query_selector(q2));
+            let a = cells.query_advice(a, Rotation::cur());
+            Constraints::without_selector(vec![q1 * a.clone(), q2 * a])
+        });
+    }
+
+    #[test]
+    #[should_panic(expected = "a simple selector was used in a sum")]
+    fn create_gate_rejects_a_simple_selector_in_a_sum() {
+        let mut meta = ConstraintSystem::<Scalar>::default();
+        let (q, a) = (meta.selector(), meta.advice_column());
+        meta.create_gate("gate", |cells| {
+            let (q, a) = (
+                cells.query_selector(q),
+                cells.query_advice(a, Rotation::cur()),
+            );
+            // Built directly, as the `Add` implementation rejects it.
+            Constraints::without_selector(vec![Expression::Sum(
+                Box::new(q * a.clone()),
+                Box::new(a),
+            )])
+        });
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "queries a simple selector that its polynomials are not multiples of"
+    )]
+    fn create_gate_rejects_an_unused_simple_selector() {
+        let mut meta = ConstraintSystem::<Scalar>::default();
+        let (q, a) = (meta.selector(), meta.advice_column());
+        meta.create_gate("gate", |cells| {
+            cells.query_selector(q);
+            Constraints::without_selector(vec![cells.query_advice(a, Rotation::cur())])
+        });
     }
 }
