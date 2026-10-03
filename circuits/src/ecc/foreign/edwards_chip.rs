@@ -28,7 +28,7 @@ use std::{
 };
 
 use ff::{Field, PrimeField};
-use group::Group;
+use group::{Group, GroupEncoding};
 use midnight_curves::{
     curve25519::{Curve25519, Curve25519Subgroup},
     ff_ext::Legendre,
@@ -276,24 +276,24 @@ where
 
     /// In-circuit decompression of little-endian canonical compressed bytes.
     ///
-    /// Decoding a point, given as an array of 32 bytes, works as follows: The
-    /// caller of this function provides the claimed decoded point as a
-    /// witness. The function loads this point into the circuit,
-    /// calls [Self::to_canonical_compressed_bytes] and checks if the
-    /// resulting byte encoding matches the provided byte encoding.
-    ///
     /// # Returns
     /// An [AssignedForeignEdwardsPoint] constrained to lie in the subgroup.
     ///
     /// # Unsatisfiable Circuit
-    /// If the given array of [AssignedByte] is a non-canonical encoding of the
-    /// point provided by [`Value<Curve25519Subgroup>`].
+    /// If the given array of [AssignedByte] is not the canonical encoding of
+    /// a point in the prime-order subgroup.
     pub fn from_canonical_compressed_bytes(
         &self,
         layouter: &mut impl Layouter<F>,
         compressed_bytes: &[AssignedByte<F>; 32],
-        value: Value<Curve25519Subgroup>,
     ) -> Result<AssignedForeignEdwardsPoint<F, Curve25519, B>, Error> {
+        let value = compressed_bytes.value().map_with_result(|bytes| {
+            let curve_point = Curve25519::from_bytes(&bytes)
+                .into_option()
+                .ok_or(Error::Synthesis("invalid curve point encoding".into()))?;
+            Curve25519Subgroup::from_edwards(curve_point.0)
+                .ok_or(Error::Synthesis("point not in prime-order subgroup".into()))
+        })?;
         let point = self.assign(layouter, value)?;
         let canonical_bytes = self.to_canonical_compressed_bytes(layouter, &point)?;
         compressed_bytes.iter().zip(canonical_bytes.iter()).try_for_each(
@@ -1709,13 +1709,12 @@ mod tests {
     }
 
     /// Test circuit that calls `from_canonical_compressed_bytes` on a
-    /// given byte array together with the claimed subgroup point.
+    /// given byte array.
     ///
     /// The proof succeeds if and only if the byte array is the canonical
     /// encoding of the subgroup point.
     #[derive(Clone, Debug)]
     struct FromCompressedBytesCheckCircuit {
-        point: Curve25519Subgroup,
         bytes: [u8; 32],
     }
 
@@ -1757,18 +1756,18 @@ mod tests {
             let _ = chip.from_canonical_compressed_bytes(
                 &mut layouter,
                 &byte_cells,
-                Value::known(self.point),
             )?;
 
             chip.load_from_scratch(&mut layouter)
         }
     }
 
-    fn run_test_compressed_bytes(point: Curve25519Subgroup, bytes: [u8; 32], should_accept: bool) {
-        let circuit = FromCompressedBytesCheckCircuit { point, bytes };
-        let prover = MockProver::run(&circuit, vec![vec![], vec![]])
-            .expect("proof generation should not fail");
-        assert_eq!(prover.verify().is_ok(), should_accept);
+    fn run_test_compressed_bytes(bytes: [u8; 32], should_accept: bool) {
+        let circuit = FromCompressedBytesCheckCircuit { bytes };
+        match MockProver::run(&circuit, vec![vec![], vec![]]) {
+            Ok(prover) => assert_eq!(prover.verify().is_ok(), should_accept),
+            Err(_) => assert!(!should_accept),
+        }
     }
 
     #[test]
@@ -1776,31 +1775,34 @@ mod tests {
         // Canonical LE encoding of the identity with y = 1 and sign_x = 0.
         let mut canonical = [0; 32];
         canonical[0] = 1;
-        run_test_compressed_bytes(Curve25519Subgroup::identity(), canonical, true);
+        run_test_compressed_bytes(canonical, true);
 
         // Non-canonical LE encoding of the identity with y = 2^255 - 18 and sign_x = 0.
         let mut non_canonical = [0xff_u8; 32];
         non_canonical[0] = 0xee;
         non_canonical[31] = 0x7f;
-        run_test_compressed_bytes(Curve25519Subgroup::identity(), non_canonical, false);
+        run_test_compressed_bytes(non_canonical, false);
+
+        // Canonical encoding of the order-two point, which is not in the
+        // prime-order subgroup.
+        let mut non_subgroup = [0xff_u8; 32];
+        non_subgroup[0] = 0xec;
+        non_subgroup[31] = 0x7f;
+        run_test_compressed_bytes(non_subgroup, false);
 
         // Non-canonical LE encoding of the identity with y = 1 and sign_x = 1.
         let mut non_canonical_with_sign = canonical;
         non_canonical_with_sign[31] = 0x80;
-        run_test_compressed_bytes(
-            Curve25519Subgroup::identity(),
-            non_canonical_with_sign,
-            false,
-        );
+        run_test_compressed_bytes(non_canonical_with_sign, false);
 
         // Canonical LE encoding of the subgroup generator.
         let g = Curve25519Subgroup::generator();
-        run_test_compressed_bytes(g, Curve25519::from(g).to_bytes(), true);
+        run_test_compressed_bytes(Curve25519::from(g).to_bytes(), true);
 
         // Canonical LE encoding of a random subgroup point.
         let mut rng = ChaCha8Rng::seed_from_u64(0x7374727564656C);
         let p = Curve25519Subgroup::random(&mut rng);
-        run_test_compressed_bytes(p, Curve25519::from(p).to_bytes(), true);
+        run_test_compressed_bytes(Curve25519::from(p).to_bytes(), true);
     }
 
     // Correctness of the fixed-base comb MSM (`fixed_base_comb_msm`): its result

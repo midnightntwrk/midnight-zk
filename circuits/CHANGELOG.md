@@ -18,6 +18,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 
 ### Changed
+* Change the signature of `ForeignEdwardsEccChip::from_canonical_compressed_bytes` to derive the subgroup point from assigned bytes instead of requiring a caller-supplied point witness [#533](https://github.com/midnightntwrk/midnight-zk/issues/533)
 * `verifier::fixed_bases` reads the fixed bases from `VerifyingKey::phase0_commitment` and `VerifyingKey::simple_selector_commitments` [#547](https://github.com/midnightntwrk/midnight-zk/pull/547)
 * The verifier gadget reads and opens the fixed evaluations through the phase-0 group, matching the off-circuit verifier. `AssignedVk` holds the group commitment and one commitment per simple selector, in place of one commitment per fixed column [#547](https://github.com/midnightntwrk/midnight-zk/pull/547)
 * Adapt the verifier gadget to the advice columns being committed as part of the phase-1 argument group: the advice commitments are read with the logup multiplicities as one group, and the advice evaluations are read and opened through it [#543](https://github.com/midnightntwrk/midnight-zk/pull/543)
