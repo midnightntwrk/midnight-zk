@@ -20,6 +20,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Fix cost model proof size check to account for committed instance columns [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 
 ### Changed
+* Update `cardano_signature` example to match the new `ForeignEdwardsEccChip::from_canonical_compressed_bytes` signature [#540](https://github.com/midnightntwrk/midnight-zk/pull/540)
 * Update the verifying keys following the new verifying-key layout of `midnight-proofs`, which commits to the fixed columns as one group [#547](https://github.com/midnightntwrk/midnight-zk/pull/547)
 * Migrate to Rust edition 2024; declare MSRV 1.90. Both are now inherited from the workspace [#508](https://github.com/midnightntwrk/midnight-zk/pull/508)
 * `load_srs` sizes the monomial basis via `PolynomialCommitmentScheme::srs_monomial_blowup` instead of a `single-h-commitment` `cfg` branch [#487](https://github.com/midnightntwrk/midnight-zk/pull/487)
