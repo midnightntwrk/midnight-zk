@@ -122,7 +122,7 @@ fn eval_points<S: SelfEmulation>(
 #[derive(Clone, Debug)]
 pub(crate) struct Committed<S: SelfEmulation, PCS: InCircuitPCS<S>> {
     commitment: PCS::AssignedCommitment,
-    polynomial_labels: BTreeSet<PolynomialLabel>,
+    polynomial_labels: Vec<PolynomialLabel>,
 }
 
 /// Builds the fixed group of the absorbed verifying key, which binds it to the
@@ -132,7 +132,7 @@ pub(crate) fn committed_from_key<S: SelfEmulation, PCS: InCircuitPCS<S>>(
 ) -> Committed<S, PCS> {
     Committed {
         commitment: vk.phase0_commitment().clone(),
-        polynomial_labels: BTreeSet::from_iter(vk.phase0_labels()),
+        polynomial_labels: vk.phase0_labels(),
     }
 }
 
@@ -144,7 +144,7 @@ pub(crate) fn read_committed<S: SelfEmulation, PCS: InCircuitPCS<S>>(
 ) -> Result<Committed<S, PCS>, Error> {
     Ok(Committed {
         commitment: PCS::read_commitment(transcript_gadget, layouter, labels)?,
-        polynomial_labels: BTreeSet::from_iter(labels.iter().cloned()),
+        polynomial_labels: labels.to_vec(),
     })
 }
 

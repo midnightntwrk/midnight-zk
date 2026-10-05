@@ -50,9 +50,10 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
     /// Commit to several polynomials, tagging the result with the
     /// corresponding labels for identification during multi-open accumulation.
     ///
-    /// The polynomials are committed to in the labels' `Ord` order, which is
-    /// the order [`read_commitment`](Self::read_commitment) reads them back in.
-    /// The caller may list them in any order.
+    /// The polynomials are committed to in the order given, which must be the
+    /// order in which [`read_commitment`](Self::read_commitment) and
+    /// [`deserialize_commitment`](Self::deserialize_commitment) receive their
+    /// labels.
     ///
     /// Committing to no polynomials does not fail: it returns an empty
     /// commitment, which [`write_commitment`](Self::write_commitment) does not
@@ -84,9 +85,8 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
     /// transcript, absorbing it into the transcript state and tagging each
     /// polynomial with its label.
     ///
-    /// The labels are matched to the points read in their `Ord` order, the
-    /// order [`commit_many`](Self::commit_many) commits to them in, so the
-    /// caller may list them in any order.
+    /// The labels are matched to the points read in the order given, that of
+    /// [`commit_many`](Self::commit_many).
     ///
     /// Use [`deserialize_commitment`](Self::deserialize_commitment) instead for
     /// commitments that are not part of the proof.
@@ -124,8 +124,7 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
     ///
     /// Unlike [`read_commitment`](Self::read_commitment), the bytes come from a
     /// plain reader, typically a serialized verifying key, and nothing is
-    /// absorbed into a transcript. The labels are also matched to the points
-    /// positionally, in the order given, rather than in their `Ord` order.
+    /// absorbed into a transcript.
     fn deserialize_commitment<R: Read>(
         reader: &mut R,
         format: SerdeFormat,
