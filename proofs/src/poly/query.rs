@@ -40,6 +40,14 @@ pub enum PolynomialLabel {
     NoLabel,
 }
 
+impl PolynomialLabel {
+    /// Asserts that no label of `labels` is repeated.
+    pub fn assert_distinct(labels: &[Self]) {
+        let distinct: std::collections::HashSet<_> = labels.iter().collect();
+        assert_eq!(distinct.len(), labels.len(), "duplicated labels");
+    }
+}
+
 impl fmt::Display for PolynomialLabel {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

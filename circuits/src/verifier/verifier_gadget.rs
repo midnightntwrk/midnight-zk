@@ -369,15 +369,16 @@ impl<S: SelfEmulation> VerifierGadget<S> {
 
         let trash_challenge = transcript.squeeze_challenge(layouter)?;
 
-        // The label order does not matter here, labels are ordered in
-        // `read_committed`.
         let mut phase2_labels = cs.permutation().accumulator_labels(cs.degree());
 
         for (argument_index, logup_argument) in logups.iter().enumerate() {
-            phase2_labels.push(PolynomialLabel::LogupAggregator(argument_index));
             for j in 0..logup_argument.num_chunks() {
                 phase2_labels.push(PolynomialLabel::LogupHelper(argument_index, j));
             }
+        }
+
+        for argument_index in 0..logups.len() {
+            phase2_labels.push(PolynomialLabel::LogupAggregator(argument_index));
         }
 
         for argument_index in 0..cs.trashcans().len() {

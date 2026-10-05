@@ -652,13 +652,10 @@ impl<S: SelfEmulation> InCircuitPCS<S> for InCircuitKZG<S> {
     type AssignedCommitment = AssignedKZGMultiCommitment<S>;
 
     fn fixed_commitment(labels: &[PolynomialLabel]) -> Self::AssignedCommitment {
-        let ordered = BTreeSet::from_iter(labels.iter().cloned());
-        assert_eq!(
-            ordered.len(),
-            labels.len(),
-            "duplicated polynomial label in a commitment group"
-        );
-        AssignedKZGMultiCommitment(ordered.into_iter().map(AssignedKZGCommitment::fixed).collect())
+        PolynomialLabel::assert_distinct(labels);
+        AssignedKZGMultiCommitment(
+            labels.iter().cloned().map(AssignedKZGCommitment::fixed).collect(),
+        )
     }
 
     fn read_commitment(

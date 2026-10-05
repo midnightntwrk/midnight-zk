@@ -8,7 +8,7 @@
 //! For a more detailed explanation, see the [Halo 2 Book](https://zcash.github.io/halo2/design/proving-system/multipoint-opening.html) on Multipoint Openings.
 
 use std::{
-    collections::{BTreeSet, HashMap},
+    collections::HashMap,
     io::{self, Read},
     marker::PhantomData,
 };
@@ -92,20 +92,11 @@ where
             labels.len(),
             "polynomials and labels must have the same length"
         );
-
-        // The group travels through the transcript in the labels' `Ord` order,
-        // which is the order `read_commitment` tags the points it reads in.
-        let mut pairs: Vec<_> = polynomials.iter().zip(labels).collect();
-        pairs.sort_by_key(|(_, a)| *a);
-        assert!(
-            pairs.windows(2).all(|w| w[0].1 != w[1].1),
-            "duplicated polynomial label in a commitment group"
-        );
+        PolynomialLabel::assert_distinct(labels);
 
         let bases = params.bases::<B>();
         KZGMultiCommitment(
-            pairs
-                .into_iter()
+            (polynomials.iter().zip(labels))
                 .map(|(polynomial, label)| {
                     let size = polynomial.values.len();
                     assert!(bases.len() >= size);
@@ -141,18 +132,9 @@ where
         if labels.is_empty() {
             return Ok(KZGMultiCommitment(vec![]));
         }
+        PolynomialLabel::assert_distinct(labels);
 
         let commitment: KZGMultiCommitment<E> = transcript.read()?;
-
-        // `commit_many` commits to the group in the labels' `Ord` order, so tag
-        // the points in that order, whatever order the caller listed them in.
-        let ordered = BTreeSet::from_iter(labels.iter().cloned());
-        assert_eq!(
-            ordered.len(),
-            labels.len(),
-            "duplicated polynomial label in a commitment group"
-        );
-        let labels: Vec<_> = ordered.into_iter().collect();
 
         // How many polynomials the group holds is fixed by the verifying key,
         // so any other number is a malformed proof. The prover declares the
