@@ -278,15 +278,12 @@ where
         let label_to_poly: HashMap<PolynomialLabel, &Polynomial<E::Fr, Coeff>> =
             queries.iter().map(|q| (q.label.clone(), q.poly)).collect();
 
-        let kzg_queries = queries
-            .iter()
-            .map(|query| {
-                (
-                    query.label.clone(),
-                    query.point,
-                    eval_polynomial(&query.poly[..], query.point),
-                )
-            })
+        // `construct_intermediate_sets` is shared with the verifier, and the
+        // evaluations (the third component of each query) are only read by the
+        // verifier, so the prover passes zeros.
+        // TODO: address this better.
+        let kzg_queries = (queries.iter())
+            .map(|query| (query.label.clone(), query.point, E::Fr::ZERO))
             .collect::<Vec<_>>();
         let (poly_map, point_sets) = construct_intermediate_sets(&kzg_queries)?;
 
