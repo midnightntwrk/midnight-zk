@@ -167,7 +167,7 @@ fn main() {
     // message will hint at a valid (but not necessarily optimal) value, e.g.
     // `keygen_vk should not fail: SrsError(14, 19)` means K = 19 works, but a
     // smaller K might too. Binary-search to find it.
-    const K: u32 = 17;
+    const K: u32 = 18;
 
     const N: usize = 1_000; // Number of Poseidon iteration per IVC step.
     const STEPS: usize = 3; // Number of IVC steps to run.

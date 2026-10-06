@@ -461,23 +461,6 @@ pub(crate) fn multi_prepare_kzg<S: SelfEmulation>(
 ) -> Result<AssignedAccumulator<S>, Error> {
     let one = AssignedBoundedScalar::one(layouter, scalar_chip)?;
 
-    // Add dummy queries to reduce the number of distinct multi-open point sets.
-    #[cfg(feature = "fewer-point-sets")]
-    let queries = &{
-        let pairs: Vec<_> = queries.iter().map(|q| (q.label.clone(), q.point.clone())).collect();
-        let dummy_openings = midnight_proofs::poly::kzg::compute_dummy_queries(&pairs);
-        let mut queries = queries.to_vec();
-        for (idx, dummy_point) in dummy_openings {
-            queries.push(VerifierQuery {
-                point: dummy_point,
-                commitment: queries[idx].commitment,
-                label: queries[idx].label.clone(),
-                eval: transcript_gadget.read_scalar(layouter)?,
-            });
-        }
-        queries
-    };
-
     let x1 = transcript_gadget.squeeze_challenge(layouter)?;
     let x2 = transcript_gadget.squeeze_challenge(layouter)?;
 
