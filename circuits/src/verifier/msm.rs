@@ -468,6 +468,16 @@ impl<S: SelfEmulation> AssignedMsm<S> {
         Ok(())
     }
 
+    /// Whether the MSM is a single base-scalar pair with no fixed-base scalars
+    /// left, as [`collapse`](Self::collapse) after
+    /// [`resolve_fixed_bases`](Self::resolve_fixed_bases) leaves it.
+    ///
+    /// This is a check on the shape only: the value of the scalar is a witness
+    /// and is not inspected.
+    pub fn is_collapsed(&self) -> bool {
+        self.bases.len() == 1 && self.scalars.len() == 1 && self.fixed_base_scalars.is_empty()
+    }
+
     /// Given the actual fixed bases, resolves the fixed-base part of the MSM
     /// by pairing each named scalar with its base and moving them to regular
     /// variable-base entries.

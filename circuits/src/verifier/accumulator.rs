@@ -353,6 +353,12 @@ impl<S: SelfEmulation> AssignedAccumulator<S> {
         self.rhs.collapse(layouter, curve_chip, scalar_chip)
     }
 
+    /// Whether both sides are collapsed and fixed-base-resolved; see
+    /// [`AssignedMsm::is_collapsed`].
+    pub fn is_collapsed(&self) -> bool {
+        self.lhs.is_collapsed() && self.rhs.is_collapsed()
+    }
+
     /// Given the actual fixed bases, resolves the fixed-base part of the
     /// internal MSMs by pairing each named scalar with its base and moving
     /// them to regular variable-base entries.
