@@ -81,6 +81,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Simplify KZG multiopen verifier to use `KZGCommitment` directly [#430](https://github.com/midnightntwrk/midnight-zk/pull/430)
 
 ### Removed
+* `fewer-point-sets` feature [#554](https://github.com/midnightntwrk/midnight-zk/pull/554)
 * `VerifyingKey::fixed_commitments`, replaced by `phase0_commitment` and `simple_selector_commitments` [#547](https://github.com/midnightntwrk/midnight-zk/pull/547)
 * `Clone` on `ProvingKey`, so that the polynomials it holds are never copied [#537](https://github.com/midnightntwrk/midnight-zk/pull/537)
 * Remove the internal `permutation::verifier` module and `permutation::Evaluated`; the permutation argument no longer carries any transcript plumbing of its own [#537](https://github.com/midnightntwrk/midnight-zk/pull/537)

@@ -33,8 +33,6 @@ use ff::Field;
 use group::Group;
 use midnight_curves::pairing::MultiMillerLoop;
 use rand_core::OsRng;
-#[cfg(feature = "fewer-point-sets")]
-pub use utils::compute_dummy_queries;
 
 #[cfg(feature = "truncated-challenges")]
 use crate::utils::arithmetic::{truncate, truncated_powers};
@@ -270,26 +268,6 @@ where
             }
         }
 
-        // Add dummy queries to reduce the number of distinct multi-open point sets.
-        #[cfg(feature = "fewer-point-sets")]
-        let queries = &{
-            let mut queries = queries.to_vec();
-            let pairs: Vec<_> = queries.iter().map(|q| (q.label.clone(), q.point)).collect();
-            for (idx, dummy_point) in compute_dummy_queries(&pairs) {
-                let poly = queries[idx].poly;
-                let label = queries[idx].label.clone();
-                transcript
-                    .write(&eval_polynomial(&poly[..], dummy_point))
-                    .map_err(|_| Error::OpeningError)?;
-                queries.push(ProverQuery {
-                    point: dummy_point,
-                    poly,
-                    label,
-                });
-            }
-            queries
-        };
-
         // Refer to the halo2 book for docs:
         // https://zcash.github.io/halo2/design/proving-system/multipoint-opening.html
         let x1: E::Fr = transcript.squeeze_challenge();
@@ -422,25 +400,6 @@ where
         E::G1: CurveExt<ScalarExt = E::Fr>,
         KZGMultiCommitment<E>: Hashable<T::Hash> + 'com,
     {
-        // Add dummy queries to reduce the number of distinct multi-open point sets.
-        #[cfg(feature = "fewer-point-sets")]
-        let queries = &{
-            let mut queries = queries.to_vec();
-            let pairs: Vec<_> = queries.iter().map(|q| (q.label.clone(), q.point)).collect();
-            for (idx, dummy_point) in compute_dummy_queries(&pairs) {
-                let commitment = queries[idx].commitment;
-                let label = queries[idx].label.clone();
-                let eval = transcript.read().map_err(|_| Error::SamplingError)?;
-                queries.push(VerifierQuery {
-                    point: dummy_point,
-                    commitment,
-                    label,
-                    eval,
-                });
-            }
-            queries
-        };
-
         // Refer to the halo2 book for docs:
         // https://zcash.github.io/halo2/design/proving-system/multipoint-opening.html
         let x1: E::Fr = transcript.squeeze_challenge();

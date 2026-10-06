@@ -21,7 +21,7 @@ jobs:
     strategy:
       matrix:
         features:
-          - truncated-challenges,fewer-point-sets,single-h-commitment
+          - truncated-challenges,single-h-commitment
 
     steps:
       - name: Add github.com credentials to netrc
@@ -49,8 +49,8 @@ jobs:
         run: mkdir -p ./examples/assets
       - name: Download SRS
         run: |
-          curl -L -o ./examples/assets/midnight-srs-2p17 https://srs.midnight.network/midnight-srs-2p17
-          curl -L -o ./examples/assets/midnight-srs-2p19 https://srs.midnight.network/midnight-srs-2p19
+          curl -L -o ./examples/assets/midnight-srs-2p18 https://srs.midnight.network/midnight-srs-2p18
+          curl -L -o ./examples/assets/midnight-srs-2p20 https://srs.midnight.network/midnight-srs-2p20
 
       - name: Run IVC example (${{ matrix.features }})
         run: cargo run --release -p midnight-aggregation --example ivc --features ${{ matrix.features }}
