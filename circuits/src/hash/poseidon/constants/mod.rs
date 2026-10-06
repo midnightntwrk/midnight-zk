@@ -11,6 +11,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::sync::OnceLock;
+
+use super::round_skips::PreComputedRoundCPU;
 use crate::CircuitField;
 
 /// Length of Poseidon's state.
@@ -33,6 +36,11 @@ pub trait PoseidonField: CircuitField {
 
     /// The constants added to Poseidon's state on every round.
     const ROUND_CONSTANTS: [[Self; WIDTH]; NB_FULL_ROUNDS + NB_PARTIAL_ROUNDS];
+
+    /// Storage for the partial-round pre-computation of the CPU permutation,
+    /// which [`PreComputedRoundCPU::init`] derives once per field and caches
+    /// here.
+    fn pre_computed_round_cpu_cell() -> &'static OnceLock<PreComputedRoundCPU<Self>>;
 }
 
 mod blstrs;

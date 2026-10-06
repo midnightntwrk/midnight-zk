@@ -20,7 +20,10 @@
 //! $ sage generate_parameters_grain.sage 1 0 255 3 8 60 0x73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001
 //! ```
 
+use std::sync::OnceLock;
+
 use super::{NB_FULL_ROUNDS, NB_PARTIAL_ROUNDS, PoseidonField, WIDTH};
+use crate::hash::poseidon::round_skips::PreComputedRoundCPU;
 
 impl PoseidonField for midnight_curves::Fq {
     // Number of round constants: 204 = (8 + 60) * 3
@@ -1462,4 +1465,9 @@ impl PoseidonField for midnight_curves::Fq {
             ]),
         ],
     ];
+
+    fn pre_computed_round_cpu_cell() -> &'static OnceLock<PreComputedRoundCPU<Self>> {
+        static CELL: OnceLock<PreComputedRoundCPU<midnight_curves::Fq>> = OnceLock::new();
+        &CELL
+    }
 }

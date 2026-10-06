@@ -335,9 +335,15 @@ impl<F: PoseidonField> RoundId<F> {
 }
 
 impl<F: PoseidonField> PreComputedRoundCPU<F> {
-    /// Pre-computes partial rounds and the associated round contants for
+    /// Pre-computed partial rounds and the associated round contants for
     /// Poseidon's using NB_SKIPS_CPU round skips.
-    pub fn init() -> Self {
+    pub fn init() -> &'static Self {
+        // result depends only on `F` , it is derived only once per field, on first use
+        F::pre_computed_round_cpu_cell().get_or_init(Self::derive)
+    }
+
+    /// The derivation behind `init`.
+    fn derive() -> Self {
         let partial_round_id = RoundId::<F>::generate(NB_SKIPS_CPU);
         let round_constants = partial_round_id.round_constants_cpu();
         PreComputedRoundCPU {
