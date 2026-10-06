@@ -173,9 +173,12 @@ pub fn msm_specific<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C::Curve]) ->
         return C::Curve::identity();
     }
 
-    // We empirically checked that for MSMs larger than 2**18, the blstrs
-    // implementation regresses.
-    if coeffs.len() <= (2 << 18) && TypeId::of::<C>() == TypeId::of::<midnight_curves::G1Affine>() {
+    // For BLS12-381 G1 always use blst's Pippenger. The former cut-over to
+    // `msm_best` above 2^19 terms ("blst regresses above 2^18") no longer holds,
+    // and `msm_best` pays the `from_xy` subgroup check introduced in
+    // midnight-curves 0.3.1 once per base and once per bucket, which makes it
+    // several times slower on large MSMs.
+    if TypeId::of::<C>() == TypeId::of::<midnight_curves::G1Affine>() {
         // Safe: we just checked type
         let coeffs_slice = coeffs.as_slice();
         let bases_slice = bases.as_slice();
