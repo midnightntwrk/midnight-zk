@@ -198,8 +198,9 @@ impl<F: PrimeField> Evaluated<'_, F> {
         self.evals_map.iter().flat_map(|(label, evaluations)| {
             evaluations.iter().map(|evaluation| {
                 ProverQuery::new(
+                    &self.committed.labels,
+                    &self.committed.polys,
                     evaluation.point,
-                    self.committed.poly(label).unwrap(),
                     label.clone(),
                 )
             })
