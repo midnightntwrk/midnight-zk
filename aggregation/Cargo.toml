@@ -12,6 +12,9 @@ keywords = ["halo", "proofs", "zkp", "zkSNARKs", "aggregation"]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs", "--html-in-header", "katex-header.html"]
 
+[lints]
+workspace = true
+
 [dependencies]
 group = { workspace = true }
 ff = { workspace = true }

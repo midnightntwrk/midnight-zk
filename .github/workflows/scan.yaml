@@ -6,6 +6,7 @@ on:
     branches: [main, next]
   pull_request:
     branches: [main, next]
+  merge_group: {}         # required check must report; the job skips (= passes) there
   workflow_dispatch: {}   # so you can still run it manually
   schedule:
     - cron: '0 0 * * *'   # run daily at midnight UTC
@@ -21,6 +22,9 @@ jobs:
     steps:
       - run: echo Skip
   scan:
+    # Already gated at PR level, and re-run on push to main. In the queue its
+    # tool and database downloads would only add flakes that eject PRs.
+    if: github.event_name != 'merge_group'
     runs-on: ubuntu-latest
     permissions:
       actions: read
@@ -30,6 +34,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  #v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Scan code
-        uses: midnightntwrk/upload-sarif-github-action@07dad711370cc5985885ebcf07cb8c9264bc4167
+        uses: midnightntwrk/upload-sarif-github-action@362d0346b194663004cb371e8e8523bd1c910917

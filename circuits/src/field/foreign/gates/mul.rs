@@ -306,7 +306,7 @@ where
             let u_range_check = (u_cell, u_max);
 
             // Every vj_cell will be range-checked in [0, vj_max)
-            let vs_max = mul_config.vs_bounds.clone().into_iter().map(|(_, vj_max)| vj_max.clone());
+            let vs_max = mul_config.vs_bounds.clone().into_iter().map(|(_, vj_max)| vj_max);
             let vs_range_checks =
                 vs_cells.into_iter().zip(vs_max.collect::<Vec<_>>()).collect::<Vec<_>>();
 

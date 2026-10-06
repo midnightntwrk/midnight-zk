@@ -52,7 +52,7 @@ pub(crate) fn compute_linearization_poly<F: PrimeField, CS: PolynomialCommitment
         Polynomial::init(pk.vk.get_domain().n as usize),
         |acc, (col_idx, eval)| match col_idx {
             Some(col_idx) => {
-                let acc = acc + pk.fixed_polys[*col_idx].clone() * (y_pow * eval);
+                let acc = acc + pk.simple_selector_polys[col_idx].clone() * (y_pow * eval);
                 y_pow *= y;
                 acc
             }

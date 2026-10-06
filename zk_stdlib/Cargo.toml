@@ -3,10 +3,13 @@ name = "midnight-zk-stdlib"
 version = "2.2.0"
 edition.workspace = true
 rust-version.workspace = true
-license-file.workspace = true
+license.workspace = true
 description = "Standard library of circuits and utilities for Midnight zero-knowledge proofs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lints]
+workspace = true
 
 [dependencies]
 group = { workspace = true }

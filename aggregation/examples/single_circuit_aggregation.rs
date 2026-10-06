@@ -33,7 +33,7 @@ use midnight_circuits::{
 };
 use midnight_proofs::{
     circuit::{Layouter, Value},
-    plonk::{self, ConstraintSystem, Error},
+    plonk::{self, Error},
     poly::{
         EvaluationDomain, PolynomialLabel,
         kzg::{KZGCommitmentScheme, commitment::KZGMultiCommitment, params::ParamsVerifierKZG},
@@ -57,8 +57,6 @@ type InnerCircuit = ShaPreimageCircuit;
 /// Setup data for the inner circuit, threaded as IVC context.
 #[derive(Clone, Debug)]
 pub struct InnerCircuitContext {
-    /// Constraint system used by the inner proofs (to be aggregated).
-    cs: ConstraintSystem<F>,
     /// Evaluation domain for the inner circuit.
     domain: EvaluationDomain<F>,
     /// Verifying key.
@@ -288,7 +286,7 @@ impl IvcTransition for ProofAggregation {
         let inner_vk: AssignedVk<S, InCircuitKZG<S>> = self.std_lib.verifier().assign_fixed_vk(
             layouter,
             &self.inner_ctx.domain,
-            &self.inner_ctx.cs,
+            self.inner_ctx.vk.vk().cs(),
             self.inner_ctx.vk.vk().transcript_repr(),
         )?;
 
@@ -362,7 +360,6 @@ fn main() {
         let domain = midnight_proofs::poly::EvaluationDomain::new(cs.degree() as u32, k);
 
         InnerCircuitContext {
-            cs,
             domain,
             vk: inner_vk,
             params_verifier: inner_srs.verifier_params(),

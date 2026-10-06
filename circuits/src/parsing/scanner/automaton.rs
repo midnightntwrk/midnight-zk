@@ -1191,7 +1191,7 @@ pub(super) mod tests {
     ) {
         accepted.iter().for_each(|(s,o)|
             assert!(s.len() == o.len(),
-            "[test {index}] There is probably a typo in the tests vectors: the input ({:?}, length = {}) and the expected output ({:?}, length = {}) have different lengths.", 
+            "[test {index}] There is probably a typo in the tests vectors: the input ({:?}, length = {}) and the expected output ({:?}, length = {}) have different lengths.",
             s, s.len(), o, o.len())
         );
         println!("\n\n** TEST no {index}\n** alphabet size = {alphabet_size}");
@@ -1285,7 +1285,7 @@ pub(super) mod tests {
         let accepted4: &[(&[u8], &[usize])] = &[];
         let rejected4: &[&[u8]] = &[&[0], &[], &[0, 1], &[1, 0], &[1, 1], &[1, 0, 2], &[1, 2]];
 
-        let regex5 = Regex::any().minus(zero.clone().or(one.clone()).list());
+        let regex5 = Regex::any().minus(zero.or(one.clone()).list());
         let accepted5: &[(&[u8], &[usize])] = &[
             (&[2], &[0]),
             (&[0, 2], &[0; 2]),
@@ -1332,7 +1332,7 @@ pub(super) mod tests {
             &[1, 1, 1, 0, 1, 2],
         ];
 
-        let regex8 = one.clone().non_empty_list().output_bytes([1], 1).separated_list(two.clone());
+        let regex8 = one.non_empty_list().output_bytes([1], 1).separated_list(two);
         let accepted8: &[(&[u8], &[usize])] = &[
             (&[], &[]),
             (&[1, 1], &[1, 1]),

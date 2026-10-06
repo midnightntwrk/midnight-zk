@@ -4,7 +4,7 @@ resolver = "2"
 members = ["proofs", "curves", "circuits", "aggregation", "zk_stdlib"]
 
 [workspace.package]
-license-file = "LICENSE"
+license = "Apache-2.0"
 edition = "2024"
 rust-version = "1.90.0"
 
@@ -24,6 +24,10 @@ num-bigint = { version = "0.4" }
 sha2 = "0.10.9"
 sha3 = "0.12.0"
 ripemd = "0.2.0"
+
+# Members opt in with `[lints] workspace = true`. Crate-level `#![deny(...)]` attributes still win.
+[workspace.lints.clippy]
+redundant_clone = "warn"
 
 # Avoids type unification errors when third-party repos are integrated to midnight-circuits. Since
 # both such repos and midnight-circuits import midnight-proofs, they end up with an isomorphic

@@ -28,6 +28,9 @@ name = "zswap_output"
 required-features = ["bench-internal"]
 harness = false
 
+[lints]
+workspace = true
+
 [dependencies]
 ff = { workspace = true }
 group = { workspace = true }

@@ -36,6 +36,8 @@ jobs:
           username: ${{ secrets.GH_USERNAME }}
           password: ${{ secrets.GH_PASSWORD }}
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
       - name: 'Install rust-toolchain.toml'
         run: rustup toolchain install
       - name: Restore Cargo Cache

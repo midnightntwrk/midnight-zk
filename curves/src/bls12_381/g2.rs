@@ -1013,7 +1013,12 @@ impl CurveAffine for G2Affine {
     type CurveExt = G2Projective;
 
     fn coordinates(&self) -> CtOption<Coordinates<Self>> {
-        Coordinates::from_xy(self.x(), self.y())
+        // Unchecked version is safe to use since we are taking
+        // an already checked point.
+        CtOption::new(
+            Coordinates::from_xy_unchecked(self.x(), self.y()),
+            Choice::from(1u8),
+        )
     }
 
     fn from_xy(x: Self::Base, y: Self::Base) -> CtOption<Self> {

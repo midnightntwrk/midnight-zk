@@ -1,31 +1,19 @@
 //! Implementation of permutation argument.
 
 use super::circuit::{Any, Column};
-use crate::{
-    poly::{Coeff, ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial, Rotation},
-    utils::{
-        SerdeFormat,
-        helpers::{polynomial_slice_byte_length, read_polynomial_vec, write_polynomial_slice},
-    },
-};
+use crate::poly::{ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial, Rotation};
 
 pub(crate) mod keygen;
 pub(crate) mod prover;
-pub(crate) mod verifier;
 
-use std::{io, iter};
+use std::collections::BTreeMap;
 
-use ff::{PrimeField, WithSmallOrderMulGroup};
+use ff::PrimeField;
 pub use keygen::Assembly;
-use midnight_curves::serde::SerdeObject;
 
 use crate::{
-    plonk::{
-        self,
-        permutation::{keygen::compute_polys_and_cosets, verifier::CommonEvaluated},
-    },
-    poly::{EvaluationDomain, PolynomialLabel, commitment::PolynomialCommitmentScheme},
-    utils::helpers::ProcessedSerdeObject,
+    plonk::{self, argument},
+    poly::{PolynomialLabel, commitment::PolynomialCommitmentScheme},
 };
 
 /// A permutation argument.
@@ -88,197 +76,133 @@ impl Argument {
     pub fn get_columns(&self) -> Vec<Column<Any>> {
         self.columns.clone()
     }
-}
 
-/// The verifying key for a single permutation argument.
-#[derive(Clone, Debug)]
-pub struct VerifyingKey<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
-    commitments: Vec<CS::Commitment>,
-}
-
-impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> VerifyingKey<F, CS> {
-    /// Returns the (permutation argument) commitments of the verifying key.
-    pub fn commitments(&self) -> &Vec<CS::Commitment> {
-        &self.commitments
+    /// The labels of the permutation polynomials, one per column of the
+    /// argument. They belong to the phase-0 group, whose polynomials are
+    /// committed to in the verifying key, not in the proof.
+    pub fn polynomial_labels(&self) -> Vec<PolynomialLabel> {
+        (0..self.columns.len()).map(PolynomialLabel::PermutationFixed).collect()
     }
 
-    pub(crate) fn write<W: io::Write>(&self, writer: &mut W, format: SerdeFormat) -> io::Result<()>
-    where
-        CS::Commitment: ProcessedSerdeObject,
-    {
-        for commitment in &self.commitments {
-            commitment.write(writer, format)?;
-        }
-        Ok(())
+    /// The number of accumulator polynomials: the columns are split into chunks
+    /// of `degree - 2`, each with an accumulator of its own.
+    pub fn num_sets(&self, degree: usize) -> usize {
+        self.columns.len().div_ceil(degree - 2)
     }
 
-    pub(crate) fn read<R: io::Read>(
-        reader: &mut R,
-        argument: &Argument,
-        format: SerdeFormat,
-    ) -> io::Result<Self>
-    where
-        CS::Commitment: ProcessedSerdeObject,
-    {
-        let commitments = (0..argument.columns.len())
-            .map(|i| {
-                CS::deserialize_commitment(reader, format, &[PolynomialLabel::PermutationFixed(i)])
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-        Ok(VerifyingKey { commitments })
-    }
-
-    pub(crate) fn bytes_length(&self, format: SerdeFormat) -> usize
-    where
-        CS::Commitment: ProcessedSerdeObject,
-    {
-        self.commitments.iter().map(|c| c.byte_length(format)).sum()
+    /// The labels of the permutation accumulators. They are committed to as
+    /// part of the phase-2 group.
+    pub fn accumulator_labels(&self, degree: usize) -> Vec<PolynomialLabel> {
+        (0..self.num_sets(degree))
+            .map(PolynomialLabel::PermutationAccumulator)
+            .collect()
     }
 }
 
-/// The proving key for a single permutation argument.
-#[derive(Clone, Debug)]
-pub(crate) struct ProvingKey<F: PrimeField> {
-    pub(crate) permutations: Vec<Polynomial<F, LagrangeCoeff>>,
-    pub(crate) polys: Vec<Polynomial<F, Coeff>>,
+/// The permutation polynomials in the two bases the prover reads them in.
+///
+/// The polynomials themselves belong to the proving key's phase-0 group, which
+/// holds them in coefficient form; these are derived from it and cached beside
+/// it by [`crate::plonk::build_phase0_polys`].
+#[derive(Debug)]
+pub(crate) struct Sigmas<F: PrimeField> {
+    /// Evaluations over the domain, read row-wise when computing the
+    /// accumulators. This is the form the proving key serializes.
+    pub(crate) values: Vec<Polynomial<F, LagrangeCoeff>>,
+    /// Evaluations over the extended domain, read when evaluating the
+    /// numerator of the quotient polynomial.
     pub(crate) cosets: Vec<Polynomial<F, ExtendedLagrangeCoeff>>,
 }
 
-impl<F: WithSmallOrderMulGroup<3> + SerdeObject> ProvingKey<F> {
-    /// Reads proving key for a single permutation argument from buffer using
-    /// `Polynomial::read`.
-    pub(super) fn read<R: io::Read>(
-        reader: &mut R,
-        format: SerdeFormat,
-        domain: &EvaluationDomain<F>,
-        p: &Argument,
-    ) -> io::Result<Self> {
-        let permutations = read_polynomial_vec(reader, format)?;
-        let (polys, cosets) = compute_polys_and_cosets::<F>(domain, p, &permutations);
-        Ok(ProvingKey {
-            permutations,
-            polys,
-            cosets,
-        })
-    }
-
-    /// Writes proving key for a single permutation argument to buffer using
-    /// `Polynomial::write`.
-    pub(super) fn write<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
-        write_polynomial_slice(&self.permutations, writer)?;
-        Ok(())
-    }
-}
-
-impl<F: PrimeField> ProvingKey<F> {
-    /// Gets the total number of bytes in the serialization of `self`
-    pub(super) fn bytes_length(&self) -> usize {
-        polynomial_slice_byte_length(&self.permutations)
-            + polynomial_slice_byte_length(&self.polys)
-            + polynomial_slice_byte_length(&self.cosets)
-    }
-}
-#[derive(Debug)]
-pub(crate) struct Evaluated<F: PrimeField> {
-    pub permutation_product_eval: F,
-    pub permutation_product_next_eval: F,
-    pub permutation_product_last_eval: Option<F>,
-}
-
+/// The identities of the permutation argument, evaluated at `x`.
+///
+/// The permutation polynomials are opened as the phase-0 group and the
+/// accumulators `z_i` as part of the phase-2 group, so both sets of evaluations
+/// are looked up by label. `z_i` is opened at `x` and `omega * x`, and, for
+/// every set but the last, at `omega^last * x` as well; see
+/// [`eval_points`](crate::plonk::argument::eval_points).
 #[allow(clippy::too_many_arguments)]
-pub(in crate::plonk) fn expressions<'a, F: PrimeField, CS: PolynomialCommitmentScheme<F>>(
-    sets: &'a [Evaluated<F>],
-    vk: &'a plonk::VerifyingKey<F, CS>,
-    p: &'a Argument,
-    common: &'a CommonEvaluated<F>,
-    advice_evals: &'a [F],
-    fixed_evals: &'a [F],
-    instance_evals: &'a [F],
+pub(in crate::plonk) fn expressions<F: PrimeField, CS: PolynomialCommitmentScheme<F>>(
+    vk: &plonk::VerifyingKey<F, CS>,
+    p: &Argument,
+    phase0_evals: &BTreeMap<PolynomialLabel, Vec<argument::Evaluation<F>>>,
+    phase2_evals: &BTreeMap<PolynomialLabel, Vec<argument::Evaluation<F>>>,
+    advice_evals: &[F],
+    fixed_evals: &[F],
+    instance_evals: &[F],
     l_0: F,
     l_last: F,
     l_blind: F,
     beta: F,
     gamma: F,
     x: F,
-) -> impl Iterator<Item = F> + 'a {
+) -> impl Iterator<Item = F> {
     let chunk_len = vk.cs_degree - 2;
-    iter::empty()
-        // Enforce only for the first set.
-        // l_0(X) * (1 - z_0(X)) = 0
-        .chain(
-            sets.first()
-                .map(|first_set| l_0 * &(F::ONE - &first_set.permutation_product_eval)),
-        )
-        // Enforce only for the last set.
-        // l_last(X) * (z_l(X)^2 - z_l(X)) = 0
-        .chain(sets.last().map(|last_set| {
-            (last_set.permutation_product_eval.square() - &last_set.permutation_product_eval)
-                * &l_last
-        }))
-        // Except for the first set, enforce.
-        // l_0(X) * (z_i(X) - z_{i-1}(\omega^(last) X)) = 0
-        .chain(
-            sets.iter()
-                .skip(1)
-                .zip(sets.iter())
-                .map(|(set, last_set)| {
-                    (
-                        set.permutation_product_eval,
-                        last_set.permutation_product_last_eval.unwrap(),
-                    )
-                })
-                .map(move |(set, prev_last)| (set - &prev_last) * &l_0),
-        )
-        // And for all the sets we enforce:
-        // (1 - (l_last(X) + l_blind(X))) * (
-        //   z_i(\omega X) \prod (p(X) + \beta s_i(X) + \gamma)
-        // - z_i(X) \prod (p(X) + \delta^i \beta X + \gamma)
-        // )
-        .chain(
-            sets.iter()
-                .zip(p.columns.chunks(chunk_len))
-                .zip(common.permutation_evals.chunks(chunk_len))
-                .enumerate()
-                .map(move |(chunk_index, ((set, columns), permutation_evals))| {
-                    let mut left = set.permutation_product_next_eval;
-                    for (eval, permutation_eval) in columns
-                        .iter()
-                        .map(|&column| match column.column_type() {
-                            Any::Advice => {
-                                advice_evals[vk.cs.get_any_query_index(column, Rotation::cur())]
-                            }
-                            Any::Fixed => {
-                                fixed_evals[vk.cs.get_any_query_index(column, Rotation::cur())]
-                            }
-                            Any::Instance => {
-                                instance_evals[vk.cs.get_any_query_index(column, Rotation::cur())]
-                            }
-                        })
-                        .zip(permutation_evals.iter())
-                    {
-                        left *= &(eval + &(beta * permutation_eval) + &gamma);
-                    }
+    let num_sets = p.num_sets(vk.cs_degree);
 
-                    let mut right = set.permutation_product_eval;
-                    let mut current_delta = (beta * &x)
-                        * &(<F as PrimeField>::DELTA
-                            .pow_vartime([(chunk_index * chunk_len) as u64]));
-                    for eval in columns.iter().map(|&column| match column.column_type() {
-                        Any::Advice => {
-                            advice_evals[vk.cs.get_any_query_index(column, Rotation::cur())]
-                        }
-                        Any::Fixed => {
-                            fixed_evals[vk.cs.get_any_query_index(column, Rotation::cur())]
-                        }
-                        Any::Instance => {
-                            instance_evals[vk.cs.get_any_query_index(column, Rotation::cur())]
-                        }
-                    }) {
-                        right *= &(eval + &current_delta + &gamma);
-                        current_delta *= &F::DELTA;
-                    }
+    if num_sets == 0 {
+        return vec![].into_iter();
+    }
 
-                    (left - &right) * (F::ONE - &(l_last + &l_blind))
-                }),
-        )
+    let permutation_evals: Vec<F> = (0..p.columns.len())
+        .map(|i| phase0_evals[&PolynomialLabel::PermutationFixed(i)][0].eval())
+        .collect();
+
+    // Per set: z_i(x), z_i(omega x) and, for every set but the last,
+    // z_i(omega^last x).
+    let z = |i: usize| &phase2_evals[&PolynomialLabel::PermutationAccumulator(i)];
+    let z_eval = |i: usize| z(i)[0].eval();
+    let z_next_eval = |i: usize| z(i)[1].eval();
+    let z_last_eval = |i: usize| z(i)[2].eval();
+
+    let column_eval = |column: &Column<Any>| match column.column_type() {
+        Any::Advice => advice_evals[vk.cs.get_any_query_index(*column, Rotation::cur())],
+        Any::Fixed => fixed_evals[vk.cs.get_any_query_index(*column, Rotation::cur())],
+        Any::Instance => instance_evals[vk.cs.get_any_query_index(*column, Rotation::cur())],
+    };
+
+    let mut identities = Vec::new();
+
+    // Enforce only for the first set.
+    // l_0(X) * (1 - z_0(X)) = 0
+    identities.push(l_0 * (F::ONE - z_eval(0)));
+
+    // Enforce only for the last set.
+    // l_last(X) * (z_l(X)^2 - z_l(X)) = 0
+    let last = z_eval(num_sets - 1);
+    identities.push((last.square() - last) * l_last);
+
+    // Except for the first set, enforce.
+    // l_0(X) * (z_i(X) - z_{i-1}(\omega^(last) X)) = 0
+    for i in 1..num_sets {
+        identities.push((z_eval(i) - z_last_eval(i - 1)) * l_0);
+    }
+
+    // And for all the sets we enforce:
+    // (1 - (l_last(X) + l_blind(X))) * (
+    //   z_i(\omega X) \prod (p(X) + \beta s_i(X) + \gamma)
+    // - z_i(X) \prod (p(X) + \delta^i \beta X + \gamma)
+    // )
+    for (chunk_index, (columns, permutation_evals)) in
+        p.columns.chunks(chunk_len).zip(permutation_evals.chunks(chunk_len)).enumerate()
+    {
+        let mut left = z_next_eval(chunk_index);
+        for (eval, permutation_eval) in
+            columns.iter().map(column_eval).zip(permutation_evals.iter())
+        {
+            left *= &(eval + &(beta * permutation_eval) + &gamma);
+        }
+
+        let mut right = z_eval(chunk_index);
+        let mut current_delta = (beta * &x)
+            * &(<F as PrimeField>::DELTA.pow_vartime([(chunk_index * chunk_len) as u64]));
+        for eval in columns.iter().map(column_eval) {
+            right *= &(eval + &current_delta + &gamma);
+            current_delta *= &F::DELTA;
+        }
+
+        identities.push((left - &right) * (F::ONE - &(l_last + &l_blind)));
+    }
+
+    identities.into_iter()
 }

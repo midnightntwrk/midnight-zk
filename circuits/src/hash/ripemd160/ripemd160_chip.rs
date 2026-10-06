@@ -528,7 +528,7 @@ impl<F: CircuitField> RipeMD160Chip<F> {
         *E_prime = D_prime.clone();
         *D_prime = self.left_rotate(layouter, C_prime, 10)?;
         *C_prime = B_prime.clone();
-        *B_prime = T_prime.clone();
+        *B_prime = T_prime;
 
         Ok(())
     }

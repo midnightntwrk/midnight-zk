@@ -302,7 +302,7 @@ where
             let lambdas = lambda.bigint_limbs();
 
             let lpxs = lambdas.clone().zip(pxs.clone()).map(|(ls, pxs)| pair_wise_prod(&ls, &pxs));
-            let lqxs = lambdas.clone().zip(qxs.clone()).map(|(ls, qxs)| pair_wise_prod(&ls, &qxs));
+            let lqxs = lambdas.zip(qxs.clone()).map(|(ls, qxs)| pair_wise_prod(&ls, &qxs));
 
             let (k_min, u_max) = slope_config.u_bounds.clone();
 

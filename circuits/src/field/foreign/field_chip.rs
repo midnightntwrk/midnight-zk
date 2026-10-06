@@ -317,7 +317,7 @@ where
 {
     /// The modulus defining the domain of this emulated field element.
     pub fn modulus(&self) -> BI {
-        K::modulus().to_bigint().unwrap().clone()
+        K::modulus().to_bigint().unwrap()
     }
 
     /// Tells whether the given emulated field element is well-formed, i.e., the

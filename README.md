@@ -29,6 +29,7 @@ We initially maintained the following components as forks:
 - `bls12_381` and its embedded `jubjub` implementation originated as forks of `blstrs` and `jubjub`, respectively.
 - `proofs` began as a fork of `halo2` v0.3.0.
 
-Over time, our codebases have diverged from the upstream projects. These components are no longer maintained as forks and have evolved into standalone implementations tailored to Midnight's needs.
+Over time, our codebases have diverged from the upstream projects.
+These components are no longer maintained as forks and have evolved into standalone implementations tailored to Midnight's needs.
 
 We gratefully acknowledge the authors and maintainers of the original projects.

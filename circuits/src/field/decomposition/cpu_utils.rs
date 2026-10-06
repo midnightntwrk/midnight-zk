@@ -21,7 +21,7 @@ use crate::{CircuitField, utils::util::bigint_to_fe};
 
 /// Decomposes an element of the input field into limbs of variable sizes and
 /// each limb is in the output field: given x\in InF and a slice limb_sizes that
-/// represents bit lengths, it returns [a_1, ..., a_m] such that:      
+/// represents bit lengths, it returns [a_1, ..., a_m] such that:
 ///      (1) x = sum c_i a_i
 ///      (2) a_i < 2^{limbs_size{i}}
 ///      (3) c_i = 2^{sum_{j=1}^{i-1} limb_sizes\[i\]}
@@ -62,7 +62,7 @@ pub(crate) fn decompose_in_variable_limbsizes<InF: CircuitField, OutF: CircuitFi
     // sanity check. Panics if the limbs are not enough to represent the number
     #[cfg(not(test))]
     debug_assert_eq!(
-        x.clone() >> shift,
+        x >> shift,
         0.into(),
         "Decomposition Chip: the integer cannot be represented with the given limb_sizes"
     );
@@ -127,14 +127,14 @@ pub(super) fn process_limb_sizes(max_parallel_lookups: usize, limbs: &mut Vec<us
 ///
 /// The recursive formula for the above is the following:
 ///
-/// if bound = 0: OPT(bound) = 0 with SOL = [] (base case)  
+/// if bound = 0: OPT(bound) = 0 with SOL = [] (base case)
 /// otherwise it is 1 + OPT where
 ///      OPT(bound) =
 ///         min_{
 ///             cols:       1..=max_parallel_lookups,
 ///             bit_length: 1..=max_bit_length
 ///             }
-///         1 + OPT(bound - i*j)      
+///         1 + OPT(bound - i*j)
 ///      with SOL = [i; j] concatenated with SOL(bound - i*j)
 pub(crate) fn compute_optimal_limb_sizes(
     solutions: &mut HashMap<i32, Vec<Vec<usize>>>,

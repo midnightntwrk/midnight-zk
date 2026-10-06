@@ -793,10 +793,8 @@ mod tests {
         let lmao = Regex::word("lmao!");
 
         // hello( )+test( )+lmao!
-        let regex0 = Regex::separated_cat(
-            [hello.clone(), test.clone(), lmao.clone()],
-            Regex::blanks_strict(),
-        );
+        let regex0 =
+            Regex::separated_cat([hello.clone(), test.clone(), lmao], Regex::blanks_strict());
 
         let accepted0: Vec<(&str, &[usize])> = vec![
             ("hello test lmao!", &[0; 16]),
@@ -827,8 +825,8 @@ mod tests {
         let regex1 = Regex::separated_cat(
             [
                 "[".into(),
-                bracket_list(hello.clone()),
-                bracket_list(test.clone()),
+                bracket_list(hello),
+                bracket_list(test),
                 "]".into(),
             ],
             Regex::blanks(),

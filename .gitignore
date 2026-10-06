@@ -11,3 +11,7 @@
 
 # macOS metadata
 .DS_Store
+
+# local scan output (upload-sarif-github-action)
+scan_reports/
+results.sarif

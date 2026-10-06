@@ -167,7 +167,7 @@ impl MidnightVK {
 }
 
 /// A proving key of a Midnight circuit.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct MidnightPK<R: Relation> {
     k: u8,
     relation: R,
@@ -501,7 +501,7 @@ pub fn setup_vk<R: Relation>(
 
     // During the call to [setup_vk] the circuit RefCell on public inputs has been
     // mutated with the correct value. The following [unwrap] is safe here.
-    let nb_public_inputs = circuit.nb_public_inputs.clone().borrow().unwrap();
+    let nb_public_inputs = circuit.nb_public_inputs.borrow().unwrap();
 
     MidnightVK {
         architecture: relation.used_chips(),

@@ -753,7 +753,7 @@ mod test {
         basic_fail_test(25, "holy hell ", regex1.clone());
         basic_fail_test(26, "holyyyy      hell   ", regex1.clone());
         // Additional 'l'.
-        basic_fail_test(27, "holy hellllll !!!", regex1.clone());
+        basic_fail_test(27, "holy hellllll !!!", regex1);
 
         // Performance inputs for the golden files, using automaton 0, for an input of
         // 50 bytes.

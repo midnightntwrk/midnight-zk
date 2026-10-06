@@ -28,13 +28,13 @@ use crate::{
     types::{InnerValue, Instantiable},
 };
 
+mod absorbed_vk;
 mod accumulator;
 mod argument;
 mod expressions;
 mod kzg;
 mod msm;
 pub(crate) mod pcs;
-mod permutation;
 mod traces;
 mod transcript_gadget;
 mod types;
@@ -66,8 +66,8 @@ type VerifyingKey<S> =
 #[derive(Clone, Debug)]
 pub struct AssignedVk<S: SelfEmulation, PCS: InCircuitPCS<S>> {
     domain: EvaluationDomain<S::F>,
-    fixed_commitments: Vec<PCS::AssignedCommitment>,
-    perm_commitments: Vec<PCS::AssignedCommitment>,
+    phase0_commitment: PCS::AssignedCommitment,
+    simple_selector_commitments: BTreeMap<usize, PCS::AssignedCommitment>,
     cs: ConstraintSystem<S::F>,
     cs_degree: usize,
     transcript_repr: AssignedNative<S::F>,
@@ -115,15 +115,13 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> AssignedVk<S, PCS> {
 pub fn fixed_bases<S: SelfEmulation>(vk: &VerifyingKey<S>) -> BTreeMap<PolynomialLabel, S::C> {
     let mut fixed_bases = BTreeMap::new();
 
-    let fixed_commitments = vk.fixed_commitments();
-    let perm_commitments = vk.permutation().commitments();
-
-    for (i, com) in fixed_commitments.iter().enumerate() {
-        fixed_bases.insert(PolynomialLabel::Fixed(i), *com.0[0].as_point());
+    let fixed_coms = vk.phase0_commitment().0.iter();
+    for (label, com) in vk.cs().fixed_polys_labels().into_iter().zip(fixed_coms) {
+        fixed_bases.insert(label, *com.as_point());
     }
 
-    for (i, com) in perm_commitments.iter().enumerate() {
-        fixed_bases.insert(PolynomialLabel::PermutationFixed(i), *com.0[0].as_point());
+    for (i, com) in vk.simple_selector_commitments() {
+        fixed_bases.insert(PolynomialLabel::Fixed(*i), *com.0[0].as_point());
     }
 
     fixed_bases.insert(PolynomialLabel::Custom("-G".into()), -S::C::generator());

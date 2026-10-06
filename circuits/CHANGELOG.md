@@ -14,10 +14,19 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Add tests compile time generics checks for `VectorGadget` and tests for `resize` [#464](https://github.com/midnightntwrk/midnight-zk/pull/465)
 
 ### Fixed
+* The verifier gadget no longer misreads the fixed evaluations of a circuit with a fixed column queried at more than one rotation [#547](https://github.com/midnightntwrk/midnight-zk/pull/547)
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 
 ### Changed
 * `PreComputedRoundCPU::init` derives Poseidon's CPU partial-round pre-computation once per field and caches it [#527](https://github.com/midnightntwrk/midnight-zk/pull/527)
+* `verifier::fixed_bases` reads the fixed bases from `VerifyingKey::phase0_commitment` and `VerifyingKey::simple_selector_commitments` [#547](https://github.com/midnightntwrk/midnight-zk/pull/547)
+* The verifier gadget reads and opens the fixed evaluations through the phase-0 group, matching the off-circuit verifier. `AssignedVk` holds the group commitment and one commitment per simple selector, in place of one commitment per fixed column [#547](https://github.com/midnightntwrk/midnight-zk/pull/547)
+* Adapt the verifier gadget to the advice columns being committed as part of the phase-1 argument group: the advice commitments are read with the logup multiplicities as one group, and the advice evaluations are read and opened through it [#543](https://github.com/midnightntwrk/midnight-zk/pull/543)
+* The verifier gadget squeezes `theta` after reading the logup multiplicities, as the off-circuit verifier does [#543](https://github.com/midnightntwrk/midnight-zk/pull/543)
+* The verifier gadget follows the off-circuit order of the multi-open queries: the phase-1 and phase-2 groups first, then the phase-0 group and the committed instances [#543](https://github.com/midnightntwrk/midnight-zk/pull/543)
+* Adapt the verifier gadget to the permutation argument moving into the generic phase groups: the permutation polynomials are read as a phase-0 group, whose commitment comes from the assigned verifying key instead of the proof, the accumulators arrive within the phase-2 group, and the identities look both sets of evaluations up by label. `verifier/permutation.rs` is folded into `verifier/argument.rs`, while the constraint expressions stay in `verifier/expressions/permutation.rs`. Changes the VK of every circuit that uses the verifier gadget [#537](https://github.com/midnightntwrk/midnight-zk/pull/537)
+* `InCircuitPCS::fixed_commitment` takes the labels of a whole group and returns the single commitment covering them, instead of one label at a time [#537](https://github.com/midnightntwrk/midnight-zk/pull/537)
+* `verifier::fixed_bases` reads the permutation group's commitment from `VerifyingKey::phase0_commitment`, following the removal of `permutation::VerifyingKey` in `midnight-proofs` [#537](https://github.com/midnightntwrk/midnight-zk/pull/537)
 * `TranscriptGadget::read_commitment` orders the labels of a group by their `Ord` itself, mirroring the off-circuit `read_commitment`, so `verifier/argument.rs` no longer sorts them before reading. A repeated label panics [#515](https://github.com/midnightntwrk/midnight-zk/pull/515)
 * Adapt the verifier gadget to the logup polynomials moving into the generic argument phase groups: read one commitment for the phase-1 group holding every multiplicities polynomial and one for the phase-2 group holding every aggregator, helper and trashcan polynomial, and look each logup evaluation up by label. `verifier/lookup.rs` is folded into `verifier/argument.rs`, while the constraint expressions stay in `verifier/expressions/lookup.rs`. Changes the VK of every circuit that uses the verifier gadget [#515](https://github.com/midnightntwrk/midnight-zk/pull/515)
 * Skip the little-endian `u32` byte-length prefix that now frames each commitment group in the proof when parsing it in `TranscriptGadget::read_commitment`. The prefix is not hashed, and the gadget still reads exactly one point per label [#515](https://github.com/midnightntwrk/midnight-zk/pull/515)
@@ -40,8 +49,10 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Share the `z` and `m` polynomials across all logup instances [#279](https://github.com/midnightntwrk/midnight-zk/pull/279)
 * Optimize the vector gadget's `padding_flag` to only check `A`-aligned chunk boundaries [#462](https://github.com/midnightntwrk/midnight-zk/pull/462)
 * Replace string-based VK-name keys with `PolynomialLabel`-keyed `fixed_bases` maps throughout the verifier gadget [#430](https://github.com/midnightntwrk/midnight-zk/pull/430)
+* `VerifierGadget::assign_vk_as_public_input` and `VerifierGadget::assign_fixed_vk` take a finalized constraint system (e.g. `vk.cs()` or `ConstraintSystem::into_finalized`) and return `Error::Synthesis` if it has selectors. `assign_vk_as_public_input` no longer converts the selectors itself [#546](https://github.com/midnightntwrk/midnight-zk/pull/546)
 
 ### Removed
+* Remove the internal `verifier/permutation.rs` module and its `Committed`/`Evaluated`/`CommonEvaluated` types; the in-circuit permutation argument no longer carries any transcript plumbing of its own [#537](https://github.com/midnightntwrk/midnight-zk/pull/537)
 * Remove the internal `verifier/lookup.rs` module and its `Committed`/`Evaluated`/`LookupEvaluated` types; the in-circuit lookup argument no longer carries any transcript plumbing of its own [#515](https://github.com/midnightntwrk/midnight-zk/pull/515)
 * Remove `Expression::Challenge` variant and phase-parameterized `Any::Advice`; multi-phase advice columns are no longer supported [#376](https://github.com/midnightntwrk/midnight-zk/pull/376)
 * Remove `LabeledPoint`, `fixed_commitment_name`, `perm_commitment_name`, and `vk_name` helpers from the verifier module [#430](https://github.com/midnightntwrk/midnight-zk/pull/430)

@@ -180,7 +180,7 @@ impl<S: SelfEmulation> AssignedKZGCommitment<S> {
             Self::Linear(points, scalars, labels) => (points, scalars, labels),
         };
         let (other_points, other_scalars, other_labels) = match other {
-            Self::Simple(p, label) => (vec![p], vec![one.clone()], vec![label]),
+            Self::Simple(p, label) => (vec![p], vec![one], vec![label]),
             Self::Linear(points, scalars, labels) => (points, scalars, labels),
         };
         points.extend(other_points);
@@ -436,7 +436,7 @@ fn evals_inner_product<F: CircuitField>(
     scalars: &[AssignedBoundedScalar<F>],
 ) -> Result<Vec<AssignedNative<F>>, Error> {
     let zero = scalar_chip.assign_fixed(layouter, F::ZERO)?;
-    let mut res = vec![zero.clone(); evals_set[0].len()];
+    let mut res = vec![zero; evals_set[0].len()];
     for (poly_evals, s) in evals_set.iter().zip(scalars) {
         for i in 0..res.len() {
             // res[i] := s.scalar * poly_evals[i] + res[i]
@@ -668,8 +668,14 @@ pub struct InCircuitKZG<S: SelfEmulation>(PhantomData<S>);
 impl<S: SelfEmulation> InCircuitPCS<S> for InCircuitKZG<S> {
     type AssignedCommitment = AssignedKZGMultiCommitment<S>;
 
-    fn fixed_commitment(label: PolynomialLabel) -> Self::AssignedCommitment {
-        AssignedKZGMultiCommitment(vec![AssignedKZGCommitment::fixed(label)])
+    fn fixed_commitment(labels: &[PolynomialLabel]) -> Self::AssignedCommitment {
+        let ordered = BTreeSet::from_iter(labels.iter().cloned());
+        assert_eq!(
+            ordered.len(),
+            labels.len(),
+            "duplicated polynomial label in a commitment group"
+        );
+        AssignedKZGMultiCommitment(ordered.into_iter().map(AssignedKZGCommitment::fixed).collect())
     }
 
     fn read_commitment(

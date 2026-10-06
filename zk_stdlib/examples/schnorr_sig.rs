@@ -127,8 +127,7 @@ impl Relation for SchnorrExample {
         let sig_e = std_lib.jubjub().scalar_from_le_bytes(layouter, &sig_e_bytes)?;
 
         // 1. rv = s * G + e * Pk
-        let rv =
-            (std_lib.jubjub()).msm(layouter, &[sig_s, sig_e.clone()], &[generator, pk.clone()])?;
+        let rv = (std_lib.jubjub()).msm(layouter, &[sig_s, sig_e], &[generator, pk.clone()])?;
 
         let coords = |p| (jubjub.x_coordinate(p), jubjub.y_coordinate(p));
         let (pkx, pky) = coords(&pk);

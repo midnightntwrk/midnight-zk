@@ -11,9 +11,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use std::collections::BTreeMap;
+
 use midnight_proofs::{
     circuit::Layouter,
     plonk::{Error, Expression},
+    poly::PolynomialLabel,
 };
 
 use crate::{
@@ -21,6 +24,7 @@ use crate::{
     instructions::{ArithInstructions, AssignmentInstructions},
     verifier::{
         SelfEmulation,
+        argument::Evaluation,
         utils::{mul_add, try_reduce},
     },
 };
@@ -28,6 +32,19 @@ use crate::{
 pub(crate) mod lookup;
 pub(crate) mod permutation;
 pub(crate) mod trash;
+
+/// The `index`-th evaluation of the polynomial labelled `label`.
+pub(crate) fn eval_at<'a, S: SelfEmulation>(
+    evals_map: &'a BTreeMap<PolynomialLabel, Vec<Evaluation<S>>>,
+    label: &PolynomialLabel,
+    index: usize,
+) -> Result<&'a AssignedNative<S::F>, Error> {
+    evals_map
+        .get(label)
+        .and_then(|evals| evals.get(index))
+        .map(|evaluation| evaluation.eval())
+        .ok_or_else(|| Error::Synthesis(format!("missing evaluation {index} for {label}")))
+}
 
 /// Function to evaluate expressions in-circuit.
 pub(crate) fn eval_expression<S: SelfEmulation>(

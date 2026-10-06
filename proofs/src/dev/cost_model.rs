@@ -141,6 +141,11 @@ struct Permutation {
 }
 
 impl Permutation {
+    /// The number of accumulator polynomials: one per chunk of columns.
+    fn num_sets(&self) -> usize {
+        self.columns.div_ceil(self.chunk_len)
+    }
+
     /// Returns the queries of the Permutation argument
     fn queries(&self) -> impl Iterator<Item = Poly> {
         // - at wX, X, uwX for all (except the last)
@@ -153,9 +158,9 @@ impl Permutation {
         iter::empty()
             .chain(std::iter::repeat_n(
                 chunks,
-                (self.columns - 1) / self.chunk_len,
+                self.num_sets().saturating_sub(1),
             ))
-            .chain(Some(last_chunk))
+            .chain((self.num_sets() > 0).then_some(last_chunk))
     }
 }
 
@@ -196,8 +201,9 @@ pub struct CircuitModel {
 /// Given a Plonk circuit, this function returns a [CircuitModel].
 ///
 /// `commit(n)` returns the byte length of the single transcript message that
-/// commits to `n` polynomials, framing included. The prover writes one such
-/// message per commitment group, so a site that commits `n` polynomials
+/// commits to `n` polynomials, framing included, and 0 for `n = 0`: an empty
+/// group is not written at all. The prover writes one such message per
+/// commitment group, so a site that commits `n` polynomials
 /// separately costs `n * commit(1)`, not `commit(n)`. For schemes that fold
 /// multiple polynomials into one proof element, `commit` may be sub-linear.
 ///
@@ -229,30 +235,27 @@ pub fn circuit_model_with<F: Ord + Field + FromUniformBytes<64>>(
     queries.dedup();
     let point_sets = queries.len();
 
-    // The byte length of the commitment group holding `n` polynomials. An empty
-    // group is not committed to at all, so it costs nothing.
-    let group = |n: usize| if n == 0 { 0 } else { commit(n) };
+    let nb_perm_chunks = o.permutation.num_sets();
 
-    // The logup polynomials are split over the two argument phases: every
-    // multiplicities polynomial goes in the phase1 group, and every aggregator,
-    // helper and trash polynomial in the phase2 group. Each phase is a single
-    // commitment group, whatever the number of arguments feeding it.
-    let nb_phase1_polys = o.lookup.len();
-    let nb_phase2_polys = o.lookup.iter().map(|l| l.num_chunks + 1).sum::<usize>() + o.trash.len();
+    // The polynomials committed to in the proof are split over two phases:
+    // every advice column and multiplicities polynomial goes in the phase1
+    // group, and every aggregator, helper, trash and permutation accumulator
+    // polynomial in the phase2 group. Each phase is a single commitment group,
+    // whatever the number of columns or arguments feeding it. (The permutation
+    // polynomials themselves belong to the phase0 group, which is committed to
+    // in the verifying key and so costs no proof bytes.)
+    let nb_phase1_polys = o.advice.len() + o.lookup.len();
+    let nb_phase2_polys =
+        o.lookup.iter().map(|l| l.num_chunks + 1).sum::<usize>() + o.trash.len() + nb_perm_chunks;
 
     // PLONK:
-    // - commit(1) bytes per advice commitment, each written on its own
     // - scalar bytes per advice column per query
     // - scalar bytes per committed instance column per query
     // - scalar bytes per fixed column per query
     // - scalar bytes per permutation column
-    // - Per permutation batch: commit(1) + 3*scalar per chunk, each chunk committed
-    //   on its own (last chunk has 2 scalar)
+    // - 3*scalar per permutation chunk (the last chunk has 2)
     // - The two argument phase groups, plus scalar bytes per evaluation they hold
-    let nb_perm_chunks =
-        (o.permutation.columns.saturating_sub(1) / o.max_degree.saturating_sub(2)) + 1;
-    let plonk = o.advice.len() * commit(1)
-        + o.advice.iter().map(|p| p.rotations.len() * scalar).sum::<usize>()
+    let plonk = o.advice.iter().map(|p| p.rotations.len() * scalar).sum::<usize>()
         + o.instance
             .iter()
             .take(o.nb_committed_instances)
@@ -260,9 +263,9 @@ pub fn circuit_model_with<F: Ord + Field + FromUniformBytes<64>>(
             .sum::<usize>()
         + o.fixed.iter().map(|p| p.rotations.len() * scalar).sum::<usize>()
         + scalar * o.permutation.columns
-        + (nb_perm_chunks * commit(1) + scalar * 3 * nb_perm_chunks).saturating_sub(scalar) // last chunk has 2 evals
-        + group(nb_phase1_polys)
-        + group(nb_phase2_polys)
+        + (scalar * 3 * nb_perm_chunks).saturating_sub(scalar) // last chunk has 2 evals
+        + commit(nb_phase1_polys)
+        + commit(nb_phase2_polys)
         + o.lookup.iter().map(|l| scalar * l.num_evaluations()).sum::<usize>()
         + scalar * o.trash.len();
 
@@ -496,12 +499,7 @@ impl<F: FromUniformBytes<64> + Ord> DevAssembly<F> {
             has_measured_regions: false,
         };
 
-        ConcreteCircuit::FloorPlanner::synthesize(
-            &mut prover,
-            circuit,
-            config.clone(),
-            constants.clone(),
-        )?;
+        ConcreteCircuit::FloorPlanner::synthesize(&mut prover, circuit, config, constants)?;
 
         let selectors = vec![vec![]; prover.cs.num_selectors];
         let (cs, _selector_polys) = prover.cs.directly_convert_selectors_to_fixed(selectors);
@@ -835,6 +833,78 @@ mod tests {
                 },
             )
         }
+    }
+
+    /// A circuit with no copy constraints has no permutation accumulator, so
+    /// the permutation argument contributes neither queries nor proof bytes.
+    #[test]
+    fn cost_model_without_copy_constraints() {
+        #[derive(Default)]
+        struct NoCopyConstraints;
+
+        impl Circuit<Fq> for NoCopyConstraints {
+            type Config = (Column<Advice>, Column<Fixed>);
+            type FloorPlanner = SimpleFloorPlanner;
+            #[cfg(feature = "circuit-params")]
+            type Params = ();
+
+            fn without_witnesses(&self) -> Self {
+                Self
+            }
+
+            fn configure(meta: &mut ConstraintSystem<Fq>) -> Self::Config {
+                let a = meta.advice_column();
+                let q = meta.fixed_column();
+                meta.create_gate("q * a", |meta| {
+                    let a = meta.query_advice(a, Rotation::cur());
+                    let q = meta.query_fixed(q, Rotation::cur());
+                    Constraints::without_selector(vec![q * a])
+                });
+                (a, q)
+            }
+
+            fn synthesize(
+                &self,
+                config: Self::Config,
+                mut layouter: impl Layouter<Fq>,
+            ) -> Result<(), Error> {
+                layouter.assign_region(
+                    || "",
+                    |mut region| {
+                        region.assign_advice(|| "", config.0, 0, || Value::known(Fq::ZERO))?;
+                        region.assign_fixed(|| "", config.1, 0, || Value::known(Fq::ZERO))?;
+                        Ok(())
+                    },
+                )
+            }
+        }
+
+        let model = circuit_model::<_, KZGCommitmentScheme<Bls12>>(&NoCopyConstraints, 0);
+        assert_eq!(model.permutations, 0);
+        // The advice and fixed queries, and the linearization polynomial's.
+        assert_eq!(model.column_queries, 3);
+
+        let k = 6;
+        let params = ParamsKZG::<Bls12>::unsafe_setup(k, OsRng);
+        let vk =
+            keygen_vk_with_k::<_, KZGCommitmentScheme<Bls12>, _>(&params, &NoCopyConstraints, k)
+                .expect("vk should not fail");
+        let pk = keygen_pk(vk, &NoCopyConstraints).expect("pk should not fail");
+
+        let mut transcript = CircuitTranscript::<State>::init();
+        create_proof::<Fq, KZGCommitmentScheme<Bls12>, _, _>(
+            &params,
+            &pk,
+            &NoCopyConstraints,
+            #[cfg(feature = "committed-instances")]
+            0,
+            &[],
+            &mut transcript,
+            OsRng,
+        )
+        .expect("proof generation should not fail");
+
+        assert_eq!(model.size, transcript.finalize().len());
     }
 
     #[test]

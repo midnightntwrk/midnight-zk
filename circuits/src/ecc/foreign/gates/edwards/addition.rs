@@ -108,7 +108,7 @@ impl<C: CircuitCurve> AdditionConfig<C> {
 
         let limbs_max = vec![&base - BI::one(); nb_limbs as usize];
         let limbs_max_sqrd_val = (&base - BI::one()).pow(2);
-        let limbs_max_sqrd = vec![limbs_max_sqrd_val.clone(); (nb_limbs * nb_limbs) as usize];
+        let limbs_max_sqrd = vec![limbs_max_sqrd_val; (nb_limbs * nb_limbs) as usize];
 
         let max_sum = sum_bigints(&bs, &limbs_max);
         let max_sum_sqrd = sum_bigints(&bs_sqrd, &limbs_max_sqrd);

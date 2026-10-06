@@ -93,7 +93,7 @@ impl InnerCircuitsContext {
         ZkStdLib::configure(&mut cs, (arch, (k - 1) as u8));
         let domain = EvaluationDomain::new(cs.degree() as u32, k);
         InnerCircuitsContext {
-            cs,
+            cs: cs.into_finalized(),
             domain,
             params_verifier,
             arch,
@@ -337,7 +337,7 @@ impl IvcTransition for ProofAggregation {
                 &assigned_vk,
                 &[instance_com],
                 &[std::slice::from_ref(&statement)],
-                witness.map(|w| w.inner_proof.clone()),
+                witness.map(|w| w.inner_proof),
             )?;
 
             // Collapse before resolving, mirroring the off-circuit `transition`
