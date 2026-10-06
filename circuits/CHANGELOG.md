@@ -8,6 +8,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 ### Added
+* Added the `is_collapsed` function to [#553](https://github.com/midnightntwrk/midnight-zk/pull/553/)
 
 ### Changed
 
