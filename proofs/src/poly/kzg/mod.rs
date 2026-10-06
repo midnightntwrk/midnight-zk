@@ -258,7 +258,7 @@ where
         // Map each label to the polynomial it identifies, so the per-set
         // grouping (keyed by label) can recover the actual polynomials.
         let label_to_poly: HashMap<PolynomialLabel, &Polynomial<E::Fr, Coeff>> =
-            queries.iter().map(|q| (q.label.clone(), q.poly)).collect();
+            queries.iter().map(|q| (q.label.clone(), q.poly())).collect();
 
         // `construct_intermediate_sets` is shared with the verifier, and the
         // evaluations (the third component of each query) are only read by the
@@ -542,7 +542,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::hash::Hash;
+    use std::{hash::Hash, slice};
 
     use blake2b_simd::State as Blake2bState;
     use ff::WithSmallOrderMulGroup;
@@ -766,22 +766,12 @@ mod tests {
         transcript.write(&bvx).unwrap();
         transcript.write(&cvy).unwrap();
 
+        let labels = |name: &str| [PolynomialLabel::Custom(name.into())];
+        let (la, lb, lc) = (labels("a"), labels("b"), labels("c"));
         let queries = [
-            ProverQuery {
-                point: x,
-                poly: &ax,
-                label: PolynomialLabel::Custom("a".into()),
-            },
-            ProverQuery {
-                point: x,
-                poly: &bx,
-                label: PolynomialLabel::Custom("b".into()),
-            },
-            ProverQuery {
-                point: y,
-                poly: &cx,
-                label: PolynomialLabel::Custom("c".into()),
-            },
+            ProverQuery::new(&la, slice::from_ref(&ax), x, la[0].clone()),
+            ProverQuery::new(&lb, slice::from_ref(&bx), x, lb[0].clone()),
+            ProverQuery::new(&lc, slice::from_ref(&cx), y, lc[0].clone()),
         ]
         .into_iter();
 

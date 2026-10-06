@@ -3,6 +3,7 @@ use std::{
     hash::Hash,
     iter::{self},
     ops::RangeTo,
+    slice,
 };
 
 use ff::{Field, FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
@@ -384,9 +385,12 @@ where
         "L'(x) should equal -C, where C is the constant part of the linearization polynomial"
     );
 
+    let instance_labels: Vec<_> = (0..nb_committed_instances)
+        .map(|i| [PolynomialLabel::CommittedInstance(i)])
+        .collect();
     let queries = compute_queries(
         pk,
-        nb_committed_instances,
+        &instance_labels,
         &instance_polys,
         &phase0_evaluated,
         &phase1_evaluated,
@@ -773,7 +777,7 @@ pub(super) fn compute_queries<
     CS: PolynomialCommitmentScheme<F>,
 >(
     pk: &'a ProvingKey<F, CS>,
-    nb_committed_instances: usize,
+    instance_labels: &'a [[PolynomialLabel; 1]],
     instance_polys: &'a [Polynomial<F, Coeff>],
     phase0_evals: &'a argument::prover::Evaluated<'a, F>,
     phase1_evals: &'a argument::prover::Evaluated<'a, F>,
@@ -781,6 +785,8 @@ pub(super) fn compute_queries<
     x_rotations: &'a BTreeMap<Rotation, F>,
     lin_poly_non_constant_part: &'a Polynomial<F, Coeff>,
 ) -> Vec<ProverQuery<'a, F>> {
+    static LIN_LABEL: [PolynomialLabel; 1] = [PolynomialLabel::Linearization];
+
     // The multi-open scales the first commitment by 1, which is best spent on
     // one read from the proof: the phase-0 commitments are known in advance and
     // a committed instance may be a constant, so both go after phases 1 and 2.
@@ -790,20 +796,21 @@ pub(super) fn compute_queries<
         .chain(phase0_evals.open())
         .chain(
             pk.vk.cs.instance_queries.iter().filter_map(move |&(column, at)| {
-                if column.index() < nb_committed_instances {
-                    Some(ProverQuery::new(
+                let i = column.index();
+                instance_labels.get(i).map(|labels| {
+                    ProverQuery::new(
+                        labels,
+                        slice::from_ref(&instance_polys[i]),
                         x_rotations[&at],
-                        &instance_polys[column.index()],
-                        PolynomialLabel::CommittedInstance(column.index()),
-                    ))
-                } else {
-                    None
-                }
+                        labels[0].clone(),
+                    )
+                })
             }),
         )
         .chain(iter::once(ProverQuery::new(
+            &LIN_LABEL,
+            slice::from_ref(lin_poly_non_constant_part),
             x_rotations[&Rotation::cur()],
-            lin_poly_non_constant_part,
             PolynomialLabel::Linearization,
         )))
         .collect()
