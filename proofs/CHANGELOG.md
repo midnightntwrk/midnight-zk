@@ -25,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `circuit_model_with` taking an explicit commitment-size closure [#440](https://github.com/midnightntwrk/midnight-zk/pull/440)
 * `Error::DuplicatedLabel`, returned when two polynomials of an argument group claim the same `PolynomialLabel` [#513](https://github.com/midnightntwrk/midnight-zk/pull/513)
 * `ConstraintSystem::into_finalized`, converting the selectors of a constraint system to fixed columns without their polynomials, as in the constraint system of a verifying key [#546](https://github.com/midnightntwrk/midnight-zk/pull/546)
+* `Fflonk<PCS, T_MAX>`, a polynomial commitment scheme combining the polynomials of a group, in chunks of up to `T_MAX`, into single polynomials committed to by the inner scheme `PCS` [#555](https://github.com/midnightntwrk/midnight-zk/pull/555)
+* `PolynomialLabel::Collection`, a label made of other labels, and the `commitment_labels` method on the `PolynomialCommitmentScheme` trait, the labels a commitment tags its polynomials with [#555](https://github.com/midnightntwrk/midnight-zk/pull/555)
 * `Params::downsize_lagrange`, downsizing the Lagrange basis while keeping the monomial one [#555](https://github.com/midnightntwrk/midnight-zk/pull/555)
 
 ### Fixed

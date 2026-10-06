@@ -34,6 +34,8 @@ pub enum PolynomialLabel {
     Trash(usize),
     /// User-defined label.
     Custom(String),
+    /// A label made of the given labels, in order.
+    Collection(Vec<PolynomialLabel>),
     /// Absence of a meaningful label. Used for freshly deserialized commitments
     /// (before a label is attached) and for aggregate commitments produced by
     /// collapsing an MSM, which do not correspond to a single polynomial.
@@ -66,6 +68,10 @@ impl fmt::Display for PolynomialLabel {
             Self::Quotient => f.write_str("quotient"),
             Self::QuotientPiece(i) => write!(f, "quotient_piece_{i}"),
             Self::Custom(s) => write!(f, "custom({s})"),
+            Self::Collection(labels) => {
+                let labels: Vec<_> = labels.iter().map(ToString::to_string).collect();
+                write!(f, "collection({})", labels.join(", "))
+            }
             Self::NoLabel => f.write_str("no_label"),
         }
     }

@@ -163,6 +163,8 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
     }
 
     /// Create a multi-opening proof at a set of [ProverQuery]'s.
+    ///
+    /// The evaluations of the queries are already in the transcript.
     fn multi_open<T: Transcript>(
         params: &Self::Parameters,
         prover_query: &[ProverQuery<F>],
@@ -171,6 +173,9 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
     where
         F: Sampleable<T::Hash> + Hash + Ord + Hashable<T::Hash>,
         Self::Commitment: Hashable<T::Hash>;
+
+    /// The labels `commitment` tags its polynomials with.
+    fn commitment_labels(commitment: &Self::Commitment) -> Vec<PolynomialLabel>;
 
     /// Total byte length when committing to `n` polynomials, which is 0 when
     /// `n` is 0.

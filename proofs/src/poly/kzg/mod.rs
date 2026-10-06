@@ -185,6 +185,15 @@ where
         transcript.write(commitment)
     }
 
+    fn commitment_labels(commitment: &Self::Commitment) -> Vec<PolynomialLabel> {
+        (commitment.0.iter())
+            .flat_map(|c| match c {
+                KZGCommitment::Simple(_, label) => vec![label.clone()],
+                KZGCommitment::Linear(_, _, labels) => labels.clone(),
+            })
+            .collect()
+    }
+
     fn commitment_byte_length(n: usize) -> usize {
         // A non-empty group of `n` polynomials travels through the transcript
         // as one length-prefixed message: the prefix, then one point per

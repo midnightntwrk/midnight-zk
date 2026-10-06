@@ -18,6 +18,7 @@ use midnight_proofs::{
     poly::{
         Rotation,
         commitment::{Guard, PolynomialCommitmentScheme},
+        fflonk::Fflonk,
         kzg::{KZGCommitmentScheme, params::ParamsKZG},
     },
     transcript::{CircuitTranscript, Hashable, Sampleable, Transcript},
@@ -546,6 +547,23 @@ fn plonk_api() {
     let pk = keygen::<Scalar, Scheme>(&mut params);
 
     let proof = create_proof::<Scalar, Scheme, CircuitTranscript<State>, _>(rng, &params, &pk);
+
+    verify_proof::<_, _, CircuitTranscript<State>>(
+        &params.verifier_params(),
+        pk.get_vk(),
+        &proof[..],
+    );
+
+    // fflonk combining up to 4 polynomials.
+    type FflonkScheme = Fflonk<Scheme, 4>;
+    bad_keys!(Scalar, FflonkScheme);
+
+    let mut params = FflonkScheme::gen_params(K);
+
+    let pk = keygen::<Scalar, FflonkScheme>(&mut params);
+
+    let proof =
+        create_proof::<Scalar, FflonkScheme, CircuitTranscript<State>, _>(rng, &params, &pk);
 
     verify_proof::<_, _, CircuitTranscript<State>>(
         &params.verifier_params(),
