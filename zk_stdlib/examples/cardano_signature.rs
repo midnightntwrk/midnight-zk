@@ -99,11 +99,7 @@ impl Relation for CardanoSigExample {
             .collect::<Result<Vec<_>, _>>()?
             .try_into()
             .expect("exactly 32 bytes");
-        let a = curve25519.from_canonical_compressed_bytes(
-            layouter,
-            &a_bytes,
-            instance.map(|(a_bytes, _)| decompress_bytes(&a_bytes)),
-        )?;
+        let a = curve25519.from_canonical_compressed_bytes(layouter, &a_bytes)?;
 
         // Assign message bytes M as public inputs.
         let m_bytes: Vec<AssignedByte<F>> =
@@ -126,11 +122,7 @@ impl Relation for CardanoSigExample {
             .assign_many(layouter, &witness.map(|(r, _)| r).transpose_array())?
             .try_into()
             .expect("exactly 32 bytes");
-        let r = curve25519.from_canonical_compressed_bytes(
-            layouter,
-            &r_bytes,
-            witness.map(|(r, _)| decompress_bytes(&r)),
-        )?;
+        let r = curve25519.from_canonical_compressed_bytes(layouter, &r_bytes)?;
 
         // Compute h = SHA512(R_bytes || A_bytes || M).
         let sha_input = (r_bytes.into_iter()).chain(a_bytes).chain(m_bytes).collect::<Vec<_>>();
@@ -164,16 +156,6 @@ impl Relation for CardanoSigExample {
     fn read_relation<R: std::io::Read>(_reader: &mut R) -> std::io::Result<Self> {
         Ok(CardanoSigExample)
     }
-}
-
-/// Off-circuit decompression of little-endian compressed bytes.
-///
-/// # Returns
-/// A [Curve25519Subgroup] point guaranteed to lie in the subgroup.
-fn decompress_bytes(bytes: &[u8; 32]) -> Curve25519Subgroup {
-    let compressed = midnight_curves::curve25519::CompressedEdwardsY(*bytes);
-    let edwards = compressed.decompress().expect("y coordinate of curve25519 point");
-    Curve25519Subgroup::from_edwards(edwards).expect("curve25519 subgroup point")
 }
 
 /// In-circuit conversion of [Vec<AssignedByte<F>>] to [Vec<AssignedBit<F>>].
