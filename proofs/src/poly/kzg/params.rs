@@ -61,8 +61,10 @@ where
     E::G1Affine: CurveAffine,
 {
     fn max_k(&self) -> u32 {
-        #[cfg(not(feature = "single-h-commitment"))]
-        assert_eq!(self.g.len(), self.g_lagrange.len());
+        // REVIEW-ONLY: this used to assert `g.len() == g_lagrange.len()` unless
+        // `single-h-commitment` was enabled. fflonk needs a monomial basis
+        // `T_MAX` times larger than the Lagrange one, so the assert is dropped;
+        // `g_monomial_size` reports the monomial size.
         self.g_lagrange.len().ilog2()
     }
 
@@ -72,6 +74,10 @@ where
 
     fn downsize(&mut self, new_k: u32) {
         ParamsKZG::<E>::downsize(self, new_k)
+    }
+
+    fn downsize_lagrange(&mut self, new_k: u32) {
+        ParamsKZG::<E>::downsize_lagrange(self, new_k)
     }
 }
 

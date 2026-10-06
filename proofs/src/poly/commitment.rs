@@ -241,6 +241,10 @@ pub trait Params: Send + Sync {
     /// Downsize the params to work with a circuit of size `new_k`
     fn downsize(&mut self, new_k: u32);
 
+    /// Downsize the Lagrange basis to work with a circuit of size `new_k`,
+    /// keeping the monomial basis.
+    fn downsize_lagrange(&mut self, new_k: u32);
+
     /// Downsize the params to work with a circuit of unknown length. The
     /// function first computes the `k` of the provided circuit, and then
     /// downsizes the SRS.
