@@ -61,10 +61,6 @@ where
     E::G1Affine: CurveAffine,
 {
     fn max_k(&self) -> u32 {
-        // REVIEW-ONLY: this used to assert `g.len() == g_lagrange.len()` unless
-        // `single-h-commitment` was enabled. fflonk needs a monomial basis
-        // `T_MAX` times larger than the Lagrange one, so the assert is dropped;
-        // `g_monomial_size` reports the monomial size.
         self.g_lagrange.len().ilog2()
     }
 
