@@ -125,6 +125,10 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
     /// Unlike [`read_commitment`](Self::read_commitment), the bytes come from a
     /// plain reader, typically a serialized verifying key, and nothing is
     /// absorbed into a transcript.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a label is repeated.
     fn deserialize_commitment<R: Read>(
         reader: &mut R,
         format: SerdeFormat,

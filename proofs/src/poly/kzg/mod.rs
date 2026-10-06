@@ -201,6 +201,7 @@ where
         format: SerdeFormat,
         labels: &[PolynomialLabel],
     ) -> io::Result<Self::Commitment> {
+        PolynomialLabel::assert_distinct(labels);
         let inners = labels
             .iter()
             .map(|label| {
