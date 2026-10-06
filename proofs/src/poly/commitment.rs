@@ -39,7 +39,7 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
         + Mul<F, Output = Self::Commitment>;
 
     /// Verification guard. Allows for batch verification
-    type VerificationGuard: Guard<F, Self>;
+    type VerificationGuard: Guard<Self::VerifierParameters>;
 
     /// Generates the parameters of the polynomial commitment scheme
     fn gen_params(k: u32) -> Self::Parameters;
@@ -200,17 +200,18 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
         Self::Commitment: Hashable<T::Hash> + 'com;
 }
 
-/// Interface for verifier finalizer
-pub trait Guard<F: PrimeField, CS: PolynomialCommitmentScheme<F>>: Sized {
+/// Interface for verifier finalizer, given the verifier parameters `VP` of
+/// its PCS
+pub trait Guard<VP>: Sized {
     /// Finalize the verification guard
-    fn verify(self, params: &CS::VerifierParameters) -> Result<(), Error>;
+    fn verify(self, params: &VP) -> Result<(), Error>;
 
     /// Finalize a batch of verification guards
     fn batch_verify<'a, I, J>(guards: I, params: J) -> Result<(), Error>
     where
         I: ExactSizeIterator<Item = Self>,
-        J: ExactSizeIterator<Item = &'a CS::VerifierParameters>,
-        CS::VerifierParameters: 'a,
+        J: ExactSizeIterator<Item = &'a VP>,
+        VP: 'a,
     {
         assert_eq!(guards.len(), params.len());
         guards
