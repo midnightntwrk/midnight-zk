@@ -64,10 +64,6 @@ where
         self.g_lagrange.len().ilog2()
     }
 
-    fn g_monomial_size(&self) -> usize {
-        self.g.len()
-    }
-
     fn downsize(&mut self, new_k: u32) {
         ParamsKZG::<E>::downsize(self, new_k)
     }
@@ -123,27 +119,6 @@ where
         self.g_lagrange = g_to_lagrange(&self.g[..n], new_k);
         self.g_lagrange_delta = suffix_sum(&self.g_lagrange);
         self.g_lagrange_double_delta = suffix_sum(&self.g_lagrange_delta);
-    }
-
-    /// Combine the monomial basis from `extended` with the Lagrange basis from
-    /// `self`, consuming both. This avoids the FFT that `downsize_lagrange`
-    /// would otherwise require.
-    ///
-    /// # Panics
-    ///
-    /// If `extended.g` is not strictly larger than `self.g`, or if the shared
-    /// prefix of the monomial bases does not match.
-    pub fn with_extended_monomial(mut self, extended: Self) -> Self {
-        assert!(
-            extended.g.len() > self.g.len(),
-            "extended SRS must be strictly larger than the base SRS"
-        );
-        assert!(
-            self.g[..] == extended.g[..self.g.len()],
-            "monomial bases of the two SRSs do not match"
-        );
-        self.g = extended.g;
-        self
     }
 
     /// Initializes parameters for the curve, draws toxic secret from given rng.
