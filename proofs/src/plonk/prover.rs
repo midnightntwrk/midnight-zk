@@ -7,9 +7,7 @@ use std::{
 };
 
 use ff::{Field, FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
-#[cfg(not(feature = "single-h-commitment"))]
-use rand_core::OsRng;
-use rand_core::{CryptoRng, RngCore};
+use rand_core::{CryptoRng, OsRng, RngCore};
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
@@ -638,19 +636,12 @@ pub(super) fn compute_nu_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommit
 /// Computes the quotient polynomial `h(X) = nu(X) / (X^n - 1)` and commits to
 /// it, writing the commitment(s) to the transcript.
 ///
-/// **Default behaviour** (`single-h-commitment` feature *disabled*): `h(X)` is
-/// split into `quotient_poly_degree` limbs of degree `n-2` each, so that each
-/// can be committed with an SRS of size `n` after 1 term for blinding. Each
-/// limb is independently blinded and committed, and all `quotient_poly_degree`
-/// commitments are written to the transcript. The returned `Vec` contains the
-/// `quotient_poly_degree` limb polynomials in coefficient form.
-///
-/// **Alternative behaviour** (`single-h-commitment` feature *enabled*): `h(X)`
-/// is committed as a single polynomial without splitting. A single commitment
-/// is written to the transcript. The returned `Vec` contains exactly one
-/// element: the full `h(X)` in coefficient form. In this mode the `params`
-/// **must** supply an SRS of at least `(n-1) * quotient_poly_degree` elements
-/// (i.e., params generated with `k' >= log2(n * (d-1))`).
+/// `h(X)` is split into `quotient_poly_degree` limbs of degree `n-2` each, so
+/// that each can be committed with an SRS of size `n` after 1 term for
+/// blinding. Each limb is independently blinded and committed, and all
+/// `quotient_poly_degree` commitments are written to the transcript. The
+/// returned `Vec` contains the `quotient_poly_degree` limb polynomials in
+/// coefficient form.
 pub(crate) fn compute_h_poly<
     F: WithSmallOrderMulGroup<3> + Hashable<T::Hash>,
     CS: PolynomialCommitmentScheme<F>,
@@ -676,54 +667,32 @@ where
     // and a domain of size (d-1)*(n-1) suffices to correctly represent it
     h_poly.truncate((domain.n - 1) as usize * domain.get_quotient_poly_degree());
 
-    // When the single-h-commitment feature is enabled, commit to h(X) in one go.
-    // The params SRS must have at least h_poly.len() monomial elements.
-    #[cfg(feature = "single-h-commitment")]
-    {
-        use crate::poly::commitment::Params;
-        if params.g_monomial_size() < h_poly.len() {
-            return Err(Error::SrsError(params.g_monomial_size(), h_poly.len()));
-        }
-        let h_poly = Polynomial {
-            values: h_poly,
-            _marker: std::marker::PhantomData,
-        };
-        let h_com = CS::commit(params, &h_poly, PolynomialLabel::Quotient);
-        transcript.write(&h_com)?;
-        Ok(vec![h_poly])
-    }
-
     // Split h(X) up into limbs and add inter-limb blinding so that
     // individual limb commitments do not leak information about h(X).
-    #[cfg(not(feature = "single-h-commitment"))]
-    {
-        let h_poly_iter = h_poly.chunks_exact((domain.n - 1) as usize);
-        assert_eq!(h_poly_iter.remainder().len(), 0);
-        let mut h_limbs = h_poly_iter.map(|v| v.to_vec()).collect::<Vec<_>>();
-        drop(h_poly);
+    let h_poly_iter = h_poly.chunks_exact((domain.n - 1) as usize);
+    assert_eq!(h_poly_iter.remainder().len(), 0);
+    let mut h_limbs = h_poly_iter.map(|v| v.to_vec()).collect::<Vec<_>>();
+    drop(h_poly);
 
-        blind_quotient_limbs(&mut h_limbs);
+    blind_quotient_limbs(&mut h_limbs);
 
-        let h_limbs: Vec<_> =
-            h_limbs.into_iter().map(|h_limb| domain.coeff_from_vec(h_limb)).collect();
+    let h_limbs: Vec<_> = h_limbs.into_iter().map(|h_limb| domain.coeff_from_vec(h_limb)).collect();
 
-        // Compute commitment to each limb (parallel MSMs).
-        let h_commitments: Vec<_> = h_limbs
-            .par_iter()
-            .enumerate()
-            .map(|(i, h_piece)| CS::commit(params, h_piece, PolynomialLabel::QuotientPiece(i)))
-            .collect();
+    // Compute commitment to each limb (parallel MSMs).
+    let h_commitments: Vec<_> = h_limbs
+        .par_iter()
+        .enumerate()
+        .map(|(i, h_piece)| CS::commit(params, h_piece, PolynomialLabel::QuotientPiece(i)))
+        .collect();
 
-        // Write each limb commitment to the transcript in order.
-        for c in h_commitments {
-            transcript.write(&c)?;
-        }
-
-        Ok(h_limbs)
+    // Write each limb commitment to the transcript in order.
+    for c in h_commitments {
+        transcript.write(&c)?;
     }
+
+    Ok(h_limbs)
 }
 
-#[cfg(not(feature = "single-h-commitment"))]
 fn blind_quotient_limbs<F: PrimeField>(quotient_limbs: &mut [Vec<F>]) {
     let nr_limbs = quotient_limbs.len();
     assert!(nr_limbs >= 2);

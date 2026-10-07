@@ -155,8 +155,8 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
     /// Returns `1` when no extension is needed.
     ///
     /// `cs_degree` is the constraint system's `cs.degree()`. Schemes that
-    /// commit to a single combined polynomial (e.g. `single-h-commitment`,
-    /// fflonk's bundles) factor that into their requested blow-up.
+    /// commit to a single combined polynomial (e.g. fflonk's bundles) factor
+    /// that into their requested blow-up.
     fn srs_monomial_blowup(cs_degree: usize) -> usize {
         let _ = cs_degree; // Just to avoid a clippy warning.
         1
@@ -234,10 +234,9 @@ pub trait Params: Send + Sync {
     fn max_k(&self) -> u32;
 
     /// Returns the number of monomial-basis elements `[s^i]G₁` available in
-    /// the SRS. For a standard SRS this equals `1 << max_k()`. When the
-    /// `single-h-commitment` feature is enabled the monomial basis may be
-    /// larger than the Lagrange basis (which covers only the circuit
-    /// domain), so this method returns the true capacity for
+    /// the SRS. For a standard SRS this equals `1 << max_k()`. The monomial
+    /// basis may be larger than the Lagrange basis (which covers only the
+    /// circuit domain), so this method returns the true capacity for
     /// coefficient-form commitments.
     fn g_monomial_size(&self) -> usize {
         1 << self.max_k()
