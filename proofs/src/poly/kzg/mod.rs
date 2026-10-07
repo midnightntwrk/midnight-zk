@@ -51,8 +51,8 @@ use crate::{
     transcript::{Hashable, Sampleable, Transcript},
     utils::{
         arithmetic::{
-            CurveAffine, CurveExt, eval_polynomial, evals_inner_product, inner_product,
-            kate_division, lagrange_interpolate, parallelize, powers,
+            CurveAffine, CurveExt, divide_by_roots, eval_polynomial, evals_inner_product,
+            inner_product, kate_division, lagrange_interpolate, parallelize, powers,
         },
         helpers::{ProcessedSerdeObject, SerdeFormat},
     },
@@ -327,14 +327,9 @@ where
             let f_polys: Vec<_> = point_sets
                 .into_par_iter()
                 .zip(q_polys.clone().into_par_iter())
-                .map(|(points, q_poly)| {
-                    let poly = points.iter().fold(q_poly.values.clone(), |poly, point| {
-                        kate_division(&poly, *point)
-                    });
-                    Polynomial {
-                        values: poly,
-                        _marker: PhantomData,
-                    }
+                .map(|(points, q_poly)| Polynomial {
+                    values: divide_by_roots(&q_poly.values, &points),
+                    _marker: PhantomData,
                 })
                 .collect();
             poly_inner_product(&f_polys.iter().collect::<Vec<_>>(), powers(x2))
