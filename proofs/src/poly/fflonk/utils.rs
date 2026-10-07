@@ -1,7 +1,12 @@
 //! Helpers of the fflonk scheme: the combination `g` of a chunk and the roots
 //! it is opened at.
 
-use std::{iter, marker::PhantomData};
+use std::{
+    collections::{HashMap, hash_map::Entry},
+    hash::Hash,
+    iter,
+    marker::PhantomData,
+};
 
 use ff::{PrimeField, WithSmallOrderMulGroup};
 use rayon::prelude::*;
@@ -124,4 +129,16 @@ pub(super) fn roots<F: PrimeField>(x: F, t: usize) -> Option<Vec<F>> {
     }
     let omega = F::ROOT_OF_UNITY.pow_vartime([1u64 << (F::S - log_t)]);
     Some(iter::successors(Some(root), |r| Some(*r * omega)).take(t).collect())
+}
+
+/// [`roots`] of `x`, computed once per `x` and `t` and kept in `cache`.
+pub(super) fn cached_roots<F: PrimeField + Hash>(
+    cache: &mut HashMap<(F, usize), Vec<F>>,
+    x: F,
+    t: usize,
+) -> Option<&[F]> {
+    Some(match cache.entry((x, t)) {
+        Entry::Occupied(entry) => entry.into_mut(),
+        Entry::Vacant(entry) => entry.insert(roots(x, t)?),
+    })
 }

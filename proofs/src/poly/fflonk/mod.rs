@@ -45,7 +45,7 @@ use std::{
 };
 
 use ff::WithSmallOrderMulGroup;
-use utils::{compute_g, roots};
+use utils::{cached_roots, compute_g};
 
 use crate::{
     poly::{
@@ -53,7 +53,10 @@ use crate::{
         ProverQuery, VerifierQuery, commitment::PolynomialCommitmentScheme,
     },
     transcript::{Hashable, Sampleable, Transcript},
-    utils::{arithmetic::eval_polynomial, helpers::SerdeFormat},
+    utils::{
+        arithmetic::{eval_polynomial, eval_polynomial_seq},
+        helpers::SerdeFormat,
+    },
 };
 
 /// fflonk over the polynomial commitment scheme `PCS`.
@@ -193,11 +196,18 @@ where
 
         // Opening a chunk at `x` amounts to opening its `g` at the `t`-th roots of `x`.
         let mut inner_queries = Vec::new();
+        let mut roots_cache = HashMap::new();
         for (((polys, points), g_label), g) in chunks_info.values().zip(&g_labels).zip(&gs) {
+            let t = polys.len().next_power_of_two();
             for x in points {
-                for root in roots(*x, polys.len().next_power_of_two()).ok_or(Error::OpeningError)? {
+                for root in cached_roots(&mut roots_cache, *x, t).ok_or(Error::OpeningError)? {
                     let g_poly = slice::from_ref(g);
-                    inner_queries.push(ProverQuery::new(g_label, g_poly, root, g_label[0].clone()));
+                    inner_queries.push(ProverQuery::new(
+                        g_label,
+                        g_poly,
+                        *root,
+                        g_label[0].clone(),
+                    ));
                 }
             }
         }
@@ -258,15 +268,15 @@ where
         // such a root `r` is equivalent to evaluating at `r` the polynomial with
         // coefficients `f_i(x)`.
         let mut inner_queries = Vec::new();
+        let mut roots_cache = HashMap::new();
         for (labels, (commitment, points)) in &chunks_info {
+            let t = labels.len().next_power_of_two();
             for x in points {
                 let f_evals: Vec<F> = labels.iter().map(|l| evals[&(l.clone(), *x)]).collect();
-                for root in
-                    roots(*x, labels.len().next_power_of_two()).ok_or(Error::OpeningError)?
-                {
-                    let eval = eval_polynomial(&f_evals, root);
+                for root in cached_roots(&mut roots_cache, *x, t).ok_or(Error::OpeningError)? {
+                    let eval = eval_polynomial_seq(&f_evals, *root);
                     let label = Collection(labels.clone());
-                    inner_queries.push(VerifierQuery::new(root, *commitment, label, eval));
+                    inner_queries.push(VerifierQuery::new(*root, *commitment, label, eval));
                 }
             }
         }
