@@ -124,6 +124,27 @@ where
     q
 }
 
+/// The evaluation at `x` of the polynomial of degree below `points.len()` that
+/// takes the value `evals_i` at `points_i`, computed without building it:
+/// `Π_j (x - points_j) · Σ_i evals_i / ((x - points_i) Π_{j≠i} (points_i -
+/// points_j))`.
+pub fn eval_interpolant<F: Field>(points: &[F], evals: &[F], x: F) -> F {
+    assert_eq!(points.len(), evals.len());
+    if let Some(i) = points.iter().position(|point| *point == x) {
+        return evals[i];
+    }
+    let mut denoms: Vec<F> = (points.iter().enumerate())
+        .map(|(i, point_i)| {
+            (points.iter().enumerate())
+                .filter(|(j, _)| *j != i)
+                .fold(x - point_i, |acc, (_, point_j)| acc * (*point_i - point_j))
+        })
+        .collect();
+    denoms.iter_mut().batch_invert();
+    let vanishing: F = points.iter().map(|point| x - point).product();
+    vanishing * evals.iter().zip(&denoms).map(|(eval, denom)| *eval * denom).sum::<F>()
+}
+
 /// The quotient of `poly`, in coefficient form, by `∏_i (X - roots_i)`,
 /// discarding the remainder.
 ///
@@ -402,5 +423,21 @@ fn test_divide_by_roots() {
     ] {
         let expected = roots.iter().fold(poly.clone(), |acc, root| kate_division(&acc, *root));
         assert_eq!(divide_by_roots(&poly, &roots), expected);
+    }
+}
+
+#[test]
+fn test_eval_interpolant() {
+    let points: Vec<Scalar> = (0..6).map(|_| Scalar::random(OsRng)).collect();
+    let evals: Vec<Scalar> = (0..6).map(|_| Scalar::random(OsRng)).collect();
+    for len in 1..=6 {
+        let (points, evals) = (&points[..len], &evals[..len]);
+        let poly = lagrange_interpolate(points, evals);
+        let x = Scalar::random(OsRng);
+        assert_eq!(
+            eval_interpolant(points, evals, x),
+            eval_polynomial(&poly, x)
+        );
+        assert_eq!(eval_interpolant(points, evals, points[0]), evals[0]);
     }
 }

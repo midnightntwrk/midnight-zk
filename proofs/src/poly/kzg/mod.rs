@@ -51,8 +51,8 @@ use crate::{
     transcript::{Hashable, Sampleable, Transcript},
     utils::{
         arithmetic::{
-            CurveAffine, CurveExt, divide_by_roots, eval_polynomial, evals_inner_product,
-            inner_product, kate_division, lagrange_interpolate, parallelize, powers,
+            CurveAffine, CurveExt, divide_by_roots, eval_interpolant, eval_polynomial,
+            evals_inner_product, inner_product, kate_division, parallelize, powers,
         },
         helpers::{ProcessedSerdeObject, SerdeFormat},
     },
@@ -498,8 +498,7 @@ where
             point_sets.iter().zip(q_eval_sets.iter()).zip(q_evals_on_x3.iter()).rev().fold(
                 E::Fr::ZERO,
                 |acc_eval, ((points, evals), proof_eval)| {
-                    let r_poly = lagrange_interpolate(points, evals);
-                    let r_eval = eval_polynomial(&r_poly, x3);
+                    let r_eval = eval_interpolant(points, evals, x3);
                     // eval = (proof_eval - r_eval) / prod_i (x3 - point_i)
                     let den = points.iter().fold(E::Fr::ONE, |acc, point| acc * &(x3 - point));
                     let eval = (*proof_eval - &r_eval) * den.invert().unwrap();
