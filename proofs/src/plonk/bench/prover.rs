@@ -601,12 +601,15 @@ where
         "L'(x) should equal -C, where C is the constant part of the linearization polynomial"
     );
 
+    let instance_labels: Vec<_> = (0..nb_committed_instances)
+        .map(|i| [PolynomialLabel::CommittedInstance(i)])
+        .collect();
     let queries = {
         group.bench_function("Compute queries", |b| {
             b.iter(|| {
                 let _ = compute_queries(
                     pk,
-                    nb_committed_instances,
+                    &instance_labels,
                     &instance_polys,
                     &phase0_evaluated,
                     &phase1_evaluated,
@@ -618,7 +621,7 @@ where
         });
         compute_queries(
             pk,
-            nb_committed_instances,
+            &instance_labels,
             &instance_polys,
             &phase0_evaluated,
             &phase1_evaluated,

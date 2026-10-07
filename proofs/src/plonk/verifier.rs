@@ -93,14 +93,16 @@ where
     // Sample the trash challenge after the advices have been committed to
     let trash_challenge: F = transcript.squeeze_challenge();
 
-    // The label order does not matter here, labels are ordered in `read`.
     let mut phase2_labels = vk.cs.permutation.accumulator_labels(vk.cs_degree);
 
     for (argument_index, logup_argument) in logups.iter().enumerate() {
-        phase2_labels.push(PolynomialLabel::LogupAggregator(argument_index));
         for j in 0..logup_argument.num_chunks() {
             phase2_labels.push(PolynomialLabel::LogupHelper(argument_index, j));
         }
+    }
+
+    for argument_index in 0..logups.len() {
+        phase2_labels.push(PolynomialLabel::LogupAggregator(argument_index));
     }
 
     for trash_argument in vk.cs.trashcans.iter() {

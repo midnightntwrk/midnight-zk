@@ -45,6 +45,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * The verifying key commits to every fixed column but the simple selectors as one group, together with the fixed permutation polynomials, in the phase-0 group exposed as `VerifyingKey::phase0_commitment`, and to each simple selector on its own, as `VerifyingKey::simple_selector_commitments`. The serialized key changes to that layout, so every verifying key and its `transcript_repr` change [#547](https://github.com/midnightntwrk/midnight-zk/pull/547)
 * The fixed columns are evaluated and opened through the phase-0 group: their evaluations are written to the proof with the group's, in label order, rather than once per fixed query. A simple selector is never opened, as before. Proof sizes do not change [#547](https://github.com/midnightntwrk/midnight-zk/pull/547)
 * `msm_specific` always uses blst's `multi_exp_affine` for BLS12-381 G1,`msm_best`is a fallback for all other curves [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
+* `commit_many`, `read_commitment` and `deserialize_commitment` take the labels of a group in the order it is committed to, rather than ordering them [#554](https://github.com/midnightntwrk/midnight-zk/pull/554)
+* `ProverQuery` carries the labels and polynomials of the group the queried polynomial is committed with, so `multi_open` sees every polynomial committed together with the queried one [#554](https://github.com/midnightntwrk/midnight-zk/pull/554)
 * Commit the advice columns as part of the phase-1 argument group, together with the logup multiplicities, instead of one commitment per column, and open them through it at the rotations the circuit queries them at. This changes the transcript of every proof, which shrinks by 4 bytes per advice column (one fewer if the circuit has no lookup) [#543](https://github.com/midnightntwrk/midnight-zk/pull/543)
 * Commit the logup multiplicities before squeezing `theta`, instead of after. The prover counts them by comparing the input and table tuples directly, and compresses the tuples with `theta` only when computing the helpers and aggregators. This changes the transcript of every proof over a circuit with a lookup [#543](https://github.com/midnightntwrk/midnight-zk/pull/543)
 * Open the phase-1 and phase-2 groups first in the multi-open, followed by the phase-0 group and then the committed instances. This changes the opening proof but not its size [#543](https://github.com/midnightntwrk/midnight-zk/pull/543)
@@ -81,6 +83,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Simplify KZG multiopen verifier to use `KZGCommitment` directly [#430](https://github.com/midnightntwrk/midnight-zk/pull/430)
 
 ### Removed
+* `fewer-point-sets` feature [#554](https://github.com/midnightntwrk/midnight-zk/pull/554)
 * `VerifyingKey::fixed_commitments`, replaced by `phase0_commitment` and `simple_selector_commitments` [#547](https://github.com/midnightntwrk/midnight-zk/pull/547)
 * `Clone` on `ProvingKey`, so that the polynomials it holds are never copied [#537](https://github.com/midnightntwrk/midnight-zk/pull/537)
 * Remove the internal `permutation::verifier` module and `permutation::Evaluated`; the permutation argument no longer carries any transcript plumbing of its own [#537](https://github.com/midnightntwrk/midnight-zk/pull/537)

@@ -8,7 +8,7 @@
 //! For a more detailed explanation, see the [Halo 2 Book](https://zcash.github.io/halo2/design/proving-system/multipoint-opening.html) on Multipoint Openings.
 
 use std::{
-    collections::{BTreeSet, HashMap},
+    collections::HashMap,
     io::{self, Read},
     marker::PhantomData,
 };
@@ -33,8 +33,6 @@ use ff::Field;
 use group::Group;
 use midnight_curves::pairing::MultiMillerLoop;
 use rand_core::OsRng;
-#[cfg(feature = "fewer-point-sets")]
-pub use utils::compute_dummy_queries;
 
 #[cfg(feature = "truncated-challenges")]
 use crate::utils::arithmetic::{truncate, truncated_powers};
@@ -94,20 +92,11 @@ where
             labels.len(),
             "polynomials and labels must have the same length"
         );
-
-        // The group travels through the transcript in the labels' `Ord` order,
-        // which is the order `read_commitment` tags the points it reads in.
-        let mut pairs: Vec<_> = polynomials.iter().zip(labels).collect();
-        pairs.sort_by_key(|(_, a)| *a);
-        assert!(
-            pairs.windows(2).all(|w| w[0].1 != w[1].1),
-            "duplicated polynomial label in a commitment group"
-        );
+        PolynomialLabel::assert_distinct(labels);
 
         let bases = params.bases::<B>();
         KZGMultiCommitment(
-            pairs
-                .into_iter()
+            (polynomials.iter().zip(labels))
                 .map(|(polynomial, label)| {
                     let size = polynomial.values.len();
                     assert!(bases.len() >= size);
@@ -143,18 +132,9 @@ where
         if labels.is_empty() {
             return Ok(KZGMultiCommitment(vec![]));
         }
+        PolynomialLabel::assert_distinct(labels);
 
         let commitment: KZGMultiCommitment<E> = transcript.read()?;
-
-        // `commit_many` commits to the group in the labels' `Ord` order, so tag
-        // the points in that order, whatever order the caller listed them in.
-        let ordered = BTreeSet::from_iter(labels.iter().cloned());
-        assert_eq!(
-            ordered.len(),
-            labels.len(),
-            "duplicated polynomial label in a commitment group"
-        );
-        let labels: Vec<_> = ordered.into_iter().collect();
 
         // How many polynomials the group holds is fixed by the verifying key,
         // so any other number is a malformed proof. The prover declares the
@@ -270,26 +250,6 @@ where
             }
         }
 
-        // Add dummy queries to reduce the number of distinct multi-open point sets.
-        #[cfg(feature = "fewer-point-sets")]
-        let queries = &{
-            let mut queries = queries.to_vec();
-            let pairs: Vec<_> = queries.iter().map(|q| (q.label.clone(), q.point)).collect();
-            for (idx, dummy_point) in compute_dummy_queries(&pairs) {
-                let poly = queries[idx].poly;
-                let label = queries[idx].label.clone();
-                transcript
-                    .write(&eval_polynomial(&poly[..], dummy_point))
-                    .map_err(|_| Error::OpeningError)?;
-                queries.push(ProverQuery {
-                    point: dummy_point,
-                    poly,
-                    label,
-                });
-            }
-            queries
-        };
-
         // Refer to the halo2 book for docs:
         // https://zcash.github.io/halo2/design/proving-system/multipoint-opening.html
         let x1: E::Fr = transcript.squeeze_challenge();
@@ -298,17 +258,14 @@ where
         // Map each label to the polynomial it identifies, so the per-set
         // grouping (keyed by label) can recover the actual polynomials.
         let label_to_poly: HashMap<PolynomialLabel, &Polynomial<E::Fr, Coeff>> =
-            queries.iter().map(|q| (q.label.clone(), q.poly)).collect();
+            queries.iter().map(|q| (q.label.clone(), q.poly())).collect();
 
-        let kzg_queries = queries
-            .iter()
-            .map(|query| {
-                (
-                    query.label.clone(),
-                    query.point,
-                    eval_polynomial(&query.poly[..], query.point),
-                )
-            })
+        // `construct_intermediate_sets` is shared with the verifier, and the
+        // evaluations (the third component of each query) are only read by the
+        // verifier, so the prover passes zeros.
+        // TODO: address this better.
+        let kzg_queries = (queries.iter())
+            .map(|query| (query.label.clone(), query.point, E::Fr::ZERO))
             .collect::<Vec<_>>();
         let (poly_map, point_sets) = construct_intermediate_sets(&kzg_queries)?;
 
@@ -422,25 +379,6 @@ where
         E::G1: CurveExt<ScalarExt = E::Fr>,
         KZGMultiCommitment<E>: Hashable<T::Hash> + 'com,
     {
-        // Add dummy queries to reduce the number of distinct multi-open point sets.
-        #[cfg(feature = "fewer-point-sets")]
-        let queries = &{
-            let mut queries = queries.to_vec();
-            let pairs: Vec<_> = queries.iter().map(|q| (q.label.clone(), q.point)).collect();
-            for (idx, dummy_point) in compute_dummy_queries(&pairs) {
-                let commitment = queries[idx].commitment;
-                let label = queries[idx].label.clone();
-                let eval = transcript.read().map_err(|_| Error::SamplingError)?;
-                queries.push(VerifierQuery {
-                    point: dummy_point,
-                    commitment,
-                    label,
-                    eval,
-                });
-            }
-            queries
-        };
-
         // Refer to the halo2 book for docs:
         // https://zcash.github.io/halo2/design/proving-system/multipoint-opening.html
         let x1: E::Fr = transcript.squeeze_challenge();
@@ -604,7 +542,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::hash::Hash;
+    use std::{hash::Hash, slice};
 
     use blake2b_simd::State as Blake2bState;
     use ff::WithSmallOrderMulGroup;
@@ -828,22 +766,12 @@ mod tests {
         transcript.write(&bvx).unwrap();
         transcript.write(&cvy).unwrap();
 
+        let labels = |name: &str| [PolynomialLabel::Custom(name.into())];
+        let (la, lb, lc) = (labels("a"), labels("b"), labels("c"));
         let queries = [
-            ProverQuery {
-                point: x,
-                poly: &ax,
-                label: PolynomialLabel::Custom("a".into()),
-            },
-            ProverQuery {
-                point: x,
-                poly: &bx,
-                label: PolynomialLabel::Custom("b".into()),
-            },
-            ProverQuery {
-                point: y,
-                poly: &cx,
-                label: PolynomialLabel::Custom("c".into()),
-            },
+            ProverQuery::new(&la, slice::from_ref(&ax), x, la[0].clone()),
+            ProverQuery::new(&lb, slice::from_ref(&bx), x, lb[0].clone()),
+            ProverQuery::new(&lc, slice::from_ref(&cx), y, lc[0].clone()),
         ]
         .into_iter();
 
