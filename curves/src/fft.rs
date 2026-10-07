@@ -146,6 +146,7 @@ fn fft_dif_pruned_fq(a: &mut [Fq], twiddles: &[Fq], log_n: u32, n_real: usize) {
 /// potentially non-zero and the remaining `n - nz` are zero. Maintains this
 /// "data-at-front" invariant across recursive calls.
 fn recursive_dif_pruned(a: &mut [Fq], n: usize, tc: usize, tw: &[Fq], nz: usize) {
+    debug_assert_eq!(n, a.len());
     if nz == 0 {
         return;
     }
