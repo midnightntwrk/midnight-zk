@@ -132,6 +132,8 @@ pub fn fft_coeff_to_extended<Scalar: Field, G: FftGroup<Scalar>>(
 /// butterflies with a single multiply.
 fn fft_dif_pruned_fq(a: &mut [Fq], twiddles: &[Fq], log_n: u32, n_real: usize) {
     let n = a.len();
+    // Both the halving recursion and `bitreverse` need exactly 2^log_n
+    // elements; any other length gives a silently wrong transform.
     assert_eq!(n, 1 << log_n);
     recursive_dif_pruned(a, 1, twiddles, n_real);
     for k in 0..n {
