@@ -29,7 +29,7 @@ use midnight_proofs::{
         Circuit, Error, ProvingKey, VerifyingKey, create_proof, keygen_pk, keygen_vk, prepare,
     },
     poly::{
-        commitment::{Guard, PolynomialCommitmentScheme},
+        commitment::Guard,
         kzg::{
             KZGCommitmentScheme,
             commitment::KZGMultiCommitment,
@@ -258,28 +258,11 @@ pub enum SrsSource {
     Midnight,
 }
 
-/// Loads an SRS (over BLS12-381) for the given circuit size `k` and
-/// constraint-system degree `cs_degree`.
-///
-/// The monomial basis is sized via the active PCS's
-/// [`PolynomialCommitmentScheme::srs_monomial_blowup`]: a blow-up factor of
-/// `1` keeps the monomial basis at the Lagrange size `2^k`; a blow-up of `B`
-/// extends it to `2^k · B`. The Lagrange basis stays at size `2^k`.
-pub fn load_srs(source: SrsSource, k: u32, cs_degree: usize) -> ParamsKZG<Bls12> {
-    let fetch = |k| match source {
+/// Loads an SRS (over BLS12-381) for the given circuit size `k`.
+pub fn load_srs(source: SrsSource, k: u32) -> ParamsKZG<Bls12> {
+    match source {
         SrsSource::Filecoin => filecoin_srs(k),
         SrsSource::Midnight => midnight_srs(k),
-    };
-
-    let blowup = <KZGCommitmentScheme<Bls12>>::srs_monomial_blowup(cs_degree);
-    assert_ne!(blowup, 0, "srs blowup should be >= 1");
-    let base = fetch(k);
-    if blowup == 1 {
-        base
-    } else {
-        let extended_k = k + (blowup as f64).log2().ceil() as u32;
-        let extended = fetch(extended_k);
-        base.with_extended_monomial(extended)
     }
 }
 
@@ -287,8 +270,7 @@ pub fn load_srs(source: SrsSource, k: u32, cs_degree: usize) -> ParamsKZG<Bls12>
 /// If `k` is `None`, the optimal circuit size is derived automatically.
 pub fn srs_for_test<R: Relation>(relation: &R, k: Option<u32>) -> ParamsKZG<Bls12> {
     let k = k.unwrap_or_else(|| optimal_k(relation));
-    let cs_degree = cost_model(relation, Some(k)).max_deg;
-    load_srs(SrsSource::Filecoin, k, cs_degree)
+    load_srs(SrsSource::Filecoin, k)
 }
 
 /// Loads Midnight's production SRS (over BLS12-381) for the given circuit

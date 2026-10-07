@@ -41,8 +41,17 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
     /// Verification guard. Allows for batch verification
     type VerificationGuard: Guard<Self::VerifierParameters>;
 
-    /// Generates the parameters of the polynomial commitment scheme
+    /// Generates the parameters of the polynomial commitment scheme, for
+    /// committing to polynomials of degree strictly less than `2^k`.
     fn gen_params(k: u32) -> Self::Parameters;
+
+    /// Reads the parameters of the polynomial commitment scheme from `reader`,
+    /// for committing to polynomials of degree strictly less than `2^k`.
+    fn load_params<R: io::Read>(
+        reader: &mut R,
+        format: SerdeFormat,
+        k: u32,
+    ) -> io::Result<Self::Parameters>;
 
     /// Extract the `VerifierParameters` from `Parameters`
     fn get_verifier_params(params: &Self::Parameters) -> Self::VerifierParameters;
@@ -149,19 +158,6 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
         transcript.squeeze_challenge()
     }
 
-    /// Multiplicative blow-up factor by which `params.g_monomial_size()` must
-    /// exceed `2^k` (the circuit's Lagrange-domain size) for this PCS to
-    /// commit every polynomial it produces at the requested circuit size.
-    /// Returns `1` when no extension is needed.
-    ///
-    /// `cs_degree` is the constraint system's `cs.degree()`. Schemes that
-    /// commit to a single combined polynomial (e.g. fflonk's bundles) factor
-    /// that into their requested blow-up.
-    fn srs_monomial_blowup(cs_degree: usize) -> usize {
-        let _ = cs_degree; // Just to avoid a clippy warning.
-        1
-    }
-
     /// Create a multi-opening proof at a set of [ProverQuery]'s.
     ///
     /// The evaluations of the queries are already in the transcript.
@@ -232,15 +228,6 @@ pub trait Params: Send + Sync {
     /// such that the Lagrange domain has `2^k` elements. This equals the
     /// circuit domain size and is used by keygen to validate the SRS.
     fn max_k(&self) -> u32;
-
-    /// Returns the number of monomial-basis elements `[s^i]G₁` available in
-    /// the SRS. For a standard SRS this equals `1 << max_k()`. The monomial
-    /// basis may be larger than the Lagrange basis (which covers only the
-    /// circuit domain), so this method returns the true capacity for
-    /// coefficient-form commitments.
-    fn g_monomial_size(&self) -> usize {
-        1 << self.max_k()
-    }
 
     /// Downsize the params to work with a circuit of size `new_k`
     fn downsize(&mut self, new_k: u32);

@@ -86,6 +86,16 @@ where
         params
     }
 
+    fn load_params<R: io::Read>(
+        reader: &mut R,
+        format: SerdeFormat,
+        k: u32,
+    ) -> io::Result<Self::Parameters> {
+        let mut params = PCS::load_params(reader, format, k + LOG2_T_MAX)?;
+        params.downsize_lagrange(k);
+        Ok(params)
+    }
+
     fn get_verifier_params(params: &Self::Parameters) -> Self::VerifierParameters {
         PCS::get_verifier_params(params)
     }
@@ -138,10 +148,6 @@ where
         F: Sampleable<T::Hash>,
     {
         PCS::squeeze_evaluation_point(transcript).pow_vartime([Self::T_MAX as u64])
-    }
-
-    fn srs_monomial_blowup(cs_degree: usize) -> usize {
-        Self::T_MAX.max(PCS::srs_monomial_blowup(cs_degree))
     }
 
     fn multi_open<T: Transcript>(

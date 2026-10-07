@@ -31,7 +31,7 @@ use std::{fmt::Debug, hash::Hash};
 use commitment::{KZGCommitment, KZGMultiCommitment};
 use ff::Field;
 use group::Group;
-use midnight_curves::pairing::MultiMillerLoop;
+use midnight_curves::{pairing::MultiMillerLoop, serde::SerdeObject};
 use rand_core::OsRng;
 
 #[cfg(feature = "truncated-challenges")]
@@ -39,7 +39,7 @@ use crate::utils::arithmetic::{truncate, truncated_powers};
 use crate::{
     poly::{
         Coeff, Error, Polynomial, PolynomialRepresentation, ProverQuery,
-        commitment::PolynomialCommitmentScheme,
+        commitment::{Params, PolynomialCommitmentScheme},
         kzg::{
             commitment::NB_POLYS_PREFIX_BYTES,
             msm::{DualMSM, msm_specific},
@@ -67,7 +67,8 @@ pub struct KZGCommitmentScheme<E: Engine> {
 impl<E: MultiMillerLoop> PolynomialCommitmentScheme<E::Fr> for KZGCommitmentScheme<E>
 where
     E::G1: Default + CurveExt<ScalarExt = E::Fr> + ProcessedSerdeObject,
-    E::G1Affine: Default + CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
+    E::G1Affine: Default + CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1> + SerdeObject,
+    E::G2: ProcessedSerdeObject,
 {
     type Parameters = ParamsKZG<E>;
     type VerifierParameters = ParamsVerifierKZG<E>;
@@ -76,6 +77,22 @@ where
 
     fn gen_params(k: u32) -> Self::Parameters {
         ParamsKZG::unsafe_setup(k, OsRng)
+    }
+
+    fn load_params<R: io::Read>(
+        reader: &mut R,
+        format: SerdeFormat,
+        k: u32,
+    ) -> io::Result<Self::Parameters> {
+        let mut params = ParamsKZG::read_custom(reader, format)?;
+        if params.max_k() < k {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("SRS of size 2^{} is smaller than 2^{k}", params.max_k()),
+            ));
+        }
+        params.downsize(k);
+        Ok(params)
     }
 
     fn get_verifier_params(params: &Self::Parameters) -> Self::VerifierParameters {
@@ -561,7 +578,7 @@ mod tests {
             query::{ProverQuery, VerifierQuery},
         },
         transcript::{CircuitTranscript, Hashable, Sampleable, Transcript},
-        utils::arithmetic::eval_polynomial,
+        utils::{arithmetic::eval_polynomial, helpers::ProcessedSerdeObject},
     };
 
     #[test]
@@ -639,6 +656,7 @@ mod tests {
         E::Fr: Hashable<T::Hash> + Sampleable<T::Hash> + Ord + Hash,
         E::G1: Hashable<T::Hash> + CurveExt<ScalarExt = E::Fr, AffineExt = E::G1Affine>,
         E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1> + SerdeObject,
+        E::G2: ProcessedSerdeObject,
         KZGMultiCommitment<E>: Hashable<T::Hash>,
     {
         let mut transcript = T::init_from_bytes(proof);
@@ -730,6 +748,7 @@ mod tests {
         E::Fr: WithSmallOrderMulGroup<3> + Hashable<T::Hash> + Hash + Sampleable<T::Hash> + Ord,
         E::G1: Hashable<T::Hash> + CurveExt<ScalarExt = E::Fr, AffineExt = E::G1Affine>,
         E::G1Affine: SerdeObject + CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
+        E::G2: ProcessedSerdeObject,
     {
         let k = (kzg_params.g.len() - 1).ilog2() + 1;
         let domain = EvaluationDomain::new(1, k);

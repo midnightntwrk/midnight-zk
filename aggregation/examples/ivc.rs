@@ -8,7 +8,7 @@
 use std::time::Instant;
 
 use ff::Field;
-use midnight_aggregation::ivc::{self, IvcCircuit, IvcContext, IvcIO, IvcState, IvcTransition};
+use midnight_aggregation::ivc::{self, IvcContext, IvcIO, IvcState, IvcTransition};
 use midnight_circuits::{
     hash::poseidon::PoseidonChip,
     instructions::{hash::HashCPU, *},
@@ -172,11 +172,7 @@ fn main() {
     const N: usize = 1_000; // Number of Poseidon iteration per IVC step.
     const STEPS: usize = 3; // Number of IVC steps to run.
 
-    let srs = load_srs(
-        SrsSource::Midnight,
-        K,
-        IvcCircuit::<PoseidonChain<N>>::cs_degree(),
-    );
+    let srs = load_srs(SrsSource::Midnight, K);
 
     let start = Instant::now();
     let (mut prover, verifier) = ivc::setup::<PoseidonChain<N>>(srs, K, ());
