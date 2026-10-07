@@ -12,7 +12,7 @@ use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
 use super::{
     fp::{FROBENIUS_COEFF_FP6_C1, FROBENIUS_COEFF_FP6_C2, Fp},
-    fp2::Fp2,
+    fp2::{Fp2, fp2_neg_assign},
 };
 
 /// This represents an element $c_0 + c_1 v + c_2 v^2$ of $\mathbb{F}_{p^6} =
@@ -145,7 +145,7 @@ impl Neg for Fp6 {
 
     #[inline]
     fn neg(mut self) -> Fp6 {
-        self.0.fp2 = self.0.fp2.map(|c| (-Fp2(c)).0);
+        self.0.fp2.iter_mut().for_each(fp2_neg_assign);
         self
     }
 }
