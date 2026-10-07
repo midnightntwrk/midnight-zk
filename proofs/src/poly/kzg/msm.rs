@@ -1,4 +1,4 @@
-use std::{any::TypeId, fmt::Debug};
+use std::{any::Any, fmt::Debug};
 
 use ff::Field;
 use group::{Curve, Group, prime::PrimeCurveAffine};
@@ -168,7 +168,6 @@ where
     }
 }
 
-#[allow(unsafe_code)]
 /// Wrapper over the MSM function:
 /// Bls12-381 uses blstrs [`G1Affine::multi_exp_affine`], other curves use
 /// `msm_best`.
@@ -185,15 +184,19 @@ pub fn msm_specific<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Cur
         return C::Curve::identity();
     }
 
-    if TypeId::of::<C>() == TypeId::of::<G1Affine>() {
-        let coeffs = unsafe { &*(coeffs.as_slice() as *const _ as *const [Fq]) };
-        let bases = unsafe { &*(bases.as_slice() as *const _ as *const [G1Affine]) };
-        // TODO: 255 is fine because type is checked. Another option is propagating
-        // nbits as an input of msm_specific.
-        let res = G1Affine::multi_exp_affine(bases, coeffs);
-        unsafe { std::mem::transmute_copy(&res) }
-    } else {
-        msm_best(&coeffs, &bases)
+    // Poor man's specialisation: `Any` downcasts are a `TypeId` compare, free
+    // next to the MSM itself.
+    let blst = (&coeffs as &dyn Any)
+        .downcast_ref::<Vec<Fq>>()
+        .zip((&bases as &dyn Any).downcast_ref::<Vec<G1Affine>>());
+    match blst {
+        Some((coeffs, bases)) => {
+            let res = G1Affine::multi_exp_affine(bases, coeffs);
+            *(&res as &dyn Any)
+                .downcast_ref::<C::Curve>()
+                .expect("C = G1Affine, so C::Curve = G1Projective")
+        }
+        None => msm_best(&coeffs, &bases),
     }
 }
 

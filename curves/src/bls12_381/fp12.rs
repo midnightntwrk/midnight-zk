@@ -146,14 +146,7 @@ impl Neg for Fp12 {
 
     #[inline]
     fn neg(mut self) -> Fp12 {
-        unsafe {
-            blst_fp2_cneg(&mut self.0.fp6[0].fp2[0], &self.0.fp6[0].fp2[0], true);
-            blst_fp2_cneg(&mut self.0.fp6[0].fp2[1], &self.0.fp6[0].fp2[1], true);
-            blst_fp2_cneg(&mut self.0.fp6[0].fp2[2], &self.0.fp6[0].fp2[2], true);
-            blst_fp2_cneg(&mut self.0.fp6[1].fp2[0], &self.0.fp6[1].fp2[0], true);
-            blst_fp2_cneg(&mut self.0.fp6[1].fp2[1], &self.0.fp6[1].fp2[1], true);
-            blst_fp2_cneg(&mut self.0.fp6[1].fp2[2], &self.0.fp6[1].fp2[2], true);
-        }
+        self.0.fp6 = self.0.fp6.map(|c| (-Fp6(c)).0);
         self
     }
 }

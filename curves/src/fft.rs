@@ -152,7 +152,10 @@ fn recursive_dif_pruned(a: &mut [Fq], n: usize, tc: usize, tw: &[Fq], nz: usize)
     if n == 2 {
         // Base case. GS butterfly on (a[0], a[1]). Correct whether a[1] is
         // zero (nz == 1) or not, since (a, 0; tw) → (a, a·tw).
-        gs(a, 0, 1, &tw[0]);
+        let [x0, x1] = a else {
+            unreachable!("n == a.len() == 2")
+        };
+        Fq::gs_butterfly(x0, x1, &tw[0]);
         return;
     }
 
@@ -170,8 +173,11 @@ fn recursive_dif_pruned(a: &mut [Fq], n: usize, tc: usize, tw: &[Fq], nz: usize)
         // Both halves carry data. Full butterflies across the split. Pairs
         // with i >= nz - h have a[i+h] == 0, which the butterfly still
         // handles correctly (one extra mul each; not worth a special case).
-        for i in 0..h {
-            gs(a, i, i + h, &tw[i * tc]);
+        // A short `tw` would make `zip` skip butterflies, not panic.
+        debug_assert!((h - 1) * tc < tw.len());
+        let (lo, hi) = a.split_at_mut(h);
+        for ((x0, x1), t) in lo.iter_mut().zip(hi).zip(tw.iter().step_by(tc)) {
+            Fq::gs_butterfly(x0, x1, t);
         }
     }
 
@@ -183,18 +189,6 @@ fn recursive_dif_pruned(a: &mut [Fq], n: usize, tc: usize, tw: &[Fq], nz: usize)
         || recursive_dif_pruned(left, h, tc * 2, tw, child_nz),
         || recursive_dif_pruned(right, h, tc * 2, tw, child_nz),
     );
-}
-
-/// In-place Gentleman-Sande butterfly on `a\[i\]` and `a\[j\]` with twiddle
-/// `t`: (a\[i\], a\[j\]) ← (a\[i\] + a\[j\], (a\[i\] - a\[j\])·t).
-#[inline(always)]
-fn gs(a: &mut [Fq], i: usize, j: usize, t: &Fq) {
-    // SAFETY: i != j and both in bounds — callers always supply i = k, j = k + h
-    // with k < h <= a.len()/2.
-    unsafe {
-        let p = a.as_mut_ptr();
-        Fq::gs_butterfly(&mut *p.add(i), &mut *p.add(j), t);
-    }
 }
 
 /// Recursive Cooley-Tukey (DIT) butterflies. Used by [`best_fft_with_twiddles`]
