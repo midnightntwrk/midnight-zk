@@ -8,7 +8,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 ### Added
-* `single-h-commitment` feature and improved SRS loading for tests [#276](https://github.com/midnightntwrk/midnight-zk/pull/276)
+* Improved SRS loading for tests [#276](https://github.com/midnightntwrk/midnight-zk/pull/276)
 * Added an example verifying an ethereum signature [#177](https://github.com/midnightntwrk/midnight-zk/pull/177)
 * `setup_vk_with_k` for generating a verifying key with an explicit circuit size parameter [#227](https://github.com/midnightntwrk/midnight-zk/pull/227)
 * Expose `verifier_gadget` and `bls12_381_scalar` (native gadget) from `ZkStdLib` [#227](https://github.com/midnightntwrk/midnight-zk/pull/227)
@@ -23,7 +23,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Update `cardano_signature` example to match the new `ForeignEdwardsEccChip::from_canonical_compressed_bytes` signature [#540](https://github.com/midnightntwrk/midnight-zk/pull/540)
 * Update the verifying keys following the new verifying-key layout of `midnight-proofs`, which commits to the fixed columns as one group [#547](https://github.com/midnightntwrk/midnight-zk/pull/547)
 * Migrate to Rust edition 2024; declare MSRV 1.90. Both are now inherited from the workspace [#508](https://github.com/midnightntwrk/midnight-zk/pull/508)
-* `load_srs` sizes the monomial basis via `PolynomialCommitmentScheme::srs_monomial_blowup` instead of a `single-h-commitment` `cfg` branch [#487](https://github.com/midnightntwrk/midnight-zk/pull/487)
+* `load_srs` sizes the monomial basis via `PolynomialCommitmentScheme::srs_monomial_blowup` [#487](https://github.com/midnightntwrk/midnight-zk/pull/487)
 * `cost_model` passes `KZGCommitmentScheme<Bls12>` to `circuit_model`, removing the `COMMITMENT_BYTE_SIZE`/`SCALAR_BYTE_SIZE` constants [#440](https://github.com/midnightntwrk/midnight-zk/pull/440)
 * `verify` now takes `committed_instance: Option<KZGMultiCommitment<Bls12>>` instead of `Option<G1Affine>`, avoiding a commitment→point→commitment round-trip at call sites [#450](https://github.com/midnightntwrk/midnight-zk/pull/450)
 * Adapt to new `KZGCommitment` API [#381](https://github.com/midnightntwrk/midnight-zk/pull/381)

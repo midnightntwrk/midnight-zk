@@ -169,24 +169,11 @@ where
     } = trace;
 
     // Read commitment(s) to the quotient polynomial h(X) = nu(X)/(X^n-1) from
-    // the transcript. When the `single-h-commitment` feature is enabled the prover
-    // commits to h(X) as a single polynomial (one commitment); otherwise it
-    // splits h(X) into `quotient_poly_degree` limbs (one commitment each).
-    #[cfg(not(feature = "single-h-commitment"))]
+    // the transcript. The prover splits h(X) into `quotient_poly_degree` limbs.
     let nb_quotient_coms = vk.domain.get_quotient_poly_degree();
-    #[cfg(feature = "single-h-commitment")]
-    let nb_quotient_coms = 1;
-    let quotient_limb_coms = {
-        #[cfg(not(feature = "single-h-commitment"))]
-        let labeled = (0..nb_quotient_coms)
-            .map(|i| CS::read_commitment(transcript, &[PolynomialLabel::QuotientPiece(i)]))
-            .collect::<Result<Vec<_>, _>>()?;
-        #[cfg(feature = "single-h-commitment")]
-        let labeled = (0..nb_quotient_coms)
-            .map(|_| CS::read_commitment(transcript, &[PolynomialLabel::Quotient]))
-            .collect::<Result<Vec<_>, _>>()?;
-        labeled
-    };
+    let quotient_limb_coms = (0..nb_quotient_coms)
+        .map(|i| CS::read_commitment(transcript, &[PolynomialLabel::QuotientPiece(i)]))
+        .collect::<Result<Vec<_>, _>>()?;
 
     // Sample x challenge, which is used to ensure the circuit is
     // satisfied with high probability.

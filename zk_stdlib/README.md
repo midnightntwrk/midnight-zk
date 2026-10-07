@@ -114,8 +114,8 @@ let relation = ShaPreImageCircuit;
 // `optimal_k` derives the smallest `k` that fits the circuit.
 let k = midnight_zk_stdlib::optimal_k(&relation);
 
-// `cs_degree` is the maximum constraint degree of the circuit, needed only if
-// the `single-h-commitment` feature is enabled, for an extended monomial basis.
+// `cs_degree` is the maximum constraint degree of the circuit, used to size
+// the monomial basis of the SRS.
 let cs_degree = midnight_zk_stdlib::cost_model(&relation, Some(k)).max_deg;
 
 // Load an SRS for the given circuit size.

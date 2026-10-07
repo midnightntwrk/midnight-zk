@@ -21,7 +21,7 @@ jobs:
     strategy:
       matrix:
         features:
-          - truncated-challenges,single-h-commitment
+          - truncated-challenges
 
     steps:
       - name: Add github.com credentials to netrc

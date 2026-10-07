@@ -111,12 +111,9 @@ where
     /// Recompute the Lagrange basis for a smaller circuit domain `new_k` while
     /// keeping the full monomial basis `g` intact.
     ///
-    /// Use this when the `single-h-commitment` feature is enabled: generate an
-    /// SRS large enough for the whole quotient polynomial (i.e. with `k'`
-    /// such that `2^{k'} ≥ (n-1) * quotient_poly_degree`), then call
-    /// `downsize_lagrange(k)` so that `max_k()` equals the circuit domain size
-    /// `k` while `g` retains its original length for the H-polynomial
-    /// commitment.
+    /// After this call `max_k()` equals the circuit domain size `new_k` while
+    /// `g` retains its original length for committing to polynomials of
+    /// degree larger than the circuit domain.
     pub fn downsize_lagrange(&mut self, new_k: u32) {
         let n = 1usize << new_k;
         assert!(
