@@ -279,12 +279,14 @@ where
 mod tests {
     use std::io;
 
+    use ff::Field;
     use midnight_curves::{Bls12, Fq};
-    use rand_core::OsRng;
+    use rand_core::{OsRng, RngCore};
 
     use super::Fflonk;
     use crate::{
         poly::{
+            EvaluationDomain, PolynomialLabel,
             commitment::PolynomialCommitmentScheme,
             kzg::{KZGCommitmentScheme, params::ParamsKZG},
         },
@@ -292,6 +294,43 @@ mod tests {
     };
 
     type Kzg = KZGCommitmentScheme<Bls12>;
+
+    /// Commits to `nb_polys` sparse polynomials of `2^k` rows, given in
+    /// Lagrange form and in coefficient form, and checks that the
+    /// commitments agree.
+    fn assert_lagrange_matches_coeff(params: &ParamsKZG<Bls12>, k: u32, nb_polys: usize) {
+        type CS = Fflonk<Kzg, 2>;
+        let domain = EvaluationDomain::<Fq>::new(1, k);
+        let lagrange: Vec<_> = (0..nb_polys)
+            .map(|_| {
+                let values = (0..1 << k)
+                    .map(|_| {
+                        if OsRng.next_u32().is_multiple_of(8) {
+                            Fq::random(OsRng)
+                        } else {
+                            Fq::ZERO
+                        }
+                    })
+                    .collect();
+                domain.lagrange_from_vec(values)
+            })
+            .collect();
+        let coeff: Vec<_> = lagrange.iter().map(|p| domain.lagrange_to_coeff(p.clone())).collect();
+        let labels: Vec<_> = (0..nb_polys).map(PolynomialLabel::Advice).collect();
+        assert_eq!(
+            CS::commit_many(params, &lagrange.iter().collect::<Vec<_>>(), &labels),
+            CS::commit_many(params, &coeff.iter().collect::<Vec<_>>(), &labels),
+        );
+    }
+
+    #[test]
+    fn test_lagrange_commitments() {
+        // Full and partial chunks, of every chunk size up to `T_MAX = 4`.
+        let params = <Fflonk<Kzg, 2> as PolynomialCommitmentScheme<Fq>>::gen_params(4);
+        for nb_polys in 1..=9 {
+            assert_lagrange_matches_coeff(&params, 4, nb_polys);
+        }
+    }
 
     #[test]
     fn test_load_params() {

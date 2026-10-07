@@ -115,11 +115,11 @@ where
         );
         PolynomialLabel::assert_distinct(labels);
 
-        let bases = params.bases::<B>();
         KZGMultiCommitment(
             (polynomials.iter().zip(labels))
                 .map(|(polynomial, label)| {
                     let size = polynomial.values.len();
+                    let bases = params.bases::<B>(size);
                     assert!(bases.len() >= size);
                     KZGCommitment::Simple(
                         msm_specific::<E::G1Affine>(&polynomial.values, &bases[..size]),

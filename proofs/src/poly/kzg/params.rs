@@ -1,4 +1,4 @@
-use std::{fmt::Debug, io};
+use std::{fmt::Debug, io, iter};
 
 use ff::{Field, PrimeField};
 use group::{Curve, Group, GroupEncoding, prime::PrimeCurveAffine};
@@ -20,10 +20,14 @@ use crate::{
 /// These are the public parameters for the polynomial commitment scheme.
 #[derive(Debug, Clone)]
 pub struct ParamsKZG<E: Engine> {
+    /// The monomial basis `[s^i] G1`, for `i < n`, where `n = 2^k` is the size
+    /// of the SRS.
     pub(crate) g: Vec<E::G1Affine>,
-    pub(crate) g_lagrange: Vec<E::G1Affine>,
-    /// Suffix-sum of `g_lagrange`:
-    /// `g_lagrange_delta[i] = sum_{j=i}^{n-1} g_lagrange[j]`.
+    /// Lagrange bases: `g_lagrange[i]` is the Lagrange basis of the domain of
+    /// size `2^i`, for `i ≤ k`.
+    pub(crate) g_lagrange: Vec<Vec<E::G1Affine>>,
+    /// Suffix-sum of the Lagrange basis of the domain of size `n`:
+    /// `g_lagrange_delta[i] = sum_{j=i}^{n-1} g_lagrange[k][j]`.
     pub(crate) g_lagrange_delta: Vec<E::G1Affine>,
     /// Suffix-sum of `g_lagrange_delta`:
     /// `g_lagrange_double_delta[i] = sum_{j=i}^{n-1} g_lagrange_delta[j]`.
@@ -56,15 +60,40 @@ fn suffix_sum<C: CurveAffine>(input: &[C]) -> Vec<C> {
     acc_affine
 }
 
+/// The Lagrange bases of the domains of size `2^i`, for `i ≤ k`, from the
+/// monomial basis `g` and the Lagrange basis `g_lagrange` of the domain of
+/// size `2^k`.
+fn lagrange_bases<C: CurveAffine>(g: &[C], g_lagrange: Vec<C>) -> Vec<Vec<C>> {
+    // The domain of size 1 has the constant 1 as its only Lagrange polynomial.
+    let smaller = (0..g_lagrange.len().ilog2()).map(|i| match i {
+        0 => g[..1].to_vec(),
+        i => g_to_lagrange(&g[..1 << i], i),
+    });
+    smaller.chain(iter::once(g_lagrange)).collect()
+}
+
 impl<E: Engine + Debug> ParamsKZG<E>
 where
     E::G1Affine: CurveAffine,
 {
-    /// Return the SRS bases corresponding to the polynomial representation `B`.
-    pub fn bases<B: PolynomialRepresentation>(&self) -> &[E::G1Affine] {
+    /// Return the SRS bases for committing to `len` values in the polynomial
+    /// representation `B`. Values in Lagrange form are evaluations over the
+    /// domain of size `len`.
+    ///
+    /// # Panics
+    ///
+    /// If the values are in Lagrange form and `len` is not a power of two no
+    /// larger than the SRS.
+    pub fn bases<B: PolynomialRepresentation>(&self, len: usize) -> &[E::G1Affine] {
         match B::BASIS {
             PolynomialBasis::Coeff => &self.g,
-            PolynomialBasis::Lagrange => &self.g_lagrange,
+            PolynomialBasis::Lagrange => {
+                assert!(
+                    len.is_power_of_two() && len <= self.g.len(),
+                    "no Lagrange basis of size {len}"
+                );
+                &self.g_lagrange[len.ilog2() as usize]
+            }
             PolynomialBasis::LagrangeDelta => &self.g_lagrange_delta,
             PolynomialBasis::LagrangeDoubleDelta => &self.g_lagrange_double_delta,
             PolynomialBasis::ExtendedLagrange => {
@@ -76,8 +105,8 @@ where
     /// Returns the size of the SRS, expressed as the exponent `k` such that it
     /// has `2^k` elements.
     pub fn max_k(&self) -> u32 {
-        assert_eq!(self.g.len(), self.g_lagrange.len());
-        self.g_lagrange.len().ilog2()
+        assert_eq!(self.g.len(), self.g_lagrange().len());
+        self.g.len().ilog2()
     }
 
     /// Downsize the current parameters to match a smaller `k`.
@@ -87,10 +116,10 @@ where
         }
 
         let n = 1 << new_k;
-        assert!(n < self.g_lagrange.len());
+        assert!(n < self.g.len());
         self.g.truncate(n);
-        self.g_lagrange = g_to_lagrange(&self.g, new_k);
-        self.g_lagrange_delta = suffix_sum(&self.g_lagrange);
+        self.g_lagrange.truncate(new_k as usize + 1);
+        self.g_lagrange_delta = suffix_sum(self.g_lagrange());
         self.g_lagrange_double_delta = suffix_sum(&self.g_lagrange_delta);
     }
 
@@ -145,8 +174,8 @@ where
         let s_g2 = g2 * s;
 
         Self {
+            g_lagrange: lagrange_bases(&g_affine, g_lagrange_affine),
             g: g_affine,
-            g_lagrange: g_lagrange_affine,
             g_lagrange_delta,
             g_lagrange_double_delta,
             g2,
@@ -177,8 +206,8 @@ where
         let g_lagrange_delta = suffix_sum(&g_lagrange_affine);
         let g_lagrange_double_delta = suffix_sum(&g_lagrange_delta);
         Self {
+            g_lagrange: lagrange_bases(&g_affine, g_lagrange_affine),
             g: g_affine,
-            g_lagrange: g_lagrange_affine,
             g_lagrange_delta,
             g_lagrange_double_delta,
             g2,
@@ -188,7 +217,7 @@ where
 
     /// Returns the committed lagrange polynomials of these KZG params.
     pub fn g_lagrange(&self) -> &[E::G1Affine] {
-        &self.g_lagrange
+        self.g_lagrange.last().expect("KZG params hold a Lagrange basis")
     }
 
     /// Returns generator on G2
@@ -214,7 +243,7 @@ where
                 _ => el.write_raw(writer)?,
             }
         }
-        for el in self.g_lagrange.iter() {
+        for el in self.g_lagrange().iter() {
             match format {
                 SerdeFormat::Processed => writer.write_all(el.to_bytes().as_ref())?,
                 _ => el.write_raw(writer)?,
@@ -284,8 +313,8 @@ where
         let g_lagrange_delta = suffix_sum(&g_lagrange);
         let g_lagrange_double_delta = suffix_sum(&g_lagrange_delta);
         Ok(Self {
+            g_lagrange: lagrange_bases(&g, g_lagrange),
             g,
-            g_lagrange,
             g_lagrange_delta,
             g_lagrange_double_delta,
             g2,

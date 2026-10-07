@@ -4,17 +4,35 @@
 use std::{iter, marker::PhantomData};
 
 use ff::{PrimeField, WithSmallOrderMulGroup};
+use rayon::prelude::*;
 
-use crate::poly::{Coeff, EvaluationDomain, Polynomial, PolynomialBasis, PolynomialRepresentation};
+use crate::{
+    poly::{Polynomial, PolynomialBasis, PolynomialRepresentation},
+    utils::arithmetic::powers,
+};
 
-/// `g(X) = Σ_i X^i f_i(X^t)`, for `polys` the polynomials `f_0, ..., f_{k-1}`,
-/// in any basis, and `t` the next power of two of `k`.
+/// `g(X) = Σ_i X^i f_i(X^t)`, for `polys` the polynomials `f_0, ..., f_{k-1}`
+/// and `t` the next power of two of `k`, in the basis of the polynomials.
+///
+/// In coefficient form, the coefficients of `g` interleave those of the `f_i`,
+/// with the slots of the `t - k` dummy polynomials padding the `k` given ones
+/// to `t` left zero.
+///
+/// In Lagrange form, the `f_i` are evaluations over the domain of size `n` and
+/// `g` is given by its evaluations over the domain of size `t·n`. For `ω` the
+/// generator of the latter, every row `j` and every `m` in `[0, t)`:
+///
+///   `g(ω^(j + n·m)) = Σ_i (ω^n)^(m·i) · ω^(j·i) f_i(j)`
+///
+/// so the `t` evaluations of row `j` are the size-`t` DFT of `ω^(j·i) f_i(j)`,
+/// and a row where every `f_i` vanishes gives `t` zeros.
 ///
 /// # Panics
 ///
-/// Panics if the field has no roots of unity of order `n · t`, for `n` the
-/// length of the polynomials.
-pub(super) fn compute_g<F, B>(polys: &[&Polynomial<F, B>]) -> Polynomial<F, Coeff>
+/// Panics if the polynomials are in neither coefficient nor Lagrange form, if
+/// they are in Lagrange form and have different lengths, or if the field has
+/// no roots of unity of order `n · t`, for `n` the length of the polynomials.
+pub(super) fn compute_g<F, B>(polys: &[&Polynomial<F, B>]) -> Polynomial<F, B>
 where
     F: WithSmallOrderMulGroup<3>,
     B: PolynomialRepresentation,
@@ -26,26 +44,55 @@ where
         log_order <= F::S,
         "the field has no roots of unity of order 2^{log_order} for fflonk"
     );
-    // TODO: In this first version, we are converting to coefficients.
-    // We could try to compute g directly in the given base.
-    let domain =
-        (!matches!(B::BASIS, PolynomialBasis::Coeff)).then(|| EvaluationDomain::new(1, n.ilog2()));
-    // The slots of the `t - k` dummy polynomials padding the `k` given ones to
-    // `t` are left zero.
-    let mut values = vec![F::ZERO; t * n];
-    for (i, poly) in polys.iter().enumerate() {
-        let converted;
-        let coeffs = match &domain {
-            None => &poly.values,
-            Some(domain) => {
-                converted = B::self_to_coeff(domain, (*poly).clone());
-                &converted.values
-            }
-        };
-        for (j, coeff) in coeffs.iter().enumerate() {
-            values[t * j + i] = *coeff;
-        }
+    if t == 1 {
+        return polys[0].clone();
     }
+    let values = match B::BASIS {
+        PolynomialBasis::Coeff => {
+            let mut values = vec![F::ZERO; t * n];
+            for (i, poly) in polys.iter().enumerate() {
+                for (j, coeff) in poly.values.iter().enumerate() {
+                    values[t * j + i] = *coeff;
+                }
+            }
+            values
+        }
+        PolynomialBasis::Lagrange => {
+            assert!(polys.iter().all(|poly| poly.len() == n));
+            let omega = F::ROOT_OF_UNITY.pow_vartime([1u64 << (F::S - log_order)]);
+            let omega_t: Vec<F> = powers(omega.pow_vartime([n as u64])).take(t).collect();
+
+            // The evaluations row by row: `rows[j·t + m] = g(ω^(j + n·m))`, computed
+            // in blocks of rows, along which `ω^j` advances by one factor `ω` per row.
+            const BLOCK: usize = 256;
+            let mut rows = vec![F::ZERO; t * n];
+            rows.par_chunks_mut(t * BLOCK).enumerate().for_each(|(b, block)| {
+                let mut omega_j = omega.pow_vartime([(b * BLOCK) as u64]);
+                let mut twisted = vec![F::ZERO; polys.len()];
+                for (r, row) in block.chunks_mut(t).enumerate() {
+                    let j = b * BLOCK + r;
+                    if polys.iter().any(|poly| !bool::from(poly[j].is_zero())) {
+                        for ((a, w), poly) in twisted.iter_mut().zip(powers(omega_j)).zip(polys) {
+                            *a = w * poly[j];
+                        }
+                        for (m, out) in row.iter_mut().enumerate() {
+                            *out = (twisted.iter().enumerate())
+                                .map(|(i, a)| omega_t[(m * i) % t] * a)
+                                .sum();
+                        }
+                    }
+                    omega_j *= omega;
+                }
+            });
+            let mut values = vec![F::ZERO; t * n];
+            values
+                .par_iter_mut()
+                .enumerate()
+                .for_each(|(k, v)| *v = rows[(k % n) * t + k / n]);
+            values
+        }
+        basis => panic!("fflonk cannot combine polynomials in the {basis:?} basis"),
+    };
     Polynomial {
         values,
         _marker: PhantomData,
