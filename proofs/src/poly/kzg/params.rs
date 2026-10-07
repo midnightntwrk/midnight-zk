@@ -61,8 +61,6 @@ where
     E::G1Affine: CurveAffine,
 {
     fn max_k(&self) -> u32 {
-        #[cfg(not(feature = "single-h-commitment"))]
-        assert_eq!(self.g.len(), self.g_lagrange.len());
         self.g_lagrange.len().ilog2()
     }
 
@@ -72,6 +70,10 @@ where
 
     fn downsize(&mut self, new_k: u32) {
         ParamsKZG::<E>::downsize(self, new_k)
+    }
+
+    fn downsize_lagrange(&mut self, new_k: u32) {
+        ParamsKZG::<E>::downsize_lagrange(self, new_k)
     }
 }
 

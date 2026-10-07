@@ -249,6 +249,11 @@ where
         return Err(Error::not_enough_rows_available(domain.k()));
     }
 
+    let monomial_size = CS::srs_monomial_blowup(cs.degree()) << k;
+    if params.g_monomial_size() < monomial_size {
+        return Err(Error::SrsError(params.g_monomial_size(), monomial_size));
+    }
+
     let mut assembly: Assembly<F> = Assembly {
         k: domain.k(),
         fixed: vec![domain.empty_lagrange_rational(); cs.num_fixed_columns],

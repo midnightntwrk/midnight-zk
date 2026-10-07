@@ -39,7 +39,7 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
         + Mul<F, Output = Self::Commitment>;
 
     /// Verification guard. Allows for batch verification
-    type VerificationGuard: Guard<F, Self>;
+    type VerificationGuard: Guard<Self::VerifierParameters>;
 
     /// Generates the parameters of the polynomial commitment scheme
     fn gen_params(k: u32) -> Self::Parameters;
@@ -125,6 +125,10 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
     /// Unlike [`read_commitment`](Self::read_commitment), the bytes come from a
     /// plain reader, typically a serialized verifying key, and nothing is
     /// absorbed into a transcript.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a label is repeated.
     fn deserialize_commitment<R: Read>(
         reader: &mut R,
         format: SerdeFormat,
@@ -159,6 +163,8 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
     }
 
     /// Create a multi-opening proof at a set of [ProverQuery]'s.
+    ///
+    /// The evaluations of the queries are already in the transcript.
     fn multi_open<T: Transcript>(
         params: &Self::Parameters,
         prover_query: &[ProverQuery<F>],
@@ -167,6 +173,9 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
     where
         F: Sampleable<T::Hash> + Hash + Ord + Hashable<T::Hash>,
         Self::Commitment: Hashable<T::Hash>;
+
+    /// The labels `commitment` tags its polynomials with.
+    fn commitment_labels(commitment: &Self::Commitment) -> Vec<PolynomialLabel>;
 
     /// Total byte length when committing to `n` polynomials, which is 0 when
     /// `n` is 0.
@@ -196,17 +205,18 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
         Self::Commitment: Hashable<T::Hash> + 'com;
 }
 
-/// Interface for verifier finalizer
-pub trait Guard<F: PrimeField, CS: PolynomialCommitmentScheme<F>>: Sized {
+/// Interface for verifier finalizer, given the verifier parameters `VP` of
+/// its PCS
+pub trait Guard<VP>: Sized {
     /// Finalize the verification guard
-    fn verify(self, params: &CS::VerifierParameters) -> Result<(), Error>;
+    fn verify(self, params: &VP) -> Result<(), Error>;
 
     /// Finalize a batch of verification guards
     fn batch_verify<'a, I, J>(guards: I, params: J) -> Result<(), Error>
     where
         I: ExactSizeIterator<Item = Self>,
-        J: ExactSizeIterator<Item = &'a CS::VerifierParameters>,
-        CS::VerifierParameters: 'a,
+        J: ExactSizeIterator<Item = &'a VP>,
+        VP: 'a,
     {
         assert_eq!(guards.len(), params.len());
         guards
@@ -235,6 +245,10 @@ pub trait Params: Send + Sync {
 
     /// Downsize the params to work with a circuit of size `new_k`
     fn downsize(&mut self, new_k: u32);
+
+    /// Downsize the Lagrange basis to work with a circuit of size `new_k`,
+    /// keeping the monomial basis.
+    fn downsize_lagrange(&mut self, new_k: u32);
 
     /// Downsize the params to work with a circuit of unknown length. The
     /// function first computes the `k` of the provided circuit, and then

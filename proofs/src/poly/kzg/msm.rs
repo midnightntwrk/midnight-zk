@@ -12,11 +12,7 @@ use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 
 use super::params::ParamsVerifierKZG;
 use crate::{
-    poly::{
-        Error, PolynomialLabel,
-        commitment::{Guard, PolynomialCommitmentScheme},
-        kzg::KZGCommitmentScheme,
-    },
+    poly::{Error, PolynomialLabel, commitment::Guard},
     utils::{
         arithmetic::{CurveExt, MSM},
         helpers::ProcessedSerdeObject,
@@ -227,15 +223,12 @@ where
     }
 }
 
-impl<E: MultiMillerLoop> Guard<E::Fr, KZGCommitmentScheme<E>> for DualMSM<E>
+impl<E: MultiMillerLoop> Guard<ParamsVerifierKZG<E>> for DualMSM<E>
 where
     E::G1: Default + CurveExt<ScalarExt = E::Fr> + ProcessedSerdeObject,
     E::G1Affine: Default + CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
 {
-    fn verify(
-        self,
-        params: &<KZGCommitmentScheme<E> as PolynomialCommitmentScheme<E::Fr>>::VerifierParameters,
-    ) -> Result<(), Error> {
+    fn verify(self, params: &ParamsVerifierKZG<E>) -> Result<(), Error> {
         self.check(params).then_some(()).ok_or(Error::OpeningError)
     }
 }

@@ -25,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `circuit_model_with` taking an explicit commitment-size closure [#440](https://github.com/midnightntwrk/midnight-zk/pull/440)
 * `Error::DuplicatedLabel`, returned when two polynomials of an argument group claim the same `PolynomialLabel` [#513](https://github.com/midnightntwrk/midnight-zk/pull/513)
 * `ConstraintSystem::into_finalized`, converting the selectors of a constraint system to fixed columns without their polynomials, as in the constraint system of a verifying key [#546](https://github.com/midnightntwrk/midnight-zk/pull/546)
+* `Fflonk<PCS, LOG2_T_MAX>`, a polynomial commitment scheme combining the polynomials of a group, in chunks of up to `2^LOG2_T_MAX`, into single polynomials committed to by the inner scheme `PCS` [#555](https://github.com/midnightntwrk/midnight-zk/pull/555)
+* `PolynomialLabel::Collection`, a label made of other labels, and the `commitment_labels` method on the `PolynomialCommitmentScheme` trait, the labels a commitment tags its polynomials with [#555](https://github.com/midnightntwrk/midnight-zk/pull/555)
+* `Params::downsize_lagrange`, downsizing the Lagrange basis while keeping the monomial one [#555](https://github.com/midnightntwrk/midnight-zk/pull/555)
 
 ### Fixed
 * Cost model: a circuit with no permutation columns no longer underflows when counting the permutation queries, and is no longer charged for an accumulator commitment and its evaluations, which the prover does not produce [#537](https://github.com/midnightntwrk/midnight-zk/pull/537)
@@ -47,6 +50,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `msm_specific` always uses blst's `multi_exp_affine` for BLS12-381 G1,`msm_best`is a fallback for all other curves [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 * `commit_many`, `read_commitment` and `deserialize_commitment` take the labels of a group in the order it is committed to, rather than ordering them [#554](https://github.com/midnightntwrk/midnight-zk/pull/554)
 * `ProverQuery` carries the labels and polynomials of the group the queried polynomial is committed with, so `multi_open` sees every polynomial committed together with the queried one [#554](https://github.com/midnightntwrk/midnight-zk/pull/554)
+* `ParamsKZG::max_k` no longer requires the monomial basis to be the size of the Lagrange one, which fflonk needs larger [#555](https://github.com/midnightntwrk/midnight-zk/pull/555)
+* Keygen returns `Error::SrsError` when the monomial basis of the SRS is smaller than `srs_monomial_blowup` times the circuit size [#555](https://github.com/midnightntwrk/midnight-zk/pull/555)
+* `Guard` is generic over the verifier parameters of its PCS rather than over the PCS itself [#555](https://github.com/midnightntwrk/midnight-zk/pull/555)
 * Commit the advice columns as part of the phase-1 argument group, together with the logup multiplicities, instead of one commitment per column, and open them through it at the rotations the circuit queries them at. This changes the transcript of every proof, which shrinks by 4 bytes per advice column (one fewer if the circuit has no lookup) [#543](https://github.com/midnightntwrk/midnight-zk/pull/543)
 * Commit the logup multiplicities before squeezing `theta`, instead of after. The prover counts them by comparing the input and table tuples directly, and compresses the tuples with `theta` only when computing the helpers and aggregators. This changes the transcript of every proof over a circuit with a lookup [#543](https://github.com/midnightntwrk/midnight-zk/pull/543)
 * Open the phase-1 and phase-2 groups first in the multi-open, followed by the phase-0 group and then the committed instances. This changes the opening proof but not its size [#543](https://github.com/midnightntwrk/midnight-zk/pull/543)
