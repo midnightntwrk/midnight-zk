@@ -9,7 +9,7 @@ use midnight_curves::{
 use rand_core::RngCore;
 
 use crate::{
-    poly::{PolynomialBasis, PolynomialRepresentation, commitment::Params},
+    poly::{PolynomialBasis, PolynomialRepresentation},
     utils::{
         SerdeFormat,
         arithmetic::{CurveAffine, g_to_lagrange, parallelize},
@@ -56,23 +56,6 @@ fn suffix_sum<C: CurveAffine>(input: &[C]) -> Vec<C> {
     acc_affine
 }
 
-impl<E: Engine> Params for ParamsKZG<E>
-where
-    E::G1Affine: CurveAffine,
-{
-    fn max_k(&self) -> u32 {
-        self.g_lagrange.len().ilog2()
-    }
-
-    fn downsize(&mut self, new_k: u32) {
-        ParamsKZG::<E>::downsize(self, new_k)
-    }
-
-    fn downsize_lagrange(&mut self, new_k: u32) {
-        ParamsKZG::<E>::downsize_lagrange(self, new_k)
-    }
-}
-
 impl<E: Engine + Debug> ParamsKZG<E>
 where
     E::G1Affine: CurveAffine,
@@ -90,6 +73,13 @@ where
         }
     }
 
+    /// Returns the size of the SRS, expressed as the exponent `k` such that it
+    /// has `2^k` elements.
+    pub fn max_k(&self) -> u32 {
+        assert_eq!(self.g.len(), self.g_lagrange.len());
+        self.g_lagrange.len().ilog2()
+    }
+
     /// Downsize the current parameters to match a smaller `k`.
     pub fn downsize(&mut self, new_k: u32) {
         if self.max_k() == new_k {
@@ -100,23 +90,6 @@ where
         assert!(n < self.g_lagrange.len());
         self.g.truncate(n);
         self.g_lagrange = g_to_lagrange(&self.g, new_k);
-        self.g_lagrange_delta = suffix_sum(&self.g_lagrange);
-        self.g_lagrange_double_delta = suffix_sum(&self.g_lagrange_delta);
-    }
-
-    /// Recompute the Lagrange basis for a smaller circuit domain `new_k` while
-    /// keeping the full monomial basis `g` intact.
-    ///
-    /// After this call `max_k()` equals the circuit domain size `new_k` while
-    /// `g` retains its original length for committing to polynomials of
-    /// degree larger than the circuit domain.
-    pub fn downsize_lagrange(&mut self, new_k: u32) {
-        let n = 1usize << new_k;
-        assert!(
-            self.g.len() >= n,
-            "g is too small to build a Lagrange basis of size 2^{new_k}"
-        );
-        self.g_lagrange = g_to_lagrange(&self.g[..n], new_k);
         self.g_lagrange_delta = suffix_sum(&self.g_lagrange);
         self.g_lagrange_double_delta = suffix_sum(&self.g_lagrange_delta);
     }
