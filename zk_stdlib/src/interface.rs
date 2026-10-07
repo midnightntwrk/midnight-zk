@@ -26,7 +26,7 @@ use midnight_proofs::{
     },
     poly::{
         PolynomialLabel,
-        commitment::{Guard, Params},
+        commitment::Guard,
         kzg::{
             KZGCommitmentScheme,
             commitment::KZGMultiCommitment,

@@ -18,7 +18,7 @@ use crate::{
     dev::cost_model::cost_model_options,
     poly::{
         EvaluationDomain, ExtendedLagrangeCoeff, PolynomialLabel, batch_invert_rational,
-        commitment::{Params, PolynomialCommitmentScheme},
+        commitment::PolynomialCommitmentScheme,
     },
     utils::{arithmetic::parallelize, rational::Rational},
 };
@@ -215,8 +215,9 @@ where
 {
     let k = k_from_circuit(circuit);
 
-    if params.max_k() != k {
-        return Err(Error::SrsError(params.max_k() as usize, k as usize));
+    let max_k = CS::max_k(params);
+    if max_k != k {
+        return Err(Error::SrsError(max_k as usize, k as usize));
     }
 
     keygen_vk_with_k(params, circuit, k)
@@ -233,10 +234,9 @@ where
     CS: PolynomialCommitmentScheme<F>,
     ConcreteCircuit: Circuit<F>,
 {
-    if params.max_k() < k {
-        return Err(Error::NotEnoughRowsAvailable {
-            current_k: params.max_k(),
-        });
+    let max_k = CS::max_k(params);
+    if max_k < k {
+        return Err(Error::NotEnoughRowsAvailable { current_k: max_k });
     }
 
     let (domain, cs, config) = create_domain::<F, ConcreteCircuit>(

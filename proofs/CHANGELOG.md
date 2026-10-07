@@ -26,7 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `ConstraintSystem::into_finalized`, converting the selectors of a constraint system to fixed columns without their polynomials, as in the constraint system of a verifying key [#546](https://github.com/midnightntwrk/midnight-zk/pull/546)
 * `Fflonk<PCS, LOG2_T_MAX>`, a polynomial commitment scheme combining the polynomials of a group, in chunks of up to `2^LOG2_T_MAX`, into single polynomials committed to by the inner scheme `PCS` [#555](https://github.com/midnightntwrk/midnight-zk/pull/555)
 * `PolynomialLabel::Collection`, a label made of other labels, and the `commitment_labels` method on the `PolynomialCommitmentScheme` trait, the labels a commitment tags its polynomials with [#555](https://github.com/midnightntwrk/midnight-zk/pull/555)
-* `Params::downsize_lagrange`, downsizing the Lagrange basis while keeping the monomial one [#555](https://github.com/midnightntwrk/midnight-zk/pull/555)
+* `PolynomialCommitmentScheme::max_k`, the largest `k` such that some parameters can commit to polynomials of degree strictly less than `2^k` [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
 * `PolynomialCommitmentScheme::load_params`, reading the parameters of the scheme for committing to polynomials of degree strictly less than `2^k` [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
 
 ### Fixed
@@ -52,7 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `msm_specific` always uses blst's `multi_exp_affine` for BLS12-381 G1,`msm_best`is a fallback for all other curves [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 * `commit_many`, `read_commitment` and `deserialize_commitment` take the labels of a group in the order it is committed to, rather than ordering them [#554](https://github.com/midnightntwrk/midnight-zk/pull/554)
 * `ProverQuery` carries the labels and polynomials of the group the queried polynomial is committed with, so `multi_open` sees every polynomial committed together with the queried one [#554](https://github.com/midnightntwrk/midnight-zk/pull/554)
-* `ParamsKZG::max_k` no longer requires the monomial basis to be the size of the Lagrange one, which fflonk needs larger [#555](https://github.com/midnightntwrk/midnight-zk/pull/555)
+* Keygen bounds the circuit size by `PolynomialCommitmentScheme::max_k` rather than by `Params::max_k` [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
 * The `PolynomialCommitmentScheme` implementation of `KZGCommitmentScheme<E>` requires `E::G1Affine: SerdeObject` and `E::G2: ProcessedSerdeObject` [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
 * `ProcessedSerdeObject` is implemented for curves that are not `Default` [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
 * `Guard` is generic over the verifier parameters of its PCS rather than over the PCS itself [#555](https://github.com/midnightntwrk/midnight-zk/pull/555)
@@ -92,6 +92,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Simplify KZG multiopen verifier to use `KZGCommitment` directly [#430](https://github.com/midnightntwrk/midnight-zk/pull/430)
 
 ### Removed
+* The `Params` trait. `max_k` and `downsize` remain inherent methods of `ParamsKZG`, and `downsize_from_circuit` is removed [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
 * `fewer-point-sets` feature [#554](https://github.com/midnightntwrk/midnight-zk/pull/554)
 * `VerifyingKey::fixed_commitments`, replaced by `phase0_commitment` and `simple_selector_commitments` [#547](https://github.com/midnightntwrk/midnight-zk/pull/547)
 * `Clone` on `ProvingKey`, so that the polynomials it holds are never copied [#537](https://github.com/midnightntwrk/midnight-zk/pull/537)

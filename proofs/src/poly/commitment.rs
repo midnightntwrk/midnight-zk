@@ -6,10 +6,9 @@ use std::{
     io::{self, Read},
 };
 
-use ff::{FromUniformBytes, PrimeField};
+use ff::PrimeField;
 
 use crate::{
-    plonk::{Circuit, k_from_circuit},
     poly::{
         Error, Polynomial, PolynomialRepresentation, ProverQuery, VerifierQuery,
         query::PolynomialLabel,
@@ -22,7 +21,7 @@ use crate::{
 /// (PCS)
 pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
     /// Parameters needed to generate a proof in the PCS
-    type Parameters: Params;
+    type Parameters: Send + Sync;
 
     /// Parameters needed to verify a proof in the PCS
     type VerifierParameters;
@@ -52,6 +51,10 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
         format: SerdeFormat,
         k: u32,
     ) -> io::Result<Self::Parameters>;
+
+    /// Returns the largest `k` such that `params` can commit to polynomials of
+    /// degree strictly less than `2^k`.
+    fn max_k(params: &Self::Parameters) -> u32;
 
     /// Extract the `VerifierParameters` from `Parameters`
     fn get_verifier_params(params: &Self::Parameters) -> Self::VerifierParameters;
@@ -219,34 +222,5 @@ pub trait Guard<VP>: Sized {
             .into_iter()
             .zip(params)
             .try_for_each(|(guard, params)| guard.verify(params))
-    }
-}
-
-/// Interface for PCS params
-pub trait Params: Send + Sync {
-    /// Returns the size of the Lagrange basis, expressed as the exponent `k`
-    /// such that the Lagrange domain has `2^k` elements. This equals the
-    /// circuit domain size and is used by keygen to validate the SRS.
-    fn max_k(&self) -> u32;
-
-    /// Downsize the params to work with a circuit of size `new_k`
-    fn downsize(&mut self, new_k: u32);
-
-    /// Downsize the Lagrange basis to work with a circuit of size `new_k`,
-    /// keeping the monomial basis.
-    fn downsize_lagrange(&mut self, new_k: u32);
-
-    /// Downsize the params to work with a circuit of unknown length. The
-    /// function first computes the `k` of the provided circuit, and then
-    /// downsizes the SRS.
-    fn downsize_from_circuit<
-        F: PrimeField + Ord + FromUniformBytes<64>,
-        ConcreCircuit: Circuit<F>,
-    >(
-        &mut self,
-        circuit: &ConcreCircuit,
-    ) {
-        let k = k_from_circuit(circuit);
-        self.downsize(k);
     }
 }

@@ -49,10 +49,8 @@ use utils::{compute_g, roots};
 
 use crate::{
     poly::{
-        Error, Polynomial, PolynomialLabel,
-        PolynomialLabel::Collection,
-        PolynomialRepresentation, ProverQuery, VerifierQuery,
-        commitment::{Params, PolynomialCommitmentScheme},
+        Error, Polynomial, PolynomialLabel, PolynomialLabel::Collection, PolynomialRepresentation,
+        ProverQuery, VerifierQuery, commitment::PolynomialCommitmentScheme,
     },
     transcript::{Hashable, Sampleable, Transcript},
     utils::{arithmetic::eval_polynomial, helpers::SerdeFormat},
@@ -81,9 +79,7 @@ where
     type VerificationGuard = PCS::VerificationGuard;
 
     fn gen_params(k: u32) -> Self::Parameters {
-        let mut params = PCS::gen_params(k + LOG2_T_MAX);
-        params.downsize_lagrange(k);
-        params
+        PCS::gen_params(k + LOG2_T_MAX)
     }
 
     fn load_params<R: io::Read>(
@@ -91,9 +87,11 @@ where
         format: SerdeFormat,
         k: u32,
     ) -> io::Result<Self::Parameters> {
-        let mut params = PCS::load_params(reader, format, k + LOG2_T_MAX)?;
-        params.downsize_lagrange(k);
-        Ok(params)
+        PCS::load_params(reader, format, k + LOG2_T_MAX)
+    }
+
+    fn max_k(params: &Self::Parameters) -> u32 {
+        PCS::max_k(params).saturating_sub(LOG2_T_MAX)
     }
 
     fn get_verifier_params(params: &Self::Parameters) -> Self::VerifierParameters {
@@ -274,5 +272,58 @@ where
         }
 
         PCS::multi_prepare(&inner_queries, k, transcript)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io;
+
+    use midnight_curves::{Bls12, Fq};
+    use rand_core::OsRng;
+
+    use super::Fflonk;
+    use crate::{
+        poly::{
+            commitment::PolynomialCommitmentScheme,
+            kzg::{KZGCommitmentScheme, params::ParamsKZG},
+        },
+        utils::helpers::SerdeFormat,
+    };
+
+    type Kzg = KZGCommitmentScheme<Bls12>;
+
+    #[test]
+    fn test_load_params() {
+        let mut srs = Vec::new();
+        let format = SerdeFormat::RawBytesUnchecked;
+        ParamsKZG::<Bls12>::unsafe_setup(6, OsRng)
+            .write_custom(&mut srs, format)
+            .unwrap();
+        let load_kzg =
+            |k| <Kzg as PolynomialCommitmentScheme<Fq>>::load_params(&mut &srs[..], format, k);
+        let load_fflonk = |k| {
+            <Fflonk<Kzg, 2> as PolynomialCommitmentScheme<Fq>>::load_params(
+                &mut &srs[..],
+                format,
+                k,
+            )
+        };
+
+        let params = load_kzg(5).unwrap();
+        assert_eq!(<Kzg as PolynomialCommitmentScheme<Fq>>::max_k(&params), 5);
+
+        let params = load_fflonk(4).unwrap();
+        assert_eq!(params.max_k(), 6);
+        assert_eq!(
+            <Fflonk<Kzg, 2> as PolynomialCommitmentScheme<Fq>>::max_k(&params),
+            4
+        );
+
+        assert_eq!(load_kzg(7).unwrap_err().kind(), io::ErrorKind::InvalidData);
+        assert_eq!(
+            load_fflonk(5).unwrap_err().kind(),
+            io::ErrorKind::InvalidData
+        );
     }
 }

@@ -39,7 +39,7 @@ use crate::utils::arithmetic::{truncate, truncated_powers};
 use crate::{
     poly::{
         Coeff, Error, Polynomial, PolynomialRepresentation, ProverQuery,
-        commitment::{Params, PolynomialCommitmentScheme},
+        commitment::PolynomialCommitmentScheme,
         kzg::{
             commitment::NB_POLYS_PREFIX_BYTES,
             msm::{DualMSM, msm_specific},
@@ -93,6 +93,10 @@ where
         }
         params.downsize(k);
         Ok(params)
+    }
+
+    fn max_k(params: &Self::Parameters) -> u32 {
+        params.max_k()
     }
 
     fn get_verifier_params(params: &Self::Parameters) -> Self::VerifierParameters {
