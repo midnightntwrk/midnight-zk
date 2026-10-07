@@ -133,7 +133,7 @@ pub fn fft_coeff_to_extended<Scalar: Field, G: FftGroup<Scalar>>(
 fn fft_dif_pruned_fq(a: &mut [Fq], twiddles: &[Fq], log_n: u32, n_real: usize) {
     let n = a.len();
     assert_eq!(n, 1 << log_n);
-    recursive_dif_pruned(a, n, 1, twiddles, n_real);
+    recursive_dif_pruned(a, 1, twiddles, n_real);
     for k in 0..n {
         let rk = bitreverse(k, log_n);
         if k < rk {
@@ -143,24 +143,20 @@ fn fft_dif_pruned_fq(a: &mut [Fq], twiddles: &[Fq], log_n: u32, n_real: usize) {
 }
 
 /// Recursive DIF butterflies assuming the first `nz` entries of `a` are
-/// potentially non-zero and the remaining `n - nz` are zero. Maintains this
+/// potentially non-zero and the rest are zero. Maintains this
 /// "data-at-front" invariant across recursive calls.
-fn recursive_dif_pruned(a: &mut [Fq], n: usize, tc: usize, tw: &[Fq], nz: usize) {
-    debug_assert_eq!(n, a.len());
+fn recursive_dif_pruned(a: &mut [Fq], tc: usize, tw: &[Fq], nz: usize) {
     if nz == 0 {
         return;
     }
-    if n == 2 {
+    if let [x0, x1] = a {
         // Base case. GS butterfly on (a[0], a[1]). Correct whether a[1] is
         // zero (nz == 1) or not, since (a, 0; tw) → (a, a·tw).
-        let [x0, x1] = a else {
-            unreachable!("n == a.len() == 2")
-        };
         Fq::gs_butterfly(x0, x1, &tw[0]);
         return;
     }
 
-    let h = n / 2;
+    let h = a.len() / 2;
 
     if nz <= h {
         // Right half is entirely zero. The GS butterfly (a, 0; tw) simplifies
@@ -187,8 +183,8 @@ fn recursive_dif_pruned(a: &mut [Fq], n: usize, tc: usize, tw: &[Fq], nz: usize)
     let child_nz = nz.min(h);
     let (left, right) = a.split_at_mut(h);
     rayon::join(
-        || recursive_dif_pruned(left, h, tc * 2, tw, child_nz),
-        || recursive_dif_pruned(right, h, tc * 2, tw, child_nz),
+        || recursive_dif_pruned(left, tc * 2, tw, child_nz),
+        || recursive_dif_pruned(right, tc * 2, tw, child_nz),
     );
 }
 
