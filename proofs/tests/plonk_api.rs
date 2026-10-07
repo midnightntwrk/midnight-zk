@@ -555,7 +555,7 @@ fn plonk_api() {
     );
 
     // fflonk combining up to 4 polynomials.
-    type FflonkScheme = Fflonk<Scheme, 4>;
+    type FflonkScheme = Fflonk<Scheme, 2>;
     bad_keys!(Scalar, FflonkScheme);
 
     let mut params = FflonkScheme::gen_params(K);

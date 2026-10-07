@@ -61,11 +61,16 @@ use crate::{
 /// fflonk over the polynomial commitment scheme `PCS`.
 ///
 /// The polynomials of a `commit_many` call are combined in chunks of at most
-/// `T_MAX`, which must be a power of two.
+/// `T_MAX = 2^LOG2_T_MAX`.
 #[derive(Clone, Debug)]
-pub struct Fflonk<PCS, const T_MAX: usize>(PhantomData<PCS>);
+pub struct Fflonk<PCS, const LOG2_T_MAX: u32>(PhantomData<PCS>);
 
-impl<F, PCS, const T_MAX: usize> PolynomialCommitmentScheme<F> for Fflonk<PCS, T_MAX>
+impl<PCS, const LOG2_T_MAX: u32> Fflonk<PCS, LOG2_T_MAX> {
+    /// The maximum number of polynomials combined into one.
+    const T_MAX: usize = 1 << LOG2_T_MAX;
+}
+
+impl<F, PCS, const LOG2_T_MAX: u32> PolynomialCommitmentScheme<F> for Fflonk<PCS, LOG2_T_MAX>
 where
     F: WithSmallOrderMulGroup<3>,
     PCS: PolynomialCommitmentScheme<F>,
@@ -76,7 +81,7 @@ where
     type VerificationGuard = PCS::VerificationGuard;
 
     fn gen_params(k: u32) -> Self::Parameters {
-        let mut params = PCS::gen_params(k + T_MAX.ilog2());
+        let mut params = PCS::gen_params(k + LOG2_T_MAX);
         params.downsize_lagrange(k);
         params
     }
@@ -91,8 +96,8 @@ where
         labels: &[PolynomialLabel],
     ) -> Self::Commitment {
         PolynomialLabel::assert_distinct(labels);
-        let g_labels: Vec<_> = labels.chunks(T_MAX).map(|l| Collection(l.to_vec())).collect();
-        let gs: Vec<_> = polynomials.chunks(T_MAX).map(compute_g).collect();
+        let g_labels: Vec<_> = labels.chunks(Self::T_MAX).map(|l| Collection(l.to_vec())).collect();
+        let gs: Vec<_> = polynomials.chunks(Self::T_MAX).map(compute_g).collect();
         PCS::commit_many(params, &gs.iter().collect::<Vec<_>>(), &g_labels)
     }
 
@@ -104,7 +109,7 @@ where
         Self::Commitment: Hashable<T::Hash>,
     {
         PolynomialLabel::assert_distinct(labels);
-        let g_labels: Vec<_> = labels.chunks(T_MAX).map(|l| Collection(l.to_vec())).collect();
+        let g_labels: Vec<_> = labels.chunks(Self::T_MAX).map(|l| Collection(l.to_vec())).collect();
         PCS::read_commitment(transcript, &g_labels)
     }
 
@@ -124,7 +129,7 @@ where
         labels: &[PolynomialLabel],
     ) -> io::Result<Self::Commitment> {
         PolynomialLabel::assert_distinct(labels);
-        let g_labels: Vec<_> = labels.chunks(T_MAX).map(|l| Collection(l.to_vec())).collect();
+        let g_labels: Vec<_> = labels.chunks(Self::T_MAX).map(|l| Collection(l.to_vec())).collect();
         PCS::deserialize_commitment(reader, format, &g_labels)
     }
 
@@ -132,12 +137,11 @@ where
     where
         F: Sampleable<T::Hash>,
     {
-        const { assert!(T_MAX.is_power_of_two()) };
-        PCS::squeeze_evaluation_point(transcript).pow_vartime([T_MAX as u64])
+        PCS::squeeze_evaluation_point(transcript).pow_vartime([Self::T_MAX as u64])
     }
 
     fn srs_monomial_blowup(cs_degree: usize) -> usize {
-        T_MAX.max(PCS::srs_monomial_blowup(cs_degree))
+        Self::T_MAX.max(PCS::srs_monomial_blowup(cs_degree))
     }
 
     fn multi_open<T: Transcript>(
@@ -152,9 +156,10 @@ where
         // Maps the labels of every queried chunk to its polynomials and the
         // points they are queried at: `labels -> (polys, points)`.
         let chunks_info = queries.iter().fold(BTreeMap::new(), |mut chunks_info, q| {
-            let (labels, polys) = (q.group_labels.chunks(T_MAX).zip(q.group_polys.chunks(T_MAX)))
-                .find(|(labels, _)| labels.contains(&q.label))
-                .expect("the queried group has no polynomial under the query label");
+            let (labels, polys) =
+                (q.group_labels.chunks(Self::T_MAX).zip(q.group_polys.chunks(Self::T_MAX)))
+                    .find(|(labels, _)| labels.contains(&q.label))
+                    .expect("the queried group has no polynomial under the query label");
             let (_, points) = (chunks_info.entry(labels))
                 .or_insert_with(|| (polys.iter().collect::<Vec<_>>(), BTreeSet::new()));
             points.insert(q.point);
@@ -186,7 +191,7 @@ where
         let mut inner_queries = Vec::new();
         for (((polys, points), g_label), g) in chunks_info.values().zip(&g_labels).zip(&gs) {
             for x in points {
-                for root in roots(*x, polys.len().next_power_of_two())? {
+                for root in roots(*x, polys.len().next_power_of_two()).ok_or(Error::OpeningError)? {
                     let g_poly = slice::from_ref(g);
                     inner_queries.push(ProverQuery::new(g_label, g_poly, root, g_label[0].clone()));
                 }
@@ -207,7 +212,7 @@ where
     }
 
     fn commitment_byte_length(n: usize) -> usize {
-        PCS::commitment_byte_length(n.div_ceil(T_MAX))
+        PCS::commitment_byte_length(n.div_ceil(Self::T_MAX))
     }
 
     fn multi_prepare<'com, T: Transcript>(
@@ -222,7 +227,7 @@ where
         // Maps the labels of every queried chunk to its commitment and the
         // points its polynomials are queried at: `labels -> (commitment, points)`.
         let chunks_info = queries.iter().fold(BTreeMap::new(), |mut chunks_info, q| {
-            let labels = (Self::commitment_labels(q.commitment).chunks(T_MAX))
+            let labels = (Self::commitment_labels(q.commitment).chunks(Self::T_MAX))
                 .find(|labels| labels.contains(&q.label))
                 .map_or_else(|| vec![q.label.clone()], <[_]>::to_vec);
             let (_, points) = chunks_info.entry(labels).or_insert((q.commitment, BTreeSet::new()));
@@ -230,8 +235,8 @@ where
             chunks_info
         });
 
-        // The evaluations of the chunks at all the points, both the explicit and the
-        // implicit ones (the latter are read from the transcript here).
+        // The evaluations of the chunks at all the points, both the explicit (taken
+        // from the queries) and the implicit (read from the transcript here) ones.
         let mut evals: HashMap<(PolynomialLabel, F), F> =
             queries.iter().map(|q| ((q.label.clone(), q.point), q.eval)).collect();
         for (labels, (_, points)) in &chunks_info {
@@ -244,13 +249,17 @@ where
             }
         }
 
-        // Opening a chunk at `x` amounts to opening its `g` at the `t`-th roots of `x`,
-        // where `g(r) = Σ_i r^i f_i(x)`, the polynomial with coefficients `f_i(x)`.
+        // Opening a chunk at `x` amounts to opening its `g` polynomial at
+        // the `t`-th roots of `x`, where computing `g(r) = Σ_i r^i f_i(x)` for
+        // such a root `r` is equivalent to evaluating at `r` the polynomial with
+        // coefficients `f_i(x)`.
         let mut inner_queries = Vec::new();
         for (labels, (commitment, points)) in &chunks_info {
             for x in points {
                 let f_evals: Vec<F> = labels.iter().map(|l| evals[&(l.clone(), *x)]).collect();
-                for root in roots(*x, labels.len().next_power_of_two())? {
+                for root in
+                    roots(*x, labels.len().next_power_of_two()).ok_or(Error::OpeningError)?
+                {
                     let eval = eval_polynomial(&f_evals, root);
                     let label = Collection(labels.clone());
                     inner_queries.push(VerifierQuery::new(root, *commitment, label, eval));

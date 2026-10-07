@@ -5,9 +5,7 @@ use std::{iter, marker::PhantomData};
 
 use ff::{PrimeField, WithSmallOrderMulGroup};
 
-use crate::poly::{
-    Coeff, Error, EvaluationDomain, Polynomial, PolynomialBasis, PolynomialRepresentation,
-};
+use crate::poly::{Coeff, EvaluationDomain, Polynomial, PolynomialBasis, PolynomialRepresentation};
 
 /// `g(X) = Σ_i X^i f_i(X^t)`, for `polys` the polynomials `f_0, ..., f_{k-1}`,
 /// in any basis, and `t` the next power of two of `k`.
@@ -54,25 +52,29 @@ where
     }
 }
 
-/// The `t`-th roots of `point`, for a power of two `t`.
+/// The `t`-th roots of `x`, for a power of two `t`.
 ///
-/// # Errors
-///
-/// Returns [`Error::OpeningError`] if `point` is not a `t`-th power.
+/// Returns `None` if `x` is not a `t`-th power. Since the field has roots of
+/// unity of order `t`, if `x` has a `t`-th root then it has all `t` of them.
 ///
 /// # Panics
 ///
-/// Panics if `t` is not a power of two.
-pub(super) fn roots<F: PrimeField>(point: F, t: usize) -> Result<Vec<F>, Error> {
+/// Panics if `t` is not a power of two, or if `F` has no roots of unity of
+/// order `t`.
+pub(super) fn roots<F: PrimeField>(x: F, t: usize) -> Option<Vec<F>> {
     assert!(
         t.is_power_of_two(),
         "fflonk roots of order {t}, not a power of two"
     );
     let log_t = t.trailing_zeros();
-    let mut root = point;
+    assert!(
+        log_t <= F::S,
+        "the field has no roots of unity of order {t}"
+    );
+    let mut root = x;
     for _ in 0..log_t {
-        root = Option::from(root.sqrt()).ok_or(Error::OpeningError)?;
+        root = Option::from(root.sqrt())?;
     }
     let omega = F::ROOT_OF_UNITY.pow_vartime([1u64 << (F::S - log_t)]);
-    Ok(iter::successors(Some(root), |r| Some(*r * omega)).take(t).collect())
+    Some(iter::successors(Some(root), |r| Some(*r * omega)).take(t).collect())
 }
