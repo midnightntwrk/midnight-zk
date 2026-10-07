@@ -53,6 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `msm_specific` always uses blst's `multi_exp_affine` for BLS12-381 G1,`msm_best`is a fallback for all other curves [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 * `commit_many`, `read_commitment` and `deserialize_commitment` take the labels of a group in the order it is committed to, rather than ordering them [#554](https://github.com/midnightntwrk/midnight-zk/pull/554)
 * `ProverQuery` carries the labels and polynomials of the group the queried polynomial is committed with, so `multi_open` sees every polynomial committed together with the queried one [#554](https://github.com/midnightntwrk/midnight-zk/pull/554)
+* The KZG multi-open divides each point set's polynomial by the product of `X - point` at once, skipping its zero coefficients, instead of by each point in turn [#565](https://github.com/midnightntwrk/midnight-zk/pull/565)
 * Keygen bounds the circuit size by `PolynomialCommitmentScheme::max_k` rather than by `Params::max_k` [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
 * The `PolynomialCommitmentScheme` implementation of `KZGCommitmentScheme<E>` requires `E::G1Affine: SerdeObject` and `E::G2: ProcessedSerdeObject` [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
 * `ProcessedSerdeObject` no longer requires the curve to implement `Default` [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
