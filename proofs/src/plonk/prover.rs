@@ -785,8 +785,6 @@ pub(super) fn compute_queries<
     x_rotations: &'a BTreeMap<Rotation, F>,
     lin_poly_non_constant_part: &'a Polynomial<F, Coeff>,
 ) -> Vec<ProverQuery<'a, F>> {
-    static LIN_LABEL: [PolynomialLabel; 1] = [PolynomialLabel::Linearization];
-
     // The multi-open scales the first commitment by 1, which is best spent on
     // one read from the proof: the phase-0 commitments are known in advance and
     // a committed instance may be a constant, so both go after phases 1 and 2.
@@ -808,7 +806,7 @@ pub(super) fn compute_queries<
             }),
         )
         .chain(iter::once(ProverQuery::new(
-            &LIN_LABEL,
+            &[PolynomialLabel::Linearization],
             slice::from_ref(lin_poly_non_constant_part),
             x_rotations[&Rotation::cur()],
             PolynomialLabel::Linearization,

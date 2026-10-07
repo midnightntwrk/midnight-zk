@@ -43,8 +43,10 @@ pub enum PolynomialLabel {
 impl PolynomialLabel {
     /// Asserts that no label of `labels` is repeated.
     pub fn assert_distinct(labels: &[Self]) {
-        let distinct: std::collections::HashSet<_> = labels.iter().collect();
-        assert_eq!(distinct.len(), labels.len(), "duplicated labels");
+        let mut seen = rustc_hash::FxHashSet::default();
+        for label in labels {
+            assert!(seen.insert(label), "duplicated label {label}");
+        }
     }
 }
 
@@ -69,7 +71,8 @@ impl fmt::Display for PolynomialLabel {
     }
 }
 
-/// A polynomial query at a point
+/// A query of a polynomial at a point. The polynomial is identified by its
+/// label within the group of polynomials it was committed to together with.
 #[derive(Debug, Clone)]
 pub struct ProverQuery<'com, F: PrimeField> {
     /// Labels of every polynomial committed to together with the queried one.
