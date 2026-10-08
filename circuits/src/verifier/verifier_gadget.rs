@@ -881,7 +881,7 @@ pub(crate) mod tests {
         },
         testing_utils::FromScratch,
         types::{ComposableChip, Instantiable},
-        verifier::{BlstrsEmulation, InCircuitKZG, accumulator::Accumulator},
+        verifier::{BlstrsEmulation, InCircuitFflonk, InCircuitKZG, accumulator::Accumulator},
     };
 
     type S = BlstrsEmulation;
@@ -1183,5 +1183,12 @@ pub(crate) mod tests {
     #[test]
     fn test_verify_proof() {
         check_self_verification::<InCircuitKZG<S>>(0);
+    }
+
+    #[test]
+    fn test_verify_fflonk_proof() {
+        check_self_verification::<InCircuitFflonk<InCircuitKZG<S>, 0>>(0);
+        check_self_verification::<InCircuitFflonk<InCircuitKZG<S>, 1>>(1);
+        check_self_verification::<InCircuitFflonk<InCircuitKZG<S>, 2>>(2);
     }
 }
