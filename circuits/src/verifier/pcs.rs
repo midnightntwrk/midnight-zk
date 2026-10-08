@@ -20,7 +20,7 @@ use std::fmt::Debug;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
-    poly::PolynomialLabel,
+    poly::{PolynomialLabel, commitment::PolynomialCommitmentScheme},
 };
 
 use crate::{
@@ -80,11 +80,26 @@ pub trait InCircuitHomomorphicCommitment<S: SelfEmulation>: Clone + Debug + Size
     ) -> Result<Self, Error>;
 }
 
+/// An off-circuit commitment whose curve points can be read with the labels
+/// they carry, as the fixed bases of a verifying key are.
+pub trait CommitmentBases<C> {
+    /// The (label, point) pairs of this commitment, one per inner commitment.
+    ///
+    /// # Panics
+    ///
+    /// If an inner commitment is not a single labelled point.
+    fn bases(&self) -> Vec<(PolynomialLabel, C)>;
+}
+
 /// In-circuit abstraction over a Polynomial Commitment Scheme.
 ///
 /// Analog of [`midnight_proofs::poly::commitment::PolynomialCommitmentScheme`]
 /// for the in-circuit verifier.
 pub trait InCircuitPCS<S: SelfEmulation>: Sized + Clone + Debug {
+    /// The off-circuit scheme whose proofs this gadget verifies. Fixes the
+    /// verifying-key type the gadget accepts.
+    type OffCircuit: PolynomialCommitmentScheme<S::F>;
+
     /// The in-circuit type representing a committed polynomial.
     type AssignedCommitment: InCircuitHomomorphicCommitment<S>;
 

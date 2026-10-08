@@ -20,7 +20,7 @@ use midnight_proofs::{
     circuit::Value,
     plonk,
     plonk::ConstraintSystem,
-    poly::{PolynomialLabel, kzg::KZGCommitmentScheme},
+    poly::{PolynomialLabel, commitment::PolynomialCommitmentScheme},
 };
 
 use crate::{
@@ -44,14 +44,15 @@ mod verifier_gadget;
 pub use accumulator::{Accumulator, AssignedAccumulator};
 pub use kzg::{AssignedKZGCommitment, AssignedKZGMultiCommitment, InCircuitKZG};
 pub use msm::{AssignedMsm, AssignedPoint, Msm, Point};
-pub use pcs::{InCircuitHomomorphicCommitment, InCircuitPCS};
+pub use pcs::{CommitmentBases, InCircuitHomomorphicCommitment, InCircuitPCS};
 #[cfg(feature = "dev-curves")]
 pub use types::BnEmulation;
 pub use types::{BlstrsEmulation, SelfEmulation};
 pub use verifier_gadget::VerifierGadget;
 
-type VerifyingKey<S> =
-    plonk::VerifyingKey<<S as SelfEmulation>::F, KZGCommitmentScheme<<S as SelfEmulation>::Engine>>;
+/// The off-circuit verifying key that a given in-circuit PCS accepts.
+type VerifyingKey<S, PCS> =
+    plonk::VerifyingKey<<S as SelfEmulation>::F, <PCS as InCircuitPCS<S>>::OffCircuit>;
 
 /// Type for in-circuit Evaluation Domain.
 ///
@@ -92,9 +93,9 @@ pub struct AssignedVk<S: SelfEmulation, PCS: InCircuitPCS<S>> {
 }
 
 impl<S: SelfEmulation, PCS: InCircuitPCS<S>> InnerValue for AssignedVk<S, PCS> {
-    type Element = VerifyingKey<S>;
+    type Element = VerifyingKey<S, PCS>;
 
-    fn value(&self) -> Value<VerifyingKey<S>> {
+    fn value(&self) -> Value<VerifyingKey<S, PCS>> {
         unimplemented!(
             "It is not possible to get a full verifying key out of an
              AssignedVk, as the latter does not include fixed commitments."
@@ -103,7 +104,7 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> InnerValue for AssignedVk<S, PCS> {
 }
 
 impl<S: SelfEmulation, PCS: InCircuitPCS<S>> Instantiable<S::F> for AssignedVk<S, PCS> {
-    fn as_public_input(vk: &VerifyingKey<S>) -> Vec<S::F> {
+    fn as_public_input(vk: &VerifyingKey<S, PCS>) -> Vec<S::F> {
         let domain = vk.get_domain();
         [
             AssignedNative::<S::F>::as_public_input(&vk.transcript_repr()),
@@ -114,7 +115,7 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> Instantiable<S::F> for AssignedVk<S
     }
 
     #[cfg(any(test, feature = "testing"))]
-    fn from_public_input(_fields: &[S::F]) -> Option<VerifyingKey<S>> {
+    fn from_public_input(_fields: &[S::F]) -> Option<VerifyingKey<S, PCS>> {
         unimplemented!("as_public_input encodes the VK as its transcript_repr() — not invertible")
     }
 }
@@ -140,19 +141,19 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> AssignedVk<S, PCS> {
 /// circuit-constant bases of a verifying key.
 ///
 /// The map contains:
-/// * `Fixed(i)`: the i-th fixed-column commitment,
-/// * `PermutationFixed(i)`: the i-th permutation commitment,
+/// * the bases of the phase-0 commitment, under the labels it carries (e.g.
+///   `Fixed(i)`, `PermutationFixed(i)`),
 /// * `Custom("-G")`: the negated designated generator used in the KZG opening
 ///   proof.
 ///
 /// Pass this map to [`Accumulator::check`] or [`Msm::eval`].
-pub fn fixed_bases<S: SelfEmulation>(vk: &VerifyingKey<S>) -> BTreeMap<PolynomialLabel, S::C> {
-    let mut fixed_bases = BTreeMap::new();
-
-    let fixed_coms = vk.phase0_commitment().0.iter();
-    for (label, com) in vk.cs().fixed_polys_labels().into_iter().zip(fixed_coms) {
-        fixed_bases.insert(label, *com.as_point());
-    }
+pub fn fixed_bases<S, CS>(vk: &plonk::VerifyingKey<S::F, CS>) -> BTreeMap<PolynomialLabel, S::C>
+where
+    S: SelfEmulation,
+    CS: PolynomialCommitmentScheme<S::F>,
+    CS::Commitment: CommitmentBases<S::C>,
+{
+    let mut fixed_bases: BTreeMap<_, _> = vk.phase0_commitment().bases().into_iter().collect();
 
     fixed_bases.insert(PolynomialLabel::Custom("-G".into()), -S::C::generator());
 
@@ -160,30 +161,26 @@ pub fn fixed_bases<S: SelfEmulation>(vk: &VerifyingKey<S>) -> BTreeMap<Polynomia
 }
 
 /// Returns the ordered list of [`PolynomialLabel`]s for the fixed bases of a
-/// circuit with the given number of fixed and permutation commitments.
+/// circuit with constraint system `cs`, committed with `CS`.
 ///
-/// The order matches [`fixed_bases`]: fixed columns first, then permutation
-/// columns, then `Custom("-G")`. Call this before having an actual verifying
-/// key (e.g. during setup) to size an accumulator correctly.
-pub fn fixed_base_labels<S: SelfEmulation>(
-    nb_fixed_commitments: usize,
-    nb_perm_commitments: usize,
-) -> Vec<PolynomialLabel> {
-    let mut labels = Vec::with_capacity(nb_fixed_commitments + nb_perm_commitments + 1);
-
-    for i in 0..nb_fixed_commitments {
-        labels.push(PolynomialLabel::Fixed(i));
-    }
-
-    for i in 0..nb_perm_commitments {
-        labels.push(PolynomialLabel::PermutationFixed(i));
-    }
-
-    // This term will be introduced by the KZG multiopen argument as a fixed base.
-    // It corresponds to the negated designated generator. It is not proper of the
-    // verifying key, but there is no harm in having it here (it needs to be
-    // introduced at some point anyway and this is a good place).
-    labels.push(PolynomialLabel::Custom("-G".into()));
+/// The order matches the keys of [`fixed_bases`]. Call this before having an
+/// actual verifying key (e.g. during setup) to size an accumulator correctly.
+pub fn fixed_base_labels<S, CS>(cs: &ConstraintSystem<S::F>) -> Vec<PolynomialLabel>
+where
+    S: SelfEmulation,
+    CS: PolynomialCommitmentScheme<S::F>,
+    CS::Commitment: CommitmentBases<S::C>,
+{
+    let mut labels: Vec<_> = (CS::commitment_to_zero(&cs.fixed_polys_labels()).bases())
+        .into_iter()
+        .map(|(label, _)| label)
+        // This term will be introduced by the KZG multiopen argument as a fixed
+        // base. It corresponds to the negated designated generator. It is not
+        // proper of the verifying key, but there is no harm in having it here (it
+        // needs to be introduced at some point anyway and this is a good place).
+        .chain(std::iter::once(PolynomialLabel::Custom("-G".into())))
+        .collect();
+    labels.sort();
 
     labels
 }

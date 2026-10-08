@@ -28,10 +28,17 @@ use std::{
 
 use ff::Field;
 use group::Group;
+use midnight_curves::pairing::MultiMillerLoop;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
-    poly::{PolynomialLabel, kzg::commitment::KZGCommitment},
+    poly::{
+        PolynomialLabel,
+        kzg::{
+            KZGCommitmentScheme,
+            commitment::{KZGCommitment, KZGMultiCommitment},
+        },
+    },
 };
 
 #[cfg(feature = "truncated-challenges")]
@@ -44,7 +51,7 @@ use crate::{
     verifier::{
         AssignedAccumulator, SelfEmulation,
         msm::{AssignedMsm, AssignedPoint},
-        pcs::{InCircuitHomomorphicCommitment, InCircuitPCS, VerifierQuery},
+        pcs::{CommitmentBases, InCircuitHomomorphicCommitment, InCircuitPCS, VerifierQuery},
         transcript_gadget::TranscriptGadget,
         utils::{
             AssignedBoundedScalar, evaluate_interpolated_polynomial, inner_product, mul_add,
@@ -228,11 +235,10 @@ impl<S: SelfEmulation> AssignedKZGMultiCommitment<S> {
 }
 
 impl<S: SelfEmulation> InnerValue for AssignedKZGMultiCommitment<S> {
-    type Element = midnight_proofs::poly::kzg::commitment::KZGMultiCommitment<S::Engine>;
+    type Element = KZGMultiCommitment<S::Engine>;
 
     fn value(&self) -> Value<Self::Element> {
-        Value::from_iter(self.0.iter().map(|c| c.value()))
-            .map(midnight_proofs::poly::kzg::commitment::KZGMultiCommitment)
+        Value::from_iter(self.0.iter().map(|c| c.value())).map(KZGMultiCommitment)
     }
 }
 
@@ -648,7 +654,19 @@ pub(crate) fn multi_prepare_kzg<S: SelfEmulation>(
 #[derive(Clone, Copy, Debug)]
 pub struct InCircuitKZG<S: SelfEmulation>(PhantomData<S>);
 
+impl<E: MultiMillerLoop> CommitmentBases<E::G1> for KZGMultiCommitment<E> {
+    fn bases(&self) -> Vec<(PolynomialLabel, E::G1)> {
+        (self.0.iter())
+            .map(|com| match com {
+                KZGCommitment::Simple(point, label) => (label.clone(), *point),
+                KZGCommitment::Linear(..) => panic!("a fixed base cannot be a linear combination"),
+            })
+            .collect()
+    }
+}
+
 impl<S: SelfEmulation> InCircuitPCS<S> for InCircuitKZG<S> {
+    type OffCircuit = KZGCommitmentScheme<S::Engine>;
     type AssignedCommitment = AssignedKZGMultiCommitment<S>;
 
     fn fixed_commitment(labels: &[PolynomialLabel]) -> Self::AssignedCommitment {
