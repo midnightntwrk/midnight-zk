@@ -18,7 +18,7 @@ use crate::{
     dev::cost_model::cost_model_options,
     poly::{
         EvaluationDomain, ExtendedLagrangeCoeff, batch_invert_rational,
-        commitment::{Params, PolynomialCommitmentScheme},
+        commitment::PolynomialCommitmentScheme,
     },
     utils::{arithmetic::parallelize, rational::Rational},
 };
