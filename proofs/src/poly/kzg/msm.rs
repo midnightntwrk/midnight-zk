@@ -1,4 +1,4 @@
-use std::{any::TypeId, fmt::Debug};
+use std::{any::TypeId, collections::BTreeMap, fmt::Debug, iter};
 
 use ff::Field;
 use group::{Curve, Group, prime::PrimeCurveAffine};
@@ -84,29 +84,27 @@ impl<E: Engine + Debug> MSMKZG<E>
 where
     E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
 {
-    /// Evaluates the MSM to a single point and replaces all terms with that
-    /// single point (scalar = 1), labeling the result with `label`.
+    /// Evaluates the terms whose label is not
+    /// [fixed](PolynomialLabel::is_fixed) to a single point (scalar = 1),
+    /// labeled with `label`. Fixed terms are kept, those sharing a label
+    /// have their scalars summed.
     ///
-    /// This mirrors `AssignedMsm::collapse` in the circuits crate.
-    ///
-    /// # Panics (in debug mode)
-    ///
-    /// If a term carries a `Fixed` or `PermutationFixed` label.
-    //  This is because these "fixed" labels carry information that we do not want
-    //  to lose when collapsing, since it is relevant for the `verifier_gadget`.
+    /// This mirrors `AssignedMsm::collapse` in the circuits crate, which keeps
+    /// the fixed bases apart for the `verifier_gadget`.
     pub fn collapse(&mut self, label: PolynomialLabel) {
-        debug_assert!(
-            !self.labels.iter().any(|l| matches!(
-                l,
-                PolynomialLabel::Fixed(_) | PolynomialLabel::PermutationFixed(_)
-            )),
-            "collapse: no label may be Fixed or PermutationFixed, found: {:?}",
-            self.labels,
-        );
-        let point = self.eval();
-        self.scalars = vec![E::Fr::ONE];
-        self.bases = vec![point];
-        self.labels = vec![label];
+        let mut fixed = BTreeMap::<PolynomialLabel, (E::Fr, E::G1)>::new();
+        let mut variable = MSMKZG::<E>::init();
+        for ((scalar, base), l) in self.scalars.iter().zip(&self.bases).zip(&self.labels) {
+            if l.is_fixed() {
+                fixed.entry(l.clone()).or_insert((E::Fr::ZERO, *base)).0 += scalar;
+            } else {
+                variable.append_term(*scalar, *base, l.clone());
+            }
+        }
+        let point = variable.eval();
+        self.labels = fixed.keys().cloned().chain(iter::once(label)).collect();
+        (self.scalars, self.bases) =
+            fixed.into_values().chain(iter::once((E::Fr::ONE, point))).unzip();
     }
 }
 
@@ -142,7 +140,10 @@ where
     }
 
     fn eval(&self) -> E::G1 {
-        if self.scalars == vec![E::Fr::ONE] {
+        // A collapse leaves no term to evaluate when all of them are fixed.
+        if self.scalars.is_empty() {
+            E::G1::identity()
+        } else if self.scalars == vec![E::Fr::ONE] {
             self.bases[0]
         } else {
             let mut affine = vec![E::G1Affine::identity(); self.bases.len()];
@@ -297,5 +298,85 @@ where
         let terms = &[term_1, term_2];
 
         bool::from(E::multi_miller_loop(&terms[..]).final_exponentiation().is_identity())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use ff::Field;
+    use group::Group;
+    use midnight_curves::{Bls12, Fq, G1Projective};
+    use rand_core::OsRng;
+
+    use super::MSMKZG;
+    use crate::{
+        poly::{
+            PolynomialLabel::{self, Advice, Collection, Fixed, NoLabel, PermutationFixed},
+            kzg::commitment::KZGCommitment,
+        },
+        utils::arithmetic::MSM,
+    };
+
+    #[test]
+    fn test_collapse_keeps_fixed_terms() {
+        let fixed_chunk = Collection(vec![Fixed(1), PermutationFixed(0)]);
+        let labels = [
+            Fixed(0),
+            Advice(0),
+            fixed_chunk.clone(),
+            Collection(vec![Fixed(2), Advice(1)]),
+            Fixed(0),
+        ];
+        let scalars: Vec<_> = labels.iter().map(|_| Fq::random(OsRng)).collect();
+        let mut bases: Vec<_> = labels.iter().map(|_| G1Projective::random(OsRng)).collect();
+        bases[4] = bases[0];
+
+        let mut msm = MSMKZG::<Bls12>::new(&scalars, &bases, &labels);
+        let expected = msm.eval();
+        msm.collapse(PolynomialLabel::NoLabel);
+
+        assert_eq!(msm.eval(), expected);
+        assert_eq!(
+            msm.labels,
+            [Fixed(0), fixed_chunk, PolynomialLabel::NoLabel]
+        );
+        assert_eq!(msm.bases[..2], [bases[0], bases[2]]);
+        assert_eq!(msm.scalars[..2], [scalars[0] + scalars[4], scalars[2]]);
+        assert_eq!(msm.scalars[2], Fq::ONE);
+
+        // Only fixed terms: the collapsed point is the identity.
+        let mut msm = MSMKZG::<Bls12>::new(&scalars[..1], &bases[..1], &labels[..1]);
+        msm.collapse(PolynomialLabel::NoLabel);
+        assert_eq!(msm.bases, [bases[0], G1Projective::identity()]);
+    }
+
+    /// A fixed column queried at two rotations lands in a collapsed point set:
+    /// its term must survive the collapse, as it does in-circuit.
+    #[test]
+    fn test_commitment_collapse_keeps_fixed_terms() {
+        let points: Vec<_> = (0..2).map(|_| G1Projective::random(OsRng)).collect();
+        let scalars: Vec<_> = (0..2).map(|_| Fq::random(OsRng)).collect();
+        let expected = points[0] * scalars[0] + points[1] * scalars[1];
+
+        let mut com = KZGCommitment::<Bls12>::Linear(
+            points.clone(),
+            scalars.clone(),
+            vec![Fixed(0), Advice(0)],
+        );
+        com.collapse(NoLabel);
+        let KZGCommitment::Linear(bases, coeffs, labels) = com else {
+            panic!("the fixed term was folded")
+        };
+        assert_eq!(labels, [Fixed(0), NoLabel]);
+        assert_eq!(bases[0], points[0]);
+        assert_eq!(coeffs[0], scalars[0]);
+        assert_eq!(
+            MSMKZG::<Bls12>::new(&coeffs, &bases, &labels).eval(),
+            expected
+        );
+
+        let mut com = KZGCommitment::<Bls12>::Linear(points, scalars, vec![Advice(0), Advice(1)]);
+        com.collapse(NoLabel);
+        assert_eq!(com, KZGCommitment::Simple(expected, NoLabel));
     }
 }

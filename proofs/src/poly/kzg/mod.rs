@@ -307,14 +307,9 @@ where
             })
             .collect();
 
-        // Sort point sets by ascending cardinality to ensure the first set is the one
-        // that contains fixed commitments (which are evaluated at x only). This
-        // property is not necessary for the actual proving system, but it is important
-        // for in-circuit verification of proofs. (It enables an optimization based on
-        // an internal collapse.)
-        //
-        // The (len, i) key provides a deterministic total order even when two sets
-        // share the same cardinality.
+        // Sort point sets by ascending cardinality, as the verifier does. The (len, i)
+        // key provides a deterministic total order even when two sets share the same
+        // cardinality.
         let (q_polys, point_sets) = {
             let mut order: Vec<usize> = (0..point_sets.len()).collect();
             order.sort_by_key(|&i| (point_sets[i].len(), i));
@@ -462,14 +457,8 @@ where
             .map(|evals| evals_inner_product(evals, &powers_x1))
             .collect::<Vec<_>>();
 
-        // Sort point sets by ascending cardinality to ensure the first set is the one
-        // that contains fixed commitments (which are evaluated at x only). This
-        // property is not necessary for the actual proving system, but it is important
-        // for in-circuit verification of proofs. (It enables an optimization based on
-        // an internal collapse.)
-        //
-        // The (len, i) key provides a deterministic total order even when two sets
-        // share the same cardinality.
+        // Sort point sets by ascending cardinality. The (len, i) key provides a
+        // deterministic total order even when two sets share the same cardinality.
         let (q_coms, q_eval_sets, point_sets) = {
             let mut order: Vec<usize> = (0..point_sets.len()).collect();
             order.sort_by_key(|&i| (point_sets[i].len(), i));
