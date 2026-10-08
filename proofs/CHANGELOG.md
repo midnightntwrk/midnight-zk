@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
-* `ConstraintSystem::fixed_polys_labels` and `ConstraintSystem::simple_selector_columns` [#547](https://github.com/midnightntwrk/midnight-zk/pull/547)
+* `ConstraintSystem::fixed_polys_labels` [#547](https://github.com/midnightntwrk/midnight-zk/pull/547)
 * `Rotation` derives `PartialOrd` and `Ord` [#543](https://github.com/midnightntwrk/midnight-zk/pull/543)
 * `permutation::Argument::polynomial_labels`, `num_sets` and `accumulator_labels` are public [#537](https://github.com/midnightntwrk/midnight-zk/pull/537)
 * changed `sha256` name in benches to account for the change of naming convention in `circuits` [#135](https://github.com/midnightntwrk/midnight-zk/pull/135)
@@ -46,6 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Fix cost-model [#435](https://github.com/midnightntwrk/midnight-zk/pull/435)
 
 ### Changed
+* Remove the linearization: the simple selectors are committed, evaluated and opened in the phase-0 group like any other fixed column, and the verifier checks that the quotient commitment, scaled by `1 - x^n`, opens to `-nu(x)` at `x`. Proofs grow by one scalar per simple selector, and every verifying key and its `transcript_repr` change. `create_gate` no longer requires the polynomials of a gate to be multiples of one simple selector [#TBD](https://github.com/midnightntwrk/midnight-zk/pull/TBD)
 * `ConstraintSystem::create_gate` panics on a gate whose polynomials are not all multiples of the same simple selector, or that queries a simple selector none of its polynomials is a multiple of. The verifier takes the evaluation of a simple selector as 1, which relies on that shape [#547](https://github.com/midnightntwrk/midnight-zk/pull/547)
 * The verifying key commits to every fixed column but the simple selectors as one group, together with the fixed permutation polynomials, in the phase-0 group exposed as `VerifyingKey::phase0_commitment`, and to each simple selector on its own, as `VerifyingKey::simple_selector_commitments`. The serialized key changes to that layout, so every verifying key and its `transcript_repr` change [#547](https://github.com/midnightntwrk/midnight-zk/pull/547)
 * The fixed columns are evaluated and opened through the phase-0 group: their evaluations are written to the proof with the group's, in label order, rather than once per fixed query. A simple selector is never opened, as before. Proof sizes do not change [#547](https://github.com/midnightntwrk/midnight-zk/pull/547)
@@ -101,6 +102,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `ParamsKZG::downsize_lagrange` [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
 * `ParamsKZG::with_extended_monomial` [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
 * The `Params` trait. `max_k` and `downsize` remain inherent methods of `ParamsKZG`, and `downsize_from_circuit` is removed [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
+* The linearization: `PolynomialLabel::Linearization`, `SelectorFlag`, `ConstraintSystem::{has_simple_selector_col, num_simple_selectors, simple_selector_columns}` and `VerifyingKey::simple_selector_commitments` [#TBD](https://github.com/midnightntwrk/midnight-zk/pull/TBD)
 * `fewer-point-sets` feature [#554](https://github.com/midnightntwrk/midnight-zk/pull/554)
 * `VerifyingKey::fixed_commitments`, replaced by `phase0_commitment` and `simple_selector_commitments` [#547](https://github.com/midnightntwrk/midnight-zk/pull/547)
 * `Clone` on `ProvingKey`, so that the polynomials it holds are never copied [#537](https://github.com/midnightntwrk/midnight-zk/pull/537)

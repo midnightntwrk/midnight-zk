@@ -1119,39 +1119,6 @@ impl<F: Field> Expression<F> {
             &|a, _| a,
         )
     }
-
-    /// Returns the simple `Selector` this expression is a multiple of, if any.
-    ///
-    /// # Panics
-    ///
-    /// If a simple selector appears other than as a single factor of a product,
-    /// i.e. under a sum or twice in the same product.
-    fn simple_selector_factor(&self) -> Option<Selector> {
-        match self {
-            Expression::Selector(selector) if selector.is_simple() => Some(*selector),
-            Expression::Constant(_)
-            | Expression::Selector(_)
-            | Expression::Fixed(_)
-            | Expression::Advice(_)
-            | Expression::Instance(_) => None,
-            Expression::Negated(a) | Expression::Scaled(a, _) => a.simple_selector_factor(),
-            Expression::Sum(..) => {
-                assert!(
-                    !self.contains_simple_selector(),
-                    "a simple selector was used in a sum"
-                );
-                None
-            }
-            Expression::Product(a, b) => {
-                match (a.simple_selector_factor(), b.simple_selector_factor()) {
-                    (Some(_), Some(_)) => {
-                        panic!("two expressions containing simple selectors were multiplied")
-                    }
-                    (selector, None) | (None, selector) => selector,
-                }
-            }
-        }
-    }
 }
 
 impl<F: std::fmt::Debug> std::fmt::Debug for Expression<F> {
@@ -1543,26 +1510,6 @@ impl<F: Field> Gate<F> {
     }
 }
 
-/// Type for tracking information about selectors.
-#[derive(Debug, Clone, PartialEq)]
-pub struct SelectorFlag(bool, Option<usize>);
-
-impl SelectorFlag {
-    /// Returns `true` if this selector flag tracks a simple selector, `false`
-    /// otherwise.
-    pub fn is_simple(&self) -> bool {
-        self.0
-    }
-
-    /// Returns an [Option] containing
-    ///  * the column index of this selector after it has been converted to a
-    ///    fixed column,
-    ///  * `None` otherwise.
-    pub fn col_idx(&self) -> Option<usize> {
-        self.1
-    }
-}
-
 /// This is a description of the circuit environment, such as the gate, column
 /// and permutation arrangements.
 #[derive(Debug, Clone)]
@@ -1571,7 +1518,6 @@ pub struct ConstraintSystem<F: Field> {
     pub(crate) num_advice_columns: usize,
     pub(crate) num_instance_columns: usize,
     pub(crate) num_selectors: usize,
-    pub(crate) selector_flags: Vec<SelectorFlag>,
 
     /// Contains the index of each advice column that is left unblinded.
     pub(crate) unblinded_advice_columns: Vec<usize>,
@@ -1682,7 +1628,6 @@ impl<F: Field> Default for ConstraintSystem<F> {
             num_advice_columns: 0,
             num_instance_columns: 0,
             num_selectors: 0,
-            selector_flags: vec![],
             unblinded_advice_columns: Vec::new(),
             gates: vec![],
             fixed_queries: Vec::new(),
@@ -1700,19 +1645,6 @@ impl<F: Field> Default for ConstraintSystem<F> {
 }
 
 impl<F: Field> ConstraintSystem<F> {
-    /// Returns `true` if this constraint system contains a [SelectorFlag] of a
-    /// simple selector with the given column index.
-    pub fn has_simple_selector_col(&self, col_idx: usize) -> bool {
-        self.selector_flags
-            .iter()
-            .any(|f| f.is_simple() && f.col_idx() == Some(col_idx))
-    }
-
-    /// Returns the number of [SelectorFlag]s that track simple selectors.
-    pub fn num_simple_selectors(&self) -> usize {
-        self.selector_flags.iter().filter(|f| f.is_simple()).count()
-    }
-
     /// Obtain a pinned version of this constraint system; a structure with the
     /// minimal parameters needed to determine the rest of the constraint
     /// system.
@@ -1989,22 +1921,6 @@ impl<F: Field> ConstraintSystem<F> {
         let queried_selectors = cells.queried_selectors;
         let queried_cells = cells.queried_cells;
 
-        // The verifier takes the evaluation of a gate's simple selector as 1 and
-        // scales the selector's commitment instead, so every polynomial of the
-        // gate must be that selector times an expression free of simple selectors.
-        let simple_selector = polys.first().and_then(|poly| poly.simple_selector_factor());
-        assert!(
-            polys.iter().all(|poly| poly.simple_selector_factor() == simple_selector),
-            "the polynomials of gate {name} are not all multiples of the same simple selector"
-        );
-        assert!(
-            queried_selectors
-                .iter()
-                .filter(|selector| selector.is_simple())
-                .all(|selector| Some(*selector) == simple_selector),
-            "gate {name} queries a simple selector that its polynomials are not multiples of"
-        );
-
         self.gates.push(Gate {
             name: name.into(),
             constraint_names,
@@ -2040,17 +1956,12 @@ impl<F: Field> ConstraintSystem<F> {
         // counted for this constraint system.
         assert_eq!(selectors.len(), self.num_selectors);
 
-        let nr_fixed_columns = self.num_fixed_columns();
         let (polys, selector_replacements): (Vec<_>, Vec<_>) = selectors
             .into_iter()
-            .enumerate()
-            .map(|(idx, selector)| {
+            .map(|selector| {
                 let poly =
                     selector.iter().map(|b| if *b { F::ONE } else { F::ZERO }).collect::<Vec<_>>();
                 let column = self.fixed_column();
-                if self.selector_flags[idx].is_simple() {
-                    self.selector_flags[idx] = SelectorFlag(true, Some(column.index()));
-                }
                 let rotation = Rotation::cur();
                 let expr = Expression::Fixed(FixedQuery {
                     index: Some(self.query_fixed_index(column, rotation)),
@@ -2063,15 +1974,6 @@ impl<F: Field> ConstraintSystem<F> {
 
         self.replace_selectors_with_fixed(&selector_replacements);
         self.num_selectors = 0;
-
-        // Adjust indices of simple, multiplicative selectors: after converting
-        // selectors to fixed columns, the selector index of a gate should now
-        // track the index of the corresponding fixed column
-        for gate in self.gates.iter_mut() {
-            for s in &mut gate.queried_selectors {
-                s.0 += nr_fixed_columns;
-            }
-        }
 
         (self, polys)
     }
@@ -2141,7 +2043,6 @@ impl<F: Field> ConstraintSystem<F> {
     pub fn selector(&mut self) -> Selector {
         let index = self.num_selectors;
         self.num_selectors += 1;
-        self.selector_flags.push(SelectorFlag(true, None));
         Selector(index, true)
     }
 
@@ -2150,7 +2051,6 @@ impl<F: Field> ConstraintSystem<F> {
     pub fn complex_selector(&mut self) -> Selector {
         let index = self.num_selectors;
         self.num_selectors += 1;
-        self.selector_flags.push(SelectorFlag(false, None));
         Selector(index, false)
     }
 
@@ -2360,19 +2260,11 @@ impl<F: Field> ConstraintSystem<F> {
         (0..self.num_advice_columns).map(PolynomialLabel::Advice).collect()
     }
 
-    /// The fixed columns that are simple selectors, in column order.
-    pub fn simple_selector_columns(&self) -> Vec<usize> {
-        (0..self.num_fixed_columns)
-            .filter(|&i| self.has_simple_selector_col(i))
-            .collect()
-    }
-
     /// The labels of the polynomials committed to in the verifying key as one
-    /// group: every fixed column but the simple selectors, then the fixed
-    /// permutation polynomials, in their `Ord` order.
+    /// group: every fixed column, then the fixed permutation polynomials, in
+    /// their `Ord` order.
     pub fn fixed_polys_labels(&self) -> Vec<PolynomialLabel> {
         (0..self.num_fixed_columns)
-            .filter(|&i| !self.has_simple_selector_col(i))
             .map(PolynomialLabel::Fixed)
             .chain(self.permutation.polynomial_labels())
             .collect()
@@ -2502,8 +2394,7 @@ impl<'a, F: Field> VirtualCells<'a, F> {
 mod tests {
     use midnight_curves::Fq as Scalar;
 
-    use super::{ConstraintSystem, Constraints, Expression};
-    use crate::poly::Rotation;
+    use super::Expression;
 
     #[test]
     fn iter_sum() {
@@ -2541,84 +2432,5 @@ mod tests {
         );
 
         assert_eq!(happened, expected);
-    }
-
-    #[test]
-    fn create_gate_accepts_multiples_of_one_simple_selector() {
-        let mut meta = ConstraintSystem::<Scalar>::default();
-        let (q, a) = (meta.selector(), meta.advice_column());
-        meta.create_gate("with_selector", |cells| {
-            let a = cells.query_advice(a, Rotation::cur());
-            Constraints::with_selector(q, vec![a.clone(), a.clone() * a])
-        });
-        meta.create_gate("without_selector", |cells| {
-            let (q, a) = (
-                cells.query_selector(q),
-                cells.query_advice(a, Rotation::cur()),
-            );
-            Constraints::without_selector(vec![q.clone() * a.clone(), -(q * a.clone()) * a])
-        });
-        let s = meta.complex_selector();
-        meta.create_gate("with_additive_selector", |cells| {
-            let a = cells.query_advice(a, Rotation::cur());
-            Constraints::with_additive_selector(s, vec![a])
-        });
-    }
-
-    #[test]
-    #[should_panic(expected = "are not all multiples of the same simple selector")]
-    fn create_gate_rejects_a_polynomial_without_the_simple_selector() {
-        let mut meta = ConstraintSystem::<Scalar>::default();
-        let (q, a) = (meta.selector(), meta.advice_column());
-        meta.create_gate("gate", |cells| {
-            let (q, a) = (
-                cells.query_selector(q),
-                cells.query_advice(a, Rotation::cur()),
-            );
-            Constraints::without_selector(vec![q * a.clone(), a])
-        });
-    }
-
-    #[test]
-    #[should_panic(expected = "are not all multiples of the same simple selector")]
-    fn create_gate_rejects_two_simple_selectors() {
-        let mut meta = ConstraintSystem::<Scalar>::default();
-        let (q1, q2, a) = (meta.selector(), meta.selector(), meta.advice_column());
-        meta.create_gate("gate", |cells| {
-            let (q1, q2) = (cells.query_selector(q1), cells.query_selector(q2));
-            let a = cells.query_advice(a, Rotation::cur());
-            Constraints::without_selector(vec![q1 * a.clone(), q2 * a])
-        });
-    }
-
-    #[test]
-    #[should_panic(expected = "a simple selector was used in a sum")]
-    fn create_gate_rejects_a_simple_selector_in_a_sum() {
-        let mut meta = ConstraintSystem::<Scalar>::default();
-        let (q, a) = (meta.selector(), meta.advice_column());
-        meta.create_gate("gate", |cells| {
-            let (q, a) = (
-                cells.query_selector(q),
-                cells.query_advice(a, Rotation::cur()),
-            );
-            // Built directly, as the `Add` implementation rejects it.
-            Constraints::without_selector(vec![Expression::Sum(
-                Box::new(q * a.clone()),
-                Box::new(a),
-            )])
-        });
-    }
-
-    #[test]
-    #[should_panic(
-        expected = "queries a simple selector that its polynomials are not multiples of"
-    )]
-    fn create_gate_rejects_an_unused_simple_selector() {
-        let mut meta = ConstraintSystem::<Scalar>::default();
-        let (q, a) = (meta.selector(), meta.advice_column());
-        meta.create_gate("gate", |cells| {
-            cells.query_selector(q);
-            Constraints::without_selector(vec![cells.query_advice(a, Rotation::cur())])
-        });
     }
 }

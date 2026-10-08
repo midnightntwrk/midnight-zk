@@ -24,6 +24,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 * BREAKING: `load_srs::<PCS>` is generic over a `MidnightPCS`: it loads the SRS of size `2^PCS::srs_k(k)` through `PCS::load_params` [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
 * `setup_vk` derives the circuit size from `DefaultPCS::max_k` [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
+* BREAKING: Update the verifying keys following the removal of the linearization in `midnight-proofs` [#TBD](https://github.com/midnightntwrk/midnight-zk/pull/TBD)
 * Update `cardano_signature` example to match the new `ForeignEdwardsEccChip::from_canonical_compressed_bytes` signature [#540](https://github.com/midnightntwrk/midnight-zk/pull/540)
 * Update the verifying keys following the new verifying-key layout of `midnight-proofs`, which commits to the fixed columns as one group [#547](https://github.com/midnightntwrk/midnight-zk/pull/547)
 * Migrate to Rust edition 2024; declare MSRV 1.90. Both are now inherited from the workspace [#508](https://github.com/midnightntwrk/midnight-zk/pull/508)

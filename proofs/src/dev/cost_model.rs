@@ -225,7 +225,7 @@ pub fn circuit_model_with<F: Ord + Field + FromUniformBytes<64>>(
         .chain(o.lookup.iter().flat_map(|l| l.queries()))
         .chain(o.permutation.queries())
         .chain(std::iter::repeat_n("0".parse().unwrap(), o.trash.len()))
-        .chain(iter::once("0".parse().unwrap())) // Linearization polynomial query at x
+        .chain(iter::once("0".parse().unwrap())) // Quotient polynomial query at x
         .filter(|p| !p.rotations.is_empty())
         .collect();
 
@@ -334,9 +334,7 @@ pub(crate) fn cost_model_options<F: Ord + Field + FromUniformBytes<64>, C: Circu
         // init the fixed polynomials with no rotations
         let mut fixed = vec![Poly { rotations: vec![] }; cs.num_fixed_columns()];
         for (col, rot) in cs.fixed_queries() {
-            if !cs.has_simple_selector_col(col.index()) {
-                fixed[col.index()].rotations.push(rot.0 as isize);
-            }
+            fixed[col.index()].rotations.push(rot.0 as isize);
         }
         fixed
     };
@@ -877,7 +875,7 @@ mod tests {
 
         let model = circuit_model::<_, KZGCommitmentScheme<Bls12>>(&NoCopyConstraints, 0);
         assert_eq!(model.permutations, 0);
-        // The advice and fixed queries, and the linearization polynomial's.
+        // The advice and fixed queries, and the quotient polynomial's.
         assert_eq!(model.column_queries, 3);
 
         let k = 6;

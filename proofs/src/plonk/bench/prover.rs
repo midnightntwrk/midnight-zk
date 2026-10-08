@@ -1,6 +1,6 @@
 //! Benchmarking utilities for the PLONK prover.
 
-use std::{collections::BTreeMap, hash::Hash};
+use std::{collections::BTreeMap, hash::Hash, iter};
 
 use criterion::BenchmarkGroup;
 use ff::{FromUniformBytes, WithSmallOrderMulGroup};
@@ -13,8 +13,7 @@ use crate::{
     plonk::{
         Error, ProvingKey, argument,
         circuit::Circuit,
-        linearization::prover::compute_linearization_poly,
-        logup, partially_evaluate_identities,
+        logup,
         prover::{
             compute_h_poly, compute_instances, compute_nu_poly, compute_queries, parse_advices,
             write_instance_evals_to_transcript,
@@ -26,7 +25,6 @@ use crate::{
         commitment::PolynomialCommitmentScheme,
     },
     transcript::{Hashable, Sampleable, Transcript},
-    utils::arithmetic::eval_polynomial,
 };
 
 /// The polynomials of one argument phase group, keyed by their label.
@@ -482,11 +480,6 @@ where
         phase0_committed,
         phase1_committed,
         phase2_committed,
-        beta,
-        gamma,
-        theta,
-        trash_challenge,
-        y,
         ..
     } = trace;
 
@@ -515,7 +508,7 @@ where
             criterion::BatchSize::SmallInput,
         )
     });
-    let instance_evals = write_instance_evals_to_transcript(
+    write_instance_evals_to_transcript(
         pk,
         nb_committed_instances,
         &instance_polys,
@@ -540,65 +533,16 @@ where
     let phase1_evaluated = phase1_committed.evaluate(cs, &x_rotations, transcript)?;
     let phase2_evaluated = phase2_committed.evaluate(cs, &x_rotations, transcript)?;
 
-    // Partially evaluate batched identities (without fixed columns
-    // corresponding to simple, multiplicative selectors)
+    // h(X) = h_0(X) + x^{n-1} h_1(X) + ..., scaled by (1 - x^n): the
+    // polynomial behind the verifier's quotient commitment, which opens to
+    // -nu(x) at x.
     let splitting_factor = x.pow_vartime([pk.vk.n() - 1]);
     let xn = splitting_factor * x;
-    let expressions = {
-        group.bench_function("Partially evaluate identities", |b| {
-            b.iter(|| {
-                let _ = partially_evaluate_identities(
-                    &pk.vk,
-                    &instance_evals,
-                    &phase0_evaluated.evals_map,
-                    &phase1_evaluated.evals_map,
-                    &phase2_evaluated.evals_map,
-                    x,
-                    xn,
-                    beta,
-                    gamma,
-                    theta,
-                    trash_challenge,
-                );
-            })
+    let quotient_poly = iter::successors(Some(xn - F::ONE), |pow| Some(*pow * splitting_factor))
+        .zip(quotient_limbs)
+        .fold(Polynomial::init(0), |acc, (scalar, limb)| {
+            acc.padded_sub(&(limb * scalar))
         });
-        partially_evaluate_identities(
-            &pk.vk,
-            &instance_evals,
-            &phase0_evaluated.evals_map,
-            &phase1_evaluated.evals_map,
-            &phase2_evaluated.evals_map,
-            x,
-            xn,
-            beta,
-            gamma,
-            theta,
-            trash_challenge,
-        )
-    };
-
-    // Compute linearization polynomial
-    let (lin_poly_non_constant_part, lin_poly_constant_term) = {
-        group.bench_function("Compute linearization poly", |b| {
-            b.iter(|| {
-                let _ = compute_linearization_poly(
-                    expressions.clone(),
-                    pk,
-                    y,
-                    xn,
-                    splitting_factor,
-                    quotient_limbs.clone(),
-                );
-            })
-        });
-        compute_linearization_poly(expressions, pk, y, xn, splitting_factor, quotient_limbs)
-    };
-
-    debug_assert_eq!(
-        eval_polynomial(&lin_poly_non_constant_part, x),
-        -lin_poly_constant_term,
-        "L'(x) should equal -C, where C is the constant part of the linearization polynomial"
-    );
 
     let instance_labels: Vec<_> = (0..nb_committed_instances)
         .map(|i| [PolynomialLabel::CommittedInstance(i)])
@@ -614,7 +558,7 @@ where
                     &phase1_evaluated,
                     &phase2_evaluated,
                     &x_rotations,
-                    &lin_poly_non_constant_part,
+                    &quotient_poly,
                 );
             })
         });
@@ -626,7 +570,7 @@ where
             &phase1_evaluated,
             &phase2_evaluated,
             &x_rotations,
-            &lin_poly_non_constant_part,
+            &quotient_poly,
         )
     };
 

@@ -465,7 +465,7 @@ pub(crate) fn multi_prepare_kzg<S: SelfEmulation>(
     let x2 = transcript_gadget.squeeze_challenge(layouter)?;
 
     // Peel each query's multi-commitment down to the single inner commitment it
-    // targets, keyed by the query label. The `Linear` linearization commitment
+    // targets, keyed by the query label. The `Linear` quotient commitment
     // aggregates many polynomials and carries no single label of its own, so it
     // is taken as it is. Every `Simple` has to name the queried polynomial,
     // whether it stands alone or in a batch: matching on the label rather than
