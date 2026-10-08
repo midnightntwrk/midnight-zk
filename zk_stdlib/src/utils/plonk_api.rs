@@ -29,7 +29,7 @@ use midnight_proofs::{
         Circuit, Error, ProvingKey, VerifyingKey, create_proof, keygen_pk, keygen_vk, prepare,
     },
     poly::{
-        commitment::Guard,
+        commitment::{Guard, PolynomialCommitmentScheme},
         kzg::{
             KZGCommitmentScheme,
             commitment::KZGMultiCommitment,
@@ -293,9 +293,10 @@ fn midnight_srs(k: u32) -> ParamsKZG<Bls12> {
         )
     });
 
-    ParamsKZG::read_custom::<_>(
+    KZGCommitmentScheme::<Bls12>::load_params(
         &mut BufReader::new(params_fs),
         SerdeFormat::RawBytesUnchecked,
+        k,
     )
     .expect("Failed to read SRS params")
 }
@@ -327,15 +328,14 @@ or, if you don't trust the source, download it from IPFS and parse it (this migh
             * Run the binary to parse it `cargo run --example parse_filecoin_srs --release`
         \n"));
 
-    let mut params = ParamsKZG::read_custom::<_>(
+    let params = KZGCommitmentScheme::<Bls12>::load_params(
         &mut BufReader::new(params_fs),
         SerdeFormat::RawBytesUnchecked,
+        k,
     )
     .expect("Failed to read params");
 
     if downsize {
-        params.downsize(k);
-
         let mut buf = Vec::new();
 
         params
