@@ -149,6 +149,10 @@ pub trait InCircuitPCS<S: SelfEmulation>: Sized + Clone + Debug {
         commitment: &Self::AssignedCommitment,
     ) -> Result<(), Error>;
 
+    /// The labels `commitment` tags its polynomials with. Mirrors
+    /// [`midnight_proofs::poly::commitment::PolynomialCommitmentScheme::commitment_labels`].
+    fn commitment_labels(commitment: &Self::AssignedCommitment) -> Vec<PolynomialLabel>;
+
     /// Squeezes the point at which the protocol opens its committed
     /// polynomials. The default squeezes a plain challenge; fflonk needs a
     /// `t`-th power. Mirrors

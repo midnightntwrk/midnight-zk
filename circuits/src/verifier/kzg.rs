@@ -703,6 +703,15 @@ impl<S: SelfEmulation> InCircuitPCS<S> for InCircuitKZG<S> {
         transcript.common_commitment(layouter, commitment)
     }
 
+    fn commitment_labels(commitment: &Self::AssignedCommitment) -> Vec<PolynomialLabel> {
+        (commitment.0.iter())
+            .flat_map(|c| match c {
+                AssignedKZGCommitment::Simple(_, label) => vec![label.clone()],
+                AssignedKZGCommitment::Linear(_, _, labels) => labels.clone(),
+            })
+            .collect()
+    }
+
     fn multi_prepare(
         layouter: &mut impl Layouter<S::F>,
         _curve_chip: &S::CurveChip,
