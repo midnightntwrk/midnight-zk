@@ -194,6 +194,15 @@ where
         transcript.write(commitment)
     }
 
+    fn commitment_to_zero(labels: &[PolynomialLabel]) -> Self::Commitment {
+        PolynomialLabel::assert_distinct(labels);
+        KZGMultiCommitment(
+            (labels.iter())
+                .map(|label| KZGCommitment::Simple(E::G1::identity(), label.clone()))
+                .collect(),
+        )
+    }
+
     fn commitment_labels(commitment: &Self::Commitment) -> Vec<PolynomialLabel> {
         (commitment.0.iter())
             .flat_map(|c| match c {
