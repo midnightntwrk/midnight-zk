@@ -121,6 +121,19 @@ pub trait InCircuitPCS<S: SelfEmulation>: Sized + Clone + Debug {
         label: PolynomialLabel,
     ) -> Result<Self::AssignedCommitment, Error>;
 
+    /// The commitment to the zero polynomial under each of `labels`, as
+    /// [`midnight_proofs::poly::commitment::PolynomialCommitmentScheme::commitment_to_zero`].
+    /// Used e.g. for empty committed-instance columns.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a label is repeated.
+    fn commitment_to_zero(
+        layouter: &mut impl Layouter<S::F>,
+        curve_chip: &S::CurveChip,
+        labels: &[PolynomialLabel],
+    ) -> Result<Self::AssignedCommitment, Error>;
+
     /// Reads one commitment to `labels.len()` polynomials from the proof
     /// transcript, tagging each polynomial with its label.
     fn read_commitment(

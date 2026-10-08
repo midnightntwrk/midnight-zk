@@ -20,7 +20,7 @@ use midnight_circuits::{
     hash::poseidon::{PoseidonChip, PoseidonState},
     instructions::{hash::HashCPU, *},
     types::{AssignedNative, Instantiable},
-    verifier::{self, Accumulator, AssignedAccumulator, AssignedKZGMultiCommitment},
+    verifier::{self, Accumulator, AssignedAccumulator, InCircuitKZG, InCircuitPCS},
 };
 use midnight_proofs::{
     circuit::{Layouter, Value},
@@ -368,10 +368,10 @@ impl IvcTransition for ProofAggregation {
 
         // 3. Verify the inner proof in-circuit against the witnessed VK and statement.
         let inner_proof_acc = {
-            let instance_com = AssignedKZGMultiCommitment::commitment_to_zero(
+            let instance_com = InCircuitKZG::<S>::commitment_to_zero(
                 layouter,
                 self.std_lib.bls12_381(),
-                PolynomialLabel::CommittedInstance(0),
+                &[PolynomialLabel::CommittedInstance(0)],
             )?;
             let mut acc = self.std_lib.verifier().prepare(
                 layouter,

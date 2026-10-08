@@ -12,10 +12,7 @@
 use midnight_circuits::{
     instructions::{BinaryInstructions, PublicInputInstructions},
     types::Instantiable,
-    verifier::{
-        Accumulator, AssignedAccumulator, AssignedKZGMultiCommitment, AssignedVk, InCircuitKZG,
-        InCircuitPCS,
-    },
+    verifier::{Accumulator, AssignedAccumulator, AssignedVk, InCircuitKZG, InCircuitPCS},
 };
 use midnight_proofs::{
     circuit::{Layouter, Value},
@@ -196,10 +193,10 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
         ]
         .concat();
 
-        let instance_com = AssignedKZGMultiCommitment::commitment_to_zero(
+        let instance_com = InCircuitKZG::<S>::commitment_to_zero(
             layouter,
             std_lib.bls12_381(),
-            PolynomialLabel::CommittedInstance(0),
+            &[PolynomialLabel::CommittedInstance(0)],
         )?;
 
         // Verify a witnessed proof that ensures the validity of `prev_state`.
