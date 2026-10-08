@@ -18,7 +18,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 
 ### Changed
-* Remove the linearization from the verifier gadget, mirroring `midnight-proofs`: the simple selectors are opened through the phase-0 group and `AssignedVk` no longer holds one commitment per simple selector [#TBD](https://github.com/midnightntwrk/midnight-zk/pull/TBD)
+* Remove the linearization from the verifier gadget, mirroring `midnight-proofs`: the simple selectors are opened through the phase-0 group and `AssignedVk` no longer holds one commitment per simple selector [#566](https://github.com/midnightntwrk/midnight-zk/pull/566)
 * `PreComputedRoundCPU::init` derives Poseidon's CPU partial-round pre-computation once per field and caches it [#527](https://github.com/midnightntwrk/midnight-zk/pull/527)
 * Change the signature of `ForeignEdwardsEccChip::from_canonical_compressed_bytes` to derive the subgroup point from assigned bytes instead of requiring a caller-supplied point witness [#540](https://github.com/midnightntwrk/midnight-zk/pull/540)
 * `verifier::fixed_bases` reads the fixed bases from `VerifyingKey::phase0_commitment` and `VerifyingKey::simple_selector_commitments` [#547](https://github.com/midnightntwrk/midnight-zk/pull/547)
