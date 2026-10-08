@@ -846,7 +846,8 @@ pub(crate) mod tests {
         plonk::{Circuit, Constraints, Error, create_proof, keygen_pk, keygen_vk_with_k, prepare},
         poly::{
             PolynomialLabel,
-            kzg::{KZGCommitmentScheme, commitment::KZGMultiCommitment, params::ParamsKZG},
+            commitment::PolynomialCommitmentScheme,
+            kzg::{commitment::KZGMultiCommitment, msm::DualMSM, params::ParamsKZG},
         },
         transcript::{CircuitTranscript, Transcript},
     };
@@ -880,10 +881,7 @@ pub(crate) mod tests {
         },
         testing_utils::FromScratch,
         types::{ComposableChip, Instantiable},
-        verifier::{
-            AssignedKZGCommitment, BlstrsEmulation, InCircuitKZG, accumulator::Accumulator,
-            kzg::AssignedKZGMultiCommitment,
-        },
+        verifier::{BlstrsEmulation, InCircuitKZG, accumulator::Accumulator},
     };
 
     type S = BlstrsEmulation;
@@ -961,16 +959,17 @@ pub(crate) mod tests {
         }
     }
 
+    /// Verifies in-circuit a proof of [`InnerCircuit`] made with `PCS`.
     #[derive(Clone, Debug)]
-    pub struct TestCircuit {
+    pub struct TestCircuit<PCS: InCircuitPCS<S>> {
         // (cs, vk)
-        inner_vk: (ConstraintSystem<F>, Value<VerifyingKey<S, InCircuitKZG<S>>>),
+        inner_vk: (ConstraintSystem<F>, Value<VerifyingKey<S, PCS>>),
         inner_committed_instance: Value<C>,
         inner_instances: Value<[F; NB_INNER_INSTANCES]>,
         inner_proof: Value<Vec<u8>>,
     }
 
-    impl Circuit<F> for TestCircuit {
+    impl<PCS: InCircuitPCS<S>> Circuit<F> for TestCircuit<PCS> {
         type Config = (
             NativeConfig,
             P2RDecompositionConfig,
@@ -1059,20 +1058,18 @@ pub(crate) mod tests {
             let verifier_chip =
                 VerifierGadget::<S>::new(&curve_chip, &native_gadget, &poseidon_chip);
 
-            let assigned_inner_vk: AssignedVk<S, InCircuitKZG<S>> = verifier_chip
-                .assign_vk_as_public_input(
-                    &mut layouter,
-                    self.inner_vk.1.as_ref(),
-                    &self.inner_vk.0,
-                )?;
+            let assigned_inner_vk: AssignedVk<S, PCS> = verifier_chip.assign_vk_as_public_input(
+                &mut layouter,
+                self.inner_vk.1.as_ref(),
+                &self.inner_vk.0,
+            )?;
 
-            let assigned_committed_instance =
-                AssignedKZGMultiCommitment(vec![AssignedKZGCommitment::assign(
-                    &mut layouter,
-                    &curve_chip,
-                    self.inner_committed_instance,
-                    PolynomialLabel::CommittedInstance(0),
-                )?]);
+            let assigned_committed_instance = PCS::assign_commitment(
+                &mut layouter,
+                &curve_chip,
+                self.inner_committed_instance,
+                PolynomialLabel::CommittedInstance(0),
+            )?;
 
             let assigned_inner_pi = native_gadget
                 .assign_many(&mut layouter, &self.inner_instances.transpose_array())?;
@@ -1093,14 +1090,29 @@ pub(crate) mod tests {
         }
     }
 
-    #[test]
-    fn test_verify_proof() {
+    /// Proves [`InnerCircuit`] with `PCS::OffCircuit` and verifies the proof
+    /// in-circuit with `PCS`. `log2_t_max` is the extra SRS room the scheme
+    /// needs on top of the circuit size.
+    fn check_self_verification<PCS>(log2_t_max: u32)
+    where
+        PCS: InCircuitPCS<S>,
+        PCS::OffCircuit: PolynomialCommitmentScheme<
+                F,
+                Parameters = ParamsKZG<E>,
+                Commitment = KZGMultiCommitment<E>,
+                VerificationGuard = DualMSM<E>,
+            >,
+    {
         let mut rng = ChaCha8Rng::from_seed([0u8; 32]);
 
         let inner_k = 10;
-        let inner_params = ParamsKZG::unsafe_setup(inner_k, &mut rng);
-
-        let inner_vk = keygen_vk_with_k(&inner_params, &InnerCircuit::default(), inner_k).unwrap();
+        let inner_params = ParamsKZG::unsafe_setup(inner_k + log2_t_max, &mut rng);
+        let inner_vk = keygen_vk_with_k::<_, PCS::OffCircuit, _>(
+            &inner_params,
+            &InnerCircuit::default(),
+            inner_k,
+        )
+        .unwrap();
         let inner_pk = keygen_pk(inner_vk.clone(), &InnerCircuit::default()).unwrap();
 
         let preimage = [F::random(&mut rng), F::random(&mut rng)];
@@ -1109,12 +1121,7 @@ pub(crate) mod tests {
 
         let inner_proof = {
             let mut transcript = CircuitTranscript::<PoseidonState<F>>::init();
-            create_proof::<
-                F,
-                KZGCommitmentScheme<E>,
-                CircuitTranscript<PoseidonState<F>>,
-                InnerCircuit,
-            >(
+            create_proof::<F, PCS::OffCircuit, CircuitTranscript<PoseidonState<F>>, InnerCircuit>(
                 &inner_params,
                 &inner_pk,
                 &InnerCircuit::from_witness(preimage),
@@ -1130,11 +1137,11 @@ pub(crate) mod tests {
         let inner_dual_msm = {
             let mut transcript =
                 CircuitTranscript::<PoseidonState<F>>::init_from_bytes(&inner_proof);
-            prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<PoseidonState<F>>>(
+            prepare::<F, PCS::OffCircuit, CircuitTranscript<PoseidonState<F>>>(
                 &inner_vk,
-                &[KZGMultiCommitment::commitment_to_zero(
+                &[PCS::OffCircuit::commitment_to_zero(&[
                     PolynomialLabel::CommittedInstance(0),
-                )],
+                ])],
                 &[&inner_public_inputs],
                 &mut transcript,
             )
@@ -1143,7 +1150,7 @@ pub(crate) mod tests {
 
         let fixed_bases = crate::verifier::fixed_bases::<S, _>(&inner_vk);
         assert_eq!(
-            crate::verifier::fixed_base_labels::<S, KZGCommitmentScheme<E>>(inner_vk.cs()),
+            crate::verifier::fixed_base_labels::<S, PCS::OffCircuit>(inner_vk.cs()),
             fixed_bases.keys().cloned().collect::<Vec<_>>()
         );
 
@@ -1158,10 +1165,10 @@ pub(crate) mod tests {
         // The inner proof is ready.
         // Now, let us make a proof that we know an inner proof.
 
-        let mut public_inputs = AssignedVk::<S, InCircuitKZG<S>>::as_public_input(&inner_vk);
+        let mut public_inputs = AssignedVk::<S, PCS>::as_public_input(&inner_vk);
         public_inputs.extend(AssignedAccumulator::as_public_input(&inner_acc));
 
-        let circuit = TestCircuit {
+        let circuit = TestCircuit::<PCS> {
             inner_vk: (inner_vk.cs().clone(), Value::known(inner_vk.clone())),
             inner_committed_instance: Value::known(C::identity()),
             inner_instances: Value::known([output]),
@@ -1171,5 +1178,10 @@ pub(crate) mod tests {
         let prover =
             MockProver::run(&circuit, vec![vec![], public_inputs]).expect("MockProver failed");
         prover.assert_satisfied();
+    }
+
+    #[test]
+    fn test_verify_proof() {
+        check_self_verification::<InCircuitKZG<S>>(0);
     }
 }
