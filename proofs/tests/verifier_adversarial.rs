@@ -1,7 +1,7 @@
 //! The verifier must reject a malformed proof with an error, never panic: it
 //! verifies proofs from untrusted provers. A prover chooses the evaluations it
 //! writes after `x`, so it can make any expression of them take a chosen value
-//! - here `−β`, which zeroes a logup input `f + β`.
+//! (here `−β`, which zeroes a logup input `f + β`).
 
 use std::{
     io::{self, Cursor},
