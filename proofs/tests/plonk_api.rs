@@ -407,7 +407,7 @@ fn plonk_api() {
     }
 
     macro_rules! bad_keys {
-        ($field: ident, $scheme:ident) => {{
+        ($field: ident, $scheme:ty) => {{
             let (_, _, lookup_table) = common!($field);
             let empty_circuit: MyCircuit<$field> = MyCircuit {
                 a: Value::unknown(),
@@ -554,20 +554,24 @@ fn plonk_api() {
         &proof[..],
     );
 
-    // fflonk combining up to 4 polynomials.
-    type FflonkScheme = Fflonk<Scheme, 2>;
-    bad_keys!(Scalar, FflonkScheme);
+    // fflonk combining up to 2 and up to 4 polynomials.
+    fn fflonk_roundtrip<const LOG2_T_MAX: u32>() {
+        bad_keys!(Scalar, Fflonk<Scheme, LOG2_T_MAX>);
 
-    let mut params = FflonkScheme::gen_params(K);
+        let mut params = Fflonk::<Scheme, LOG2_T_MAX>::gen_params(K);
 
-    let pk = keygen::<Scalar, FflonkScheme>(&mut params);
+        let pk = keygen::<Scalar, Fflonk<Scheme, LOG2_T_MAX>>(&mut params);
 
-    let proof =
-        create_proof::<Scalar, FflonkScheme, CircuitTranscript<State>, _>(rng, &params, &pk);
+        let proof = create_proof::<Scalar, Fflonk<Scheme, LOG2_T_MAX>, CircuitTranscript<State>, _>(
+            OsRng, &params, &pk,
+        );
 
-    verify_proof::<_, _, CircuitTranscript<State>>(
-        &params.verifier_params(),
-        pk.get_vk(),
-        &proof[..],
-    );
+        verify_proof::<_, _, CircuitTranscript<State>>(
+            &params.verifier_params(),
+            pk.get_vk(),
+            &proof[..],
+        );
+    }
+    fflonk_roundtrip::<1>();
+    fflonk_roundtrip::<2>();
 }
