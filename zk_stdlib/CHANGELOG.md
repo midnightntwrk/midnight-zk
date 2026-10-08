@@ -16,12 +16,13 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Add `PartialEq` impl for `AssignedBigUint` [#259](https://github.com/midnightntwrk/midnight-zk/pull/259)
 * BREAKING: Implemented linearization prover [#190](https://github.com/midnightntwrk/midnight-zk/pull/190)
 * `DefaultPCS`, the polynomial commitment scheme of zk_stdlib, currently `KZGCommitmentScheme<Bls12>` [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
+* `MidnightPCS`, the catalog of the polynomial commitment schemes supported by zk_stdlib (KZG and fflonk over KZG), with `srs_k`, the size of the SRS for a given circuit size [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
 
 ### Fixed
 * Fix cost model proof size check to account for committed instance columns [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 
 ### Changed
-* `load_srs` loads the SRS through `DefaultPCS::load_params` [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
+* BREAKING: `load_srs::<PCS>` is generic over a `MidnightPCS`: it loads the SRS of size `2^PCS::srs_k(k)` through `PCS::load_params` [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
 * `setup_vk` derives the circuit size from `DefaultPCS::max_k` [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
 * Update `cardano_signature` example to match the new `ForeignEdwardsEccChip::from_canonical_compressed_bytes` signature [#540](https://github.com/midnightntwrk/midnight-zk/pull/540)
 * Update the verifying keys following the new verifying-key layout of `midnight-proofs`, which commits to the fixed columns as one group [#547](https://github.com/midnightntwrk/midnight-zk/pull/547)

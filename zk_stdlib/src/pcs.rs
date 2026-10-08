@@ -13,8 +13,34 @@
 
 //! The polynomial commitment schemes of zk_stdlib.
 
-use midnight_curves::Bls12;
-use midnight_proofs::poly::kzg::KZGCommitmentScheme;
+use midnight_curves::{Bls12, Fq};
+use midnight_proofs::poly::{
+    commitment::PolynomialCommitmentScheme,
+    fflonk::Fflonk,
+    kzg::{KZGCommitmentScheme, params::ParamsKZG},
+};
 
 /// The polynomial commitment scheme of zk_stdlib.
 pub type DefaultPCS = KZGCommitmentScheme<Bls12>;
+
+/// The catalog of polynomial commitment schemes supported by zk_stdlib: KZG
+/// and fflonk over KZG, for any `LOG2_T_MAX`. Their parameters are a KZG SRS
+/// over BLS12-381.
+pub trait MidnightPCS: PolynomialCommitmentScheme<Fq, Parameters = ParamsKZG<Bls12>> {
+    /// The size of the SRS for circuits of size `2^k`, as the exponent `j`
+    /// such that the SRS has `2^j` points. It is the inverse of
+    /// [`PolynomialCommitmentScheme::max_k`].
+    fn srs_k(k: u32) -> u32;
+}
+
+impl MidnightPCS for KZGCommitmentScheme<Bls12> {
+    fn srs_k(k: u32) -> u32 {
+        k
+    }
+}
+
+impl<const LOG2_T_MAX: u32> MidnightPCS for Fflonk<KZGCommitmentScheme<Bls12>, LOG2_T_MAX> {
+    fn srs_k(k: u32) -> u32 {
+        k + LOG2_T_MAX
+    }
+}

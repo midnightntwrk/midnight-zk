@@ -29,7 +29,7 @@ use midnight_proofs::{
         Circuit, Error, ProvingKey, VerifyingKey, create_proof, keygen_pk, keygen_vk, prepare,
     },
     poly::{
-        commitment::{Guard, PolynomialCommitmentScheme},
+        commitment::Guard,
         kzg::{
             commitment::KZGMultiCommitment,
             params::{ParamsKZG, ParamsVerifierKZG},
@@ -41,7 +41,7 @@ use midnight_proofs::{
 use rand::{CryptoRng, RngCore};
 use sha2::Digest;
 
-use crate::{DefaultPCS, MidnightVK, Relation, cost_model, optimal_k};
+use crate::{DefaultPCS, MidnightPCS, MidnightVK, Relation, cost_model, optimal_k};
 
 macro_rules! plonk_api {
     ($name:ident, $engine:ty, $native:ty, $curve:ty, $projective:ty) => {
@@ -252,11 +252,12 @@ pub enum SrsSource {
     Midnight,
 }
 
-/// Loads an SRS (over BLS12-381) for the given circuit size `k`.
-pub fn load_srs(source: SrsSource, k: u32) -> ParamsKZG<Bls12> {
+/// Loads an SRS (over BLS12-381) for circuits of size `2^k` under the
+/// commitment scheme `PCS`.
+pub fn load_srs<PCS: MidnightPCS>(source: SrsSource, k: u32) -> ParamsKZG<Bls12> {
     match source {
-        SrsSource::Filecoin => filecoin_srs(k),
-        SrsSource::Midnight => midnight_srs(k),
+        SrsSource::Filecoin => filecoin_srs::<PCS>(k),
+        SrsSource::Midnight => midnight_srs::<PCS>(k),
     }
 }
 
@@ -264,30 +265,32 @@ pub fn load_srs(source: SrsSource, k: u32) -> ParamsKZG<Bls12> {
 /// If `k` is `None`, the optimal circuit size is derived automatically.
 pub fn srs_for_test<R: Relation>(relation: &R, k: Option<u32>) -> ParamsKZG<Bls12> {
     let k = k.unwrap_or_else(|| optimal_k(relation));
-    load_srs(SrsSource::Filecoin, k)
+    load_srs::<DefaultPCS>(SrsSource::Filecoin, k)
 }
 
-/// Loads Midnight's production SRS (over BLS12-381) for the given circuit
-/// size `k` (log2 of the number of rows).
+/// Loads Midnight's production SRS (over BLS12-381) for circuits of size `2^k`
+/// under the commitment scheme `PCS`.
 ///
-/// The SRS files are expected at `$SRS_DIR/midnight-srs-2p<k>`.
+/// The SRS files are expected at `$SRS_DIR/midnight-srs-2p<j>`, for
+/// `j = PCS::srs_k(k)`.
 ///
 /// For checksums and extra validation steps, see `MIDNIGHT_SRS_CATALOG.md` in
 /// the official repository of the Midnight trusted ceremony:
 /// <https://github.com/midnightntwrk/midnight-trusted-setup>
-fn midnight_srs(k: u32) -> ParamsKZG<Bls12> {
+fn midnight_srs<PCS: MidnightPCS>(k: u32) -> ParamsKZG<Bls12> {
+    let j = PCS::srs_k(k);
     let srs_dir = env::var("SRS_DIR").unwrap_or("./examples/assets".into());
-    let srs_path = format!("{srs_dir}/midnight-srs-2p{k}");
+    let srs_path = format!("{srs_dir}/midnight-srs-2p{j}");
 
     let params_fs = File::open(Path::new(&srs_path)).unwrap_or_else(|_| {
         panic!(
             "\nSRS file not found at {srs_path}. Download it with:\
              \n\n    curl -L -o {srs_path} \
-             https://srs.midnight.network/midnight-srs-2p{k}\n"
+             https://srs.midnight.network/midnight-srs-2p{j}\n"
         )
     });
 
-    DefaultPCS::load_params(
+    PCS::load_params(
         &mut BufReader::new(params_fs),
         SerdeFormat::RawBytesUnchecked,
         k,
@@ -295,14 +298,19 @@ fn midnight_srs(k: u32) -> ParamsKZG<Bls12> {
     .expect("Failed to read SRS params")
 }
 
-/// Loads Filecoin's production SRS (over BLS12-381) for the given circuit
-/// size `k` (log2 of the number of rows).
-fn filecoin_srs(k: u32) -> ParamsKZG<Bls12> {
-    assert!(k <= 19, "We don't have an SRS for circuits of bit size {k}");
+/// Loads Filecoin's production SRS (over BLS12-381) for circuits of size `2^k`
+/// under the commitment scheme `PCS`.
+///
+/// The SRS is read from `$SRS_DIR/bls_filecoin_2p<j>`, for `j = PCS::srs_k(k)`.
+/// If that file is missing, it is downsized from `bls_filecoin_2p19` and
+/// written there.
+fn filecoin_srs<PCS: MidnightPCS>(k: u32) -> ParamsKZG<Bls12> {
+    let j = PCS::srs_k(k);
+    assert!(j <= 19, "We don't have an SRS of size 2^{j}");
 
     let srs_dir = env::var("SRS_DIR").unwrap_or("./examples/assets".into());
 
-    let srs_path = format!("{srs_dir}/bls_filecoin_2p{k:?}");
+    let srs_path = format!("{srs_dir}/bls_filecoin_2p{j:?}");
     let mut fetching_path = srs_path.clone();
 
     let downsize = !Path::new(fetching_path.as_str()).exists();
@@ -322,7 +330,7 @@ or, if you don't trust the source, download it from IPFS and parse it (this migh
             * Run the binary to parse it `cargo run --example parse_filecoin_srs --release`
         \n"));
 
-    let params = DefaultPCS::load_params(
+    let params = PCS::load_params(
         &mut BufReader::new(params_fs),
         SerdeFormat::RawBytesUnchecked,
         k,

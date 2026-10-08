@@ -38,7 +38,7 @@ use midnight_circuits::{
     verifier::{BlstrsEmulation, SelfEmulation},
 };
 use midnight_zk_stdlib::{
-    ZkStdLibArch, prove, setup_pk, setup_vk,
+    DefaultPCS, ZkStdLibArch, prove, setup_pk, setup_vk,
     utils::plonk_api::{SrsSource, load_srs},
 };
 use rand::rngs::OsRng;
@@ -64,10 +64,10 @@ fn main() {
     // The IVC aggregator only requires a shared SRS and architecture. It does
     // not need to know which circuits will be aggregated. Inner circuits can be
     // introduced, proved and folded in on-the-fly, after IVC initialization.
-    let inner_srs = load_srs(SrsSource::Filecoin, INNER_K);
+    let inner_srs = load_srs::<DefaultPCS>(SrsSource::Filecoin, INNER_K);
     let inner_ctx = InnerCircuitsContext::new(inner_arch(), INNER_K, inner_srs.verifier_params());
 
-    let aggregator_srs = load_srs(SrsSource::Midnight, IVC_K);
+    let aggregator_srs = load_srs::<DefaultPCS>(SrsSource::Midnight, IVC_K);
     let start = Instant::now();
     let (mut aggregator, verifier) = ProofAggregation::setup(aggregator_srs, IVC_K, inner_ctx);
     println!("Aggregator setup completed in {:.2?}\n", start.elapsed());

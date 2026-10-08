@@ -20,7 +20,7 @@ use midnight_proofs::{
     plonk::Error,
 };
 use midnight_zk_stdlib::{
-    ZkStdLib, ZkStdLibArch,
+    DefaultPCS, ZkStdLib, ZkStdLibArch,
     utils::plonk_api::{SrsSource, load_srs},
 };
 
@@ -172,7 +172,7 @@ fn main() {
     const N: usize = 1_000; // Number of Poseidon iteration per IVC step.
     const STEPS: usize = 3; // Number of IVC steps to run.
 
-    let srs = load_srs(SrsSource::Midnight, K);
+    let srs = load_srs::<DefaultPCS>(SrsSource::Midnight, K);
 
     let start = Instant::now();
     let (mut prover, verifier) = ivc::setup::<PoseidonChain<N>>(srs, K, ());
