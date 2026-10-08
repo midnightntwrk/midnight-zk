@@ -126,9 +126,21 @@ impl Neg for Fp2 {
 
     #[inline]
     fn neg(mut self) -> Fp2 {
-        unsafe { blst_fp2_cneg(&mut self.0, &self.0, true) };
+        fp2_neg_assign(&mut self.0);
         self
     }
+}
+
+/// In-place negation, shared by the `Fp6`/`Fp12` `Neg` impls. Negating via
+/// `Fp2` values instead (`array::map`) costs 2.5-3.8x in stack copies that
+/// LLVM cannot elide around the opaque FFI call.
+#[inline]
+pub(crate) fn fp2_neg_assign(x: &mut blst_fp2) {
+    let p: *mut blst_fp2 = x;
+    // SAFETY: `p` comes from a live `&mut`, so it is valid and unaliased by
+    // Rust. In `blst_fp2_cneg(ret, a, flag)` the output may be the input: blst
+    // itself negates in place (`cneg_fp2(p->Y, p->Y, ..)`, e2.c).
+    unsafe { blst_fp2_cneg(p, p, true) };
 }
 
 impl Add<&Fp2> for &Fp2 {
