@@ -19,6 +19,7 @@
 use std::collections::{BTreeMap, HashSet, btree_map::Entry};
 
 use ff::Field;
+use group::Group;
 use midnight_curves::msm::msm_best;
 use midnight_proofs::{
     circuit::{Layouter, Value},
@@ -28,7 +29,7 @@ use midnight_proofs::{
 
 use crate::{
     field::AssignedNative,
-    instructions::PublicInputInstructions,
+    instructions::{AssignmentInstructions, PublicInputInstructions},
     types::{InnerValue, Instantiable},
     verifier::{
         types::SelfEmulation,
@@ -622,7 +623,12 @@ impl<S: SelfEmulation> AssignedMsm<S> {
         let mut scalars: Vec<_> = fixed_base_scalars.values().cloned().collect();
         let mut labels: Vec<_> = fixed_base_scalars.keys().cloned().collect();
 
-        let collapsed_base = S::msm(layouter, curve_chip, &variable_scalars, &variable_bases)?;
+        // An MSM of fixed terms only collapses to the identity, as off-circuit.
+        let collapsed_base = if variable_bases.is_empty() {
+            curve_chip.assign_fixed(layouter, S::C::identity())?
+        } else {
+            S::msm(layouter, curve_chip, &variable_scalars, &variable_bases)?
+        };
         bases.push(AssignedPoint::Variable(collapsed_base));
         scalars.push(AssignedBoundedScalar::one(layouter, scalar_chip)?);
         labels.push(label);
