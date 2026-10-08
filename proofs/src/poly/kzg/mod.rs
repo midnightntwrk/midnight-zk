@@ -403,6 +403,8 @@ where
         // `Simple` has to name the queried polynomial, whether it stands alone
         // or in a batch: matching on the label rather than on the position keeps
         // a malformed group from aliasing every query onto the same point.
+        // A query naming a polynomial its group lacks (e.g. a mislabelled
+        // committed instance) is malformed input: reject it, never panic.
         let label_to_commitment: HashMap<PolynomialLabel, &KZGCommitment<E>> = queries
             .iter()
             .map(|q| {
@@ -412,11 +414,11 @@ where
                     _ => inners
                         .iter()
                         .find(|c| matches!(c, KZGCommitment::Simple(_, label) if *label == q.label))
-                        .expect("batched commitment has no polynomial matching the query label"),
+                        .ok_or(Error::OpeningError)?,
                 };
-                (q.label.clone(), inner)
+                Ok((q.label.clone(), inner))
             })
-            .collect();
+            .collect::<Result<_, Error>>()?;
 
         let kzg_queries = queries
             .iter()
@@ -621,7 +623,6 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "batched commitment has no polynomial matching the query label")]
     fn test_query_on_empty_commitment_group() {
         use ff::Field;
         use midnight_curves::{Bls12, Fq};
@@ -634,8 +635,13 @@ mod tests {
             Fq::ONE,
         );
 
+        // A query naming a polynomial its commitment group lacks is malformed
+        // input: the verifier rejects it rather than panicking.
         let mut transcript = CircuitTranscript::<Blake2bState>::init();
-        let _ = KZGCommitmentScheme::<Bls12>::multi_prepare(&[query], 4, &mut transcript);
+        assert!(matches!(
+            KZGCommitmentScheme::<Bls12>::multi_prepare(&[query], 4, &mut transcript),
+            Err(crate::poly::Error::OpeningError)
+        ));
     }
 
     fn verify<E, T>(verifier_params: &ParamsVerifierKZG<E>, proof: &[u8], k: u32, should_fail: bool)
