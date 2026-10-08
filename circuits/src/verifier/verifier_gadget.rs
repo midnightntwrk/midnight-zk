@@ -877,7 +877,7 @@ pub(crate) mod tests {
         },
         testing_utils::FromScratch,
         types::{ComposableChip, Instantiable},
-        verifier::{BlstrsEmulation, accumulator::Accumulator},
+        verifier::{BlstrsEmulation, InCircuitFflonk, InCircuitKZG, accumulator::Accumulator},
     };
 
     type S = BlstrsEmulation;
@@ -999,6 +999,51 @@ pub(crate) mod tests {
                 >,
             >
     {
+    }
+
+    /// [`BlstrsEmulation`] verifying fflonk proofs over KZG, combining at most
+    /// `2^LOG2_T_MAX` polynomials per chunk.
+    #[derive(Clone, Debug)]
+    struct FflonkEmulation<const LOG2_T_MAX: u32>;
+
+    impl<const LOG2_T_MAX: u32> SelfEmulation for FflonkEmulation<LOG2_T_MAX> {
+        type F = F;
+        type C = C;
+        type AssignedPoint = <S as SelfEmulation>::AssignedPoint;
+        type Hash = <S as SelfEmulation>::Hash;
+        type ScalarChip = NG;
+        type CurveChip = ForeignWeierstrassEccChip<F, C, C, NG, NG>;
+        type SpongeChip = PoseidonChip<F>;
+        type G1Affine = <S as SelfEmulation>::G1Affine;
+        type G2Affine = <S as SelfEmulation>::G2Affine;
+        type Engine = E;
+
+        type PCS = InCircuitFflonk<InCircuitKZG<Self>, LOG2_T_MAX>;
+
+        fn msm(
+            layouter: &mut impl Layouter<F>,
+            curve_chip: &Self::CurveChip,
+            scalars: &[(AssignedNative<F>, usize)],
+            bases: &[Self::AssignedPoint],
+        ) -> Result<Self::AssignedPoint, Error> {
+            S::msm(layouter, curve_chip, scalars, bases)
+        }
+
+        fn constrain_scalar_as_committed_public_input(
+            layouter: &mut impl Layouter<F>,
+            scalar_chip: &Self::ScalarChip,
+            assigned_scalar: &AssignedNative<F>,
+        ) -> Result<(), Error> {
+            S::constrain_scalar_as_committed_public_input(layouter, scalar_chip, assigned_scalar)
+        }
+
+        fn assign_without_subgroup_check(
+            layouter: &mut impl Layouter<F>,
+            curve_chip: &Self::CurveChip,
+            base: Value<C>,
+        ) -> Result<Self::AssignedPoint, Error> {
+            S::assign_without_subgroup_check(layouter, curve_chip, base)
+        }
     }
 
     /// Verifies in-circuit, with `SE::PCS`, a proof of [`InnerCircuit`].
@@ -1205,5 +1250,12 @@ pub(crate) mod tests {
     #[test]
     fn test_verify_proof() {
         check_self_verification::<S>(0);
+    }
+
+    #[test]
+    fn test_verify_fflonk_proof() {
+        check_self_verification::<FflonkEmulation<0>>(0);
+        check_self_verification::<FflonkEmulation<1>>(1);
+        check_self_verification::<FflonkEmulation<2>>(2);
     }
 }

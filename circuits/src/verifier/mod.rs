@@ -27,6 +27,7 @@ mod absorbed_vk;
 mod accumulator;
 mod argument;
 mod expressions;
+mod fflonk;
 mod kzg;
 mod msm;
 pub(crate) mod pcs;
@@ -37,6 +38,7 @@ mod utils;
 mod verifier_gadget;
 
 pub use accumulator::{Accumulator, AssignedAccumulator};
+pub use fflonk::InCircuitFflonk;
 pub use kzg::{AssignedKZGCommitment, AssignedKZGMultiCommitment, InCircuitKZG};
 pub use msm::{AssignedMsm, AssignedPoint, Msm, Point};
 pub use pcs::{AssignedCommitment, CommitmentBases, InCircuitHomomorphicCommitment, InCircuitPCS};

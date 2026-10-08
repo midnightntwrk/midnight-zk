@@ -42,6 +42,9 @@ pub struct VerifierQuery<'a, S: SelfEmulation, PCS: InCircuitPCS<S> = <S as Self
     pub(crate) commitment: &'a PCS::AssignedCommitment,
     pub(crate) label: PolynomialLabel,
     pub(crate) eval: AssignedNative<S::F>,
+    /// `Some((x, t))` if `point` is one of the `t`-th roots of `x`, and the
+    /// commitment is queried at all of them.
+    pub(crate) root_of: Option<(AssignedNative<S::F>, usize)>,
 }
 
 impl<'a, S: SelfEmulation, PCS: InCircuitPCS<S>> VerifierQuery<'a, S, PCS> {
@@ -56,7 +59,17 @@ impl<'a, S: SelfEmulation, PCS: InCircuitPCS<S>> VerifierQuery<'a, S, PCS> {
             commitment,
             label,
             eval: eval.clone(),
+            root_of: None,
         }
+    }
+
+    /// Marks `self.point` as one of the `t`-th roots of `x`.
+    ///
+    /// The caller guarantees that the commitment is queried at all `t` roots of
+    /// `x`, and that `point^t = x` is constrained.
+    pub(crate) fn with_root_of(mut self, x: &AssignedNative<S::F>, t: usize) -> Self {
+        self.root_of = Some((x.clone(), t));
+        self
     }
 }
 
