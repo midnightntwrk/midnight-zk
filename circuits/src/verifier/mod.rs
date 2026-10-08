@@ -16,12 +16,7 @@
 use std::collections::BTreeMap;
 
 use group::Group;
-use midnight_proofs::{
-    circuit::Value,
-    plonk,
-    plonk::ConstraintSystem,
-    poly::{PolynomialLabel, kzg::KZGCommitmentScheme},
-};
+use midnight_proofs::{circuit::Value, plonk, plonk::ConstraintSystem, poly::PolynomialLabel};
 
 use crate::{
     field::AssignedNative,
@@ -44,14 +39,17 @@ mod verifier_gadget;
 pub use accumulator::{Accumulator, AssignedAccumulator};
 pub use kzg::{AssignedKZGCommitment, AssignedKZGMultiCommitment, InCircuitKZG};
 pub use msm::{AssignedMsm, AssignedPoint, Msm, Point};
-pub use pcs::{InCircuitHomomorphicCommitment, InCircuitPCS};
+pub use pcs::{CommitmentBases, InCircuitHomomorphicCommitment, InCircuitPCS};
 #[cfg(feature = "dev-curves")]
 pub use types::BnEmulation;
 pub use types::{BlstrsEmulation, SelfEmulation};
 pub use verifier_gadget::VerifierGadget;
 
-type VerifyingKey<S> =
-    plonk::VerifyingKey<<S as SelfEmulation>::F, KZGCommitmentScheme<<S as SelfEmulation>::Engine>>;
+/// The off-circuit verifying key of the proofs that `S` verifies in-circuit.
+type VerifyingKey<S> = plonk::VerifyingKey<
+    <S as SelfEmulation>::F,
+    <<S as SelfEmulation>::PCS as InCircuitPCS<S>>::OffCircuitPCS,
+>;
 
 /// Type for in-circuit Evaluation Domain.
 ///
@@ -140,19 +138,14 @@ impl<S: SelfEmulation> AssignedVk<S> {
 /// circuit-constant bases of a verifying key.
 ///
 /// The map contains:
-/// * `Fixed(i)`: the i-th fixed-column commitment,
-/// * `PermutationFixed(i)`: the i-th permutation commitment,
+/// * the bases of the phase-0 commitment, under the labels it carries (e.g.
+///   `Fixed(i)`, `PermutationFixed(i)`),
 /// * `Custom("-G")`: the negated designated generator used in the KZG opening
 ///   proof.
 ///
 /// Pass this map to [`Accumulator::check`] or [`Msm::eval`].
 pub fn fixed_bases<S: SelfEmulation>(vk: &VerifyingKey<S>) -> BTreeMap<PolynomialLabel, S::C> {
-    let mut fixed_bases = BTreeMap::new();
-
-    let fixed_coms = vk.phase0_commitment().0.iter();
-    for (label, com) in vk.cs().fixed_polys_labels().into_iter().zip(fixed_coms) {
-        fixed_bases.insert(label, *com.as_point());
-    }
+    let mut fixed_bases: BTreeMap<_, _> = vk.phase0_commitment().bases().into_iter().collect();
 
     fixed_bases.insert(PolynomialLabel::Custom("-G".into()), -S::C::generator());
 
@@ -162,9 +155,8 @@ pub fn fixed_bases<S: SelfEmulation>(vk: &VerifyingKey<S>) -> BTreeMap<Polynomia
 /// Returns the ordered list of [`PolynomialLabel`]s for the fixed bases of a
 /// circuit with the given number of fixed and permutation commitments.
 ///
-/// The order matches [`fixed_bases`]: fixed columns first, then permutation
-/// columns, then `Custom("-G")`. Call this before having an actual verifying
-/// key (e.g. during setup) to size an accumulator correctly.
+/// The order matches the keys of [`fixed_bases`]. Call this before having an
+/// actual verifying key (e.g. during setup) to size an accumulator correctly.
 pub fn fixed_base_labels<S: SelfEmulation>(
     nb_fixed_commitments: usize,
     nb_perm_commitments: usize,
