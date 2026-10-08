@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 * `G1Affine::coordinates` skips the subgroup check. [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 
 ### Removed
+* `h_commit` bench [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
 * Removed `serde::{Serialize, Deserialize}` impls and the `serde` feature [#412](https://github.com/midnightntwrk/midnight-zk/pull/412)
 * Removed unused public API: `unique_messages`/`PairingG1G2`/`PairingG2G1`, `CurveExt::{endo, jacobian_coordinates, new_jacobian, hash_to_curve}`, `Coordinates::{u, v}`, `hash_to_curve` module (+ BLS inherent `hash_to_curve`), the `__private_bench` feature (`Fp12`/`Fp2`); the unused `halo2curves` dep [#412](https://github.com/midnightntwrk/midnight-zk/pull/412)
 *

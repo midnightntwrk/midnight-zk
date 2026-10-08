@@ -16,6 +16,7 @@
 mod external;
 mod instructions;
 pub mod interface;
+pub mod pcs;
 pub mod utils;
 
 use std::{cell::RefCell, cmp::max, convert::TryInto, fmt::Debug, io, rc::Rc};
@@ -83,6 +84,7 @@ use midnight_proofs::{
     circuit::Layouter,
     plonk::{ConstraintSystem, Error},
 };
+pub use pcs::*;
 
 use crate::external::{blake2b::Blake2bWrapper, keccak_sha3::KeccakSha3Wrapper};
 

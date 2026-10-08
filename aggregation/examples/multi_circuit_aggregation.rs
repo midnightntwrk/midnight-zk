@@ -30,16 +30,15 @@ use std::time::Instant;
 
 use aggregatable_poseidon_preimage::PoseidonPreimageCircuit as PoseidonCircuit;
 use aggregatable_sha_preimage::AggregatableShaPreimageCircuit as ShaCircuit;
-use midnight_aggregation::{
-    ivc::IvcCircuit,
-    multi_circuit_aggregator::{AggregationWitness, InnerCircuitsContext, ProofAggregation},
+use midnight_aggregation::multi_circuit_aggregator::{
+    AggregationWitness, InnerCircuitsContext, ProofAggregation,
 };
 use midnight_circuits::{
     hash::poseidon::PoseidonState,
     verifier::{BlstrsEmulation, SelfEmulation},
 };
 use midnight_zk_stdlib::{
-    ZkStdLibArch, cs_degree, prove, setup_pk, setup_vk,
+    DefaultPCS, ZkStdLibArch, prove, setup_pk, setup_vk,
     utils::plonk_api::{SrsSource, load_srs},
 };
 use rand::rngs::OsRng;
@@ -65,14 +64,10 @@ fn main() {
     // The IVC aggregator only requires a shared SRS and architecture. It does
     // not need to know which circuits will be aggregated. Inner circuits can be
     // introduced, proved and folded in on-the-fly, after IVC initialization.
-    let inner_srs = load_srs(SrsSource::Filecoin, INNER_K, cs_degree(inner_arch()));
+    let inner_srs = load_srs::<DefaultPCS>(SrsSource::Filecoin, INNER_K);
     let inner_ctx = InnerCircuitsContext::new(inner_arch(), INNER_K, inner_srs.verifier_params());
 
-    let aggregator_srs = load_srs(
-        SrsSource::Midnight,
-        IVC_K,
-        IvcCircuit::<ProofAggregation>::cs_degree(),
-    );
+    let aggregator_srs = load_srs::<DefaultPCS>(SrsSource::Midnight, IVC_K);
     let start = Instant::now();
     let (mut aggregator, verifier) = ProofAggregation::setup(aggregator_srs, IVC_K, inner_ctx);
     println!("Aggregator setup completed in {:.2?}\n", start.elapsed());

@@ -531,16 +531,10 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         } = trace;
 
         // Read commitment(s) to the quotient polynomial h(X) = nu(X)/(X^n-1) from
-        // the transcript. When the `single-h-commitment` feature is enabled the prover
-        // commits to h(X) as a single polynomial (one commitment); otherwise it
-        // splits h(X) into `quotient_poly_degree` limbs (one commitment each).
-        #[cfg(not(feature = "single-h-commitment"))]
+        // the transcript. The prover splits h(X) into `quotient_poly_degree` limbs.
         let nb_quotient_coms = assigned_vk.domain.get_quotient_poly_degree();
-        #[cfg(feature = "single-h-commitment")]
-        let nb_quotient_coms = 1;
         let limb_commitments = {
-            #[cfg(not(feature = "single-h-commitment"))]
-            let labeled = (0..nb_quotient_coms)
+            (0..nb_quotient_coms)
                 .map(|i| {
                     PCS::read_commitment(
                         &mut transcript,
@@ -548,14 +542,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                         &[PolynomialLabel::QuotientPiece(i)],
                     )
                 })
-                .collect::<Result<Vec<_>, Error>>()?;
-            #[cfg(feature = "single-h-commitment")]
-            let labeled = (0..nb_quotient_coms)
-                .map(|_| {
-                    PCS::read_commitment(&mut transcript, layouter, &[PolynomialLabel::Quotient])
-                })
-                .collect::<Result<Vec<_>, Error>>()?;
-            labeled
+                .collect::<Result<Vec<_>, Error>>()?
         };
 
         // Sample x challenge, which is used to ensure the circuit is satisfied with
@@ -1132,17 +1119,7 @@ pub(crate) mod tests {
         let mut rng = ChaCha8Rng::from_seed([0u8; 32]);
 
         let inner_k = 10;
-        #[cfg(not(feature = "single-h-commitment"))]
         let inner_params = ParamsKZG::unsafe_setup(inner_k, &mut rng);
-
-        #[cfg(feature = "single-h-commitment")]
-        let inner_params: ParamsKZG<_> = {
-            let inner_cs_degree = 5;
-            let extended_k = inner_k + ((inner_cs_degree - 1) as f64).log2().ceil() as u32;
-            let mut extended = ParamsKZG::unsafe_setup(extended_k, &mut rng);
-            extended.downsize_lagrange(inner_k);
-            extended
-        };
 
         let inner_vk = keygen_vk_with_k(&inner_params, &InnerCircuit::default(), inner_k).unwrap();
         let inner_pk = keygen_pk(inner_vk.clone(), &InnerCircuit::default()).unwrap();

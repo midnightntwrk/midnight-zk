@@ -8,7 +8,6 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 ## [Unreleased]
 ### Added
 * `fewer-point-sets` feature [#281](https://github.com/midnightntwrk/midnight-zk/pull/281)
-* `single-h-commitment` feature [#276](https://github.com/midnightntwrk/midnight-zk/pull/276)
 * Multi-circuit proof aggregation module and example [#311](https://github.com/midnightntwrk/midnight-zk/pull/311)
 * Add `IvcError::InvalidWitness` variant [#311](https://github.com/midnightntwrk/midnight-zk/pull/311)
 * Add `assign_without_subgroup_check` to `SelfEmulation` trait [#284](https://github.com/midnightntwrk/midnight-zk/pull/284)
@@ -54,6 +53,8 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 * `CircuitField` refactor [#201](https://github.com/midnightntwrk/midnight-zk/pull/201)
 
 ### Removed
+* `single-h-commitment` feature [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
+* `IvcCircuit::cs_degree` [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
 * `fewer-point-sets` feature [#554](https://github.com/midnightntwrk/midnight-zk/pull/554)
 * `Clone` on `IvcProver`, which holds a proving key, no longer `Clone` [#537](https://github.com/midnightntwrk/midnight-zk/pull/537)
 * Remove `LightAggregator` module, not in use and hard to maintain [#427](https://github.com/midnightntwrk/midnight-zk/pull/427)

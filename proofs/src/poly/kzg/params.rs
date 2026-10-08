@@ -9,7 +9,7 @@ use midnight_curves::{
 use rand_core::RngCore;
 
 use crate::{
-    poly::{PolynomialBasis, PolynomialRepresentation, commitment::Params},
+    poly::{PolynomialBasis, PolynomialRepresentation},
     utils::{
         SerdeFormat,
         arithmetic::{CurveAffine, g_to_lagrange, parallelize},
@@ -56,27 +56,6 @@ fn suffix_sum<C: CurveAffine>(input: &[C]) -> Vec<C> {
     acc_affine
 }
 
-impl<E: Engine> Params for ParamsKZG<E>
-where
-    E::G1Affine: CurveAffine,
-{
-    fn max_k(&self) -> u32 {
-        self.g_lagrange.len().ilog2()
-    }
-
-    fn g_monomial_size(&self) -> usize {
-        self.g.len()
-    }
-
-    fn downsize(&mut self, new_k: u32) {
-        ParamsKZG::<E>::downsize(self, new_k)
-    }
-
-    fn downsize_lagrange(&mut self, new_k: u32) {
-        ParamsKZG::<E>::downsize_lagrange(self, new_k)
-    }
-}
-
 impl<E: Engine + Debug> ParamsKZG<E>
 where
     E::G1Affine: CurveAffine,
@@ -94,6 +73,13 @@ where
         }
     }
 
+    /// Returns the size of the SRS, expressed as the exponent `k` such that it
+    /// has `2^k` elements.
+    pub fn max_k(&self) -> u32 {
+        assert_eq!(self.g.len(), self.g_lagrange.len());
+        self.g_lagrange.len().ilog2()
+    }
+
     /// Downsize the current parameters to match a smaller `k`.
     pub fn downsize(&mut self, new_k: u32) {
         if self.max_k() == new_k {
@@ -106,47 +92,6 @@ where
         self.g_lagrange = g_to_lagrange(&self.g, new_k);
         self.g_lagrange_delta = suffix_sum(&self.g_lagrange);
         self.g_lagrange_double_delta = suffix_sum(&self.g_lagrange_delta);
-    }
-
-    /// Recompute the Lagrange basis for a smaller circuit domain `new_k` while
-    /// keeping the full monomial basis `g` intact.
-    ///
-    /// Use this when the `single-h-commitment` feature is enabled: generate an
-    /// SRS large enough for the whole quotient polynomial (i.e. with `k'`
-    /// such that `2^{k'} ≥ (n-1) * quotient_poly_degree`), then call
-    /// `downsize_lagrange(k)` so that `max_k()` equals the circuit domain size
-    /// `k` while `g` retains its original length for the H-polynomial
-    /// commitment.
-    pub fn downsize_lagrange(&mut self, new_k: u32) {
-        let n = 1usize << new_k;
-        assert!(
-            self.g.len() >= n,
-            "g is too small to build a Lagrange basis of size 2^{new_k}"
-        );
-        self.g_lagrange = g_to_lagrange(&self.g[..n], new_k);
-        self.g_lagrange_delta = suffix_sum(&self.g_lagrange);
-        self.g_lagrange_double_delta = suffix_sum(&self.g_lagrange_delta);
-    }
-
-    /// Combine the monomial basis from `extended` with the Lagrange basis from
-    /// `self`, consuming both. This avoids the FFT that `downsize_lagrange`
-    /// would otherwise require.
-    ///
-    /// # Panics
-    ///
-    /// If `extended.g` is not strictly larger than `self.g`, or if the shared
-    /// prefix of the monomial bases does not match.
-    pub fn with_extended_monomial(mut self, extended: Self) -> Self {
-        assert!(
-            extended.g.len() > self.g.len(),
-            "extended SRS must be strictly larger than the base SRS"
-        );
-        assert!(
-            self.g[..] == extended.g[..self.g.len()],
-            "monomial bases of the two SRSs do not match"
-        );
-        self.g = extended.g;
-        self
     }
 
     /// Initializes parameters for the curve, draws toxic secret from given rng.

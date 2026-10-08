@@ -269,12 +269,8 @@ pub fn circuit_model_with<F: Ord + Field + FromUniformBytes<64>>(
         + o.lookup.iter().map(|l| scalar * l.num_evaluations()).sum::<usize>()
         + scalar * o.trash.len();
 
-    // Commitments to the quotient polynomial, each written on its own: one per
-    // limb, or a single one when the prover does not split h(X).
-    #[cfg(not(feature = "single-h-commitment"))]
+    // Commitments to the quotient polynomial, one per limb.
     let limbs = (o.max_degree - 1) * commit(1);
-    #[cfg(feature = "single-h-commitment")]
-    let limbs = commit(1);
 
     // Multiopening argument:
     // - commit(1) bytes each for f_commitment and the opening proof
