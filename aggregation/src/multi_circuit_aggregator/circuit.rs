@@ -26,7 +26,7 @@ use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::{self, ConstraintSystem, Error},
     poly::{
-        EvaluationDomain, PolynomialLabel,
+        PolynomialLabel,
         kzg::{KZGCommitmentScheme, commitment::KZGMultiCommitment, params::ParamsVerifierKZG},
     },
     transcript::{CircuitTranscript, Transcript},
@@ -83,26 +83,27 @@ pub struct AssignedState {
 
 /// Setup data for the inner circuits, threaded as IVC context.
 ///
-/// Contains the shared constraint system, evaluation domain, SRS verifier
-/// parameters and [`ZkStdLibArch`] of all inner circuits to be aggregated.
+/// Contains the shared constraint system, SRS verifier parameters and
+/// [`ZkStdLibArch`] of all inner circuits to be aggregated.
 #[derive(Clone, Debug)]
 pub struct InnerCircuitsContext {
     cs: ConstraintSystem<F>,
-    domain: EvaluationDomain<F>,
     params_verifier: ParamsVerifierKZG<E>,
     arch: ZkStdLibArch,
 }
 
 impl InnerCircuitsContext {
-    /// Creates a new [`InnerCircuitsContext`] from the shared architecture,
-    /// circuit size parameter `k` (log2 of rows), and SRS verifier parameters.
-    pub fn new(arch: ZkStdLibArch, k: u32, params_verifier: ParamsVerifierKZG<E>) -> Self {
+    /// Creates a new [`InnerCircuitsContext`] from the shared architecture and
+    /// SRS verifier parameters.
+    pub fn new(arch: ZkStdLibArch, params_verifier: ParamsVerifierKZG<E>) -> Self {
+        // The `max_bit_len` value is arbitrary: it only affects the configuration
+        // of foreign-field chips, which inner circuits are not expected to use.
+        // (Otherwise their `cs` would depend on their own `k` and would not match
+        // this one.)
         let mut cs = ConstraintSystem::default();
-        ZkStdLib::configure(&mut cs, (arch, (k - 1) as u8));
-        let domain = EvaluationDomain::new(cs.degree() as u32, k);
+        ZkStdLib::configure(&mut cs, (arch, 0));
         InnerCircuitsContext {
             cs: cs.into_finalized(),
-            domain,
             params_verifier,
             arch,
         }
@@ -136,17 +137,13 @@ impl IvcContext for ProofAggregation {
         writer: &mut W,
     ) -> std::io::Result<()> {
         ctx.arch.write(writer)?;
-        writer.write_all(&ctx.domain.k().to_le_bytes())?;
         ctx.params_verifier.write(writer, SerdeFormat::RawBytes)
     }
 
     fn read_context<R: std::io::Read>(reader: &mut R) -> std::io::Result<InnerCircuitsContext> {
         let arch = ZkStdLibArch::read(reader)?;
-        let mut k_bytes = [0u8; 4];
-        reader.read_exact(&mut k_bytes)?;
-        let k = u32::from_le_bytes(k_bytes);
         let params_verifier = ParamsVerifierKZG::read(reader, SerdeFormat::RawBytes)?;
-        Ok(InnerCircuitsContext::new(arch, k, params_verifier))
+        Ok(InnerCircuitsContext::new(arch, params_verifier))
     }
 }
 

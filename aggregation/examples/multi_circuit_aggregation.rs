@@ -74,8 +74,7 @@ fn main() {
     // Note: verifier params from the SRS do not depend on `k`.
     let inner_verifier_params = poseidon_srs.verifier_params();
 
-    let inner_ctx =
-        InnerCircuitsContext::new(inner_arch(), POSEIDON_CIRCUIT_K, inner_verifier_params);
+    let inner_ctx = InnerCircuitsContext::new(inner_arch(), inner_verifier_params);
 
     let aggregator_srs = load_srs::<DefaultPCS>(SrsSource::Midnight, IVC_K);
     let start = Instant::now();

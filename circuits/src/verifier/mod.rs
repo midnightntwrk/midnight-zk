@@ -58,7 +58,7 @@ type VerifyingKey<S> =
 /// This type carries only the information needed for the verifier, `k`
 /// and `omega`, and values `omega^{-1}` and `n = 2^k`, computed in-circuit.
 ///
-/// The only entry points are via the assignment functions of Verifying Keys.
+/// The only entry points are the assignment functions of Verifying Keys.
 #[derive(Clone, Debug)]
 struct AssignedEvaluationDomain<S: SelfEmulation> {
     k: AssignedNative<S::F>,
@@ -69,20 +69,19 @@ struct AssignedEvaluationDomain<S: SelfEmulation> {
 
 /// Type for in-circuit verifying keys.
 ///
-/// This type carries off-circuit the information about the constraint system.
-/// The in-circuit fields are the transcript representation and the evaluation
-/// domain. The fixed and permutation commitments are typed as
-/// [AssignedKZGCommitment], but they are "empty", i.e. of the `Fixed` variant:
-/// they only carry a label, no assigned point.
+/// Only the transcript representation and the evaluation domain are assigned
+/// in-circuit; the constraint system is kept off-circuit.
 ///
-/// This is fine because the verifier only adds them to an MSM: the accumulator
-/// of [VerifierGadget::prepare] just records their scalars in
-/// `fixed_base_scalars`, and the actual commitments are provided off-circuit by
-/// the final verifier (the decider), via [Accumulator::resolve_fixed_bases].
-/// The key remains bound in-circuit through `transcript_repr`.
+/// The fixed and permutation commitments are not assigned either: they are
+/// placeholders (the `Fixed` variant of [AssignedKZGCommitment]) that only
+/// carry their label. The verifier only uses them as MSM bases, so
+/// [VerifierGadget::prepare] records their scalars in the accumulator, and
+/// the decider supplies the actual points off-circuit, via
+/// [Accumulator::resolve_fixed_bases]. They are still bound to the proof, as
+/// `transcript_repr` commits to them.
 ///
-/// The only entry-point for this function is intended to be
-/// [VerifierGadget::assign_vk_as_public_input].
+/// The only entry points are [VerifierGadget::assign_vk_as_public_input] and
+/// [VerifierGadget::assign_fixed_vk].
 #[derive(Clone, Debug)]
 pub struct AssignedVk<S: SelfEmulation, PCS: InCircuitPCS<S>> {
     domain: AssignedEvaluationDomain<S>,

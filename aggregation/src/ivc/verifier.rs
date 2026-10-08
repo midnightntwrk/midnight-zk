@@ -16,7 +16,7 @@ use midnight_proofs::{
 };
 use midnight_zk_stdlib::{MidnightVK, Relation};
 
-use super::{E, F, Ivc, IvcCircuit, IvcError, IvcInstance, S};
+use super::{E, F, Ivc, IvcCircuit, IvcError, IvcInstance, S, circuit::IvcExtendedInstance};
 
 /// Lightweight IVC verifier carrying:
 /// - the application context (for the decider check),
@@ -41,35 +41,21 @@ impl<T: Ivc> IvcVerifier<T> {
     /// 4. Running the application-level [`decider`](super::IvcState::decider)
     ///    on the instance state.
     ///
-    /// This method checks that `instance.vk_repr` matches the canonical
-    /// verifying key held by this verifier (derived from
-    /// [`setup`](super::setup())). Without this check, a proof generated
-    /// under a different (potentially malicious) circuit could pass
-    /// verification.
+    /// The public inputs of the verifying key are not part of `instance`: they
+    /// are derived from the canonical key held by this verifier (obtained via
+    /// [`setup`](super::setup())).
     pub fn verify(&self, instance: &IvcInstance<T>, proof: &[u8]) -> Result<(), IvcError> {
-        // `instance.vk_repr`, `instance.domain_k` and `instance.domain_omega`
-        // are public inputs chosen by the prover: the circuit uses them to
-        // verify the previous step, but nothing forces them to describe the
-        // key this verifier was set up with. Hence we compare all three against
-        // `self.vk` and reject any mismatch; otherwise a proof produced under
-        // a different (possibly malicious) circuit or domain would verify
-        // here.
-        let domain = self.vk.vk().get_domain();
-        if instance.vk_repr != self.vk.vk().transcript_repr()
-            || instance.domain_k != F::from(domain.k() as u64)
-            || instance.domain_omega != domain.get_omega()
-        {
-            return Err(IvcError::VkMismatch);
-        }
-
         if !T::decider(&self.ctx, &instance.state) {
             return Err(IvcError::DeciderFailed);
         }
 
         let fixed_bases = midnight_circuits::verifier::fixed_bases::<S>(self.vk.vk());
 
-        let pi =
-            IvcCircuit::<T>::format_instance(instance).map_err(|_| IvcError::InvalidInstance)?;
+        let pi = IvcCircuit::<T>::format_instance(&IvcExtendedInstance::new(
+            self.vk.vk(),
+            instance.clone(),
+        ))
+        .map_err(|_| IvcError::InvalidInstance)?;
 
         let mut transcript = CircuitTranscript::<PoseidonState<F>>::init_from_bytes(proof);
         let dual_msm =

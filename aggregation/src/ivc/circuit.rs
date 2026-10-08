@@ -18,29 +18,20 @@ use midnight_circuits::{
 };
 use midnight_proofs::{
     circuit::{Layouter, Value},
-    plonk::ConstraintSystem,
-    poly::{EvaluationDomain, PolynomialLabel},
+    plonk::{ConstraintSystem, VerifyingKey},
+    poly::{EvaluationDomain, PolynomialLabel, kzg::KZGCommitmentScheme},
 };
 use midnight_zk_stdlib::{Relation, ZkStdLib, ZkStdLibArch};
 
-use super::{F, Ivc, IvcError, S};
+use super::{E, F, Ivc, IvcError, S};
 
 /// The public instance (statement) of an IVC proof.
 ///
 /// Contains:
-/// - a commitment to the verifying key (of the IVC circuit itself),
 /// - the current state (after the latest transition),
 /// - the accumulator (that summarises all prior steps).
-///
-/// **Important:** the `vk_repr` field must **not** be trusted as-is. The
-/// verifier must compare it against the canonical `vk_repr` obtained by
-/// running [`setup`](super::setup()).
-/// See [`IvcVerifier::verify`](super::IvcVerifier::verify) for details.
 #[derive(Clone, Debug)]
 pub struct IvcInstance<T: Ivc> {
-    pub(crate) vk_repr: F,
-    pub(crate) domain_k: F,
-    pub(crate) domain_omega: F,
     pub(crate) state: T::State,
     pub(crate) acc: Accumulator<S>,
 }
@@ -49,6 +40,37 @@ impl<T: Ivc> IvcInstance<T> {
     /// Returns the current state.
     pub fn state(&self) -> &T::State {
         &self.state
+    }
+}
+
+/// The instance of the IVC circuit: an [`IvcInstance`] extended with the
+/// public inputs of the verifying key (of the IVC circuit itself).
+///
+/// It is never provided by the user, but derived from the canonical
+/// verifying key, so that the key does not need to be checked against it.
+#[derive(Clone, Debug)]
+pub struct IvcExtendedInstance<T: Ivc> {
+    pub(crate) vk_repr: F,
+    pub(crate) domain_k: F,
+    pub(crate) domain_omega: F,
+    pub(crate) state: T::State,
+    pub(crate) acc: Accumulator<S>,
+}
+
+impl<T: Ivc> IvcExtendedInstance<T> {
+    /// Extends the given instance with the public inputs of `vk`.
+    pub(crate) fn new(
+        vk: &VerifyingKey<F, KZGCommitmentScheme<E>>,
+        instance: IvcInstance<T>,
+    ) -> Self {
+        let domain = vk.get_domain();
+        IvcExtendedInstance {
+            vk_repr: vk.transcript_repr(),
+            domain_k: F::from(domain.k() as u64),
+            domain_omega: domain.get_omega(),
+            state: instance.state,
+            acc: instance.acc,
+        }
     }
 }
 
@@ -70,7 +92,7 @@ pub struct IvcWitness<T: Ivc> {
 /// The IVC circuit, parameterized by a transition function `T`.
 ///
 /// Implements the [`Relation`] of the IVC logic. Namely, that for a given
-/// [`IvcInstance`] `(vk_repr, state, acc)` there exists an [`IvcWitness`]
+/// [`IvcExtendedInstance`] `(vk_repr, state, acc)` there exists an [`IvcWitness`]
 /// `(prev_state, prev_acc, prev_proof, transition_witness)` such that:
 ///
 /// 1. `state` is the result of applying the transition function to `prev_state`
@@ -114,7 +136,7 @@ impl<T: Ivc> IvcCircuit<T> {
 }
 
 impl<T: Ivc> Relation for IvcCircuit<T> {
-    type Instance = IvcInstance<T>;
+    type Instance = IvcExtendedInstance<T>;
 
     type Witness = IvcWitness<T>;
 

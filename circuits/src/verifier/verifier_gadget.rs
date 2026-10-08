@@ -520,9 +520,6 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         // `n = 2^k` is larger than the rotation bounds computed below, and than the
         // length of any instance column: rotations are compile-time constants of the
         // verified circuit's `cs`, and its instance rows must fit in its own domain.
-        // Thus the range of Lagrange polynomials evaluated below spans less than one
-        // period of `omega` (which has order `n`), i.e. the powers `omega^i` involved
-        // are pair-wise distinct and never wrap around the domain.
         let n = &assigned_vk.domain.n;
         let xn = pow_2_pow_k(layouter, &self.scalar_chip, &x, k)?;
         // Shared by all calls to `evaluate_lagrange_polynomials` below.
