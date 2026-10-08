@@ -15,6 +15,3 @@ pub mod transcript;
 
 pub mod dev;
 pub mod utils;
-
-/// The polynomial commitment scheme of Midnight proofs.
-pub type MidnightPCS<E> = poly::kzg::KZGCommitmentScheme<E>;

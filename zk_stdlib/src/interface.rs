@@ -19,7 +19,6 @@ use ff::Field;
 use midnight_circuits::types::ComposableChip;
 use midnight_curves::{Bls12, G1Projective};
 use midnight_proofs::{
-    MidnightPCS,
     circuit::{Layouter, SimpleFloorPlanner, Value},
     dev::cost_model::{CircuitModel, circuit_model},
     plonk::{
@@ -39,7 +38,8 @@ use midnight_proofs::{
 use rand::{CryptoRng, RngCore};
 
 use crate::{
-    F, NB_COMMITTED_INSTANCES, ZkStdLib, ZkStdLibArch, ZkStdLibConfig, utils::plonk_api::BlstPLONK,
+    DefaultPCS, F, NB_COMMITTED_INSTANCES, ZkStdLib, ZkStdLibArch, ZkStdLibConfig,
+    utils::plonk_api::BlstPLONK,
 };
 
 /// Circuit structure which is used to create any circuit that can be compiled
@@ -99,7 +99,7 @@ pub struct MidnightVK {
     architecture: ZkStdLibArch,
     k: u8,
     nb_public_inputs: usize,
-    vk: VerifyingKey<midnight_curves::Fq, MidnightPCS<Bls12>>,
+    vk: VerifyingKey<midnight_curves::Fq, DefaultPCS>,
 }
 
 impl MidnightVK {
@@ -159,7 +159,7 @@ impl MidnightVK {
     }
 
     /// The underlying midnight-proofs verifying key.
-    pub fn vk(&self) -> &VerifyingKey<midnight_curves::Fq, MidnightPCS<Bls12>> {
+    pub fn vk(&self) -> &VerifyingKey<midnight_curves::Fq, DefaultPCS> {
         &self.vk
     }
 }
@@ -169,7 +169,7 @@ impl MidnightVK {
 pub struct MidnightPK<R: Relation> {
     k: u8,
     relation: R,
-    pk: ProvingKey<midnight_curves::Fq, MidnightPCS<Bls12>>,
+    pk: ProvingKey<midnight_curves::Fq, DefaultPCS>,
 }
 
 impl<Rel: Relation> MidnightPK<Rel> {
@@ -226,7 +226,7 @@ impl<Rel: Relation> MidnightPK<Rel> {
     }
 
     /// The underlying midnight-proofs proving key.
-    pub fn pk(&self) -> &ProvingKey<midnight_curves::Fq, MidnightPCS<Bls12>> {
+    pub fn pk(&self) -> &ProvingKey<midnight_curves::Fq, DefaultPCS> {
         &self.pk
     }
 }
@@ -488,7 +488,7 @@ impl<R: Relation> Circuit<F> for MidnightCircuit<'_, R> {
 /// beforehand (see [optimal_k]). Otherwise, the circuit will use the full
 /// size of the SRS, which may be unnecessarily large.
 pub fn setup_vk<R: Relation>(params: &ParamsKZG<Bls12>, relation: &R) -> MidnightVK {
-    let k = MidnightPCS::max_k(params);
+    let k = DefaultPCS::max_k(params);
     let circuit = MidnightCircuit::from_relation(relation, Some(k));
     let vk = keygen_vk_with_k(params, &circuit, k).expect("keygen_vk should not fail");
 
@@ -618,7 +618,7 @@ where
             }
 
             let mut transcript = CircuitTranscript::init_from_bytes(proof);
-            let dual_msm = prepare::<midnight_curves::Fq, MidnightPCS<Bls12>, CircuitTranscript<H>>(
+            let dual_msm = prepare::<midnight_curves::Fq, DefaultPCS, CircuitTranscript<H>>(
                 &vk.vk,
                 &[KZGMultiCommitment::commitment_to_zero(
                     PolynomialLabel::CommittedInstance(0),
@@ -661,7 +661,7 @@ where
 /// computed automatically.
 pub fn cost_model<R: Relation>(relation: &R, k: Option<u32>) -> CircuitModel {
     let circuit = MidnightCircuit::from_relation(relation, k);
-    circuit_model::<_, MidnightPCS<Bls12>>(&circuit, NB_COMMITTED_INSTANCES)
+    circuit_model::<_, DefaultPCS>(&circuit, NB_COMMITTED_INSTANCES)
 }
 
 /// Finds the optimal `k` (log2 of the circuit size) for the given relation.

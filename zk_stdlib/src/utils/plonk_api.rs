@@ -25,7 +25,6 @@ use std::{
 
 use midnight_curves::Bls12;
 use midnight_proofs::{
-    MidnightPCS,
     plonk::{
         Circuit, Error, ProvingKey, VerifyingKey, create_proof, keygen_pk, keygen_vk, prepare,
     },
@@ -42,7 +41,7 @@ use midnight_proofs::{
 use rand::{CryptoRng, RngCore};
 use sha2::Digest;
 
-use crate::{MidnightVK, Relation, cost_model, optimal_k};
+use crate::{DefaultPCS, MidnightVK, Relation, cost_model, optimal_k};
 
 macro_rules! plonk_api {
     ($name:ident, $engine:ty, $native:ty, $curve:ty, $projective:ty) => {
@@ -61,7 +60,7 @@ macro_rules! plonk_api {
             pub fn setup_vk(
                 params: &ParamsKZG<$engine>,
                 circuit: &Relation,
-            ) -> VerifyingKey<$native, MidnightPCS<$engine>> {
+            ) -> VerifyingKey<$native, DefaultPCS> {
                 #[cfg(test)]
                 let start = Instant::now();
                 let vk = keygen_vk(params, circuit).expect("keygen_vk should not fail");
@@ -74,8 +73,8 @@ macro_rules! plonk_api {
             /// PLONK PK setup for the given circuit.
             pub fn setup_pk(
                 circuit: &Relation,
-                vk: &VerifyingKey<$native, MidnightPCS<$engine>>,
-            ) -> ProvingKey<$native, MidnightPCS<$engine>> {
+                vk: &VerifyingKey<$native, DefaultPCS>,
+            ) -> ProvingKey<$native, DefaultPCS> {
                 #[cfg(test)]
                 let start = Instant::now();
                 let pk = keygen_pk(vk.clone(), circuit).expect("keygen_pk should not fail");
@@ -88,7 +87,7 @@ macro_rules! plonk_api {
             /// PLONK proving algorithm.
             pub fn prove<H>(
                 params: &ParamsKZG<$engine>,
-                pk: &ProvingKey<$native, MidnightPCS<$engine>>,
+                pk: &ProvingKey<$native, DefaultPCS>,
                 circuit: &Relation,
                 nb_instance_commitments: usize,
                 pi: &[&[$native]],
@@ -103,7 +102,7 @@ macro_rules! plonk_api {
                 let start = Instant::now();
                 let proof = {
                     let mut transcript = CircuitTranscript::init();
-                    create_proof::<$native, MidnightPCS<$engine>, CircuitTranscript<H>, Relation>(
+                    create_proof::<$native, DefaultPCS, CircuitTranscript<H>, Relation>(
                         params,
                         pk,
                         circuit,
@@ -127,7 +126,7 @@ macro_rules! plonk_api {
             /// PLONK verification algorithm.
             pub fn verify<H>(
                 params_verifier: &ParamsVerifierKZG<$engine>,
-                vk: &VerifyingKey<$native, MidnightPCS<$engine>>,
+                vk: &VerifyingKey<$native, DefaultPCS>,
                 instance_commitments: &[KZGMultiCommitment<$engine>],
                 pi: &[&[$native]],
                 proof: &[u8],
@@ -141,7 +140,7 @@ macro_rules! plonk_api {
 
                 #[cfg(test)]
                 let start = Instant::now();
-                let res = prepare::<$native, MidnightPCS<$engine>, CircuitTranscript<H>>(
+                let res = prepare::<$native, DefaultPCS, CircuitTranscript<H>>(
                     vk,
                     instance_commitments,
                     pi,
@@ -288,7 +287,7 @@ fn midnight_srs(k: u32) -> ParamsKZG<Bls12> {
         )
     });
 
-    MidnightPCS::<Bls12>::load_params(
+    DefaultPCS::load_params(
         &mut BufReader::new(params_fs),
         SerdeFormat::RawBytesUnchecked,
         k,
@@ -323,7 +322,7 @@ or, if you don't trust the source, download it from IPFS and parse it (this migh
             * Run the binary to parse it `cargo run --example parse_filecoin_srs --release`
         \n"));
 
-    let params = MidnightPCS::<Bls12>::load_params(
+    let params = DefaultPCS::load_params(
         &mut BufReader::new(params_fs),
         SerdeFormat::RawBytesUnchecked,
         k,
