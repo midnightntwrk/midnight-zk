@@ -1,6 +1,7 @@
-//! The verifier must reject a malformed proof with an error, never panic: it verifies proofs
-//! from untrusted provers. A prover chooses the evaluations it writes after `x`, so it can make
-//! any expression of them take a chosen value - here `−β`, which zeroes a logup input `f + β`.
+//! The verifier must reject a malformed proof with an error, never panic: it
+//! verifies proofs from untrusted provers. A prover chooses the evaluations it
+//! writes after `x`, so it can make any expression of them take a chosen value
+//! - here `−β`, which zeroes a logup input `f + β`.
 
 use std::{
     io::{self, Cursor},
@@ -30,7 +31,8 @@ use rand_core::OsRng;
 
 const K: u32 = 5;
 
-/// One advice column looked up, unselected, in an 8-row table: the logup input is `a(x)`.
+/// One advice column looked up, unselected, in an 8-row table: the logup input
+/// is `a(x)`.
 #[derive(Clone, Default)]
 struct LookupCircuit;
 
@@ -95,8 +97,9 @@ impl Circuit<Scalar> for LookupCircuit {
     }
 }
 
-/// A transcript over a real proof that replaces its `target`-th read with `−β` (the second
-/// challenge squeezed), absorbing the replacement as an honest read would.
+/// A transcript over a real proof that replaces its `target`-th read with `−β`
+/// (the second challenge squeezed), absorbing the replacement as an honest read
+/// would.
 #[derive(Clone)]
 struct InjectingTranscript {
     inner: CircuitTranscript<State>,
@@ -200,7 +203,8 @@ fn verifier_rejects_forged_evaluations_without_panicking() {
         Ok::<_, Error>(t.reads)
     };
 
-    // Positive control: the honest proof verifies, and tells us how many reads there are.
+    // Positive control: the honest proof verifies, and tells us how many reads
+    // there are.
     let reads = verify(None).expect("honest proof verifies");
 
     let mut panicked = vec![];
@@ -218,7 +222,8 @@ fn verifier_rejects_forged_evaluations_without_panicking() {
 
 type Scheme = KZGCommitmentScheme<Bls12>;
 
-/// Verifies `proof` as a caller should: `prepare`, an empty transcript, then the pairing check.
+/// Verifies `proof` as a caller should: `prepare`, an empty transcript, then
+/// the pairing check.
 fn verify_bytes(
     params: &ParamsVerifierKZG<Bls12>,
     vk: &VerifyingKey<Scalar, Scheme>,
@@ -238,8 +243,9 @@ fn verify_bytes(
     guard.verify(params).map_err(|_| Error::Opening)
 }
 
-/// Corrupting any byte of a proof - group counts, point encodings, field encodings - must make
-/// the verifier reject, never panic. Also truncated and extended proofs.
+/// Corrupting any byte of a proof - group counts, point encodings, field
+/// encodings - must make the verifier reject, never panic. Also truncated and
+/// extended proofs.
 #[test]
 fn verifier_survives_every_corrupted_byte() {
     let params = ParamsKZG::<Bls12>::unsafe_setup(K, OsRng);
@@ -306,7 +312,8 @@ fn verifier_survives_every_corrupted_byte() {
     );
 }
 
-/// The lookup circuit plus a committed instance column, constrained to equal `a` on row 0.
+/// The lookup circuit plus a committed instance column, constrained to equal
+/// `a` on row 0.
 #[derive(Clone, Default)]
 struct CommittedCircuit;
 
@@ -348,9 +355,10 @@ impl Circuit<Scalar> for CommittedCircuit {
     }
 }
 
-/// A committed instance whose label is not `CommittedInstance(i)` is a caller error: the
-/// verifier should reject it rather than panic. (The ledger always passes a correctly
-/// labelled zero commitment, so this is an API contract, not reachable from proof bytes.)
+/// A committed instance whose label is not `CommittedInstance(i)` is a caller
+/// error: the verifier should reject it rather than panic. (The ledger always
+/// passes a correctly labelled zero commitment, so this is an API contract, not
+/// reachable from proof bytes.)
 #[cfg(feature = "committed-instances")]
 #[test]
 fn verifier_rejects_mislabelled_committed_instance() {
