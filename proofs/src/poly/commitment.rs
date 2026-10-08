@@ -93,6 +93,11 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
         Self::commit_many(params, &[polynomial], &[label])
     }
 
+    /// The commitment [`commit_many`](Self::commit_many) returns for zero
+    /// polynomials under `labels`, built without the parameters, e.g. for a
+    /// verifier to stand in for an absent committed instance.
+    fn commitment_to_zero(labels: &[PolynomialLabel]) -> Self::Commitment;
+
     /// Read a commitment to `labels.len()` polynomials from the proof
     /// transcript, absorbing it into the transcript state and tagging each
     /// polynomial with its label.

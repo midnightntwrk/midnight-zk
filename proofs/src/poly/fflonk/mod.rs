@@ -109,6 +109,12 @@ where
         PCS::commit_many(params, &gs.iter().collect::<Vec<_>>(), &g_labels)
     }
 
+    fn commitment_to_zero(labels: &[PolynomialLabel]) -> Self::Commitment {
+        PolynomialLabel::assert_distinct(labels);
+        let g_labels: Vec<_> = labels.chunks(Self::T_MAX).map(|l| Collection(l.to_vec())).collect();
+        PCS::commitment_to_zero(&g_labels)
+    }
+
     fn read_commitment<T: Transcript>(
         transcript: &mut T,
         labels: &[PolynomialLabel],
@@ -357,6 +363,24 @@ mod tests {
             transcript.assert_empty().unwrap();
             guard.verify(&params.verifier_params()).unwrap();
         }
+    }
+
+    /// The zero commitment matches committing to zero polynomials, and carries
+    /// the labels of the queried polynomials.
+    #[test]
+    fn test_commitment_to_zero() {
+        fn check<CS: PolynomialCommitmentScheme<Fq>>() {
+            let k = 3;
+            let params = CS::gen_params(k);
+            let domain = EvaluationDomain::<Fq>::new(1, k);
+            let zero = domain.empty_coeff();
+            let labels: Vec<_> = (0..3).map(PolynomialLabel::CommittedInstance).collect();
+            let commitment = CS::commitment_to_zero(&labels);
+            assert_eq!(commitment, CS::commit_many(&params, &[&zero; 3], &labels));
+            assert_eq!(CS::commitment_labels(&commitment), labels);
+        }
+        check::<Kzg>();
+        check::<Fflonk<Kzg, 1>>();
     }
 
     #[test]
