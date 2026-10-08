@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `PolynomialLabel::Collection`, a label made of other labels, and the `commitment_labels` method on the `PolynomialCommitmentScheme` trait, the labels a commitment tags its polynomials with [#555](https://github.com/midnightntwrk/midnight-zk/pull/555)
 * `PolynomialCommitmentScheme::max_k`, the largest `k` such that some parameters can commit to polynomials of degree strictly less than `2^k` [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
 * `PolynomialCommitmentScheme::load_params`, reading the parameters of the scheme for committing to polynomials of degree strictly less than `2^k` [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
+* `MidnightPCS`, the polynomial commitment scheme of Midnight proofs, currently `KZGCommitmentScheme` [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
 
 ### Fixed
 * LogUp verifier no longer panics when the prover makes some `fⱼ(x) + β` zero: the helper constraint folds products instead of inverting each term, which also saves the inversions [#562](https://github.com/midnightntwrk/midnight-zk/pull/562)
@@ -54,7 +55,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `ProverQuery` carries the labels and polynomials of the group the queried polynomial is committed with, so `multi_open` sees every polynomial committed together with the queried one [#554](https://github.com/midnightntwrk/midnight-zk/pull/554)
 * Keygen bounds the circuit size by `PolynomialCommitmentScheme::max_k` rather than by `Params::max_k` [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
 * The `PolynomialCommitmentScheme` implementation of `KZGCommitmentScheme<E>` requires `E::G1Affine: SerdeObject` and `E::G2: ProcessedSerdeObject` [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
-* `ProcessedSerdeObject` is implemented for curves that are not `Default` [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
+* `ProcessedSerdeObject` no longer requires the curve to implement `Default` [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
+* The quotient polynomial is always committed in `quotient_poly_degree` limbs [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
+* Keygen no longer checks the monomial basis of the SRS against `srs_monomial_blowup`; `PolynomialCommitmentScheme::max_k` bounds the circuit size instead [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
+* `ParamsKZG::max_k` is an inherent method again and panics if the monomial and Lagrange bases differ in size [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
+* `Fflonk::gen_params` and `Fflonk::load_params` keep the Lagrange basis of the inner parameters at the size of the monomial one, `2^(k + LOG2_T_MAX)`, rather than downsizing it to `2^k` [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
 * `Guard` is generic over the verifier parameters of its PCS rather than over the PCS itself [#555](https://github.com/midnightntwrk/midnight-zk/pull/555)
 * Commit the advice columns as part of the phase-1 argument group, together with the logup multiplicities, instead of one commitment per column, and open them through it at the rotations the circuit queries them at. This changes the transcript of every proof, which shrinks by 4 bytes per advice column (one fewer if the circuit has no lookup) [#543](https://github.com/midnightntwrk/midnight-zk/pull/543)
 * Commit the logup multiplicities before squeezing `theta`, instead of after. The prover counts them by comparing the input and table tuples directly, and compresses the tuples with `theta` only when computing the helpers and aggregators. This changes the transcript of every proof over a circuit with a lookup [#543](https://github.com/midnightntwrk/midnight-zk/pull/543)
@@ -92,6 +97,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Simplify KZG multiopen verifier to use `KZGCommitment` directly [#430](https://github.com/midnightntwrk/midnight-zk/pull/430)
 
 ### Removed
+* `single-h-commitment` feature, and the `PolynomialLabel::Quotient` label it committed the quotient polynomial with [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
+* `PolynomialCommitmentScheme::srs_monomial_blowup`, superseded by `load_params` [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
+* `ParamsKZG::downsize_lagrange` [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
+* `ParamsKZG::with_extended_monomial` [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
 * The `Params` trait. `max_k` and `downsize` remain inherent methods of `ParamsKZG`, and `downsize_from_circuit` is removed [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
 * `fewer-point-sets` feature [#554](https://github.com/midnightntwrk/midnight-zk/pull/554)
 * `VerifyingKey::fixed_commitments`, replaced by `phase0_commitment` and `simple_selector_commitments` [#547](https://github.com/midnightntwrk/midnight-zk/pull/547)

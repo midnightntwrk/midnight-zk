@@ -53,6 +53,8 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 * `CircuitField` refactor [#201](https://github.com/midnightntwrk/midnight-zk/pull/201)
 
 ### Removed
+* `single-h-commitment` feature [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
+* `IvcCircuit::cs_degree` [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
 * `fewer-point-sets` feature [#554](https://github.com/midnightntwrk/midnight-zk/pull/554)
 * `Clone` on `IvcProver`, which holds a proving key, no longer `Clone` [#537](https://github.com/midnightntwrk/midnight-zk/pull/537)
 * Remove `LightAggregator` module, not in use and hard to maintain [#427](https://github.com/midnightntwrk/midnight-zk/pull/427)
