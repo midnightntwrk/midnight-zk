@@ -182,7 +182,8 @@ where
                 for root in roots_cache.get(layouter, scalar_chip, x, t)? {
                     let eval = horner(layouter, scalar_chip, &f_evals, &root)?;
                     let label = Collection(labels.clone());
-                    inner_queries.push(VerifierQuery::new(&root, *commitment, label, &eval));
+                    let query = VerifierQuery::new(&root, *commitment, label, &eval);
+                    inner_queries.push(query.with_root_of(x, t));
                 }
             }
         }

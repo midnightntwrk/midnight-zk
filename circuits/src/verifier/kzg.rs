@@ -57,7 +57,8 @@ use crate::{
         },
         transcript_gadget::TranscriptGadget,
         utils::{
-            AssignedBoundedScalar, evaluate_interpolated_polynomial, inner_product, mul_add,
+            AssignedBoundedScalar, Coset, evaluate_interpolated_polynomial,
+            evaluate_interpolated_polynomial_on_cosets, inner_product, mul_add,
             mul_bounded_scalars, truncated_powers,
         },
     },
@@ -288,6 +289,29 @@ type IntermediateSets<S> = (
     Vec<Vec<AssignedNative<<S as SelfEmulation>::F>>>,
 );
 
+/// Groups `points` and their `evals` by the coset they were given as roots of,
+/// if every point was, each coset is whole and `t > 1`.
+fn as_cosets<F: CircuitField>(
+    points: &[AssignedNative<F>],
+    evals: &[AssignedNative<F>],
+    roots_of: &HashMap<AssignedNative<F>, (AssignedNative<F>, usize)>,
+) -> Option<(usize, Vec<Coset<F>>)> {
+    let mut t = None;
+    let mut cosets: Vec<Coset<F>> = Vec::new();
+    for (point, eval) in points.iter().zip(evals) {
+        let (x, point_t) = roots_of.get(point)?;
+        if *t.get_or_insert(*point_t) != *point_t {
+            return None;
+        }
+        match cosets.iter_mut().find(|(y, _)| y == x) {
+            Some((_, coset)) => coset.push((point.clone(), eval.clone())),
+            None => cosets.push((x.clone(), vec![(point.clone(), eval.clone())])),
+        }
+    }
+    let t = t.filter(|t| *t > 1)?;
+    cosets.iter().all(|(_, coset)| coset.len() == t).then_some((t, cosets))
+}
+
 #[allow(clippy::type_complexity)]
 fn construct_intermediate_sets<S: SelfEmulation>(
     queries: &[(PolynomialLabel, AssignedNative<S::F>, AssignedNative<S::F>)],
@@ -481,6 +505,11 @@ pub(crate) fn multi_prepare_kzg<S: SelfEmulation>(
         })
         .collect();
 
+    // The coset of every point given as a root: `point -> (x, t)`.
+    let roots_of: HashMap<_, _> = (queries.iter())
+        .filter_map(|q| q.root_of.clone().map(|root_of| (q.point.clone(), root_of)))
+        .collect();
+
     let default_eval = scalar_chip.assign_fixed(layouter, S::F::default())?;
     let kzg_queries = queries
         .iter()
@@ -559,24 +588,40 @@ pub(crate) fn multi_prepare_kzg<S: SelfEmulation>(
         .zip(q_evals_on_x3.iter())
         .rev()
         .try_fold(zero, |acc_eval, ((points, evals), proof_eval)| {
-            let r_eval =
-                evaluate_interpolated_polynomial(layouter, scalar_chip, points, evals, &x3.scalar)?;
-
             // eval = (proof_eval - r_eval) / prod_i (x3 - point_i)
-            let den = points.iter().skip(1).try_fold(
-                scalar_chip.sub(layouter, &x3.scalar, &points[0])?,
-                |acc, point| {
-                    // acc * (x3 - point) computed as acc * x3 - acc * point
-                    scalar_chip.add_and_double_mul(
+            let (r_eval, den) = match as_cosets(points, evals, &roots_of) {
+                Some((t, cosets)) => evaluate_interpolated_polynomial_on_cosets(
+                    layouter,
+                    scalar_chip,
+                    t,
+                    &cosets,
+                    &x3.scalar,
+                )?,
+                None => {
+                    let r_eval = evaluate_interpolated_polynomial(
                         layouter,
-                        (S::F::ZERO, &acc),
-                        (S::F::ZERO, &x3.scalar),
-                        (S::F::ZERO, point),
-                        S::F::ZERO,
-                        (S::F::ONE, -S::F::ONE),
-                    )
-                },
-            )?;
+                        scalar_chip,
+                        points,
+                        evals,
+                        &x3.scalar,
+                    )?;
+                    let den = points.iter().skip(1).try_fold(
+                        scalar_chip.sub(layouter, &x3.scalar, &points[0])?,
+                        |acc, point| {
+                            // acc * (x3 - point) computed as acc * x3 - acc * point
+                            scalar_chip.add_and_double_mul(
+                                layouter,
+                                (S::F::ZERO, &acc),
+                                (S::F::ZERO, &x3.scalar),
+                                (S::F::ZERO, point),
+                                S::F::ZERO,
+                                (S::F::ONE, -S::F::ONE),
+                            )
+                        },
+                    )?;
+                    (r_eval, den)
+                }
+            };
             let mut eval = scalar_chip.sub(layouter, proof_eval, &r_eval)?;
             eval = scalar_chip.div(layouter, &eval, &den)?;
 

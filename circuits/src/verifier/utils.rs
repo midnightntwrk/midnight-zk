@@ -232,6 +232,62 @@ pub fn evaluate_interpolated_polynomial<F: CircuitField>(
     inner_product(layouter, scalar_chip, &lj_s, evals)
 }
 
+/// A point `x` and all its `t`-th roots `p`, each with an evaluation:
+/// `(x, [(p, eval)])`.
+pub(crate) type Coset<F> = (
+    AssignedNative<F>,
+    Vec<(AssignedNative<F>, AssignedNative<F>)>,
+);
+
+/// Evaluates at `z` the polynomial interpolating the given cosets, and their
+/// vanishing polynomial `Z(X) = Π_j (X^t - x_j)`.
+///
+/// The `x_j` of the cosets must be distinct and non-zero, otherwise the circuit
+/// is unsatisfiable. The Lagrange basis at `p` in coset `j` is
+/// `Z(z) p / ((z - p) t x_j Π_{k≠j} (x_j - x_k))`.
+///
+/// # Panics
+///
+/// If `cosets` is empty.
+pub(crate) fn evaluate_interpolated_polynomial_on_cosets<F: CircuitField>(
+    layouter: &mut impl Layouter<F>,
+    scalar_chip: &impl ArithInstructions<F, AssignedNative<F>>,
+    t: usize,
+    cosets: &[Coset<F>],
+    z: &AssignedNative<F>,
+) -> Result<(AssignedNative<F>, AssignedNative<F>), Error> {
+    let z_pow_t = scalar_chip.pow(layouter, z, t as u64)?;
+    let vanishing_factors = (cosets.iter())
+        .map(|(x, _)| scalar_chip.sub(layouter, &z_pow_t, x))
+        .collect::<Result<Vec<_>, Error>>()?;
+    let vanishing = prod(layouter, scalar_chip, &vanishing_factors)?;
+
+    let mut terms = Vec::with_capacity(cosets.len());
+    for (j, (xj, coset)) in cosets.iter().enumerate() {
+        // Σ_p eval_p p / (z - p)
+        let coset_terms = (coset.iter())
+            .map(|(p, eval)| {
+                let num = scalar_chip.mul(layouter, eval, p, None)?;
+                let den = scalar_chip.sub(layouter, z, p)?;
+                scalar_chip.div(layouter, &num, &den)
+            })
+            .collect::<Result<Vec<_>, Error>>()?;
+        let coset_sum = sum(layouter, scalar_chip, &coset_terms)?;
+
+        // t x_j Π_{k≠j} (x_j - x_k)
+        let mut den = scalar_chip.mul_by_constant(layouter, xj, F::from(t as u64))?;
+        for (_, (xk, _)) in cosets.iter().enumerate().filter(|(k, _)| *k != j) {
+            let diff = scalar_chip.sub(layouter, xj, xk)?;
+            den = scalar_chip.mul(layouter, &den, &diff, None)?;
+        }
+        terms.push(scalar_chip.div(layouter, &coset_sum, &den)?);
+    }
+    let terms_sum = sum(layouter, scalar_chip, &terms)?;
+
+    let eval = scalar_chip.mul(layouter, &vanishing, &terms_sum, None)?;
+    Ok((eval, vanishing))
+}
+
 /// Computes the addition of all the given scalars.
 pub(crate) fn sum<F: CircuitField>(
     layouter: &mut impl Layouter<F>,
