@@ -17,11 +17,11 @@ use midnight_circuits::{
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::{ConstraintSystem, VerifyingKey},
-    poly::{EvaluationDomain, kzg::KZGCommitmentScheme},
+    poly::EvaluationDomain,
 };
-use midnight_zk_stdlib::{Relation, ZkStdLib, ZkStdLibArch};
+use midnight_zk_stdlib::{DefaultPCS, Relation, ZkStdLib, ZkStdLibArch};
 
-use super::{E, F, Ivc, IvcError, S};
+use super::{F, Ivc, IvcError, S};
 
 /// The public instance (statement) of an IVC proof.
 ///
@@ -51,17 +51,14 @@ impl<T: Ivc> IvcInstance<T> {
 /// to be checked against the IVC instance.
 #[derive(Clone, Debug)]
 pub struct IvcExtendedInstance<T: Ivc> {
-    pub(crate) vk: VerifyingKey<F, KZGCommitmentScheme<E>>,
+    pub(crate) vk: VerifyingKey<F, DefaultPCS>,
     pub(crate) state: T::State,
     pub(crate) acc: Accumulator<S>,
 }
 
 impl<T: Ivc> IvcExtendedInstance<T> {
     /// Extends the given instance with `vk`.
-    pub(crate) fn new(
-        vk: &VerifyingKey<F, KZGCommitmentScheme<E>>,
-        instance: IvcInstance<T>,
-    ) -> Self {
+    pub(crate) fn new(vk: &VerifyingKey<F, DefaultPCS>, instance: IvcInstance<T>) -> Self {
         IvcExtendedInstance {
             vk: vk.clone(),
             state: instance.state,

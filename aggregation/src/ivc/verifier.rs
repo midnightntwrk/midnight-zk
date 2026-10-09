@@ -8,10 +8,10 @@
 use midnight_circuits::{hash::poseidon::PoseidonState, verifier::Accumulator};
 use midnight_proofs::{
     plonk::{self},
-    poly::kzg::{KZGCommitmentScheme, params::ParamsVerifierKZG},
+    poly::kzg::params::ParamsVerifierKZG,
     transcript::{CircuitTranscript, Transcript},
 };
-use midnight_zk_stdlib::{MidnightVK, Relation};
+use midnight_zk_stdlib::{DefaultPCS, MidnightVK, Relation};
 
 use super::{E, F, Ivc, IvcCircuit, IvcError, IvcInstance, S, circuit::IvcExtendedInstance};
 
@@ -55,11 +55,12 @@ impl<T: Ivc> IvcVerifier<T> {
         .map_err(|_| IvcError::InvalidInstance)?;
 
         let mut transcript = CircuitTranscript::<PoseidonState<F>>::init_from_bytes(proof);
-        let dual_msm = plonk::prepare::<
-            F,
-            KZGCommitmentScheme<E>,
-            CircuitTranscript<PoseidonState<F>>,
-        >(self.vk.vk(), &[], &[&[], &pi], &mut transcript)
+        let dual_msm = plonk::prepare::<F, DefaultPCS, CircuitTranscript<PoseidonState<F>>>(
+            self.vk.vk(),
+            &[],
+            &[&[], &pi],
+            &mut transcript,
+        )
         .map_err(|_| IvcError::InvalidProof)?;
 
         transcript.assert_empty().map_err(|_| IvcError::TranscriptNotEmpty)?;
