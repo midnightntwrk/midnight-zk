@@ -947,6 +947,41 @@ impl SerdeObject for Fp {
     }
 }
 
+// SAFETY (each call below): blst reads the input `blst_fp`s and writes `out`'s; all are valid,
+// distinct (`&mut out` cannot alias `a` or `b`) and live for the call.
+impl crate::curve::FieldInto for Fp {
+    #[inline]
+    fn mul_into(out: &mut Self, a: &Self, b: &Self) {
+        unsafe { blst_fp_mul(&mut out.0, &a.0, &b.0) }
+    }
+
+    #[inline]
+    fn square_into(out: &mut Self, a: &Self) {
+        unsafe { blst_fp_sqr(&mut out.0, &a.0) }
+    }
+
+    #[inline]
+    fn add_into(out: &mut Self, a: &Self, b: &Self) {
+        unsafe { blst_fp_add(&mut out.0, &a.0, &b.0) }
+    }
+
+    #[inline]
+    fn sub_into(out: &mut Self, a: &Self, b: &Self) {
+        unsafe { blst_fp_sub(&mut out.0, &a.0, &b.0) }
+    }
+
+    #[inline]
+    fn neg_into(out: &mut Self, a: &Self) {
+        unsafe { blst_fp_cneg(&mut out.0, &a.0, true) }
+    }
+
+    #[inline]
+    fn rsub_assign(a: &mut Self, b: &Self) {
+        // blst allows its output to alias an input
+        unsafe { blst_fp_sub(&mut a.0, &b.0, &a.0) }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
