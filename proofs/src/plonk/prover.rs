@@ -156,8 +156,12 @@ where
         }
     }
 
-    let phase1_committed =
-        argument::prover::Committed::commit::<CS, T>(params, phase1_polys_map, transcript)?;
+    let phase1_committed = argument::prover::Committed::commit::<CS, T, _>(
+        params,
+        phase1_polys_map,
+        Polynomial::to_delta,
+        transcript,
+    )?;
 
     // Sample theta challenge for keeping lookup columns linearly independent
     let theta: F = transcript.squeeze_challenge();
@@ -249,8 +253,12 @@ where
         }
     }
 
-    let phase2_committed =
-        argument::prover::Committed::commit::<CS, T>(params, phase2_polys_map, transcript)?;
+    let phase2_committed = argument::prover::Committed::commit::<CS, T, _>(
+        params,
+        phase2_polys_map,
+        Polynomial::to_double_delta,
+        transcript,
+    )?;
 
     // Obtain challenge for keeping all separate gates linearly independent
     let y: F = transcript.squeeze_challenge();
