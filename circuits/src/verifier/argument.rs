@@ -120,16 +120,14 @@ fn eval_points<S: SelfEmulation>(
 
 /// A group of polynomials read from the transcript as a single commitment.
 #[derive(Clone, Debug)]
-pub(crate) struct Committed<S: SelfEmulation, PCS: InCircuitPCS<S>> {
-    commitment: PCS::AssignedCommitment,
+pub(crate) struct Committed<S: SelfEmulation> {
+    commitment: <S::PCS as InCircuitPCS<S>>::AssignedCommitment,
     polynomial_labels: Vec<PolynomialLabel>,
 }
 
 /// Builds the fixed group of the absorbed verifying key, which binds it to the
 /// transcript as reading a commitment from the proof does.
-pub(crate) fn committed_from_key<S: SelfEmulation, PCS: InCircuitPCS<S>>(
-    vk: &AbsorbedVk<'_, S, PCS>,
-) -> Committed<S, PCS> {
+pub(crate) fn committed_from_key<S: SelfEmulation>(vk: &AbsorbedVk<'_, S>) -> Committed<S> {
     Committed {
         commitment: vk.phase0_commitment().clone(),
         polynomial_labels: vk.phase0_labels(),
@@ -137,13 +135,13 @@ pub(crate) fn committed_from_key<S: SelfEmulation, PCS: InCircuitPCS<S>>(
 }
 
 /// Reads the commitment to the polynomials of the given labels.
-pub(crate) fn read_committed<S: SelfEmulation, PCS: InCircuitPCS<S>>(
+pub(crate) fn read_committed<S: SelfEmulation>(
     labels: &[PolynomialLabel],
     layouter: &mut impl Layouter<S::F>,
     transcript_gadget: &mut TranscriptGadget<S>,
-) -> Result<Committed<S, PCS>, Error> {
+) -> Result<Committed<S>, Error> {
     Ok(Committed {
-        commitment: PCS::read_commitment(transcript_gadget, layouter, labels)?,
+        commitment: S::PCS::read_commitment(transcript_gadget, layouter, labels)?,
         polynomial_labels: labels.to_vec(),
     })
 }
@@ -151,12 +149,12 @@ pub(crate) fn read_committed<S: SelfEmulation, PCS: InCircuitPCS<S>>(
 /// A [Committed] group whose polynomials have been opened at their evaluation
 /// points.
 #[derive(Clone, Debug)]
-pub(crate) struct Evaluated<S: SelfEmulation, PCS: InCircuitPCS<S>> {
-    committed: Committed<S, PCS>,
+pub(crate) struct Evaluated<S: SelfEmulation> {
+    committed: Committed<S>,
     pub(crate) evals_map: BTreeMap<PolynomialLabel, Vec<Evaluation<S>>>,
 }
 
-impl<S: SelfEmulation, PCS: InCircuitPCS<S>> Committed<S, PCS> {
+impl<S: SelfEmulation> Committed<S> {
     /// Reads the evaluation of every polynomial of the group at each of its
     /// evaluation points.
     pub(crate) fn evaluate(
@@ -165,7 +163,7 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> Committed<S, PCS> {
         x_rotations: &BTreeMap<Rotation, AssignedNative<S::F>>,
         layouter: &mut impl Layouter<S::F>,
         transcript_gadget: &mut TranscriptGadget<S>,
-    ) -> Result<Evaluated<S, PCS>, Error> {
+    ) -> Result<Evaluated<S>, Error> {
         let mut evals_map: BTreeMap<PolynomialLabel, Vec<Evaluation<S>>> = BTreeMap::new();
 
         for label in &self.polynomial_labels {
@@ -192,9 +190,9 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> Committed<S, PCS> {
 
 // "expressions" are implemented in our `expressions/` directory.
 
-impl<'a, S: SelfEmulation, PCS: InCircuitPCS<S>> Evaluated<S, PCS> {
+impl<'a, S: SelfEmulation> Evaluated<S> {
     /// The queries that the multi-open argument checks for this group.
-    pub(crate) fn queries(&'a self) -> Vec<VerifierQuery<'a, S, PCS>> {
+    pub(crate) fn queries(&'a self) -> Vec<VerifierQuery<'a, S, S::PCS>> {
         self.evals_map
             .iter()
             .flat_map(|(label, evaluations)| {
