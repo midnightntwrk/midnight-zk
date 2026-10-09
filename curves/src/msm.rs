@@ -572,20 +572,39 @@ pub fn msm_xyzz_with_window<C: CurveAffine>(
     if coeffs.len() < 32 {
         return msm_pointwise(coeffs, bases);
     }
+    let nbits = C::Scalar::NUM_BITS as usize;
     // In parallel only when there is enough work to pay for the scheduling
+    let par = coeffs.len() >= 1 << 12;
+    if bases.first().is_some_and(|b| b.xy_ref().is_some()) {
+        // Coordinates read in place; an identity base gets a zero scalar, so it is never added
+        let zero = C::Scalar::ZERO.to_repr();
+        let repr = |(s, b): (&C::Scalar, &C)| {
+            if bool::from(b.is_identity()) {
+                zero
+            } else {
+                s.to_repr()
+            }
+        };
+        let scalars: Vec<_> = if par {
+            coeffs.par_iter().zip(bases.par_iter()).map(repr).collect()
+        } else {
+            coeffs.iter().zip(bases).map(repr).collect()
+        };
+        return msm_xyzz_core::<C, _, _>(&scalars, |i| bases[i].xy_ref().unwrap(), nbits, c);
+    }
     let prepare = |(s, b): (&C::Scalar, &C)| (s.to_repr(), Affine::from(b));
     let not_identity = |(_, b): &(&C::Scalar, &C)| !bool::from(b.is_identity());
-    let (scalars, points): (Vec<_>, Vec<_>) = if coeffs.len() < 1 << 12 {
-        coeffs.iter().zip(bases).filter(not_identity).map(prepare).unzip()
-    } else {
+    let (scalars, points): (Vec<_>, Vec<_>) = if par {
         coeffs
             .par_iter()
             .zip(bases.par_iter())
             .filter(not_identity)
             .map(prepare)
             .unzip()
+    } else {
+        coeffs.iter().zip(bases).filter(not_identity).map(prepare).unzip()
     };
-    msm_xyzz_core::<C, _>(&scalars, &points, C::Scalar::NUM_BITS as usize, c)
+    msm_xyzz_core::<C, _, _>(&scalars, |i| (&points[i].x, &points[i].y), nbits, c)
 }
 
 /// `k = k2·λ + k1` with `k1 < λ`, for a little-endian `k < 2^128 λ`: the GLV halves,
@@ -646,7 +665,7 @@ pub fn msm_xyzz_glv_with_window<C: CurveAffine>(
             .flat_map_iter(split)
             .unzip()
     };
-    msm_xyzz_core::<C, _>(&scalars, &points, 128, c)
+    msm_xyzz_core::<C, _, _>(&scalars, |i| (&points[i].x, &points[i].y), 128, c)
 }
 
 /// The XYZZ Pippenger's window size for `n` terms, measured on BLS12-381 G1 (Ryzen 5950X,
@@ -698,12 +717,15 @@ fn integrate_and_clear<F: Field>(buckets: &mut [Xyzz<F>]) -> Xyzz<F> {
 
 /// The XYZZ Pippenger over affine points (none the identity) and little-endian scalars of
 /// `nbits` bits
-fn msm_xyzz_core<C: CurveAffine, S: AsRef<[u8]> + Sync>(
+fn msm_xyzz_core<'a, C: CurveAffine, S: AsRef<[u8]> + Sync, XY>(
     scalars: &[S],
-    points: &[Affine<C>],
+    xy: XY,
     nbits: usize,
     c: usize,
-) -> C::Curve {
+) -> C::Curve
+where
+    XY: Fn(usize) -> (&'a C::Base, &'a C::Base) + Sync,
+{
     use std::sync::{
         OnceLock,
         atomic::{AtomicUsize, Ordering},
@@ -726,7 +748,7 @@ fn msm_xyzz_core<C: CurveAffine, S: AsRef<[u8]> + Sync>(
     rayon::in_place_scope(|scope| {
         for _ in 0..threads.min(tiles) {
             let done_tx = done_tx.clone();
-            let (results, pending, next) = (&results, &pending, &next);
+            let (results, pending, next, xy) = (&results, &pending, &next, &xy);
             scope.spawn(move |_| {
                 let mut buckets = vec![Xyzz::identity(); 1 << (c - 1)];
                 loop {
@@ -735,11 +757,15 @@ fn msm_xyzz_core<C: CurveAffine, S: AsRef<[u8]> + Sync>(
                         break;
                     }
                     let (w, k) = (windows - 1 - t / chunks, t % chunks);
-                    let range = (k * chunk).min(n)..((k + 1) * chunk).min(n);
-                    for (s, p) in scalars[range.clone()].iter().zip(&points[range]) {
+                    let start = (k * chunk).min(n);
+                    let end = ((k + 1) * chunk).min(n);
+                    for (i, s) in
+                        scalars[start..end].iter().enumerate().map(|(i, s)| (start + i, s))
+                    {
                         let d = get_booth_index(w, c, s.as_ref());
                         if d != 0 {
-                            buckets[d.unsigned_abs() as usize - 1].add_affine(&p.x, &p.y, d < 0);
+                            let (x, y) = xy(i);
+                            buckets[d.unsigned_abs() as usize - 1].add_affine(x, y, d < 0);
                         }
                     }
                     let _ = results[t].set(integrate_and_clear(&mut buckets));
@@ -1158,6 +1184,35 @@ mod test {
                 assert_eq!(
                     super::msm_xyzz_glv_with_window(&scalars, &points, c),
                     expected
+                );
+            }
+        }
+    }
+
+    /// BLS12-381 G1 reads coordinates in place; identity bases (every fifth) must count as zero
+    #[test]
+    fn test_xyzz_in_place_with_identities() {
+        use crate::{G1Affine as Bls, G1Projective};
+        for n in [32, 33, 100, 1000] {
+            let (scalars, points): (Vec<_>, Vec<_>) = (0..n)
+                .map(|i| {
+                    let p = if i % 5 == 0 {
+                        <Bls as group::prime::PrimeCurveAffine>::identity()
+                    } else {
+                        G1Projective::random(OsRng).to_affine()
+                    };
+                    (crate::Fq::random(OsRng), p)
+                })
+                .unzip();
+            let expected = scalars
+                .iter()
+                .zip(&points)
+                .fold(G1Projective::identity(), |acc, (s, p)| acc + p * s);
+            for c in [4, 9, 13] {
+                assert_eq!(
+                    super::msm_xyzz_with_window(&scalars, &points, c),
+                    expected,
+                    "n {n} c {c}"
                 );
             }
         }
