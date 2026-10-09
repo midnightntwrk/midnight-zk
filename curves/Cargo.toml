@@ -62,7 +62,7 @@ getrandom = { version = "0.2", features = ["js"] }
 default = ["std"]
 std = []
 portable = ["blst/portable"]
-# BLS12-381 G1 MSMs through blst rather than the (faster) Rust Pippenger
+# BLS12-381 G1 MSMs through blst instead of the Rust Pippenger (`msm_best`)
 blst-msm = []
 dev-curves = ["dep:halo2derive"]
 
