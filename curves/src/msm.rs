@@ -1491,6 +1491,13 @@ mod test {
         }
     }
 
+    /// No terms: the identity, through `CurveAffine::msm` (whichever backend)
+    #[test]
+    fn test_msm_empty() {
+        use crate::{CurveAffine as _, G1Affine as Bls, G1Projective};
+        assert_eq!(Bls::msm(&[], &[]), G1Projective::identity());
+    }
+
     /// Many threads split the terms into chunks, and the scalar blocks end raggedly: every tile
     /// must still see each term exactly once
     #[test]
