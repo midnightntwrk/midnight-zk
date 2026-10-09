@@ -136,7 +136,7 @@ pub trait CurveAffine:
     /// if the lengths differ.
     ///
     /// The default is the generic Pippenger [`msm_best`](crate::msm::msm_best); a curve
-    /// with a faster backend overrides it (BLS12-381 G1 uses blst).
+    /// with a faster backend may override it (BLS12-381 G1 uses blst under `blst-msm`).
     fn msm(coeffs: &[Self::ScalarExt], bases: &[Self]) -> Self::CurveExt {
         crate::msm::msm_best(coeffs, bases)
     }
