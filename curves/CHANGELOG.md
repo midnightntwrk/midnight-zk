@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 
 ### Changed
 * **Breaking:** BLS12-381 G1 `CurveAffine::msm` is the Rust `msm_best`; the new `blst-msm` feature restores blst's `multi_exp_affine` [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
-* `msm_best` is a Pippenger with batched affine buckets (gnark's; XYZZ below window 7) on blst's tiling, with measured per-arch window tables, through the GLV endomorphism for 32..128 terms: 0.7-0.8x of blst's time on BLS12-381 G1 from 2^10 terms on x86, 0.75-0.95x from 2^11 on Apple M3 [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
+* `msm_best` is a Pippenger with batched affine buckets (gnark's; XYZZ below window 7) on blst's tiling, with measured per-arch window tables, through the GLV endomorphism for 32..128 terms: 0.6-0.75x of blst's time on BLS12-381 G1 from 2^10 terms on x86, 0.7-0.8x from 2^12 on Apple M3 [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 * Migrate to Rust edition 2024 (from 2018); declare MSRV 1.90. Both are now inherited from the workspace [#508](https://github.com/midnightntwrk/midnight-zk/pull/508)
 *  Moved the generic extension-field tower (`ExtField`, `quadratic`/`cubic`) from `ff_ext` to the dev-curves `bn256` module [#412](https://github.com/midnightntwrk/midnight-zk/pull/412)
 
