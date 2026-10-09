@@ -9,6 +9,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 ### Added
 * Abstracting `squeeze_evaluation_point` and `commitment_to_zero` in `InCircuitPCS` [#570](https://github.com/midnightntwrk/midnight-zk/pull/570)
+* `InCircuitCounterpart`, mapping an off-circuit PCS to the in-circuit PCS verifying its proofs: KZG to `InCircuitKZG`, fflonk over `P` to `InCircuitFflonk` over `P`'s counterpart [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 * `InCircuitFflonk<P, LOG2_T_MAX>`: in-circuit verifier for proofs of `Fflonk<P::OffCircuit, LOG2_T_MAX>`, over any in-circuit PCS `P` [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 * `InCircuitPCS::commitment_labels` [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 * `Point`/`AssignedPoint` enums and flat-triple `Msm`/`AssignedMsm` representation to distinguish variable-base from globally-fixed bases [#430](https://github.com/midnightntwrk/midnight-zk/pull/430)

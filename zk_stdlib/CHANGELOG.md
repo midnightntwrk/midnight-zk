@@ -22,6 +22,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Fix cost model proof size check to account for committed instance columns [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 
 ### Changed
+* `verify` and `batch_verify` take the empty committed instance from `DefaultPCS::commitment_to_zero` [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 * BREAKING: `load_srs::<PCS>` is generic over a `MidnightPCS`: it loads the SRS of size `2^PCS::srs_k(k)` through `PCS::load_params` [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
 * `setup_vk` derives the circuit size from `DefaultPCS::max_k` [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
 * BREAKING: Update the verifying keys following the removal of the linearization in `midnight-proofs` [#566](https://github.com/midnightntwrk/midnight-zk/pull/566)
