@@ -8,10 +8,7 @@ use ff::{FromUniformBytes, WithSmallOrderMulGroup};
 
 use super::{Error, VerifyingKey};
 use crate::{
-    plonk::{
-        argument, linearization::verifier::compute_linearization_commitment,
-        partially_evaluate_identities, traces::VerifierTrace,
-    },
+    plonk::{argument, evaluate_identities, traces::VerifierTrace},
     poly::{PolynomialLabel, Rotation, VerifierQuery, commitment::PolynomialCommitmentScheme},
     transcript::{Hashable, Sampleable, Transcript},
     utils::arithmetic::compute_inner_product,
@@ -238,9 +235,8 @@ where
     let phase1_evals = &phase1_evaluated.evals_map;
     let phase2_evals = &phase2_evaluated.evals_map;
 
-    // Partially evaluate batched identities
-    // (without fixed columns corresponding to simple, multiplicative selectors)
-    let expressions = partially_evaluate_identities(
+    // Evaluate the batched identities, nu(x)
+    let nu_eval = evaluate_identities(
         vk,
         &instance_evals,
         phase0_evals,
@@ -252,21 +248,21 @@ where
         gamma,
         theta,
         trash_challenge,
+        y,
     );
 
-    let (lin_commitment, lin_eval) = compute_linearization_commitment(
-        expressions,
-        vk,
-        &y,
-        &xn,
-        &splitting_factor,
-        &quotient_limb_coms,
-    );
+    // The commitment to h(X) = h_0(X) + X^{n-1} h_1(X) + ..., scaled by
+    // (1 - x^n) so that it must open to -nu(x) at x, without an inversion.
+    let quotient_commitment = quotient_limb_coms
+        .iter()
+        .zip(iter::successors(Some(F::ONE - xn), |pow| {
+            Some(*pow * splitting_factor)
+        }))
+        .map(|(com, scalar)| com.clone() * scalar)
+        .reduce(|acc, term| acc + term)
+        .expect("at least one quotient limb commitment");
 
     // Collect queries that are checked in the multi-open argument
-    //
-    // NB: Queries corresponding to simple, multiplicative selectors need not be
-    // checked
     //
     // The multi-open scales the first commitment by 1, which is best spent on
     // one read from the proof: the phase-0 commitments are known in advance and
@@ -291,9 +287,9 @@ where
         ))
         .chain(iter::once(VerifierQuery::new(
             x,
-            &lin_commitment,
-            PolynomialLabel::Linearization,
-            lin_eval,
+            &quotient_commitment,
+            PolynomialLabel::Quotient,
+            -nu_eval,
         )))
         .collect::<Vec<_>>();
 

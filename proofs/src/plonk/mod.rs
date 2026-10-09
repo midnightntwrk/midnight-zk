@@ -11,8 +11,7 @@ use group::ff::FromUniformBytes;
 use crate::{
     plonk::permutation::expressions,
     poly::{
-        Coeff, EvaluationDomain, ExtendedLagrangeCoeff, LagrangeCoeff, PinnedEvaluationDomain,
-        Polynomial,
+        EvaluationDomain, ExtendedLagrangeCoeff, LagrangeCoeff, PinnedEvaluationDomain, Polynomial,
     },
     transcript::{Hashable, Transcript},
     utils::{
@@ -30,7 +29,6 @@ mod circuit;
 mod error;
 pub(crate) mod evaluation;
 mod keygen;
-pub(crate) mod linearization;
 pub(crate) mod logup;
 pub mod permutation;
 pub(crate) mod traces;
@@ -63,7 +61,6 @@ use crate::poly::{PolynomialLabel, commitment::PolynomialCommitmentScheme};
 pub struct VerifyingKey<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
     domain: EvaluationDomain<F>,
     phase0_commitment: CS::Commitment,
-    simple_selector_commitments: BTreeMap<usize, CS::Commitment>,
     cs: ConstraintSystem<F>,
     /// Cached maximum degree of `cs` (which doesn't change after construction).
     cs_degree: usize,
@@ -101,9 +98,6 @@ where
         // k value fits in 1 byte
         writer.write_all(&[*k as u8])?;
         self.phase0_commitment.write(writer, format)?;
-        for commitment in self.simple_selector_commitments.values() {
-            commitment.write(writer, format)?;
-        }
 
         Ok(())
     }
@@ -175,29 +169,13 @@ where
 
         let domain = EvaluationDomain::new(cs.degree() as u32, k.into());
 
-        // Finalizing `cs` replaces its selectors with fixed columns, which
-        // decides which fixed columns are simple selectors.
+        // Finalizing `cs` replaces its selectors with fixed columns.
         let cs = cs.into_finalized();
 
         let phase0_commitment =
             CS::deserialize_commitment(reader, format, &cs.fixed_polys_labels())?;
 
-        let simple_selector_commitments = cs
-            .simple_selector_columns()
-            .into_iter()
-            .map(|i| {
-                let commitment =
-                    CS::deserialize_commitment(reader, format, &[PolynomialLabel::Fixed(i)])?;
-                Ok((i, commitment))
-            })
-            .collect::<io::Result<_>>()?;
-
-        Ok(Self::from_parts(
-            domain,
-            phase0_commitment,
-            simple_selector_commitments,
-            cs,
-        ))
+        Ok(Self::from_parts(domain, phase0_commitment, cs))
     }
 
     /// Writes a verifying key to a vector of bytes using [`Self::write`].
@@ -228,17 +206,12 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> VerifyingK
         // The header [`Self::write`] emits: the version byte and `k`.
         const HEADER_BYTES: usize = 1 + 1;
 
-        HEADER_BYTES
-            + self.phase0_commitment.byte_length(format)
-            + (self.simple_selector_commitments.values())
-                .map(|c| c.byte_length(format))
-                .sum::<usize>()
+        HEADER_BYTES + self.phase0_commitment.byte_length(format)
     }
 
     fn from_parts(
         domain: EvaluationDomain<F>,
         phase0_commitment: CS::Commitment,
-        simple_selector_commitments: BTreeMap<usize, CS::Commitment>,
         cs: ConstraintSystem<F>,
     ) -> Self
     where
@@ -250,7 +223,6 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> VerifyingK
         let mut vk = Self {
             domain,
             phase0_commitment,
-            simple_selector_commitments,
             cs,
             cs_degree,
             // Temporary, this is not pinned.
@@ -269,11 +241,6 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> VerifyingK
         vk.phase0_commitment
             .write(&mut buffer, SerdeFormat::RawBytesUnchecked)
             .expect("Failed to write to buffer - this is a bug.");
-        for commitment in vk.simple_selector_commitments.values() {
-            commitment
-                .write(&mut buffer, SerdeFormat::RawBytesUnchecked)
-                .expect("Failed to write to buffer - this is a bug.");
-        }
 
         // We use the debug implementation to add the gates and domain to the hashed
         // buffer. We should eventually move away from debug implementation for
@@ -303,23 +270,15 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> VerifyingK
         PinnedVerificationKey {
             domain: self.domain.pinned(),
             phase0_commitment: &self.phase0_commitment,
-            simple_selector_commitments: &self.simple_selector_commitments,
             cs: self.cs.pinned(),
         }
     }
 
     /// The commitment to the phase-0 group, the polynomials of
-    /// [`ConstraintSystem::fixed_polys_labels`]: every fixed column but the
-    /// simple selectors, then the fixed permutation polynomials.
+    /// [`ConstraintSystem::fixed_polys_labels`]: every fixed column, then the
+    /// fixed permutation polynomials.
     pub fn phase0_commitment(&self) -> &CS::Commitment {
         &self.phase0_commitment
-    }
-
-    /// The commitment to each simple-selector fixed column, keyed by column
-    /// index. They are kept apart from the group: the linearization scales
-    /// each by its own evaluated identity.
-    pub fn simple_selector_commitments(&self) -> &BTreeMap<usize, CS::Commitment> {
-        &self.simple_selector_commitments
     }
 
     /// Returns `ConstraintSystem`
@@ -341,7 +300,6 @@ pub struct PinnedVerificationKey<'a, F: PrimeField, CS: PolynomialCommitmentSche
     domain: PinnedEvaluationDomain<'a, F>,
     cs: PinnedConstraintSystem<'a, F>,
     phase0_commitment: &'a CS::Commitment,
-    simple_selector_commitments: &'a BTreeMap<usize, CS::Commitment>,
 }
 /// This is a proving key which allows for the creation of proofs for a
 /// particular circuit.
@@ -354,7 +312,6 @@ pub struct ProvingKey<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
     pub(crate) fixed_values: Vec<Polynomial<F, LagrangeCoeff>>,
     pub(crate) fixed_cosets: Vec<Polynomial<F, ExtendedLagrangeCoeff>>,
     pub(crate) phase0_polys: argument::prover::KeyGroup<F>,
-    pub(crate) simple_selector_polys: BTreeMap<usize, Polynomial<F, Coeff>>,
     pub(crate) sigmas: permutation::Sigmas<F>,
     pub(crate) ev: Evaluator<F>,
     /// Region layout captured during keygen, consumed during proving to skip
@@ -370,7 +327,6 @@ pub struct ProvingKey<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
 /// * the phase-0 group, of [`ConstraintSystem::fixed_polys_labels`], in
 ///   coefficient form; `vk_repr` is the `transcript_repr` of the verifying key
 ///   holding its commitment;
-/// * the simple-selector columns, in coefficient form, keyed by column index;
 /// * every fixed column over the extended domain;
 /// * the permutation polynomials in the bases the prover reads them in.
 ///
@@ -387,7 +343,6 @@ pub(in crate::plonk) fn build_phase0_polys<F: WithSmallOrderMulGroup<3>>(
     sigmas: Vec<Polynomial<F, LagrangeCoeff>>,
 ) -> (
     argument::prover::KeyGroup<F>,
-    BTreeMap<usize, Polynomial<F, Coeff>>,
     Vec<Polynomial<F, ExtendedLagrangeCoeff>>,
     permutation::Sigmas<F>,
 ) {
@@ -407,15 +362,11 @@ pub(in crate::plonk) fn build_phase0_polys<F: WithSmallOrderMulGroup<3>>(
         .map(|poly| domain.coeff_to_extended(poly.clone()))
         .collect();
 
-    let mut group = BTreeMap::new();
-    let mut simple_selector_polys = BTreeMap::new();
-    for (i, poly) in fixed_coeffs.into_iter().enumerate() {
-        if cs.has_simple_selector_col(i) {
-            simple_selector_polys.insert(i, poly);
-        } else {
-            group.insert(PolynomialLabel::Fixed(i), poly);
-        }
-    }
+    let mut group: BTreeMap<_, _> = fixed_coeffs
+        .into_iter()
+        .enumerate()
+        .map(|(i, poly)| (PolynomialLabel::Fixed(i), poly))
+        .collect();
 
     let (sigma_coeffs, sigma_cosets) =
         permutation::keygen::compute_polys_and_cosets(domain, &cs.permutation, &sigmas);
@@ -423,7 +374,6 @@ pub(in crate::plonk) fn build_phase0_polys<F: WithSmallOrderMulGroup<3>>(
 
     (
         argument::prover::KeyGroup::new(group, vk_repr),
-        simple_selector_polys,
         fixed_cosets,
         permutation::Sigmas {
             values: sigmas,
@@ -514,7 +464,7 @@ where
                 ),
             ));
         }
-        let (phase0_polys, simple_selector_polys, fixed_cosets, sigmas) = build_phase0_polys(
+        let (phase0_polys, fixed_cosets, sigmas) = build_phase0_polys(
             &vk.domain,
             &vk.cs,
             vk.transcript_repr,
@@ -530,7 +480,6 @@ where
             fixed_values,
             fixed_cosets,
             phase0_polys,
-            simple_selector_polys,
             sigmas,
             ev,
             // The region layout is not serialized: the first proof produced
@@ -570,25 +519,15 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> VerifyingKey<F, CS> {
     }
 }
 
-/// Partially evaluates the (batched) identities: all polynomials, except those
-/// corresponding to simple, multiplicative selectors, are evaluated at the
-/// evaluation challenge `x`.
-///
-/// This function is a boilerplate for, both, prover and verifier. The prover
-/// uses it to compute the linearization polynomial, while the verifier needs it
-/// to compute the commitment to the linearization polynomial.
+/// Evaluates the identities at the evaluation challenge `x` and batches them
+/// with `y`, the same way the prover batches them into the quotient's numerator
+/// `nu(X)`.
 ///
 /// # Returns
 ///
-/// The partially evaluated batched identity. It is given as a [Vec] of 2-tuples
-/// `(Option<usize>, F)` containing an evaluation point (representing a
-/// partially or fully evaluated identity at `x`) and an [Option] which
-/// references:
-///     * the fixed column index of a simple, multiplicative selector, if this
-///       evaluation point is multiplied by such a selector,
-///     * `None` otherwise.
+/// `nu(x)`, which must equal `h(x) * (x^n - 1)` for the quotient `h(X)`.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn partially_evaluate_identities<'a, F, CS>(
+pub(crate) fn evaluate_identities<'a, F, CS>(
     vk: &'a VerifyingKey<F, CS>,
     instance_evals: &'a [F],
     phase0_evals: &BTreeMap<PolynomialLabel, Vec<argument::Evaluation<F>>>,
@@ -600,7 +539,8 @@ pub(crate) fn partially_evaluate_identities<'a, F, CS>(
     gamma: F,
     theta: F,
     trash_challenge: F,
-) -> Vec<(Option<usize>, F)>
+    y: F,
+) -> F
 where
     F: WithSmallOrderMulGroup<3> + FromUniformBytes<64>,
     CS: PolynomialCommitmentScheme<F>,
@@ -622,8 +562,7 @@ where
         .collect();
     let advice_evals = &advice_evals[..];
 
-    // Likewise for the fixed evaluations, from the phase-0 group. Simple
-    // selectors are not opened.
+    // Likewise for the fixed evaluations, from the phase-0 group.
     let mut next = vec![0; vk.cs.num_fixed_columns];
     let fixed_evals: Vec<F> = vk
         .cs
@@ -631,12 +570,6 @@ where
         .iter()
         .map(|(column, _)| {
             let i = column.index();
-            if vk.cs.has_simple_selector_col(i) {
-                // The linearization scales the selector's commitment by this
-                // evaluation, so the selector must contribute 1 here: another
-                // value breaks completeness, and 0 lets the gate go unenforced.
-                return F::ONE;
-            }
             let eval = phase0_evals[&PolynomialLabel::Fixed(i)][next[i]].eval();
             next[i] += 1;
             eval
@@ -657,7 +590,7 @@ where
         .iter()
         .flat_map(move |gate| {
             gate.polynomials().iter().map(move |poly| {
-                let evaluation = poly.evaluate(
+                poly.evaluate(
                     &|scalar| scalar,
                     &|_| panic!("virtual selectors are removed during optimization"),
                     &|query| fixed_evals[query.index.unwrap()],
@@ -667,35 +600,24 @@ where
                     &|a, b| a + &b,
                     &|a, b| a * &b,
                     &|a, scalar| a * &scalar,
-                );
-                (
-                    gate.queried_selectors()
-                        .iter()
-                        .filter(|s| s.is_simple())
-                        .map(|s| s.index())
-                        .next(),
-                    evaluation,
                 )
             })
         })
-        .chain(
-            expressions(
-                vk,
-                &vk.cs.permutation,
-                phase0_evals,
-                phase2_evals,
-                advice_evals,
-                fixed_evals,
-                instance_evals,
-                l_0,
-                l_last,
-                l_blind,
-                beta,
-                gamma,
-                x,
-            )
-            .map(|e| (None, e)),
-        )
+        .chain(expressions(
+            vk,
+            &vk.cs.permutation,
+            phase0_evals,
+            phase2_evals,
+            advice_evals,
+            fixed_evals,
+            instance_evals,
+            l_0,
+            l_last,
+            l_blind,
+            beta,
+            gamma,
+            x,
+        ))
         .chain(
             vk.cs
                 .lookups
@@ -718,23 +640,16 @@ where
                             instance_evals,
                         )
                         .collect::<Vec<_>>()
-                })
-                .map(|e| (None, e)),
+                }),
         )
-        .chain(
-            vk.cs
-                .trashcans
-                .iter()
-                .flat_map(move |argument| {
-                    argument.expressions(
-                        phase2_evals,
-                        trash_challenge,
-                        advice_evals,
-                        fixed_evals,
-                        instance_evals,
-                    )
-                })
-                .map(|e| (None, e)),
-        )
-        .collect::<Vec<(Option<usize>, F)>>()
+        .chain(vk.cs.trashcans.iter().flat_map(move |argument| {
+            argument.expressions(
+                phase2_evals,
+                trash_challenge,
+                advice_evals,
+                fixed_evals,
+                instance_evals,
+            )
+        }))
+        .fold(F::ZERO, |acc, eval| acc * y + eval)
 }

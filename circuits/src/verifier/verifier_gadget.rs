@@ -247,7 +247,6 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         let assigned_vk = AssignedVk {
             domain: domain.clone(),
             phase0_commitment: PCS::fixed_commitment(&cs.fixed_polys_labels()),
-            simple_selector_commitments: simple_selector_commitments::<S, PCS>(cs),
             cs: cs.clone(),
             cs_degree: cs.degree(),
             transcript_repr,
@@ -280,7 +279,6 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         let assigned_vk = AssignedVk {
             domain: domain.clone(),
             phase0_commitment: PCS::fixed_commitment(&cs.fixed_polys_labels()),
-            simple_selector_commitments: simple_selector_commitments::<S, PCS>(cs),
             cs: cs.clone(),
             cs_degree: cs.degree(),
             transcript_repr,
@@ -288,15 +286,6 @@ impl<S: SelfEmulation> VerifierGadget<S> {
 
         Ok(assigned_vk)
     }
-}
-
-fn simple_selector_commitments<S: SelfEmulation, PCS: InCircuitPCS<S>>(
-    cs: &ConstraintSystem<S::F>,
-) -> BTreeMap<usize, PCS::AssignedCommitment> {
-    cs.simple_selector_columns()
-        .into_iter()
-        .map(|i| (i, PCS::fixed_commitment(&[PolynomialLabel::Fixed(i)])))
-        .collect()
 }
 
 impl<S: SelfEmulation> VerifierGadget<S> {
@@ -405,61 +394,19 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         ))
     }
 
-    /// Construct, in-circuit, the commitment to the linearization polynomial
-    /// and its expected evaluation at `x`.
+    /// Construct, in-circuit, the commitment to the quotient polynomial
     ///
-    /// The commitment is:
+    ///  `(h_0 + x^{n-1} * h_1 + ... + x^{l*(n-1)} * h_l) * (1 - x^n)`,
     ///
-    ///  `S_0 * id_0(x) + y * S_1 * id_1(x) + ... + y^m * S_m * id_m(x)
-    ///        - (h_0 + x^{n-1} * h_1 + ... + x^{l*(n-1)} * h_l) * (x^n-1),`
-    ///
-    /// where:
-    /// * `y` is the batching challenge,
-    /// * `x` is the evaluation challenge,
-    /// * `id_j(x)` is a (partially or fully) evaluated identity at `x`,
-    /// * `S_j` is either the commitment to a simple selector column or the
-    ///   commitment to `P(X) = 1` (for fully evaluated identities),
-    /// * `h_k` are commitments to the limbs of the quotient polynomial.
-    ///
-    /// # Returns
-    ///
-    /// `(commitment, expected_eval)` where the commitment to the linearization
-    /// polynomial is expected to open to `expected_eval` at `x`.
-    #[allow(clippy::too_many_arguments)]
-    #[allow(clippy::type_complexity)]
-    fn compute_linearization_commitment<'com, PCS: InCircuitPCS<S>>(
+    /// where `h_k` are commitments to the limbs of the quotient polynomial. It
+    /// is expected to open to `-nu(x)` at `x`.
+    fn compute_quotient_commitment<PCS: InCircuitPCS<S>>(
         layouter: &mut impl Layouter<S::F>,
         scalar_chip: &S::ScalarChip,
-        expressions: Vec<(Option<usize>, AssignedNative<S::F>)>,
-        vk: &'com AssignedVk<S, PCS>,
-        y: AssignedNative<S::F>,
         xn: AssignedNative<S::F>,
         splitting_factor: AssignedNative<S::F>,
-        quotient_limb_commitments: &'com [PCS::AssignedCommitment],
-    ) -> Result<(PCS::AssignedCommitment, AssignedNative<S::F>), Error> {
-        let zero: AssignedNative<S::F> = scalar_chip.assign_fixed(layouter, S::F::ZERO)?;
-        let one: AssignedNative<S::F> = scalar_chip.assign_fixed(layouter, S::F::ONE)?;
-
-        let mut expected_eval = zero.clone();
-
-        // Group multiples of the same fixed column to reduce the number of scalar
-        // multiplications
-        let mut grouped_points: BTreeMap<Option<usize>, AssignedNative<S::F>> = BTreeMap::new();
-        let mut y_pow = one;
-        for (col_idx, eval) in expressions.iter().rev() {
-            let entry = grouped_points.entry(*col_idx).or_insert(zero.clone());
-            *entry = scalar_chip.add_and_mul(
-                layouter,
-                (S::F::ZERO, &y_pow),
-                (S::F::ZERO, eval),
-                (S::F::ONE, entry),
-                S::F::ZERO,
-                S::F::ONE,
-            )?; // entry += y_pow * eval
-
-            y_pow = scalar_chip.mul(layouter, &y_pow, &y, None)?;
-        }
-
+        quotient_limb_commitments: &[PCS::AssignedCommitment],
+    ) -> Result<PCS::AssignedCommitment, Error> {
         let mut splitting_pow =
             scalar_chip.linear_combination(layouter, &[(-S::F::ONE, xn)], S::F::ONE)?;
         let (first_com, rest_coms) = quotient_limb_commitments
@@ -472,31 +419,11 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             term
         };
 
-        let commitment = rest_coms.iter().try_fold(init, |acc, com| {
+        rest_coms.iter().try_fold(init, |acc, com| {
             let term = com.clone().mul(layouter, scalar_chip, &splitting_pow)?;
             splitting_pow = scalar_chip.mul(layouter, &splitting_pow, &splitting_factor, None)?;
             acc.add(layouter, scalar_chip, term)
-        })?;
-
-        let commitment = grouped_points.into_iter().try_fold(
-            commitment,
-            |acc, (col_idx, eval)| match col_idx {
-                Some(idx) => {
-                    let t = vk.simple_selector_commitments[&idx].clone().mul(
-                        layouter,
-                        scalar_chip,
-                        &eval,
-                    )?;
-                    acc.add(layouter, scalar_chip, t)
-                }
-                None => {
-                    expected_eval = scalar_chip.sub(layouter, &expected_eval, &eval)?;
-                    Ok(acc)
-                }
-            },
-        )?;
-
-        Ok((commitment, expected_eval))
+        })
     }
 
     /// Given a [VerifierTrace], this function computes the opening challenge,
@@ -622,29 +549,21 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             })
             .collect();
 
-        // The fixed evaluations in the order of `cs.fixed_queries`, which is how
-        // the identities index them. A simple selector is never opened; its
-        // evaluation is taken as 1, as the linearization scales the selector's
-        // commitment instead: another value breaks completeness, and 0 lets the
-        // gate go unenforced.
-        let one: AssignedNative<S::F> = self.scalar_chip.assign_fixed(layouter, S::F::ONE)?;
+        // The fixed evaluations in the order of `cs.fixed_queries`, which is
+        // how the identities index them.
         let mut next = vec![0; cs.num_fixed_columns()];
         let fixed_evals: Vec<AssignedNative<S::F>> = cs
             .fixed_queries()
             .iter()
             .map(|(column, _)| {
                 let i = column.index();
-                if cs.has_simple_selector_col(i) {
-                    return one.clone();
-                }
                 let eval = phase0_evals[&PolynomialLabel::Fixed(i)][next[i]].eval().clone();
                 next[i] += 1;
                 eval
             })
             .collect();
 
-        // Partially evaluate batched identities
-        // (without fixed columns corresponding to simple selectors)
+        // Evaluate the identities
         let nr_blinding_factors = cs.blinding_factors();
         let l_evals = evaluate_lagrange_polynomials(
             layouter,
@@ -664,7 +583,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         let l_0 = l_evals[1 + nr_blinding_factors].clone();
 
         let mut expressions = Vec::new();
-        // (Partially) evaluate polys from (custom) gates
+        // Evaluate polys from (custom) gates
         for gate in cs.gates().iter() {
             for poly in gate.polynomials().iter() {
                 let eval = eval_expression::<S>(
@@ -675,14 +594,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                     &instance_evals,
                     poly,
                 )?;
-                expressions.push((
-                    gate.queried_selectors()
-                        .iter()
-                        .filter(|s| s.is_simple())
-                        .map(|s| s.index())
-                        .next(),
-                    eval,
-                ));
+                expressions.push(eval);
             }
         }
 
@@ -704,7 +616,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             &x,
         )?
         .into_iter()
-        .for_each(|perm_id| expressions.push((None, perm_id)));
+        .for_each(|perm_id| expressions.push(perm_id));
 
         // Evaluate polys from lookup argument
         cs.lookups()
@@ -736,7 +648,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             .collect::<Result<Vec<Vec<_>>, Error>>()?
             .concat()
             .into_iter()
-            .for_each(|lookup_id| expressions.push((None, lookup_id)));
+            .for_each(|lookup_id| expressions.push(lookup_id));
 
         // Evaluate polys from trashcan argument
         cs.trashcans()
@@ -759,27 +671,34 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             .collect::<Result<Vec<Vec<_>>, Error>>()?
             .concat()
             .into_iter()
-            .for_each(|trash_id| expressions.push((None, trash_id)));
+            .for_each(|trash_id| expressions.push(trash_id));
 
         let splitting_factor =
             ArithInstructions::pow(&self.scalar_chip, layouter, &x, (1 << k) - 1)?;
         let xn = self.scalar_chip.mul(layouter, &x, &splitting_factor, None)?;
 
-        let (lin_commitment, lin_eval) = Self::compute_linearization_commitment(
+        // -nu(x): the identities batched with y by Horner's rule, negated.
+        let zero: AssignedNative<S::F> = self.scalar_chip.assign_fixed(layouter, S::F::ZERO)?;
+        let neg_nu_eval = expressions.iter().try_fold(zero, |acc, id| {
+            self.scalar_chip.add_and_mul(
+                layouter,
+                (S::F::ZERO, &acc),
+                (S::F::ZERO, &y),
+                (-S::F::ONE, id),
+                S::F::ZERO,
+                S::F::ONE,
+            ) // acc * y - id
+        })?;
+
+        let quotient_commitment = Self::compute_quotient_commitment::<PCS>(
             layouter,
             &self.scalar_chip,
-            expressions,
-            assigned_vk,
-            y,
             xn,
             splitting_factor,
             &limb_commitments,
         )?;
 
         // Collect queries that are checked in the multi-open argument
-        //
-        // NB: Queries corresponding to simple, multiplicative selectors need not be
-        // checked
         //
         // The multi-open scales the first commitment by 1, which is best spent on
         // one read from the proof: the phase-0 commitments are known in advance and
@@ -804,9 +723,9 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             ))
             .chain(iter::once(VerifierQuery::new(
                 &x,
-                &lin_commitment,
-                PolynomialLabel::Linearization,
-                &lin_eval,
+                &quotient_commitment,
+                PolynomialLabel::Quotient,
+                &neg_nu_eval,
             )))
             .collect::<Vec<_>>();
 

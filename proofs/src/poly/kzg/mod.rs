@@ -407,7 +407,7 @@ where
         // `KZGCommitment` it targets, keyed by the query label. The rest of the
         // routine then operates on individual `KZGCommitment`s as before.
         //
-        // The `Linear` linearization commitment aggregates many polynomials and
+        // The `Linear` quotient commitment aggregates many polynomials and
         // carries no single label of its own, so it is taken as it is. Every
         // `Simple` has to name the queried polynomial, whether it stands alone
         // or in a batch: matching on the label rather than on the position keeps

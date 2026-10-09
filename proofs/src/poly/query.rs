@@ -24,8 +24,8 @@ pub enum PolynomialLabel {
     LogupMultiplicities(usize),
     /// LogUp accumulator polynomial Z(X) (argument index).
     LogupAggregator(usize),
-    /// PLONK linearization polynomial.
-    Linearization,
+    /// PLONK quotient polynomial h(X), committed as a single piece.
+    Quotient,
     /// PLONK quotient polynomial h(X), committed in pieces (piece index).
     QuotientPiece(usize),
     /// Trash compressed polynomial (argument index).
@@ -62,7 +62,7 @@ impl fmt::Display for PolynomialLabel {
             Self::LogupMultiplicities(i) => write!(f, "logup_multiplicities({i})"),
             Self::LogupAggregator(i) => write!(f, "logup_aggregator({i})"),
             Self::Trash(i) => write!(f, "trash({i})"),
-            Self::Linearization => f.write_str("linearization"),
+            Self::Quotient => f.write_str("quotient"),
             Self::QuotientPiece(i) => write!(f, "quotient_piece_{i}"),
             Self::Custom(s) => write!(f, "custom({s})"),
             Self::Collection(labels) => {

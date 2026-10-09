@@ -67,7 +67,6 @@ type VerifyingKey<S> =
 pub struct AssignedVk<S: SelfEmulation, PCS: InCircuitPCS<S>> {
     domain: EvaluationDomain<S::F>,
     phase0_commitment: PCS::AssignedCommitment,
-    simple_selector_commitments: BTreeMap<usize, PCS::AssignedCommitment>,
     cs: ConstraintSystem<S::F>,
     cs_degree: usize,
     transcript_repr: AssignedNative<S::F>,
@@ -118,10 +117,6 @@ pub fn fixed_bases<S: SelfEmulation>(vk: &VerifyingKey<S>) -> BTreeMap<Polynomia
     let fixed_coms = vk.phase0_commitment().0.iter();
     for (label, com) in vk.cs().fixed_polys_labels().into_iter().zip(fixed_coms) {
         fixed_bases.insert(label, *com.as_point());
-    }
-
-    for (i, com) in vk.simple_selector_commitments() {
-        fixed_bases.insert(PolynomialLabel::Fixed(*i), *com.0[0].as_point());
     }
 
     fixed_bases.insert(PolynomialLabel::Custom("-G".into()), -S::C::generator());

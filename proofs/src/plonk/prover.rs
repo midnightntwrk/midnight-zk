@@ -22,19 +22,13 @@ use super::{
 };
 use crate::{
     circuit::Value,
-    plonk::{
-        argument, linearization::prover::compute_linearization_poly, partially_evaluate_identities,
-        traces::ProverTrace,
-    },
+    plonk::{argument, traces::ProverTrace},
     poly::{
         Coeff, EvaluationDomain, ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial, PolynomialLabel,
         ProverQuery, Rotation, batch_invert_rational, commitment::PolynomialCommitmentScheme,
     },
     transcript::{Hashable, Sampleable, Transcript},
-    utils::{
-        arithmetic::{eval_polynomial, eval_polynomial_seq},
-        rational::Rational,
-    },
+    utils::{arithmetic::eval_polynomial_seq, rational::Rational},
 };
 
 #[cfg(feature = "committed-instances")]
@@ -324,11 +318,6 @@ where
         phase0_committed,
         phase1_committed,
         phase2_committed,
-        beta,
-        gamma,
-        theta,
-        trash_challenge,
-        y,
         ..
     } = trace;
 
@@ -341,7 +330,7 @@ where
         .map(|rotation| (rotation, domain.rotate_omega(x, rotation)))
         .collect();
 
-    let instance_evals = write_instance_evals_to_transcript(
+    write_instance_evals_to_transcript(
         pk,
         nb_committed_instances,
         &instance_polys,
@@ -355,33 +344,16 @@ where
 
     let phase2_evaluated = phase2_committed.evaluate(cs, &x_rotations, transcript)?;
 
-    // Partially evaluate batched identities (without fixed columns
-    // corresponding to simple, multiplicative selectors)
+    // h(X) = h_0(X) + x^{n-1} h_1(X) + ..., scaled by (1 - x^n): the
+    // polynomial behind the verifier's quotient commitment, which opens to
+    // -nu(x) at x.
     let splitting_factor = x.pow_vartime([pk.vk.n() - 1]);
     let xn = splitting_factor * x;
-    let expressions = partially_evaluate_identities(
-        &pk.vk,
-        &instance_evals,
-        &phase0_evaluated.evals_map,
-        &phase1_evaluated.evals_map,
-        &phase2_evaluated.evals_map,
-        x,
-        xn,
-        beta,
-        gamma,
-        theta,
-        trash_challenge,
-    );
-
-    // Compute linearization polynomial
-    let (lin_poly_non_constant_part, lin_poly_constant_term) =
-        compute_linearization_poly(expressions, pk, y, xn, splitting_factor, quotient_limbs);
-
-    debug_assert_eq!(
-        eval_polynomial(&lin_poly_non_constant_part, x),
-        -lin_poly_constant_term,
-        "L'(x) should equal -C, where C is the constant part of the linearization polynomial"
-    );
+    let quotient_poly = iter::successors(Some(xn - F::ONE), |pow| Some(*pow * splitting_factor))
+        .zip(quotient_limbs)
+        .fold(Polynomial::init(0), |acc, (scalar, limb)| {
+            acc.padded_sub(&(limb * scalar))
+        });
 
     let instance_labels: Vec<_> = (0..nb_committed_instances)
         .map(|i| [PolynomialLabel::CommittedInstance(i)])
@@ -394,7 +366,7 @@ where
         &phase1_evaluated,
         &phase2_evaluated,
         &x_rotations,
-        &lin_poly_non_constant_part,
+        &quotient_poly,
     );
 
     CS::multi_open(params, &queries, transcript).map_err(|_| Error::ConstraintSystemFailure)
@@ -752,7 +724,7 @@ pub(super) fn compute_queries<
     phase1_evals: &'a argument::prover::Evaluated<'a, F>,
     phase2_evals: &'a argument::prover::Evaluated<'a, F>,
     x_rotations: &'a BTreeMap<Rotation, F>,
-    lin_poly_non_constant_part: &'a Polynomial<F, Coeff>,
+    quotient_poly: &'a Polynomial<F, Coeff>,
 ) -> Vec<ProverQuery<'a, F>> {
     // The multi-open scales the first commitment by 1, which is best spent on
     // one read from the proof: the phase-0 commitments are known in advance and
@@ -775,10 +747,10 @@ pub(super) fn compute_queries<
             }),
         )
         .chain(iter::once(ProverQuery::new(
-            &[PolynomialLabel::Linearization],
-            slice::from_ref(lin_poly_non_constant_part),
+            &[PolynomialLabel::Quotient],
+            slice::from_ref(quotient_poly),
             x_rotations[&Rotation::cur()],
-            PolynomialLabel::Linearization,
+            PolynomialLabel::Quotient,
         )))
         .collect()
 }

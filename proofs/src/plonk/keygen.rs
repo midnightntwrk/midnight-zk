@@ -17,7 +17,7 @@ use crate::{
     circuit::Value,
     dev::cost_model::cost_model_options,
     poly::{
-        EvaluationDomain, ExtendedLagrangeCoeff, PolynomialLabel, batch_invert_rational,
+        EvaluationDomain, ExtendedLagrangeCoeff, batch_invert_rational,
         commitment::PolynomialCommitmentScheme,
     },
     utils::{arithmetic::parallelize, rational::Rational},
@@ -275,27 +275,10 @@ where
 
     let permutations = assembly.permutation.into_permutations::<F>(&domain, &cs.permutation);
 
-    let fixed_polys: Vec<_> = fixed
-        .iter()
-        .enumerate()
-        .filter(|(i, _)| !cs.has_simple_selector_col(*i))
-        .map(|(_, poly)| poly)
-        .chain(permutations.iter())
-        .collect();
+    let fixed_polys: Vec<_> = fixed.iter().chain(permutations.iter()).collect();
     let phase0_commitment = CS::commit_many(params, &fixed_polys, &cs.fixed_polys_labels());
 
-    let simple_selector_commitments = cs
-        .simple_selector_columns()
-        .into_iter()
-        .map(|i| (i, CS::commit(params, &fixed[i], PolynomialLabel::Fixed(i))))
-        .collect();
-
-    Ok(VerifyingKey::from_parts(
-        domain,
-        phase0_commitment,
-        simple_selector_commitments,
-        cs,
-    ))
+    Ok(VerifyingKey::from_parts(domain, phase0_commitment, cs))
 }
 
 /// Generate a `ProvingKey` from a `VerifyingKey` and an instance of `Circuit`.
@@ -340,7 +323,7 @@ where
     fixed.extend(selector_polys.into_iter().map(|poly| vk.domain.lagrange_from_vec(poly)));
 
     let permutations = assembly.permutation.into_permutations::<F>(&vk.domain, &cs.permutation);
-    let (phase0_polys, simple_selector_polys, fixed_cosets, sigmas) =
+    let (phase0_polys, fixed_cosets, sigmas) =
         super::build_phase0_polys(&vk.domain, &cs, vk.transcript_repr, &fixed, permutations);
 
     let [l0, l_last, l_active_row] = compute_lagrange_polys(&vk, &cs);
@@ -354,7 +337,6 @@ where
         fixed_values: fixed,
         fixed_cosets,
         phase0_polys,
-        simple_selector_polys,
         sigmas,
         ev,
         region_starts,
