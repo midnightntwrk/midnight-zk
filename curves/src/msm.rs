@@ -720,18 +720,36 @@ pub fn msm_xyzz_glv_with_window<C: CurveAffine>(
     msm_xyzz_core::<C, _, _>(&scalars, |i| (&points[i].x, &points[i].y), 128, c)
 }
 
-/// The XYZZ Pippenger's window size for `n` terms, measured on BLS12-381 G1 (Ryzen 5950X,
-/// 32 threads; `examples/msm_tune.rs` sweeps it)
+/// The XYZZ Pippenger's window size for `n` terms, measured on BLS12-381 G1
+/// (`examples/msm_tune.rs` sweeps it): x86-64 on a Ryzen 5950X (32 threads), aarch64 on an
+/// Apple M3 Max (12 performance and 4 efficiency cores), which wants wider windows.
 #[doc(hidden)]
 pub fn xyzz_window(n: usize) -> usize {
-    match n.max(1).ilog2() {
-        0..=5 => 5,
-        6 => 4,
-        7..=8 => 5,
-        9 => 6,
-        10..=14 => 9,
-        15 => 10,
-        _ => 13,
+    let k = n.max(1).ilog2();
+    if cfg!(target_arch = "aarch64") {
+        match k {
+            0..=5 => 5,
+            6 => 5,
+            7..=8 => 6,
+            9 => 7,
+            10 => 8,
+            11 => 10,
+            12 => 11,
+            13 => 10,
+            14..=15 => 11,
+            16 => 12,
+            _ => 13,
+        }
+    } else {
+        match k {
+            0..=5 => 5,
+            6 => 4,
+            7..=8 => 5,
+            9 => 6,
+            10..=14 => 9,
+            15 => 10,
+            _ => 13,
+        }
     }
 }
 
