@@ -2,8 +2,12 @@ use std::{convert::TryInto, ops::Neg};
 
 use ff::{Field, PrimeField};
 use group::Group;
-use rayon::iter::{
-    IndexedParallelIterator, IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelIterator,
+use rayon::{
+    iter::{
+        IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator,
+        IntoParallelRefMutIterator, ParallelIterator,
+    },
+    slice::ParallelSlice,
 };
 
 use crate::CurveAffine;
@@ -333,6 +337,349 @@ impl<C: CurveAffine> Schedule<C> {
     }
 }
 
+/// A point in XYZZ coordinates, `(x, y) = (X/ZZ, Y/ZZZ)` with `ZZ^3 = ZZZ^2`; the identity has
+/// `ZZ = ZZZ = 0`. Adding an affine point costs 8M + 2S and no inversion, which makes these
+/// good Pippenger buckets (as in blst). The formulas assume `a = 0`.
+#[derive(Clone, Copy, Debug)]
+struct Xyzz<F> {
+    x: F,
+    y: F,
+    zz: F,
+    zzz: F,
+}
+
+impl<F: Field> Xyzz<F> {
+    fn identity() -> Self {
+        Self {
+            x: F::ZERO,
+            y: F::ZERO,
+            zz: F::ZERO,
+            zzz: F::ZERO,
+        }
+    }
+
+    // Variable time: which buckets are touched depends on the scalars anyway
+    fn is_identity(&self) -> bool {
+        self.zz.is_zero_vartime() && self.zzz.is_zero_vartime()
+    }
+
+    /// `self += (x2, y2)`, or `-= ` if `negate`, for an affine point `(x2, y2)` on the curve
+    /// (EFD madd-2008-s, and mdbl-2008-s-1 when the points are equal). In-place operators
+    /// throughout: each is one call on the operands where they lie, with no copies.
+    fn add_affine(&mut self, x2: &F, y2: &F, negate: bool) {
+        if self.is_identity() {
+            self.x = *x2;
+            self.y = *y2;
+            self.zz = F::ONE;
+            self.zzz = if negate { -F::ONE } else { F::ONE };
+            return;
+        }
+        // P = x2·ZZ1 - X1
+        let mut p = *x2;
+        p *= &self.zz;
+        p -= &self.x;
+        // R = ±y2·ZZZ1 - Y1
+        let mut r = *y2;
+        r *= &self.zzz;
+        if negate {
+            r = -r;
+        }
+        r -= &self.y;
+        if !p.is_zero_vartime() {
+            let pp = p.square();
+            let mut ppp = pp;
+            ppp *= &p;
+            // Q = X1·PP
+            let mut q = self.x;
+            q *= &pp;
+            // X3 = R^2 - PPP - 2Q
+            self.x = r.square();
+            self.x -= &ppp;
+            self.x -= &q;
+            self.x -= &q;
+            // Y3 = R·(Q - X3) - Y1·PPP
+            q -= &self.x;
+            q *= &r;
+            self.y *= &ppp;
+            q -= &self.y;
+            self.y = q;
+            self.zz *= &pp;
+            self.zzz *= &ppp;
+        } else if r.is_zero_vartime() {
+            // Equal points: double (x2, ±y2)
+            let mut u = *y2;
+            u += y2;
+            let v = u.square();
+            let mut w = u;
+            w *= &v;
+            let mut s = *x2;
+            s *= &v;
+            let x2sq = x2.square();
+            let mut m = x2sq;
+            m += &x2sq;
+            m += &x2sq;
+            self.x = m.square();
+            self.x -= &s;
+            self.x -= &s;
+            s -= &self.x;
+            s *= &m;
+            let mut wy = w;
+            wy *= y2;
+            s -= &wy;
+            self.y = s;
+            self.zz = v;
+            self.zzz = if negate { -w } else { w };
+        } else {
+            *self = Self::identity();
+        }
+    }
+
+    /// `self += other` (EFD add-2008-s, and dbl-2008-s-1 when the points are equal)
+    fn add(&mut self, other: &Self) {
+        if other.is_identity() {
+            return;
+        }
+        if self.is_identity() {
+            *self = *other;
+            return;
+        }
+        let mut u1 = self.x;
+        u1 *= &other.zz;
+        let mut s1 = self.y;
+        s1 *= &other.zzz;
+        let mut p = other.x;
+        p *= &self.zz;
+        p -= &u1;
+        let mut r = other.y;
+        r *= &self.zzz;
+        r -= &s1;
+        if !p.is_zero_vartime() {
+            let pp = p.square();
+            let mut ppp = pp;
+            ppp *= &p;
+            let mut q = u1;
+            q *= &pp;
+            self.x = r.square();
+            self.x -= &ppp;
+            self.x -= &q;
+            self.x -= &q;
+            q -= &self.x;
+            q *= &r;
+            s1 *= &ppp;
+            q -= &s1;
+            self.y = q;
+            self.zz *= &other.zz;
+            self.zz *= &pp;
+            self.zzz *= &other.zzz;
+            self.zzz *= &ppp;
+        } else if r.is_zero_vartime() {
+            let mut u = self.y;
+            u += &self.y;
+            let v = u.square();
+            let mut w = v;
+            w *= &u;
+            let mut s = self.x;
+            s *= &v;
+            let xsq = self.x.square();
+            let mut m = xsq;
+            m += &xsq;
+            m += &xsq;
+            self.x = m.square();
+            self.x -= &s;
+            self.x -= &s;
+            s -= &self.x;
+            s *= &m;
+            self.y *= &w;
+            s -= &self.y;
+            self.y = s;
+            self.zz *= &v;
+            self.zzz *= &w;
+        } else {
+            *self = Self::identity();
+        }
+    }
+
+    /// The points, by one inversion for all (Montgomery's trick on the `ZZZ`s)
+    fn batch_to_curve<C: CurveAffine<Base = F>>(points: &[Self]) -> Vec<C::Curve> {
+        // prefix[i] = product of the nonzero ZZZs before i
+        let mut prefix = Vec::with_capacity(points.len());
+        let mut acc = F::ONE;
+        for p in points {
+            prefix.push(acc);
+            if !p.is_identity() {
+                acc *= p.zzz;
+            }
+        }
+        let mut inv = acc.invert().unwrap();
+        let mut out = vec![C::Curve::identity(); points.len()];
+        for (i, p) in points.iter().enumerate().rev() {
+            if p.is_identity() {
+                continue;
+            }
+            let zzz_inv = inv * prefix[i];
+            inv *= p.zzz;
+            // ZZ^3 = ZZZ^2, so 1/ZZ = ZZ^2/ZZZ^2
+            let zz_inv = zzz_inv.square() * p.zz.square();
+            out[i] = C::from_xy_unchecked(p.x * zz_inv, p.y * zzz_inv).to_curve();
+        }
+        out
+    }
+}
+
+/// `Σ (i + 1)·buckets[i]` by running sums
+fn integrate_buckets<F: Field>(buckets: &[Xyzz<F>]) -> Xyzz<F> {
+    let mut acc = Xyzz::identity();
+    let mut sum = Xyzz::identity();
+    for b in buckets.iter().rev() {
+        acc.add(b);
+        sum.add(&acc);
+    }
+    sum
+}
+
+/// One scalar multiplication per term, in parallel, then their sum: best for a few terms
+#[doc(hidden)]
+pub fn msm_pointwise<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
+    coeffs
+        .par_iter()
+        .zip(bases.par_iter())
+        .map(|(s, b)| b.to_curve() * s)
+        .reduce(C::Curve::identity, |a, b| a + b)
+}
+
+/// Pippenger with XYZZ buckets (blst's design), parallel over tiles of windows × chunks of
+/// the terms; window size `c`. Below 64 terms, one scalar multiplication per term instead.
+#[doc(hidden)]
+pub fn msm_xyzz_with_window<C: CurveAffine>(
+    coeffs: &[C::Scalar],
+    bases: &[C],
+    c: usize,
+) -> C::Curve {
+    assert_eq!(coeffs.len(), bases.len());
+    if coeffs.len() < 64 {
+        return msm_pointwise(coeffs, bases);
+    }
+    // In parallel only when there is enough work to pay for the scheduling
+    let prepare = |(s, b): (&C::Scalar, &C)| (s.to_repr(), Affine::from(b));
+    let not_identity = |(_, b): &(&C::Scalar, &C)| !bool::from(b.is_identity());
+    let (scalars, points): (Vec<_>, Vec<_>) = if coeffs.len() < 1 << 12 {
+        coeffs.iter().zip(bases).filter(not_identity).map(prepare).unzip()
+    } else {
+        coeffs
+            .par_iter()
+            .zip(bases.par_iter())
+            .filter(not_identity)
+            .map(prepare)
+            .unzip()
+    };
+    msm_xyzz_core::<C, _>(&scalars, &points, C::Scalar::NUM_BITS as usize, c)
+}
+
+/// `k = k2·λ + k1` with `k1 < λ`, for a little-endian `k < 2^128 λ`: the GLV halves,
+/// little-endian
+#[doc(hidden)]
+pub fn glv_split(k: &[u8], lambda: u128) -> ([u8; 16], [u8; 16]) {
+    let mut bytes = [0u8; 32];
+    bytes[..k.len()].copy_from_slice(k);
+    let lo = u128::from_le_bytes(bytes[..16].try_into().unwrap());
+    let hi = u128::from_le_bytes(bytes[16..].try_into().unwrap());
+    debug_assert!(hi < lambda, "scalar too large to split");
+    // Long division of (hi, lo) by λ, a bit at a time; the remainder stays below λ
+    let (mut rem, mut q) = (hi, 0u128);
+    for i in (0..128).rev() {
+        let carry = rem >> 127;
+        rem = (rem << 1) | ((lo >> i) & 1);
+        q <<= 1;
+        if carry == 1 || rem >= lambda {
+            rem = rem.wrapping_sub(lambda);
+            q |= 1;
+        }
+    }
+    (rem.to_le_bytes(), q.to_le_bytes())
+}
+
+/// [`msm_xyzz_with_window`] through a GLV endomorphism ([`CurveAffine::glv`]): twice the terms,
+/// with 128-bit scalars, so half the windows and doublings.
+#[doc(hidden)]
+pub fn msm_xyzz_glv_with_window<C: CurveAffine>(
+    coeffs: &[C::Scalar],
+    bases: &[C],
+    c: usize,
+) -> C::Curve {
+    assert_eq!(coeffs.len(), bases.len());
+    let Some((beta, lambda)) = C::glv() else {
+        return msm_xyzz_with_window(coeffs, bases, c);
+    };
+    if coeffs.len() < 64 {
+        return msm_pointwise(coeffs, bases);
+    }
+    let not_identity = |(_, b): &(&C::Scalar, &C)| !bool::from(b.is_identity());
+    let split = |(s, b): (&C::Scalar, &C)| {
+        let (k1, k2) = glv_split(s.to_repr().as_ref(), lambda);
+        let p = Affine::from(b);
+        let phi = Affine {
+            x: p.x * beta,
+            y: p.y,
+        };
+        [(k1, p), (k2, phi)]
+    };
+    let (scalars, points): (Vec<[u8; 16]>, Vec<Affine<C>>) = if coeffs.len() < 1 << 12 {
+        coeffs.iter().zip(bases).filter(not_identity).flat_map(split).unzip()
+    } else {
+        coeffs
+            .par_iter()
+            .zip(bases.par_iter())
+            .filter(not_identity)
+            .flat_map_iter(split)
+            .unzip()
+    };
+    msm_xyzz_core::<C, _>(&scalars, &points, 128, c)
+}
+
+/// The XYZZ Pippenger over affine points (none the identity) and little-endian scalars of
+/// `nbits` bits
+fn msm_xyzz_core<C: CurveAffine, S: AsRef<[u8]> + Sync>(
+    scalars: &[S],
+    points: &[Affine<C>],
+    nbits: usize,
+    c: usize,
+) -> C::Curve {
+    let windows = nbits / c + 1;
+    // Enough tiles for every thread, each of at least 256 terms
+    let threads = rayon::current_num_threads();
+    let chunks = threads.div_ceil(windows).clamp(1, scalars.len().div_ceil(256).max(1));
+    let chunk = scalars.len().div_ceil(chunks).max(1);
+    let tiles: Vec<Xyzz<C::Base>> = (0..windows * chunks)
+        .into_par_iter()
+        .map(|t| {
+            let (w, k) = (t / chunks, t % chunks);
+            let range = (k * chunk).min(scalars.len())..((k + 1) * chunk).min(scalars.len());
+            let mut buckets = vec![Xyzz::identity(); 1 << (c - 1)];
+            for (s, p) in scalars[range.clone()].iter().zip(&points[range]) {
+                let d = get_booth_index(w, c, s.as_ref());
+                if d != 0 {
+                    buckets[d.unsigned_abs() as usize - 1].add_affine(&p.x, &p.y, d < 0);
+                }
+            }
+            integrate_buckets(&buckets)
+        })
+        .collect();
+    let window_sums: Vec<Xyzz<C::Base>> = tiles
+        .par_chunks(chunks)
+        .map(|ts| {
+            let mut sum = Xyzz::identity();
+            ts.iter().for_each(|t| sum.add(t));
+            sum
+        })
+        .collect();
+    Xyzz::batch_to_curve::<C>(&window_sums)
+        .into_iter()
+        .rev()
+        .fold(C::Curve::identity(), |sum, window| {
+            (0..c).fold(sum, |sum, _| sum.double()) + window
+        })
+}
+
 /// Performs a multi-scalar multiplication operation.
 ///
 /// This function will panic if coeffs and bases have a different length.
@@ -631,6 +978,96 @@ mod test {
             let e0 = super::msm_best(scalars, points);
             let e1 = super::msm_parallel(scalars, points);
             assert_eq!(e0, e1);
+        }
+    }
+
+    #[test]
+    fn test_xyzz() {
+        for n in [0, 1, 2, 31, 32, 33, 300, 1000] {
+            let (scalars, points): (Vec<_>, Vec<_>) =
+                (0..n).map(|_| (Fr::random(OsRng), G1Affine::random(OsRng))).unzip();
+            let expected = super::msm_parallel(&scalars, &points);
+            for c in [2, 4, 7, 11] {
+                assert_eq!(
+                    super::msm_xyzz_with_window(&scalars, &points, c),
+                    expected,
+                    "n {n} c {c}"
+                );
+            }
+        }
+        // Repeated points and opposite scalars: the doubling and cancelling cases
+        let p = G1Affine::random(OsRng);
+        let s = Fr::random(OsRng);
+        let points = vec![p; 64];
+        let scalars: Vec<_> = (0..64).map(|i| if i % 2 == 0 { s } else { -s }).collect();
+        assert_eq!(
+            super::msm_xyzz_with_window(&scalars, &points, 5),
+            G1::identity()
+        );
+        let scalars = vec![s; 64];
+        assert_eq!(
+            super::msm_xyzz_with_window(&scalars, &points, 5),
+            (p * s) * Fr::from(64)
+        );
+    }
+
+    #[test]
+    fn test_xyzz_batch_to_curve() {
+        use super::Xyzz;
+        let p = G1Affine::random(OsRng);
+        let q = G1Affine::random(OsRng);
+        let mut a = Xyzz::identity();
+        a.add_affine(&p.x, &p.y, false);
+        a.add_affine(&q.x, &q.y, true); // p - q, with ZZ, ZZZ != 1
+        let mut b = Xyzz::identity();
+        b.add_affine(&q.x, &q.y, false);
+        b.add_affine(&q.x, &q.y, false); // 2q, by the doubling branch
+        let points = [Xyzz::identity(), a, Xyzz::identity(), b, Xyzz::identity()];
+        let expected = [G1::identity(), p - q, G1::identity(), q + q, G1::identity()];
+        assert_eq!(Xyzz::batch_to_curve::<G1Affine>(&points), expected);
+        assert!(Xyzz::<crate::bn256::Fq>::batch_to_curve::<G1Affine>(&[]).is_empty());
+    }
+
+    /// BLS12-381 G1's GLV constants match, `glv_split` is exact, and the MSM agrees
+    #[test]
+    fn test_glv() {
+        use crate::{G1Affine as Bls, G1Projective};
+        use ff::PrimeField;
+        let (beta, lambda) = Bls::glv().unwrap();
+        let p = G1Projective::random(OsRng).to_affine();
+        let phi = Bls::from_xy(p.x() * beta, p.y()).unwrap();
+        let lambda_s = crate::Fq::from_u128(lambda);
+        assert_eq!(phi, (p * lambda_s).to_affine(), "β does not match λ");
+        for k in [
+            crate::Fq::ZERO,
+            crate::Fq::ONE,
+            -crate::Fq::ONE,
+            crate::Fq::random(OsRng),
+        ] {
+            let (k1, k2) = super::glv_split(k.to_repr().as_ref(), lambda);
+            let (k1, k2) = (u128::from_le_bytes(k1), u128::from_le_bytes(k2));
+            assert!(k1 < lambda);
+            assert_eq!(
+                crate::Fq::from_u128(k1) + crate::Fq::from_u128(k2) * lambda_s,
+                k
+            );
+        }
+        for n in [64, 65, 1000] {
+            let (scalars, points): (Vec<_>, Vec<_>) = (0..n)
+                .map(|_| {
+                    (
+                        crate::Fq::random(OsRng),
+                        G1Projective::random(OsRng).to_affine(),
+                    )
+                })
+                .unzip();
+            let expected = Bls::multi_exp_affine(&points, &scalars);
+            for c in [4, 8, 11] {
+                assert_eq!(
+                    super::msm_xyzz_glv_with_window(&scalars, &points, c),
+                    expected
+                );
+            }
         }
     }
 

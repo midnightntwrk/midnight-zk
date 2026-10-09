@@ -2,7 +2,12 @@
 use std::time::Instant;
 
 use group::{Curve, Group};
-use midnight_curves::{G1Affine, G1Projective, msm::msm_batch_affine_with_window};
+use midnight_curves::{
+    G1Affine, G1Projective,
+    msm::{
+        msm_batch_affine_with_window, msm_pointwise, msm_xyzz_glv_with_window, msm_xyzz_with_window,
+    },
+};
 use rand_core::SeedableRng;
 use rand_xorshift::XorShiftRng;
 
@@ -24,7 +29,7 @@ fn main() {
     let bases: Vec<G1Affine> =
         (0..1 << max_k).map(|_| G1Projective::random(&mut rng).to_affine()).collect();
     let coeffs: Vec<_> = (0..1 << max_k).map(|_| ff::Field::random(&mut rng)).collect();
-    for k in [2, 4, 6, 8, 10, 12, 14, 16, 18] {
+    for k in [2, 4, 5, 6, 7, 8, 9, 10, 12, 14, 16, 18] {
         let n = 1 << k;
         let (s, b) = (&coeffs[..n], &bases[..n]);
         let blst = median_us(|| {
@@ -33,7 +38,26 @@ fn main() {
         let best = median_us(|| {
             midnight_curves::msm::msm_best(s, b);
         });
-        print!("k={k:2} blst={blst:9.0} best={best:9.0}");
+        let pw = median_us(|| {
+            msm_pointwise(s, b);
+        });
+        print!("k={k:2} blst={blst:9.0} best={best:9.0} pointwise={pw:8.0} | xyzz c:");
+        for c in [4, 5, 6, 7, 8, 9, 10, 11, 12, 13] {
+            let t = median_us(|| {
+                msm_xyzz_with_window(s, b, c);
+            });
+            print!(" {c}:{t:.0}");
+        }
+        print!(" | glv c:");
+        for c in [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16] {
+            if k < 12 && c > 12 {
+                continue;
+            }
+            let t = median_us(|| {
+                msm_xyzz_glv_with_window(s, b, c);
+            });
+            print!(" {c}:{t:.0}");
+        }
         if std::env::var("GRID").is_err() {
             println!();
             continue;

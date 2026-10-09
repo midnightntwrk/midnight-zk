@@ -965,6 +965,21 @@ impl CurveAffine for G1Affine {
         CtOption::new(p, p.is_torsion_free())
     }
 
+    /// `β` a cube root of unity in `Fp`, `λ = z^2 - 1`, a cube root of unity mod the
+    /// group order `r = λ^2 + λ + 1` (`test_glv` checks they match).
+    fn glv() -> Option<(Fp, u128)> {
+        let beta = Fp::from_u64s_le(&[
+            0x8bfd00000000aaac,
+            0x409427eb4f49fffd,
+            0x897d29650fb85f9b,
+            0xaa0d857d89759ad4,
+            0xec02408663d4de85,
+            0x1a0111ea397fe699,
+        ])
+        .unwrap();
+        Some((beta, 0xac45a4010001a40200000000ffffffff))
+    }
+
     /// Skips `from_xy`'s subgroup check, which costs about a scalar multiplication.
     fn from_xy_unchecked(x: Self::Base, y: Self::Base) -> Self {
         let p = Self::from_raw_unchecked(x, y, false);

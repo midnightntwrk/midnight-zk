@@ -96,6 +96,13 @@ pub trait CurveAffine:
     fn msm(coeffs: &[Self::ScalarExt], bases: &[Self]) -> Self::CurveExt {
         crate::msm::msm_best(coeffs, bases)
     }
+
+    /// A GLV endomorphism, if the curve has one: `(β, λ)` such that `(β·x, y) = λ·(x, y)` for
+    /// every point of the prime-order subgroup, with `λ < 2^128` and the scalar field's order
+    /// below `λ^2 + λ + 2`, so each scalar splits into two halves below `2^128`.
+    fn glv() -> Option<(Self::Base, u128)> {
+        None
+    }
 }
 
 /// The affine coordinates of a point on an elliptic curve.
