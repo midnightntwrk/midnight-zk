@@ -29,7 +29,7 @@ pub(crate) struct AbsorbedVk<'a, S: SelfEmulation, PCS: InCircuitPCS<S>>(&'a Ass
 
 impl<'a, S: SelfEmulation, PCS: InCircuitPCS<S>> AbsorbedVk<'a, S, PCS> {
     /// The commitment the absorbed key holds to its phase-0 group: every fixed
-    /// column but the simple selectors, and the fixed permutation polynomials.
+    /// column and the fixed permutation polynomials.
     pub(crate) fn phase0_commitment(&self) -> &'a PCS::AssignedCommitment {
         &self.0.phase0_commitment
     }
