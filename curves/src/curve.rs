@@ -77,6 +77,14 @@ pub trait CurveAffine:
 
     /// Returns the curve constant $b$.
     fn b() -> Self::Base;
+
+    /// The multi-scalar multiplication `Σ coeffs[i]·bases[i]`; the identity if empty.
+    ///
+    /// The default is the generic Pippenger [`msm_best`](crate::msm::msm_best); a curve
+    /// with a faster backend overrides it (BLS12-381 G1 uses blst).
+    fn msm(coeffs: &[Self::ScalarExt], bases: &[Self]) -> Self::CurveExt {
+        crate::msm::msm_best(coeffs, bases)
+    }
 }
 
 /// The affine coordinates of a point on an elliptic curve.

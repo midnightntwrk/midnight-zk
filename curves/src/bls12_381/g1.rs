@@ -938,6 +938,19 @@ impl CurveAffine for G1Affine {
     type Base = Fp;
     type CurveExt = G1Projective;
 
+    /// blst's multi-exponentiation; it panics on no terms, so those are handled here.
+    fn msm(coeffs: &[Fq], bases: &[Self]) -> G1Projective {
+        if coeffs.is_empty() {
+            assert!(
+                bases.is_empty(),
+                "msm: {} bases but no scalars",
+                bases.len()
+            );
+            return G1Projective::identity();
+        }
+        G1Affine::multi_exp_affine(bases, coeffs)
+    }
+
     fn coordinates(&self) -> CtOption<Coordinates<Self>> {
         // Unchecked version is safe to use since we are taking
         // an already checked point.
