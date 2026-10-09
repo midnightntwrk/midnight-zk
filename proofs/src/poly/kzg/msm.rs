@@ -1,11 +1,10 @@
-use std::{any::TypeId, fmt::Debug};
+use std::fmt::Debug;
 
 use ff::Field;
 use group::{Curve, Group, prime::PrimeCurveAffine};
 use itertools::izip;
 use midnight_curves::{
-    CurveAffine, Fq, G1Affine,
-    msm::msm_best,
+    CurveAffine,
     pairing::{Engine, MillerLoopResult, MultiMillerLoop},
 };
 use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
@@ -164,33 +163,16 @@ where
     }
 }
 
-#[allow(unsafe_code)]
-/// Wrapper over the MSM function:
-/// Bls12-381 uses blstrs [`G1Affine::multi_exp_affine`], other curves use
-/// `msm_best`.
+/// `Σ coeffs[i]·bases[i]`, dropping the zero coefficients first, by the curve's own MSM
+/// ([`CurveAffine::msm`]: blst on BLS12-381 G1, the generic Pippenger elsewhere).
 pub fn msm_specific<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
-    // We remove zeros (keep only non-zero coefficients).
     let (coeffs, bases): (Vec<C::Scalar>, Vec<C>) = coeffs
         .iter()
         .zip(bases)
         .filter(|(s, _)| !s.is_zero_vartime())
         .map(|(s, b)| (*s, *b))
         .unzip();
-
-    if coeffs.is_empty() {
-        return C::Curve::identity();
-    }
-
-    if TypeId::of::<C>() == TypeId::of::<G1Affine>() {
-        let coeffs = unsafe { &*(coeffs.as_slice() as *const _ as *const [Fq]) };
-        let bases = unsafe { &*(bases.as_slice() as *const _ as *const [G1Affine]) };
-        // TODO: 255 is fine because type is checked. Another option is propagating
-        // nbits as an input of msm_specific.
-        let res = G1Affine::multi_exp_affine(bases, coeffs);
-        unsafe { std::mem::transmute_copy(&res) }
-    } else {
-        msm_best(&coeffs, &bases)
-    }
+    C::msm(&coeffs, &bases)
 }
 
 /// Two channel MSM accumulator
@@ -297,5 +279,64 @@ where
         let terms = &[term_1, term_2];
 
         bool::from(E::multi_miller_loop(&terms[..]).final_exponentiation().is_identity())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use ff::Field;
+    use group::{Curve, Group};
+    use midnight_curves::{CurveAffine, G1Affine, G2Affine};
+    use rand_core::OsRng;
+
+    use super::msm_specific;
+
+    /// `Σ sᵢ·Pᵢ` the slow way
+    fn naive<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
+        coeffs.iter().zip(bases).fold(C::Curve::identity(), |acc, (s, b)| acc + *b * *s)
+    }
+
+    /// Random terms, every third scalar zero (which `msm_specific` drops)
+    fn terms<C: CurveAffine>(n: usize) -> (Vec<C::Scalar>, Vec<C>) {
+        let coeffs = (0..n)
+            .map(|i| {
+                if i % 3 == 0 {
+                    C::Scalar::ZERO
+                } else {
+                    C::Scalar::random(OsRng)
+                }
+            })
+            .collect();
+        let bases = (0..n).map(|_| C::Curve::random(OsRng).to_affine()).collect();
+        (coeffs, bases)
+    }
+
+    fn agrees_with_naive<C: CurveAffine>() {
+        for n in [0, 1, 2, 3, 7, 64, 300] {
+            let (coeffs, bases) = terms::<C>(n);
+            assert_eq!(
+                msm_specific(&coeffs, &bases),
+                naive(&coeffs, &bases),
+                "n = {n}"
+            );
+        }
+        // All zero: nothing left to sum
+        let (_, bases) = terms::<C>(5);
+        assert_eq!(
+            msm_specific(&[C::Scalar::ZERO; 5], &bases),
+            C::Curve::identity()
+        );
+    }
+
+    /// BLS12-381 G1: the blst backend
+    #[test]
+    fn g1_agrees_with_naive() {
+        agrees_with_naive::<G1Affine>();
+    }
+
+    /// BLS12-381 G2: the generic Pippenger backend
+    #[test]
+    fn g2_agrees_with_naive() {
+        agrees_with_naive::<G2Affine>();
     }
 }
