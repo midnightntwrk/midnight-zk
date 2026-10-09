@@ -1,0 +1,50 @@
+//! Window-size sweep for the MSM backends (tuning aid, not shipped).
+use std::time::Instant;
+
+use group::{Curve, Group};
+use midnight_curves::{G1Affine, G1Projective, msm::msm_batch_affine_with_window};
+use rand_core::SeedableRng;
+use rand_xorshift::XorShiftRng;
+
+fn median_us(mut f: impl FnMut()) -> f64 {
+    let mut ts: Vec<f64> = (0..7)
+        .map(|_| {
+            let t = Instant::now();
+            f();
+            t.elapsed().as_secs_f64() * 1e6
+        })
+        .collect();
+    ts.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    ts[3]
+}
+
+fn main() {
+    let mut rng = XorShiftRng::seed_from_u64(1);
+    let max_k = 18;
+    let bases: Vec<G1Affine> =
+        (0..1 << max_k).map(|_| G1Projective::random(&mut rng).to_affine()).collect();
+    let coeffs: Vec<_> = (0..1 << max_k).map(|_| ff::Field::random(&mut rng)).collect();
+    for k in [2, 4, 6, 8, 10, 12, 14, 16, 18] {
+        let n = 1 << k;
+        let (s, b) = (&coeffs[..n], &bases[..n]);
+        let blst = median_us(|| {
+            G1Affine::multi_exp_affine(b, s);
+        });
+        let best = median_us(|| {
+            midnight_curves::msm::msm_best(s, b);
+        });
+        print!("k={k:2} blst={blst:9.0} best={best:9.0}");
+        if std::env::var("GRID").is_err() {
+            println!();
+            continue;
+        }
+        print!(" | batch c:");
+        for c in 3..=14 {
+            let t = median_us(|| {
+                msm_batch_affine_with_window(s, b, c);
+            });
+            print!(" {c}:{t:.0}");
+        }
+        println!();
+    }
+}
