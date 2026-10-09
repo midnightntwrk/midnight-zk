@@ -6,7 +6,7 @@ use rayon::iter::{
     IndexedParallelIterator, IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelIterator,
 };
 
-use crate::CurveAffine;
+use crate::{CurveAffine, FieldInto};
 
 const BATCH_SIZE: usize = 64;
 
@@ -344,7 +344,7 @@ struct Xyzz<F> {
     zzz: F,
 }
 
-impl<F: Field> Xyzz<F> {
+impl<F: FieldInto> Xyzz<F> {
     fn identity() -> Self {
         Self {
             x: F::ZERO,
@@ -360,36 +360,39 @@ impl<F: Field> Xyzz<F> {
     }
 
     /// `self += (x2, y2)`, or `-= ` if `negate`, for an affine point `(x2, y2)` on the curve
-    /// (EFD madd-2008-s, and mdbl-2008-s-1 when the points are equal). In-place operators
-    /// throughout: each is one call on the operands where they lie, with no copies.
+    /// (EFD madd-2008-s, and mdbl-2008-s-1 when the points are equal). Like blst, every result
+    /// is written where it is needed ([`FieldInto`]), never copied while fresh.
     fn add_affine(&mut self, x2: &F, y2: &F, negate: bool) {
+        let mut neg_y2 = F::ZERO;
+        let y2 = if negate {
+            F::neg_into(&mut neg_y2, y2);
+            &neg_y2
+        } else {
+            y2
+        };
         if self.is_identity() {
             self.x = *x2;
             self.y = *y2;
             self.zz = F::ONE;
-            self.zzz = if negate { -F::ONE } else { F::ONE };
+            self.zzz = F::ONE;
             return;
         }
-        // P = x2·ZZ1 - X1
-        let mut p = *x2;
-        p *= &self.zz;
+        // P = x2·ZZ1 - X1, R = y2·ZZZ1 - Y1
+        let mut p = F::ZERO;
+        F::mul_into(&mut p, x2, &self.zz);
         p -= &self.x;
-        // R = ±y2·ZZZ1 - Y1
-        let mut r = *y2;
-        r *= &self.zzz;
-        if negate {
-            r = -r;
-        }
+        let mut r = F::ZERO;
+        F::mul_into(&mut r, y2, &self.zzz);
         r -= &self.y;
         if !p.is_zero_vartime() {
-            let pp = p.square();
-            let mut ppp = pp;
-            ppp *= &p;
-            // Q = X1·PP
-            let mut q = self.x;
-            q *= &pp;
+            let mut pp = F::ZERO;
+            F::square_into(&mut pp, &p);
+            let mut ppp = F::ZERO;
+            F::mul_into(&mut ppp, &pp, &p);
+            let mut q = F::ZERO;
+            F::mul_into(&mut q, &self.x, &pp);
             // X3 = R^2 - PPP - 2Q
-            self.x = r.square();
+            F::square_into(&mut self.x, &r);
             self.x -= &ppp;
             self.x -= &q;
             self.x -= &q;
@@ -397,34 +400,29 @@ impl<F: Field> Xyzz<F> {
             q -= &self.x;
             q *= &r;
             self.y *= &ppp;
-            q -= &self.y;
-            self.y = q;
+            F::rsub_assign(&mut self.y, &q);
             self.zz *= &pp;
             self.zzz *= &ppp;
         } else if r.is_zero_vartime() {
-            // Equal points: double (x2, ±y2)
-            let mut u = *y2;
-            u += y2;
-            let v = u.square();
-            let mut w = u;
-            w *= &v;
-            let mut s = *x2;
-            s *= &v;
-            let x2sq = x2.square();
-            let mut m = x2sq;
+            // Equal points: double (x2, y2)
+            let mut u = F::ZERO;
+            F::add_into(&mut u, y2, y2);
+            F::square_into(&mut self.zz, &u); // V
+            F::mul_into(&mut self.zzz, &self.zz, &u); // W
+            let mut s = F::ZERO;
+            F::mul_into(&mut s, x2, &self.zz);
+            let mut x2sq = F::ZERO;
+            F::square_into(&mut x2sq, x2);
+            let mut m = F::ZERO;
+            F::add_into(&mut m, &x2sq, &x2sq);
             m += &x2sq;
-            m += &x2sq;
-            self.x = m.square();
+            F::square_into(&mut self.x, &m);
             self.x -= &s;
             self.x -= &s;
             s -= &self.x;
             s *= &m;
-            let mut wy = w;
-            wy *= y2;
-            s -= &wy;
-            self.y = s;
-            self.zz = v;
-            self.zzz = if negate { -w } else { w };
+            F::mul_into(&mut self.y, &self.zzz, y2);
+            F::rsub_assign(&mut self.y, &s);
         } else {
             *self = Self::identity();
         }
@@ -439,57 +437,37 @@ impl<F: Field> Xyzz<F> {
             *self = *other;
             return;
         }
-        let mut u1 = self.x;
-        u1 *= &other.zz;
-        let mut s1 = self.y;
-        s1 *= &other.zzz;
-        let mut p = other.x;
-        p *= &self.zz;
+        let mut u1 = F::ZERO;
+        F::mul_into(&mut u1, &self.x, &other.zz);
+        let mut s1 = F::ZERO;
+        F::mul_into(&mut s1, &self.y, &other.zzz);
+        let mut p = F::ZERO;
+        F::mul_into(&mut p, &other.x, &self.zz);
         p -= &u1;
-        let mut r = other.y;
-        r *= &self.zzz;
+        let mut r = F::ZERO;
+        F::mul_into(&mut r, &other.y, &self.zzz);
         r -= &s1;
         if !p.is_zero_vartime() {
-            let pp = p.square();
-            let mut ppp = pp;
-            ppp *= &p;
-            let mut q = u1;
-            q *= &pp;
-            self.x = r.square();
+            let mut pp = F::ZERO;
+            F::square_into(&mut pp, &p);
+            let mut ppp = F::ZERO;
+            F::mul_into(&mut ppp, &pp, &p);
+            let mut q = F::ZERO;
+            F::mul_into(&mut q, &u1, &pp);
+            F::square_into(&mut self.x, &r);
             self.x -= &ppp;
             self.x -= &q;
             self.x -= &q;
             q -= &self.x;
             q *= &r;
             s1 *= &ppp;
-            q -= &s1;
-            self.y = q;
+            F::sub_into(&mut self.y, &q, &s1);
             self.zz *= &other.zz;
             self.zz *= &pp;
             self.zzz *= &other.zzz;
             self.zzz *= &ppp;
         } else if r.is_zero_vartime() {
-            let mut u = self.y;
-            u += &self.y;
-            let v = u.square();
-            let mut w = v;
-            w *= &u;
-            let mut s = self.x;
-            s *= &v;
-            let xsq = self.x.square();
-            let mut m = xsq;
-            m += &xsq;
-            m += &xsq;
-            self.x = m.square();
-            self.x -= &s;
-            self.x -= &s;
-            s -= &self.x;
-            s *= &m;
-            self.y *= &w;
-            s -= &self.y;
-            self.y = s;
-            self.zz *= &v;
-            self.zzz *= &w;
+            self.double();
         } else {
             *self = Self::identity();
         }
@@ -500,25 +478,26 @@ impl<F: Field> Xyzz<F> {
         if self.is_identity() {
             return;
         }
-        let mut u = self.y;
-        u += &self.y;
-        let v = u.square();
-        let mut w = v;
-        w *= &u;
-        let mut s = self.x;
-        s *= &v;
-        let xsq = self.x.square();
-        let mut m = xsq;
+        let mut u = F::ZERO;
+        F::add_into(&mut u, &self.y, &self.y);
+        let mut v = F::ZERO;
+        F::square_into(&mut v, &u);
+        let mut w = F::ZERO;
+        F::mul_into(&mut w, &v, &u);
+        let mut s = F::ZERO;
+        F::mul_into(&mut s, &self.x, &v);
+        let mut xsq = F::ZERO;
+        F::square_into(&mut xsq, &self.x);
+        let mut m = F::ZERO;
+        F::add_into(&mut m, &xsq, &xsq);
         m += &xsq;
-        m += &xsq;
-        self.x = m.square();
+        F::square_into(&mut self.x, &m);
         self.x -= &s;
         self.x -= &s;
         s -= &self.x;
         s *= &m;
         self.y *= &w;
-        s -= &self.y;
-        self.y = s;
+        F::rsub_assign(&mut self.y, &s);
         self.zz *= &v;
         self.zzz *= &w;
     }
@@ -777,7 +756,7 @@ fn xyzz_chunks(n: usize, nbits: usize, c: usize, threads: usize) -> usize {
 }
 
 /// `Σ (i + 1)·buckets[i]` by running sums, emptying the buckets for reuse
-fn integrate_and_clear<F: Field>(buckets: &mut [Xyzz<F>]) -> Xyzz<F> {
+fn integrate_and_clear<F: FieldInto>(buckets: &mut [Xyzz<F>]) -> Xyzz<F> {
     let mut acc = Xyzz::identity();
     let mut sum = Xyzz::identity();
     for b in buckets.iter_mut().rev() {
