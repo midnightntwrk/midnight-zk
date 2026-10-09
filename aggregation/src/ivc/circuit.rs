@@ -92,8 +92,9 @@ pub struct IvcWitness<T: Ivc> {
 /// The IVC circuit, parameterized by a transition function `T`.
 ///
 /// Implements the [`Relation`] of the IVC logic. Namely, that for a given
-/// [`IvcExtendedInstance`] `(vk_repr, state, acc)` there exists an [`IvcWitness`]
-/// `(prev_state, prev_acc, prev_proof, transition_witness)` such that:
+/// [`IvcExtendedInstance`] `(vk_repr, state, acc)` there exists an 
+/// [`IvcWitness`] `(prev_state, prev_acc, prev_proof, transition_witness)` such 
+/// that:
 ///
 /// 1. `state` is the result of applying the transition function to `prev_state`
 ///    with `transition_witness`,
