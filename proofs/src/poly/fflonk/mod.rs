@@ -37,7 +37,7 @@
 mod utils;
 
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap, HashSet, hash_map::Entry},
+    collections::{BTreeMap, HashMap, HashSet, hash_map::Entry},
     hash::Hash,
     io::{self, Read},
     marker::PhantomData,
@@ -45,7 +45,8 @@ use std::{
 };
 
 use ff::WithSmallOrderMulGroup;
-use utils::{compute_g, roots};
+use utils::compute_g;
+pub use utils::roots;
 
 use crate::{
     poly::{
@@ -109,6 +110,12 @@ where
         PCS::commit_many(params, &gs.iter().collect::<Vec<_>>(), &g_labels)
     }
 
+    fn commitment_to_zero(labels: &[PolynomialLabel]) -> Self::Commitment {
+        PolynomialLabel::assert_distinct(labels);
+        let g_labels: Vec<_> = labels.chunks(Self::T_MAX).map(|l| Collection(l.to_vec())).collect();
+        PCS::commitment_to_zero(&g_labels)
+    }
+
     fn read_commitment<T: Transcript>(
         transcript: &mut T,
         labels: &[PolynomialLabel],
@@ -158,15 +165,15 @@ where
         Self::Commitment: Hashable<T::Hash>,
     {
         // Maps the labels of every queried chunk to its polynomials and the
-        // points they are queried at: `labels -> (polys, points)`.
+        // points they are queried at, in query order: `labels -> (polys, points)`.
         let chunks_info = queries.iter().fold(BTreeMap::new(), |mut chunks_info, q| {
             let (labels, polys) =
                 (q.group_labels.chunks(Self::T_MAX).zip(q.group_polys.chunks(Self::T_MAX)))
                     .find(|(labels, _)| labels.contains(&q.label))
                     .expect("the queried group has no polynomial under the query label");
             let (_, points) = (chunks_info.entry(labels))
-                .or_insert_with(|| (polys.iter().collect::<Vec<_>>(), BTreeSet::new()));
-            points.insert(q.point);
+                .or_insert_with(|| (polys.iter().collect::<Vec<_>>(), Vec::new()));
+            push_new(points, q.point);
             chunks_info
         });
 
@@ -228,14 +235,15 @@ where
         F: Sampleable<T::Hash> + Hash + Ord + Hashable<T::Hash>,
         Self::Commitment: Hashable<T::Hash> + 'com,
     {
-        // Maps the labels of every queried chunk to its commitment and the
-        // points its polynomials are queried at: `labels -> (commitment, points)`.
+        // Maps the labels of every queried chunk to its commitment and the points
+        // its polynomials are queried at, in query order: `labels -> (commitment,
+        // points)`.
         let chunks_info = queries.iter().fold(BTreeMap::new(), |mut chunks_info, q| {
             let labels = (Self::commitment_labels(q.commitment).chunks(Self::T_MAX))
                 .find(|labels| labels.contains(&q.label))
                 .map_or_else(|| vec![q.label.clone()], <[_]>::to_vec);
-            let (_, points) = chunks_info.entry(labels).or_insert((q.commitment, BTreeSet::new()));
-            points.insert(q.point);
+            let (_, points) = chunks_info.entry(labels).or_insert((q.commitment, Vec::new()));
+            push_new(points, q.point);
             chunks_info
         });
 
@@ -275,23 +283,106 @@ where
     }
 }
 
+/// Appends `point` to `points` unless it is already there.
+///
+/// The points of a chunk are kept in query order, not sorted by value: the
+/// implicit evaluations are read in this order, and an in-circuit verifier
+/// cannot order them by the value of a witnessed point.
+fn push_new<F: PartialEq>(points: &mut Vec<F>, point: F) {
+    if !points.contains(&point) {
+        points.push(point);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::io;
 
+    use blake2b_simd::State as Blake2bState;
+    use ff::Field;
     use midnight_curves::{Bls12, Fq};
     use rand_core::OsRng;
 
     use super::Fflonk;
     use crate::{
         poly::{
-            commitment::PolynomialCommitmentScheme,
+            EvaluationDomain, PolynomialLabel, ProverQuery, VerifierQuery,
+            commitment::{Guard, PolynomialCommitmentScheme},
             kzg::{KZGCommitmentScheme, params::ParamsKZG},
         },
-        utils::helpers::SerdeFormat,
+        transcript::{CircuitTranscript, Transcript},
+        utils::{arithmetic::eval_polynomial, helpers::SerdeFormat},
     };
 
     type Kzg = KZGCommitmentScheme<Bls12>;
+
+    /// A chunk `[a0, a1]` queried as `a0(p)` and `a1(q)` has the implicit
+    /// evaluations `a1(p)` and `a0(q)`. They are read in query order, `p`
+    /// before `q`, whichever of `p` and `q` is the larger field element.
+    #[test]
+    fn test_implicit_evals_in_query_order() {
+        type CS = Fflonk<Kzg, 1>;
+        type T = CircuitTranscript<Blake2bState>;
+        let k = 3;
+        let params = CS::gen_params(k);
+        let domain = EvaluationDomain::<Fq>::new(1, k);
+        let labels = [PolynomialLabel::Advice(0), PolynomialLabel::Advice(1)];
+        let polys: Vec<_> = (0..2)
+            .map(|_| domain.coeff_from_vec((0..1 << k).map(|_| Fq::random(OsRng)).collect()))
+            .collect();
+        let commitment = CS::commit_many(&params, &polys.iter().collect::<Vec<_>>(), &labels);
+
+        let (mut seen_lt, mut seen_gt) = (false, false);
+        while !(seen_lt && seen_gt) {
+            // Opening points of a `T_MAX = 2` chunk must be squares.
+            let [p, q] = [(); 2].map(|_| Fq::random(OsRng).square());
+            seen_lt |= p < q;
+            seen_gt |= p > q;
+            let explicit = [eval_polynomial(&polys[0], p), eval_polynomial(&polys[1], q)];
+
+            let mut transcript = T::init();
+            explicit.iter().for_each(|e| transcript.write(e).unwrap());
+            let queries = [
+                ProverQuery::new(&labels, &polys, p, labels[0].clone()),
+                ProverQuery::new(&labels, &polys, q, labels[1].clone()),
+            ];
+            CS::multi_open(&params, &queries, &mut transcript).unwrap();
+            let proof = transcript.finalize();
+
+            let mut transcript = T::init_from_bytes(&proof);
+            let read: [Fq; 4] = [(); 4].map(|_| transcript.read().unwrap());
+            let implicit = [eval_polynomial(&polys[1], p), eval_polynomial(&polys[0], q)];
+            assert_eq!(read, [explicit, implicit].concat()[..]);
+
+            let mut transcript = T::init_from_bytes(&proof);
+            let evals: [Fq; 2] = [(); 2].map(|_| transcript.read().unwrap());
+            let queries = [
+                VerifierQuery::new(p, &commitment, labels[0].clone(), evals[0]),
+                VerifierQuery::new(q, &commitment, labels[1].clone(), evals[1]),
+            ];
+            let guard = CS::multi_prepare(&queries, k, &mut transcript).unwrap();
+            transcript.assert_empty().unwrap();
+            guard.verify(&params.verifier_params()).unwrap();
+        }
+    }
+
+    /// The zero commitment matches committing to zero polynomials, and carries
+    /// the labels of the queried polynomials.
+    #[test]
+    fn test_commitment_to_zero() {
+        fn check<CS: PolynomialCommitmentScheme<Fq>>() {
+            let k = 3;
+            let params = CS::gen_params(k);
+            let domain = EvaluationDomain::<Fq>::new(1, k);
+            let zero = domain.empty_coeff();
+            let labels: Vec<_> = (0..3).map(PolynomialLabel::CommittedInstance).collect();
+            let commitment = CS::commitment_to_zero(&labels);
+            assert_eq!(commitment, CS::commit_many(&params, &[&zero; 3], &labels));
+            assert_eq!(CS::commitment_labels(&commitment), labels);
+        }
+        check::<Kzg>();
+        check::<Fflonk<Kzg, 1>>();
+    }
 
     #[test]
     fn test_load_params() {
