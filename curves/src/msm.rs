@@ -337,8 +337,6 @@ impl<C: CurveAffine> Schedule<C> {
 ///
 /// This function will panic if coeffs and bases have a different length.
 pub fn msm_serial<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C], acc: &mut C::Curve) {
-    let coeffs: Vec<_> = coeffs.iter().map(|a| a.to_repr()).collect();
-
     let c = if bases.len() < 4 {
         1
     } else if bases.len() < 32 {
@@ -346,6 +344,18 @@ pub fn msm_serial<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C], acc: &mut C
     } else {
         (f64::from(bases.len() as u32)).ln().ceil() as usize
     };
+    msm_serial_with_window(coeffs, bases, acc, c)
+}
+
+/// [`msm_serial`] with window size `c`
+#[doc(hidden)]
+pub fn msm_serial_with_window<C: CurveAffine>(
+    coeffs: &[C::Scalar],
+    bases: &[C],
+    acc: &mut C::Curve,
+    c: usize,
+) {
+    let coeffs: Vec<_> = coeffs.iter().map(|a| a.to_repr()).collect();
 
     let field_byte_size = C::Scalar::NUM_BITS.div_ceil(8u32) as usize;
     // OR all coefficients in order to make a mask to figure out the maximum number
@@ -460,20 +470,29 @@ pub fn msm_parallel<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Cur
 /// This will use multithreading if beneficial.
 pub fn msm_best<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
     assert_eq!(coeffs.len(), bases.len());
+    msm_batch_affine_with_window(coeffs, bases, window_size(bases.len()))
+}
 
-    // TODO: consider adjusting it with empirical data?
-    let c = if bases.len() < 4 {
-        1
-    } else if bases.len() < 32 {
-        3
-    } else {
-        (f64::from(bases.len() as u32)).ln().ceil() as usize
-    };
-
-    if c < 10 {
-        return msm_parallel(coeffs, bases);
+/// Pippenger's window size for `n` terms, measured on BLS12-381 G1 (Apple M-series and
+/// AMD Zen 3; `curves/examples/msm_tune.rs` sweeps it): about `log2(n) - 3`, at least 4.
+fn window_size(n: usize) -> usize {
+    match n.max(1).ilog2() {
+        0..=5 => 4,
+        6..=7 => 5,
+        8..=9 => 7,
+        10..=11 => 8,
+        12..=13 => 9,
+        _ => 11,
     }
+}
 
+/// [`msm_best`]'s batch-affine Pippenger with window size `c`, parallel over the windows
+#[doc(hidden)]
+pub fn msm_batch_affine_with_window<C: CurveAffine>(
+    coeffs: &[C::Scalar],
+    bases: &[C],
+    c: usize,
+) -> C::Curve {
     // Filter out identities. Transform scalars to bytes and bases to affine.
     let (coeffs, (bases, bases_local)): (Vec<_>, (Vec<_>, Vec<_>)) = coeffs
         .par_iter()
@@ -486,7 +505,7 @@ pub fn msm_best<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
     let number_of_windows = C::Scalar::NUM_BITS as usize / c + 1;
     // accumumator for each window
     let mut acc = vec![C::Curve::identity(); number_of_windows];
-    acc.par_iter_mut().enumerate().rev().for_each(|(w, acc)| {
+    acc.par_iter_mut().enumerate().for_each(|(w, acc)| {
         // jacobian buckets for already scheduled points
         let mut j_bucks = vec![Bucket::<C>::None; 1 << (c - 1)];
 
@@ -523,13 +542,12 @@ pub fn msm_best<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
             running_sum += j_buck.add(a_buck);
             *acc += running_sum;
         }
-
-        // shift accumulator to the window position
-        for _ in 0..c * w {
-            *acc = acc.double();
-        }
     });
-    acc.into_iter().sum::<_>()
+    // Horner's rule over the windows, most significant first: `c` doublings between
+    // windows, 256 in all, instead of shifting each window by `c·w` doublings
+    acc.into_iter().rev().fold(C::Curve::identity(), |sum, window| {
+        (0..c).fold(sum, |sum, _| sum.double()) + window
+    })
 }
 
 #[cfg(test)]
