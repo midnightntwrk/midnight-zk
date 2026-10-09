@@ -47,9 +47,9 @@ use crate::{
 #[derive(Clone, Debug)]
 #[doc(hidden)] // A bug in rustc prevents us from documenting the verifier gadget.
 pub struct VerifierGadget<S: SelfEmulation> {
-    curve_chip: S::CurveChip,
-    scalar_chip: S::ScalarChip,
-    sponge_chip: S::SpongeChip,
+    pub(super) curve_chip: S::CurveChip,
+    pub(super) scalar_chip: S::ScalarChip,
+    pub(super) sponge_chip: S::SpongeChip,
 }
 
 impl<S: SelfEmulation> Chip<S::F> for VerifierGadget<S> {
@@ -283,7 +283,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
 
     /// Completes the assigned domain by deriving `omega_inv` and `n = 2^k` from
     /// assigned `k` and `omega` cells (in-circuit).
-    fn derive_domain(
+    pub(super) fn derive_domain(
         &self,
         layouter: &mut impl Layouter<S::F>,
         k: AssignedNative<S::F>,
@@ -300,7 +300,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
     }
 
     /// Builds the `AssignedVk`.
-    fn assemble_vk(
+    pub(super) fn assemble_vk(
         &self,
         cs: &ConstraintSystem<S::F>,
         domain: AssignedEvaluationDomain<S>,
