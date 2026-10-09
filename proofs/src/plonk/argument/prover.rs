@@ -73,22 +73,24 @@ impl<F: WithSmallOrderMulGroup<3>, B: PolynomialRepresentation> Committed<F, B> 
 }
 
 impl<F: PrimeField, B: PolynomialRepresentation> Committed<F, B> {
-    pub fn commit<CS, T>(
+    /// Commits to the polynomials of `polys_map` in the representation given by
+    /// `encode`. The group keeps them as given.
+    pub fn commit<CS, T, E>(
         params: &CS::Parameters,
         polys_map: BTreeMap<PolynomialLabel, Polynomial<F, B>>,
+        encode: fn(&Polynomial<F, B>) -> Polynomial<F, E>,
         transcript: &mut T,
     ) -> Result<Self, Error>
     where
         CS: PolynomialCommitmentScheme<F>,
         CS::Commitment: Hashable<T::Hash>,
         T: Transcript,
+        E: PolynomialRepresentation,
     {
         let group = Self::from_map(polys_map);
-        let commitment = CS::commit_many(
-            params,
-            &group.polys.iter().collect::<Vec<_>>(),
-            &group.labels,
-        );
+        let encoded: Vec<_> = group.polys.par_iter().map(encode).collect();
+        let commitment =
+            CS::commit_many(params, &encoded.iter().collect::<Vec<_>>(), &group.labels);
 
         CS::write_commitment(transcript, &commitment)?;
 
