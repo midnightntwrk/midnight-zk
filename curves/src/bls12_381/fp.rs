@@ -584,6 +584,12 @@ impl Field for Fp {
         self.ct_eq(&ZERO)
     }
 
+    /// Montgomery form keeps zero as all-zero limbs
+    fn is_zero_vartime(&self) -> bool {
+        // An OR of the limbs, not `==` on the arrays, which calls `bcmp`
+        self.0.l.iter().fold(0, |acc, l| acc | l) == 0
+    }
+
     fn square(&self) -> Self {
         let mut sq = *self;
         unsafe { blst_fp_sqr(&mut sq.0, &self.0) }
