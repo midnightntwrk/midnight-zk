@@ -45,7 +45,8 @@ use std::{
 };
 
 use ff::WithSmallOrderMulGroup;
-use utils::{compute_g, roots};
+use utils::compute_g;
+pub use utils::roots;
 
 use crate::{
     poly::{
