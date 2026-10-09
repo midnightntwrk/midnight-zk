@@ -24,6 +24,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 * `AssignedVk` holds an `AssignedEvaluationDomain` with assigned `k` and `omega` (and in-circuit derived `omega_inv` and `n = 2^k`) [#461](https://github.com/midnightntwrk/midnight-zk/pull/461)
+* The in-circuit KZG verifier interpolates a point set made of whole cosets of `t`-th roots in closed form, in a number of rows linear in its size. This cuts the in-circuit fflonk verifier, e.g. by 16k rows at `LOG2_T_MAX = 4` in the IVC example [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 * Remove the linearization from the verifier gadget, mirroring `midnight-proofs`: the simple selectors are opened through the phase-0 group and `AssignedVk` no longer holds one commitment per simple selector [#566](https://github.com/midnightntwrk/midnight-zk/pull/566)
 * makes `verifier::fixed_bases` read the labels stored in the verifying-key commitments instead of counting columns (does not work with fflonk) [#570](https://github.com/midnightntwrk/midnight-zk/pull/570)
 * `PreComputedRoundCPU::init` derives Poseidon's CPU partial-round pre-computation once per field and caches it [#527](https://github.com/midnightntwrk/midnight-zk/pull/527)
