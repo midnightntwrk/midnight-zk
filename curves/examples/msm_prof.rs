@@ -17,12 +17,15 @@ fn main() {
     let mode = std::env::args().nth(3).unwrap_or_default();
     let glv = mode == "glv";
     let blst = mode == "blst";
+    let best = mode == "best";
     let t = std::time::Instant::now();
     let mut n = 0;
     // ITERS=n: exactly n runs (for instruction counts); otherwise as many as fit in 10 s
     let iters: Option<usize> = std::env::var("ITERS").ok().map(|v| v.parse().unwrap());
     while iters.map_or(t.elapsed().as_secs() < 10, |i| n < i) {
-        if blst {
+        if best {
+            std::hint::black_box(midnight_curves::msm::msm_best(&coeffs, &bases));
+        } else if blst {
             std::hint::black_box(G1Affine::multi_exp_affine(&bases, &coeffs));
         } else if glv {
             std::hint::black_box(msm_xyzz_glv_with_window(&coeffs, &bases, c));
