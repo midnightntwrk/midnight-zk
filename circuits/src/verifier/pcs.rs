@@ -25,6 +25,7 @@ use midnight_proofs::{
 
 use crate::{
     field::AssignedNative,
+    types::{InnerValue, Instantiable},
     verifier::{AssignedAccumulator, SelfEmulation, transcript_gadget::TranscriptGadget},
 };
 
@@ -105,8 +106,12 @@ pub trait InCircuitPCS<S: SelfEmulation>: Sized + Clone + Debug {
     /// verifying-key type the gadget accepts.
     type OffCircuitPCS: PolynomialCommitmentScheme<S::F, Commitment: CommitmentBases<S::C>>;
 
-    /// The in-circuit type representing a committed polynomial.
-    type AssignedCommitment: Clone + Debug;
+    /// The in-circuit type representing a committed polynomial, whose
+    /// off-circuit value is a commitment of [`Self::OffCircuitPCS`].
+    type AssignedCommitment: Clone
+        + Debug
+        + Instantiable<S::F>
+        + InnerValue<Element = <Self::OffCircuitPCS as PolynomialCommitmentScheme<S::F>>::Commitment>;
 
     /// Creates the fixed (VK-embedded) commitment to the group of `labels`.
     ///
@@ -128,13 +133,33 @@ pub trait InCircuitPCS<S: SelfEmulation>: Sized + Clone + Debug {
     /// [`fixed_bases`](super::fixed_bases) for this group.
     fn fixed_base_labels(labels: &[PolynomialLabel]) -> Vec<PolynomialLabel>;
 
-    /// Assigns a commitment from an off-circuit curve point.
+    /// Assigns the commitment to the group of `labels` from its off-circuit
+    /// value. As in [`Self::read_commitment`], its points are not checked to be
+    /// in the prime-order subgroup.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a label is repeated or if `value` does not commit to
+    /// `|labels|` polynomials.
     fn assign_commitment(
         layouter: &mut impl Layouter<S::F>,
         curve_chip: &S::CurveChip,
-        value: Value<S::C>,
-        label: PolynomialLabel,
+        value: Value<<Self::AssignedCommitment as InnerValue>::Element>,
+        labels: &[PolynomialLabel],
     ) -> Result<Self::AssignedCommitment, Error>;
+
+    /// The in-circuit counterpart of [`Instantiable::as_public_input`] for
+    /// commitments.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `commitment` has no assigned points, e.g. if it was created
+    /// with [`Self::fixed_commitment`].
+    fn commitment_as_public_input(
+        layouter: &mut impl Layouter<S::F>,
+        curve_chip: &S::CurveChip,
+        commitment: &Self::AssignedCommitment,
+    ) -> Result<Vec<AssignedNative<S::F>>, Error>;
 
     /// Reads one commitment to `labels.len()` polynomials from the proof
     /// transcript, tagging each polynomial with its label.
