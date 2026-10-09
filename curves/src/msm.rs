@@ -13,6 +13,7 @@ use crate::{CurveAffine, FieldInto};
 
 const BATCH_SIZE: usize = 64;
 
+#[inline]
 fn get_booth_index(window_index: usize, window_size: usize, el: &[u8]) -> i32 {
     // Booth encoding:
     // * step by `window` size
@@ -29,8 +30,14 @@ fn get_booth_index(window_index: usize, window_size: usize, el: &[u8]) -> i32 {
 
     // fill into a u32
     let mut v: [u8; 4] = [0; 4];
-    for (dst, src) in v.iter_mut().zip(el.iter().skip(skip_bytes)) {
-        *dst = *src
+    match el.get(skip_bytes..skip_bytes + 4) {
+        // One load, rather than a byte copy loop (a `memmove` call on aarch64)
+        Some(bytes) => v.copy_from_slice(bytes),
+        None => {
+            for (dst, src) in v.iter_mut().zip(el.iter().skip(skip_bytes)) {
+                *dst = *src
+            }
+        }
     }
     let mut tmp = u32::from_le_bytes(v);
 
@@ -801,25 +808,42 @@ fn integrate_and_clear<F: FieldInto>(buckets: &mut [Xyzz<F>]) -> Xyzz<F> {
 /// against 8M + 2S into an XYZZ bucket (as in gnark). A point whose bucket is already in the
 /// batch, or that would double or cancel its bucket, goes to an XYZZ bucket beside it.
 struct AffineBuckets<F> {
-    x: Vec<F>,
-    y: Vec<F>,
-    full: Vec<bool>,
-    queued: Vec<bool>,
+    buckets: Vec<AffineBucket<F>>,
     side: Vec<Xyzz<F>>,
-    /// `(bucket, point, negate)` awaiting the next batch, with its `x` differences and their
-    /// running products
-    batch: Vec<(usize, usize, bool)>,
+    /// Awaiting the next batch, with their `x` differences and the running products of those
+    batch: Vec<Pending>,
     dx: Vec<F>,
     prefix: Vec<F>,
 }
 
+/// An affine bucket: its point when `full`; `queued` while it has an addition in the batch
+#[derive(Clone, Copy)]
+struct AffineBucket<F> {
+    x: F,
+    y: F,
+    full: bool,
+    queued: bool,
+}
+
+/// `buckets[bucket] += ±points[point]`, batched; `special` if it doubles or cancels the bucket
+#[derive(Clone, Copy)]
+struct Pending {
+    bucket: usize,
+    point: usize,
+    negate: bool,
+    special: bool,
+}
+
 impl<F: FieldInto> AffineBuckets<F> {
     fn new(buckets: usize, batch: usize) -> Self {
+        let empty = AffineBucket {
+            x: F::ZERO,
+            y: F::ZERO,
+            full: false,
+            queued: false,
+        };
         Self {
-            x: vec![F::ZERO; buckets],
-            y: vec![F::ZERO; buckets],
-            full: vec![false; buckets],
-            queued: vec![false; buckets],
+            buckets: vec![empty; buckets],
             side: vec![Xyzz::identity(); buckets],
             batch: Vec::with_capacity(batch),
             dx: vec![F::ZERO; batch],
@@ -832,21 +856,27 @@ impl<F: FieldInto> AffineBuckets<F> {
     where
         F: 'a,
     {
-        if !self.full[b] {
+        let bucket = &mut self.buckets[b];
+        if !bucket.full {
             let (x, y) = xy(i);
-            self.x[b] = *x;
+            bucket.x = *x;
             if negate {
-                F::neg_into(&mut self.y[b], y);
+                F::neg_into(&mut bucket.y, y);
             } else {
-                self.y[b] = *y;
+                bucket.y = *y;
             }
-            self.full[b] = true;
-        } else if self.queued[b] {
+            bucket.full = true;
+        } else if bucket.queued {
             let (x, y) = xy(i);
             self.side[b].add_affine(x, y, negate);
         } else {
-            self.queued[b] = true;
-            self.batch.push((b, i, negate));
+            bucket.queued = true;
+            self.batch.push(Pending {
+                bucket: b,
+                point: i,
+                negate,
+                special: false,
+            });
             if self.batch.len() == self.dx.len() {
                 self.flush(xy);
             }
@@ -862,10 +892,11 @@ impl<F: FieldInto> AffineBuckets<F> {
         if len == 0 {
             return;
         }
-        for (j, &(b, i, _)) in self.batch.iter().enumerate() {
-            F::sub_into(&mut self.dx[j], xy(i).0, &self.x[b]);
-            if self.dx[j].is_zero_vartime() {
-                // Doubles or cancels: handled below, apart from the batch
+        for (j, p) in self.batch.iter_mut().enumerate() {
+            F::sub_into(&mut self.dx[j], xy(p.point).0, &self.buckets[p.bucket].x);
+            // Doubles or cancels: added apart from the batch, below
+            p.special = self.dx[j].is_zero_vartime();
+            if p.special {
                 self.dx[j] = F::ONE;
             }
             if j == 0 {
@@ -877,36 +908,42 @@ impl<F: FieldInto> AffineBuckets<F> {
         }
         // Non-zero: a product of non-zero differences
         let mut inv = self.prefix[len - 1].invert().unwrap();
-        let mut inv_j = F::ZERO;
-        let (mut lambda, mut t, mut d) = (F::ZERO, F::ZERO, F::ZERO);
+        let (mut inv_j, mut lambda, mut t, mut d) = (F::ZERO, F::ZERO, F::ZERO, F::ZERO);
         for j in (0..len).rev() {
-            let (b, i, negate) = self.batch[j];
-            if j > 0 {
+            let p = self.batch[j];
+            let inv_j = if j > 0 {
                 F::mul_into(&mut inv_j, &inv, &self.prefix[j - 1]);
                 inv *= &self.dx[j];
+                &inv_j
             } else {
-                inv_j = inv;
-            }
-            self.queued[b] = false;
-            let (x, y) = xy(i);
-            if *x == self.x[b] {
-                self.side[b].add_affine(x, y, negate);
+                &inv
+            };
+            let bucket = &mut self.buckets[p.bucket];
+            bucket.queued = false;
+            let (x, y) = xy(p.point);
+            if p.special {
+                self.side[p.bucket].add_affine(x, y, p.negate);
                 continue;
             }
-            if negate {
-                F::add_into(&mut t, y, &self.y[b]);
-                t = -t;
+            // Adding -P, the slope is -λ' for λ' = (y + y_b) / (x - x_b), and then
+            // y' = λ'(x' - x_b) - y_b: no negation
+            if p.negate {
+                F::add_into(&mut t, y, &bucket.y);
             } else {
-                F::sub_into(&mut t, y, &self.y[b]);
+                F::sub_into(&mut t, y, &bucket.y);
             }
-            F::mul_into(&mut lambda, &t, &inv_j);
+            F::mul_into(&mut lambda, &t, inv_j);
             F::square_into(&mut t, &lambda);
-            t -= &self.x[b];
+            t -= &bucket.x;
             t -= x;
-            F::sub_into(&mut d, &self.x[b], &t);
-            self.x[b] = t;
+            if p.negate {
+                F::sub_into(&mut d, &t, &bucket.x);
+            } else {
+                F::sub_into(&mut d, &bucket.x, &t);
+            }
+            bucket.x = t;
             F::mul_into(&mut t, &lambda, &d);
-            F::rsub_assign(&mut self.y[b], &t);
+            F::rsub_assign(&mut bucket.y, &t);
         }
         self.batch.clear();
     }
@@ -923,14 +960,14 @@ impl<F: FieldInto> AffineBuckets<F> {
         self.flush(xy);
         let mut acc = Xyzz::identity();
         let mut sum = Xyzz::identity();
-        for b in (0..used).rev() {
-            if self.full[b] {
-                acc.add_affine(&self.x[b], &self.y[b], false);
-                self.full[b] = false;
+        for (bucket, side) in self.buckets[..used].iter_mut().zip(&mut self.side[..used]).rev() {
+            if bucket.full {
+                acc.add_affine(&bucket.x, &bucket.y, false);
+                bucket.full = false;
             }
-            if !self.side[b].is_identity() {
-                acc.add(&self.side[b]);
-                self.side[b] = Xyzz::identity();
+            if !side.is_identity() {
+                acc.add(side);
+                *side = Xyzz::identity();
             }
             sum.add(&acc);
         }
