@@ -751,21 +751,22 @@ pub fn xyzz_window(n: usize) -> usize {
     if cfg!(target_arch = "aarch64") {
         match k {
             0..=7 => 5,
-            8 => 8,
-            9 => 7,
-            10 => 9,
-            11..=13 => 10,
-            14..=15 => 11,
-            16..=17 => 12,
+            8..=9 => 7,
+            10 => 8,
+            11..=14 => 10,
+            15..=16 => 12,
             _ => 13,
         }
     } else {
         match k {
-            0..=8 => 5,
+            0..=6 => 5,
+            7 => 4,
+            8 => 7,
             9 => 8,
-            10..=13 => 9,
-            14 => 10,
-            15 => 12,
+            10..=12 => 9,
+            13 => 10,
+            14 => 11,
+            15..=16 => 12,
             _ => 13,
         }
     }
@@ -835,13 +836,14 @@ struct AffineBucket<F> {
     queued: bool,
 }
 
-/// `buckets[bucket] += ±points[point]`, batched; `special` if it doubles or cancels the bucket
+/// `buckets[bucket] += ±points[point]`, batched; `same_x` if the point shares the bucket's `x`, so
+/// the addition doubles or cancels it (no slope: added in XYZZ instead)
 #[derive(Clone, Copy)]
 struct Pending {
     bucket: usize,
     point: usize,
     negate: bool,
-    special: bool,
+    same_x: bool,
 }
 
 /// At most this many lanes of running sums when summing the buckets (an eighth of them is
@@ -880,7 +882,7 @@ impl<F: FieldInto> AffineBuckets<F> {
             bucket: b,
             point: i,
             negate,
-            special: false,
+            same_x: false,
         };
         self.enqueue(p, xy);
         if self.batch.len() == self.dx.len() {
@@ -946,8 +948,8 @@ impl<F: FieldInto> AffineBuckets<F> {
         for (j, p) in self.batch.iter_mut().enumerate() {
             F::sub_into(&mut self.dx[j], xy(p.point).0, &self.buckets[p.bucket].x);
             // Doubles or cancels: added apart from the batch, below
-            p.special = self.dx[j].is_zero_vartime();
-            if p.special {
+            p.same_x = self.dx[j].is_zero_vartime();
+            if p.same_x {
                 self.dx[j] = F::ONE;
             }
             if j == 0 {
@@ -972,7 +974,7 @@ impl<F: FieldInto> AffineBuckets<F> {
             let bucket = &mut self.buckets[p.bucket];
             bucket.queued = false;
             let (x, y) = xy(p.point);
-            if p.special {
+            if p.same_x {
                 self.side[p.bucket].add_affine(x, y, p.negate);
                 self.sides = true;
                 continue;
