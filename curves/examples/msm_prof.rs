@@ -1,4 +1,4 @@
-//! Profiling loop for the XYZZ Pippenger (tuning aid, not shipped).
+//! Profiling loop for the Pippenger (tuning aid, not shipped).
 use group::{Curve, Group};
 use midnight_curves::serde::SerdeObject;
 use midnight_curves::{

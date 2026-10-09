@@ -1204,9 +1204,9 @@ pub fn msm_parallel<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Cur
     }
 }
 
-/// The multi-scalar multiplication `Σ coeffs[i]·bases[i]`: a Pippenger with batched affine
-/// buckets ([`msm_xyzz_with_window`]), through
-/// the GLV endomorphism ([`CurveAffine::glv`]) for 32..128 terms, and one scalar
+/// The multi-scalar multiplication `Σ coeffs[i]·bases[i]`: a Pippenger over blst-style tiles,
+/// with batched affine buckets from window 7 and XYZZ ones below ([`msm_xyzz_with_window`]),
+/// through the GLV endomorphism ([`CurveAffine::glv`]) for 32..128 terms, and one scalar
 /// multiplication per term below 32. Parallel; identity bases contribute nothing.
 ///
 /// # Panics

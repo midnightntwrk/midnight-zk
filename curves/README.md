@@ -39,6 +39,10 @@ Due to the assembly based nature of the implementation in `blst`, currently only
 
 To enable portable features when building the blst dependency, use the 'portable' feature: `--features portable`.
 
+### MSM Backend
+
+BLS12-381 G1 MSMs use the Rust Pippenger (`msm::msm_best`); `--features blst-msm` switches them to blst's `multi_exp_affine`.
+
 
 ### Benchmarking
 
