@@ -561,7 +561,7 @@ pub fn msm_pointwise<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Cu
 }
 
 /// Pippenger with XYZZ buckets (blst's design), parallel over tiles of windows × chunks of
-/// the terms; window size `c`. Below 64 terms, one scalar multiplication per term instead.
+/// the terms; window size `c`. Below 32 terms, one scalar multiplication per term instead.
 #[doc(hidden)]
 pub fn msm_xyzz_with_window<C: CurveAffine>(
     coeffs: &[C::Scalar],
@@ -1016,9 +1016,13 @@ pub fn msm_parallel<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Cur
     }
 }
 
-/// This function will panic if coeffs and bases have a different length.
+/// The multi-scalar multiplication `Σ coeffs[i]·bases[i]`: an XYZZ-bucket Pippenger, through
+/// the GLV endomorphism ([`CurveAffine::glv`]) for 32..128 terms, and one scalar
+/// multiplication per term below 32. Parallel; identity bases contribute nothing.
 ///
-/// This will use multithreading if beneficial.
+/// # Panics
+///
+/// If `coeffs` and `bases` have different lengths.
 pub fn msm_best<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
     assert_eq!(coeffs.len(), bases.len());
     // Measured on BLS12-381 G1: GLV halves the doublings, which pays only while they are
@@ -1029,7 +1033,8 @@ pub fn msm_best<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
     msm_xyzz_with_window(coeffs, bases, xyzz_window(bases.len()))
 }
 
-/// [`msm_best`]'s batch-affine Pippenger with window size `c`, parallel over the windows
+/// The previous [`msm_best`]: a batch-affine Pippenger with window size `c`, parallel over
+/// the windows; kept for comparison
 #[doc(hidden)]
 pub fn msm_batch_affine_with_window<C: CurveAffine>(
     coeffs: &[C::Scalar],
