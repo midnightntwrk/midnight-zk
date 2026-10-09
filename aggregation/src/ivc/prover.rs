@@ -10,21 +10,19 @@
 use midnight_circuits::{
     hash::poseidon::PoseidonState,
     types::Instantiable,
-    verifier::{Accumulator, AssignedAccumulator, AssignedVk, InCircuitKZG},
+    verifier::{Accumulator, AssignedAccumulator, AssignedVk},
 };
 use midnight_proofs::{
     plonk::{self},
-    poly::{
-        PolynomialLabel,
-        kzg::{KZGCommitmentScheme, commitment::KZGMultiCommitment, params::ParamsKZG},
-    },
+    poly::{PolynomialLabel, commitment::PolynomialCommitmentScheme, kzg::params::ParamsKZG},
     transcript::{CircuitTranscript, Transcript},
 };
-use midnight_zk_stdlib::MidnightPK;
+use midnight_zk_stdlib::{DefaultPCS, MidnightPK};
 use rand::rngs::OsRng;
 
 use super::{
-    E, F, Ivc, IvcCircuit, IvcError, IvcInstance, IvcWitness, S, circuit::IvcExtendedInstance,
+    E, F, InCircuitDefaultPCS, Ivc, IvcCircuit, IvcError, IvcInstance, IvcWitness, S,
+    circuit::IvcExtendedInstance,
 };
 
 /// Stateful IVC prover holding:
@@ -89,7 +87,7 @@ impl<T: Ivc> IvcProver<T> {
         } else {
             // Construct the public inputs of the previous proof.
             let prev_pi = [
-                AssignedVk::<S, InCircuitKZG<S>>::as_public_input(vk),
+                AssignedVk::<S, InCircuitDefaultPCS>::as_public_input(vk),
                 T::format_public_input(&self.state),
                 AssignedAccumulator::<S>::as_public_input(&self.acc),
             ]
@@ -97,15 +95,14 @@ impl<T: Ivc> IvcProver<T> {
 
             let mut transcript =
                 CircuitTranscript::<PoseidonState<F>>::init_from_bytes(&self.proof);
-            let dual_msm =
-                plonk::prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<PoseidonState<F>>>(
-                    vk,
-                    &[KZGMultiCommitment::commitment_to_zero(
-                        PolynomialLabel::CommittedInstance(0),
-                    )],
-                    &[&prev_pi],
-                    &mut transcript,
-                )?;
+            let dual_msm = plonk::prepare::<F, DefaultPCS, CircuitTranscript<PoseidonState<F>>>(
+                vk,
+                &[DefaultPCS::commitment_to_zero(&[
+                    PolynomialLabel::CommittedInstance(0),
+                ])],
+                &[&prev_pi],
+                &mut transcript,
+            )?;
 
             if !dual_msm.clone().check(&self.params.verifier_params()) {
                 return Err(IvcError::InvalidProof);

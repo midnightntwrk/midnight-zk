@@ -24,13 +24,13 @@ pub use error::IvcError;
 use midnight_circuits::{
     instructions::{BinaryInstructions, EqualityInstructions},
     types::{AssignedBit, AssignedNative},
-    verifier::{BlstrsEmulation, SelfEmulation},
+    verifier::{BlstrsEmulation, InCircuitCounterpart, SelfEmulation},
 };
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
-use midnight_zk_stdlib::{ZkStdLib, ZkStdLibArch};
+use midnight_zk_stdlib::{DefaultPCS, ZkStdLib, ZkStdLibArch};
 pub use prover::IvcProver;
 pub use setup::setup;
 pub use verifier::IvcVerifier;
@@ -39,6 +39,9 @@ pub(crate) type S = BlstrsEmulation;
 pub(crate) type F = <S as SelfEmulation>::F;
 pub(crate) type C = <S as SelfEmulation>::C;
 pub(crate) type E = <S as SelfEmulation>::Engine;
+
+/// The in-circuit verifier of the proofs of zk_stdlib's PCS.
+pub type InCircuitDefaultPCS = <DefaultPCS as InCircuitCounterpart<S>>::InCircuit;
 
 pub mod circuit;
 pub mod error;

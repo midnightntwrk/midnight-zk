@@ -567,9 +567,9 @@ where
     F: Hashable<H> + Sampleable<H>,
 {
     let pi = R::format_instance(instance)?;
-    let committed_pi = committed_instance.unwrap_or(KZGMultiCommitment::commitment_to_zero(
+    let committed_pi = committed_instance.unwrap_or(DefaultPCS::commitment_to_zero(&[
         PolynomialLabel::CommittedInstance(0),
-    ));
+    ]));
     if pi.len() != vk.nb_public_inputs {
         return Err(Error::InvalidInstances.into());
     }
@@ -620,9 +620,9 @@ where
             let mut transcript = CircuitTranscript::init_from_bytes(proof);
             let dual_msm = prepare::<midnight_curves::Fq, DefaultPCS, CircuitTranscript<H>>(
                 &vk.vk,
-                &[KZGMultiCommitment::commitment_to_zero(
+                &[DefaultPCS::commitment_to_zero(&[
                     PolynomialLabel::CommittedInstance(0),
-                )],
+                ])],
                 &[pi],
                 &mut transcript,
             )?;

@@ -12,16 +12,16 @@
 use midnight_circuits::{
     instructions::{BinaryInstructions, PublicInputInstructions},
     types::Instantiable,
-    verifier::{Accumulator, AssignedAccumulator, AssignedVk, InCircuitKZG, InCircuitPCS},
+    verifier::{Accumulator, AssignedAccumulator, AssignedVk, InCircuitPCS},
 };
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::{ConstraintSystem, VerifyingKey},
-    poly::{EvaluationDomain, PolynomialLabel, kzg::KZGCommitmentScheme},
+    poly::{EvaluationDomain, PolynomialLabel},
 };
-use midnight_zk_stdlib::{Relation, ZkStdLib, ZkStdLibArch};
+use midnight_zk_stdlib::{DefaultPCS, Relation, ZkStdLib, ZkStdLibArch};
 
-use super::{E, F, Ivc, IvcError, S};
+use super::{F, InCircuitDefaultPCS, Ivc, IvcError, S};
 
 /// The public instance (statement) of an IVC proof.
 ///
@@ -51,17 +51,14 @@ impl<T: Ivc> IvcInstance<T> {
 /// to be checked against the IVC instance.
 #[derive(Clone, Debug)]
 pub struct IvcExtendedInstance<T: Ivc> {
-    pub(crate) vk: VerifyingKey<F, KZGCommitmentScheme<E>>,
+    pub(crate) vk: VerifyingKey<F, DefaultPCS>,
     pub(crate) state: T::State,
     pub(crate) acc: Accumulator<S>,
 }
 
 impl<T: Ivc> IvcExtendedInstance<T> {
     /// Extends the given instance with `vk`.
-    pub(crate) fn new(
-        vk: &VerifyingKey<F, KZGCommitmentScheme<E>>,
-        instance: IvcInstance<T>,
-    ) -> Self {
+    pub(crate) fn new(vk: &VerifyingKey<F, DefaultPCS>, instance: IvcInstance<T>) -> Self {
         IvcExtendedInstance {
             vk: vk.clone(),
             state: instance.state,
@@ -144,7 +141,7 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
 
     fn format_instance(instance: &Self::Instance) -> Result<Vec<F>, IvcError> {
         Ok([
-            AssignedVk::<S, InCircuitKZG<S>>::as_public_input(&instance.vk),
+            AssignedVk::<S, InCircuitDefaultPCS>::as_public_input(&instance.vk),
             T::format_public_input(&instance.state),
             AssignedAccumulator::<S>::as_public_input(&instance.acc),
         ]
@@ -161,7 +158,7 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
         let verifier_gadget = std_lib.verifier();
         let ivc_gadget = T::new(std_lib.clone(), &self.ctx);
 
-        let assigned_self_vk: AssignedVk<S, InCircuitKZG<S>> = verifier_gadget
+        let assigned_self_vk: AssignedVk<S, InCircuitDefaultPCS> = verifier_gadget
             .assign_vk_as_public_input(layouter, instance.as_ref().map(|x| &x.vk), &self.cs)?;
 
         let prev_state_val = witness.as_ref().map(|w| w.prev_state.clone());
@@ -174,10 +171,8 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
         )?;
         ivc_gadget.constrain_as_public_input(layouter, &next_state)?;
 
-        let fixed_base_labels = midnight_circuits::verifier::fixed_base_labels::<
-            S,
-            <InCircuitKZG<S> as InCircuitPCS<S>>::OffCircuit,
-        >(&self.cs);
+        let fixed_base_labels =
+            midnight_circuits::verifier::fixed_base_labels::<S, DefaultPCS>(&self.cs);
 
         let prev_acc_value = witness.as_ref().map(|w| w.prev_acc.clone());
         let prev_acc = verifier_gadget.assign_collapsed_accumulator(
@@ -193,7 +188,7 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
         ]
         .concat();
 
-        let instance_com = InCircuitKZG::<S>::commitment_to_zero(
+        let instance_com = InCircuitDefaultPCS::commitment_to_zero(
             layouter,
             std_lib.bls12_381(),
             &[PolynomialLabel::CommittedInstance(0)],

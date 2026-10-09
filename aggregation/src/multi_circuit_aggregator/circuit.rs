@@ -20,23 +20,22 @@ use midnight_circuits::{
     hash::poseidon::{PoseidonChip, PoseidonState},
     instructions::{hash::HashCPU, *},
     types::{AssignedNative, Instantiable},
-    verifier::{self, Accumulator, AssignedAccumulator, InCircuitKZG, InCircuitPCS},
+    verifier::{self, Accumulator, AssignedAccumulator, InCircuitPCS},
 };
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::{self, ConstraintSystem, Error},
     poly::{
-        PolynomialLabel,
-        kzg::{KZGCommitmentScheme, commitment::KZGMultiCommitment, params::ParamsVerifierKZG},
+        PolynomialLabel, commitment::PolynomialCommitmentScheme, kzg::params::ParamsVerifierKZG,
     },
     transcript::{CircuitTranscript, Transcript},
     utils::SerdeFormat,
 };
-use midnight_zk_stdlib::{ZkStdLib, ZkStdLibArch};
+use midnight_zk_stdlib::{DefaultPCS, ZkStdLib, ZkStdLibArch};
 
 use super::aggregator::AggregationWitness;
 use crate::{
-    ivc::{E, F, IvcContext, IvcIO, IvcState, IvcTransition, S},
+    ivc::{E, F, InCircuitDefaultPCS, IvcContext, IvcIO, IvcState, IvcTransition, S},
     multi_circuit_aggregator::{
         Claim,
         utils::{assign_as_public_inputs_and_hash_vk, compute_vk_hash},
@@ -300,16 +299,15 @@ impl IvcTransition for ProofAggregation {
         let inner_proof_acc = {
             let mut transcript =
                 CircuitTranscript::<PoseidonState<F>>::init_from_bytes(&witness.inner_proof);
-            let dual_msm =
-                plonk::prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<PoseidonState<F>>>(
-                    witness.claim.vk.vk(),
-                    &[KZGMultiCommitment::commitment_to_zero(
-                        PolynomialLabel::CommittedInstance(0),
-                    )],
-                    &[&[statement]],
-                    &mut transcript,
-                )
-                .expect("off-circuit prepare should succeed");
+            let dual_msm = plonk::prepare::<F, DefaultPCS, CircuitTranscript<PoseidonState<F>>>(
+                witness.claim.vk.vk(),
+                &[DefaultPCS::commitment_to_zero(&[
+                    PolynomialLabel::CommittedInstance(0),
+                ])],
+                &[&[statement]],
+                &mut transcript,
+            )
+            .expect("off-circuit prepare should succeed");
 
             // Sanity check (also validated in Aggregator::aggregate).
             assert!(
@@ -368,7 +366,7 @@ impl IvcTransition for ProofAggregation {
 
         // 3. Verify the inner proof in-circuit against the witnessed VK and statement.
         let inner_proof_acc = {
-            let instance_com = InCircuitKZG::<S>::commitment_to_zero(
+            let instance_com = InCircuitDefaultPCS::commitment_to_zero(
                 layouter,
                 self.std_lib.bls12_381(),
                 &[PolynomialLabel::CommittedInstance(0)],
