@@ -658,6 +658,19 @@ impl<S: SelfEmulation> InCircuitPCS<S> for InCircuitKZG<S> {
         )
     }
 
+    fn commitment_from_points(
+        labels: &[PolynomialLabel],
+        points: &[S::AssignedPoint],
+    ) -> Self::AssignedCommitment {
+        PolynomialLabel::assert_distinct(labels);
+        assert_eq!(labels.len(), points.len());
+        AssignedKZGMultiCommitment(
+            (labels.iter().cloned().zip(points.iter().cloned()))
+                .map(|(label, point)| AssignedKZGCommitment::simple(point, label))
+                .collect(),
+        )
+    }
+
     fn read_commitment(
         transcript: &mut TranscriptGadget<S>,
         layouter: &mut impl Layouter<S::F>,

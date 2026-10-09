@@ -38,6 +38,7 @@ pub(crate) mod pcs;
 mod traces;
 mod transcript_gadget;
 mod types;
+mod unbound_vk;
 mod utils;
 mod verifier_gadget;
 
@@ -48,6 +49,7 @@ pub use pcs::{InCircuitHomomorphicCommitment, InCircuitPCS};
 #[cfg(feature = "dev-curves")]
 pub use types::BnEmulation;
 pub use types::{BlstrsEmulation, SelfEmulation};
+pub use unbound_vk::{UnboundVk, vk_hash};
 pub use verifier_gadget::VerifierGadget;
 
 type VerifyingKey<S> =
@@ -80,8 +82,11 @@ struct AssignedEvaluationDomain<S: SelfEmulation> {
 /// [Accumulator::resolve_fixed_bases]. They are still bound to the proof, as
 /// `transcript_repr` commits to them.
 ///
-/// The only entry points are [VerifierGadget::assign_vk_as_public_input] and
-/// [VerifierGadget::assign_fixed_vk].
+/// A key assigned with [VerifierGadget::assign_private_vk] is the exception:
+/// its commitments are witnessed (see [UnboundVk]).
+///
+/// The only entry points are [VerifierGadget::assign_vk_as_public_input],
+/// [VerifierGadget::assign_fixed_vk] and the binding functions of [UnboundVk].
 #[derive(Clone, Debug)]
 pub struct AssignedVk<S: SelfEmulation, PCS: InCircuitPCS<S>> {
     domain: AssignedEvaluationDomain<S>,
