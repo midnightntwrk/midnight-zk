@@ -20,7 +20,7 @@ use midnight_circuits::{
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::{ConstraintSystem, Error},
-    poly::{EvaluationDomain, PolynomialLabel},
+    poly::PolynomialLabel,
     transcript::Hashable,
 };
 use midnight_zk_stdlib::{MidnightVK, ZkStdLib};
@@ -46,7 +46,8 @@ fn hashed_base_labels(nb_fixed: usize, nb_perm: usize) -> Vec<PolynomialLabel> {
         .collect()
 }
 
-/// Computes the VK hash off-circuit: `Poseidon(transcript_repr || bases)`.
+/// Computes the VK hash off-circuit:
+/// `Poseidon(transcript_repr || k || omega || bases)`.
 ///
 /// Each curve point is serialized as its foreign-field limb representation
 /// (via [`Hashable`]), so this is consistent with the in-circuit version
@@ -55,7 +56,12 @@ pub fn compute_vk_hash(vk: &MidnightVK) -> F {
     let vk = vk.vk();
     let to_raw = Hashable::<PoseidonState<F>>::to_input;
 
-    let vk_repr = vec![vk.transcript_repr()];
+    let domain = vk.get_domain();
+    let vk_as_public_inputs = vec![
+        vk.transcript_repr(),
+        F::from(domain.k() as u64),
+        domain.get_omega(),
+    ];
     let bases = fixed_bases::<S>(vk);
     let labels = hashed_base_labels(
         vk.cs().num_fixed_columns(),
@@ -63,18 +69,17 @@ pub fn compute_vk_hash(vk: &MidnightVK) -> F {
     );
     let base_inputs: Vec<F> = labels.iter().flat_map(|label| to_raw(&bases[label])).collect();
 
-    <PoseidonChip<F> as HashCPU<F, F>>::hash(&[vk_repr, base_inputs].concat())
+    <PoseidonChip<F> as HashCPU<F, F>>::hash(&[vk_as_public_inputs, base_inputs].concat())
 }
 
 /// In-circuit counterpart of [`compute_vk_hash`].
 ///
 /// Witnesses the VK commitment points (fixed and permutation), computes
-/// `Poseidon(transcript_repr || bases)` in-circuit, and returns their hash
-/// together with a named fixed-bases map (including `-G`).
+/// `Poseidon(transcript_repr || k || omega || bases)` in-circuit, and returns
+/// their hash together with a named fixed-bases map (including `-G`).
 pub fn assign_as_public_inputs_and_hash_vk(
     layouter: &mut impl Layouter<F>,
     std_lib: &ZkStdLib,
-    domain: &EvaluationDomain<F>,
     cs: &ConstraintSystem<F>,
     vk: Value<&MidnightVK>,
 ) -> Result<VkHashAndBases, Error> {
@@ -96,15 +101,17 @@ pub fn assign_as_public_inputs_and_hash_vk(
 
     // Assign the VK, witnessing its transcript_repr. The same repr cell is folded
     // into the hash below, binding the verified VK to the hashed one.
-    let assigned_vk = std_lib.verifier().assign_vk_as_public_input(
-        layouter,
-        domain,
-        cs,
-        vk.map(|vk| vk.vk().transcript_repr()),
-    )?;
+    let assigned_vk =
+        std_lib
+            .verifier()
+            .assign_vk_as_public_input(layouter, vk.map(|vk| vk.vk()), cs)?;
 
-    // Compute the hash: Poseidon(transcript_repr || bases...).
-    let mut input = vec![assigned_vk.transcript_repr().clone()];
+    // Compute the hash: Poseidon(transcript_repr || k || omega || bases...).
+    let mut input = vec![
+        assigned_vk.transcript_repr().clone(),
+        assigned_vk.k().clone(),
+        assigned_vk.omega().clone(),
+    ];
     for base in &assigned_bases {
         input.extend(curve_chip.as_public_input(layouter, base)?);
     }

@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 * Add `IvcError::InvalidWitness` variant [#311](https://github.com/midnightntwrk/midnight-zk/pull/311)
 * Add `assign_without_subgroup_check` to `SelfEmulation` trait [#284](https://github.com/midnightntwrk/midnight-zk/pull/284)
 ### Changed
+* The multi-circuit aggregator supports inner circuits of different sizes: their `k` and `omega` are public inputs, and `InnerCircuitsContext::new` takes the inner circuits' `max_bit_len` instead of `k` [#461](https://github.com/midnightntwrk/midnight-zk/pull/461)
+* `IvcInstance` no longer carries the verifying key's public inputs: `IvcVerifier::verify` derives them from its own key, and `IvcError::VkMismatch` is removed [#461](https://github.com/midnightntwrk/midnight-zk/pull/461)
 * The verifying-key hash takes the fixed bases from `verifier::fixed_bases`, in the same order as before: every fixed column, then every fixed permutation polynomial. The hash changes with the verifying key's `transcript_repr` [#547](https://github.com/midnightntwrk/midnight-zk/pull/547)
 * Follow the grouped verifying-key commitment in `compute_vk_hash` and in the in-circuit witnessing of the verifying-key points: the permutation polynomials are committed to as one group, read from `VerifyingKey::phase0_commitment`. The hash is unchanged, a group's hash input being its polynomials' inputs back to back [#537](https://github.com/midnightntwrk/midnight-zk/pull/537)
 * `IvcCircuit::new` takes a finalized constraint system, see `ConstraintSystem::into_finalized`. The IVC circuit and the multi-circuit aggregator finalize the constraint systems they configure [#546](https://github.com/midnightntwrk/midnight-zk/pull/546)

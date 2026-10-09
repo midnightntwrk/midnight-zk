@@ -18,27 +18,20 @@ use midnight_circuits::{
 };
 use midnight_proofs::{
     circuit::{Layouter, Value},
-    plonk::ConstraintSystem,
-    poly::{EvaluationDomain, PolynomialLabel},
+    plonk::{ConstraintSystem, VerifyingKey},
+    poly::{EvaluationDomain, PolynomialLabel, kzg::KZGCommitmentScheme},
 };
 use midnight_zk_stdlib::{Relation, ZkStdLib, ZkStdLibArch};
 
-use super::{F, Ivc, IvcError, S};
+use super::{E, F, Ivc, IvcError, S};
 
 /// The public instance (statement) of an IVC proof.
 ///
 /// Contains:
-/// - a commitment to the verifying key (of the IVC circuit itself),
 /// - the current state (after the latest transition),
 /// - the accumulator (that summarises all prior steps).
-///
-/// **Important:** the `vk_repr` field must **not** be trusted as-is. The
-/// verifier must compare it against the canonical `vk_repr` obtained by
-/// running [`setup`](super::setup()).
-/// See [`IvcVerifier::verify`](super::IvcVerifier::verify) for details.
 #[derive(Clone, Debug)]
 pub struct IvcInstance<T: Ivc> {
-    pub(crate) vk_repr: F,
     pub(crate) state: T::State,
     pub(crate) acc: Accumulator<S>,
 }
@@ -47,6 +40,35 @@ impl<T: Ivc> IvcInstance<T> {
     /// Returns the current state.
     pub fn state(&self) -> &T::State {
         &self.state
+    }
+}
+
+/// The instance of [`IvcCircuit`]: an [`IvcInstance`] `(state, acc)` together
+/// with `vk`, the verifying key of the IVC circuit itself.
+///
+/// The IVC circuit verifies proofs of itself, so its own key is part of its
+/// instance (of which only `transcript_repr`, `k` and `omega` are public
+/// inputs). Prover and verifier build it from an [`IvcInstance`] and the
+/// canonical key obtained in [`setup`](super::setup()), so `vk` never needs
+/// to be checked against the IVC instance.
+#[derive(Clone, Debug)]
+pub struct IvcExtendedInstance<T: Ivc> {
+    pub(crate) vk: VerifyingKey<F, KZGCommitmentScheme<E>>,
+    pub(crate) state: T::State,
+    pub(crate) acc: Accumulator<S>,
+}
+
+impl<T: Ivc> IvcExtendedInstance<T> {
+    /// Extends the given instance with `vk`.
+    pub(crate) fn new(
+        vk: &VerifyingKey<F, KZGCommitmentScheme<E>>,
+        instance: IvcInstance<T>,
+    ) -> Self {
+        IvcExtendedInstance {
+            vk: vk.clone(),
+            state: instance.state,
+            acc: instance.acc,
+        }
     }
 }
 
@@ -68,14 +90,14 @@ pub struct IvcWitness<T: Ivc> {
 /// The IVC circuit, parameterized by a transition function `T`.
 ///
 /// Implements the [`Relation`] of the IVC logic. Namely, that for a given
-/// [`IvcInstance`] `(vk_repr, state, acc)` there exists an [`IvcWitness`]
+/// [`IvcExtendedInstance`] `(vk, state, acc)` there exists an [`IvcWitness`]
 /// `(prev_state, prev_acc, prev_proof, transition_witness)` such that:
 ///
 /// 1. `state` is the result of applying the transition function to `prev_state`
 ///    with `transition_witness`,
-/// 2. `prev_state` is genesis OR `prev_proof` is a valid proof (under
-///    `vk_repr`) for the instance `(vk_repr, prev_state, prev_acc)`, attesting
-///    that `prev_state` was itself reached legitimately,
+/// 2. `prev_state` is genesis OR `prev_proof` is a valid proof (under `vk`) for
+///    the instance `(vk, prev_state, prev_acc)`, attesting that `prev_state`
+///    was itself reached legitimately,
 /// 3. `acc` is the accumulation of `prev_acc` with the accumulator resulting
 ///    from verifying `prev_proof`.
 #[derive(Clone, Debug)]
@@ -112,7 +134,7 @@ impl<T: Ivc> IvcCircuit<T> {
 }
 
 impl<T: Ivc> Relation for IvcCircuit<T> {
-    type Instance = IvcInstance<T>;
+    type Instance = IvcExtendedInstance<T>;
 
     type Witness = IvcWitness<T>;
 
@@ -124,7 +146,7 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
 
     fn format_instance(instance: &Self::Instance) -> Result<Vec<F>, IvcError> {
         Ok([
-            vec![instance.vk_repr],
+            AssignedVk::<S, InCircuitKZG<S>>::as_public_input(&instance.vk),
             T::format_public_input(&instance.state),
             AssignedAccumulator::<S>::as_public_input(&instance.acc),
         ]
@@ -142,12 +164,7 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
         let ivc_gadget = T::new(std_lib.clone(), &self.ctx);
 
         let assigned_self_vk: AssignedVk<S, InCircuitKZG<S>> = verifier_gadget
-            .assign_vk_as_public_input(
-                layouter,
-                &self.domain,
-                &self.cs,
-                instance.as_ref().map(|x| x.vk_repr),
-            )?;
+            .assign_vk_as_public_input(layouter, instance.as_ref().map(|x| &x.vk), &self.cs)?;
 
         let prev_state_val = witness.as_ref().map(|w| w.prev_state.clone());
         let prev_state = ivc_gadget.assign(layouter, prev_state_val)?;

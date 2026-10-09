@@ -200,6 +200,25 @@ where
     }
 }
 
+/// A placeholder verifying key: the key of an empty constraint system over the
+/// smallest evaluation domain (`k = 1`, `omega = -1`), with a zero
+/// `transcript_repr`. It does not verify any meaningful circuit.
+impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Default
+    for VerifyingKey<F, CS>
+{
+    fn default() -> Self {
+        let cs = ConstraintSystem::default();
+        let cs_degree = cs.degree();
+        VerifyingKey {
+            domain: EvaluationDomain::new(cs_degree as u32, 1),
+            phase0_commitment: CS::Commitment::default(),
+            cs,
+            cs_degree,
+            transcript_repr: F::default(),
+        }
+    }
+}
+
 impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> VerifyingKey<F, CS> {
     /// Return the bytes_length of a VerifyingKey
     pub fn bytes_length(&self, format: SerdeFormat) -> usize {
