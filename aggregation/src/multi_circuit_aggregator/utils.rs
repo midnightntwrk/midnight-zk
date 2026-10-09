@@ -100,13 +100,10 @@ pub fn assign_as_public_inputs_and_hash_vk(
 
     // Assign the VK, witnessing its transcript_repr. The same repr cell is folded
     // into the hash below, binding the verified VK to the hashed one.
-    let domain = vk.map(|vk| vk.vk().get_domain().clone());
-    let assigned_vk = std_lib.verifier().assign_vk_as_public_input(
-        layouter,
-        domain,
-        cs,
-        vk.map(|vk| vk.vk().transcript_repr()),
-    )?;
+    let assigned_vk =
+        std_lib
+            .verifier()
+            .assign_vk_as_public_input(layouter, vk.map(|vk| vk.vk()), cs)?;
 
     // Compute the hash: Poseidon(transcript_repr || k || omega || bases...).
     let mut input = vec![

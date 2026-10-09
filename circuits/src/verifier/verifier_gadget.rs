@@ -229,14 +229,10 @@ impl<S: SelfEmulation> VerifierGadget<S> {
 }
 
 impl<S: SelfEmulation> VerifierGadget<S> {
-    /// Assigns a verifying key as a public input. All the necessary information
-    /// is required off-circuit, except for the `transcript_repr` and the
-    /// evaluation domain.
-    ///
-    /// These are taken as separate values (instead of a `Value<VerifyingKey>`)
-    /// because a circuit may need to verify its *own* key, in which case no
-    /// verifying key exists yet: the values are then supplied by the prover
-    /// through the public inputs.
+    /// Assigns a verifying key as a public input: its `transcript_repr` and its
+    /// evaluation domain (`k` and `omega`) are assigned in-circuit, the rest is
+    /// taken off-circuit from `cs`. Since `cs` suffices to lay out the circuit,
+    /// `vk` may be unknown (e.g. at keygen).
     ///
     /// The domain values `k` and `omega` are *trusted* at this point: this
     /// function does not check that they are consistent (i.e. that `omega` is a
@@ -249,12 +245,19 @@ impl<S: SelfEmulation> VerifierGadget<S> {
     pub fn assign_vk_as_public_input<PCS: InCircuitPCS<S>>(
         &self,
         layouter: &mut impl Layouter<S::F>,
-        domain: Value<EvaluationDomain<S::F>>,
+        vk: Value<&VerifyingKey<S>>,
         cs: &ConstraintSystem<S::F>,
-        transcript_repr_value: Value<S::F>,
     ) -> Result<AssignedVk<S, PCS>, Error> {
-        let [k_value, omega_value] =
-            domain.map(|d| [S::F::from(d.k() as u64), d.get_omega()]).transpose_array();
+        let [transcript_repr_value, k_value, omega_value] = vk
+            .map(|vk| {
+                let domain = vk.get_domain();
+                [
+                    vk.transcript_repr(),
+                    S::F::from(domain.k() as u64),
+                    domain.get_omega(),
+                ]
+            })
+            .transpose_array();
         let transcript_repr =
             self.scalar_chip.assign_as_public_input(layouter, transcript_repr_value)?;
         let k = self.scalar_chip.assign_as_public_input(layouter, k_value)?;
@@ -960,8 +963,8 @@ pub(crate) mod tests {
 
     #[derive(Clone, Debug)]
     pub struct TestCircuit {
-        // (cs, domain, vk_repr)
-        inner_vk: (ConstraintSystem<F>, Value<EvaluationDomain<F>>, Value<F>),
+        // (cs, vk)
+        inner_vk: (ConstraintSystem<F>, Value<VerifyingKey<S>>),
         inner_committed_instance: Value<C>,
         inner_instances: Value<[F; NB_INNER_INSTANCES]>,
         inner_proof: Value<Vec<u8>>,
@@ -1059,9 +1062,8 @@ pub(crate) mod tests {
             let assigned_inner_vk: AssignedVk<S, InCircuitKZG<S>> = verifier_chip
                 .assign_vk_as_public_input(
                     &mut layouter,
-                    self.inner_vk.1.clone(),
+                    self.inner_vk.1.as_ref(),
                     &self.inner_vk.0,
-                    self.inner_vk.2,
                 )?;
 
             let assigned_committed_instance =
@@ -1156,11 +1158,7 @@ pub(crate) mod tests {
         public_inputs.extend(AssignedAccumulator::as_public_input(&inner_acc));
 
         let circuit = TestCircuit {
-            inner_vk: (
-                inner_vk.cs().clone(),
-                Value::known(inner_vk.get_domain().clone()),
-                Value::known(inner_vk.transcript_repr()),
-            ),
+            inner_vk: (inner_vk.cs().clone(), Value::known(inner_vk.clone())),
             inner_committed_instance: Value::known(C::identity()),
             inner_instances: Value::known([output]),
             inner_proof: Value::known(inner_proof),

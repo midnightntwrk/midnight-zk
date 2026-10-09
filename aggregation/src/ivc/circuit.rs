@@ -43,31 +43,29 @@ impl<T: Ivc> IvcInstance<T> {
     }
 }
 
-/// The instance of the IVC circuit: an [`IvcInstance`] extended with the
-/// public inputs of the verifying key (of the IVC circuit itself).
+/// The instance of [`IvcCircuit`]: an [`IvcInstance`] `(state, acc)` together
+/// with `vk`, the verifying key of the IVC circuit itself.
 ///
-/// It is never provided by the user, but derived from the canonical
-/// verifying key, so that the key does not need to be checked against it.
+/// The IVC circuit verifies proofs of itself, so its own key is part of its
+/// instance (of which only `transcript_repr`, `k` and `omega` are public
+/// inputs). Prover and verifier build it from an [`IvcInstance`] and the
+/// canonical key obtained in [`setup`](super::setup()), so `vk` never needs
+/// to be checked against the IVC instance.
 #[derive(Clone, Debug)]
 pub struct IvcExtendedInstance<T: Ivc> {
-    pub(crate) vk_repr: F,
-    pub(crate) domain_k: F,
-    pub(crate) domain_omega: F,
+    pub(crate) vk: VerifyingKey<F, KZGCommitmentScheme<E>>,
     pub(crate) state: T::State,
     pub(crate) acc: Accumulator<S>,
 }
 
 impl<T: Ivc> IvcExtendedInstance<T> {
-    /// Extends the given instance with the public inputs of `vk`.
+    /// Extends the given instance with `vk`.
     pub(crate) fn new(
         vk: &VerifyingKey<F, KZGCommitmentScheme<E>>,
         instance: IvcInstance<T>,
     ) -> Self {
-        let domain = vk.get_domain();
         IvcExtendedInstance {
-            vk_repr: vk.transcript_repr(),
-            domain_k: F::from(domain.k() as u64),
-            domain_omega: domain.get_omega(),
+            vk: vk.clone(),
             state: instance.state,
             acc: instance.acc,
         }
@@ -92,15 +90,14 @@ pub struct IvcWitness<T: Ivc> {
 /// The IVC circuit, parameterized by a transition function `T`.
 ///
 /// Implements the [`Relation`] of the IVC logic. Namely, that for a given
-/// [`IvcExtendedInstance`] `(vk_repr, state, acc)` there exists an 
-/// [`IvcWitness`] `(prev_state, prev_acc, prev_proof, transition_witness)` such 
-/// that:
+/// [`IvcExtendedInstance`] `(vk, state, acc)` there exists an [`IvcWitness`]
+/// `(prev_state, prev_acc, prev_proof, transition_witness)` such that:
 ///
 /// 1. `state` is the result of applying the transition function to `prev_state`
 ///    with `transition_witness`,
-/// 2. `prev_state` is genesis OR `prev_proof` is a valid proof (under
-///    `vk_repr`) for the instance `(vk_repr, prev_state, prev_acc)`, attesting
-///    that `prev_state` was itself reached legitimately,
+/// 2. `prev_state` is genesis OR `prev_proof` is a valid proof (under `vk`)
+///    for the instance `(vk, prev_state, prev_acc)`, attesting that
+///    `prev_state` was itself reached legitimately,
 /// 3. `acc` is the accumulation of `prev_acc` with the accumulator resulting
 ///    from verifying `prev_proof`.
 #[derive(Clone, Debug)]
@@ -149,7 +146,7 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
 
     fn format_instance(instance: &Self::Instance) -> Result<Vec<F>, IvcError> {
         Ok([
-            vec![instance.vk_repr, instance.domain_k, instance.domain_omega],
+            AssignedVk::<S, InCircuitKZG<S>>::as_public_input(&instance.vk),
             T::format_public_input(&instance.state),
             AssignedAccumulator::<S>::as_public_input(&instance.acc),
         ]
@@ -167,12 +164,7 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
         let ivc_gadget = T::new(std_lib.clone(), &self.ctx);
 
         let assigned_self_vk: AssignedVk<S, InCircuitKZG<S>> = verifier_gadget
-            .assign_vk_as_public_input(
-                layouter,
-                Value::known(self.domain.clone()),
-                &self.cs,
-                instance.as_ref().map(|x| x.vk_repr),
-            )?;
+            .assign_vk_as_public_input(layouter, instance.as_ref().map(|x| &x.vk), &self.cs)?;
 
         let prev_state_val = witness.as_ref().map(|w| w.prev_state.clone());
         let prev_state = ivc_gadget.assign(layouter, prev_state_val)?;
