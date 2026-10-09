@@ -7,12 +7,14 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 
 ## [Unreleased]
 ### Added
+* `CurveAffine::msm` (overridden by BLS12-381 G1 to use blst), `CurveAffine::from_xy_unchecked` (G1 skips the subgroup check) and `CurveAffine::glv` (BLS12-381 G1's endomorphism) [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 * Affine MSM path `G1Affine::multi_exp_affine` [#350](https://github.com/midnightntwrk/midnight-zk/pull/350)
 * Cached-twiddle FFT (`best_fft_with_twiddles`, `compute_twiddles`) and pruned DIF FFT (`fft_coeff_to_extended`) [#352](https://github.com/midnightntwrk/midnight-zk/pull/352)
 * Add Curve25519 [#181](https://github.com/midnightntwrk/midnight-zk/pull/181)
 * Add `k256` module [#189](https://github.com/midnightntwrk/midnight-zk/pull/189), [#191](https://github.com/midnightntwrk/midnight-zk/pull/191)
 
 ### Changed
+* `msm_best` is an XYZZ-bucket Pippenger (blst's design) with a measured window table, through the GLV endomorphism for 32..128 terms: 0.8-1.0x of blst's time on BLS12-381 G1 on x86 [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 * Migrate to Rust edition 2024 (from 2018); declare MSRV 1.90. Both are now inherited from the workspace [#508](https://github.com/midnightntwrk/midnight-zk/pull/508)
 *  Moved the generic extension-field tower (`ExtField`, `quadratic`/`cubic`) from `ff_ext` to the dev-curves `bn256` module [#412](https://github.com/midnightntwrk/midnight-zk/pull/412)
 
