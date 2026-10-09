@@ -1,4 +1,7 @@
-use std::{convert::TryInto, ops::Neg};
+use std::{
+    convert::TryInto,
+    ops::{Neg, Range},
+};
 
 use ff::{Field, PrimeField};
 use group::Group;
@@ -552,25 +555,22 @@ pub fn msm_xyzz_with_window<C: CurveAffine>(
         return msm_pointwise(coeffs, bases);
     }
     let nbits = C::Scalar::NUM_BITS as usize;
+    if bases.first().is_some_and(|b| b.xy_ref().is_some()) {
+        // Coordinates read in place, scalars converted by the tiles as they need them; an
+        // identity base gets a zero scalar, so it is never added
+        let zero = C::Scalar::ZERO.to_repr();
+        let repr = |r: Range<usize>| {
+            let repr = |i: usize| match bool::from(bases[i].is_identity()) {
+                true => zero,
+                false => coeffs[i].to_repr(),
+            };
+            r.map(repr).collect()
+        };
+        let xy = |i: usize| bases[i].xy_ref().unwrap();
+        return msm_xyzz_core::<C, _, _, _>(coeffs.len(), repr, xy, nbits, c);
+    }
     // In parallel only when there is enough work to pay for the scheduling
     let par = coeffs.len() >= 1 << 12;
-    if bases.first().is_some_and(|b| b.xy_ref().is_some()) {
-        // Coordinates read in place; an identity base gets a zero scalar, so it is never added
-        let zero = C::Scalar::ZERO.to_repr();
-        let repr = |(s, b): (&C::Scalar, &C)| {
-            if bool::from(b.is_identity()) {
-                zero
-            } else {
-                s.to_repr()
-            }
-        };
-        let scalars: Vec<_> = if par {
-            coeffs.par_iter().zip(bases.par_iter()).map(repr).collect()
-        } else {
-            coeffs.iter().zip(bases).map(repr).collect()
-        };
-        return msm_xyzz_core::<C, _, _>(&scalars, |i| bases[i].xy_ref().unwrap(), nbits, c);
-    }
     let prepare = |(s, b): (&C::Scalar, &C)| (s.to_repr(), Affine::from(b));
     let not_identity = |(_, b): &(&C::Scalar, &C)| !bool::from(b.is_identity());
     let (scalars, points): (Vec<_>, Vec<_>) = if par {
@@ -583,7 +583,14 @@ pub fn msm_xyzz_with_window<C: CurveAffine>(
     } else {
         coeffs.iter().zip(bases).filter(not_identity).map(prepare).unzip()
     };
-    msm_xyzz_core::<C, _, _>(&scalars, |i| (&points[i].x, &points[i].y), nbits, c)
+    let repr = |r: Range<usize>| scalars[r].to_vec();
+    msm_xyzz_core::<C, _, _, _>(
+        scalars.len(),
+        repr,
+        |i| (&points[i].x, &points[i].y),
+        nbits,
+        c,
+    )
 }
 
 /// `k = k2·λ + k1` with `k1 < λ`, for a little-endian `k < 2^128 λ`: the GLV halves,
@@ -717,7 +724,14 @@ pub fn msm_xyzz_glv_with_window<C: CurveAffine>(
             .flat_map_iter(split)
             .unzip()
     };
-    msm_xyzz_core::<C, _, _>(&scalars, |i| (&points[i].x, &points[i].y), 128, c)
+    let repr = |r: Range<usize>| scalars[r].to_vec();
+    msm_xyzz_core::<C, _, _, _>(
+        scalars.len(),
+        repr,
+        |i| (&points[i].x, &points[i].y),
+        128,
+        c,
+    )
 }
 
 /// The XYZZ Pippenger's window size for `n` terms, measured on BLS12-381 G1
@@ -785,15 +799,25 @@ fn integrate_and_clear<F: FieldInto>(buckets: &mut [Xyzz<F>]) -> Xyzz<F> {
     sum
 }
 
-/// The XYZZ Pippenger over affine points (none the identity) and little-endian scalars of
-/// `nbits` bits
-fn msm_xyzz_core<'a, C: CurveAffine, S: AsRef<[u8]> + Sync, XY>(
-    scalars: &[S],
+/// Scalars converted together by [`msm_xyzz_core`]'s tiles
+const SCALAR_BLOCK: usize = 256;
+
+/// The XYZZ Pippenger over `n` affine points `xy(i)` (none the identity) and little-endian
+/// scalars of `nbits` bits, `repr(range)` giving those in `range`.
+///
+/// The scalars are converted lazily, a block at a time, by whichever tile first needs a block,
+/// so the conversion runs in parallel with no fork-join of its own. Each tile visits its
+/// blocks starting at its own offset, so the first tiles, which start together, convert
+/// different blocks rather than queue on one.
+fn msm_xyzz_core<'a, C: CurveAffine, S: AsRef<[u8]> + Send + Sync, R, XY>(
+    n: usize,
+    repr: R,
     xy: XY,
     nbits: usize,
     c: usize,
 ) -> C::Curve
 where
+    R: Fn(Range<usize>) -> Vec<S> + Sync,
     XY: Fn(usize) -> (&'a C::Base, &'a C::Base) + Sync,
 {
     use std::sync::{
@@ -802,11 +826,13 @@ where
         mpsc,
     };
 
-    let n = scalars.len();
     let windows = nbits / c + 1;
     let threads = rayon::current_num_threads();
     let chunks = xyzz_chunks(n, nbits, c, threads);
-    let chunk = n.div_ceil(chunks).max(1);
+    // Whole blocks per chunk
+    let chunk = n.div_ceil(chunks).next_multiple_of(SCALAR_BLOCK);
+    let blocks: Vec<OnceLock<Vec<S>>> =
+        (0..n.div_ceil(SCALAR_BLOCK)).map(|_| OnceLock::new()).collect();
     let tiles = windows * chunks;
     // Tile `t` is chunk `t % chunks` of window `windows - 1 - t / chunks`: the most
     // significant windows first, so the combination below can start while the rest run
@@ -819,6 +845,7 @@ where
         for _ in 0..threads.min(tiles) {
             let done_tx = done_tx.clone();
             let (results, pending, next, xy) = (&results, &pending, &next, &xy);
+            let (blocks, repr) = (&blocks, &repr);
             scope.spawn(move |_| {
                 let mut buckets = vec![Xyzz::identity(); 1 << (c - 1)];
                 loop {
@@ -829,16 +856,26 @@ where
                     let (w, k) = (windows - 1 - t / chunks, t % chunks);
                     let start = (k * chunk).min(n);
                     let end = ((k + 1) * chunk).min(n);
-                    for (i, s) in
-                        scalars[start..end].iter().enumerate().map(|(i, s)| (start + i, s))
-                    {
-                        let d = get_booth_index(w, c, s.as_ref());
-                        if d != 0 {
-                            let (x, y) = xy(i);
-                            buckets[d.unsigned_abs() as usize - 1].add_affine(x, y, d < 0);
+                    // The top window holds the last `nbits - w·c` bits, so its digits reach
+                    // only 2^that: integrate just those buckets (as blst does)
+                    let used = 1 << (nbits - w * c).min(c - 1);
+                    // `start` is a block boundary, or `n` for a chunk past the end
+                    let (b0, b1) = (start.div_ceil(SCALAR_BLOCK), end.div_ceil(SCALAR_BLOCK));
+                    for j in 0..b1 - b0 {
+                        let b = b0 + (j + t) % (b1 - b0);
+                        let first = b * SCALAR_BLOCK;
+                        let block =
+                            blocks[b].get_or_init(|| repr(first..(first + SCALAR_BLOCK).min(n)));
+                        for (i, s) in block.iter().enumerate().map(|(i, s)| (first + i, s)) {
+                            let d = get_booth_index(w, c, s.as_ref());
+                            debug_assert!(d.unsigned_abs() as usize <= used);
+                            if d != 0 {
+                                let (x, y) = xy(i);
+                                buckets[d.unsigned_abs() as usize - 1].add_affine(x, y, d < 0);
+                            }
                         }
                     }
-                    let _ = results[t].set(integrate_and_clear(&mut buckets));
+                    let _ = results[t].set(integrate_and_clear(&mut buckets[..used]));
                     if pending[w].fetch_sub(1, Ordering::AcqRel) == 1 {
                         // The receiver outlives the scope
                         let _ = done_tx.send(w);
@@ -1263,7 +1300,8 @@ mod test {
             for c in [4, 8, 11] {
                 assert_eq!(
                     super::msm_xyzz_glv_with_window(&scalars, &points, c),
-                    expected
+                    expected,
+                    "n {n} c {c}"
                 );
             }
         }
@@ -1294,6 +1332,35 @@ mod test {
                     expected,
                     "n {n} c {c}"
                 );
+            }
+        }
+    }
+
+    /// Many threads split the terms into chunks, and the scalar blocks end raggedly: every tile
+    /// must still see each term exactly once
+    #[test]
+    fn test_xyzz_chunks_and_blocks() {
+        use crate::{G1Affine as Bls, G1Projective};
+        for n in [1000, 3000] {
+            let (scalars, points): (Vec<_>, Vec<_>) = (0..n)
+                .map(|_| {
+                    (
+                        crate::Fq::random(OsRng),
+                        G1Projective::random(OsRng).to_affine(),
+                    )
+                })
+                .unzip();
+            let expected = scalars
+                .iter()
+                .zip(&points)
+                .fold(G1Projective::identity(), |acc, (s, p)| acc + p * s);
+            for threads in [16, 64] {
+                let pool = rayon::ThreadPoolBuilder::new().num_threads(threads).build().unwrap();
+                for c in [4, 8, 13, 16] {
+                    let got =
+                        pool.install(|| super::msm_xyzz_with_window::<Bls>(&scalars, &points, c));
+                    assert_eq!(got, expected, "n {n} threads {threads} c {c}");
+                }
             }
         }
     }
