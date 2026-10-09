@@ -12,7 +12,7 @@ use rand_core::SeedableRng;
 use rand_xorshift::XorShiftRng;
 
 fn median_us(mut f: impl FnMut()) -> f64 {
-    let mut ts: Vec<f64> = (0..7)
+    let mut ts: Vec<f64> = (0..21)
         .map(|_| {
             let t = Instant::now();
             f();
@@ -29,7 +29,7 @@ fn main() {
     let bases: Vec<G1Affine> =
         (0..1 << max_k).map(|_| G1Projective::random(&mut rng).to_affine()).collect();
     let coeffs: Vec<_> = (0..1 << max_k).map(|_| ff::Field::random(&mut rng)).collect();
-    for k in [2, 4, 5, 6, 7, 8, 9, 10, 12, 14, 16, 18] {
+    for k in [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18] {
         let n = 1 << k;
         let (s, b) = (&coeffs[..n], &bases[..n]);
         let blst = median_us(|| {
@@ -42,11 +42,18 @@ fn main() {
             msm_pointwise(s, b);
         });
         print!("k={k:2} blst={blst:9.0} best={best:9.0} pointwise={pw:8.0} | xyzz c:");
-        for c in [4, 5, 6, 7, 8, 9, 10, 11, 12, 13] {
+        for c in 3..=15usize {
+            if c + 3 < k / 2 || c > k + 2 {
+                continue;
+            }
             let t = median_us(|| {
                 msm_xyzz_with_window(s, b, c);
             });
             print!(" {c}:{t:.0}");
+        }
+        if std::env::var("GLV").is_err() {
+            println!();
+            continue;
         }
         print!(" | glv c:");
         for c in [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16] {

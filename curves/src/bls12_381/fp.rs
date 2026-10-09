@@ -580,22 +580,26 @@ impl Field for Fp {
     // Returns `1 mod p` in Montgomery form `1 * R mod p`;
     const ONE: Self = R;
 
+    #[inline]
     fn is_zero(&self) -> Choice {
         self.ct_eq(&ZERO)
     }
 
     /// Montgomery form keeps zero as all-zero limbs
+    #[inline]
     fn is_zero_vartime(&self) -> bool {
         // An OR of the limbs, not `==` on the arrays, which calls `bcmp`
         self.0.l.iter().fold(0, |acc, l| acc | l) == 0
     }
 
+    #[inline]
     fn square(&self) -> Self {
         let mut sq = *self;
         unsafe { blst_fp_sqr(&mut sq.0, &self.0) }
         sq
     }
 
+    #[inline]
     fn double(&self) -> Self {
         let mut out = *self;
         out += self;
