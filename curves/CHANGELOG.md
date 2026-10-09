@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 
 ### Fixed
 * Add prime-order subgroup check in `G1Affine::from_uncompressed` [#425](https://github.com/midnightntwrk/midnight-zk/pull/425)
-* `G1Affine::coordinates` skips the subgroup check. [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
+* `G1Affine::coordinates` skips the subgroup check. [#544](https://github.com/midnightntwrk/midnight-zk/pull/544)
 
 ### Removed
 * `h_commit` bench [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
