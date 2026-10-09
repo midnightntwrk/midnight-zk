@@ -68,6 +68,17 @@ pub trait CurveAffine:
     /// curve.
     fn from_xy(x: Self::Base, y: Self::Base) -> CtOption<Self>;
 
+    /// The point $(x, y)$, which the caller guarantees is on the curve and, where
+    /// [`from_xy`](Self::from_xy) also checks it, in the prime-order subgroup (e.g. a sum
+    /// of such points). Curves whose check is costly skip it; the default checks.
+    ///
+    /// # Panics
+    ///
+    /// The default panics if [`from_xy`](Self::from_xy) rejects the point.
+    fn from_xy_unchecked(x: Self::Base, y: Self::Base) -> Self {
+        Self::from_xy(x, y).unwrap()
+    }
+
     /// Returns whether or not this element is on the curve; should
     /// always be true unless an "unchecked" API was used.
     fn is_on_curve(&self) -> Choice;

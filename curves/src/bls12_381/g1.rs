@@ -965,6 +965,13 @@ impl CurveAffine for G1Affine {
         CtOption::new(p, p.is_torsion_free())
     }
 
+    /// Skips `from_xy`'s subgroup check, which costs about a scalar multiplication.
+    fn from_xy_unchecked(x: Self::Base, y: Self::Base) -> Self {
+        let p = Self::from_raw_unchecked(x, y, false);
+        debug_assert!(bool::from(p.is_on_curve() & p.is_torsion_free()));
+        p
+    }
+
     fn is_on_curve(&self) -> Choice {
         unsafe { Choice::from(blst_p1_affine_on_curve(&self.0) as u8) }
     }
