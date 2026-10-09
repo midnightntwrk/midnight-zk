@@ -8,6 +8,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 ### Added
+* Abstracting `squeeze_evaluation_point` and `commitment_to_zero` in `InCircuitPCS` [#570](https://github.com/midnightntwrk/midnight-zk/pull/570)
 * `Point`/`AssignedPoint` enums and flat-triple `Msm`/`AssignedMsm` representation to distinguish variable-base from globally-fixed bases [#430](https://github.com/midnightntwrk/midnight-zk/pull/430)
 * `AssignedKZGCommitment` enum as the in-circuit analog of `KZGCommitment` [#430](https://github.com/midnightntwrk/midnight-zk/pull/430)
 * `fixed_base_msm` on the foreign Edwards chip: public fixed-base MSM for compile-time-constant bases, backed by the internal Lim-Lee comb `fixed_base_comb_msm` with a fixed comb width [#467](https://github.com/midnightntwrk/midnight-zk/pull/467)
@@ -20,6 +21,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 * `AssignedVk` holds an `AssignedEvaluationDomain` with assigned `k` and `omega` (and in-circuit derived `omega_inv` and `n = 2^k`) [#461](https://github.com/midnightntwrk/midnight-zk/pull/461)
 * Remove the linearization from the verifier gadget, mirroring `midnight-proofs`: the simple selectors are opened through the phase-0 group and `AssignedVk` no longer holds one commitment per simple selector [#566](https://github.com/midnightntwrk/midnight-zk/pull/566)
+* makes `verifier::fixed_bases` read the labels stored in the verifying-key commitments instead of counting columns (does not work with fflonk) [#570](https://github.com/midnightntwrk/midnight-zk/pull/570)
 * `PreComputedRoundCPU::init` derives Poseidon's CPU partial-round pre-computation once per field and caches it [#527](https://github.com/midnightntwrk/midnight-zk/pull/527)
 * Change the signature of `ForeignEdwardsEccChip::from_canonical_compressed_bytes` to derive the subgroup point from assigned bytes instead of requiring a caller-supplied point witness [#540](https://github.com/midnightntwrk/midnight-zk/pull/540)
 * `verifier::fixed_bases` reads the fixed bases from `VerifyingKey::phase0_commitment` and `VerifyingKey::simple_selector_commitments` [#547](https://github.com/midnightntwrk/midnight-zk/pull/547)

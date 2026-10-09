@@ -62,7 +62,7 @@ pub fn compute_vk_hash(vk: &MidnightVK) -> F {
         F::from(domain.k() as u64),
         domain.get_omega(),
     ];
-    let bases = fixed_bases::<S>(vk);
+    let bases = fixed_bases::<S, _>(vk);
     let labels = hashed_base_labels(
         vk.cs().num_fixed_columns(),
         vk.cs().permutation().columns.len(),
@@ -90,7 +90,7 @@ pub fn assign_as_public_inputs_and_hash_vk(
 
     // Witness the VK commitment points.
     let labels = hashed_base_labels(nb_fixed, nb_perm);
-    let bases = vk.map(|vk| fixed_bases::<S>(vk.vk()));
+    let bases = vk.map(|vk| fixed_bases::<S, _>(vk.vk()));
     let base_values: Vec<Value<C>> =
         labels.iter().map(|label| bases.as_ref().map(|bases| bases[label])).collect();
 

@@ -12,9 +12,7 @@
 use midnight_circuits::{
     instructions::{BinaryInstructions, PublicInputInstructions},
     types::Instantiable,
-    verifier::{
-        Accumulator, AssignedAccumulator, AssignedKZGMultiCommitment, AssignedVk, InCircuitKZG,
-    },
+    verifier::{Accumulator, AssignedAccumulator, AssignedVk, InCircuitKZG, InCircuitPCS},
 };
 use midnight_proofs::{
     circuit::{Layouter, Value},
@@ -176,10 +174,10 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
         )?;
         ivc_gadget.constrain_as_public_input(layouter, &next_state)?;
 
-        let fixed_base_labels = midnight_circuits::verifier::fixed_base_labels::<S>(
-            self.cs.num_fixed_columns(),
-            self.cs.permutation().columns.len(),
-        );
+        let fixed_base_labels = midnight_circuits::verifier::fixed_base_labels::<
+            S,
+            <InCircuitKZG<S> as InCircuitPCS<S>>::OffCircuit,
+        >(&self.cs);
 
         let prev_acc_value = witness.as_ref().map(|w| w.prev_acc.clone());
         let prev_acc = verifier_gadget.assign_collapsed_accumulator(
@@ -195,10 +193,10 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
         ]
         .concat();
 
-        let instance_com = AssignedKZGMultiCommitment::commitment_to_zero(
+        let instance_com = InCircuitKZG::<S>::commitment_to_zero(
             layouter,
             std_lib.bls12_381(),
-            PolynomialLabel::CommittedInstance(0),
+            &[PolynomialLabel::CommittedInstance(0)],
         )?;
 
         // Verify a witnessed proof that ensures the validity of `prev_state`.

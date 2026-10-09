@@ -28,10 +28,17 @@ use std::{
 
 use ff::Field;
 use group::Group;
+use midnight_curves::pairing::MultiMillerLoop;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
-    poly::{PolynomialLabel, kzg::commitment::KZGCommitment},
+    poly::{
+        PolynomialLabel,
+        kzg::{
+            KZGCommitmentScheme,
+            commitment::{KZGCommitment, KZGMultiCommitment},
+        },
+    },
 };
 
 #[cfg(feature = "truncated-challenges")]
@@ -44,7 +51,7 @@ use crate::{
     verifier::{
         AssignedAccumulator, SelfEmulation,
         msm::{AssignedMsm, AssignedPoint},
-        pcs::{InCircuitHomomorphicCommitment, InCircuitPCS, VerifierQuery},
+        pcs::{CommitmentBases, InCircuitHomomorphicCommitment, InCircuitPCS, VerifierQuery},
         transcript_gadget::TranscriptGadget,
         utils::{
             AssignedBoundedScalar, evaluate_interpolated_polynomial, inner_product, mul_add,
@@ -211,28 +218,13 @@ impl<S: SelfEmulation> AssignedKZGMultiCommitment<S> {
         self.assert_single();
         self.0.into_iter().next().unwrap()
     }
-
-    /// In-circuit commitment to the zero polynomial (the identity point),
-    /// tagged with `label`. Used e.g. for empty committed-instance columns.
-    pub fn commitment_to_zero(
-        layouter: &mut impl Layouter<S::F>,
-        curve_chip: &S::CurveChip,
-        label: PolynomialLabel,
-    ) -> Result<Self, Error>
-    where
-        S::CurveChip: AssignmentInstructions<S::F, S::AssignedPoint>,
-    {
-        let point = curve_chip.assign_fixed(layouter, S::C::identity())?;
-        Ok(Self(vec![AssignedKZGCommitment::simple(point, label)]))
-    }
 }
 
 impl<S: SelfEmulation> InnerValue for AssignedKZGMultiCommitment<S> {
-    type Element = midnight_proofs::poly::kzg::commitment::KZGMultiCommitment<S::Engine>;
+    type Element = KZGMultiCommitment<S::Engine>;
 
     fn value(&self) -> Value<Self::Element> {
-        Value::from_iter(self.0.iter().map(|c| c.value()))
-            .map(midnight_proofs::poly::kzg::commitment::KZGMultiCommitment)
+        Value::from_iter(self.0.iter().map(|c| c.value())).map(KZGMultiCommitment)
     }
 }
 
@@ -648,7 +640,19 @@ pub(crate) fn multi_prepare_kzg<S: SelfEmulation>(
 #[derive(Clone, Copy, Debug)]
 pub struct InCircuitKZG<S: SelfEmulation>(PhantomData<S>);
 
+impl<E: MultiMillerLoop> CommitmentBases<E::G1> for KZGMultiCommitment<E> {
+    fn bases(&self) -> Vec<(PolynomialLabel, E::G1)> {
+        (self.0.iter())
+            .map(|com| match com {
+                KZGCommitment::Simple(point, label) => (label.clone(), *point),
+                KZGCommitment::Linear(..) => panic!("a fixed base cannot be a linear combination"),
+            })
+            .collect()
+    }
+}
+
 impl<S: SelfEmulation> InCircuitPCS<S> for InCircuitKZG<S> {
+    type OffCircuit = KZGCommitmentScheme<S::Engine>;
     type AssignedCommitment = AssignedKZGMultiCommitment<S>;
 
     fn fixed_commitment(labels: &[PolynomialLabel]) -> Self::AssignedCommitment {
@@ -656,6 +660,20 @@ impl<S: SelfEmulation> InCircuitPCS<S> for InCircuitKZG<S> {
         AssignedKZGMultiCommitment(
             labels.iter().cloned().map(AssignedKZGCommitment::fixed).collect(),
         )
+    }
+
+    fn commitment_to_zero(
+        layouter: &mut impl Layouter<S::F>,
+        curve_chip: &S::CurveChip,
+        labels: &[PolynomialLabel],
+    ) -> Result<Self::AssignedCommitment, Error> {
+        PolynomialLabel::assert_distinct(labels);
+        let point = curve_chip.assign_fixed(layouter, S::C::identity())?;
+        Ok(AssignedKZGMultiCommitment(
+            (labels.iter())
+                .map(|label| AssignedKZGCommitment::simple(point.clone(), label.clone()))
+                .collect(),
+        ))
     }
 
     fn read_commitment(

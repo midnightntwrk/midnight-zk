@@ -114,7 +114,7 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> PublicInputInstructions<S::F, Assig
     fn assign_as_public_input(
         &self,
         _layouter: &mut impl Layouter<S::F>,
-        _value: Value<VerifyingKey<S>>,
+        _value: Value<VerifyingKey<S, PCS>>,
     ) -> Result<AssignedVk<S, PCS>, Error> {
         unimplemented!(
             "We intend [assign_vk_as_public_input] to be the only entry point
@@ -245,7 +245,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
     pub fn assign_vk_as_public_input<PCS: InCircuitPCS<S>>(
         &self,
         layouter: &mut impl Layouter<S::F>,
-        vk: Value<&VerifyingKey<S>>,
+        vk: Value<&VerifyingKey<S, PCS>>,
         cs: &ConstraintSystem<S::F>,
     ) -> Result<AssignedVk<S, PCS>, Error> {
         let [transcript_repr_value, k_value, omega_value] = vk
@@ -516,7 +516,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
 
         // Sample x challenge, which is used to ensure the circuit is satisfied with
         // high probability
-        let x = transcript.squeeze_challenge(layouter)?;
+        let x = PCS::squeeze_evaluation_point(layouter, &self.scalar_chip, &mut transcript)?;
 
         let omega = &assigned_vk.domain.omega;
         let omega_inv = &assigned_vk.domain.omega_inv;
@@ -964,7 +964,7 @@ pub(crate) mod tests {
     #[derive(Clone, Debug)]
     pub struct TestCircuit {
         // (cs, vk)
-        inner_vk: (ConstraintSystem<F>, Value<VerifyingKey<S>>),
+        inner_vk: (ConstraintSystem<F>, Value<VerifyingKey<S, InCircuitKZG<S>>>),
         inner_committed_instance: Value<C>,
         inner_instances: Value<[F; NB_INNER_INSTANCES]>,
         inner_proof: Value<Vec<u8>>,
@@ -1141,7 +1141,11 @@ pub(crate) mod tests {
             .expect("Problem preparing the inner proof")
         };
 
-        let fixed_bases = crate::verifier::fixed_bases::<S>(&inner_vk);
+        let fixed_bases = crate::verifier::fixed_bases::<S, _>(&inner_vk);
+        assert_eq!(
+            crate::verifier::fixed_base_labels::<S, KZGCommitmentScheme<E>>(inner_vk.cs()),
+            fixed_bases.keys().cloned().collect::<Vec<_>>()
+        );
 
         let mut inner_acc = Accumulator::<S>::from_dual_msm(inner_dual_msm.clone(), &fixed_bases);
 

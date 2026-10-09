@@ -67,7 +67,7 @@ impl<T: Ivc> IvcProver<T> {
 
         let vk = self.pk.pk().get_vk();
 
-        let fixed_bases = midnight_circuits::verifier::fixed_bases::<S>(vk);
+        let fixed_bases = midnight_circuits::verifier::fixed_bases::<S, _>(vk);
 
         // Off-circuit verification of the previous proof.
         let proof_acc = if T::is_genesis(self.relation.ctx(), &self.state) {

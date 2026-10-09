@@ -27,8 +27,8 @@ use midnight_circuits::{
     instructions::{hash::HashCPU, *},
     types::{AssignedNative, Instantiable},
     verifier::{
-        self, Accumulator, AssignedAccumulator, AssignedKZGMultiCommitment, AssignedVk,
-        BlstrsEmulation, InCircuitKZG, SelfEmulation,
+        self, Accumulator, AssignedAccumulator, AssignedVk, BlstrsEmulation, InCircuitKZG,
+        InCircuitPCS, SelfEmulation,
     },
 };
 use midnight_proofs::{
@@ -67,7 +67,7 @@ pub struct InnerCircuitContext {
 
 impl InnerCircuitContext {
     fn fixed_bases(&self) -> BTreeMap<PolynomialLabel, C> {
-        verifier::fixed_bases::<S>(self.vk.vk())
+        verifier::fixed_bases::<S, _>(self.vk.vk())
     }
 }
 
@@ -300,10 +300,10 @@ impl IvcTransition for ProofAggregation {
         )?;
 
         // Verify the inner proof in-circuit.
-        let instance_com = AssignedKZGMultiCommitment::commitment_to_zero(
+        let instance_com = InCircuitKZG::<S>::commitment_to_zero(
             layouter,
             self.std_lib.bls12_381(),
-            PolynomialLabel::CommittedInstance(0),
+            &[PolynomialLabel::CommittedInstance(0)],
         )?;
 
         let inner_proof_acc = self.std_lib.verifier().prepare(
