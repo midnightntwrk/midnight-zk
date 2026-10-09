@@ -15,7 +15,7 @@ use midnight_circuits::{
     hash::poseidon::{PoseidonChip, PoseidonState},
     instructions::{hash::HashCPU, *},
     types::AssignedNative,
-    verifier::{AssignedVk, InCircuitKZG, SelfEmulation, fixed_bases},
+    verifier::{AssignedVk, SelfEmulation, fixed_bases},
 };
 use midnight_proofs::{
     circuit::{Layouter, Value},
@@ -32,7 +32,7 @@ use crate::ivc::{C, F, S};
 /// is verified against the same VK that was hashed), its VK hash, and a named
 /// map of assigned base points for resolving fixed-base scalars.
 pub type VkHashAndBases = (
-    AssignedVk<S, InCircuitKZG<S>>,
+    AssignedVk<S>,
     AssignedNative<F>,
     BTreeMap<PolynomialLabel, <S as SelfEmulation>::AssignedPoint>,
 );

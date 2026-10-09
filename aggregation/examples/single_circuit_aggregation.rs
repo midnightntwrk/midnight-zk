@@ -28,7 +28,7 @@ use midnight_circuits::{
     types::{AssignedNative, Instantiable},
     verifier::{
         self, Accumulator, AssignedAccumulator, AssignedKZGMultiCommitment, AssignedVk,
-        BlstrsEmulation, InCircuitKZG, SelfEmulation,
+        BlstrsEmulation, SelfEmulation,
     },
 };
 use midnight_proofs::{
@@ -283,7 +283,7 @@ impl IvcTransition for ProofAggregation {
         witness: Value<Self::Witness>,
     ) -> Result<Self::AssignedState, Error> {
         // Assign inner VK as a hard-coded constant.
-        let inner_vk: AssignedVk<S, InCircuitKZG<S>> = self.std_lib.verifier().assign_fixed_vk(
+        let inner_vk: AssignedVk<S> = self.std_lib.verifier().assign_fixed_vk(
             layouter,
             &self.inner_ctx.domain,
             self.inner_ctx.vk.vk().cs(),

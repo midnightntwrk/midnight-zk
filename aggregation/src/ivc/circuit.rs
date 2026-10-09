@@ -12,9 +12,7 @@
 use midnight_circuits::{
     instructions::{BinaryInstructions, PublicInputInstructions},
     types::Instantiable,
-    verifier::{
-        Accumulator, AssignedAccumulator, AssignedKZGMultiCommitment, AssignedVk, InCircuitKZG,
-    },
+    verifier::{Accumulator, AssignedAccumulator, AssignedKZGMultiCommitment, AssignedVk},
 };
 use midnight_proofs::{
     circuit::{Layouter, Value},
@@ -146,7 +144,7 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
 
     fn format_instance(instance: &Self::Instance) -> Result<Vec<F>, IvcError> {
         Ok([
-            AssignedVk::<S, InCircuitKZG<S>>::as_public_input(&instance.vk),
+            AssignedVk::<S>::as_public_input(&instance.vk),
             T::format_public_input(&instance.state),
             AssignedAccumulator::<S>::as_public_input(&instance.acc),
         ]
@@ -163,8 +161,11 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
         let verifier_gadget = std_lib.verifier();
         let ivc_gadget = T::new(std_lib.clone(), &self.ctx);
 
-        let assigned_self_vk: AssignedVk<S, InCircuitKZG<S>> = verifier_gadget
-            .assign_vk_as_public_input(layouter, instance.as_ref().map(|x| &x.vk), &self.cs)?;
+        let assigned_self_vk: AssignedVk<S> = verifier_gadget.assign_vk_as_public_input(
+            layouter,
+            instance.as_ref().map(|x| &x.vk),
+            &self.cs,
+        )?;
 
         let prev_state_val = witness.as_ref().map(|w| w.prev_state.clone());
         let prev_state = ivc_gadget.assign(layouter, prev_state_val)?;

@@ -25,12 +25,12 @@ use super::{AssignedVk, SelfEmulation, pcs::InCircuitPCS, transcript_gadget::Tra
 /// proof. The field is private to this module, so the only way to obtain one is
 /// through [`AssignedVk::absorb_into`].
 #[derive(Debug)]
-pub(crate) struct AbsorbedVk<'a, S: SelfEmulation, PCS: InCircuitPCS<S>>(&'a AssignedVk<S, PCS>);
+pub(crate) struct AbsorbedVk<'a, S: SelfEmulation>(&'a AssignedVk<S>);
 
-impl<'a, S: SelfEmulation, PCS: InCircuitPCS<S>> AbsorbedVk<'a, S, PCS> {
+impl<'a, S: SelfEmulation> AbsorbedVk<'a, S> {
     /// The commitment the absorbed key holds to its phase-0 group: every fixed
     /// column and the fixed permutation polynomials.
-    pub(crate) fn phase0_commitment(&self) -> &'a PCS::AssignedCommitment {
+    pub(crate) fn phase0_commitment(&self) -> &'a <S::PCS as InCircuitPCS<S>>::AssignedCommitment {
         &self.0.phase0_commitment
     }
 
@@ -41,14 +41,14 @@ impl<'a, S: SelfEmulation, PCS: InCircuitPCS<S>> AbsorbedVk<'a, S, PCS> {
     }
 }
 
-impl<S: SelfEmulation, PCS: InCircuitPCS<S>> AssignedVk<S, PCS> {
+impl<S: SelfEmulation> AssignedVk<S> {
     /// Absorbs this verifying key into `transcript`, returning the witness that
     /// it was.
     pub(crate) fn absorb_into(
         &self,
         layouter: &mut impl Layouter<S::F>,
         transcript: &mut TranscriptGadget<S>,
-    ) -> Result<AbsorbedVk<'_, S, PCS>, Error> {
+    ) -> Result<AbsorbedVk<'_, S>, Error> {
         transcript.common_scalar(layouter, &self.transcript_repr)?;
         Ok(AbsorbedVk(self))
     }

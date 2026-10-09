@@ -10,7 +10,7 @@
 use midnight_circuits::{
     hash::poseidon::PoseidonState,
     types::Instantiable,
-    verifier::{Accumulator, AssignedAccumulator, AssignedVk, InCircuitKZG},
+    verifier::{Accumulator, AssignedAccumulator, AssignedVk},
 };
 use midnight_proofs::{
     plonk::{self},
@@ -89,7 +89,7 @@ impl<T: Ivc> IvcProver<T> {
         } else {
             // Construct the public inputs of the previous proof.
             let prev_pi = [
-                AssignedVk::<S, InCircuitKZG<S>>::as_public_input(vk),
+                AssignedVk::<S>::as_public_input(vk),
                 T::format_public_input(&self.state),
                 AssignedAccumulator::<S>::as_public_input(&self.acc),
             ]

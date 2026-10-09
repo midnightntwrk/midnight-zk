@@ -83,15 +83,15 @@ struct AssignedEvaluationDomain<S: SelfEmulation> {
 /// The only entry points are [VerifierGadget::assign_vk_as_public_input] and
 /// [VerifierGadget::assign_fixed_vk].
 #[derive(Clone, Debug)]
-pub struct AssignedVk<S: SelfEmulation, PCS: InCircuitPCS<S>> {
+pub struct AssignedVk<S: SelfEmulation> {
     domain: AssignedEvaluationDomain<S>,
-    phase0_commitment: PCS::AssignedCommitment,
+    phase0_commitment: <S::PCS as InCircuitPCS<S>>::AssignedCommitment,
     cs: ConstraintSystem<S::F>,
     cs_degree: usize,
     transcript_repr: AssignedNative<S::F>,
 }
 
-impl<S: SelfEmulation, PCS: InCircuitPCS<S>> InnerValue for AssignedVk<S, PCS> {
+impl<S: SelfEmulation> InnerValue for AssignedVk<S> {
     type Element = VerifyingKey<S>;
 
     fn value(&self) -> Value<VerifyingKey<S>> {
@@ -102,7 +102,7 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> InnerValue for AssignedVk<S, PCS> {
     }
 }
 
-impl<S: SelfEmulation, PCS: InCircuitPCS<S>> Instantiable<S::F> for AssignedVk<S, PCS> {
+impl<S: SelfEmulation> Instantiable<S::F> for AssignedVk<S> {
     fn as_public_input(vk: &VerifyingKey<S>) -> Vec<S::F> {
         let domain = vk.get_domain();
         [
@@ -119,7 +119,7 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> Instantiable<S::F> for AssignedVk<S
     }
 }
 
-impl<S: SelfEmulation, PCS: InCircuitPCS<S>> AssignedVk<S, PCS> {
+impl<S: SelfEmulation> AssignedVk<S> {
     /// The assigned `transcript_repr` of this verifying key.
     pub fn transcript_repr(&self) -> &AssignedNative<S::F> {
         &self.transcript_repr
