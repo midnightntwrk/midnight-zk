@@ -2,12 +2,8 @@ use std::{convert::TryInto, ops::Neg};
 
 use ff::{Field, PrimeField};
 use group::Group;
-use rayon::{
-    iter::{
-        IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator,
-        IntoParallelRefMutIterator, ParallelIterator,
-    },
-    slice::ParallelSlice,
+use rayon::iter::{
+    IndexedParallelIterator, IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelIterator,
 };
 
 use crate::CurveAffine;
@@ -499,6 +495,34 @@ impl<F: Field> Xyzz<F> {
         }
     }
 
+    /// `2·self` (EFD dbl-2008-s-1, `a = 0`); `2·O = O`
+    fn double(&mut self) {
+        if self.is_identity() {
+            return;
+        }
+        let mut u = self.y;
+        u += &self.y;
+        let v = u.square();
+        let mut w = v;
+        w *= &u;
+        let mut s = self.x;
+        s *= &v;
+        let xsq = self.x.square();
+        let mut m = xsq;
+        m += &xsq;
+        m += &xsq;
+        self.x = m.square();
+        self.x -= &s;
+        self.x -= &s;
+        s -= &self.x;
+        s *= &m;
+        self.y *= &w;
+        s -= &self.y;
+        self.y = s;
+        self.zz *= &v;
+        self.zzz *= &w;
+    }
+
     /// The points, by one inversion for all (Montgomery's trick on the `ZZZ`s)
     fn batch_to_curve<C: CurveAffine<Base = F>>(points: &[Self]) -> Vec<C::Curve> {
         // prefix[i] = product of the nonzero ZZZs before i
@@ -526,17 +550,6 @@ impl<F: Field> Xyzz<F> {
     }
 }
 
-/// `Σ (i + 1)·buckets[i]` by running sums
-fn integrate_buckets<F: Field>(buckets: &[Xyzz<F>]) -> Xyzz<F> {
-    let mut acc = Xyzz::identity();
-    let mut sum = Xyzz::identity();
-    for b in buckets.iter().rev() {
-        acc.add(b);
-        sum.add(&acc);
-    }
-    sum
-}
-
 /// One scalar multiplication per term, in parallel, then their sum: best for a few terms
 #[doc(hidden)]
 pub fn msm_pointwise<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
@@ -556,7 +569,7 @@ pub fn msm_xyzz_with_window<C: CurveAffine>(
     c: usize,
 ) -> C::Curve {
     assert_eq!(coeffs.len(), bases.len());
-    if coeffs.len() < 64 {
+    if coeffs.len() < 32 {
         return msm_pointwise(coeffs, bases);
     }
     // In parallel only when there is enough work to pay for the scheduling
@@ -610,7 +623,7 @@ pub fn msm_xyzz_glv_with_window<C: CurveAffine>(
     let Some((beta, lambda)) = C::glv() else {
         return msm_xyzz_with_window(coeffs, bases, c);
     };
-    if coeffs.len() < 64 {
+    if coeffs.len() < 32 {
         return msm_pointwise(coeffs, bases);
     }
     let not_identity = |(_, b): &(&C::Scalar, &C)| !bool::from(b.is_identity());
@@ -636,6 +649,53 @@ pub fn msm_xyzz_glv_with_window<C: CurveAffine>(
     msm_xyzz_core::<C, _>(&scalars, &points, 128, c)
 }
 
+/// The XYZZ Pippenger's window size for `n` terms, measured on BLS12-381 G1 (Ryzen 5950X,
+/// 32 threads; `examples/msm_tune.rs` sweeps it)
+#[doc(hidden)]
+pub fn xyzz_window(n: usize) -> usize {
+    match n.max(1).ilog2() {
+        0..=5 => 6,
+        6..=7 => 4,
+        8 => 7,
+        9 => 6,
+        10..=14 => 9,
+        15 => 10,
+        _ => 13,
+    }
+}
+
+/// The point-chunk count for window size `c`: the least cost, as parallel rounds times one
+/// tile's work (its bucket additions, then summing its buckets); chunks of the terms give
+/// more tiles when there are fewer windows than threads, as in blst's `breakdown`
+fn xyzz_chunks(n: usize, nbits: usize, c: usize, threads: usize) -> usize {
+    let windows = nbits / c + 1;
+    let mut best = (usize::MAX, 1);
+    for chunks in 1..=threads.max(1) {
+        let per_chunk = n.div_ceil(chunks);
+        if chunks > 1 && per_chunk < 64 {
+            break;
+        }
+        let rounds = (windows * chunks).div_ceil(threads.max(1));
+        let cost = rounds * (per_chunk + (1 << c)) + windows * chunks;
+        if cost < best.0 {
+            best = (cost, chunks);
+        }
+    }
+    best.1
+}
+
+/// `Σ (i + 1)·buckets[i]` by running sums, emptying the buckets for reuse
+fn integrate_and_clear<F: Field>(buckets: &mut [Xyzz<F>]) -> Xyzz<F> {
+    let mut acc = Xyzz::identity();
+    let mut sum = Xyzz::identity();
+    for b in buckets.iter_mut().rev() {
+        acc.add(b);
+        sum.add(&acc);
+        *b = Xyzz::identity();
+    }
+    sum
+}
+
 /// The XYZZ Pippenger over affine points (none the identity) and little-endian scalars of
 /// `nbits` bits
 fn msm_xyzz_core<C: CurveAffine, S: AsRef<[u8]> + Sync>(
@@ -644,40 +704,85 @@ fn msm_xyzz_core<C: CurveAffine, S: AsRef<[u8]> + Sync>(
     nbits: usize,
     c: usize,
 ) -> C::Curve {
+    use std::sync::{
+        OnceLock,
+        atomic::{AtomicUsize, Ordering},
+        mpsc,
+    };
+
+    let n = scalars.len();
     let windows = nbits / c + 1;
-    // Enough tiles for every thread, each of at least 256 terms
     let threads = rayon::current_num_threads();
-    let chunks = threads.div_ceil(windows).clamp(1, scalars.len().div_ceil(256).max(1));
-    let chunk = scalars.len().div_ceil(chunks).max(1);
-    let tiles: Vec<Xyzz<C::Base>> = (0..windows * chunks)
-        .into_par_iter()
-        .map(|t| {
-            let (w, k) = (t / chunks, t % chunks);
-            let range = (k * chunk).min(scalars.len())..((k + 1) * chunk).min(scalars.len());
-            let mut buckets = vec![Xyzz::identity(); 1 << (c - 1)];
-            for (s, p) in scalars[range.clone()].iter().zip(&points[range]) {
-                let d = get_booth_index(w, c, s.as_ref());
-                if d != 0 {
-                    buckets[d.unsigned_abs() as usize - 1].add_affine(&p.x, &p.y, d < 0);
+    let chunks = xyzz_chunks(n, nbits, c, threads);
+    let chunk = n.div_ceil(chunks).max(1);
+    let tiles = windows * chunks;
+    // Tile `t` is chunk `t % chunks` of window `windows - 1 - t / chunks`: the most
+    // significant windows first, so the combination below can start while the rest run
+    let results: Vec<OnceLock<Xyzz<C::Base>>> = (0..tiles).map(|_| OnceLock::new()).collect();
+    let pending: Vec<AtomicUsize> = (0..windows).map(|_| AtomicUsize::new(chunks)).collect();
+    let next = AtomicUsize::new(0);
+    let (done_tx, done_rx) = mpsc::channel::<usize>();
+    let mut acc = Xyzz::identity();
+    rayon::in_place_scope(|scope| {
+        for _ in 0..threads.min(tiles) {
+            let done_tx = done_tx.clone();
+            let (results, pending, next) = (&results, &pending, &next);
+            scope.spawn(move |_| {
+                let mut buckets = vec![Xyzz::identity(); 1 << (c - 1)];
+                loop {
+                    let t = next.fetch_add(1, Ordering::Relaxed);
+                    if t >= tiles {
+                        break;
+                    }
+                    let (w, k) = (windows - 1 - t / chunks, t % chunks);
+                    let range = (k * chunk).min(n)..((k + 1) * chunk).min(n);
+                    for (s, p) in scalars[range.clone()].iter().zip(&points[range]) {
+                        let d = get_booth_index(w, c, s.as_ref());
+                        if d != 0 {
+                            buckets[d.unsigned_abs() as usize - 1].add_affine(&p.x, &p.y, d < 0);
+                        }
+                    }
+                    let _ = results[t].set(integrate_and_clear(&mut buckets));
+                    if pending[w].fetch_sub(1, Ordering::AcqRel) == 1 {
+                        // The receiver outlives the scope
+                        let _ = done_tx.send(w);
+                    }
+                }
+            });
+        }
+        drop(done_tx);
+        // Horner's rule as the windows complete, most significant first
+        let mut ready = vec![false; windows];
+        let mut w_next = windows;
+        while w_next > 0 {
+            let w = match done_rx.try_recv() {
+                Ok(w) => w,
+                Err(mpsc::TryRecvError::Empty) => {
+                    // Help with the tiles, or wait if this thread is not in the pool
+                    if rayon::yield_now().is_none() {
+                        match done_rx.recv() {
+                            Ok(w) => w,
+                            Err(_) => break,
+                        }
+                    } else {
+                        continue;
+                    }
+                }
+                Err(mpsc::TryRecvError::Disconnected) => break,
+            };
+            ready[w] = true;
+            while w_next > 0 && ready[w_next - 1] {
+                w_next -= 1;
+                if w_next + 1 < windows {
+                    (0..c).for_each(|_| acc.double());
+                }
+                for k in 0..chunks {
+                    acc.add(results[(windows - 1 - w_next) * chunks + k].get().unwrap());
                 }
             }
-            integrate_buckets(&buckets)
-        })
-        .collect();
-    let window_sums: Vec<Xyzz<C::Base>> = tiles
-        .par_chunks(chunks)
-        .map(|ts| {
-            let mut sum = Xyzz::identity();
-            ts.iter().for_each(|t| sum.add(t));
-            sum
-        })
-        .collect();
-    Xyzz::batch_to_curve::<C>(&window_sums)
-        .into_iter()
-        .rev()
-        .fold(C::Curve::identity(), |sum, window| {
-            (0..c).fold(sum, |sum, _| sum.double()) + window
-        })
+        }
+    });
+    Xyzz::batch_to_curve::<C>(&[acc])[0]
 }
 
 /// Performs a multi-scalar multiplication operation.
@@ -793,7 +898,7 @@ pub fn msm_parallel<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Cur
         let chunk = coeffs.len() / num_threads;
         let num_chunks = coeffs.chunks(chunk).len();
         let mut results = vec![C::Curve::identity(); num_chunks];
-        rayon::scope(|scope| {
+        rayon::in_place_scope(|scope| {
             let chunk = coeffs.len() / num_threads;
 
             for ((coeffs, bases), acc) in
@@ -817,20 +922,7 @@ pub fn msm_parallel<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Cur
 /// This will use multithreading if beneficial.
 pub fn msm_best<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
     assert_eq!(coeffs.len(), bases.len());
-    msm_batch_affine_with_window(coeffs, bases, window_size(bases.len()))
-}
-
-/// Pippenger's window size for `n` terms, measured on BLS12-381 G1 (Apple M-series and
-/// AMD Zen 3; `curves/examples/msm_tune.rs` sweeps it): about `log2(n) - 3`, at least 4.
-fn window_size(n: usize) -> usize {
-    match n.max(1).ilog2() {
-        0..=5 => 4,
-        6..=7 => 5,
-        8..=9 => 7,
-        10..=11 => 8,
-        12..=13 => 9,
-        _ => 11,
-    }
+    msm_xyzz_with_window(coeffs, bases, xyzz_window(bases.len()))
 }
 
 /// [`msm_best`]'s batch-affine Pippenger with window size `c`, parallel over the windows

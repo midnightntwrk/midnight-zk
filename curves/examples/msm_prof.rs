@@ -19,7 +19,9 @@ fn main() {
     let blst = mode == "blst";
     let t = std::time::Instant::now();
     let mut n = 0;
-    while t.elapsed().as_secs() < 10 {
+    // ITERS=n: exactly n runs (for instruction counts); otherwise as many as fit in 10 s
+    let iters: Option<usize> = std::env::var("ITERS").ok().map(|v| v.parse().unwrap());
+    while iters.map_or(t.elapsed().as_secs() < 10, |i| n < i) {
         if blst {
             std::hint::black_box(G1Affine::multi_exp_affine(&bases, &coeffs));
         } else if glv {
