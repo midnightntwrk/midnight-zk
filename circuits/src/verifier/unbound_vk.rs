@@ -90,7 +90,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
     /// Assigns a verifying key privately.
     ///
     /// Contrary to [`Self::assign_vk_as_public_input`], all the commitments of
-    /// the key are witnessedThe resulting key must be bound before it can be
+    /// the key are witnessed. The resulting key must be bound before it can be
     /// used, see [`UnboundVk`].
     ///
     /// `cs` must be finalized, i.e. its selectors must have been converted to
