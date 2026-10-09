@@ -29,7 +29,11 @@ fn main() {
     let bases: Vec<G1Affine> =
         (0..1 << max_k).map(|_| G1Projective::random(&mut rng).to_affine()).collect();
     let coeffs: Vec<_> = (0..1 << max_k).map(|_| ff::Field::random(&mut rng)).collect();
-    for k in [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18] {
+    // KS=7,8,9: just those sizes
+    let ks: Vec<usize> = std::env::var("KS").map_or((5..=max_k).collect(), |v| {
+        v.split(',').map(|k| k.parse().unwrap()).collect()
+    });
+    for k in ks {
         let n = 1 << k;
         let (s, b) = (&coeffs[..n], &bases[..n]);
         let blst = median_us(|| {
