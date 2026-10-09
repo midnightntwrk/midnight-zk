@@ -98,6 +98,17 @@ pub trait InCircuitPCS<S: SelfEmulation>: Sized + Clone + Debug {
     /// Panics if a label is repeated.
     fn fixed_commitment(labels: &[PolynomialLabel]) -> Self::AssignedCommitment;
 
+    /// Creates the commitment to the group of `labels` from already assigned
+    /// points, the i-th point being the commitment to the i-th label.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a label is repeated or if `|labels| != |points|`.
+    fn commitment_from_points(
+        labels: &[PolynomialLabel],
+        points: &[S::AssignedPoint],
+    ) -> Self::AssignedCommitment;
+
     /// Assigns a commitment from an off-circuit curve point.
     fn assign_commitment(
         layouter: &mut impl Layouter<S::F>,

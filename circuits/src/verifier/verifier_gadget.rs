@@ -51,9 +51,9 @@ use crate::{
 #[derive(Clone, Debug)]
 #[doc(hidden)] // A bug in rustc prevents us from documenting the verifier gadget.
 pub struct VerifierGadget<S: SelfEmulation> {
-    curve_chip: S::CurveChip,
-    scalar_chip: S::ScalarChip,
-    sponge_chip: S::SpongeChip,
+    pub(super) curve_chip: S::CurveChip,
+    pub(super) scalar_chip: S::ScalarChip,
+    pub(super) sponge_chip: S::SpongeChip,
 }
 
 impl<S: SelfEmulation> Chip<S::F> for VerifierGadget<S> {
@@ -248,6 +248,12 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         vk: Value<&VerifyingKey<S>>,
         cs: &ConstraintSystem<S::F>,
     ) -> Result<AssignedVk<S, PCS>, Error> {
+        if cs.num_selectors() != 0 {
+            return Err(Error::Synthesis(
+                "the constraint system has selectors, it must be finalized".into(),
+            ));
+        }
+
         let [transcript_repr_value, k_value, omega_value] = vk
             .map(|vk| {
                 let domain = vk.get_domain();
@@ -265,7 +271,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
 
         let domain = self.derive_domain(layouter, k, omega)?;
 
-        self.assemble_vk(cs, domain, transcript_repr)
+        Ok(assemble_vk(domain, cs, transcript_repr, None))
     }
 
     /// Assigns a verifying key as a constant. All the necessary information is
@@ -281,16 +287,22 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         cs: &ConstraintSystem<S::F>,
         transcript_repr_constant: S::F,
     ) -> Result<AssignedVk<S, PCS>, Error> {
+        if cs.num_selectors() != 0 {
+            return Err(Error::Synthesis(
+                "the constraint system has selectors, it must be finalized".into(),
+            ));
+        }
+
         let transcript_repr = self.scalar_chip.assign_fixed(layouter, transcript_repr_constant)?;
         let k = self.scalar_chip.assign_fixed(layouter, S::F::from(domain.k() as u64))?;
         let omega = self.scalar_chip.assign_fixed(layouter, domain.get_omega())?;
         let domain = self.derive_domain(layouter, k, omega)?;
-        self.assemble_vk(cs, domain, transcript_repr)
+        Ok(assemble_vk(domain, cs, transcript_repr, None))
     }
 
     /// Completes the assigned domain by deriving `omega_inv` and `n = 2^k` from
     /// assigned `k` and `omega` cells (in-circuit).
-    fn derive_domain(
+    pub(super) fn derive_domain(
         &self,
         layouter: &mut impl Layouter<S::F>,
         k: AssignedNative<S::F>,
@@ -305,27 +317,42 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             n,
         })
     }
+}
 
-    /// Builds the `AssignedVk`.
-    fn assemble_vk<PCS: InCircuitPCS<S>>(
-        &self,
-        cs: &ConstraintSystem<S::F>,
-        domain: AssignedEvaluationDomain<S>,
-        transcript_repr: AssignedNative<S::F>,
-    ) -> Result<AssignedVk<S, PCS>, Error> {
-        if cs.num_selectors() != 0 {
-            return Err(Error::Synthesis(
-                "the constraint system has selectors, it must be finalized".into(),
-            ));
+/// Builds the [`AssignedVk`] of a finalized `cs` with the given assigned domain
+/// and transcript representation.
+///
+/// If `bases` is `None`, the fixed and permutation commitments are
+/// placeholders, resolved off-circuit by the decider. Otherwise, they are taken
+/// from `bases`, which must contain one assigned point per fixed column and
+/// per fixed permutation polynomial.
+pub(super) fn assemble_vk<S: SelfEmulation, PCS: InCircuitPCS<S>>(
+    domain: AssignedEvaluationDomain<S>,
+    cs: &ConstraintSystem<S::F>,
+    transcript_repr: AssignedNative<S::F>,
+    bases: Option<&BTreeMap<PolynomialLabel, S::AssignedPoint>>,
+) -> AssignedVk<S, PCS> {
+    AssignedVk {
+        domain,
+        phase0_commitment: vk_commitment::<S, PCS>(&cs.fixed_polys_labels(), bases),
+        cs: cs.clone(),
+        cs_degree: cs.degree(),
+        transcript_repr,
+    }
+}
+
+/// The commitment of a verifying key to the group of `labels`: a placeholder
+/// if `bases` is `None`, or built from the assigned points in `bases`.
+fn vk_commitment<S: SelfEmulation, PCS: InCircuitPCS<S>>(
+    labels: &[PolynomialLabel],
+    bases: Option<&BTreeMap<PolynomialLabel, S::AssignedPoint>>,
+) -> PCS::AssignedCommitment {
+    match bases {
+        None => PCS::fixed_commitment(labels),
+        Some(bases) => {
+            let points: Vec<_> = labels.iter().map(|l| bases[l].clone()).collect();
+            PCS::commitment_from_points(labels, &points)
         }
-
-        Ok(AssignedVk {
-            domain,
-            phase0_commitment: PCS::fixed_commitment(&cs.fixed_polys_labels()),
-            cs_degree: cs.degree(),
-            cs: cs.clone(),
-            transcript_repr,
-        })
     }
 }
 
