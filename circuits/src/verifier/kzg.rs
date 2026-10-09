@@ -51,7 +51,10 @@ use crate::{
     verifier::{
         AssignedAccumulator, SelfEmulation,
         msm::{AssignedMsm, AssignedPoint},
-        pcs::{CommitmentBases, InCircuitHomomorphicCommitment, InCircuitPCS, VerifierQuery},
+        pcs::{
+            CommitmentBases, InCircuitCounterpart, InCircuitHomomorphicCommitment, InCircuitPCS,
+            VerifierQuery,
+        },
         transcript_gadget::TranscriptGadget,
         utils::{
             AssignedBoundedScalar, evaluate_interpolated_polynomial, inner_product, mul_add,
@@ -639,6 +642,10 @@ pub(crate) fn multi_prepare_kzg<S: SelfEmulation>(
 /// KZG instantiation of [`InCircuitPCS`].
 #[derive(Clone, Copy, Debug)]
 pub struct InCircuitKZG<S: SelfEmulation>(PhantomData<S>);
+
+impl<S: SelfEmulation> InCircuitCounterpart<S> for KZGCommitmentScheme<S::Engine> {
+    type InCircuit = InCircuitKZG<S>;
+}
 
 impl<E: MultiMillerLoop> CommitmentBases<E::G1> for KZGMultiCommitment<E> {
     fn bases(&self) -> Vec<(PolynomialLabel, E::G1)> {

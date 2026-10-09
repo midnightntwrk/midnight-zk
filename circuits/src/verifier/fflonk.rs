@@ -38,7 +38,7 @@ use crate::{
     instructions::{ArithInstructions, AssertionInstructions, AssignmentInstructions},
     verifier::{
         AssignedAccumulator, SelfEmulation,
-        pcs::{InCircuitPCS, VerifierQuery},
+        pcs::{InCircuitCounterpart, InCircuitPCS, VerifierQuery},
         transcript_gadget::TranscriptGadget,
         utils::mul_add,
     },
@@ -59,6 +59,14 @@ impl<P, const LOG2_T_MAX: u32> InCircuitFflonk<P, LOG2_T_MAX> {
         PolynomialLabel::assert_distinct(labels);
         labels.chunks(Self::T_MAX).map(|l| Collection(l.to_vec())).collect()
     }
+}
+
+impl<S, P, const LOG2_T_MAX: u32> InCircuitCounterpart<S> for Fflonk<P, LOG2_T_MAX>
+where
+    S: SelfEmulation,
+    P: InCircuitCounterpart<S>,
+{
+    type InCircuit = InCircuitFflonk<P::InCircuit, LOG2_T_MAX>;
 }
 
 impl<S, P, const LOG2_T_MAX: u32> InCircuitPCS<S> for InCircuitFflonk<P, LOG2_T_MAX>

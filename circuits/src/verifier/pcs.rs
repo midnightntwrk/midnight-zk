@@ -61,6 +61,12 @@ impl<'a, S: SelfEmulation, PCS: InCircuitPCS<S>> VerifierQuery<'a, S, PCS> {
 // Traits
 // ---------------------------------------------------------------------------
 
+/// An off-circuit PCS whose proofs some in-circuit PCS verifies.
+pub trait InCircuitCounterpart<S: SelfEmulation>: PolynomialCommitmentScheme<S::F> {
+    /// The in-circuit PCS verifying the proofs of this one.
+    type InCircuit: InCircuitPCS<S, OffCircuit = Self>;
+}
+
 /// In-circuit operations on an additively homomorphic commitment.
 pub trait InCircuitHomomorphicCommitment<S: SelfEmulation>: Clone + Debug + Sized {
     /// Scales this commitment by an assigned scalar.
