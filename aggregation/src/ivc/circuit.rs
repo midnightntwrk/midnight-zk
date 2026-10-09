@@ -95,9 +95,9 @@ pub struct IvcWitness<T: Ivc> {
 ///
 /// 1. `state` is the result of applying the transition function to `prev_state`
 ///    with `transition_witness`,
-/// 2. `prev_state` is genesis OR `prev_proof` is a valid proof (under `vk`)
-///    for the instance `(vk, prev_state, prev_acc)`, attesting that
-///    `prev_state` was itself reached legitimately,
+/// 2. `prev_state` is genesis OR `prev_proof` is a valid proof (under `vk`) for
+///    the instance `(vk, prev_state, prev_acc)`, attesting that `prev_state`
+///    was itself reached legitimately,
 /// 3. `acc` is the accumulation of `prev_acc` with the accumulator resulting
 ///    from verifying `prev_proof`.
 #[derive(Clone, Debug)]

@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+* `VerifyingKey` implements `Default`: a placeholder key of an empty constraint system [#461](https://github.com/midnightntwrk/midnight-zk/pull/461)
 * `ConstraintSystem::fixed_polys_labels` [#547](https://github.com/midnightntwrk/midnight-zk/pull/547)
 * `Rotation` derives `PartialOrd` and `Ord` [#543](https://github.com/midnightntwrk/midnight-zk/pull/543)
 * `permutation::Argument::polynomial_labels`, `num_sets` and `accumulator_labels` are public [#537](https://github.com/midnightntwrk/midnight-zk/pull/537)
