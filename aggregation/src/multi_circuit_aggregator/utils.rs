@@ -46,7 +46,8 @@ fn hashed_base_labels(nb_fixed: usize, nb_perm: usize) -> Vec<PolynomialLabel> {
         .collect()
 }
 
-/// Computes the VK hash off-circuit: `Poseidon(transcript_repr || bases)`.
+/// Computes the VK hash off-circuit:
+/// `Poseidon(transcript_repr || k || omega || bases)`.
 ///
 /// Each curve point is serialized as its foreign-field limb representation
 /// (via [`Hashable`]), so this is consistent with the in-circuit version
@@ -74,8 +75,8 @@ pub fn compute_vk_hash(vk: &MidnightVK) -> F {
 /// In-circuit counterpart of [`compute_vk_hash`].
 ///
 /// Witnesses the VK commitment points (fixed and permutation), computes
-/// `Poseidon(transcript_repr || bases)` in-circuit, and returns their hash
-/// together with a named fixed-bases map (including `-G`).
+/// `Poseidon(transcript_repr || k || omega || bases)` in-circuit, and returns
+/// their hash together with a named fixed-bases map (including `-G`).
 pub fn assign_as_public_inputs_and_hash_vk(
     layouter: &mut impl Layouter<F>,
     std_lib: &ZkStdLib,

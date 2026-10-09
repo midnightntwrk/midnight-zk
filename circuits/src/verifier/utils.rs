@@ -295,10 +295,10 @@ pub(crate) fn pow_of_two<F: CircuitField>(
     Ok(result)
 }
 
-/// Computes `x^(2^k)` in-circuit by repeated squaring, where `k` is an
+/// Squares `x` `k` times in-circuit, i.e. computes `x^(2^k)`, where `k` is an
 /// assigned value known to lie in the range `[0, F::S]` (the field's
 /// 2-adicity).
-pub(crate) fn pow_2_pow_k<F: CircuitField>(
+pub(crate) fn square_k_times<F: CircuitField>(
     layouter: &mut impl Layouter<F>,
     scalar_chip: &impl FieldInstructions<F, AssignedNative<F>>,
     x: &AssignedNative<F>,

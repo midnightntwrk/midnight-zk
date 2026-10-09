@@ -83,29 +83,32 @@ pub struct AssignedState {
 
 /// Setup data for the inner circuits, threaded as IVC context.
 ///
-/// Contains the shared constraint system, SRS verifier parameters and
-/// [`ZkStdLibArch`] of all inner circuits to be aggregated.
+/// Contains the shared constraint system, SRS verifier parameters,
+/// [`ZkStdLibArch`] and `max_bit_len` of all inner circuits to be aggregated.
 #[derive(Clone, Debug)]
 pub struct InnerCircuitsContext {
     cs: ConstraintSystem<F>,
     params_verifier: ParamsVerifierKZG<E>,
     arch: ZkStdLibArch,
+    max_bit_len: u8,
 }
 
 impl InnerCircuitsContext {
-    /// Creates a new [`InnerCircuitsContext`] from the shared architecture and
-    /// SRS verifier parameters.
-    pub fn new(arch: ZkStdLibArch, params_verifier: ParamsVerifierKZG<E>) -> Self {
-        // The `max_bit_len` value is arbitrary: it only affects the configuration
-        // of foreign-field chips, which inner circuits are not expected to use.
-        // (Otherwise their `cs` would depend on their own `k` and would not match
-        // this one.)
+    /// Creates a new [`InnerCircuitsContext`] from the shared architecture, the
+    /// `max_bit_len` the inner circuits were configured with (`k - 1` in
+    /// zk_stdlib), and SRS verifier parameters.
+    ///
+    /// `max_bit_len` only affects foreign-field chips: inner circuits that use
+    /// them must all have been configured with this value, whereas the others
+    /// may have any size.
+    pub fn new(arch: ZkStdLibArch, max_bit_len: u8, params_verifier: ParamsVerifierKZG<E>) -> Self {
         let mut cs = ConstraintSystem::default();
-        ZkStdLib::configure(&mut cs, (arch, 0));
+        ZkStdLib::configure(&mut cs, (arch, max_bit_len));
         InnerCircuitsContext {
             cs: cs.into_finalized(),
             params_verifier,
             arch,
+            max_bit_len,
         }
     }
 
@@ -137,13 +140,20 @@ impl IvcContext for ProofAggregation {
         writer: &mut W,
     ) -> std::io::Result<()> {
         ctx.arch.write(writer)?;
+        writer.write_all(&[ctx.max_bit_len])?;
         ctx.params_verifier.write(writer, SerdeFormat::RawBytes)
     }
 
     fn read_context<R: std::io::Read>(reader: &mut R) -> std::io::Result<InnerCircuitsContext> {
         let arch = ZkStdLibArch::read(reader)?;
+        let mut max_bit_len = [0u8; 1];
+        reader.read_exact(&mut max_bit_len)?;
         let params_verifier = ParamsVerifierKZG::read(reader, SerdeFormat::RawBytes)?;
-        Ok(InnerCircuitsContext::new(arch, params_verifier))
+        Ok(InnerCircuitsContext::new(
+            arch,
+            max_bit_len[0],
+            params_verifier,
+        ))
     }
 }
 
@@ -182,11 +192,8 @@ impl IvcIO for ProofAggregation {
         layouter: &mut impl Layouter<F>,
         value: Value<State>,
     ) -> Result<AssignedState, Error> {
-        // There is no integrity checks performed in the VK (`vk_repr`, `k` and
-        // `omega`), as those are guaranteed to be correct by the hash-chain,
-        // which is checked in the decider. The hash-chain is enforced to be
-        // correctly computed by hashing the previous `claims_hash`
-        // together with the `vk_repr`, `k` and `omega` of the current circuit.
+        // The VK fields in the assigned state are free witnesses (not constrained).
+        // The caller may need to perform further integrity checks on them.
         // In the base case (no claims yet) there is no last vk: we use the default
         // one, as `format_public_input` does.
         let [last_vk_repr, last_vk_k, last_vk_omega] = value

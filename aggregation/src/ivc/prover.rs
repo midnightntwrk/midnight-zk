@@ -118,13 +118,11 @@ impl<T: Ivc> IvcProver<T> {
         let mut next_acc = Accumulator::accumulate(&[proof_acc, self.acc.clone()]);
         next_acc.collapse();
 
-        let instance = IvcExtendedInstance::new(
-            vk,
-            IvcInstance {
-                state: next_state.clone(),
-                acc: next_acc.clone(),
-            },
-        );
+        let next_instance = IvcInstance {
+            state: next_state.clone(),
+            acc: next_acc.clone(),
+        };
+        let instance = IvcExtendedInstance::new(vk, next_instance);
 
         let witness = IvcWitness {
             prev_state: self.state.clone(),

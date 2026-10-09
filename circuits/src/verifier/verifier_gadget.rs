@@ -43,7 +43,7 @@ use crate::{
         pcs::{InCircuitHomomorphicCommitment, InCircuitPCS, VerifierQuery},
         traces::VerifierTrace,
         transcript_gadget::TranscriptGadget,
-        utils::{evaluate_lagrange_polynomials, inner_product, pow_2_pow_k, pow_of_two, sum},
+        utils::{evaluate_lagrange_polynomials, inner_product, pow_of_two, square_k_times, sum},
     },
 };
 
@@ -269,8 +269,8 @@ impl<S: SelfEmulation> VerifierGadget<S> {
     }
 
     /// Assigns a verifying key as a constant. All the necessary information is
-    /// available off-circuit, except for the `transcript_repr` which is
-    /// "assigned fixed".
+    /// available off-circuit, except for the `transcript_repr` and the
+    /// evaluation domain, which are "assigned fixed".
     ///
     /// `cs` must be finalized, i.e. its selectors must have been converted to
     /// fixed columns, as in the constraint system of a verifying key.
@@ -524,7 +524,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         // length of any instance column: rotations are compile-time constants of the
         // verified circuit's `cs`, and its instance rows must fit in its own domain.
         let n = &assigned_vk.domain.n;
-        let xn = pow_2_pow_k(layouter, &self.scalar_chip, &x, k)?;
+        let xn = square_k_times(layouter, &self.scalar_chip, &x, k)?;
         // Shared by all calls to `evaluate_lagrange_polynomials` below.
         let n_inv = self.scalar_chip.inv(layouter, n)?;
 

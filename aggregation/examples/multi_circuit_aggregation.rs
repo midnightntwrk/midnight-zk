@@ -74,7 +74,11 @@ fn main() {
     // Note: verifier params from the SRS do not depend on `k`.
     let inner_verifier_params = poseidon_srs.verifier_params();
 
-    let inner_ctx = InnerCircuitsContext::new(inner_arch(), inner_verifier_params);
+    // Both circuits fit in the same context, despite having different sizes,
+    // because `inner_arch()` has no foreign-field chips (see
+    // `InnerCircuitsContext::new`).
+    let max_bit_len = 8;
+    let inner_ctx = InnerCircuitsContext::new(inner_arch(), max_bit_len, inner_verifier_params);
 
     let aggregator_srs = load_srs::<DefaultPCS>(SrsSource::Midnight, IVC_K);
     let start = Instant::now();
