@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `PolynomialLabel::Collection`, a label made of other labels, and the `commitment_labels` method on the `PolynomialCommitmentScheme` trait, the labels a commitment tags its polynomials with [#555](https://github.com/midnightntwrk/midnight-zk/pull/555)
 * `PolynomialCommitmentScheme::max_k`, the largest `k` such that some parameters can commit to polynomials of degree strictly less than `2^k` [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
 * `PolynomialCommitmentScheme::load_params`, reading the parameters of the scheme for committing to polynomials of degree strictly less than `2^k` [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
+* `InterleavedCommit`, a `PolynomialCommitmentScheme` that commits to `Σ_i X^i f_i(X^t)` for chunks of polynomials `f_0, ..., f_{k-1}`, implemented by KZG from per-residue bases cached in `ParamsKZG` [#565](https://github.com/midnightntwrk/midnight-zk/pull/565)
 
 ### Fixed
 * LogUp verifier no longer panics when the prover makes some `fⱼ(x) + β` zero: the helper constraint folds products instead of inverting each term, which also saves the inversions [#562](https://github.com/midnightntwrk/midnight-zk/pull/562)
