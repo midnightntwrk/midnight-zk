@@ -806,17 +806,27 @@ fn integrate_and_clear<F: FieldInto>(buckets: &mut [Xyzz<F>]) -> Xyzz<F> {
 /// Pippenger buckets in affine form, added to in batches: one inversion serves a whole batch
 /// of slopes (Montgomery's trick), so an addition costs 5M + 1S and a share of the inversion,
 /// against 8M + 2S into an XYZZ bucket (as in gnark). A point whose bucket is already in the
-/// batch, or that would double or cancel its bucket, goes to an XYZZ bucket beside it.
+/// batch waits for the next one; past a batch's worth of those, or if it would double or
+/// cancel its bucket, it goes to an XYZZ bucket beside it.
 struct AffineBuckets<F> {
     buckets: Vec<AffineBucket<F>>,
     side: Vec<Xyzz<F>>,
+    /// Whether any `side` bucket is in use
+    sides: bool,
     /// Awaiting the next batch, with their `x` differences and the running products of those
     batch: Vec<Pending>,
     dx: Vec<F>,
     prefix: Vec<F>,
+    /// Waiting for their bucket to leave the batch (and `spare`, its double buffer)
+    waiting: Vec<Pending>,
+    spare: Vec<Pending>,
+    /// Running sums for the lanes of [`Self::integrate_lanes`]
+    acc: Vec<AffineBucket<F>>,
+    sum: Vec<AffineBucket<F>>,
 }
 
-/// An affine bucket: its point when `full`; `queued` while it has an addition in the batch
+/// An affine bucket (or running sum): its point when `full`; `queued` while it has an
+/// addition in the batch
 #[derive(Clone, Copy)]
 struct AffineBucket<F> {
     x: F,
@@ -834,6 +844,10 @@ struct Pending {
     special: bool,
 }
 
+/// At most this many lanes of running sums when summing the buckets (an eighth of them is
+/// best, measured on BLS12-381 G1, single core)
+const LANES: usize = 128;
+
 impl<F: FieldInto> AffineBuckets<F> {
     fn new(buckets: usize, batch: usize) -> Self {
         let empty = AffineBucket {
@@ -842,49 +856,86 @@ impl<F: FieldInto> AffineBuckets<F> {
             full: false,
             queued: false,
         };
+        let lanes = LANES.min(batch);
         Self {
             buckets: vec![empty; buckets],
             side: vec![Xyzz::identity(); buckets],
+            sides: false,
             batch: Vec::with_capacity(batch),
             dx: vec![F::ZERO; batch],
             prefix: vec![F::ZERO; batch],
+            waiting: Vec::with_capacity(batch),
+            spare: Vec::with_capacity(batch),
+            acc: vec![empty; lanes],
+            sum: vec![empty; lanes],
         }
     }
 
-    /// `buckets[b] += ±xy(i)`, now or in the next batch
+    /// `buckets[b] += ±xy(i)`, now or in a later batch
     fn add<'a>(&mut self, b: usize, i: usize, negate: bool, xy: &impl Fn(usize) -> (&'a F, &'a F))
     where
         F: 'a,
     {
-        let bucket = &mut self.buckets[b];
+        let p = Pending {
+            bucket: b,
+            point: i,
+            negate,
+            special: false,
+        };
+        self.enqueue(p, xy);
+        if self.batch.len() == self.dx.len() {
+            self.flush(xy);
+        }
+    }
+
+    fn enqueue<'a>(&mut self, p: Pending, xy: &impl Fn(usize) -> (&'a F, &'a F))
+    where
+        F: 'a,
+    {
+        let bucket = &mut self.buckets[p.bucket];
         if !bucket.full {
-            let (x, y) = xy(i);
+            let (x, y) = xy(p.point);
             bucket.x = *x;
-            if negate {
+            if p.negate {
                 F::neg_into(&mut bucket.y, y);
             } else {
                 bucket.y = *y;
             }
             bucket.full = true;
-        } else if bucket.queued {
-            let (x, y) = xy(i);
-            self.side[b].add_affine(x, y, negate);
-        } else {
+        } else if !bucket.queued {
             bucket.queued = true;
-            self.batch.push(Pending {
-                bucket: b,
-                point: i,
-                negate,
-                special: false,
-            });
-            if self.batch.len() == self.dx.len() {
-                self.flush(xy);
+            self.batch.push(p);
+        } else if self.waiting.len() < self.dx.len() {
+            self.waiting.push(p);
+        } else {
+            let (x, y) = xy(p.point);
+            self.side[p.bucket].add_affine(x, y, p.negate);
+            self.sides = true;
+        }
+    }
+
+    /// Adds the batch, then queues the waiting points whose buckets it freed, again while
+    /// they fill a batch
+    fn flush<'a>(&mut self, xy: &impl Fn(usize) -> (&'a F, &'a F))
+    where
+        F: 'a,
+    {
+        loop {
+            self.add_batch(xy);
+            std::mem::swap(&mut self.waiting, &mut self.spare);
+            for k in 0..self.spare.len() {
+                let p = self.spare[k];
+                self.enqueue(p, xy);
+            }
+            self.spare.clear();
+            if self.batch.len() < self.dx.len() {
+                return;
             }
         }
     }
 
-    /// Adds the batch: `λ = (y - y_b) / (x - x_b)`, `x' = λ² - x_b - x`, `y' = λ(x_b - x') - y_b`
-    fn flush<'a>(&mut self, xy: &impl Fn(usize) -> (&'a F, &'a F))
+    /// `λ = (y - y_b) / (x - x_b)`, `x' = λ² - x_b - x`, `y' = λ(x_b - x') - y_b` for the batch
+    fn add_batch<'a>(&mut self, xy: &impl Fn(usize) -> (&'a F, &'a F))
     where
         F: 'a,
     {
@@ -923,6 +974,7 @@ impl<F: FieldInto> AffineBuckets<F> {
             let (x, y) = xy(p.point);
             if p.special {
                 self.side[p.bucket].add_affine(x, y, p.negate);
+                self.sides = true;
                 continue;
             }
             // Adding -P, the slope is -λ' for λ' = (y + y_b) / (x - x_b), and then
@@ -957,7 +1009,32 @@ impl<F: FieldInto> AffineBuckets<F> {
     where
         F: 'a,
     {
-        self.flush(xy);
+        // A few more batches for the waiting points, then the XYZZ buckets for the rest
+        for _ in 0..4 {
+            if self.batch.is_empty() && self.waiting.is_empty() {
+                break;
+            }
+            self.flush(xy);
+        }
+        for k in 0..self.batch.len() {
+            let p = self.batch[k];
+            self.buckets[p.bucket].queued = false;
+            self.waiting.push(p);
+        }
+        self.batch.clear();
+        for p in self.waiting.drain(..) {
+            let (x, y) = xy(p.point);
+            self.side[p.bucket].add_affine(x, y, p.negate);
+            self.sides = true;
+        }
+        let lanes = (used / 8).clamp(32, self.acc.len());
+        if !self.sides
+            && used >= 4 * lanes
+            && let Some(sum) = self.integrate_lanes(used, lanes)
+        {
+            self.buckets[..used].iter_mut().for_each(|b| b.full = false);
+            return sum;
+        }
         let mut acc = Xyzz::identity();
         let mut sum = Xyzz::identity();
         for (bucket, side) in self.buckets[..used].iter_mut().zip(&mut self.side[..used]).rev() {
@@ -971,8 +1048,114 @@ impl<F: FieldInto> AffineBuckets<F> {
             }
             sum.add(&acc);
         }
+        self.sides = false;
         sum
     }
+
+    /// `Σ (b + 1)·buckets[b]` by running sums over `lanes` contiguous segments of the buckets
+    /// at once, each step's additions sharing one inversion; the segments' sums then
+    /// combine as `Σ_l (sum_l + l·seg·acc_l)`. Nothing if an addition would double or
+    /// cancel (the caller then sums in XYZZ).
+    fn integrate_lanes(&mut self, used: usize, lanes: usize) -> Option<Xyzz<F>> {
+        let seg = used / lanes;
+        debug_assert!(used.is_power_of_two() && lanes.is_power_of_two() && seg >= 1);
+        for s in self.acc[..lanes].iter_mut().chain(&mut self.sum[..lanes]) {
+            (s.full, s.queued) = (false, false);
+        }
+        for j in (0..seg).rev() {
+            let (acc, sum) = (&mut self.acc[..lanes], &mut self.sum[..lanes]);
+            let buckets = &self.buckets;
+            if !add_lanes(
+                acc,
+                |l| &buckets[l * seg + j],
+                &mut self.dx,
+                &mut self.prefix,
+            ) || !add_lanes(sum, |l| &acc[l], &mut self.dx, &mut self.prefix)
+            {
+                return None;
+            }
+        }
+        // Σ_l l·acc_l by running sums over the lanes, times `seg`, plus Σ_l sum_l
+        let (mut run, mut total, mut sums) = (Xyzz::identity(), Xyzz::identity(), Xyzz::identity());
+        for l in (0..lanes).rev() {
+            total.add(&run);
+            if self.acc[l].full {
+                run.add_affine(&self.acc[l].x, &self.acc[l].y, false);
+            }
+            if self.sum[l].full {
+                sums.add_affine(&self.sum[l].x, &self.sum[l].y, false);
+            }
+        }
+        for _ in 0..seg.ilog2() {
+            total.double();
+        }
+        total.add(&sums);
+        Some(total)
+    }
+}
+
+/// `dst[l] += src(l)` in every lane, the additions sharing one inversion; false if one would
+/// double or cancel (`dst` is then partly updated)
+fn add_lanes<'a, F: FieldInto + 'a>(
+    dst: &mut [AffineBucket<F>],
+    src: impl Fn(usize) -> &'a AffineBucket<F>,
+    dx: &mut [F],
+    prefix: &mut [F],
+) -> bool {
+    // Lanes with both points: their differences, and running products of those
+    let mut m = 0;
+    for (l, d) in dst.iter_mut().enumerate() {
+        let s = src(l);
+        if !s.full {
+            continue;
+        }
+        if !d.full {
+            *d = *s;
+            continue;
+        }
+        F::sub_into(&mut dx[m], &s.x, &d.x);
+        if dx[m].is_zero_vartime() {
+            return false;
+        }
+        if m == 0 {
+            prefix[0] = dx[0];
+        } else {
+            let (done, rest) = prefix.split_at_mut(m);
+            F::mul_into(&mut rest[0], &done[m - 1], &dx[m]);
+        }
+        d.queued = true;
+        m += 1;
+    }
+    if m == 0 {
+        return true;
+    }
+    let mut inv = prefix[m - 1].invert().unwrap();
+    let (mut inv_j, mut lambda, mut t, mut e) = (F::ZERO, F::ZERO, F::ZERO, F::ZERO);
+    for l in (0..dst.len()).rev() {
+        if !dst[l].queued {
+            continue;
+        }
+        m -= 1;
+        let inv_j = if m > 0 {
+            F::mul_into(&mut inv_j, &inv, &prefix[m - 1]);
+            inv *= &dx[m];
+            &inv_j
+        } else {
+            &inv
+        };
+        let (s, d) = (src(l), &mut dst[l]);
+        d.queued = false;
+        F::sub_into(&mut t, &s.y, &d.y);
+        F::mul_into(&mut lambda, &t, inv_j);
+        F::square_into(&mut t, &lambda);
+        t -= &d.x;
+        t -= &s.x;
+        F::sub_into(&mut e, &d.x, &t);
+        d.x = t;
+        F::mul_into(&mut t, &lambda, &e);
+        F::rsub_assign(&mut d.y, &t);
+    }
+    true
 }
 
 /// Scalars converted together by [`msm_xyzz_core`]'s tiles
