@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `PolynomialLabel::Collection`, a label made of other labels, and the `commitment_labels` method on the `PolynomialCommitmentScheme` trait, the labels a commitment tags its polynomials with [#555](https://github.com/midnightntwrk/midnight-zk/pull/555)
 * `PolynomialCommitmentScheme::max_k`, the largest `k` such that some parameters can commit to polynomials of degree strictly less than `2^k` [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
 * `PolynomialCommitmentScheme::load_params`, reading the parameters of the scheme for committing to polynomials of degree strictly less than `2^k` [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
+* `InterleavedCommit`, a `PolynomialCommitmentScheme` that commits to `Σ_i X^i f_i(X^t)` for chunks of polynomials `f_0, ..., f_{k-1}`, implemented by KZG from per-residue bases cached in `ParamsKZG` [#565](https://github.com/midnightntwrk/midnight-zk/pull/565)
 
 ### Fixed
 * LogUp verifier no longer panics when the prover makes some `fⱼ(x) + β` zero: the helper constraint folds products instead of inverting each term, which also saves the inversions [#562](https://github.com/midnightntwrk/midnight-zk/pull/562)
@@ -54,6 +55,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `msm_specific` always uses blst's `multi_exp_affine` for BLS12-381 G1,`msm_best`is a fallback for all other curves [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 * `commit_many`, `read_commitment` and `deserialize_commitment` take the labels of a group in the order it is committed to, rather than ordering them [#554](https://github.com/midnightntwrk/midnight-zk/pull/554)
 * `ProverQuery` carries the labels and polynomials of the group the queried polynomial is committed with, so `multi_open` sees every polynomial committed together with the queried one [#554](https://github.com/midnightntwrk/midnight-zk/pull/554)
+* The prover commits to the phase-1 group in `LagrangeDelta` and to the phase-2 group in `LagrangeDoubleDelta` [#565](https://github.com/midnightntwrk/midnight-zk/pull/565)
+* fflonk requires its inner scheme to implement `InterleavedCommit` and commits through it, without building `g`, so polynomials in Lagrange form are not converted to coefficient form and the rows where they vanish stay free in the commitment [#565](https://github.com/midnightntwrk/midnight-zk/pull/565)
+* fflonk computes the roots of each opening point once per chunk size, and evaluates the chunks at them sequentially [#565](https://github.com/midnightntwrk/midnight-zk/pull/565)
+* The KZG verifier evaluates the interpolant of each point set at `x3` with the barycentric formula instead of interpolating it first [#565](https://github.com/midnightntwrk/midnight-zk/pull/565)
+* The KZG multi-open divides each point set's polynomial by the product of `X - point` at once, skipping its zero coefficients, instead of by each point in turn [#565](https://github.com/midnightntwrk/midnight-zk/pull/565)
 * Keygen bounds the circuit size by `PolynomialCommitmentScheme::max_k` rather than by `Params::max_k` [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
 * The `PolynomialCommitmentScheme` implementation of `KZGCommitmentScheme<E>` requires `E::G1Affine: SerdeObject` and `E::G2: ProcessedSerdeObject` [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
 * `ProcessedSerdeObject` no longer requires the curve to implement `Default` [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)

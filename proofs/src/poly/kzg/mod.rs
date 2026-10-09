@@ -39,7 +39,7 @@ use crate::utils::arithmetic::{truncate, truncated_powers};
 use crate::{
     poly::{
         Coeff, Error, Polynomial, PolynomialRepresentation, ProverQuery,
-        commitment::PolynomialCommitmentScheme,
+        commitment::{InterleavedCommit, PolynomialCommitmentScheme},
         kzg::{
             commitment::NB_POLYS_PREFIX_BYTES,
             msm::{DualMSM, msm_specific},
@@ -51,8 +51,8 @@ use crate::{
     transcript::{Hashable, Sampleable, Transcript},
     utils::{
         arithmetic::{
-            CurveAffine, CurveExt, eval_polynomial, evals_inner_product, inner_product,
-            kate_division, lagrange_interpolate, parallelize, powers,
+            CurveAffine, CurveExt, divide_by_roots, eval_interpolant, eval_polynomial,
+            evals_inner_product, inner_product, kate_division, parallelize, powers,
         },
         helpers::{ProcessedSerdeObject, SerdeFormat},
     },
@@ -327,14 +327,9 @@ where
             let f_polys: Vec<_> = point_sets
                 .into_par_iter()
                 .zip(q_polys.clone().into_par_iter())
-                .map(|(points, q_poly)| {
-                    let poly = points.iter().fold(q_poly.values.clone(), |poly, point| {
-                        kate_division(&poly, *point)
-                    });
-                    Polynomial {
-                        values: poly,
-                        _marker: PhantomData,
-                    }
+                .map(|(points, q_poly)| Polynomial {
+                    values: divide_by_roots(&q_poly.values, &points),
+                    _marker: PhantomData,
                 })
                 .collect();
             poly_inner_product(&f_polys.iter().collect::<Vec<_>>(), powers(x2))
@@ -503,8 +498,7 @@ where
             point_sets.iter().zip(q_eval_sets.iter()).zip(q_evals_on_x3.iter()).rev().fold(
                 E::Fr::ZERO,
                 |acc_eval, ((points, evals), proof_eval)| {
-                    let r_poly = lagrange_interpolate(points, evals);
-                    let r_eval = eval_polynomial(&r_poly, x3);
+                    let r_eval = eval_interpolant(points, evals, x3);
                     // eval = (proof_eval - r_eval) / prod_i (x3 - point_i)
                     let den = points.iter().fold(E::Fr::ONE, |acc, point| acc * &(x3 - point));
                     let eval = (*proof_eval - &r_eval) * den.invert().unwrap();
@@ -559,6 +553,54 @@ where
 
         Ok(DualMSM::new(pi.into(), rhs.into()))
     }
+}
+
+impl<E: MultiMillerLoop> InterleavedCommit<E::Fr> for KZGCommitmentScheme<E>
+where
+    E::G1: Default + CurveExt<ScalarExt = E::Fr> + ProcessedSerdeObject,
+    E::G1Affine: Default + CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1> + SerdeObject,
+    E::G2: ProcessedSerdeObject,
+{
+    fn commit_interleaved<B: PolynomialRepresentation>(
+        params: &Self::Parameters,
+        chunks: &[&[&Polynomial<E::Fr, B>]],
+        labels: &[PolynomialLabel],
+    ) -> Self::Commitment {
+        assert_eq!(
+            chunks.len(),
+            labels.len(),
+            "chunks and labels must have the same length"
+        );
+        PolynomialLabel::assert_distinct(labels);
+
+        KZGMultiCommitment(
+            (chunks.iter().zip(labels))
+                .map(|(chunk, label)| {
+                    KZGCommitment::Simple(commit_chunk(params, chunk), label.clone())
+                })
+                .collect(),
+        )
+    }
+}
+
+/// Commitment to `Σ_i X^i f_i(X^t)`, for `chunk` the polynomials `f_i` and
+/// `t` the next power of two of their number.
+fn commit_chunk<E: MultiMillerLoop, B: PolynomialRepresentation>(
+    params: &ParamsKZG<E>,
+    chunk: &[&Polynomial<E::Fr, B>],
+) -> E::G1
+where
+    E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
+{
+    let t = chunk.len().next_power_of_two();
+    let n = chunk[0].len();
+    assert!(
+        chunk.iter().all(|poly| poly.len() == n),
+        "the polynomials of a chunk have different lengths"
+    );
+    (chunk.iter().enumerate())
+        .map(|(i, poly)| msm_specific(&poly.values, &params.residue_bases::<B>(t, n, i)))
+        .sum()
 }
 
 #[cfg(test)]

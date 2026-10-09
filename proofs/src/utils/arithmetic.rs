@@ -124,6 +124,62 @@ where
     q
 }
 
+/// The evaluation at `x` of the polynomial of degree below `points.len()` that
+/// takes the value `evals_i` at `points_i`, computed without building it:
+/// `Π_j (x - points_j) · Σ_i evals_i / ((x - points_i) Π_{j≠i} (points_i -
+/// points_j))`.
+pub fn eval_interpolant<F: Field>(points: &[F], evals: &[F], x: F) -> F {
+    assert_eq!(points.len(), evals.len());
+    if let Some(i) = points.iter().position(|point| *point == x) {
+        return evals[i];
+    }
+    let mut denoms: Vec<F> = (points.iter().enumerate())
+        .map(|(i, point_i)| {
+            (points.iter().enumerate())
+                .filter(|(j, _)| *j != i)
+                .fold(x - point_i, |acc, (_, point_j)| acc * (*point_i - point_j))
+        })
+        .collect();
+    denoms.iter_mut().batch_invert();
+    let vanishing: F = points.iter().map(|point| x - point).product();
+    vanishing * evals.iter().zip(&denoms).map(|(eval, denom)| *eval * denom).sum::<F>()
+}
+
+/// The quotient of `poly`, in coefficient form, by `∏_i (X - roots_i)`,
+/// discarding the remainder.
+///
+/// This equals dividing `poly` by each `X - roots_i` in turn with
+/// [`kate_division`], but divides by the product at once, skipping its zero
+/// coefficients. That is cheaper when the product is sparse, as for the
+/// `t`-th roots of a point, whose product is `X^t - x`.
+pub fn divide_by_roots<F: Field>(poly: &[F], roots: &[F]) -> Vec<F> {
+    let mut vanishing = vec![F::ONE];
+    for root in roots {
+        let mut next = vec![F::ZERO; vanishing.len() + 1];
+        for (i, coeff) in vanishing.iter().enumerate() {
+            next[i + 1] += coeff;
+            next[i] -= *coeff * root;
+        }
+        vanishing = next;
+    }
+    let degree = roots.len();
+    let terms: Vec<(usize, F)> = (vanishing[..degree].iter().enumerate())
+        .filter(|(_, coeff)| !bool::from(coeff.is_zero()))
+        .map(|(j, coeff)| (j, *coeff))
+        .collect();
+
+    let mut remainder = poly.to_vec();
+    let mut quotient = vec![F::ZERO; poly.len().saturating_sub(degree)];
+    for i in (degree..poly.len()).rev() {
+        let lead = remainder[i];
+        quotient[i - degree] = lead;
+        for (j, coeff) in &terms {
+            remainder[i - degree + j] -= lead * coeff;
+        }
+    }
+    quotient
+}
+
 /// This utility function will parallelize an operation that is to be
 /// performed over a mutable slice.
 pub fn parallelize<T: Send, F: Fn(&mut [T], usize) + Send + Sync + Clone>(v: &mut [T], f: F) {
@@ -348,5 +404,40 @@ fn test_lagrange_interpolate() {
         for (point, eval) in points.iter().zip(evals) {
             assert_eq!(eval_polynomial(&poly, *point), *eval);
         }
+    }
+}
+
+#[test]
+fn test_divide_by_roots() {
+    let poly: Vec<Scalar> = (0..64).map(|_| Scalar::random(OsRng)).collect();
+    let x = Scalar::random(OsRng).square().square();
+    // Arbitrary roots, and the 4th roots of a point.
+    let fourth_roots = {
+        let r = x.sqrt().unwrap().sqrt().unwrap();
+        let i = Scalar::ROOT_OF_UNITY.pow_vartime([1u64 << (Scalar::S - 2)]);
+        vec![r, r * i, r * i * i, r * i * i * i]
+    };
+    for roots in [
+        (0..5).map(|_| Scalar::random(OsRng)).collect(),
+        fourth_roots,
+    ] {
+        let expected = roots.iter().fold(poly.clone(), |acc, root| kate_division(&acc, *root));
+        assert_eq!(divide_by_roots(&poly, &roots), expected);
+    }
+}
+
+#[test]
+fn test_eval_interpolant() {
+    let points: Vec<Scalar> = (0..6).map(|_| Scalar::random(OsRng)).collect();
+    let evals: Vec<Scalar> = (0..6).map(|_| Scalar::random(OsRng)).collect();
+    for len in 1..=6 {
+        let (points, evals) = (&points[..len], &evals[..len]);
+        let poly = lagrange_interpolate(points, evals);
+        let x = Scalar::random(OsRng);
+        assert_eq!(
+            eval_interpolant(points, evals, x),
+            eval_polynomial(&poly, x)
+        );
+        assert_eq!(eval_interpolant(points, evals, points[0]), evals[0]);
     }
 }
