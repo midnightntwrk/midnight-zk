@@ -6,7 +6,7 @@
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use ff::Field;
 use group::{Curve, Group};
-use midnight_curves::{CurveAffine, G1Affine, G2Affine};
+use midnight_curves::{CurveAffine, G1Affine, G2Affine, msm::msm_best};
 use midnight_proofs::poly::kzg::msm::msm_specific;
 use rand_chacha::ChaCha20Rng;
 use rand_core::SeedableRng;
@@ -29,9 +29,25 @@ fn ladder<C: CurveAffine>(c: &mut Criterion, name: &str, ks: &[u32]) {
     group.finish();
 }
 
+/// BLS12-381 G1 by both backends: blst's `multi_exp_affine` and the Rust Pippenger `msm_best`
+fn g1_backends(c: &mut Criterion, ks: &[u32]) {
+    let mut group = c.benchmark_group("g1_backend");
+    for &k in ks {
+        let (coeffs, bases) = terms::<G1Affine>(1 << k);
+        group.bench_with_input(BenchmarkId::new("blst", k), &k, |b, _| {
+            b.iter(|| G1Affine::multi_exp_affine(&bases, &coeffs))
+        });
+        group.bench_with_input(BenchmarkId::new("pippenger", k), &k, |b, _| {
+            b.iter(|| msm_best(&coeffs, &bases))
+        });
+    }
+    group.finish();
+}
+
 fn bench(c: &mut Criterion) {
     ladder::<G1Affine>(c, "msm_specific_g1", &[4, 8, 12, 16]);
     ladder::<G2Affine>(c, "msm_specific_g2", &[4, 8, 12]);
+    g1_backends(c, &[2, 4, 6, 8, 10, 12, 14, 16, 18]);
 }
 
 criterion_group!(benches, bench);

@@ -169,8 +169,9 @@ impl<C: CurveAffine> Affine<C> {
         }
     }
 
+    /// A bucket's sum of input points: on the curve and in their subgroup, so unchecked
     fn eval(&self) -> C {
-        C::from_xy(self.x, self.y).unwrap()
+        C::from_xy_unchecked(self.x, self.y)
     }
 }
 
