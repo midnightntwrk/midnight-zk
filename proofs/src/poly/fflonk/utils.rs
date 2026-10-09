@@ -8,46 +8,20 @@ use std::{
     marker::PhantomData,
 };
 
-use ff::{PrimeField, WithSmallOrderMulGroup};
+use ff::PrimeField;
 
-use crate::poly::{Coeff, EvaluationDomain, Polynomial, PolynomialBasis, PolynomialRepresentation};
+use crate::poly::{Coeff, Polynomial};
 
-/// `g(X) = Σ_i X^i f_i(X^t)`, for `polys` the polynomials `f_0, ..., f_{k-1}`,
-/// in any basis, and `t` the next power of two of `k`.
-///
-/// # Panics
-///
-/// Panics if the field has no roots of unity of order `n · t`, for `n` the
-/// length of the polynomials.
-pub(super) fn compute_g<F, B>(polys: &[&Polynomial<F, B>]) -> Polynomial<F, Coeff>
-where
-    F: WithSmallOrderMulGroup<3>,
-    B: PolynomialRepresentation,
-{
+/// `g(X) = Σ_i X^i f_i(X^t)`, for `polys` the polynomials `f_0, ..., f_{k-1}`
+/// in coefficient form and `t` the next power of two of `k`: the coefficients
+/// of `g` interleave those of the `f_i`, with the slots of the `t - k` dummy
+/// polynomials padding the `k` given ones to `t` left zero.
+pub(super) fn compute_g<F: PrimeField>(polys: &[&Polynomial<F, Coeff>]) -> Polynomial<F, Coeff> {
     let t = polys.len().next_power_of_two();
     let n = polys.iter().map(|poly| poly.len()).max().unwrap_or(0);
-    let log_order = n.next_power_of_two().ilog2() + t.ilog2();
-    assert!(
-        log_order <= F::S,
-        "the field has no roots of unity of order 2^{log_order} for fflonk"
-    );
-    // TODO: In this first version, we are converting to coefficients.
-    // We could try to compute g directly in the given base.
-    let domain =
-        (!matches!(B::BASIS, PolynomialBasis::Coeff)).then(|| EvaluationDomain::new(1, n.ilog2()));
-    // The slots of the `t - k` dummy polynomials padding the `k` given ones to
-    // `t` are left zero.
     let mut values = vec![F::ZERO; t * n];
     for (i, poly) in polys.iter().enumerate() {
-        let converted;
-        let coeffs = match &domain {
-            None => &poly.values,
-            Some(domain) => {
-                converted = B::self_to_coeff(domain, (*poly).clone());
-                &converted.values
-            }
-        };
-        for (j, coeff) in coeffs.iter().enumerate() {
+        for (j, coeff) in poly.values.iter().enumerate() {
             values[t * j + i] = *coeff;
         }
     }

@@ -49,8 +49,10 @@ use utils::{cached_roots, compute_g};
 
 use crate::{
     poly::{
-        Error, Polynomial, PolynomialLabel, PolynomialLabel::Collection, PolynomialRepresentation,
-        ProverQuery, VerifierQuery, commitment::PolynomialCommitmentScheme,
+        Error, Polynomial, PolynomialLabel,
+        PolynomialLabel::Collection,
+        PolynomialRepresentation, ProverQuery, VerifierQuery,
+        commitment::{InterleavedCommit, PolynomialCommitmentScheme},
     },
     transcript::{Hashable, Sampleable, Transcript},
     utils::{
@@ -74,7 +76,7 @@ impl<PCS, const LOG2_T_MAX: u32> Fflonk<PCS, LOG2_T_MAX> {
 impl<F, PCS, const LOG2_T_MAX: u32> PolynomialCommitmentScheme<F> for Fflonk<PCS, LOG2_T_MAX>
 where
     F: WithSmallOrderMulGroup<3>,
-    PCS: PolynomialCommitmentScheme<F>,
+    PCS: InterleavedCommit<F>,
 {
     type Parameters = PCS::Parameters;
     type VerifierParameters = PCS::VerifierParameters;
@@ -108,8 +110,8 @@ where
     ) -> Self::Commitment {
         PolynomialLabel::assert_distinct(labels);
         let g_labels: Vec<_> = labels.chunks(Self::T_MAX).map(|l| Collection(l.to_vec())).collect();
-        let gs: Vec<_> = polynomials.chunks(Self::T_MAX).map(compute_g).collect();
-        PCS::commit_many(params, &gs.iter().collect::<Vec<_>>(), &g_labels)
+        let chunks: Vec<_> = polynomials.chunks(Self::T_MAX).collect();
+        PCS::commit_interleaved(params, &chunks, &g_labels)
     }
 
     fn read_commitment<T: Transcript>(
@@ -289,12 +291,14 @@ where
 mod tests {
     use std::io;
 
+    use ff::Field;
     use midnight_curves::{Bls12, Fq};
-    use rand_core::OsRng;
+    use rand_core::{OsRng, RngCore};
 
     use super::Fflonk;
     use crate::{
         poly::{
+            EvaluationDomain, PolynomialLabel,
             commitment::PolynomialCommitmentScheme,
             kzg::{KZGCommitmentScheme, params::ParamsKZG},
         },
@@ -302,6 +306,54 @@ mod tests {
     };
 
     type Kzg = KZGCommitmentScheme<Bls12>;
+
+    /// Commits to `nb_polys` sparse polynomials of `2^k` rows, given in
+    /// Lagrange form, in its delta forms and in coefficient form, and checks
+    /// that the commitments agree.
+    fn assert_lagrange_matches_coeff(params: &ParamsKZG<Bls12>, k: u32, nb_polys: usize) {
+        type CS = Fflonk<Kzg, 2>;
+        let domain = EvaluationDomain::<Fq>::new(1, k);
+        let lagrange: Vec<_> = (0..nb_polys)
+            .map(|_| {
+                let values = (0..1 << k)
+                    .map(|_| {
+                        if OsRng.next_u32().is_multiple_of(8) {
+                            Fq::random(OsRng)
+                        } else {
+                            Fq::ZERO
+                        }
+                    })
+                    .collect();
+                domain.lagrange_from_vec(values)
+            })
+            .collect();
+        let coeff: Vec<_> = lagrange.iter().map(|p| domain.lagrange_to_coeff(p.clone())).collect();
+        let delta: Vec<_> = lagrange.iter().map(|p| p.to_delta()).collect();
+        let double_delta: Vec<_> = lagrange.iter().map(|p| p.to_double_delta()).collect();
+        let labels: Vec<_> = (0..nb_polys).map(PolynomialLabel::Advice).collect();
+        let expected = CS::commit_many(params, &coeff.iter().collect::<Vec<_>>(), &labels);
+        assert_eq!(
+            CS::commit_many(params, &lagrange.iter().collect::<Vec<_>>(), &labels),
+            expected
+        );
+        assert_eq!(
+            CS::commit_many(params, &delta.iter().collect::<Vec<_>>(), &labels),
+            expected
+        );
+        assert_eq!(
+            CS::commit_many(params, &double_delta.iter().collect::<Vec<_>>(), &labels),
+            expected
+        );
+    }
+
+    #[test]
+    fn test_lagrange_commitments() {
+        // Full and partial chunks, of every chunk size up to `T_MAX = 4`.
+        let params = <Fflonk<Kzg, 2> as PolynomialCommitmentScheme<Fq>>::gen_params(4);
+        for nb_polys in 1..=9 {
+            assert_lagrange_matches_coeff(&params, 4, nb_polys);
+        }
+    }
 
     #[test]
     fn test_load_params() {
