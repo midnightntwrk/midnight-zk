@@ -742,9 +742,9 @@ pub fn msm_xyzz_glv_with_window<C: CurveAffine>(
     )
 }
 
-/// The Pippenger's window size for `n` terms, measured on BLS12-381 G1
-/// (`examples/msm_tune.rs` sweeps it): x86-64 on a Ryzen 5950X (32 threads), aarch64 on an
-/// Apple M3 Max (12 performance and 4 efficiency cores), which wants wider windows.
+/// The Pippenger's window size for `n` terms, measured on BLS12-381 G1 by sweeping it: x86-64
+/// on a Ryzen 5950X (32 threads), aarch64 on an Apple M3 Max (12 performance and 4
+/// efficiency cores), which wants wider windows.
 #[doc(hidden)]
 pub fn xyzz_window(n: usize) -> usize {
     let k = n.max(1).ilog2();
