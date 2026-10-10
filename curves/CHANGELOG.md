@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 
 ## [Unreleased]
 ### Added
+* `FieldInto`: field arithmetic written into a destination (blst-style, all methods defaulted); now a bound on `CurveAffine::Base`, so a downstream `CurveAffine` implementation needs `impl FieldInto for <Base> {}` [#573](https://github.com/midnightntwrk/midnight-zk/pull/573)
 * `CurveAffine::msm` (the Rust Pippenger; BLS12-381 G1 uses blst under the new `blst-msm` feature), `CurveAffine::from_xy_unchecked` (G1 skips the subgroup check) and `CurveAffine::glv` (BLS12-381 G1's endomorphism) [#573](https://github.com/midnightntwrk/midnight-zk/pull/573)
 * Affine MSM path `G1Affine::multi_exp_affine` [#350](https://github.com/midnightntwrk/midnight-zk/pull/350)
 * Cached-twiddle FFT (`best_fft_with_twiddles`, `compute_twiddles`) and pruned DIF FFT (`fft_coeff_to_extended`) [#352](https://github.com/midnightntwrk/midnight-zk/pull/352)
