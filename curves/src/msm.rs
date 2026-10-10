@@ -5,13 +5,9 @@ use std::{
 
 use ff::{Field, PrimeField};
 use group::Group;
-use rayon::iter::{
-    IndexedParallelIterator, IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelIterator,
-};
+use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
 use crate::{CurveAffine, FieldInto};
-
-const BATCH_SIZE: usize = 64;
 
 #[inline]
 fn get_booth_index(window_index: usize, window_size: usize, el: &[u8]) -> i32 {
@@ -64,95 +60,6 @@ fn get_booth_index(window_index: usize, window_size: usize, el: &[u8]) -> i32 {
     }
 }
 
-/// Batch addition.
-fn batch_add<C: CurveAffine>(
-    size: usize,
-    buckets: &mut [BucketAffine<C>],
-    points: &[SchedulePoint],
-    bases: &[Affine<C>],
-) {
-    // We are assuming a=0 in the doubling formula.
-    debug_assert_eq!(C::a(), C::Base::ZERO);
-
-    let mut t = vec![C::Base::ZERO; size]; // Stores x2 - x1
-    let mut z = vec![C::Base::ZERO; size]; // Stores y2 - y1
-    let mut acc = C::Base::ONE;
-
-    for (
-        (
-            SchedulePoint {
-                base_idx,
-                buck_idx,
-                sign,
-            },
-            t,
-        ),
-        z,
-    ) in points.iter().zip(t.iter_mut()).zip(z.iter_mut())
-    {
-        if buckets[*buck_idx].is_inf() {
-            // We assume bases[*base_idx] != infinity always.
-            continue;
-        }
-
-        if buckets[*buck_idx].x() == bases[*base_idx].x {
-            // y-coordinate matches:
-            //  1. y1 == y2 and sign = false or
-            //  2. y1 != y2 and sign = true
-            //  => ( y1 == y2) xor !sign
-            //  (This uses the fact that x1 == x2 and both points satisfy the curve eq.)
-            if (buckets[*buck_idx].y() == bases[*base_idx].y) ^ !*sign {
-                // Doubling
-                let x_squared = bases[*base_idx].x.square();
-                *z = buckets[*buck_idx].y() + buckets[*buck_idx].y(); // 2y
-                *t = acc * (x_squared + x_squared + x_squared); // acc * 3x^2
-                acc *= *z;
-                continue;
-            }
-            // P + (-P)
-            buckets[*buck_idx].set_inf();
-            continue;
-        }
-        // Addition
-        *z = buckets[*buck_idx].x() - bases[*base_idx].x; // x2 - x1
-        if *sign {
-            *t = acc * (buckets[*buck_idx].y() - bases[*base_idx].y);
-        } else {
-            *t = acc * (buckets[*buck_idx].y() + bases[*base_idx].y);
-        } // y2 - y1
-        acc *= *z;
-    }
-
-    acc = acc.invert().expect("Some edge case has not been handled properly");
-
-    for (
-        (
-            SchedulePoint {
-                base_idx,
-                buck_idx,
-                sign,
-            },
-            t,
-        ),
-        z,
-    ) in points.iter().zip(t.iter()).zip(z.iter()).rev()
-    {
-        if buckets[*buck_idx].is_inf() {
-            // We assume bases[*base_idx] != infinity always.
-            continue;
-        }
-        let lambda = acc * t;
-        acc *= z; // update acc
-        let x = lambda.square() - (buckets[*buck_idx].x() + bases[*base_idx].x); // x_result
-        if *sign {
-            buckets[*buck_idx].set_y(&((lambda * (bases[*base_idx].x - x)) - bases[*base_idx].y));
-        } else {
-            buckets[*buck_idx].set_y(&((lambda * (bases[*base_idx].x - x)) + bases[*base_idx].y));
-        } // y_result = lambda * (x1 - x_result) - y1
-        buckets[*buck_idx].set_x(&x);
-    }
-}
-
 /// Wrapper to provide direct access to affine coordinates.
 /// This avoids repeated calls to `CurveAffine::coordinates()` (which returns
 /// a `CtOption` and performs an identity check).
@@ -163,182 +70,18 @@ struct Affine<C: CurveAffine> {
 }
 
 impl<C: CurveAffine> Affine<C> {
+    /// The coordinates, or zeros for the identity (whose scalar the MSM then zeroes, so they
+    /// are never read)
     fn from(point: &C) -> Self {
-        let coords = point.coordinates().unwrap();
-
-        Self {
-            x: *coords.x(),
-            y: *coords.y(),
-        }
-    }
-
-    fn neg(&self) -> Self {
-        Self {
-            x: self.x,
-            y: -self.y,
-        }
-    }
-
-    /// A bucket's sum of input points: on the curve and in their subgroup, so unchecked
-    fn eval(&self) -> C {
-        C::from_xy_unchecked(self.x, self.y)
-    }
-}
-
-#[derive(Debug, Clone)]
-enum BucketAffine<C: CurveAffine> {
-    None,
-    Point(Affine<C>),
-}
-
-#[derive(Debug, Clone)]
-enum Bucket<C: CurveAffine> {
-    None,
-    Point(C::Curve),
-}
-
-impl<C: CurveAffine> Bucket<C> {
-    fn add_assign(&mut self, point: &C, sign: bool) {
-        *self = match *self {
-            Bucket::None => Bucket::Point({
-                if sign {
-                    point.to_curve()
-                } else {
-                    point.to_curve().neg()
-                }
-            }),
-            Bucket::Point(a) => {
-                if sign {
-                    Self::Point(a + point)
-                } else {
-                    Self::Point(a - point)
-                }
-            }
-        }
-    }
-
-    fn add(&self, other: &BucketAffine<C>) -> C::Curve {
-        match (self, other) {
-            (Self::Point(this), BucketAffine::Point(other)) => *this + other.eval(),
-            (Self::Point(this), BucketAffine::None) => *this,
-            (Self::None, BucketAffine::Point(other)) => other.eval().to_curve(),
-            (Self::None, BucketAffine::None) => C::Curve::identity(),
-        }
-    }
-}
-
-impl<C: CurveAffine> BucketAffine<C> {
-    fn assign(&mut self, point: &Affine<C>, sign: bool) -> bool {
-        match *self {
-            Self::None => {
-                *self = Self::Point(if sign { *point } else { point.neg() });
-                true
-            }
-            Self::Point(_) => false,
-        }
-    }
-
-    fn x(&self) -> C::Base {
-        match self {
-            Self::None => panic!("::x None"),
-            Self::Point(a) => a.x,
-        }
-    }
-
-    fn y(&self) -> C::Base {
-        match self {
-            Self::None => panic!("::y None"),
-            Self::Point(a) => a.y,
-        }
-    }
-
-    fn is_inf(&self) -> bool {
-        match self {
-            Self::None => true,
-            Self::Point(_) => false,
-        }
-    }
-
-    fn set_x(&mut self, x: &C::Base) {
-        match self {
-            Self::None => panic!("::set_x None"),
-            Self::Point(a) => a.x = *x,
-        }
-    }
-
-    fn set_y(&mut self, y: &C::Base) {
-        match self {
-            Self::None => panic!("::set_y None"),
-            Self::Point(a) => a.y = *y,
-        }
-    }
-
-    fn set_inf(&mut self) {
-        match self {
-            Self::None => {}
-            Self::Point(_) => *self = Self::None,
-        }
-    }
-}
-
-struct Schedule<C: CurveAffine> {
-    buckets: Vec<BucketAffine<C>>,
-    set: [SchedulePoint; BATCH_SIZE],
-    ptr: usize,
-}
-
-#[derive(Debug, Clone, Default)]
-struct SchedulePoint {
-    base_idx: usize,
-    buck_idx: usize,
-    sign: bool,
-}
-
-impl SchedulePoint {
-    fn new(base_idx: usize, buck_idx: usize, sign: bool) -> Self {
-        Self {
-            base_idx,
-            buck_idx,
-            sign,
-        }
-    }
-}
-
-impl<C: CurveAffine> Schedule<C> {
-    fn new(c: usize) -> Self {
-        let set = (0..BATCH_SIZE)
-            .map(|_| SchedulePoint::default())
-            .collect::<Vec<_>>()
-            .try_into()
-            .unwrap();
-
-        Self {
-            buckets: vec![BucketAffine::None; 1 << (c - 1)],
-            set,
-            ptr: 0,
-        }
-    }
-
-    fn contains(&self, buck_idx: usize) -> bool {
-        self.set[..self.ptr].iter().any(|sch| sch.buck_idx == buck_idx)
-    }
-
-    fn execute(&mut self, bases: &[Affine<C>]) {
-        if self.ptr != 0 {
-            batch_add(self.ptr, &mut self.buckets, &self.set, bases);
-            self.ptr = 0;
-            self.set.iter_mut().for_each(|sch| *sch = SchedulePoint::default());
-        }
-    }
-
-    fn add(&mut self, bases: &[Affine<C>], base_idx: usize, buck_idx: usize, sign: bool) {
-        if !self.buckets[buck_idx].assign(&bases[base_idx], sign) {
-            self.set[self.ptr] = SchedulePoint::new(base_idx, buck_idx, sign);
-            self.ptr += 1;
-        }
-
-        if self.ptr == self.set.len() {
-            self.execute(bases);
+        match Option::<crate::Coordinates<C>>::from(point.coordinates()) {
+            Some(c) => Self {
+                x: *c.x(),
+                y: *c.y(),
+            },
+            None => Self {
+                x: C::Base::ZERO,
+                y: C::Base::ZERO,
+            },
         }
     }
 }
@@ -364,13 +107,22 @@ impl<F: FieldInto> Xyzz<F> {
         }
     }
 
+    fn from_affine(x: &F, y: &F) -> Self {
+        Self {
+            x: *x,
+            y: *y,
+            zz: F::ONE,
+            zzz: F::ONE,
+        }
+    }
+
     // Variable time: which buckets are touched depends on the scalars anyway
     fn is_identity(&self) -> bool {
         self.zz.is_zero_vartime() && self.zzz.is_zero_vartime()
     }
 
     /// `self += (x2, y2)`, or `-= ` if `negate`, for an affine point `(x2, y2)` on the curve
-    /// (EFD madd-2008-s, and mdbl-2008-s-1 when the points are equal). Like blst, every result
+    /// (EFD madd-2008-s; [`Self::double`] when the points are equal). Like blst, every result
     /// is written where it is needed ([`FieldInto`]), never copied while fresh.
     fn add_affine(&mut self, x2: &F, y2: &F, negate: bool) {
         let mut neg_y2 = F::ZERO;
@@ -381,10 +133,7 @@ impl<F: FieldInto> Xyzz<F> {
             y2
         };
         if self.is_identity() {
-            self.x = *x2;
-            self.y = *y2;
-            self.zz = F::ONE;
-            self.zzz = F::ONE;
+            *self = Self::from_affine(x2, y2);
             return;
         }
         // P = x2·ZZ1 - X1, R = y2·ZZZ1 - Y1
@@ -414,25 +163,9 @@ impl<F: FieldInto> Xyzz<F> {
             self.zz *= &pp;
             self.zzz *= &ppp;
         } else if r.is_zero_vartime() {
-            // Equal points: double (x2, y2)
-            let mut u = F::ZERO;
-            F::add_into(&mut u, y2, y2);
-            F::square_into(&mut self.zz, &u); // V
-            F::mul_into(&mut self.zzz, &self.zz, &u); // W
-            let mut s = F::ZERO;
-            F::mul_into(&mut s, x2, &self.zz);
-            let mut x2sq = F::ZERO;
-            F::square_into(&mut x2sq, x2);
-            let mut m = F::ZERO;
-            F::add_into(&mut m, &x2sq, &x2sq);
-            m += &x2sq;
-            F::square_into(&mut self.x, &m);
-            self.x -= &s;
-            self.x -= &s;
-            s -= &self.x;
-            s *= &m;
-            F::mul_into(&mut self.y, &self.zzz, y2);
-            F::rsub_assign(&mut self.y, &s);
+            // Equal points (rare)
+            *self = Self::from_affine(x2, y2);
+            self.double();
         } else {
             *self = Self::identity();
         }
@@ -553,79 +286,34 @@ pub fn msm_pointwise<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Cu
 /// batched affine buckets from `c = 7` ([`AffineBuckets`], gnark's) and XYZZ buckets below;
 /// window size `c`. Below 32 terms, one scalar multiplication per term instead.
 #[doc(hidden)]
-pub fn msm_xyzz_with_window<C: CurveAffine>(
-    coeffs: &[C::Scalar],
-    bases: &[C],
-    c: usize,
-) -> C::Curve {
+pub fn msm_with_window<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C], c: usize) -> C::Curve {
     assert_eq!(coeffs.len(), bases.len());
     if coeffs.len() < 32 {
         return msm_pointwise(coeffs, bases);
     }
     let nbits = C::Scalar::NUM_BITS as usize;
-    if bases.first().is_some_and(|b| b.xy_ref().is_some()) {
-        // Coordinates read in place, scalars converted by the tiles as they need them; an
-        // identity base gets a zero scalar, so it is never added
-        let zero = C::Scalar::ZERO.to_repr();
-        let repr = |r: Range<usize>| {
-            let repr = |i: usize| match bool::from(bases[i].is_identity()) {
-                true => zero,
-                false => coeffs[i].to_repr(),
-            };
-            r.map(repr).collect()
+    // Scalars converted by the tiles as they need them; an identity base gets a zero scalar,
+    // so it is never added (nor its coordinates read)
+    let zero = C::Scalar::ZERO.to_repr();
+    let repr = |r: Range<usize>| -> Vec<_> {
+        let repr = |i: usize| match bool::from(bases[i].is_identity()) {
+            true => zero,
+            false => coeffs[i].to_repr(),
         };
-        let xy = |i: usize| bases[i].xy_ref().unwrap();
-        return msm_xyzz_core::<C, _, _, _>(coeffs.len(), repr, xy, nbits, c);
-    }
-    // In parallel only when there is enough work to pay for the scheduling
-    let par = coeffs.len() >= 1 << 12;
-    let prepare = |(s, b): (&C::Scalar, &C)| (s.to_repr(), Affine::from(b));
-    let not_identity = |(_, b): &(&C::Scalar, &C)| !bool::from(b.is_identity());
-    let (scalars, points): (Vec<_>, Vec<_>) = if par {
-        coeffs
-            .par_iter()
-            .zip(bases.par_iter())
-            .filter(not_identity)
-            .map(prepare)
-            .unzip()
-    } else {
-        coeffs.iter().zip(bases).filter(not_identity).map(prepare).unzip()
+        r.map(repr).collect()
     };
-    let repr = |r: Range<usize>| scalars[r].to_vec();
-    msm_xyzz_core::<C, _, _, _>(
-        scalars.len(),
-        repr,
-        |i| (&points[i].x, &points[i].y),
-        nbits,
-        c,
-    )
-}
-
-/// `k = k2·λ + k1` with `k1 < λ`, for a little-endian `k < 2^128 λ`: the GLV halves,
-/// little-endian
-#[doc(hidden)]
-pub fn glv_split(k: &[u8], lambda: u128) -> ([u8; 16], [u8; 16]) {
-    let mut bytes = [0u8; 32];
-    bytes[..k.len()].copy_from_slice(k);
-    let lo = u128::from_le_bytes(bytes[..16].try_into().unwrap());
-    let hi = u128::from_le_bytes(bytes[16..].try_into().unwrap());
-    debug_assert!(hi < lambda, "scalar too large to split");
-    // Long division of (hi, lo) by λ, a bit at a time; the remainder stays below λ
-    let (mut rem, mut q) = (hi, 0u128);
-    for i in (0..128).rev() {
-        let carry = rem >> 127;
-        rem = (rem << 1) | ((lo >> i) & 1);
-        q <<= 1;
-        if carry == 1 || rem >= lambda {
-            rem = rem.wrapping_sub(lambda);
-            q |= 1;
-        }
+    if bases.first().is_some_and(|b| b.xy_ref().is_some()) {
+        // Coordinates read in place
+        let xy = |i: usize| bases[i].xy_ref().unwrap();
+        return pippenger::<C, _, _, _>(coeffs.len(), repr, xy, nbits, c);
     }
-    (rem.to_le_bytes(), q.to_le_bytes())
+    let points: Vec<Affine<C>> = bases.par_iter().map(Affine::from).collect();
+    let xy = |i: usize| (&points[i].x, &points[i].y);
+    pippenger::<C, _, _, _>(coeffs.len(), repr, xy, nbits, c)
 }
 
 /// `⌊2^256 / λ⌋` as little-endian limbs (129 bits for a 128-bit `λ`), by long division:
-/// the Barrett constant for [`glv_split_fast`]
+/// the Barrett constant for [`glv_split`]
 fn glv_reciprocal(lambda: u128) -> [u64; 3] {
     // The numerator is a 1 followed by 256 zeros; its leading 1 is below λ, so that quotient
     // bit is 0 and the remainder starts at 1
@@ -646,10 +334,11 @@ fn glv_reciprocal(lambda: u128) -> [u64; 3] {
     q
 }
 
-/// [`glv_split`] by Barrett reduction with `m = glv_reciprocal(λ)`: `(k·m) >> 256` is at most
-/// 2 below `⌊k/λ⌋`, and the remainder is corrected by subtracting `λ`
+/// `k = k2·λ + k1` with `k1 < λ`, for a little-endian `k < 2^128 λ`: the GLV halves,
+/// little-endian. By Barrett reduction with `m = glv_reciprocal(λ)`: `(k·m) >> 256` is at
+/// most 2 below `⌊k/λ⌋`, and the remainder is corrected by subtracting `λ`
 #[doc(hidden)]
-pub fn glv_split_fast(k: &[u8], lambda: u128, m: &[u64; 3]) -> ([u8; 16], [u8; 16]) {
+pub fn glv_split(k: &[u8], lambda: u128, m: &[u64; 3]) -> ([u8; 16], [u8; 16]) {
     let mut bytes = [0u8; 32];
     bytes[..k.len()].copy_from_slice(k);
     let kl: [u64; 4] =
@@ -696,25 +385,28 @@ pub fn glv_split_fast(k: &[u8], lambda: u128, m: &[u64; 3]) -> ([u8; 16], [u8; 1
     (rem.to_le_bytes(), q.to_le_bytes())
 }
 
-/// [`msm_xyzz_with_window`] through a GLV endomorphism ([`CurveAffine::glv`]): twice the terms,
+/// [`msm_with_window`] through a GLV endomorphism ([`CurveAffine::glv`]): twice the terms,
 /// with 128-bit scalars, so half the windows and doublings.
 #[doc(hidden)]
-pub fn msm_xyzz_glv_with_window<C: CurveAffine>(
+pub fn msm_glv_with_window<C: CurveAffine>(
     coeffs: &[C::Scalar],
     bases: &[C],
     c: usize,
 ) -> C::Curve {
     assert_eq!(coeffs.len(), bases.len());
     let Some((beta, lambda)) = C::glv() else {
-        return msm_xyzz_with_window(coeffs, bases, c);
+        return msm_with_window(coeffs, bases, c);
     };
     let m = glv_reciprocal(lambda);
     if coeffs.len() < 32 {
         return msm_pointwise(coeffs, bases);
     }
-    let not_identity = |(_, b): &(&C::Scalar, &C)| !bool::from(b.is_identity());
+    // Each term as two, (k1, P) and (k2, φ(P)); an identity base gets zero scalars
     let split = |(s, b): (&C::Scalar, &C)| {
-        let (k1, k2) = glv_split_fast(s.to_repr().as_ref(), lambda, &m);
+        let (k1, k2) = match bool::from(b.is_identity()) {
+            true => ([0; 16], [0; 16]),
+            false => glv_split(s.to_repr().as_ref(), lambda, &m),
+        };
         let p = Affine::from(b);
         let phi = Affine {
             x: p.x * beta,
@@ -722,18 +414,10 @@ pub fn msm_xyzz_glv_with_window<C: CurveAffine>(
         };
         [(k1, p), (k2, phi)]
     };
-    let (scalars, points): (Vec<[u8; 16]>, Vec<Affine<C>>) = if coeffs.len() < 1 << 12 {
-        coeffs.iter().zip(bases).filter(not_identity).flat_map(split).unzip()
-    } else {
-        coeffs
-            .par_iter()
-            .zip(bases.par_iter())
-            .filter(not_identity)
-            .flat_map_iter(split)
-            .unzip()
-    };
+    let (scalars, points): (Vec<[u8; 16]>, Vec<Affine<C>>) =
+        coeffs.iter().zip(bases).flat_map(split).unzip();
     let repr = |r: Range<usize>| scalars[r].to_vec();
-    msm_xyzz_core::<C, _, _, _>(
+    pippenger::<C, _, _, _>(
         scalars.len(),
         repr,
         |i| (&points[i].x, &points[i].y),
@@ -746,7 +430,7 @@ pub fn msm_xyzz_glv_with_window<C: CurveAffine>(
 /// on a Ryzen 5950X (32 threads), aarch64 on an Apple M3 Max (12 performance and 4
 /// efficiency cores), which wants wider windows.
 #[doc(hidden)]
-pub fn xyzz_window(n: usize) -> usize {
+pub fn window_size(n: usize) -> usize {
     let k = n.max(1).ilog2();
     if cfg!(target_arch = "aarch64") {
         match k {
@@ -775,7 +459,7 @@ pub fn xyzz_window(n: usize) -> usize {
 /// The point-chunk count for window size `c`: the least cost, as parallel rounds times one
 /// tile's work (its bucket additions, then summing its buckets); chunks of the terms give
 /// more tiles when there are fewer windows than threads, as in blst's `breakdown`
-fn xyzz_chunks(n: usize, nbits: usize, c: usize, threads: usize) -> usize {
+fn chunk_count(n: usize, nbits: usize, c: usize, threads: usize) -> usize {
     let windows = nbits / c + 1;
     let mut best = (usize::MAX, 1);
     for chunks in 1..=threads.max(1) {
@@ -936,68 +620,31 @@ impl<F: FieldInto> AffineBuckets<F> {
         }
     }
 
-    /// `λ = (y - y_b) / (x - x_b)`, `x' = λ² - x_b - x`, `y' = λ(x_b - x') - y_b` for the batch
+    /// Adds the batch ([`add_with_inverse`]), one inversion for all
     fn add_batch<'a>(&mut self, xy: &impl Fn(usize) -> (&'a F, &'a F))
     where
         F: 'a,
     {
         let len = self.batch.len();
-        if len == 0 {
-            return;
-        }
-        for (j, p) in self.batch.iter_mut().enumerate() {
-            F::sub_into(&mut self.dx[j], xy(p.point).0, &self.buckets[p.bucket].x);
+        for (p, dx) in self.batch.iter_mut().zip(&mut self.dx) {
+            F::sub_into(dx, xy(p.point).0, &self.buckets[p.bucket].x);
             // Doubles or cancels: added apart from the batch, below
-            p.same_x = self.dx[j].is_zero_vartime();
+            p.same_x = dx.is_zero_vartime();
             if p.same_x {
-                self.dx[j] = F::ONE;
-            }
-            if j == 0 {
-                self.prefix[0] = self.dx[0];
-            } else {
-                let (done, rest) = self.prefix.split_at_mut(j);
-                F::mul_into(&mut rest[0], &done[j - 1], &self.dx[j]);
+                *dx = F::ONE;
             }
         }
-        // Non-zero: a product of non-zero differences
-        let mut inv = self.prefix[len - 1].invert().unwrap();
-        let (mut inv_j, mut lambda, mut t, mut d) = (F::ZERO, F::ZERO, F::ZERO, F::ZERO);
-        for j in (0..len).rev() {
-            let p = self.batch[j];
-            let inv_j = if j > 0 {
-                F::mul_into(&mut inv_j, &inv, &self.prefix[j - 1]);
-                inv *= &self.dx[j];
-                &inv_j
-            } else {
-                &inv
-            };
+        invert_all(&mut self.dx[..len], &mut self.prefix);
+        for (p, inv) in self.batch.iter().zip(&self.dx) {
             let bucket = &mut self.buckets[p.bucket];
             bucket.queued = false;
             let (x, y) = xy(p.point);
             if p.same_x {
                 self.side[p.bucket].add_affine(x, y, p.negate);
                 self.sides = true;
-                continue;
-            }
-            // Adding -P, the slope is -λ' for λ' = (y + y_b) / (x - x_b), and then
-            // y' = λ'(x' - x_b) - y_b: no negation
-            if p.negate {
-                F::add_into(&mut t, y, &bucket.y);
             } else {
-                F::sub_into(&mut t, y, &bucket.y);
+                add_with_inverse(&mut bucket.x, &mut bucket.y, x, y, p.negate, inv);
             }
-            F::mul_into(&mut lambda, &t, inv_j);
-            F::square_into(&mut t, &lambda);
-            t -= &bucket.x;
-            t -= x;
-            if p.negate {
-                F::sub_into(&mut d, &t, &bucket.x);
-            } else {
-                F::sub_into(&mut d, &bucket.x, &t);
-            }
-            bucket.x = t;
-            F::mul_into(&mut t, &lambda, &d);
-            F::rsub_assign(&mut bucket.y, &t);
         }
         self.batch.clear();
     }
@@ -1104,7 +751,7 @@ fn add_lanes<'a, F: FieldInto + 'a>(
     dx: &mut [F],
     prefix: &mut [F],
 ) -> bool {
-    // Lanes with both points: their differences, and running products of those
+    // Lanes with both points: their x differences
     let mut m = 0;
     for (l, d) in dst.iter_mut().enumerate() {
         let s = src(l);
@@ -1119,48 +766,67 @@ fn add_lanes<'a, F: FieldInto + 'a>(
         if dx[m].is_zero_vartime() {
             return false;
         }
-        if m == 0 {
-            prefix[0] = dx[0];
-        } else {
-            let (done, rest) = prefix.split_at_mut(m);
-            F::mul_into(&mut rest[0], &done[m - 1], &dx[m]);
-        }
         d.queued = true;
         m += 1;
     }
-    if m == 0 {
-        return true;
-    }
-    let mut inv = prefix[m - 1].invert().unwrap();
-    let (mut inv_j, mut lambda, mut t, mut e) = (F::ZERO, F::ZERO, F::ZERO, F::ZERO);
-    for l in (0..dst.len()).rev() {
-        if !dst[l].queued {
-            continue;
-        }
-        m -= 1;
-        let inv_j = if m > 0 {
-            F::mul_into(&mut inv_j, &inv, &prefix[m - 1]);
-            inv *= &dx[m];
-            &inv_j
-        } else {
-            &inv
-        };
-        let (s, d) = (src(l), &mut dst[l]);
+    invert_all(&mut dx[..m], prefix);
+    let mut inv = dx.iter();
+    for (l, d) in dst.iter_mut().enumerate().filter(|(_, d)| d.queued) {
+        let s = src(l);
         d.queued = false;
-        F::sub_into(&mut t, &s.y, &d.y);
-        F::mul_into(&mut lambda, &t, inv_j);
-        F::square_into(&mut t, &lambda);
-        t -= &d.x;
-        t -= &s.x;
-        F::sub_into(&mut e, &d.x, &t);
-        d.x = t;
-        F::mul_into(&mut t, &lambda, &e);
-        F::rsub_assign(&mut d.y, &t);
+        add_with_inverse(&mut d.x, &mut d.y, &s.x, &s.y, false, inv.next().unwrap());
     }
     true
 }
 
-/// Scalars converted together by [`msm_xyzz_core`]'s tiles
+/// Montgomery's trick: `values` (all non-zero) become their inverses, for one inversion and
+/// 3M each; `scratch` (at least as long) holds the running products
+fn invert_all<F: FieldInto>(values: &mut [F], scratch: &mut [F]) {
+    let Some(last) = values.len().checked_sub(1) else {
+        return;
+    };
+    scratch[0] = values[0];
+    for j in 1..values.len() {
+        let (done, rest) = scratch.split_at_mut(j);
+        F::mul_into(&mut rest[0], &done[j - 1], &values[j]);
+    }
+    let mut inv = scratch[last].invert().unwrap();
+    for j in (1..values.len()).rev() {
+        // 1/v_j = (v_0···v_j)^-1 · (v_0···v_{j-1})
+        let (done, rest) = scratch.split_at_mut(j);
+        F::mul_into(&mut rest[0], &inv, &done[j - 1]);
+        inv *= &values[j];
+        values[j] = rest[0];
+    }
+    values[0] = inv;
+}
+
+/// `(x1, y1) += (x2, ±y2)` (`-y2` if `negate`), given `inv = 1/(x2 - x1)`:
+/// `λ = (y2 - y1)·inv`, `x' = λ² - x1 - x2`, `y' = λ(x1 - x') - y1`. Adding `-P`, the slope is
+/// `-λ'` for `λ' = (y2 + y1)·inv`, and then `y' = λ'(x' - x1) - y1`: no negation needed.
+#[inline]
+fn add_with_inverse<F: FieldInto>(x1: &mut F, y1: &mut F, x2: &F, y2: &F, negate: bool, inv: &F) {
+    let (mut lambda, mut t, mut d) = (F::ZERO, F::ZERO, F::ZERO);
+    if negate {
+        F::add_into(&mut t, y2, y1);
+    } else {
+        F::sub_into(&mut t, y2, y1);
+    }
+    F::mul_into(&mut lambda, &t, inv);
+    F::square_into(&mut t, &lambda);
+    t -= &*x1;
+    t -= x2;
+    if negate {
+        F::sub_into(&mut d, &t, x1);
+    } else {
+        F::sub_into(&mut d, x1, &t);
+    }
+    *x1 = t;
+    F::mul_into(&mut t, &lambda, &d);
+    F::rsub_assign(y1, &t);
+}
+
+/// Scalars converted together by [`pippenger`]'s tiles
 const SCALAR_BLOCK: usize = 256;
 
 /// The Pippenger over `n` affine points `xy(i)` (none the identity) and little-endian
@@ -1170,7 +836,7 @@ const SCALAR_BLOCK: usize = 256;
 /// so the conversion runs in parallel with no fork-join of its own. Each tile visits its
 /// blocks starting at its own offset, so the first tiles, which start together, convert
 /// different blocks rather than queue on one.
-fn msm_xyzz_core<'a, C: CurveAffine, S: AsRef<[u8]> + Send + Sync, R, XY>(
+fn pippenger<'a, C: CurveAffine, S: AsRef<[u8]> + Send + Sync, R, XY>(
     n: usize,
     repr: R,
     xy: XY,
@@ -1189,7 +855,7 @@ where
 
     let windows = nbits / c + 1;
     let threads = rayon::current_num_threads();
-    let chunks = xyzz_chunks(n, nbits, c, threads);
+    let chunks = chunk_count(n, nbits, c, threads);
     // Whole blocks per chunk
     let chunk = n.div_ceil(chunks).next_multiple_of(SCALAR_BLOCK);
     let blocks: Vec<OnceLock<Vec<S>>> =
@@ -1298,6 +964,8 @@ where
 ///
 /// This function will panic if coeffs and bases have a different length.
 pub fn msm_serial<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C], acc: &mut C::Curve) {
+    let coeffs: Vec<_> = coeffs.iter().map(|a| a.to_repr()).collect();
+
     let c = if bases.len() < 4 {
         1
     } else if bases.len() < 32 {
@@ -1305,18 +973,6 @@ pub fn msm_serial<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C], acc: &mut C
     } else {
         (f64::from(bases.len() as u32)).ln().ceil() as usize
     };
-    msm_serial_with_window(coeffs, bases, acc, c)
-}
-
-/// [`msm_serial`] with window size `c`
-#[doc(hidden)]
-pub fn msm_serial_with_window<C: CurveAffine>(
-    coeffs: &[C::Scalar],
-    bases: &[C],
-    acc: &mut C::Curve,
-    c: usize,
-) {
-    let coeffs: Vec<_> = coeffs.iter().map(|a| a.to_repr()).collect();
 
     let field_byte_size = C::Scalar::NUM_BITS.div_ceil(8u32) as usize;
     // OR all coefficients in order to make a mask to figure out the maximum number
@@ -1427,7 +1083,7 @@ pub fn msm_parallel<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Cur
 }
 
 /// The multi-scalar multiplication `Σ coeffs[i]·bases[i]`: a Pippenger over blst-style tiles,
-/// with batched affine buckets from window 7 and XYZZ ones below ([`msm_xyzz_with_window`]),
+/// with batched affine buckets from window 7 and XYZZ ones below ([`msm_with_window`]),
 /// through the GLV endomorphism ([`CurveAffine::glv`]) for 32..128 terms, and one scalar
 /// multiplication per term below 32. Parallel; identity bases contribute nothing.
 ///
@@ -1439,74 +1095,9 @@ pub fn msm_best<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
     // Measured on BLS12-381 G1: GLV halves the doublings, which pays only while they are
     // a large share of the work
     if (32..128).contains(&bases.len()) && C::glv().is_some() {
-        return msm_xyzz_glv_with_window(coeffs, bases, 5);
+        return msm_glv_with_window(coeffs, bases, 5);
     }
-    msm_xyzz_with_window(coeffs, bases, xyzz_window(bases.len()))
-}
-
-/// The previous [`msm_best`]: a batch-affine Pippenger with window size `c`, parallel over
-/// the windows; kept for comparison
-#[doc(hidden)]
-pub fn msm_batch_affine_with_window<C: CurveAffine>(
-    coeffs: &[C::Scalar],
-    bases: &[C],
-    c: usize,
-) -> C::Curve {
-    // Filter out identities. Transform scalars to bytes and bases to affine.
-    let (coeffs, (bases, bases_local)): (Vec<_>, (Vec<_>, Vec<_>)) = coeffs
-        .par_iter()
-        .zip(bases.par_iter())
-        .filter(|(_, b)| !bool::from(b.is_identity()))
-        .map(|(c, b)| (c.to_repr(), (*b, Affine::from(b))))
-        .unzip();
-
-    // number of windows
-    let number_of_windows = C::Scalar::NUM_BITS as usize / c + 1;
-    // accumumator for each window
-    let mut acc = vec![C::Curve::identity(); number_of_windows];
-    acc.par_iter_mut().enumerate().for_each(|(w, acc)| {
-        // jacobian buckets for already scheduled points
-        let mut j_bucks = vec![Bucket::<C>::None; 1 << (c - 1)];
-
-        // schedular for affine addition
-        let mut sched = Schedule::new(c);
-
-        for (base_idx, coeff) in coeffs.iter().enumerate() {
-            let buck_idx = get_booth_index(w, c, coeff.as_ref());
-
-            if buck_idx != 0 {
-                // parse bucket index
-                let sign = buck_idx.is_positive();
-                let buck_idx = buck_idx.unsigned_abs() as usize - 1;
-
-                if sched.contains(buck_idx) {
-                    // greedy accumulation
-                    j_bucks[buck_idx].add_assign(&bases[base_idx], sign);
-                } else {
-                    // also flushes the schedule if full
-                    sched.add(&bases_local, base_idx, buck_idx, sign);
-                }
-            }
-        }
-
-        // flush the schedule
-        sched.execute(&bases_local);
-
-        // summation by parts
-        // e.g. 3a + 2b + 1c = a +
-        //                    (a) + b +
-        //                    ((a) + b) + c
-        let mut running_sum = C::Curve::identity();
-        for (j_buck, a_buck) in j_bucks.iter().zip(sched.buckets.iter()).rev() {
-            running_sum += j_buck.add(a_buck);
-            *acc += running_sum;
-        }
-    });
-    // Horner's rule over the windows, most significant first: `c` doublings between
-    // windows, 256 in all, instead of shifting each window by `c·w` doublings
-    acc.into_iter().rev().fold(C::Curve::identity(), |sum, window| {
-        (0..c).fold(sum, |sum, _| sum.double()) + window
-    })
+    msm_with_window(coeffs, bases, window_size(bases.len()))
 }
 
 #[cfg(test)]
@@ -1601,7 +1192,7 @@ mod test {
             let expected = super::msm_parallel(&scalars, &points);
             for c in [2, 4, 7, 11] {
                 assert_eq!(
-                    super::msm_xyzz_with_window(&scalars, &points, c),
+                    super::msm_with_window(&scalars, &points, c),
                     expected,
                     "n {n} c {c}"
                 );
@@ -1612,13 +1203,10 @@ mod test {
         let s = Fr::random(OsRng);
         let points = vec![p; 64];
         let scalars: Vec<_> = (0..64).map(|i| if i % 2 == 0 { s } else { -s }).collect();
-        assert_eq!(
-            super::msm_xyzz_with_window(&scalars, &points, 5),
-            G1::identity()
-        );
+        assert_eq!(super::msm_with_window(&scalars, &points, 5), G1::identity());
         let scalars = vec![s; 64];
         assert_eq!(
-            super::msm_xyzz_with_window(&scalars, &points, 5),
+            super::msm_with_window(&scalars, &points, 5),
             (p * s) * Fr::from(64)
         );
     }
@@ -1640,7 +1228,7 @@ mod test {
         assert!(Xyzz::<crate::bn256::Fq>::batch_to_curve::<G1Affine>(&[]).is_empty());
     }
 
-    /// BLS12-381 G1's GLV constants match, `glv_split` is exact, and the MSM agrees
+    /// BLS12-381 G1's GLV constants match, and the MSM agrees
     #[test]
     fn test_glv() {
         use crate::{G1Affine as Bls, G1Projective};
@@ -1650,20 +1238,6 @@ mod test {
         let phi = Bls::from_xy(p.x() * beta, p.y()).unwrap();
         let lambda_s = crate::Fq::from_u128(lambda);
         assert_eq!(phi, (p * lambda_s).to_affine(), "β does not match λ");
-        for k in [
-            crate::Fq::ZERO,
-            crate::Fq::ONE,
-            -crate::Fq::ONE,
-            crate::Fq::random(OsRng),
-        ] {
-            let (k1, k2) = super::glv_split(k.to_repr().as_ref(), lambda);
-            let (k1, k2) = (u128::from_le_bytes(k1), u128::from_le_bytes(k2));
-            assert!(k1 < lambda);
-            assert_eq!(
-                crate::Fq::from_u128(k1) + crate::Fq::from_u128(k2) * lambda_s,
-                k
-            );
-        }
         for n in [64, 65, 1000] {
             let (scalars, points): (Vec<_>, Vec<_>) = (0..n)
                 .map(|_| {
@@ -1676,7 +1250,7 @@ mod test {
             let expected = Bls::multi_exp_affine(&points, &scalars);
             for c in [4, 8, 11] {
                 assert_eq!(
-                    super::msm_xyzz_glv_with_window(&scalars, &points, c),
+                    super::msm_glv_with_window(&scalars, &points, c),
                     expected,
                     "n {n} c {c}"
                 );
@@ -1686,7 +1260,7 @@ mod test {
 
     /// BLS12-381 G1 reads coordinates in place; identity bases (every fifth) must count as zero
     #[test]
-    fn test_xyzz_in_place_with_identities() {
+    fn test_msm_in_place_with_identities() {
         use crate::{G1Affine as Bls, G1Projective};
         for n in [32, 33, 100, 1000] {
             let (scalars, points): (Vec<_>, Vec<_>) = (0..n)
@@ -1705,7 +1279,7 @@ mod test {
                 .fold(G1Projective::identity(), |acc, (s, p)| acc + p * s);
             for c in [4, 9, 13] {
                 assert_eq!(
-                    super::msm_xyzz_with_window(&scalars, &points, c),
+                    super::msm_with_window(&scalars, &points, c),
                     expected,
                     "n {n} c {c}"
                 );
@@ -1723,7 +1297,7 @@ mod test {
     /// Many threads split the terms into chunks, and the scalar blocks end raggedly: every tile
     /// must still see each term exactly once
     #[test]
-    fn test_xyzz_chunks_and_blocks() {
+    fn test_msm_chunks_and_blocks() {
         use crate::{G1Affine as Bls, G1Projective};
         for n in [1000, 3000] {
             let (scalars, points): (Vec<_>, Vec<_>) = (0..n)
@@ -1741,8 +1315,7 @@ mod test {
             for threads in [16, 64] {
                 let pool = rayon::ThreadPoolBuilder::new().num_threads(threads).build().unwrap();
                 for c in [4, 8, 13, 16] {
-                    let got =
-                        pool.install(|| super::msm_xyzz_with_window::<Bls>(&scalars, &points, c));
+                    let got = pool.install(|| super::msm_with_window::<Bls>(&scalars, &points, c));
                     assert_eq!(got, expected, "n {n} threads {threads} c {c}");
                 }
             }
@@ -1752,7 +1325,7 @@ mod test {
     /// Repeated and negated bases: batched affine additions that would double or cancel a
     /// bucket must take the XYZZ route
     #[test]
-    fn test_xyzz_repeated_and_negated_bases() {
+    fn test_msm_repeated_and_negated_bases() {
         use crate::{G1Affine as Bls, G1Projective};
         let p = G1Projective::random(OsRng).to_affine();
         let q = G1Projective::random(OsRng).to_affine();
@@ -1766,7 +1339,7 @@ mod test {
                 .fold(G1Projective::identity(), |acc, (s, p)| acc + p * s);
             for c in [4, 7, 8, 10, 13] {
                 assert_eq!(
-                    super::msm_xyzz_with_window(&scalars, &points, c),
+                    super::msm_with_window(&scalars, &points, c),
                     expected,
                     "n {n} c {c}"
                 );
@@ -1774,9 +1347,9 @@ mod test {
         }
     }
 
-    /// The Barrett split agrees with the long division, on edge cases and at random
+    /// The split is exact, `k1 + k2·λ = k` with `k1 < λ`, on edge cases and at random
     #[test]
-    fn test_glv_split_fast() {
+    fn test_glv_split() {
         use crate::G1Affine as Bls;
         use ff::PrimeField;
         let (_, lambda) = Bls::glv().unwrap();
@@ -1794,11 +1367,10 @@ mod test {
         ];
         ks.extend((0..10_000).map(|_| crate::Fq::random(OsRng)));
         for k in ks {
-            let r = k.to_repr();
-            assert_eq!(
-                super::glv_split_fast(r.as_ref(), lambda, &m),
-                super::glv_split(r.as_ref(), lambda)
-            );
+            let (k1, k2) = super::glv_split(k.to_repr().as_ref(), lambda, &m);
+            let (k1, k2) = (u128::from_le_bytes(k1), u128::from_le_bytes(k2));
+            assert!(k1 < lambda, "k1 not below λ for {k:?}");
+            assert_eq!(crate::Fq::from_u128(k1) + crate::Fq::from_u128(k2) * l, k);
         }
     }
 
