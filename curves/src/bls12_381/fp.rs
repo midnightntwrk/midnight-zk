@@ -947,8 +947,9 @@ impl SerdeObject for Fp {
     }
 }
 
-// SAFETY (each call below): blst reads the input `blst_fp`s and writes `out`'s; all are valid,
-// distinct (`&mut out` cannot alias `a` or `b`) and live for the call.
+// SAFETY (each call below): blst reads the input `blst_fp`s and writes `out`'s;
+// all are valid, distinct (`&mut out` cannot alias `a` or `b`) and live for the
+// call.
 impl crate::curve::FieldInto for Fp {
     #[inline]
     fn mul_into(out: &mut Self, a: &Self, b: &Self) {
