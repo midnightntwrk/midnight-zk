@@ -119,7 +119,7 @@ pub trait CurveAffine:
     ///
     /// The default panics if [`from_xy`](Self::from_xy) rejects the point.
     fn from_xy_unchecked(x: Self::Base, y: Self::Base) -> Self {
-        Self::from_xy(x, y).unwrap()
+        Self::from_xy(x, y).expect("from_xy_unchecked: the caller vouches for (x, y)")
     }
 
     /// Returns whether or not this element is on the curve; should
@@ -142,7 +142,8 @@ pub trait CurveAffine:
     }
 
     /// The affine coordinates, borrowed, if the representation holds them as `Base`s (MSMs
-    /// then read them in place instead of copying them out). Not for the identity.
+    /// then read them in place instead of copying them out). All or nothing for a type:
+    /// `Some` for every point or for none. Meaningless for the identity.
     #[doc(hidden)]
     fn xy_ref(&self) -> Option<(&Self::Base, &Self::Base)> {
         None
