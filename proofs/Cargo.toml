@@ -24,10 +24,6 @@ name = "plonk"
 harness = false
 
 [[bench]]
-name = "msm_specific"
-harness = false
-
-[[bench]]
 name = "zswap_output"
 required-features = ["bench-internal"]
 harness = false
