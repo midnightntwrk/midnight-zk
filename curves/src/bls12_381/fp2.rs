@@ -321,6 +321,8 @@ impl crate::ff_ext::Legendre for Fp2 {
     }
 }
 
+impl crate::curve::FieldInto for Fp2 {}
+
 #[cfg(test)]
 mod tests {
     use rand_core::SeedableRng;

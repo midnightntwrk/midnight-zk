@@ -580,16 +580,26 @@ impl Field for Fp {
     // Returns `1 mod p` in Montgomery form `1 * R mod p`;
     const ONE: Self = R;
 
+    #[inline]
     fn is_zero(&self) -> Choice {
         self.ct_eq(&ZERO)
     }
 
+    /// Montgomery form keeps zero as all-zero limbs
+    #[inline]
+    fn is_zero_vartime(&self) -> bool {
+        // An OR of the limbs, not `==` on the arrays, which calls `bcmp`
+        self.0.l.iter().fold(0, |acc, l| acc | l) == 0
+    }
+
+    #[inline]
     fn square(&self) -> Self {
         let mut sq = *self;
         unsafe { blst_fp_sqr(&mut sq.0, &self.0) }
         sq
     }
 
+    #[inline]
     fn double(&self) -> Self {
         let mut out = *self;
         out += self;
@@ -934,6 +944,42 @@ impl SerdeObject for Fp {
             writer.write_all(&limb.to_le_bytes())?;
         }
         Ok(())
+    }
+}
+
+// SAFETY (each call below): blst reads the input `blst_fp`s and writes `out`'s;
+// all are valid, distinct (`&mut out` cannot alias `a` or `b`) and live for the
+// call.
+impl crate::curve::FieldInto for Fp {
+    #[inline]
+    fn mul_into(out: &mut Self, a: &Self, b: &Self) {
+        unsafe { blst_fp_mul(&mut out.0, &a.0, &b.0) }
+    }
+
+    #[inline]
+    fn square_into(out: &mut Self, a: &Self) {
+        unsafe { blst_fp_sqr(&mut out.0, &a.0) }
+    }
+
+    #[inline]
+    fn add_into(out: &mut Self, a: &Self, b: &Self) {
+        unsafe { blst_fp_add(&mut out.0, &a.0, &b.0) }
+    }
+
+    #[inline]
+    fn sub_into(out: &mut Self, a: &Self, b: &Self) {
+        unsafe { blst_fp_sub(&mut out.0, &a.0, &b.0) }
+    }
+
+    #[inline]
+    fn neg_into(out: &mut Self, a: &Self) {
+        unsafe { blst_fp_cneg(&mut out.0, &a.0, true) }
+    }
+
+    #[inline]
+    fn rsub_assign(a: &mut Self, b: &Self) {
+        // blst allows its output to alias an input
+        unsafe { blst_fp_sub(&mut a.0, &b.0, &a.0) }
     }
 }
 
