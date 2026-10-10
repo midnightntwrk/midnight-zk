@@ -67,8 +67,8 @@ struct Affine<C: CurveAffine> {
 }
 
 impl<C: CurveAffine> Affine<C> {
-    /// The coordinates, or zeros for the identity (whose scalar the MSM then zeroes, so they
-    /// are never read)
+    /// The coordinates, or zeros for the identity (whose scalar the MSM then
+    /// zeroes, so they are never read)
     fn from(point: &C) -> Self {
         match Option::<crate::Coordinates<C>>::from(point.coordinates()) {
             Some(c) => Self {
@@ -83,9 +83,10 @@ impl<C: CurveAffine> Affine<C> {
     }
 }
 
-/// A point in XYZZ coordinates, `(x, y) = (X/ZZ, Y/ZZZ)` with `ZZ^3 = ZZZ^2`; the identity has
-/// `ZZ = ZZZ = 0`. Adding an affine point costs 8M + 2S and no inversion, which makes these
-/// good Pippenger buckets (as in blst). The formulas assume `a = 0`.
+/// A point in XYZZ coordinates, `(x, y) = (X/ZZ, Y/ZZZ)` with `ZZ^3 = ZZZ^2`;
+/// the identity has `ZZ = ZZZ = 0`. Adding an affine point costs 8M + 2S and no
+/// inversion, which makes these good Pippenger buckets (as in blst). The
+/// formulas assume `a = 0`.
 #[derive(Clone, Copy, Debug)]
 struct Xyzz<F> {
     x: F,
@@ -118,9 +119,10 @@ impl<F: FieldInto> Xyzz<F> {
         self.zz.is_zero_vartime() && self.zzz.is_zero_vartime()
     }
 
-    /// `self += (x2, y2)`, or `-= ` if `negate`, for an affine point `(x2, y2)` on the curve
-    /// (EFD madd-2008-s; [`Self::double`] when the points are equal). Like blst, every result
-    /// is written where it is needed ([`FieldInto`]), never copied while fresh.
+    /// `self += (x2, y2)`, or `-= ` if `negate`, for an affine point `(x2, y2)`
+    /// on the curve (EFD madd-2008-s; [`Self::double`] when the points are
+    /// equal). Like blst, every result is written where it is needed
+    /// ([`FieldInto`]), never copied while fresh.
     fn add_affine(&mut self, x2: &F, y2: &F, negate: bool) {
         let mut neg_y2 = F::ZERO;
         let y2 = if negate {
@@ -168,7 +170,8 @@ impl<F: FieldInto> Xyzz<F> {
         }
     }
 
-    /// `self += other` (EFD add-2008-s, and dbl-2008-s-1 when the points are equal)
+    /// `self += other` (EFD add-2008-s, and dbl-2008-s-1 when the points are
+    /// equal)
     fn add(&mut self, other: &Self) {
         if other.is_identity() {
             return;
@@ -269,7 +272,8 @@ impl<F: FieldInto> Xyzz<F> {
     }
 }
 
-/// One scalar multiplication per term, in parallel, then their sum: best for a few terms
+/// One scalar multiplication per term, in parallel, then their sum: best for a
+/// few terms
 #[doc(hidden)]
 pub fn msm_pointwise<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
     coeffs
@@ -279,9 +283,10 @@ pub fn msm_pointwise<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Cu
         .reduce(C::Curve::identity, |a, b| a + b)
 }
 
-/// Pippenger parallel over tiles of windows × chunks of the terms (blst's design), with
-/// batched affine buckets from `c = 7` ([`AffineBuckets`], gnark's) and XYZZ buckets below;
-/// window size `c`. Below 32 terms, one scalar multiplication per term instead.
+/// Pippenger parallel over tiles of windows × chunks of the terms (blst's
+/// design), with batched affine buckets from `c = 7` ([`AffineBuckets`],
+/// gnark's) and XYZZ buckets below; window size `c`. Below 32 terms, one scalar
+/// multiplication per term instead.
 #[doc(hidden)]
 pub fn msm_with_window<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C], c: usize) -> C::Curve {
     assert_eq!(coeffs.len(), bases.len());
@@ -289,8 +294,8 @@ pub fn msm_with_window<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C], c: usi
         return msm_pointwise(coeffs, bases);
     }
     let nbits = C::Scalar::NUM_BITS as usize;
-    // Scalars converted by the tiles as they need them; an identity base gets a zero scalar,
-    // so it is never added (nor its coordinates read)
+    // Scalars converted by the tiles as they need them; an identity base gets a
+    // zero scalar, so it is never added (nor its coordinates read)
     let zero = C::Scalar::ZERO.to_repr();
     let repr = |r: Range<usize>| -> Vec<_> {
         let repr = |i: usize| match bool::from(bases[i].is_identity()) {
@@ -313,11 +318,11 @@ pub fn msm_with_window<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C], c: usi
     pippenger::<C, _, _, _>(coeffs.len(), repr, xy, nbits, c)
 }
 
-/// `⌊2^256 / λ⌋` as little-endian limbs (129 bits for a 128-bit `λ`), by long division:
-/// the Barrett constant for [`glv_split`]
+/// `⌊2^256 / λ⌋` as little-endian limbs (129 bits for a 128-bit `λ`), by long
+/// division: the Barrett constant for [`glv_split`]
 fn glv_reciprocal(lambda: u128) -> [u64; 3] {
-    // The numerator is a 1 followed by 256 zeros; its leading 1 is below λ, so that quotient
-    // bit is 0 and the remainder starts at 1
+    // The numerator is a 1 followed by 256 zeros; its leading 1 is below λ, so that
+    // quotient bit is 0 and the remainder starts at 1
     let (mut rem, mut q) = (1u128, [0u64; 3]);
     for _ in 0..256 {
         let carry = rem >> 127;
@@ -335,9 +340,10 @@ fn glv_reciprocal(lambda: u128) -> [u64; 3] {
     q
 }
 
-/// `k = k2·λ + k1` with `k1 < λ`, for a little-endian `k < 2^128 λ`: the GLV halves,
-/// little-endian. By Barrett reduction with `m = glv_reciprocal(λ)`: `(k·m) >> 256` is at
-/// most 2 below `⌊k/λ⌋`, and the remainder is corrected by subtracting `λ`
+/// `k = k2·λ + k1` with `k1 < λ`, for a little-endian `k < 2^128 λ`: the GLV
+/// halves, little-endian. By Barrett reduction with `m = glv_reciprocal(λ)`:
+/// `(k·m) >> 256` is at most 2 below `⌊k/λ⌋`, and the remainder is corrected by
+/// subtracting `λ`
 #[doc(hidden)]
 pub fn glv_split(k: &[u8], lambda: u128, m: &[u64; 3]) -> ([u8; 16], [u8; 16]) {
     let mut bytes = [0u8; 32];
@@ -386,8 +392,8 @@ pub fn glv_split(k: &[u8], lambda: u128, m: &[u64; 3]) -> ([u8; 16], [u8; 16]) {
     (rem.to_le_bytes(), q.to_le_bytes())
 }
 
-/// [`msm_with_window`] through a GLV endomorphism ([`CurveAffine::glv`]): twice the terms,
-/// with 128-bit scalars, so half the windows and doublings.
+/// [`msm_with_window`] through a GLV endomorphism ([`CurveAffine::glv`]): twice
+/// the terms, with 128-bit scalars, so half the windows and doublings.
 #[doc(hidden)]
 pub fn msm_glv_with_window<C: CurveAffine>(
     coeffs: &[C::Scalar],
@@ -427,9 +433,9 @@ pub fn msm_glv_with_window<C: CurveAffine>(
     )
 }
 
-/// The Pippenger's window size for `n` terms, measured on BLS12-381 G1 by sweeping it: x86-64
-/// on a Ryzen 5950X (32 threads), aarch64 on an Apple M3 Max (12 performance and 4
-/// efficiency cores), which wants wider windows.
+/// The Pippenger's window size for `n` terms, measured on BLS12-381 G1 by
+/// sweeping it: x86-64 on a Ryzen 5950X (32 threads), aarch64 on an Apple M3
+/// Max (12 performance and 4 efficiency cores), which wants wider windows.
 #[doc(hidden)]
 pub fn window_size(n: usize) -> usize {
     let k = n.max(1).ilog2();
@@ -457,9 +463,10 @@ pub fn window_size(n: usize) -> usize {
     }
 }
 
-/// The point-chunk count for window size `c`: the least cost, as parallel rounds times one
-/// tile's work (its bucket additions, then summing its buckets); chunks of the terms give
-/// more tiles when there are fewer windows than threads, as in blst's `breakdown`
+/// The point-chunk count for window size `c`: the least cost, as parallel
+/// rounds times one tile's work (its bucket additions, then summing its
+/// buckets); chunks of the terms give more tiles when there are fewer windows
+/// than threads, as in blst's `breakdown`
 fn chunk_count(n: usize, nbits: usize, c: usize, threads: usize) -> usize {
     let windows = nbits / c + 1;
     let mut best = (usize::MAX, 1);
@@ -489,21 +496,24 @@ fn integrate_and_clear<F: FieldInto>(buckets: &mut [Xyzz<F>]) -> Xyzz<F> {
     sum
 }
 
-/// Pippenger buckets in affine form, added to in batches: one inversion serves a whole batch
-/// of slopes (Montgomery's trick), so an addition costs 5M + 1S and a share of the inversion,
-/// against 8M + 2S into an XYZZ bucket (as in gnark). A point whose bucket is already in the
-/// batch waits for the next one; past a batch's worth of those, or if it would double or
-/// cancel its bucket, it goes to an XYZZ bucket beside it.
+/// Pippenger buckets in affine form, added to in batches: one inversion serves
+/// a whole batch of slopes (Montgomery's trick), so an addition costs 5M + 1S
+/// and a share of the inversion, against 8M + 2S into an XYZZ bucket (as in
+/// gnark). A point whose bucket is already in the batch waits for the next one;
+/// past a batch's worth of those, or if it would double or cancel its bucket,
+/// it goes to an XYZZ bucket beside it.
 struct AffineBuckets<F> {
     buckets: Vec<AffineBucket<F>>,
     side: Vec<Xyzz<F>>,
     /// Whether any `side` bucket is in use
     sides: bool,
-    /// Awaiting the next batch, with their `x` differences and the running products of those
+    /// Awaiting the next batch, with their `x` differences and the running
+    /// products of those
     batch: Vec<Pending>,
     dx: Vec<F>,
     prefix: Vec<F>,
-    /// Waiting for their bucket to leave the batch (and `spare`, its double buffer)
+    /// Waiting for their bucket to leave the batch (and `spare`, its double
+    /// buffer)
     waiting: Vec<Pending>,
     spare: Vec<Pending>,
     /// Running sums for the lanes of [`Self::integrate_lanes`]
@@ -511,8 +521,8 @@ struct AffineBuckets<F> {
     sum: Vec<AffineBucket<F>>,
 }
 
-/// An affine bucket (or running sum): its point when `full`; `queued` while it has an
-/// addition in the batch
+/// An affine bucket (or running sum): its point when `full`; `queued` while it
+/// has an addition in the batch
 #[derive(Clone, Copy)]
 struct AffineBucket<F> {
     x: F,
@@ -521,8 +531,9 @@ struct AffineBucket<F> {
     queued: bool,
 }
 
-/// `buckets[bucket] += ±points[point]`, batched; `same_x` if the point shares the bucket's `x`, so
-/// the addition doubles or cancels it (no slope: added in XYZZ instead)
+/// `buckets[bucket] += ±points[point]`, batched; `same_x` if the point shares
+/// the bucket's `x`, so the addition doubles or cancels it (no slope: added in
+/// XYZZ instead)
 #[derive(Clone, Copy)]
 struct Pending {
     bucket: usize,
@@ -531,8 +542,8 @@ struct Pending {
     same_x: bool,
 }
 
-/// At most this many lanes of running sums when summing the buckets (an eighth of them is
-/// best, measured on BLS12-381 G1, single core)
+/// At most this many lanes of running sums when summing the buckets (an eighth
+/// of them is best, measured on BLS12-381 G1, single core)
 const LANES: usize = 128;
 
 impl<F: FieldInto> AffineBuckets<F> {
@@ -601,8 +612,8 @@ impl<F: FieldInto> AffineBuckets<F> {
         }
     }
 
-    /// Adds the batch, then queues the waiting points whose buckets it freed, again while
-    /// they fill a batch
+    /// Adds the batch, then queues the waiting points whose buckets it freed,
+    /// again while they fill a batch
     fn flush<'a>(&mut self, xy: &impl Fn(usize) -> (&'a F, &'a F))
     where
         F: 'a,
@@ -650,7 +661,8 @@ impl<F: FieldInto> AffineBuckets<F> {
         self.batch.clear();
     }
 
-    /// `Σ (b + 1)·buckets[b]` over the first `used` buckets, emptying them for reuse
+    /// `Σ (b + 1)·buckets[b]` over the first `used` buckets, emptying them for
+    /// reuse
     fn integrate_and_clear<'a>(
         &mut self,
         used: usize,
@@ -702,10 +714,11 @@ impl<F: FieldInto> AffineBuckets<F> {
         sum
     }
 
-    /// `Σ (b + 1)·buckets[b]` by running sums over `lanes` contiguous segments of the buckets
-    /// at once, each step's additions sharing one inversion; the segments' sums then
-    /// combine as `Σ_l (sum_l + l·seg·acc_l)`. Nothing if an addition would double or
-    /// cancel (the caller then sums in XYZZ).
+    /// `Σ (b + 1)·buckets[b]` by running sums over `lanes` contiguous segments
+    /// of the buckets at once, each step's additions sharing one inversion;
+    /// the segments' sums then combine as `Σ_l (sum_l + l·seg·acc_l)`.
+    /// Nothing if an addition would double or cancel (the caller then sums
+    /// in XYZZ).
     fn integrate_lanes(&mut self, used: usize, lanes: usize) -> Option<Xyzz<F>> {
         let seg = used / lanes;
         debug_assert!(used.is_power_of_two() && lanes.is_power_of_two() && seg >= 1);
@@ -744,8 +757,8 @@ impl<F: FieldInto> AffineBuckets<F> {
     }
 }
 
-/// `dst[l] += src(l)` in every lane, the additions sharing one inversion; false if one would
-/// double or cancel (`dst` is then partly updated)
+/// `dst[l] += src(l)` in every lane, the additions sharing one inversion; false
+/// if one would double or cancel (`dst` is then partly updated)
 fn add_lanes<'a, F: FieldInto + 'a>(
     dst: &mut [AffineBucket<F>],
     src: impl Fn(usize) -> &'a AffineBucket<F>,
@@ -780,8 +793,9 @@ fn add_lanes<'a, F: FieldInto + 'a>(
     true
 }
 
-/// Montgomery's trick: `values` (all non-zero) become their inverses, for one inversion and
-/// 3M each; `scratch` (at least as long) holds the running products
+/// Montgomery's trick: `values` (all non-zero) become their inverses, for one
+/// inversion and 3M each; `scratch` (at least as long) holds the running
+/// products
 fn invert_all<F: FieldInto>(values: &mut [F], scratch: &mut [F]) {
     let Some(last) = values.len().checked_sub(1) else {
         return;
@@ -803,8 +817,9 @@ fn invert_all<F: FieldInto>(values: &mut [F], scratch: &mut [F]) {
 }
 
 /// `(x1, y1) += (x2, ±y2)` (`-y2` if `negate`), given `inv = 1/(x2 - x1)`:
-/// `λ = (y2 - y1)·inv`, `x' = λ² - x1 - x2`, `y' = λ(x1 - x') - y1`. Adding `-P`, the slope is
-/// `-λ'` for `λ' = (y2 + y1)·inv`, and then `y' = λ'(x' - x1) - y1`: no negation needed.
+/// `λ = (y2 - y1)·inv`, `x' = λ² - x1 - x2`, `y' = λ(x1 - x') - y1`. Adding
+/// `-P`, the slope is `-λ'` for `λ' = (y2 + y1)·inv`, and then `y' = λ'(x' -
+/// x1) - y1`: no negation needed.
 #[inline]
 fn add_with_inverse<F: FieldInto>(x1: &mut F, y1: &mut F, x2: &F, y2: &F, negate: bool, inv: &F) {
     let (mut lambda, mut t, mut d) = (F::ZERO, F::ZERO, F::ZERO);
@@ -830,13 +845,15 @@ fn add_with_inverse<F: FieldInto>(x1: &mut F, y1: &mut F, x2: &F, y2: &F, negate
 /// Scalars converted together by [`pippenger`]'s tiles
 const SCALAR_BLOCK: usize = 256;
 
-/// The Pippenger over `n` affine points `xy(i)` (none the identity) and little-endian
-/// scalars of `nbits` bits, `repr(range)` giving those in `range`.
+/// The Pippenger over `n` affine points `xy(i)` (none the identity) and
+/// little-endian scalars of `nbits` bits, `repr(range)` giving those in
+/// `range`.
 ///
-/// The scalars are converted lazily, a block at a time, by whichever tile first needs a block,
-/// so the conversion runs in parallel with no fork-join of its own. Each tile visits its
-/// blocks starting at its own offset, so the first tiles, which start together, convert
-/// different blocks rather than queue on one.
+/// The scalars are converted lazily, a block at a time, by whichever tile first
+/// needs a block, so the conversion runs in parallel with no fork-join of its
+/// own. Each tile visits its blocks starting at its own offset, so the first
+/// tiles, which start together, convert different blocks rather than queue on
+/// one.
 fn pippenger<'a, C: CurveAffine, S: AsRef<[u8]> + Send + Sync, R, XY>(
     n: usize,
     repr: R,
@@ -863,14 +880,16 @@ where
         (0..n.div_ceil(SCALAR_BLOCK)).map(|_| OnceLock::new()).collect();
     let tiles = windows * chunks;
     // Tile `t` is chunk `t % chunks` of window `windows - 1 - t / chunks`: the most
-    // significant windows first, so the combination below can start while the rest run
+    // significant windows first, so the combination below can start while the rest
+    // run
     let results: Vec<OnceLock<Xyzz<C::Base>>> = (0..tiles).map(|_| OnceLock::new()).collect();
     let pending: Vec<AtomicUsize> = (0..windows).map(|_| AtomicUsize::new(chunks)).collect();
     let next = AtomicUsize::new(0);
     let (done_tx, done_rx) = mpsc::channel::<usize>();
     let mut acc = Xyzz::identity();
-    // Batched affine buckets from 64 buckets up; the batch is a quarter of the buckets, so
-    // few points find theirs already in it (measured on BLS12-381 G1, single core)
+    // Batched affine buckets from 64 buckets up; the batch is a quarter of the
+    // buckets, so few points find theirs already in it (measured on BLS12-381
+    // G1, single core)
     let buckets = 1 << (c - 1);
     let batch = (c >= 7).then(|| (buckets / 4).clamp(64, 256).min(buckets));
     rayon::in_place_scope(|scope| {
@@ -1084,18 +1103,19 @@ pub fn msm_parallel<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Cur
     }
 }
 
-/// The multi-scalar multiplication `Σ coeffs[i]·bases[i]`: a Pippenger over blst-style tiles,
-/// with batched affine buckets from window 7 and XYZZ ones below ([`msm_with_window`]),
-/// through the GLV endomorphism ([`CurveAffine::glv`]) for 32..128 terms, and one scalar
-/// multiplication per term below 32. Parallel; identity bases contribute nothing.
+/// The multi-scalar multiplication `Σ coeffs[i]·bases[i]`: a Pippenger over
+/// blst-style tiles, with batched affine buckets from window 7 and XYZZ ones
+/// below ([`msm_with_window`]), through the GLV endomorphism
+/// ([`CurveAffine::glv`]) for 32..128 terms, and one scalar multiplication per
+/// term below 32. Parallel; identity bases contribute nothing.
 ///
 /// # Panics
 ///
 /// If `coeffs` and `bases` have different lengths.
 pub fn msm_best<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
     assert_eq!(coeffs.len(), bases.len());
-    // Measured on BLS12-381 G1: GLV halves the doublings, which pays only while they are
-    // a large share of the work
+    // Measured on BLS12-381 G1: GLV halves the doublings, which pays only while
+    // they are a large share of the work
     if (32..128).contains(&bases.len()) && C::glv().is_some() {
         return msm_glv_with_window(coeffs, bases, 5);
     }
@@ -1233,8 +1253,9 @@ mod test {
     /// BLS12-381 G1's GLV constants match, and the MSM agrees
     #[test]
     fn test_glv() {
-        use crate::{G1Affine as Bls, G1Projective};
         use ff::PrimeField;
+
+        use crate::{G1Affine as Bls, G1Projective};
         let (beta, lambda) = Bls::glv().unwrap();
         let p = G1Projective::random(OsRng).to_affine();
         let phi = Bls::from_xy(p.x() * beta, p.y()).unwrap();
@@ -1260,7 +1281,8 @@ mod test {
         }
     }
 
-    /// BLS12-381 G1 reads coordinates in place; identity bases (every fifth) must count as zero
+    /// BLS12-381 G1 reads coordinates in place; identity bases (every fifth)
+    /// must count as zero
     #[test]
     fn test_msm_in_place_with_identities() {
         use crate::{G1Affine as Bls, G1Projective};
@@ -1296,8 +1318,8 @@ mod test {
         assert_eq!(Bls::msm(&[], &[]), G1Projective::identity());
     }
 
-    /// Many threads split the terms into chunks, and the scalar blocks end raggedly: every tile
-    /// must still see each term exactly once
+    /// Many threads split the terms into chunks, and the scalar blocks end
+    /// raggedly: every tile must still see each term exactly once
     #[test]
     fn test_msm_chunks_and_blocks() {
         use crate::{G1Affine as Bls, G1Projective};
@@ -1324,8 +1346,8 @@ mod test {
         }
     }
 
-    /// Repeated and negated bases: batched affine additions that would double or cancel a
-    /// bucket must take the XYZZ route
+    /// Repeated and negated bases: batched affine additions that would double
+    /// or cancel a bucket must take the XYZZ route
     #[test]
     fn test_msm_repeated_and_negated_bases() {
         use crate::{G1Affine as Bls, G1Projective};
@@ -1349,11 +1371,13 @@ mod test {
         }
     }
 
-    /// The split is exact, `k1 + k2·λ = k` with `k1 < λ`, on edge cases and at random
+    /// The split is exact, `k1 + k2·λ = k` with `k1 < λ`, on edge cases and at
+    /// random
     #[test]
     fn test_glv_split() {
-        use crate::G1Affine as Bls;
         use ff::PrimeField;
+
+        use crate::G1Affine as Bls;
         let (_, lambda) = Bls::glv().unwrap();
         let m = super::glv_reciprocal(lambda);
         let l = crate::Fq::from_u128(lambda);

@@ -39,11 +39,12 @@ pub trait CurveExt:
     /// Returns the curve constant b.
     fn b() -> Self::Base;
 }
-/// Field operations writing to a destination, `out = a op b`. The defaults use the `Field`
-/// operators. A field implemented by external routines (BLS12-381's `Fp`, on blst) overrides
-/// them to call those routines on the destination itself: the operators would first copy the
-/// operands, and copying a result just written by such a routine stalls the CPU (the store
-/// cannot be forwarded to the wider load). The MSM's bucket arithmetic is written with these.
+/// Field operations writing to a destination, `out = a op b`. The defaults use
+/// the `Field` operators. A field implemented by external routines (BLS12-381's
+/// `Fp`, on blst) overrides them to call those routines on the destination
+/// itself: the operators would first copy the operands, and copying a result
+/// just written by such a routine stalls the CPU (the store cannot be forwarded
+/// to the wider load). The MSM's bucket arithmetic is written with these.
 pub trait FieldInto: ff::Field {
     /// `out = a·b`
     #[inline]
@@ -111,9 +112,10 @@ pub trait CurveAffine:
     /// curve.
     fn from_xy(x: Self::Base, y: Self::Base) -> CtOption<Self>;
 
-    /// The point $(x, y)$, which the caller guarantees is on the curve and, where
-    /// [`from_xy`](Self::from_xy) also checks it, in the prime-order subgroup (e.g. a sum
-    /// of such points). Curves whose check is costly skip it; the default checks.
+    /// The point $(x, y)$, which the caller guarantees is on the curve and,
+    /// where [`from_xy`](Self::from_xy) also checks it, in the prime-order
+    /// subgroup (e.g. a sum of such points). Curves whose check is costly
+    /// skip it; the default checks.
     ///
     /// # Panics
     ///
@@ -132,26 +134,29 @@ pub trait CurveAffine:
     /// Returns the curve constant $b$.
     fn b() -> Self::Base;
 
-    /// The multi-scalar multiplication `Σ coeffs[i]·bases[i]`; the identity if empty. Panics
-    /// if the lengths differ.
+    /// The multi-scalar multiplication `Σ coeffs[i]·bases[i]`; the identity if
+    /// empty. Panics if the lengths differ.
     ///
-    /// The default is the generic Pippenger [`msm_best`](crate::msm::msm_best); a curve
-    /// with a faster backend may override it (BLS12-381 G1 uses blst under `blst-msm`).
+    /// The default is the generic Pippenger [`msm_best`](crate::msm::msm_best);
+    /// a curve with a faster backend may override it (BLS12-381 G1 uses
+    /// blst under `blst-msm`).
     fn msm(coeffs: &[Self::ScalarExt], bases: &[Self]) -> Self::CurveExt {
         crate::msm::msm_best(coeffs, bases)
     }
 
-    /// The affine coordinates, borrowed, if the representation holds them as `Base`s (MSMs
-    /// then read them in place instead of copying them out). All or nothing for a type:
-    /// `Some` for every point or for none. Meaningless for the identity.
+    /// The affine coordinates, borrowed, if the representation holds them as
+    /// `Base`s (MSMs then read them in place instead of copying them out).
+    /// All or nothing for a type: `Some` for every point or for none.
+    /// Meaningless for the identity.
     #[doc(hidden)]
     fn xy_ref(&self) -> Option<(&Self::Base, &Self::Base)> {
         None
     }
 
-    /// A GLV endomorphism, if the curve has one: `(β, λ)` such that `(β·x, y) = λ·(x, y)` for
-    /// every point of the prime-order subgroup, with `λ < 2^128` and the scalar field's order
-    /// below `λ^2 + λ + 2`, so each scalar splits into two halves below `2^128`.
+    /// A GLV endomorphism, if the curve has one: `(β, λ)` such that `(β·x, y) =
+    /// λ·(x, y)` for every point of the prime-order subgroup, with `λ <
+    /// 2^128` and the scalar field's order below `λ^2 + λ + 2`, so each
+    /// scalar splits into two halves below `2^128`.
     fn glv() -> Option<(Self::Base, u128)> {
         None
     }

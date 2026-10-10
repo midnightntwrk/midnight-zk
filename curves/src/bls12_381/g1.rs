@@ -938,8 +938,9 @@ impl CurveAffine for G1Affine {
     type Base = Fp;
     type CurveExt = G1Projective;
 
-    /// With `blst-msm`, blst's multi-exponentiation instead of the Rust Pippenger
-    /// ([`crate::msm::msm_best`]); blst panics on no terms, so those are handled here.
+    /// With `blst-msm`, blst's multi-exponentiation instead of the Rust
+    /// Pippenger ([`crate::msm::msm_best`]); blst panics on no terms, so
+    /// those are handled here.
     #[cfg(feature = "blst-msm")]
     fn msm(coeffs: &[Fq], bases: &[Self]) -> G1Projective {
         if coeffs.is_empty() {
@@ -967,8 +968,9 @@ impl CurveAffine for G1Affine {
         CtOption::new(p, p.is_torsion_free())
     }
 
-    /// `β` a cube root of unity in `Fp`, `λ = z^2 - 1`, a cube root of unity mod the
-    /// group order `r = λ^2 + λ + 1` (`test_glv` checks they match).
+    /// `β` a cube root of unity in `Fp`, `λ = z^2 - 1`, a cube root of unity
+    /// mod the group order `r = λ^2 + λ + 1` (`test_glv` checks they
+    /// match).
     fn glv() -> Option<(Fp, u128)> {
         let beta = Fp::from_u64s_le(&[
             0x8bfd00000000aaac,
@@ -983,9 +985,10 @@ impl CurveAffine for G1Affine {
     }
 
     fn xy_ref(&self) -> Option<(&Fp, &Fp)> {
-        // SAFETY: `Fp` is `#[repr(transparent)]` over `blst_fp`, so a `&blst_fp` is a valid
-        // `&Fp` with the same lifetime (that of `self`); the coordinates of a `G1Affine` are
-        // reduced Montgomery-form `blst_fp`s, which `Fp` requires (as `x()` and `y()` assume).
+        // SAFETY: `Fp` is `#[repr(transparent)]` over `blst_fp`, so a `&blst_fp` is a
+        // valid `&Fp` with the same lifetime (that of `self`); the coordinates
+        // of a `G1Affine` are reduced Montgomery-form `blst_fp`s, which `Fp`
+        // requires (as `x()` and `y()` assume).
         unsafe {
             Some((
                 &*(&self.0.x as *const blst_fp as *const Fp),
@@ -994,7 +997,8 @@ impl CurveAffine for G1Affine {
         }
     }
 
-    /// Skips `from_xy`'s subgroup check, which costs about a scalar multiplication.
+    /// Skips `from_xy`'s subgroup check, which costs about a scalar
+    /// multiplication.
     fn from_xy_unchecked(x: Self::Base, y: Self::Base) -> Self {
         let p = Self::from_raw_unchecked(x, y, false);
         debug_assert!(bool::from(p.is_on_curve() & p.is_torsion_free()));
