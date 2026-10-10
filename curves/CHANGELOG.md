@@ -7,21 +7,21 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 
 ## [Unreleased]
 ### Added
-* `CurveAffine::msm` (the Rust Pippenger; BLS12-381 G1 uses blst under the new `blst-msm` feature), `CurveAffine::from_xy_unchecked` (G1 skips the subgroup check) and `CurveAffine::glv` (BLS12-381 G1's endomorphism) [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
+* `CurveAffine::msm` (the Rust Pippenger; BLS12-381 G1 uses blst under the new `blst-msm` feature), `CurveAffine::from_xy_unchecked` (G1 skips the subgroup check) and `CurveAffine::glv` (BLS12-381 G1's endomorphism) [#573](https://github.com/midnightntwrk/midnight-zk/pull/573)
 * Affine MSM path `G1Affine::multi_exp_affine` [#350](https://github.com/midnightntwrk/midnight-zk/pull/350)
 * Cached-twiddle FFT (`best_fft_with_twiddles`, `compute_twiddles`) and pruned DIF FFT (`fft_coeff_to_extended`) [#352](https://github.com/midnightntwrk/midnight-zk/pull/352)
 * Add Curve25519 [#181](https://github.com/midnightntwrk/midnight-zk/pull/181)
 * Add `k256` module [#189](https://github.com/midnightntwrk/midnight-zk/pull/189), [#191](https://github.com/midnightntwrk/midnight-zk/pull/191)
 
 ### Changed
-* **Breaking:** BLS12-381 G1 `CurveAffine::msm` is the Rust `msm_best`; the new `blst-msm` feature restores blst's `multi_exp_affine` [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
-* `msm_best` is a Pippenger with batched affine buckets (gnark's; XYZZ below window 7) on blst's tiling, with measured per-arch window tables, through the GLV endomorphism for 32..128 terms: 0.6-0.75x of blst's time on BLS12-381 G1 from 2^10 terms on x86, 0.7-0.8x from 2^12 on Apple M3 [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
+* **Breaking:** BLS12-381 G1 `CurveAffine::msm` is the Rust `msm_best`; the new `blst-msm` feature restores blst's `multi_exp_affine` [#573](https://github.com/midnightntwrk/midnight-zk/pull/573)
+* `msm_best` is a Pippenger with batched affine buckets (gnark's; XYZZ below window 7) on blst's tiling, with measured per-arch window tables, through the GLV endomorphism for 32..128 terms: 0.6-0.75x of blst's time on BLS12-381 G1 from 2^10 terms on x86, 0.7-0.8x from 2^12 on Apple M3 [#573](https://github.com/midnightntwrk/midnight-zk/pull/573)
 * Migrate to Rust edition 2024 (from 2018); declare MSRV 1.90. Both are now inherited from the workspace [#508](https://github.com/midnightntwrk/midnight-zk/pull/508)
 *  Moved the generic extension-field tower (`ExtField`, `quadratic`/`cubic`) from `ff_ext` to the dev-curves `bn256` module [#412](https://github.com/midnightntwrk/midnight-zk/pull/412)
 
 ### Fixed
 * Add prime-order subgroup check in `G1Affine::from_uncompressed` [#425](https://github.com/midnightntwrk/midnight-zk/pull/425)
-* `G1Affine::coordinates` skips the subgroup check. [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
+* `G1Affine::coordinates` skips the subgroup check. [#573](https://github.com/midnightntwrk/midnight-zk/pull/573)
 
 ### Removed
 * `h_commit` bench [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
