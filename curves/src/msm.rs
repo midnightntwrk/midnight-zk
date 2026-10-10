@@ -1,7 +1,4 @@
-use std::{
-    convert::TryInto,
-    ops::{Neg, Range},
-};
+use std::ops::{Neg, Range};
 
 use ff::{Field, PrimeField};
 use group::Group;
@@ -256,7 +253,7 @@ impl<F: FieldInto> Xyzz<F> {
                 acc *= p.zzz;
             }
         }
-        let mut inv = acc.invert().unwrap();
+        let mut inv = acc.invert().expect("a product of non-zero ZZZs (or one) is invertible");
         let mut out = vec![C::Curve::identity(); points.len()];
         for (i, p) in points.iter().enumerate().rev() {
             if p.is_identity() {
@@ -304,7 +301,11 @@ pub fn msm_with_window<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C], c: usi
     };
     if bases.first().is_some_and(|b| b.xy_ref().is_some()) {
         // Coordinates read in place
-        let xy = |i: usize| bases[i].xy_ref().unwrap();
+        let xy = |i: usize| {
+            bases[i]
+                .xy_ref()
+                .expect("`xy_ref` is all or nothing for a type: the first base has it")
+        };
         return pippenger::<C, _, _, _>(coeffs.len(), repr, xy, nbits, c);
     }
     let points: Vec<Affine<C>> = bases.par_iter().map(Affine::from).collect();
@@ -341,8 +342,8 @@ fn glv_reciprocal(lambda: u128) -> [u64; 3] {
 pub fn glv_split(k: &[u8], lambda: u128, m: &[u64; 3]) -> ([u8; 16], [u8; 16]) {
     let mut bytes = [0u8; 32];
     bytes[..k.len()].copy_from_slice(k);
-    let kl: [u64; 4] =
-        core::array::from_fn(|i| u64::from_le_bytes(bytes[8 * i..8 * i + 8].try_into().unwrap()));
+    let (limbs, _) = bytes.as_chunks::<8>();
+    let kl: [u64; 4] = core::array::from_fn(|i| u64::from_le_bytes(limbs[i]));
     // k·m, keeping limbs 4 and 5 (bits 256..384; the quotient is below 2^128)
     let mut prod = [0u64; 7];
     for (i, ki) in kl.iter().enumerate() {
@@ -770,11 +771,11 @@ fn add_lanes<'a, F: FieldInto + 'a>(
         m += 1;
     }
     invert_all(&mut dx[..m], prefix);
-    let mut inv = dx.iter();
-    for (l, d) in dst.iter_mut().enumerate().filter(|(_, d)| d.queued) {
+    let queued = dst.iter_mut().enumerate().filter(|(_, d)| d.queued);
+    for ((l, d), inv) in queued.zip(dx.iter()) {
         let s = src(l);
         d.queued = false;
-        add_with_inverse(&mut d.x, &mut d.y, &s.x, &s.y, false, inv.next().unwrap());
+        add_with_inverse(&mut d.x, &mut d.y, &s.x, &s.y, false, inv);
     }
     true
 }
@@ -790,7 +791,7 @@ fn invert_all<F: FieldInto>(values: &mut [F], scratch: &mut [F]) {
         let (done, rest) = scratch.split_at_mut(j);
         F::mul_into(&mut rest[0], &done[j - 1], &values[j]);
     }
-    let mut inv = scratch[last].invert().unwrap();
+    let mut inv = scratch[last].invert().expect("a product of non-zero values is invertible");
     for j in (1..values.len()).rev() {
         // 1/v_j = (v_0···v_j)^-1 · (v_0···v_{j-1})
         let (done, rest) = scratch.split_at_mut(j);
@@ -952,7 +953,8 @@ where
                     (0..c).for_each(|_| acc.double());
                 }
                 for k in 0..chunks {
-                    acc.add(results[(windows - 1 - w_next) * chunks + k].get().unwrap());
+                    let tile = &results[(windows - 1 - w_next) * chunks + k];
+                    acc.add(tile.get().expect("a window is ready once all its tiles are set"));
                 }
             }
         }
