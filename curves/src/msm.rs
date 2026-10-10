@@ -1,8 +1,13 @@
 use std::ops::{Neg, Range};
 
 use ff::{Field, PrimeField};
-use group::Group;
-use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
+use group::{Curve, Group};
+use rayon::{
+    iter::{
+        IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
+    },
+    slice::ParallelSlice,
+};
 
 use crate::{CurveAffine, FieldInto};
 
@@ -269,6 +274,135 @@ impl<F: FieldInto> Xyzz<F> {
     }
 }
 
+/// Fixed-base MSM tables: `2^(c·w)·P` for every base `P` and window `w`, so an MSM over these
+/// bases sends every window's digits to one set of buckets: one bucket sum in all, and no
+/// doublings between windows, where [`msm_best`] has one sum and `c` doublings a window.
+/// Worth it for bases used many times (commitment keys).
+///
+/// Memory: one affine point per base and window, `(⌊255/c⌋ + 1)·96` bytes a base on
+/// BLS12-381 G1, about 100 MB for 2^16 bases at `c = 16`. The table grows with the bases
+/// ([`Self::extend`]), and an MSM may use any prefix of them, so one table built for the
+/// largest size serves every smaller one over the same (monomial) bases.
+pub struct FixedBases<C: CurveAffine> {
+    c: usize,
+    windows: usize,
+    /// Base `i`'s row, `windows` entries from `i·windows`; zero for the identity
+    table: Vec<Affine<C>>,
+    identity: Vec<bool>,
+}
+
+impl<C: CurveAffine> FixedBases<C> {
+    /// The table for `bases` with window size `c`, at least 7 (batched affine buckets); 16
+    /// was best for 2^14..2^16 bases on BLS12-381 G1
+    pub fn new(bases: &[C], c: usize) -> Self {
+        assert!(c >= 7, "fixed-base window {c} below 7");
+        let mut table = Self {
+            c,
+            windows: C::Scalar::NUM_BITS as usize / c + 1,
+            table: Vec::new(),
+            identity: Vec::new(),
+        };
+        table.extend(bases);
+        table
+    }
+
+    /// Appends rows for more bases: `c` doublings a window, then one inversion per chunk of
+    /// bases to make them affine
+    pub fn extend(&mut self, bases: &[C]) {
+        let (c, windows) = (self.c, self.windows);
+        let rows: Vec<Vec<Affine<C>>> = bases
+            .par_chunks(256)
+            .map(|chunk| {
+                let mut shifted = Vec::with_capacity(chunk.len() * windows);
+                for b in chunk {
+                    let mut p = b.to_curve();
+                    for _ in 0..windows {
+                        shifted.push(p);
+                        (0..c).for_each(|_| p = p.double());
+                    }
+                }
+                let mut affine = vec![C::identity(); shifted.len()];
+                C::Curve::batch_normalize(&shifted, &mut affine);
+                affine.iter().map(Affine::from).collect()
+            })
+            .collect();
+        self.table.extend(rows.into_iter().flatten());
+        self.identity.extend(bases.iter().map(|b| bool::from(b.is_identity())));
+    }
+
+    /// `Σ coeffs[i]·bases[i]` over the first `coeffs.len()` bases.
+    ///
+    /// The digits are split by bucket range, one range a task, so that each task adds only
+    /// into its own buckets and the bucket sums cost one set's worth whatever the threads;
+    /// the ranges then combine as `Σ_p (sum_p + p·range·total_p)`.
+    ///
+    /// # Panics
+    ///
+    /// If there are more scalars than bases.
+    pub fn msm(&self, coeffs: &[C::Scalar]) -> C::Curve {
+        let n = coeffs.len();
+        let bases = self.identity.len();
+        assert!(n <= bases, "{n} scalars for {bases} bases");
+        assert!(
+            n * self.windows <= u32::MAX as usize,
+            "{n} bases: table index past u32"
+        );
+        let (c, windows) = (self.c, self.windows);
+        let threads = rayon::current_num_threads();
+        let buckets = 1usize << (c - 1);
+        let parts = (2 * threads).next_power_of_two().clamp(1, buckets / 64);
+        let range = buckets / parts;
+        // [chunk][range]: (table index, digit)
+        let chunk = n.div_ceil(4 * threads).max(256);
+        let split: Vec<Vec<Vec<(u32, i32)>>> = coeffs
+            .par_chunks(chunk)
+            .enumerate()
+            .map(|(k, coeffs)| {
+                // Digits spread evenly over the ranges; a little over, to spare regrowth
+                let cap = coeffs.len() * windows / parts * 9 / 8 + 16;
+                let mut out = vec![Vec::with_capacity(cap); parts];
+                for (i, s) in coeffs.iter().enumerate().map(|(j, s)| (k * chunk + j, s)) {
+                    if self.identity[i] {
+                        continue;
+                    }
+                    let repr = s.to_repr();
+                    for w in 0..windows {
+                        let d = get_booth_index(w, c, repr.as_ref());
+                        if d != 0 {
+                            let b = (d.unsigned_abs() as usize - 1) / range;
+                            out[b].push(((i * windows + w) as u32, d));
+                        }
+                    }
+                }
+                out
+            })
+            .collect();
+        let batch = (range / 4).clamp(64, 256).min(range);
+        let sums: Vec<_> = (0..parts)
+            .into_par_iter()
+            .map(|p| {
+                let mut a = AffineBuckets::new(range, batch);
+                for (k, d) in split.iter().flat_map(|chunk| &chunk[p]) {
+                    let point = &self.table[*k as usize];
+                    let b = d.unsigned_abs() as usize - 1 - p * range;
+                    a.add(b, &point.x, &point.y, *d < 0);
+                }
+                a.integrate_and_clear(range)
+            })
+            .collect();
+        // Σ_p p·total_p by running sums, times `range`, plus Σ_p sum_p
+        let (mut run, mut acc, mut local) = (Xyzz::identity(), Xyzz::identity(), Xyzz::identity());
+        for (sum, total) in sums.iter().rev() {
+            acc.add(&run);
+            run.add(total);
+            local.add(sum);
+        }
+        (0..range.ilog2()).for_each(|_| acc.double());
+        acc.add(&local);
+        Xyzz::batch_to_curve::<C>(&[acc])[0]
+    }
+}
+
 /// One scalar multiplication per term, in parallel, then their sum: best for a few terms
 #[doc(hidden)]
 pub fn msm_pointwise<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
@@ -494,18 +628,19 @@ fn integrate_and_clear<F: FieldInto>(buckets: &mut [Xyzz<F>]) -> Xyzz<F> {
 /// against 8M + 2S into an XYZZ bucket (as in gnark). A point whose bucket is already in the
 /// batch waits for the next one; past a batch's worth of those, or if it would double or
 /// cancel its bucket, it goes to an XYZZ bucket beside it.
-struct AffineBuckets<F> {
+struct AffineBuckets<'a, F> {
     buckets: Vec<AffineBucket<F>>,
+    /// Allocated on first use (rare: busy buckets, doubling or cancelling points)
     side: Vec<Xyzz<F>>,
     /// Whether any `side` bucket is in use
     sides: bool,
     /// Awaiting the next batch, with their `x` differences and the running products of those
-    batch: Vec<Pending>,
+    batch: Vec<Pending<'a, F>>,
     dx: Vec<F>,
     prefix: Vec<F>,
     /// Waiting for their bucket to leave the batch (and `spare`, its double buffer)
-    waiting: Vec<Pending>,
-    spare: Vec<Pending>,
+    waiting: Vec<Pending<'a, F>>,
+    spare: Vec<Pending<'a, F>>,
     /// Running sums for the lanes of [`Self::integrate_lanes`]
     acc: Vec<AffineBucket<F>>,
     sum: Vec<AffineBucket<F>>,
@@ -521,12 +656,14 @@ struct AffineBucket<F> {
     queued: bool,
 }
 
-/// `buckets[bucket] += ±points[point]`, batched; `same_x` if the point shares the bucket's `x`, so
-/// the addition doubles or cancels it (no slope: added in XYZZ instead)
+/// `buckets[bucket] += ±(x, y)`, batched, the point borrowed from the caller's bases (or
+/// [`FixedBases`] table). `same_x` if the point shares the bucket's `x`, so the addition
+/// doubles or cancels it (no slope: added in XYZZ instead).
 #[derive(Clone, Copy)]
-struct Pending {
+struct Pending<'a, F> {
     bucket: usize,
-    point: usize,
+    x: &'a F,
+    y: &'a F,
     negate: bool,
     same_x: bool,
 }
@@ -535,7 +672,7 @@ struct Pending {
 /// best, measured on BLS12-381 G1, single core)
 const LANES: usize = 128;
 
-impl<F: FieldInto> AffineBuckets<F> {
+impl<'a, F: FieldInto> AffineBuckets<'a, F> {
     fn new(buckets: usize, batch: usize) -> Self {
         let empty = AffineBucket {
             x: F::ZERO,
@@ -546,7 +683,7 @@ impl<F: FieldInto> AffineBuckets<F> {
         let lanes = LANES.min(batch);
         Self {
             buckets: vec![empty; buckets],
-            side: vec![Xyzz::identity(); buckets],
+            side: Vec::new(),
             sides: false,
             batch: Vec::with_capacity(batch),
             dx: vec![F::ZERO; batch],
@@ -558,35 +695,29 @@ impl<F: FieldInto> AffineBuckets<F> {
         }
     }
 
-    /// `buckets[b] += ±xy(i)`, now or in a later batch
-    fn add<'a>(&mut self, b: usize, i: usize, negate: bool, xy: &impl Fn(usize) -> (&'a F, &'a F))
-    where
-        F: 'a,
-    {
+    /// `buckets[b] += ±(x, y)`, now or in a later batch
+    fn add(&mut self, b: usize, x: &'a F, y: &'a F, negate: bool) {
         let p = Pending {
             bucket: b,
-            point: i,
+            x,
+            y,
             negate,
             same_x: false,
         };
-        self.enqueue(p, xy);
+        self.enqueue(p);
         if self.batch.len() == self.dx.len() {
-            self.flush(xy);
+            self.flush();
         }
     }
 
-    fn enqueue<'a>(&mut self, p: Pending, xy: &impl Fn(usize) -> (&'a F, &'a F))
-    where
-        F: 'a,
-    {
+    fn enqueue(&mut self, p: Pending<'a, F>) {
         let bucket = &mut self.buckets[p.bucket];
         if !bucket.full {
-            let (x, y) = xy(p.point);
-            bucket.x = *x;
+            bucket.x = *p.x;
             if p.negate {
-                F::neg_into(&mut bucket.y, y);
+                F::neg_into(&mut bucket.y, p.y);
             } else {
-                bucket.y = *y;
+                bucket.y = *p.y;
             }
             bucket.full = true;
         } else if !bucket.queued {
@@ -595,24 +726,28 @@ impl<F: FieldInto> AffineBuckets<F> {
         } else if self.waiting.len() < self.dx.len() {
             self.waiting.push(p);
         } else {
-            let (x, y) = xy(p.point);
-            self.side[p.bucket].add_affine(x, y, p.negate);
-            self.sides = true;
+            self.side_add(&p);
         }
+    }
+
+    /// `side[p.bucket] += ±(p.x, p.y)`
+    fn side_add(&mut self, p: &Pending<'a, F>) {
+        if self.side.is_empty() {
+            self.side = vec![Xyzz::identity(); self.buckets.len()];
+        }
+        self.side[p.bucket].add_affine(p.x, p.y, p.negate);
+        self.sides = true;
     }
 
     /// Adds the batch, then queues the waiting points whose buckets it freed, again while
     /// they fill a batch
-    fn flush<'a>(&mut self, xy: &impl Fn(usize) -> (&'a F, &'a F))
-    where
-        F: 'a,
-    {
+    fn flush(&mut self) {
         loop {
-            self.add_batch(xy);
+            self.add_batch();
             std::mem::swap(&mut self.waiting, &mut self.spare);
             for k in 0..self.spare.len() {
                 let p = self.spare[k];
-                self.enqueue(p, xy);
+                self.enqueue(p);
             }
             self.spare.clear();
             if self.batch.len() < self.dx.len() {
@@ -622,13 +757,10 @@ impl<F: FieldInto> AffineBuckets<F> {
     }
 
     /// Adds the batch ([`add_with_inverse`]), one inversion for all
-    fn add_batch<'a>(&mut self, xy: &impl Fn(usize) -> (&'a F, &'a F))
-    where
-        F: 'a,
-    {
+    fn add_batch(&mut self) {
         let len = self.batch.len();
         for (p, dx) in self.batch.iter_mut().zip(&mut self.dx) {
-            F::sub_into(dx, xy(p.point).0, &self.buckets[p.bucket].x);
+            F::sub_into(dx, p.x, &self.buckets[p.bucket].x);
             // Doubles or cancels: added apart from the batch, below
             p.same_x = dx.is_zero_vartime();
             if p.same_x {
@@ -636,35 +768,28 @@ impl<F: FieldInto> AffineBuckets<F> {
             }
         }
         invert_all(&mut self.dx[..len], &mut self.prefix);
-        for (p, inv) in self.batch.iter().zip(&self.dx) {
+        for j in 0..len {
+            let p = self.batch[j];
             let bucket = &mut self.buckets[p.bucket];
             bucket.queued = false;
-            let (x, y) = xy(p.point);
             if p.same_x {
-                self.side[p.bucket].add_affine(x, y, p.negate);
-                self.sides = true;
+                self.side_add(&p);
             } else {
-                add_with_inverse(&mut bucket.x, &mut bucket.y, x, y, p.negate, inv);
+                let inv = &self.dx[j];
+                add_with_inverse(&mut bucket.x, &mut bucket.y, p.x, p.y, p.negate, inv);
             }
         }
         self.batch.clear();
     }
 
-    /// `Σ (b + 1)·buckets[b]` over the first `used` buckets, emptying them for reuse
-    fn integrate_and_clear<'a>(
-        &mut self,
-        used: usize,
-        xy: &impl Fn(usize) -> (&'a F, &'a F),
-    ) -> Xyzz<F>
-    where
-        F: 'a,
-    {
-        // A few more batches for the waiting points, then the XYZZ buckets for the rest
+    /// Every pending addition done: a few more batches for the waiting points, then the XYZZ
+    /// buckets for the rest
+    fn flush_all(&mut self) {
         for _ in 0..4 {
             if self.batch.is_empty() && self.waiting.is_empty() {
                 break;
             }
-            self.flush(xy);
+            self.flush();
         }
         for k in 0..self.batch.len() {
             let p = self.batch[k];
@@ -672,41 +797,51 @@ impl<F: FieldInto> AffineBuckets<F> {
             self.waiting.push(p);
         }
         self.batch.clear();
-        for p in self.waiting.drain(..) {
-            let (x, y) = xy(p.point);
-            self.side[p.bucket].add_affine(x, y, p.negate);
-            self.sides = true;
+        let waiting = std::mem::take(&mut self.waiting);
+        for p in &waiting {
+            self.side_add(p);
         }
+        self.waiting = waiting;
+        self.waiting.clear();
+    }
+
+    /// `Σ (b + 1)·buckets[b]` over the first `used` buckets, and their plain sum, emptying
+    /// them for reuse
+    fn integrate_and_clear(&mut self, used: usize) -> (Xyzz<F>, Xyzz<F>) {
+        self.flush_all();
         let lanes = (used / 8).clamp(32, self.acc.len());
         if !self.sides
             && used >= 4 * lanes
-            && let Some(sum) = self.integrate_lanes(used, lanes)
+            && let Some(sums) = self.integrate_lanes(used, lanes)
         {
             self.buckets[..used].iter_mut().for_each(|b| b.full = false);
-            return sum;
+            return sums;
         }
         let mut acc = Xyzz::identity();
         let mut sum = Xyzz::identity();
-        for (bucket, side) in self.buckets[..used].iter_mut().zip(&mut self.side[..used]).rev() {
+        for b in (0..used).rev() {
+            let bucket = &mut self.buckets[b];
             if bucket.full {
                 acc.add_affine(&bucket.x, &bucket.y, false);
                 bucket.full = false;
             }
-            if !side.is_identity() {
+            if let Some(side) = self.side.get_mut(b)
+                && !side.is_identity()
+            {
                 acc.add(side);
                 *side = Xyzz::identity();
             }
             sum.add(&acc);
         }
         self.sides = false;
-        sum
+        (sum, acc)
     }
 
-    /// `Σ (b + 1)·buckets[b]` by running sums over `lanes` contiguous segments of the buckets
-    /// at once, each step's additions sharing one inversion; the segments' sums then
-    /// combine as `Σ_l (sum_l + l·seg·acc_l)`. Nothing if an addition would double or
-    /// cancel (the caller then sums in XYZZ).
-    fn integrate_lanes(&mut self, used: usize, lanes: usize) -> Option<Xyzz<F>> {
+    /// `Σ (b + 1)·buckets[b]`, and their plain sum, by running sums over `lanes` contiguous
+    /// segments of the buckets at once, each step's additions sharing one inversion; the
+    /// segments' sums then combine as `Σ_l (sum_l + l·seg·acc_l)`. Nothing if an addition
+    /// would double or cancel (the caller then sums in XYZZ).
+    fn integrate_lanes(&mut self, used: usize, lanes: usize) -> Option<(Xyzz<F>, Xyzz<F>)> {
         let seg = used / lanes;
         debug_assert!(used.is_power_of_two() && lanes.is_power_of_two() && seg >= 1);
         for s in self.acc[..lanes].iter_mut().chain(&mut self.sum[..lanes]) {
@@ -725,7 +860,8 @@ impl<F: FieldInto> AffineBuckets<F> {
                 return None;
             }
         }
-        // Σ_l l·acc_l by running sums over the lanes, times `seg`, plus Σ_l sum_l
+        // Σ_l l·acc_l by running sums over the lanes, times `seg`, plus Σ_l sum_l; `run`
+        // ends as Σ_l acc_l, the plain sum
         let (mut run, mut total, mut sums) = (Xyzz::identity(), Xyzz::identity(), Xyzz::identity());
         for l in (0..lanes).rev() {
             total.add(&run);
@@ -740,7 +876,7 @@ impl<F: FieldInto> AffineBuckets<F> {
             total.double();
         }
         total.add(&sums);
-        Some(total)
+        Some((total, run))
     }
 }
 
@@ -905,17 +1041,16 @@ where
                             debug_assert!(d.unsigned_abs() as usize <= used);
                             if d != 0 {
                                 let b = d.unsigned_abs() as usize - 1;
-                                if let Some(a) = &mut affine {
-                                    a.add(b, i, d < 0, xy);
-                                } else {
-                                    let (x, y) = xy(i);
-                                    buckets[b].add_affine(x, y, d < 0);
+                                let (x, y) = xy(i);
+                                match &mut affine {
+                                    Some(a) => a.add(b, x, y, d < 0),
+                                    None => buckets[b].add_affine(x, y, d < 0),
                                 }
                             }
                         }
                     }
                     let sum = match &mut affine {
-                        Some(a) => a.integrate_and_clear(used, xy),
+                        Some(a) => a.integrate_and_clear(used).0,
                         None => integrate_and_clear(&mut buckets[..used]),
                     };
                     let _ = results[t].set(sum);
@@ -1294,6 +1429,33 @@ mod test {
     fn test_msm_empty() {
         use crate::{CurveAffine as _, G1Affine as Bls, G1Projective};
         assert_eq!(Bls::msm(&[], &[]), G1Projective::identity());
+    }
+
+    /// The fixed-base table agrees with the plain MSM, built at once or grown in steps, over
+    /// any prefix of its bases, with identity bases among them
+    #[test]
+    fn test_fixed_bases() {
+        use crate::{G1Affine as Bls, G1Projective};
+        let n = 1500;
+        let (scalars, points): (Vec<_>, Vec<_>) = (0..n)
+            .map(|i| {
+                let p = match i % 97 {
+                    0 => <Bls as group::prime::PrimeCurveAffine>::identity(),
+                    _ => G1Projective::random(OsRng).to_affine(),
+                };
+                (crate::Fq::random(OsRng), p)
+            })
+            .unzip();
+        for c in [8, 11] {
+            let whole = super::FixedBases::<Bls>::new(&points, c);
+            let mut grown = super::FixedBases::<Bls>::new(&points[..700], c);
+            grown.extend(&points[700..]);
+            for m in [0, 31, 700, 1500] {
+                let expected = super::msm_best(&scalars[..m], &points[..m]);
+                assert_eq!(whole.msm(&scalars[..m]), expected, "c {c} m {m}");
+                assert_eq!(grown.msm(&scalars[..m]), expected, "c {c} m {m} grown");
+            }
+        }
     }
 
     /// Many threads split the terms into chunks, and the scalar blocks end raggedly: every tile
