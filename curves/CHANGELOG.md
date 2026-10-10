@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 
 ## [Unreleased]
 ### Added
-* `msm::FixedBases`: precomputed `2^(c·w)·P` tables for bases used many times, so all windows share one bucket set; ~100 MB for 2^16 BLS12-381 G1 bases at `c = 16`, grows with the bases and serves any prefix: 0.85-0.87x of `msm_best`'s time at 2^14-2^16 on 16 threads, 0.66x single-threaded [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
+* `msm::FixedBases`: precomputed `2^(c·w)·P` tables for bases used many times, so all windows share one bucket set; ~100 MB for 2^16 BLS12-381 G1 bases at `c = 16`, grows with the bases and serves any prefix: 0.85-0.87x of `msm_best`'s time at 2^14-2^16 on 16 threads, 0.66x single-threaded [#574](https://github.com/midnightntwrk/midnight-zk/pull/574)
 * `FieldInto`: field arithmetic written into a destination (blst-style, all methods defaulted); now a bound on `CurveAffine::Base`, so a downstream `CurveAffine` implementation needs `impl FieldInto for <Base> {}` [#573](https://github.com/midnightntwrk/midnight-zk/pull/573)
 * `CurveAffine::msm` (the Rust Pippenger; BLS12-381 G1 uses blst under the new `blst-msm` feature), `CurveAffine::from_xy_unchecked` (G1 skips the subgroup check) and `CurveAffine::glv` (BLS12-381 G1's endomorphism) [#573](https://github.com/midnightntwrk/midnight-zk/pull/573)
 * Affine MSM path `G1Affine::multi_exp_affine` [#350](https://github.com/midnightntwrk/midnight-zk/pull/350)
