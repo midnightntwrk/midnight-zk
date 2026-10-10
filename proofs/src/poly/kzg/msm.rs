@@ -164,8 +164,7 @@ where
 }
 
 /// `Σ coeffs[i]·bases[i]`, dropping the zero coefficients first, by the curve's
-/// own MSM ([`CurveAffine::msm`]: the Rust Pippenger, or blst on BLS12-381 G1
-/// under `midnight-curves/blst-msm`).
+/// own MSM ([`CurveAffine::msm`]: the Rust Pippenger, on every curve).
 pub fn msm_specific<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
     let (coeffs, bases): (Vec<C::Scalar>, Vec<C>) = coeffs
         .iter()
@@ -329,7 +328,7 @@ mod tests {
         );
     }
 
-    /// BLS12-381 G1: the Rust Pippenger, or blst under `blst-msm`
+    /// BLS12-381 G1: the generic Pippenger backend
     #[test]
     fn g1_agrees_with_naive() {
         agrees_with_naive::<G1Affine>();

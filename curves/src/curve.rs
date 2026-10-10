@@ -137,9 +137,9 @@ pub trait CurveAffine:
     /// The multi-scalar multiplication `Σ coeffs[i]·bases[i]`; the identity if
     /// empty. Panics if the lengths differ.
     ///
-    /// The default is the generic Pippenger [`msm_best`](crate::msm::msm_best);
-    /// a curve with a faster backend may override it (BLS12-381 G1 uses
-    /// blst under `blst-msm`).
+    /// The default, used by every curve here, is the Pippenger
+    /// [`msm_best`](crate::msm::msm_best); a curve with a faster backend may
+    /// override it.
     fn msm(coeffs: &[Self::ScalarExt], bases: &[Self]) -> Self::CurveExt {
         crate::msm::msm_best(coeffs, bases)
     }

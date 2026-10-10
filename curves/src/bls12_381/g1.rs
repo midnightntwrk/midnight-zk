@@ -938,22 +938,6 @@ impl CurveAffine for G1Affine {
     type Base = Fp;
     type CurveExt = G1Projective;
 
-    /// With `blst-msm`, blst's multi-exponentiation instead of the Rust
-    /// Pippenger ([`crate::msm::msm_best`]); blst panics on no terms, so
-    /// those are handled here.
-    #[cfg(feature = "blst-msm")]
-    fn msm(coeffs: &[Fq], bases: &[Self]) -> G1Projective {
-        if coeffs.is_empty() {
-            assert!(
-                bases.is_empty(),
-                "msm: {} bases but no scalars",
-                bases.len()
-            );
-            return G1Projective::identity();
-        }
-        G1Affine::multi_exp_affine(bases, coeffs)
-    }
-
     fn coordinates(&self) -> CtOption<Coordinates<Self>> {
         // Unchecked version is safe to use since we are taking
         // an already checked point.
