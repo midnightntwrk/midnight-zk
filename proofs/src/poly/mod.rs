@@ -23,6 +23,9 @@ mod query;
 /// KZG commitment scheme
 pub mod kzg;
 
+/// fflonk over an inner polynomial commitment scheme
+pub mod fflonk;
+
 pub mod commitment;
 
 pub use domain::*;

@@ -18,6 +18,8 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 
 ### Changed
+* `AssignedVk` holds an `AssignedEvaluationDomain` with assigned `k` and `omega` (and in-circuit derived `omega_inv` and `n = 2^k`) [#461](https://github.com/midnightntwrk/midnight-zk/pull/461)
+* Remove the linearization from the verifier gadget, mirroring `midnight-proofs`: the simple selectors are opened through the phase-0 group and `AssignedVk` no longer holds one commitment per simple selector [#566](https://github.com/midnightntwrk/midnight-zk/pull/566)
 * `PreComputedRoundCPU::init` derives Poseidon's CPU partial-round pre-computation once per field and caches it [#527](https://github.com/midnightntwrk/midnight-zk/pull/527)
 * Change the signature of `ForeignEdwardsEccChip::from_canonical_compressed_bytes` to derive the subgroup point from assigned bytes instead of requiring a caller-supplied point witness [#540](https://github.com/midnightntwrk/midnight-zk/pull/540)
 * `verifier::fixed_bases` reads the fixed bases from `VerifyingKey::phase0_commitment` and `VerifyingKey::simple_selector_commitments` [#547](https://github.com/midnightntwrk/midnight-zk/pull/547)
@@ -43,7 +45,6 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Support `fewer-point-sets` feature in verifier gadget [#281](https://github.com/midnightntwrk/midnight-zk/pull/281)
 * `multi_prepare` now takes a slice instead of `IntoIterator` [#281](https://github.com/midnightntwrk/midnight-zk/pull/281)
 * Adapt verifier gadget to new `KZGCommitment` API [#381](https://github.com/midnightntwrk/midnight-zk/pull/381)
-* Support `single-h-commitment` feature in verifier gadget [#276](https://github.com/midnightntwrk/midnight-zk/pull/276)
 * Filter out compile-time identity points in MSM [#256](https://github.com/midnightntwrk/midnight-zk/pull/256)
 * Sort point sets deterministically in KZG multiopen for in-circuit verification [#256](https://github.com/midnightntwrk/midnight-zk/pull/256)
 * Move advice queries before instance queries in verifier gadget [#256](https://github.com/midnightntwrk/midnight-zk/pull/256)
@@ -53,6 +54,8 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * `VerifierGadget::assign_vk_as_public_input` and `VerifierGadget::assign_fixed_vk` take a finalized constraint system (e.g. `vk.cs()` or `ConstraintSystem::into_finalized`) and return `Error::Synthesis` if it has selectors. `assign_vk_as_public_input` no longer converts the selectors itself [#546](https://github.com/midnightntwrk/midnight-zk/pull/546)
 
 ### Removed
+* `single-h-commitment` feature in the verifier gadget [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
+* `fewer-point-sets` feature in the verifier gadget [#554](https://github.com/midnightntwrk/midnight-zk/pull/554)
 * Remove the internal `verifier/permutation.rs` module and its `Committed`/`Evaluated`/`CommonEvaluated` types; the in-circuit permutation argument no longer carries any transcript plumbing of its own [#537](https://github.com/midnightntwrk/midnight-zk/pull/537)
 * Remove the internal `verifier/lookup.rs` module and its `Committed`/`Evaluated`/`LookupEvaluated` types; the in-circuit lookup argument no longer carries any transcript plumbing of its own [#515](https://github.com/midnightntwrk/midnight-zk/pull/515)
 * Remove `Expression::Challenge` variant and phase-parameterized `Any::Advice`; multi-phase advice columns are no longer supported [#376](https://github.com/midnightntwrk/midnight-zk/pull/376)

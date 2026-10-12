@@ -503,6 +503,7 @@ fn test_prover<E: Engine + MultiMillerLoop>(
 where
     E::G1: Default + Hashable<State> + CurveExt<ScalarExt = E::Fr> + ProcessedSerdeObject,
     E::G1Affine: Default + SerdeObject + CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
+    E::G2: ProcessedSerdeObject,
     E::Fr: WithSmallOrderMulGroup<3>
         + FromUniformBytes<64>
         + Sampleable<State>

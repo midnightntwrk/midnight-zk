@@ -8,10 +8,7 @@ use ff::{FromUniformBytes, WithSmallOrderMulGroup};
 
 use super::{Error, VerifyingKey};
 use crate::{
-    plonk::{
-        argument, linearization::verifier::compute_linearization_commitment,
-        partially_evaluate_identities, traces::VerifierTrace,
-    },
+    plonk::{argument, evaluate_identities, traces::VerifierTrace},
     poly::{PolynomialLabel, Rotation, VerifierQuery, commitment::PolynomialCommitmentScheme},
     transcript::{Hashable, Sampleable, Transcript},
     utils::arithmetic::compute_inner_product,
@@ -93,14 +90,16 @@ where
     // Sample the trash challenge after the advices have been committed to
     let trash_challenge: F = transcript.squeeze_challenge();
 
-    // The label order does not matter here, labels are ordered in `read`.
     let mut phase2_labels = vk.cs.permutation.accumulator_labels(vk.cs_degree);
 
     for (argument_index, logup_argument) in logups.iter().enumerate() {
-        phase2_labels.push(PolynomialLabel::LogupAggregator(argument_index));
         for j in 0..logup_argument.num_chunks() {
             phase2_labels.push(PolynomialLabel::LogupHelper(argument_index, j));
         }
+    }
+
+    for argument_index in 0..logups.len() {
+        phase2_labels.push(PolynomialLabel::LogupAggregator(argument_index));
     }
 
     for trash_argument in vk.cs.trashcans.iter() {
@@ -167,24 +166,11 @@ where
     } = trace;
 
     // Read commitment(s) to the quotient polynomial h(X) = nu(X)/(X^n-1) from
-    // the transcript. When the `single-h-commitment` feature is enabled the prover
-    // commits to h(X) as a single polynomial (one commitment); otherwise it
-    // splits h(X) into `quotient_poly_degree` limbs (one commitment each).
-    #[cfg(not(feature = "single-h-commitment"))]
+    // the transcript. The prover splits h(X) into `quotient_poly_degree` limbs.
     let nb_quotient_coms = vk.domain.get_quotient_poly_degree();
-    #[cfg(feature = "single-h-commitment")]
-    let nb_quotient_coms = 1;
-    let quotient_limb_coms = {
-        #[cfg(not(feature = "single-h-commitment"))]
-        let labeled = (0..nb_quotient_coms)
-            .map(|i| CS::read_commitment(transcript, &[PolynomialLabel::QuotientPiece(i)]))
-            .collect::<Result<Vec<_>, _>>()?;
-        #[cfg(feature = "single-h-commitment")]
-        let labeled = (0..nb_quotient_coms)
-            .map(|_| CS::read_commitment(transcript, &[PolynomialLabel::Quotient]))
-            .collect::<Result<Vec<_>, _>>()?;
-        labeled
-    };
+    let quotient_limb_coms = (0..nb_quotient_coms)
+        .map(|i| CS::read_commitment(transcript, &[PolynomialLabel::QuotientPiece(i)]))
+        .collect::<Result<Vec<_>, _>>()?;
 
     // Sample x challenge, which is used to ensure the circuit is
     // satisfied with high probability.
@@ -249,9 +235,8 @@ where
     let phase1_evals = &phase1_evaluated.evals_map;
     let phase2_evals = &phase2_evaluated.evals_map;
 
-    // Partially evaluate batched identities
-    // (without fixed columns corresponding to simple, multiplicative selectors)
-    let expressions = partially_evaluate_identities(
+    // Evaluate the batched identities, nu(x)
+    let nu_eval = evaluate_identities(
         vk,
         &instance_evals,
         phase0_evals,
@@ -263,21 +248,21 @@ where
         gamma,
         theta,
         trash_challenge,
+        y,
     );
 
-    let (lin_commitment, lin_eval) = compute_linearization_commitment(
-        expressions,
-        vk,
-        &y,
-        &xn,
-        &splitting_factor,
-        &quotient_limb_coms,
-    );
+    // The commitment to h(X) = h_0(X) + X^{n-1} h_1(X) + ..., scaled by
+    // (1 - x^n) so that it must open to -nu(x) at x, without an inversion.
+    let quotient_commitment = quotient_limb_coms
+        .iter()
+        .zip(iter::successors(Some(F::ONE - xn), |pow| {
+            Some(*pow * splitting_factor)
+        }))
+        .map(|(com, scalar)| com.clone() * scalar)
+        .reduce(|acc, term| acc + term)
+        .expect("at least one quotient limb commitment");
 
     // Collect queries that are checked in the multi-open argument
-    //
-    // NB: Queries corresponding to simple, multiplicative selectors need not be
-    // checked
     //
     // The multi-open scales the first commitment by 1, which is best spent on
     // one read from the proof: the phase-0 commitments are known in advance and
@@ -302,9 +287,9 @@ where
         ))
         .chain(iter::once(VerifierQuery::new(
             x,
-            &lin_commitment,
-            PolynomialLabel::Linearization,
-            lin_eval,
+            &quotient_commitment,
+            PolynomialLabel::Quotient,
+            -nu_eval,
         )))
         .collect::<Vec<_>>();
 

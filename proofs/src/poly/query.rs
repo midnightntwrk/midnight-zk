@@ -24,8 +24,6 @@ pub enum PolynomialLabel {
     LogupMultiplicities(usize),
     /// LogUp accumulator polynomial Z(X) (argument index).
     LogupAggregator(usize),
-    /// PLONK linearization polynomial.
-    Linearization,
     /// PLONK quotient polynomial h(X), committed as a single piece.
     Quotient,
     /// PLONK quotient polynomial h(X), committed in pieces (piece index).
@@ -34,10 +32,22 @@ pub enum PolynomialLabel {
     Trash(usize),
     /// User-defined label.
     Custom(String),
+    /// A label made of the given labels, in order.
+    Collection(Vec<PolynomialLabel>),
     /// Absence of a meaningful label. Used for freshly deserialized commitments
     /// (before a label is attached) and for aggregate commitments produced by
     /// collapsing an MSM, which do not correspond to a single polynomial.
     NoLabel,
+}
+
+impl PolynomialLabel {
+    /// Asserts that no label of `labels` is repeated.
+    pub fn assert_distinct(labels: &[Self]) {
+        let mut seen = rustc_hash::FxHashSet::default();
+        for label in labels {
+            assert!(seen.insert(label), "duplicated label {label}");
+        }
+    }
 }
 
 impl fmt::Display for PolynomialLabel {
@@ -52,33 +62,58 @@ impl fmt::Display for PolynomialLabel {
             Self::LogupMultiplicities(i) => write!(f, "logup_multiplicities({i})"),
             Self::LogupAggregator(i) => write!(f, "logup_aggregator({i})"),
             Self::Trash(i) => write!(f, "trash({i})"),
-            Self::Linearization => f.write_str("linearization"),
             Self::Quotient => f.write_str("quotient"),
             Self::QuotientPiece(i) => write!(f, "quotient_piece_{i}"),
             Self::Custom(s) => write!(f, "custom({s})"),
+            Self::Collection(labels) => {
+                let labels: Vec<_> = labels.iter().map(ToString::to_string).collect();
+                write!(f, "collection({})", labels.join(", "))
+            }
             Self::NoLabel => f.write_str("no_label"),
         }
     }
 }
 
-/// A polynomial query at a point
+/// A query of a polynomial at a point. The polynomial is identified by its
+/// label within the group of polynomials it was committed to together with.
 #[derive(Debug, Clone)]
 pub struct ProverQuery<'com, F: PrimeField> {
+    /// Labels of every polynomial committed to together with the queried one.
+    pub(crate) group_labels: &'com [PolynomialLabel],
+    /// The polynomials of `group_labels`, in the same order.
+    pub(crate) group_polys: &'com [Polynomial<F, Coeff>],
     /// Point at which polynomial is queried
     pub(crate) point: F,
-    /// Reference to the queried polynomial.
-    pub(crate) poly: &'com Polynomial<F, Coeff>,
-    /// Label identifying the queried polynomial.
+    /// Label identifying which polynomial within the group is queried.
     pub(crate) label: PolynomialLabel,
 }
 
-impl<'com, F> ProverQuery<'com, F>
-where
-    F: PrimeField,
-{
-    /// Create a new prover query based on a polynomial and its label.
-    pub fn new(point: F, poly: &'com Polynomial<F, Coeff>, label: PolynomialLabel) -> Self {
-        ProverQuery { point, poly, label }
+impl<'com, F: PrimeField> ProverQuery<'com, F> {
+    /// Create a new prover query on the polynomial labelled `label` of the
+    /// group of `group_polys`, labelled `group_labels`.
+    pub fn new(
+        group_labels: &'com [PolynomialLabel],
+        group_polys: &'com [Polynomial<F, Coeff>],
+        point: F,
+        label: PolynomialLabel,
+    ) -> Self {
+        ProverQuery {
+            group_labels,
+            group_polys,
+            point,
+            label,
+        }
+    }
+
+    /// The queried polynomial.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the group holds no polynomial under the query label.
+    pub(crate) fn poly(&self) -> &'com Polynomial<F, Coeff> {
+        let i = (self.group_labels.iter().position(|l| *l == self.label))
+            .expect("the queried group has no polynomial under the query label");
+        &self.group_polys[i]
     }
 }
 

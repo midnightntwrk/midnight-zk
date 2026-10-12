@@ -26,7 +26,7 @@ use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::{self, ConstraintSystem, Error},
     poly::{
-        EvaluationDomain, PolynomialLabel,
+        PolynomialLabel,
         kzg::{KZGCommitmentScheme, commitment::KZGMultiCommitment, params::ParamsVerifierKZG},
     },
     transcript::{CircuitTranscript, Transcript},
@@ -62,41 +62,53 @@ impl State {
     }
 }
 
+/// In-circuit representation of a verifying key.
+#[derive(Clone, Debug)]
+struct AssignedVk {
+    repr: AssignedNative<F>,
+    k: AssignedNative<F>,
+    omega: AssignedNative<F>,
+}
+
 /// In-circuit counterpart of [`State`] (constant size).
 ///
 /// Contains only the vk from the last claim, the claims hash and the
 /// accumulator, the full list of claims is not represented in-circuit.
 #[derive(Clone, Debug)]
 pub struct AssignedState {
-    last_vk_repr: AssignedNative<F>,
+    last_vk: AssignedVk,
     claims_hash: AssignedNative<F>,
     inner_acc: AssignedAccumulator<S>,
 }
 
 /// Setup data for the inner circuits, threaded as IVC context.
 ///
-/// Contains the shared constraint system, evaluation domain, SRS verifier
-/// parameters and [`ZkStdLibArch`] of all inner circuits to be aggregated.
+/// Contains the shared constraint system, SRS verifier parameters,
+/// [`ZkStdLibArch`] and `max_bit_len` of all inner circuits to be aggregated.
 #[derive(Clone, Debug)]
 pub struct InnerCircuitsContext {
     cs: ConstraintSystem<F>,
-    domain: EvaluationDomain<F>,
     params_verifier: ParamsVerifierKZG<E>,
     arch: ZkStdLibArch,
+    max_bit_len: u8,
 }
 
 impl InnerCircuitsContext {
-    /// Creates a new [`InnerCircuitsContext`] from the shared architecture,
-    /// circuit size parameter `k` (log2 of rows), and SRS verifier parameters.
-    pub fn new(arch: ZkStdLibArch, k: u32, params_verifier: ParamsVerifierKZG<E>) -> Self {
+    /// Creates a new [`InnerCircuitsContext`] from the shared architecture, the
+    /// `max_bit_len` the inner circuits were configured with (`k - 1` in
+    /// zk_stdlib), and SRS verifier parameters.
+    ///
+    /// `max_bit_len` only affects foreign-field chips: inner circuits that use
+    /// them must all have been configured with this value, whereas the others
+    /// may have any size.
+    pub fn new(arch: ZkStdLibArch, max_bit_len: u8, params_verifier: ParamsVerifierKZG<E>) -> Self {
         let mut cs = ConstraintSystem::default();
-        ZkStdLib::configure(&mut cs, (arch, (k - 1) as u8));
-        let domain = EvaluationDomain::new(cs.degree() as u32, k);
+        ZkStdLib::configure(&mut cs, (arch, max_bit_len));
         InnerCircuitsContext {
             cs: cs.into_finalized(),
-            domain,
             params_verifier,
             arch,
+            max_bit_len,
         }
     }
 
@@ -128,17 +140,20 @@ impl IvcContext for ProofAggregation {
         writer: &mut W,
     ) -> std::io::Result<()> {
         ctx.arch.write(writer)?;
-        writer.write_all(&ctx.domain.k().to_le_bytes())?;
+        writer.write_all(&[ctx.max_bit_len])?;
         ctx.params_verifier.write(writer, SerdeFormat::RawBytes)
     }
 
     fn read_context<R: std::io::Read>(reader: &mut R) -> std::io::Result<InnerCircuitsContext> {
         let arch = ZkStdLibArch::read(reader)?;
-        let mut k_bytes = [0u8; 4];
-        reader.read_exact(&mut k_bytes)?;
-        let k = u32::from_le_bytes(k_bytes);
+        let mut max_bit_len = [0u8; 1];
+        reader.read_exact(&mut max_bit_len)?;
         let params_verifier = ParamsVerifierKZG::read(reader, SerdeFormat::RawBytes)?;
-        Ok(InnerCircuitsContext::new(arch, k, params_verifier))
+        Ok(InnerCircuitsContext::new(
+            arch,
+            max_bit_len[0],
+            params_verifier,
+        ))
     }
 }
 
@@ -177,12 +192,25 @@ impl IvcIO for ProofAggregation {
         layouter: &mut impl Layouter<F>,
         value: Value<State>,
     ) -> Result<AssignedState, Error> {
-        let last_vk_repr = self.std_lib.assign(
-            layouter,
-            value
-                .as_ref()
-                .map(|s| s.claims.last().map(|c| c.vk.vk().transcript_repr()).unwrap_or(F::ZERO)),
-        )?;
+        // The VK fields in the assigned state are free witnesses (not constrained).
+        // The caller may need to perform further integrity checks on them.
+        // In the base case (no claims yet) there is no last vk: we use the default
+        // one, as `format_public_input` does.
+        let [last_vk_repr, last_vk_k, last_vk_omega] = value
+            .as_ref()
+            .map(|s| {
+                let vk = s.claims.last().map(|c| c.vk.vk().clone()).unwrap_or_default();
+                let domain = vk.get_domain();
+                [
+                    vk.transcript_repr(),
+                    F::from(domain.k() as u64),
+                    domain.get_omega(),
+                ]
+            })
+            .transpose_array();
+        let last_vk_repr = self.std_lib.assign(layouter, last_vk_repr)?;
+        let last_vk_k = self.std_lib.assign(layouter, last_vk_k)?;
+        let last_vk_omega = self.std_lib.assign(layouter, last_vk_omega)?;
         let claims_hash = self.std_lib.assign(layouter, value.as_ref().map(|s| s.claims_hash))?;
 
         let inner_acc = self.std_lib.verifier().assign_collapsed_accumulator(
@@ -191,8 +219,14 @@ impl IvcIO for ProofAggregation {
             value.as_ref().map(|s| s.inner_acc.clone()),
         )?;
 
+        let last_vk = AssignedVk {
+            repr: last_vk_repr,
+            omega: last_vk_omega,
+            k: last_vk_k,
+        };
+
         Ok(AssignedState {
-            last_vk_repr,
+            last_vk,
             claims_hash,
             inner_acc,
         })
@@ -213,7 +247,9 @@ impl IvcIO for ProofAggregation {
         state: &AssignedState,
     ) -> Result<Vec<AssignedNative<F>>, Error> {
         Ok([
-            self.std_lib.as_public_input(layouter, &state.last_vk_repr)?,
+            self.std_lib.as_public_input(layouter, &state.last_vk.repr)?,
+            self.std_lib.as_public_input(layouter, &state.last_vk.k)?,
+            self.std_lib.as_public_input(layouter, &state.last_vk.omega)?,
             self.std_lib.as_public_input(layouter, &state.claims_hash)?,
             self.std_lib.verifier().as_public_input(layouter, &state.inner_acc)?,
         ]
@@ -221,10 +257,16 @@ impl IvcIO for ProofAggregation {
     }
 
     fn format_public_input(state: &State) -> Vec<F> {
-        let last_vk_repr =
-            state.claims.last().map(|c| c.vk.vk().transcript_repr()).unwrap_or(F::ZERO);
+        // In the base case (no claims yet) there is no last vk: we use the default
+        // one, as `assign` does.
+        let last_vk = state.claims.last().map(|c| c.vk.vk().clone()).unwrap_or_default();
+        let domain = last_vk.get_domain();
         [
-            vec![last_vk_repr],
+            vec![
+                last_vk.transcript_repr(),
+                F::from(domain.k() as u64),
+                domain.get_omega(),
+            ],
             vec![state.claims_hash],
             AssignedAccumulator::<S>::as_public_input(&state.inner_acc),
         ]
@@ -314,7 +356,6 @@ impl IvcTransition for ProofAggregation {
         let (assigned_vk, vk_hash, fixed_bases_map) = assign_as_public_inputs_and_hash_vk(
             layouter,
             &self.std_lib,
-            &self.inner_ctx.domain,
             &self.inner_ctx.cs,
             witness.as_ref().map(|w| &w.claim.vk),
         )?;
@@ -373,7 +414,11 @@ impl IvcTransition for ProofAggregation {
             .poseidon(layouter, &[vk_hash, statement, state.claims_hash.clone()])?;
 
         Ok(AssignedState {
-            last_vk_repr: assigned_vk.transcript_repr().clone(),
+            last_vk: AssignedVk {
+                repr: assigned_vk.transcript_repr().clone(),
+                k: assigned_vk.k().clone(),
+                omega: assigned_vk.omega().clone(),
+            },
             claims_hash,
             inner_acc,
         })

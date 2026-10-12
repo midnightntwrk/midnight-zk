@@ -23,7 +23,9 @@ use midnight_proofs::{
 use midnight_zk_stdlib::MidnightPK;
 use rand::rngs::OsRng;
 
-use super::{E, F, Ivc, IvcCircuit, IvcError, IvcInstance, IvcWitness, S};
+use super::{
+    E, F, Ivc, IvcCircuit, IvcError, IvcInstance, IvcWitness, S, circuit::IvcExtendedInstance,
+};
 
 /// Stateful IVC prover holding:
 /// - the SRS (params),
@@ -64,7 +66,6 @@ impl<T: Ivc> IvcProver<T> {
             T::transition(self.relation.ctx(), &self.state, transition_witness.clone());
 
         let vk = self.pk.pk().get_vk();
-        let vk_repr = vk.transcript_repr();
 
         let fixed_bases = midnight_circuits::verifier::fixed_bases::<S>(vk);
 
@@ -117,11 +118,11 @@ impl<T: Ivc> IvcProver<T> {
         let mut next_acc = Accumulator::accumulate(&[proof_acc, self.acc.clone()]);
         next_acc.collapse();
 
-        let instance = IvcInstance {
-            vk_repr,
+        let next_instance = IvcInstance {
             state: next_state.clone(),
             acc: next_acc.clone(),
         };
+        let instance = IvcExtendedInstance::new(vk, next_instance);
 
         let witness = IvcWitness {
             prev_state: self.state.clone(),
@@ -154,7 +155,6 @@ impl<T: Ivc> IvcProver<T> {
     /// current state.
     pub fn instance(&self) -> IvcInstance<T> {
         IvcInstance {
-            vk_repr: self.pk.pk().get_vk().transcript_repr(),
             state: self.state.clone(),
             acc: self.acc.clone(),
         }

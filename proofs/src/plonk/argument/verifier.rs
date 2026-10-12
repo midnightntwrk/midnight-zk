@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use ff::{PrimeField, WithSmallOrderMulGroup};
 
@@ -14,7 +14,7 @@ use crate::{
 #[derive(Debug)]
 pub struct Committed<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
     commitment: CS::Commitment,
-    polynomial_labels: BTreeSet<PolynomialLabel>,
+    polynomial_labels: Vec<PolynomialLabel>,
 }
 
 impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> Committed<F, CS> {
@@ -23,7 +23,7 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> Committed<F, CS> {
     pub(crate) fn from_key(vk: &AbsorbedVk<'_, F, CS>) -> Committed<F, CS> {
         Committed {
             commitment: vk.phase0_commitment().clone(),
-            polynomial_labels: BTreeSet::from_iter(vk.phase0_labels()),
+            polynomial_labels: vk.phase0_labels(),
         }
     }
 
@@ -36,7 +36,7 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> Committed<F, CS> {
     {
         Ok(Committed {
             commitment: CS::read_commitment(transcript, labels)?,
-            polynomial_labels: BTreeSet::from_iter(labels.iter().cloned()),
+            polynomial_labels: labels.to_vec(),
         })
     }
 }

@@ -21,7 +21,7 @@ mod sha_preimage;
 use std::{collections::BTreeMap, time::Instant};
 
 use ff::Field;
-use midnight_aggregation::ivc::{self, IvcCircuit, IvcContext, IvcIO, IvcState, IvcTransition};
+use midnight_aggregation::ivc::{self, IvcContext, IvcIO, IvcState, IvcTransition};
 use midnight_circuits::{
     hash::poseidon::{PoseidonChip, PoseidonState},
     instructions::{hash::HashCPU, *},
@@ -41,7 +41,7 @@ use midnight_proofs::{
     transcript::{CircuitTranscript, Transcript},
 };
 use midnight_zk_stdlib::{
-    MidnightVK, Relation, ZkStdLib, ZkStdLibArch, cs_degree, prove, setup_pk, setup_vk,
+    DefaultPCS, MidnightVK, Relation, ZkStdLib, ZkStdLibArch, prove, setup_pk, setup_vk,
     utils::plonk_api::{SrsSource, load_srs},
 };
 use rand::rngs::OsRng;
@@ -350,7 +350,7 @@ fn main() {
     let inner_arch = ShaPreimageCircuit.used_chips();
 
     // The inner circuit can use a different SRS than the IVC circuit.
-    let inner_srs = load_srs(SrsSource::Filecoin, sha_preimage::K, cs_degree(inner_arch));
+    let inner_srs = load_srs::<DefaultPCS>(SrsSource::Filecoin, sha_preimage::K);
     let inner_vk = setup_vk(&inner_srs, &ShaPreimageCircuit);
     let inner_pk = setup_pk(&ShaPreimageCircuit, &inner_vk);
     let inner_ctx = {
@@ -386,11 +386,7 @@ fn main() {
     println!("{STEPS} inner proofs generated in {:.2?}", start.elapsed());
 
     // IVC setup.
-    let ivc_srs = load_srs(
-        SrsSource::Midnight,
-        IVC_K,
-        IvcCircuit::<ProofAggregation>::cs_degree(),
-    );
+    let ivc_srs = load_srs::<DefaultPCS>(SrsSource::Midnight, IVC_K);
     let start = Instant::now();
     let (mut prover, verifier) = ivc::setup::<ProofAggregation>(ivc_srs, IVC_K, inner_ctx);
     println!("IVC setup completed in {:.2?}", start.elapsed());

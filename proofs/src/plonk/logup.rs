@@ -470,12 +470,15 @@ impl<F: PrimeField> ChunkedArgument<F> {
                     chunk.iter().map(|input| compress_expressions(input) + beta).collect();
 
                 // Helper constraint: h(x) · ∏ⱼ(fⱼ(x) + β) = Σⱼ ∏_{k≠j}(fₖ(x) + β)
-                let product: F = compressed_inputs_with_beta.iter().product();
-                let partial_products: Vec<F> = compressed_inputs_with_beta
+                //
+                // No division: the prover can make some fⱼ(x) + β zero. Folding in
+                // each f keeps `product` = ∏ over the inputs so far and `sum` =
+                // Σⱼ ∏_{k≠j} over them.
+                let (product, sum) = compressed_inputs_with_beta
                     .iter()
-                    .map(|f| product * f.invert().unwrap())
-                    .collect();
-                let sum: F = partial_products.iter().sum();
+                    .fold((F::ONE, F::ZERO), |(product, sum), f| {
+                        (product * f, sum * f + product)
+                    });
 
                 sum_helpers += helper_eval;
                 helper_eval * product - sum

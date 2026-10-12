@@ -8,11 +8,12 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 ## [Unreleased]
 ### Added
 * `fewer-point-sets` feature [#281](https://github.com/midnightntwrk/midnight-zk/pull/281)
-* `single-h-commitment` feature [#276](https://github.com/midnightntwrk/midnight-zk/pull/276)
 * Multi-circuit proof aggregation module and example [#311](https://github.com/midnightntwrk/midnight-zk/pull/311)
 * Add `IvcError::InvalidWitness` variant [#311](https://github.com/midnightntwrk/midnight-zk/pull/311)
 * Add `assign_without_subgroup_check` to `SelfEmulation` trait [#284](https://github.com/midnightntwrk/midnight-zk/pull/284)
 ### Changed
+* The multi-circuit aggregator supports inner circuits of different sizes: their `k` and `omega` are public inputs, and `InnerCircuitsContext::new` takes the inner circuits' `max_bit_len` instead of `k` [#461](https://github.com/midnightntwrk/midnight-zk/pull/461)
+* `IvcInstance` no longer carries the verifying key's public inputs: `IvcVerifier::verify` derives them from its own key, and `IvcError::VkMismatch` is removed [#461](https://github.com/midnightntwrk/midnight-zk/pull/461)
 * The verifying-key hash takes the fixed bases from `verifier::fixed_bases`, in the same order as before: every fixed column, then every fixed permutation polynomial. The hash changes with the verifying key's `transcript_repr` [#547](https://github.com/midnightntwrk/midnight-zk/pull/547)
 * Follow the grouped verifying-key commitment in `compute_vk_hash` and in the in-circuit witnessing of the verifying-key points: the permutation polynomials are committed to as one group, read from `VerifyingKey::phase0_commitment`. The hash is unchanged, a group's hash input being its polynomials' inputs back to back [#537](https://github.com/midnightntwrk/midnight-zk/pull/537)
 * `IvcCircuit::new` takes a finalized constraint system, see `ConstraintSystem::into_finalized`. The IVC circuit and the multi-circuit aggregator finalize the constraint systems they configure [#546](https://github.com/midnightntwrk/midnight-zk/pull/546)
@@ -54,6 +55,9 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 * `CircuitField` refactor [#201](https://github.com/midnightntwrk/midnight-zk/pull/201)
 
 ### Removed
+* `single-h-commitment` feature [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
+* `IvcCircuit::cs_degree` [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
+* `fewer-point-sets` feature [#554](https://github.com/midnightntwrk/midnight-zk/pull/554)
 * `Clone` on `IvcProver`, which holds a proving key, no longer `Clone` [#537](https://github.com/midnightntwrk/midnight-zk/pull/537)
 * Remove `LightAggregator` module, not in use and hard to maintain [#427](https://github.com/midnightntwrk/midnight-zk/pull/427)
 * Halo2curves dependency [#139](https://github.com/midnightntwrk/midnight-zk/pull/139)

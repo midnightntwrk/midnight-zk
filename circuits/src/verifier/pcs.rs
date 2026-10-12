@@ -90,9 +90,8 @@ pub trait InCircuitPCS<S: SelfEmulation>: Sized + Clone + Debug {
 
     /// Creates the fixed (VK-embedded) commitment to the group of `labels`.
     ///
-    /// The labels are matched to the group's polynomials in their `Ord` order,
-    /// as in [`Self::read_commitment`], so the caller may list them in any
-    /// order.
+    /// The labels are matched to the group's polynomials in the order given,
+    /// as in [`Self::read_commitment`].
     ///
     /// # Panics
     ///

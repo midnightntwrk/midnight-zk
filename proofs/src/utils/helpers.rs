@@ -62,7 +62,7 @@ pub(crate) fn read_f<F: PrimeField + SerdeObject, R: io::Read>(
 /// Trait for serialising SerdeObjects
 impl<C> ProcessedSerdeObject for C
 where
-    C: Curve + Default + GroupEncoding + From<C::AffineRepr>,
+    C: Curve + GroupEncoding + From<C::AffineRepr>,
     C::AffineRepr: SerdeObject,
 {
     /// Reads an element from the buffer and parses it according to the
