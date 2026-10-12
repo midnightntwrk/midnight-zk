@@ -132,8 +132,10 @@ pub fn fft_coeff_to_extended<Scalar: Field, G: FftGroup<Scalar>>(
 /// butterflies with a single multiply.
 fn fft_dif_pruned_fq(a: &mut [Fq], twiddles: &[Fq], log_n: u32, n_real: usize) {
     let n = a.len();
+    // Both the halving recursion and `bitreverse` need exactly 2^log_n
+    // elements; any other length gives a silently wrong transform.
     assert_eq!(n, 1 << log_n);
-    recursive_dif_pruned(a, n, 1, twiddles, n_real);
+    recursive_dif_pruned(a, 1, twiddles, n_real);
     for k in 0..n {
         let rk = bitreverse(k, log_n);
         if k < rk {
@@ -143,20 +145,20 @@ fn fft_dif_pruned_fq(a: &mut [Fq], twiddles: &[Fq], log_n: u32, n_real: usize) {
 }
 
 /// Recursive DIF butterflies assuming the first `nz` entries of `a` are
-/// potentially non-zero and the remaining `n - nz` are zero. Maintains this
+/// potentially non-zero and the rest are zero. Maintains this
 /// "data-at-front" invariant across recursive calls.
-fn recursive_dif_pruned(a: &mut [Fq], n: usize, tc: usize, tw: &[Fq], nz: usize) {
+fn recursive_dif_pruned(a: &mut [Fq], tc: usize, tw: &[Fq], nz: usize) {
     if nz == 0 {
         return;
     }
-    if n == 2 {
+    if let [x0, x1] = a {
         // Base case. GS butterfly on (a[0], a[1]). Correct whether a[1] is
         // zero (nz == 1) or not, since (a, 0; tw) → (a, a·tw).
-        gs(a, 0, 1, &tw[0]);
+        Fq::gs_butterfly(x0, x1, &tw[0]);
         return;
     }
 
-    let h = n / 2;
+    let h = a.len() / 2;
 
     if nz <= h {
         // Right half is entirely zero. The GS butterfly (a, 0; tw) simplifies
@@ -170,8 +172,11 @@ fn recursive_dif_pruned(a: &mut [Fq], n: usize, tc: usize, tw: &[Fq], nz: usize)
         // Both halves carry data. Full butterflies across the split. Pairs
         // with i >= nz - h have a[i+h] == 0, which the butterfly still
         // handles correctly (one extra mul each; not worth a special case).
-        for i in 0..h {
-            gs(a, i, i + h, &tw[i * tc]);
+        // A short `tw` would make `zip` skip butterflies, not panic.
+        debug_assert!((h - 1) * tc < tw.len());
+        let (lo, hi) = a.split_at_mut(h);
+        for ((x0, x1), t) in lo.iter_mut().zip(hi).zip(tw.iter().step_by(tc)) {
+            Fq::gs_butterfly(x0, x1, t);
         }
     }
 
@@ -180,21 +185,9 @@ fn recursive_dif_pruned(a: &mut [Fq], n: usize, tc: usize, tw: &[Fq], nz: usize)
     let child_nz = nz.min(h);
     let (left, right) = a.split_at_mut(h);
     rayon::join(
-        || recursive_dif_pruned(left, h, tc * 2, tw, child_nz),
-        || recursive_dif_pruned(right, h, tc * 2, tw, child_nz),
+        || recursive_dif_pruned(left, tc * 2, tw, child_nz),
+        || recursive_dif_pruned(right, tc * 2, tw, child_nz),
     );
-}
-
-/// In-place Gentleman-Sande butterfly on `a\[i\]` and `a\[j\]` with twiddle
-/// `t`: (a\[i\], a\[j\]) ← (a\[i\] + a\[j\], (a\[i\] - a\[j\])·t).
-#[inline(always)]
-fn gs(a: &mut [Fq], i: usize, j: usize, t: &Fq) {
-    // SAFETY: i != j and both in bounds — callers always supply i = k, j = k + h
-    // with k < h <= a.len()/2.
-    unsafe {
-        let p = a.as_mut_ptr();
-        Fq::gs_butterfly(&mut *p.add(i), &mut *p.add(j), t);
-    }
 }
 
 /// Recursive Cooley-Tukey (DIT) butterflies. Used by [`best_fft_with_twiddles`]
