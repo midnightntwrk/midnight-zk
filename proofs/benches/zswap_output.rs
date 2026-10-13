@@ -23,9 +23,8 @@ use midnight_proofs::{
         verify_algebraic_constraints,
     },
     poly::{
-        PolynomialLabel,
         commitment::Guard,
-        kzg::{KZGCommitmentScheme, commitment::KZGMultiCommitment, params::ParamsKZG},
+        kzg::{KZGCommitmentScheme, params::ParamsKZG},
     },
     transcript::{CircuitTranscript, Transcript},
 };
@@ -268,7 +267,7 @@ fn bench_zswap_output(c: &mut Criterion) {
         &srs,
         &pk,
         &circuit,
-        1,
+        0,
         &[&[], &instance],
         &mut transcript,
         &mut OsRng,
@@ -284,17 +283,7 @@ fn bench_zswap_output(c: &mut Criterion) {
     group.bench_function("Parse trace", |b| {
         b.iter_batched(
             || transcript.clone(),
-            |mut t| {
-                parse_trace(
-                    pk.get_vk(),
-                    &[KZGMultiCommitment::commitment_to_zero(
-                        PolynomialLabel::CommittedInstance(0),
-                    )],
-                    &[&instance],
-                    &mut t,
-                )
-                .unwrap()
-            },
+            |mut t| parse_trace(pk.get_vk(), &[], &[&[], &instance], &mut t).unwrap(),
             BatchSize::SmallInput,
         )
     });
@@ -304,28 +293,12 @@ fn bench_zswap_output(c: &mut Criterion) {
             || {
                 let mut t = transcript.clone();
                 (
-                    parse_trace(
-                        pk.get_vk(),
-                        &[KZGMultiCommitment::commitment_to_zero(
-                            PolynomialLabel::CommittedInstance(0),
-                        )],
-                        &[&instance],
-                        &mut t,
-                    )
-                    .unwrap(),
+                    parse_trace(pk.get_vk(), &[], &[&[], &instance], &mut t).unwrap(),
                     t,
                 )
             },
             |(trace, mut t)| {
-                verify_algebraic_constraints(
-                    pk.get_vk(),
-                    trace,
-                    &[KZGMultiCommitment::commitment_to_zero(
-                        PolynomialLabel::CommittedInstance(0),
-                    )],
-                    &[&instance],
-                    &mut t,
-                )
+                verify_algebraic_constraints(pk.get_vk(), trace, &[], &[&[], &instance], &mut t)
             },
             BatchSize::SmallInput,
         )
@@ -335,26 +308,10 @@ fn bench_zswap_output(c: &mut Criterion) {
         b.iter_batched(
             || {
                 let mut t = transcript.clone();
-                let trace = parse_trace(
-                    pk.get_vk(),
-                    &[KZGMultiCommitment::commitment_to_zero(
-                        PolynomialLabel::CommittedInstance(0),
-                    )],
-                    &[&instance],
-                    &mut t,
-                )
-                .unwrap();
+                let trace = parse_trace(pk.get_vk(), &[], &[&[], &instance], &mut t).unwrap();
 
-                verify_algebraic_constraints(
-                    pk.get_vk(),
-                    trace,
-                    &[KZGMultiCommitment::commitment_to_zero(
-                        PolynomialLabel::CommittedInstance(0),
-                    )],
-                    &[&instance],
-                    &mut t,
-                )
-                .unwrap()
+                verify_algebraic_constraints(pk.get_vk(), trace, &[], &[&[], &instance], &mut t)
+                    .unwrap()
             },
             |guard| guard.verify(&srs.verifier_params()).unwrap(),
             BatchSize::SmallInput,

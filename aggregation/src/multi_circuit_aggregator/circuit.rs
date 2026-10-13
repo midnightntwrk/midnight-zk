@@ -20,15 +20,12 @@ use midnight_circuits::{
     hash::poseidon::{PoseidonChip, PoseidonState},
     instructions::{hash::HashCPU, *},
     types::{AssignedNative, Instantiable},
-    verifier::{self, Accumulator, AssignedAccumulator, AssignedKZGMultiCommitment},
+    verifier::{self, Accumulator, AssignedAccumulator},
 };
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::{self, ConstraintSystem, Error},
-    poly::{
-        PolynomialLabel,
-        kzg::{KZGCommitmentScheme, commitment::KZGMultiCommitment, params::ParamsVerifierKZG},
-    },
+    poly::kzg::{KZGCommitmentScheme, params::ParamsVerifierKZG},
     transcript::{CircuitTranscript, Transcript},
     utils::SerdeFormat,
 };
@@ -303,10 +300,8 @@ impl IvcTransition for ProofAggregation {
             let dual_msm =
                 plonk::prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<PoseidonState<F>>>(
                     witness.claim.vk.vk(),
-                    &[KZGMultiCommitment::commitment_to_zero(
-                        PolynomialLabel::CommittedInstance(0),
-                    )],
-                    &[&[statement]],
+                    &[],
+                    &[&[], &[statement]],
                     &mut transcript,
                 )
                 .expect("off-circuit prepare should succeed");
@@ -368,16 +363,11 @@ impl IvcTransition for ProofAggregation {
 
         // 3. Verify the inner proof in-circuit against the witnessed VK and statement.
         let inner_proof_acc = {
-            let instance_com = AssignedKZGMultiCommitment::commitment_to_zero(
-                layouter,
-                self.std_lib.bls12_381(),
-                PolynomialLabel::CommittedInstance(0),
-            )?;
             let mut acc = self.std_lib.verifier().prepare(
                 layouter,
                 &assigned_vk,
-                &[instance_com],
-                &[std::slice::from_ref(&statement)],
+                &[],
+                &[&[], std::slice::from_ref(&statement)],
                 witness.map(|w| w.inner_proof),
             )?;
 

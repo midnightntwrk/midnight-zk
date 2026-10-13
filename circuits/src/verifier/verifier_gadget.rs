@@ -839,15 +839,11 @@ impl<S: SelfEmulation> VerifierGadget<S> {
 #[cfg(test)]
 pub(crate) mod tests {
 
-    use group::Group;
     use midnight_proofs::{
         circuit::SimpleFloorPlanner,
         dev::MockProver,
         plonk::{Circuit, Constraints, Error, create_proof, keygen_pk, keygen_vk_with_k, prepare},
-        poly::{
-            PolynomialLabel,
-            kzg::{KZGCommitmentScheme, commitment::KZGMultiCommitment, params::ParamsKZG},
-        },
+        poly::kzg::{KZGCommitmentScheme, params::ParamsKZG},
         transcript::{CircuitTranscript, Transcript},
     };
     use rand::SeedableRng;
@@ -880,10 +876,7 @@ pub(crate) mod tests {
         },
         testing_utils::FromScratch,
         types::{ComposableChip, Instantiable},
-        verifier::{
-            AssignedKZGCommitment, BlstrsEmulation, InCircuitKZG, accumulator::Accumulator,
-            kzg::AssignedKZGMultiCommitment,
-        },
+        verifier::{BlstrsEmulation, InCircuitKZG, accumulator::Accumulator},
     };
 
     type S = BlstrsEmulation;
@@ -965,7 +958,6 @@ pub(crate) mod tests {
     pub struct TestCircuit {
         // (cs, vk)
         inner_vk: (ConstraintSystem<F>, Value<VerifyingKey<S>>),
-        inner_committed_instance: Value<C>,
         inner_instances: Value<[F; NB_INNER_INSTANCES]>,
         inner_proof: Value<Vec<u8>>,
     }
@@ -1066,22 +1058,14 @@ pub(crate) mod tests {
                     &self.inner_vk.0,
                 )?;
 
-            let assigned_committed_instance =
-                AssignedKZGMultiCommitment(vec![AssignedKZGCommitment::assign(
-                    &mut layouter,
-                    &curve_chip,
-                    self.inner_committed_instance,
-                    PolynomialLabel::CommittedInstance(0),
-                )?]);
-
             let assigned_inner_pi = native_gadget
                 .assign_many(&mut layouter, &self.inner_instances.transpose_array())?;
 
             let mut inner_proof_acc = verifier_chip.prepare(
                 &mut layouter,
                 &assigned_inner_vk,
-                &[assigned_committed_instance],
-                &[&assigned_inner_pi],
+                &[],
+                &[&[], &assigned_inner_pi],
                 self.inner_proof.clone(),
             )?;
 
@@ -1118,7 +1102,7 @@ pub(crate) mod tests {
                 &inner_params,
                 &inner_pk,
                 &InnerCircuit::from_witness(preimage),
-                1,
+                0,
                 &[&[], &inner_public_inputs],
                 &mut transcript,
                 &mut rng,
@@ -1132,10 +1116,8 @@ pub(crate) mod tests {
                 CircuitTranscript::<PoseidonState<F>>::init_from_bytes(&inner_proof);
             prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<PoseidonState<F>>>(
                 &inner_vk,
-                &[KZGMultiCommitment::commitment_to_zero(
-                    PolynomialLabel::CommittedInstance(0),
-                )],
-                &[&inner_public_inputs],
+                &[],
+                &[&[], &inner_public_inputs],
                 &mut transcript,
             )
             .expect("Problem preparing the inner proof")
@@ -1159,7 +1141,6 @@ pub(crate) mod tests {
 
         let circuit = TestCircuit {
             inner_vk: (inner_vk.cs().clone(), Value::known(inner_vk.clone())),
-            inner_committed_instance: Value::known(C::identity()),
             inner_instances: Value::known([output]),
             inner_proof: Value::known(inner_proof),
         };

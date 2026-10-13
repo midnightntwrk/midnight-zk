@@ -4,7 +4,6 @@ use std::{
 };
 
 use ff::Field;
-use group::Group;
 use midnight_curves::{CurveAffine, pairing::MultiMillerLoop};
 
 use crate::{
@@ -234,12 +233,6 @@ impl<E: MultiMillerLoop> KZGMultiCommitment<E> {
     pub fn into_single(self) -> KZGCommitment<E> {
         self.assert_single();
         self.0.into_iter().next().unwrap()
-    }
-
-    /// A commitment to the zero polynomial (the identity point), tagged with
-    /// `label`. Used e.g. for empty committed-instance columns.
-    pub fn commitment_to_zero(label: PolynomialLabel) -> Self {
-        Self(vec![KZGCommitment::Simple(E::G1::identity(), label)])
     }
 }
 

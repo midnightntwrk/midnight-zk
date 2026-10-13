@@ -27,8 +27,8 @@ use midnight_circuits::{
     instructions::{hash::HashCPU, *},
     types::{AssignedNative, Instantiable},
     verifier::{
-        self, Accumulator, AssignedAccumulator, AssignedKZGMultiCommitment, AssignedVk,
-        BlstrsEmulation, InCircuitKZG, SelfEmulation,
+        self, Accumulator, AssignedAccumulator, AssignedVk, BlstrsEmulation, InCircuitKZG,
+        SelfEmulation,
     },
 };
 use midnight_proofs::{
@@ -36,7 +36,7 @@ use midnight_proofs::{
     plonk::{self, Error},
     poly::{
         EvaluationDomain, PolynomialLabel,
-        kzg::{KZGCommitmentScheme, commitment::KZGMultiCommitment, params::ParamsVerifierKZG},
+        kzg::{KZGCommitmentScheme, params::ParamsVerifierKZG},
     },
     transcript::{CircuitTranscript, Transcript},
 };
@@ -233,16 +233,12 @@ impl IvcTransition for ProofAggregation {
         let inner_proof_acc = {
             let mut transcript =
                 CircuitTranscript::<PoseidonState<F>>::init_from_bytes(&witness.inner_proof);
-            let dual_msm =
-                plonk::prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<PoseidonState<F>>>(
-                    ctx.vk.vk(),
-                    &[KZGMultiCommitment::commitment_to_zero(
-                        PolynomialLabel::CommittedInstance(0),
-                    )],
-                    &[&statement_pis],
-                    &mut transcript,
-                )
-                .expect("off-circuit prepare should succeed");
+            let dual_msm = plonk::prepare::<
+                F,
+                KZGCommitmentScheme<E>,
+                CircuitTranscript<PoseidonState<F>>,
+            >(ctx.vk.vk(), &[], &[&[], &statement_pis], &mut transcript)
+            .expect("off-circuit prepare should succeed");
 
             // Sanity check.
             assert!(
@@ -300,17 +296,12 @@ impl IvcTransition for ProofAggregation {
         )?;
 
         // Verify the inner proof in-circuit.
-        let instance_com = AssignedKZGMultiCommitment::commitment_to_zero(
-            layouter,
-            self.std_lib.bls12_381(),
-            PolynomialLabel::CommittedInstance(0),
-        )?;
 
         let inner_proof_acc = self.std_lib.verifier().prepare(
             layouter,
             &inner_vk,
-            &[instance_com],
-            &[&statement_pis],
+            &[],
+            &[&[], &statement_pis],
             witness.map(|w| w.inner_proof),
         )?;
 

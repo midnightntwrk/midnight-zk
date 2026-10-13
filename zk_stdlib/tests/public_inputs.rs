@@ -146,7 +146,7 @@ fn pi_test(nb_public_inputs: u32, extra_pi: bool) {
 
     // Check that the cost model proof size matches the actual proof size.
     assert_eq!(
-        midnight_zk_stdlib::cost_model(&relation, Some(vk.k() as u32)).size,
+        midnight_zk_stdlib::cost_model(&relation, Some(vk.k() as u32), false).size,
         proof.len()
     );
 

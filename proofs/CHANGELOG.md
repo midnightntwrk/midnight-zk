@@ -100,6 +100,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Simplify KZG multiopen verifier to use `KZGCommitment` directly [#430](https://github.com/midnightntwrk/midnight-zk/pull/430)
 
 ### Removed
+* `KZGMultiCommitment::commitment_to_zero`. An empty committed instance can be passed as an empty instance column instead, which is neither committed to nor opened [#569](https://github.com/midnightntwrk/midnight-zk/pull/569)
 * `single-h-commitment` feature, and the `PolynomialLabel::Quotient` label it committed the quotient polynomial with [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
 * `PolynomialCommitmentScheme::srs_monomial_blowup`, superseded by `load_params` [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
 * `ParamsKZG::downsize_lagrange` [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)

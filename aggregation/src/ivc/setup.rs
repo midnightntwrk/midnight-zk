@@ -32,7 +32,7 @@ pub fn setup<T: Ivc>(
     let relation = IvcCircuit::<T>::new(domain, cs.into_finalized(), ctx.clone());
 
     // Uncomment for visualizing the size of this IVC circuit.
-    // dbg!(midnight_zk_stdlib::cost_model(&relation, Some(k)));
+    // dbg!(midnight_zk_stdlib::cost_model(&relation, Some(k), false));
 
     let vk = midnight_zk_stdlib::setup_vk(&params, &relation);
     let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);

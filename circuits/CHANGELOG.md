@@ -14,6 +14,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Add tests compile time generics checks for `VectorGadget` and tests for `resize` [#464](https://github.com/midnightntwrk/midnight-zk/pull/465)
 
 ### Fixed
+* The verifier gadget accepts an empty instance column, which evaluates to zero, instead of panicking [#569](https://github.com/midnightntwrk/midnight-zk/pull/569)
 * The verifier gadget no longer misreads the fixed evaluations of a circuit with a fixed column queried at more than one rotation [#547](https://github.com/midnightntwrk/midnight-zk/pull/547)
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 
@@ -54,6 +55,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * `VerifierGadget::assign_vk_as_public_input` and `VerifierGadget::assign_fixed_vk` take a finalized constraint system (e.g. `vk.cs()` or `ConstraintSystem::into_finalized`) and return `Error::Synthesis` if it has selectors. `assign_vk_as_public_input` no longer converts the selectors itself [#546](https://github.com/midnightntwrk/midnight-zk/pull/546)
 
 ### Removed
+* `AssignedKZGMultiCommitment::commitment_to_zero`. An empty committed instance can be passed as an empty instance column instead, which is neither committed to nor opened [#569](https://github.com/midnightntwrk/midnight-zk/pull/569)
 * `single-h-commitment` feature in the verifier gadget [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
 * `fewer-point-sets` feature in the verifier gadget [#554](https://github.com/midnightntwrk/midnight-zk/pull/554)
 * Remove the internal `verifier/permutation.rs` module and its `Committed`/`Evaluated`/`CommonEvaluated` types; the in-circuit permutation argument no longer carries any transcript plumbing of its own [#537](https://github.com/midnightntwrk/midnight-zk/pull/537)
