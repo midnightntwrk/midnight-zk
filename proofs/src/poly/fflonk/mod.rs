@@ -167,7 +167,9 @@ where
                     .expect("the queried group has no polynomial under the query label");
             let (_, points) = (chunks_info.entry(labels))
                 .or_insert_with(|| (polys.iter().collect::<Vec<_>>(), Vec::new()));
-            push_new(points, q.point);
+            if !points.contains(&q.point) {
+                points.push(q.point);
+            }
             chunks_info
         });
 
@@ -237,7 +239,9 @@ where
                 .find(|labels| labels.contains(&q.label))
                 .map_or_else(|| vec![q.label.clone()], <[_]>::to_vec);
             let (_, points) = chunks_info.entry(labels).or_insert((q.commitment, Vec::new()));
-            push_new(points, q.point);
+            if !points.contains(&q.point) {
+                points.push(q.point);
+            }
             chunks_info
         });
 
@@ -274,17 +278,6 @@ where
         }
 
         PCS::multi_prepare(&inner_queries, k, transcript)
-    }
-}
-
-/// Appends `point` to `points` unless it is already there.
-///
-/// The points of a chunk are kept in query order, not sorted by value: the
-/// implicit evaluations are read in this order, and an in-circuit verifier
-/// cannot order them by the value of a witnessed point.
-fn push_new<F: PartialEq>(points: &mut Vec<F>, point: F) {
-    if !points.contains(&point) {
-        points.push(point);
     }
 }
 
