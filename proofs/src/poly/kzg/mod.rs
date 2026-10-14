@@ -487,10 +487,9 @@ where
             point_sets.iter().zip(q_eval_sets.iter()).zip(q_evals_on_x3.iter()).rev().fold(
                 E::Fr::ZERO,
                 |acc_eval, ((points, evals), proof_eval)| {
-                    let r_eval = eval_interpolant(points, evals, x3);
                     // eval = (proof_eval - r_eval) / prod_i (x3 - point_i)
-                    let den = points.iter().fold(E::Fr::ONE, |acc, point| acc * &(x3 - point));
-                    let eval = (*proof_eval - &r_eval) * den.invert().unwrap();
+                    let (sum, vanishing_inv) = eval_interpolant(points, evals, x3);
+                    let eval = *proof_eval * vanishing_inv - sum;
                     acc_eval * &(x2) + &eval
                 },
             );

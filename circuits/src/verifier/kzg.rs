@@ -53,7 +53,7 @@ use crate::{
         pcs::{CommitmentBases, InCircuitHomomorphicCommitment, InCircuitPCS, VerifierQuery},
         transcript_gadget::TranscriptGadget,
         utils::{
-            AssignedBoundedScalar, evaluate_interpolated_polynomial, inner_product, mul_add,
+            AssignedBoundedScalar, evaluate_interpolation_quotient, inner_product, mul_add,
             mul_bounded_scalars, truncated_powers,
         },
     },
@@ -549,26 +549,15 @@ pub(crate) fn multi_prepare_kzg<S: SelfEmulation<PCS = InCircuitKZG<S>>>(
         .zip(q_evals_on_x3.iter())
         .rev()
         .try_fold(zero, |acc_eval, ((points, evals), proof_eval)| {
-            let r_eval =
-                evaluate_interpolated_polynomial(layouter, scalar_chip, points, evals, &x3.scalar)?;
-
             // eval = (proof_eval - r_eval) / prod_i (x3 - point_i)
-            let den = points.iter().skip(1).try_fold(
-                scalar_chip.sub(layouter, &x3.scalar, &points[0])?,
-                |acc, point| {
-                    // acc * (x3 - point) computed as acc * x3 - acc * point
-                    scalar_chip.add_and_double_mul(
-                        layouter,
-                        (S::F::ZERO, &acc),
-                        (S::F::ZERO, &x3.scalar),
-                        (S::F::ZERO, point),
-                        S::F::ZERO,
-                        (S::F::ONE, -S::F::ONE),
-                    )
-                },
+            let eval = evaluate_interpolation_quotient(
+                layouter,
+                scalar_chip,
+                points,
+                evals,
+                &x3.scalar,
+                proof_eval,
             )?;
-            let mut eval = scalar_chip.sub(layouter, proof_eval, &r_eval)?;
-            eval = scalar_chip.div(layouter, &eval, &den)?;
 
             // acc_eval * x2 + eval
             mul_add(layouter, scalar_chip, &acc_eval, &x2, &eval)

@@ -78,7 +78,7 @@ impl<F: PrimeField, B: PolynomialRepresentation> Committed<F, B> {
     pub fn commit<CS, T, E>(
         params: &CS::Parameters,
         polys_map: BTreeMap<PolynomialLabel, Polynomial<F, B>>,
-        encode: fn(&Polynomial<F, B>) -> Polynomial<F, E>,
+        encode: impl Fn(&Polynomial<F, B>) -> Polynomial<F, E> + Send + Sync,
         transcript: &mut T,
     ) -> Result<Self, Error>
     where

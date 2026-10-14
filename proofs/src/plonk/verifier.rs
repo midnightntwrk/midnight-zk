@@ -61,22 +61,7 @@ where
         }
     }
 
-    let logups = vk
-        .cs
-        .lookups
-        .iter()
-        .map(|l| l.chunk_by_degree(vk.cs_degree))
-        .collect::<Vec<_>>();
-
-    // The advice columns and the logup multiplicities form the phase1 group.
-    let phase1_labels = vk
-        .cs
-        .advice_labels()
-        .into_iter()
-        .chain((0..logups.len()).map(PolynomialLabel::LogupMultiplicities))
-        .collect::<Vec<_>>();
-
-    let phase1_committed = argument::verifier::Committed::read(&phase1_labels, transcript)?;
+    let phase1_committed = argument::verifier::Committed::read(&vk.phase1_labels(), transcript)?;
 
     // Sample theta challenge for keeping lookup columns linearly independent
     let theta: F = transcript.squeeze_challenge();
@@ -90,23 +75,7 @@ where
     // Sample the trash challenge after the advices have been committed to
     let trash_challenge: F = transcript.squeeze_challenge();
 
-    let mut phase2_labels = vk.cs.permutation.accumulator_labels(vk.cs_degree);
-
-    for (argument_index, logup_argument) in logups.iter().enumerate() {
-        for j in 0..logup_argument.num_chunks() {
-            phase2_labels.push(PolynomialLabel::LogupHelper(argument_index, j));
-        }
-    }
-
-    for argument_index in 0..logups.len() {
-        phase2_labels.push(PolynomialLabel::LogupAggregator(argument_index));
-    }
-
-    for trash_argument in vk.cs.trashcans.iter() {
-        phase2_labels.push(PolynomialLabel::Trash(trash_argument.argument_index))
-    }
-
-    let phase2_committed = argument::verifier::Committed::read(&phase2_labels, transcript)?;
+    let phase2_committed = argument::verifier::Committed::read(&vk.phase2_labels(), transcript)?;
 
     // Sample y challenge, which keeps the gates linearly independent.
     let y: F = transcript.squeeze_challenge();

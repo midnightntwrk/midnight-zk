@@ -125,24 +125,35 @@ where
 }
 
 /// The evaluation at `x` of the polynomial of degree below `points.len()` that
-/// takes the value `evals_i` at `points_i`, computed without building it:
-/// `Π_j (x - points_j) · Σ_i evals_i / ((x - points_i) Π_{j≠i} (points_i -
-/// points_j))`.
-pub fn eval_interpolant<F: Field>(points: &[F], evals: &[F], x: F) -> F {
+/// takes the value `evals_i` at `points_i`,
+/// `Σ_i evals_i · Π_{j ≠ i} (x - points_j) / (points_i - points_j)`,
+/// as a pair `(s, v)` with `v = 1 / Π_j (x - points_j)` and the evaluation
+/// equal to `s / v`.
+///
+/// # Panics
+///
+/// If `x` is one of `points`.
+pub fn eval_interpolant<F: Field>(points: &[F], evals: &[F], x: F) -> (F, F) {
     assert_eq!(points.len(), evals.len());
-    if let Some(i) = points.iter().position(|point| *point == x) {
-        return evals[i];
-    }
+    // In factored form, the evaluation is
+    // `Π_j (x - points_j) · Σ_i evals_i / ((x - points_i) Π_{j≠i} (points_i -
+    // points_j))`.
     let mut denoms: Vec<F> = (points.iter().enumerate())
         .map(|(i, point_i)| {
             (points.iter().enumerate())
                 .filter(|(j, _)| *j != i)
                 .fold(x - point_i, |acc, (_, point_j)| acc * (*point_i - point_j))
         })
+        .chain([points.iter().map(|point| x - point).product()])
         .collect();
     denoms.iter_mut().batch_invert();
-    let vanishing: F = points.iter().map(|point| x - point).product();
-    vanishing * evals.iter().zip(&denoms).map(|(eval, denom)| *eval * denom).sum::<F>()
+    let vanishing_inv = denoms.pop().unwrap();
+    assert!(
+        bool::from(!vanishing_inv.is_zero()),
+        "x is an interpolation point"
+    );
+    let sum = evals.iter().zip(&denoms).map(|(eval, denom)| *eval * denom).sum();
+    (sum, vanishing_inv)
 }
 
 /// The quotient of `poly`, in coefficient form, by `∏_i (X - roots_i)`,
@@ -434,10 +445,9 @@ fn test_eval_interpolant() {
         let (points, evals) = (&points[..len], &evals[..len]);
         let poly = lagrange_interpolate(points, evals);
         let x = Scalar::random(OsRng);
-        assert_eq!(
-            eval_interpolant(points, evals, x),
-            eval_polynomial(&poly, x)
-        );
-        assert_eq!(eval_interpolant(points, evals, points[0]), evals[0]);
+        let (sum, vanishing_inv) = eval_interpolant(points, evals, x);
+        assert_eq!(sum, eval_polynomial(&poly, x) * vanishing_inv);
+        let vanishing: Scalar = points.iter().map(|point| x - point).product();
+        assert_eq!(vanishing_inv * vanishing, Scalar::ONE);
     }
 }
