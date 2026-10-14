@@ -34,17 +34,17 @@ use crate::{
 
 /// An in-circuit verifier query: a commitment evaluated at a point.
 #[derive(Clone, Debug)]
-pub struct VerifierQuery<'a, S: SelfEmulation, PCS: InCircuitPCS<S>> {
+pub struct VerifierQuery<'a, S: SelfEmulation> {
     pub(crate) point: AssignedNative<S::F>,
-    pub(crate) commitment: &'a PCS::AssignedCommitment,
+    pub(crate) commitment: &'a AssignedCommitment<S>,
     pub(crate) label: PolynomialLabel,
     pub(crate) eval: AssignedNative<S::F>,
 }
 
-impl<'a, S: SelfEmulation, PCS: InCircuitPCS<S>> VerifierQuery<'a, S, PCS> {
+impl<'a, S: SelfEmulation> VerifierQuery<'a, S> {
     pub fn new(
         point: &AssignedNative<S::F>,
-        commitment: &'a PCS::AssignedCommitment,
+        commitment: &'a AssignedCommitment<S>,
         label: PolynomialLabel,
         eval: &AssignedNative<S::F>,
     ) -> Self {
@@ -153,6 +153,9 @@ pub trait InCircuitPCS<S: SelfEmulation>: Sized + Clone + Debug {
         curve_chip: &S::CurveChip,
         scalar_chip: &S::ScalarChip,
         transcript: &mut TranscriptGadget<S>,
-        queries: &[VerifierQuery<'_, S, Self>],
+        queries: &[VerifierQuery<'_, S>],
     ) -> Result<AssignedAccumulator<S>, Error>;
 }
+
+/// The in-circuit commitment type of the PCS declared by `S`.
+pub type AssignedCommitment<S> = <<S as SelfEmulation>::PCS as InCircuitPCS<S>>::AssignedCommitment;

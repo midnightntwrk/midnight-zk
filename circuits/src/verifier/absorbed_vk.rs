@@ -15,7 +15,9 @@
 
 use midnight_proofs::{circuit::Layouter, plonk::Error, poly::PolynomialLabel};
 
-use super::{AssignedVk, SelfEmulation, pcs::InCircuitPCS, transcript_gadget::TranscriptGadget};
+use super::{
+    AssignedVk, SelfEmulation, pcs::AssignedCommitment, transcript_gadget::TranscriptGadget,
+};
 
 /// An assigned verifying key whose `transcript_repr` has been absorbed into a
 /// transcript.
@@ -30,7 +32,7 @@ pub(crate) struct AbsorbedVk<'a, S: SelfEmulation>(&'a AssignedVk<S>);
 impl<'a, S: SelfEmulation> AbsorbedVk<'a, S> {
     /// The commitment the absorbed key holds to its phase-0 group: every fixed
     /// column and the fixed permutation polynomials.
-    pub(crate) fn phase0_commitment(&self) -> &'a <S::PCS as InCircuitPCS<S>>::AssignedCommitment {
+    pub(crate) fn phase0_commitment(&self) -> &'a AssignedCommitment<S> {
         &self.0.phase0_commitment
     }
 

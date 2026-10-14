@@ -443,12 +443,12 @@ fn evals_inner_product<F: CircuitField>(
 
 /// Verifies a bunch of KZG queries in a multi-open argument.
 /// The resulting accumulator satisfies the invariant iff all queries are valid.
-pub(crate) fn multi_prepare_kzg<S: SelfEmulation>(
+pub(crate) fn multi_prepare_kzg<S: SelfEmulation<PCS = InCircuitKZG<S>>>(
     layouter: &mut impl Layouter<S::F>,
     #[cfg(feature = "truncated-challenges")] curve_chip: &S::CurveChip,
     scalar_chip: &S::ScalarChip,
     transcript_gadget: &mut TranscriptGadget<S>,
-    queries: &[VerifierQuery<S, InCircuitKZG<S>>],
+    queries: &[VerifierQuery<S>],
 ) -> Result<AssignedAccumulator<S>, Error> {
     let one = AssignedBoundedScalar::one(layouter, scalar_chip)?;
 
@@ -644,7 +644,7 @@ impl<E: MultiMillerLoop> CommitmentBases<E::G1> for KZGMultiCommitment<E> {
     }
 }
 
-impl<S: SelfEmulation> InCircuitPCS<S> for InCircuitKZG<S> {
+impl<S: SelfEmulation<PCS = Self>> InCircuitPCS<S> for InCircuitKZG<S> {
     type OffCircuitPCS = KZGCommitmentScheme<S::Engine>;
     type AssignedCommitment = AssignedKZGMultiCommitment<S>;
 
@@ -687,7 +687,7 @@ impl<S: SelfEmulation> InCircuitPCS<S> for InCircuitKZG<S> {
         _curve_chip: &S::CurveChip,
         scalar_chip: &S::ScalarChip,
         transcript: &mut TranscriptGadget<S>,
-        queries: &[VerifierQuery<'_, S, Self>],
+        queries: &[VerifierQuery<'_, S>],
     ) -> Result<AssignedAccumulator<S>, Error> {
         multi_prepare_kzg(
             layouter,

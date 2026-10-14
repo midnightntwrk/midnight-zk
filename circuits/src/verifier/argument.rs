@@ -33,7 +33,7 @@ use crate::{
     verifier::{
         SelfEmulation,
         absorbed_vk::AbsorbedVk,
-        pcs::{InCircuitPCS, VerifierQuery},
+        pcs::{AssignedCommitment, InCircuitPCS, VerifierQuery},
         transcript_gadget::TranscriptGadget,
     },
 };
@@ -121,7 +121,7 @@ fn eval_points<S: SelfEmulation>(
 /// A group of polynomials read from the transcript as a single commitment.
 #[derive(Clone, Debug)]
 pub(crate) struct Committed<S: SelfEmulation> {
-    commitment: <S::PCS as InCircuitPCS<S>>::AssignedCommitment,
+    commitment: AssignedCommitment<S>,
     polynomial_labels: Vec<PolynomialLabel>,
 }
 
@@ -192,7 +192,7 @@ impl<S: SelfEmulation> Committed<S> {
 
 impl<'a, S: SelfEmulation> Evaluated<S> {
     /// The queries that the multi-open argument checks for this group.
-    pub(crate) fn queries(&'a self) -> Vec<VerifierQuery<'a, S, S::PCS>> {
+    pub(crate) fn queries(&'a self) -> Vec<VerifierQuery<'a, S>> {
         self.evals_map
             .iter()
             .flat_map(|(label, evaluations)| {

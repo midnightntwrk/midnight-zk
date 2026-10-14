@@ -39,7 +39,7 @@ mod verifier_gadget;
 pub use accumulator::{Accumulator, AssignedAccumulator};
 pub use kzg::{AssignedKZGCommitment, AssignedKZGMultiCommitment, InCircuitKZG};
 pub use msm::{AssignedMsm, AssignedPoint, Msm, Point};
-pub use pcs::{CommitmentBases, InCircuitHomomorphicCommitment, InCircuitPCS};
+pub use pcs::{AssignedCommitment, CommitmentBases, InCircuitHomomorphicCommitment, InCircuitPCS};
 #[cfg(feature = "dev-curves")]
 pub use types::BnEmulation;
 pub use types::{BlstrsEmulation, SelfEmulation};
@@ -83,7 +83,7 @@ struct AssignedEvaluationDomain<S: SelfEmulation> {
 #[derive(Clone, Debug)]
 pub struct AssignedVk<S: SelfEmulation> {
     domain: AssignedEvaluationDomain<S>,
-    phase0_commitment: <S::PCS as InCircuitPCS<S>>::AssignedCommitment,
+    phase0_commitment: AssignedCommitment<S>,
     cs: ConstraintSystem<S::F>,
     cs_degree: usize,
     transcript_repr: AssignedNative<S::F>,
@@ -155,8 +155,9 @@ pub fn fixed_bases<S: SelfEmulation>(vk: &VerifyingKey<S>) -> BTreeMap<Polynomia
 /// Returns the ordered list of [`PolynomialLabel`]s for the fixed bases of a
 /// circuit with the given number of fixed and permutation commitments.
 ///
-/// The order matches the keys of [`fixed_bases`]. Call this before having an
-/// actual verifying key (e.g. during setup) to size an accumulator correctly.
+/// The labels are sorted, matching the key order of [`fixed_bases`]. Call this
+/// before having an actual verifying key (e.g. during setup) to size an
+/// accumulator correctly.
 pub fn fixed_base_labels<S: SelfEmulation>(
     nb_fixed_commitments: usize,
     nb_perm_commitments: usize,
@@ -177,5 +178,6 @@ pub fn fixed_base_labels<S: SelfEmulation>(
     // introduced at some point anyway and this is a good place).
     labels.push(PolynomialLabel::Custom("-G".into()));
 
+    labels.sort();
     labels
 }

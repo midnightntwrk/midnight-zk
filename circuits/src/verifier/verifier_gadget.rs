@@ -40,7 +40,7 @@ use crate::{
             eval_expression, lookup::lookup_expressions, permutation::permutation_expressions,
             trash::trash_expressions,
         },
-        pcs::{InCircuitHomomorphicCommitment, InCircuitPCS, VerifierQuery},
+        pcs::{AssignedCommitment, InCircuitHomomorphicCommitment, InCircuitPCS, VerifierQuery},
         traces::VerifierTrace,
         transcript_gadget::TranscriptGadget,
         utils::{evaluate_lagrange_polynomials, inner_product, pow_of_two, square_k_times, sum},
@@ -344,7 +344,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         &self,
         layouter: &mut impl Layouter<S::F>,
         assigned_vk: &AssignedVk<S>,
-        assigned_committed_instances: &[<S::PCS as InCircuitPCS<S>>::AssignedCommitment],
+        assigned_committed_instances: &[AssignedCommitment<S>],
         assigned_instances: &[&[AssignedNative<S::F>]],
         proof: Value<Vec<u8>>,
     ) -> Result<(VerifierTrace<S>, TranscriptGadget<S>), Error> {
@@ -444,8 +444,8 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         scalar_chip: &S::ScalarChip,
         xn: AssignedNative<S::F>,
         splitting_factor: AssignedNative<S::F>,
-        quotient_limb_commitments: &[<S::PCS as InCircuitPCS<S>>::AssignedCommitment],
-    ) -> Result<<S::PCS as InCircuitPCS<S>>::AssignedCommitment, Error> {
+        quotient_limb_commitments: &[AssignedCommitment<S>],
+    ) -> Result<AssignedCommitment<S>, Error> {
         let mut splitting_pow =
             scalar_chip.linear_combination(layouter, &[(-S::F::ONE, xn)], S::F::ONE)?;
         let (first_com, rest_coms) = quotient_limb_commitments
@@ -477,7 +477,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         layouter: &mut impl Layouter<S::F>,
         assigned_vk: &AssignedVk<S>,
         trace: VerifierTrace<S>,
-        assigned_committed_instances: &[<S::PCS as InCircuitPCS<S>>::AssignedCommitment],
+        assigned_committed_instances: &[AssignedCommitment<S>],
         assigned_instances: &[&[AssignedNative<S::F>]],
         mut transcript: TranscriptGadget<S>,
     ) -> Result<AssignedAccumulator<S>, Error> {
@@ -768,7 +768,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             .chain(cs.instance_queries().iter().enumerate().filter_map(
                 |(query_index, &(column, rot))| {
                     if column.index() < nb_committed_instances {
-                        Some(VerifierQuery::<S, S::PCS>::new(
+                        Some(VerifierQuery::new(
                             &x_rotations[&rot],
                             &assigned_committed_instances[column.index()],
                             PolynomialLabel::CommittedInstance(column.index()),
@@ -811,7 +811,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         &self,
         layouter: &mut impl Layouter<S::F>,
         assigned_vk: &AssignedVk<S>,
-        assigned_committed_instances: &[<S::PCS as InCircuitPCS<S>>::AssignedCommitment],
+        assigned_committed_instances: &[AssignedCommitment<S>],
         assigned_instances: &[&[AssignedNative<S::F>]],
         proof: Value<Vec<u8>>,
     ) -> Result<AssignedAccumulator<S>, Error> {
