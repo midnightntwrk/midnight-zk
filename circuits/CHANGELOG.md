@@ -10,6 +10,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 * `InCircuitPCS::squeeze_evaluation_point`, mirroring `PolynomialCommitmentScheme::squeeze_evaluation_point`, and `InCircuitPCS::OffCircuitPCS`, the off-circuit scheme of the proofs the gadget verifies [#570](https://github.com/midnightntwrk/midnight-zk/pull/570)
 * `CommitmentBases`, the labelled points of an off-circuit commitment [#570](https://github.com/midnightntwrk/midnight-zk/pull/570)
+* in-circuit verifier and dependency of the whole library on DefaultPCS [#575](https://github.com/midnightntwrk/midnight-zk/pull/575)
 * `Point`/`AssignedPoint` enums and flat-triple `Msm`/`AssignedMsm` representation to distinguish variable-base from globally-fixed bases [#430](https://github.com/midnightntwrk/midnight-zk/pull/430)
 * `AssignedKZGCommitment` enum as the in-circuit analog of `KZGCommitment` [#430](https://github.com/midnightntwrk/midnight-zk/pull/430)
 * `fixed_base_msm` on the foreign Edwards chip: public fixed-base MSM for compile-time-constant bases, backed by the internal Lim-Lee comb `fixed_base_comb_msm` with a fixed comb width [#467](https://github.com/midnightntwrk/midnight-zk/pull/467)
@@ -17,6 +18,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 * The verifier gadget accepts an empty instance column, which evaluates to zero, instead of panicking [#569](https://github.com/midnightntwrk/midnight-zk/pull/569)
+* `AssignedMsm::collapse` yields the identity on an MSM with no variable term, as the off-circuit collapse does, instead of calling the MSM chip on empty input [#575](https://github.com/midnightntwrk/midnight-zk/pull/575)
 * The verifier gadget no longer misreads the fixed evaluations of a circuit with a fixed column queried at more than one rotation [#547](https://github.com/midnightntwrk/midnight-zk/pull/547)
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 
