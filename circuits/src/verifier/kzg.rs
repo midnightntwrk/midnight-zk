@@ -27,10 +27,17 @@ use std::{
 };
 
 use ff::Field;
+use midnight_curves::pairing::MultiMillerLoop;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
-    poly::{PolynomialLabel, kzg::commitment::KZGCommitment},
+    poly::{
+        PolynomialLabel,
+        kzg::{
+            KZGCommitmentScheme,
+            commitment::{KZGCommitment, KZGMultiCommitment},
+        },
+    },
 };
 
 #[cfg(feature = "truncated-challenges")]
@@ -43,7 +50,7 @@ use crate::{
     verifier::{
         AssignedAccumulator, SelfEmulation,
         msm::{AssignedMsm, AssignedPoint},
-        pcs::{InCircuitHomomorphicCommitment, InCircuitPCS, VerifierQuery},
+        pcs::{CommitmentBases, InCircuitHomomorphicCommitment, InCircuitPCS, VerifierQuery},
         transcript_gadget::TranscriptGadget,
         utils::{
             AssignedBoundedScalar, evaluate_interpolated_polynomial, inner_product, mul_add,
@@ -213,11 +220,10 @@ impl<S: SelfEmulation> AssignedKZGMultiCommitment<S> {
 }
 
 impl<S: SelfEmulation> InnerValue for AssignedKZGMultiCommitment<S> {
-    type Element = midnight_proofs::poly::kzg::commitment::KZGMultiCommitment<S::Engine>;
+    type Element = KZGMultiCommitment<S::Engine>;
 
     fn value(&self) -> Value<Self::Element> {
-        Value::from_iter(self.0.iter().map(|c| c.value()))
-            .map(midnight_proofs::poly::kzg::commitment::KZGMultiCommitment)
+        Value::from_iter(self.0.iter().map(|c| c.value())).map(KZGMultiCommitment)
     }
 }
 
@@ -437,12 +443,12 @@ fn evals_inner_product<F: CircuitField>(
 
 /// Verifies a bunch of KZG queries in a multi-open argument.
 /// The resulting accumulator satisfies the invariant iff all queries are valid.
-pub(crate) fn multi_prepare_kzg<S: SelfEmulation>(
+pub(crate) fn multi_prepare_kzg<S: SelfEmulation<PCS = InCircuitKZG<S>>>(
     layouter: &mut impl Layouter<S::F>,
     #[cfg(feature = "truncated-challenges")] curve_chip: &S::CurveChip,
     scalar_chip: &S::ScalarChip,
     transcript_gadget: &mut TranscriptGadget<S>,
-    queries: &[VerifierQuery<S, InCircuitKZG<S>>],
+    queries: &[VerifierQuery<S>],
 ) -> Result<AssignedAccumulator<S>, Error> {
     let one = AssignedBoundedScalar::one(layouter, scalar_chip)?;
 
@@ -627,14 +633,33 @@ pub(crate) fn multi_prepare_kzg<S: SelfEmulation>(
 #[derive(Clone, Copy, Debug)]
 pub struct InCircuitKZG<S: SelfEmulation>(PhantomData<S>);
 
-impl<S: SelfEmulation> InCircuitPCS<S> for InCircuitKZG<S> {
+impl<E: MultiMillerLoop> CommitmentBases<E::G1> for KZGMultiCommitment<E> {
+    fn bases(&self) -> Vec<(PolynomialLabel, E::G1)> {
+        (self.0.iter())
+            .map(|com| match com {
+                KZGCommitment::Simple(point, label) => (label.clone(), *point),
+                KZGCommitment::Linear(..) => panic!("a fixed base cannot be a linear combination"),
+            })
+            .collect()
+    }
+}
+
+impl<S: SelfEmulation<PCS = Self>> InCircuitPCS<S> for InCircuitKZG<S> {
+    type OffCircuitPCS = KZGCommitmentScheme<S::Engine>;
     type AssignedCommitment = AssignedKZGMultiCommitment<S>;
 
     fn fixed_commitment(labels: &[PolynomialLabel]) -> Self::AssignedCommitment {
         PolynomialLabel::assert_distinct(labels);
         AssignedKZGMultiCommitment(
-            labels.iter().cloned().map(AssignedKZGCommitment::fixed).collect(),
+            Self::fixed_base_labels(labels)
+                .into_iter()
+                .map(AssignedKZGCommitment::fixed)
+                .collect(),
         )
+    }
+
+    fn fixed_base_labels(labels: &[PolynomialLabel]) -> Vec<PolynomialLabel> {
+        labels.to_vec()
     }
 
     fn read_commitment(
@@ -669,7 +694,7 @@ impl<S: SelfEmulation> InCircuitPCS<S> for InCircuitKZG<S> {
         _curve_chip: &S::CurveChip,
         scalar_chip: &S::ScalarChip,
         transcript: &mut TranscriptGadget<S>,
-        queries: &[VerifierQuery<'_, S, Self>],
+        queries: &[VerifierQuery<'_, S>],
     ) -> Result<AssignedAccumulator<S>, Error> {
         multi_prepare_kzg(
             layouter,
