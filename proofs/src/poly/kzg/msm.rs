@@ -1,10 +1,10 @@
-use std::{collections::BTreeMap, fmt::Debug, iter};
+use std::{any::TypeId, collections::BTreeMap, fmt::Debug, iter};
 
 use ff::Field;
 use group::{Curve, Group, prime::PrimeCurveAffine};
 use itertools::izip;
 use midnight_curves::{
-    CurveAffine,
+    CurveAffine, Fq, G1Affine,
     pairing::{Engine, MillerLoopResult, MultiMillerLoop},
 };
 use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
@@ -147,7 +147,7 @@ where
         } else {
             let mut affine = vec![E::G1Affine::identity(); self.bases.len()];
             E::G1::batch_normalize(&self.bases, &mut affine);
-            msm_specific::<E::G1Affine>(&self.scalars, &affine)
+            msm_verifier::<E::G1Affine>(&self.scalars, &affine)
         }
     }
 
@@ -167,13 +167,38 @@ where
 /// `Σ coeffs[i]·bases[i]`, dropping the zero coefficients first, by the curve's
 /// own MSM ([`CurveAffine::msm`]: the Rust Pippenger, on every curve).
 pub fn msm_specific<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
-    let (coeffs, bases): (Vec<C::Scalar>, Vec<C>) = coeffs
+    let (coeffs, bases) = drop_zeros(coeffs, bases);
+    C::msm(&coeffs, &bases)
+}
+
+/// The verifier's MSM: like [`msm_specific`], but BLS12-381 G1 always goes
+/// through blst ([`G1Affine::multi_exp_affine`]) instead of the Rust Pippenger.
+#[allow(unsafe_code)]
+pub fn msm_verifier<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
+    if TypeId::of::<C>() != TypeId::of::<G1Affine>() {
+        return msm_specific(coeffs, bases);
+    }
+    let (coeffs, bases) = drop_zeros(coeffs, bases);
+    // blst panics on no terms
+    if coeffs.is_empty() {
+        return C::Curve::identity();
+    }
+    // SAFETY: `C` is `G1Affine` (checked above), so `C::Scalar` is `Fq` and
+    // `C::Curve` is `G1Projective`.
+    let coeffs = unsafe { &*(coeffs.as_slice() as *const _ as *const [Fq]) };
+    let bases = unsafe { &*(bases.as_slice() as *const _ as *const [G1Affine]) };
+    let res = G1Affine::multi_exp_affine(bases, coeffs);
+    unsafe { std::mem::transmute_copy(&res) }
+}
+
+/// The terms with a non-zero coefficient
+fn drop_zeros<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> (Vec<C::Scalar>, Vec<C>) {
+    coeffs
         .iter()
         .zip(bases)
         .filter(|(s, _)| !s.is_zero_vartime())
         .map(|(s, b)| (*s, *b))
-        .unzip();
-    C::msm(&coeffs, &bases)
+        .unzip()
 }
 
 /// Two channel MSM accumulator
@@ -290,7 +315,7 @@ mod tests {
     use midnight_curves::{Bls12, CurveAffine, Fq, G1Affine, G1Projective, G2Affine};
     use rand_core::OsRng;
 
-    use super::{MSMKZG, msm_specific};
+    use super::{MSMKZG, msm_specific, msm_verifier};
     use crate::{
         poly::{
             PolynomialLabel::{self, Advice, Collection, Fixed, NoLabel, PermutationFixed},
@@ -385,16 +410,18 @@ mod tests {
     fn agrees_with_naive<C: CurveAffine>() {
         for n in [0, 1, 2, 3, 7, 64, 300] {
             let (coeffs, bases) = terms::<C>(n);
-            assert_eq!(
-                msm_specific(&coeffs, &bases),
-                naive(&coeffs, &bases),
-                "n = {n}"
-            );
+            let expected = naive(&coeffs, &bases);
+            assert_eq!(msm_specific(&coeffs, &bases), expected, "n = {n}");
+            assert_eq!(msm_verifier(&coeffs, &bases), expected, "n = {n}");
         }
         // All zero: nothing left to sum
         let (_, bases) = terms::<C>(5);
         assert_eq!(
             msm_specific(&[C::Scalar::ZERO; 5], &bases),
+            C::Curve::identity()
+        );
+        assert_eq!(
+            msm_verifier(&[C::Scalar::ZERO; 5], &bases),
             C::Curve::identity()
         );
     }
