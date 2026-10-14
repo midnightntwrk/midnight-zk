@@ -62,3 +62,5 @@
 
 pub mod cpu;
 pub mod mmr_gadget;
+#[cfg(test)]
+mod tests;
