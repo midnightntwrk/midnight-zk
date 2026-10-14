@@ -47,7 +47,7 @@ pub enum Error {
 }
 
 /// The possible basis of a polynomial representation.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum PolynomialBasis {
     /// Monomial basis.
     Coeff,

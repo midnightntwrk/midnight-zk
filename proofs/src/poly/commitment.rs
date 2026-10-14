@@ -204,6 +204,24 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
         Self::Commitment: Hashable<T::Hash> + 'com;
 }
 
+/// A [`PolynomialCommitmentScheme`] that commits to polynomials interleaved
+/// in chunks.
+pub trait InterleavedCommit<F: PrimeField>: PolynomialCommitmentScheme<F> {
+    /// Commit to `g(X) = Σ_i X^i f_i(X^t)` for every chunk `f_0, ..., f_{k-1}`
+    /// of `chunks`, with `t` the next power of two of `k`, tagging the `g` of
+    /// each chunk with the corresponding label.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `chunks` and `labels` have different lengths, if a label is
+    /// repeated, or if the polynomials of a chunk have different lengths.
+    fn commit_interleaved<B: PolynomialRepresentation>(
+        params: &Self::Parameters,
+        chunks: &[&[&Polynomial<F, B>]],
+        labels: &[PolynomialLabel],
+    ) -> Self::Commitment;
+}
+
 /// Interface for verifier finalizer, given the verifier parameters `VP` of
 /// its PCS
 pub trait Guard<VP>: Sized {
