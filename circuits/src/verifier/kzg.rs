@@ -53,9 +53,9 @@ use crate::{
         pcs::{CommitmentBases, InCircuitHomomorphicCommitment, InCircuitPCS, VerifierQuery},
         transcript_gadget::TranscriptGadget,
         utils::{
-            AssignedBoundedScalar, Coset, evaluate_interpolated_polynomial_on_cosets,
-            evaluate_interpolation_quotient, inner_product, mul_add,
-            mul_bounded_scalars, truncated_powers,
+            AssignedBoundedScalar, Coset, evaluate_interpolation_quotient,
+            evaluate_interpolation_quotient_on_cosets, inner_product, mul_add, mul_bounded_scalars,
+            truncated_powers,
         },
     },
 };
@@ -580,17 +580,14 @@ pub(crate) fn multi_prepare_kzg<S: SelfEmulation>(
         .try_fold(zero, |acc_eval, ((points, evals), proof_eval)| {
             // eval = (proof_eval - r_eval) / prod_i (x3 - point_i)
             let eval = match as_cosets(points, evals, &roots_of) {
-                Some((t, cosets)) => {
-                    let (r_eval, den) = evaluate_interpolated_polynomial_on_cosets(
-                        layouter,
-                        scalar_chip,
-                        t,
-                        &cosets,
-                        &x3.scalar,
-                    )?;
-                    let eval = scalar_chip.sub(layouter, proof_eval, &r_eval)?;
-                    scalar_chip.div(layouter, &eval, &den)?
-                }
+                Some((t, cosets)) => evaluate_interpolation_quotient_on_cosets(
+                    layouter,
+                    scalar_chip,
+                    t,
+                    &cosets,
+                    &x3.scalar,
+                    proof_eval,
+                )?,
                 None => evaluate_interpolation_quotient(
                     layouter,
                     scalar_chip,

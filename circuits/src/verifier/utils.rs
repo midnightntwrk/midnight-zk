@@ -247,8 +247,9 @@ pub(crate) type Coset<F> = (
     Vec<(AssignedNative<F>, AssignedNative<F>)>,
 );
 
-/// Evaluates at `z` the polynomial interpolating the given cosets, and their
-/// vanishing polynomial `Z(X) = Π_j (X^t - x_j)`.
+/// Given cosets of points with their evaluations and a value `q`, returns
+/// `(q - f(z)) / Z(z)`, for `f` the polynomial interpolating the cosets and
+/// `Z(X) = Π_j (X^t - x_j)` their vanishing polynomial.
 ///
 /// The `x_j` of the cosets must be distinct and non-zero, otherwise the circuit
 /// is unsatisfiable. The Lagrange basis at `p` in coset `j` is
@@ -257,20 +258,23 @@ pub(crate) type Coset<F> = (
 /// # Panics
 ///
 /// If `cosets` is empty.
-pub(crate) fn evaluate_interpolated_polynomial_on_cosets<F: CircuitField>(
+pub(crate) fn evaluate_interpolation_quotient_on_cosets<F: CircuitField>(
     layouter: &mut impl Layouter<F>,
     scalar_chip: &impl ArithInstructions<F, AssignedNative<F>>,
     t: usize,
     cosets: &[Coset<F>],
     z: &AssignedNative<F>,
-) -> Result<(AssignedNative<F>, AssignedNative<F>), Error> {
+    q: &AssignedNative<F>,
+) -> Result<AssignedNative<F>, Error> {
     let z_pow_t = scalar_chip.pow(layouter, z, t as u64)?;
     let vanishing_factors = (cosets.iter())
         .map(|(x, _)| scalar_chip.sub(layouter, &z_pow_t, x))
         .collect::<Result<Vec<_>, Error>>()?;
     let vanishing = prod(layouter, scalar_chip, &vanishing_factors)?;
 
-    let mut terms = Vec::with_capacity(cosets.len());
+    // f(z) is `Z(z) · Σ_j Σ_p eval_p p / ((z - p) t x_j Π_{k≠j} (x_j - x_k))`,
+    // and the quotient is `q / Z(z)` minus the sum.
+    let mut terms = Vec::with_capacity(cosets.len() + 1);
     for (j, (xj, coset)) in cosets.iter().enumerate() {
         // Σ_p eval_p p / (z - p)
         let coset_terms = (coset.iter())
@@ -288,12 +292,10 @@ pub(crate) fn evaluate_interpolated_polynomial_on_cosets<F: CircuitField>(
             let diff = scalar_chip.sub(layouter, xj, xk)?;
             den = scalar_chip.mul(layouter, &den, &diff, None)?;
         }
-        terms.push(scalar_chip.div(layouter, &coset_sum, &den)?);
+        terms.push((-F::ONE, scalar_chip.div(layouter, &coset_sum, &den)?));
     }
-    let terms_sum = sum(layouter, scalar_chip, &terms)?;
-
-    let eval = scalar_chip.mul(layouter, &vanishing, &terms_sum, None)?;
-    Ok((eval, vanishing))
+    terms.push((F::ONE, scalar_chip.div(layouter, q, &vanishing)?));
+    scalar_chip.linear_combination(layouter, &terms, F::ZERO)
 }
 
 /// Computes the addition of all the given scalars.

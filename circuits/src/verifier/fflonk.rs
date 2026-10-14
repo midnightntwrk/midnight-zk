@@ -29,6 +29,7 @@ use midnight_proofs::{
     plonk::Error,
     poly::{
         PolynomialLabel::{self, Collection},
+        commitment::InterleavedCommit,
         fflonk::{Fflonk, roots},
     },
 };
@@ -64,7 +65,7 @@ impl<PCS, const LOG2_T_MAX: u32> InCircuitFflonk<PCS, LOG2_T_MAX> {
 impl<S, PCS, const LOG2_T_MAX: u32> InCircuitPCS<S> for InCircuitFflonk<PCS, LOG2_T_MAX>
 where
     S: SelfEmulation,
-    PCS: InCircuitPCS<S>,
+    PCS: InCircuitPCS<S, OffCircuitPCS: InterleavedCommit<S::F>>,
 {
     type OffCircuitPCS = Fflonk<PCS::OffCircuitPCS, LOG2_T_MAX>;
     type AssignedCommitment = PCS::AssignedCommitment;
