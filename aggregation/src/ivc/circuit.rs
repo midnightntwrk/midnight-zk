@@ -177,10 +177,7 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
         )?;
         ivc_gadget.constrain_as_public_input(layouter, &next_state)?;
 
-        let fixed_base_labels = midnight_circuits::verifier::fixed_base_labels::<S>(
-            self.cs.num_fixed_columns(),
-            self.cs.permutation().columns.len(),
-        );
+        let fixed_base_labels = midnight_circuits::verifier::fixed_base_labels::<S>(&self.cs);
 
         let prev_acc_value = witness.as_ref().map(|w| w.prev_acc.clone());
         let prev_acc = verifier_gadget.assign_collapsed_accumulator(

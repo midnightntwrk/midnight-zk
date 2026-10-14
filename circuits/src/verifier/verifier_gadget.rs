@@ -1122,10 +1122,7 @@ pub(crate) mod tests {
 
         let fixed_bases = crate::verifier::fixed_bases::<S>(&inner_vk);
         assert_eq!(
-            crate::verifier::fixed_base_labels::<S>(
-                inner_vk.cs().num_fixed_columns(),
-                inner_vk.cs().permutation().columns.len(),
-            ),
+            crate::verifier::fixed_base_labels::<S>(inner_vk.cs()),
             fixed_bases.keys().cloned().collect::<Vec<_>>()
         );
 

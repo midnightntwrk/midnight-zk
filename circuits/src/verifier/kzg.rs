@@ -651,8 +651,15 @@ impl<S: SelfEmulation<PCS = Self>> InCircuitPCS<S> for InCircuitKZG<S> {
     fn fixed_commitment(labels: &[PolynomialLabel]) -> Self::AssignedCommitment {
         PolynomialLabel::assert_distinct(labels);
         AssignedKZGMultiCommitment(
-            labels.iter().cloned().map(AssignedKZGCommitment::fixed).collect(),
+            Self::fixed_base_labels(labels)
+                .into_iter()
+                .map(AssignedKZGCommitment::fixed)
+                .collect(),
         )
+    }
+
+    fn fixed_base_labels(labels: &[PolynomialLabel]) -> Vec<PolynomialLabel> {
+        labels.to_vec()
     }
 
     fn read_commitment(

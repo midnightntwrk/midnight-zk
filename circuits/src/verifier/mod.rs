@@ -153,24 +153,13 @@ pub fn fixed_bases<S: SelfEmulation>(vk: &VerifyingKey<S>) -> BTreeMap<Polynomia
 }
 
 /// Returns the ordered list of [`PolynomialLabel`]s for the fixed bases of a
-/// circuit with the given number of fixed and permutation commitments.
+/// circuit with the given constraint system.
 ///
 /// The labels are sorted, matching the key order of [`fixed_bases`]. Call this
 /// before having an actual verifying key (e.g. during setup) to size an
 /// accumulator correctly.
-pub fn fixed_base_labels<S: SelfEmulation>(
-    nb_fixed_commitments: usize,
-    nb_perm_commitments: usize,
-) -> Vec<PolynomialLabel> {
-    let mut labels = Vec::with_capacity(nb_fixed_commitments + nb_perm_commitments + 1);
-
-    for i in 0..nb_fixed_commitments {
-        labels.push(PolynomialLabel::Fixed(i));
-    }
-
-    for i in 0..nb_perm_commitments {
-        labels.push(PolynomialLabel::PermutationFixed(i));
-    }
+pub fn fixed_base_labels<S: SelfEmulation>(cs: &ConstraintSystem<S::F>) -> Vec<PolynomialLabel> {
+    let mut labels = S::PCS::fixed_base_labels(&cs.fixed_polys_labels());
 
     // This term will be introduced by the KZG multiopen argument as a fixed base.
     // It corresponds to the negated designated generator. It is not proper of the

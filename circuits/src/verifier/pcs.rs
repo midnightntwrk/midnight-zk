@@ -81,13 +81,21 @@ pub trait InCircuitHomomorphicCommitment<S: SelfEmulation>: Clone + Debug + Size
 }
 
 /// An off-circuit commitment whose curve points can be read with the labels
-/// they carry, as the fixed bases of a verifying key are.
+/// they carry.
+///
+/// Commitments in the in-circuit verifier are assumed to have this structure:
+/// a commitment is a list of curve points, each carrying a label. The labels
+/// are attached by the commitment scheme and need not be those of the
+/// committed polynomials: a scheme may commit to several polynomials together
+/// under a single label, such as a [`PolynomialLabel::Collection`] of theirs.
+/// The points of a verifying-key commitment are its fixed bases, collected by
+/// [`fixed_bases`](super::fixed_bases) under these labels.
 pub trait CommitmentBases<C> {
-    /// The (label, point) pairs of this commitment, one per inner commitment.
+    /// The (label, point) pairs of this commitment, in order.
     ///
     /// # Panics
     ///
-    /// If an inner commitment is not a single labelled point.
+    /// If the commitment is not made of labelled points only.
     fn bases(&self) -> Vec<(PolynomialLabel, C)>;
 }
 
@@ -106,12 +114,22 @@ pub trait InCircuitPCS<S: SelfEmulation>: Sized + Clone + Debug {
     /// Creates the fixed (VK-embedded) commitment to the group of `labels`.
     ///
     /// The labels are matched to the group's polynomials in the order given,
-    /// as in [`Self::read_commitment`].
+    /// as in [`Self::read_commitment`]. Its points carry the labels given by
+    /// [`Self::fixed_base_labels`].
     ///
     /// # Panics
     ///
     /// Panics if a label is repeated.
     fn fixed_commitment(labels: &[PolynomialLabel]) -> Self::AssignedCommitment;
+
+    /// The labels of the curve points making up [`Self::fixed_commitment`] for
+    /// the group of `labels`, in order.
+    ///
+    /// Commitments are assumed to be made of labelled curve points, whose
+    /// labels may differ from those of the committed polynomials (see
+    /// [`CommitmentBases`]). These are the keys of
+    /// [`fixed_bases`](super::fixed_bases) for this group.
+    fn fixed_base_labels(labels: &[PolynomialLabel]) -> Vec<PolynomialLabel>;
 
     /// Assigns a commitment from an off-circuit curve point.
     fn assign_commitment(
