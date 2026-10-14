@@ -17,38 +17,41 @@ use std::{array, marker::PhantomData};
 
 use crate::{CircuitField, instructions::hash::HashCPU};
 
-/// A Merkle Mountain Range of at most `SIZE` mountains, with a capacity of
-/// `2^SIZE - 1` elements. See the [module documentation](crate::mmr) for the
-/// structure.
+/// A Merkle Mountain Range of at most `CAPACITY` mountains, with room for
+/// `2^CAPACITY - 1` elements. See the [module documentation](crate::mmr) for
+/// the structure.
 ///
 /// Slot `i` of `mountains` holds the mountain of height `i`, or `None` when
 /// bit `i` of `size` is unset.
 #[derive(Clone, Debug)]
-pub struct Mmr<F: CircuitField, H: HashCPU<F, F>, const SIZE: usize> {
+pub struct Mmr<F: CircuitField, H: HashCPU<F, F>, const CAPACITY: usize> {
     size: u64,
-    mountains: [Option<Mountain<F, H>>; SIZE],
+    mountains: [Option<Mountain<F, H>>; CAPACITY],
 }
 
 /// The succinct state of an [Mmr]: the number of appended elements and the
 /// peak of each mountain. This is the (public) statement form consumed by
-/// the in-circuit MMR operations. As everywhere in this module, `SIZE` must
+/// the in-circuit MMR operations. As everywhere in this module, `CAPACITY` must
 /// be at most 64.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct MmrState<F, const SIZE: usize> {
-    /// Number of appended elements. Must be smaller than `2^SIZE`.
+pub struct MmrState<F, const CAPACITY: usize> {
+    /// Number of appended elements. Must be smaller than `2^CAPACITY`.
     pub size: u64,
     /// `peaks[i]` is the peak (root) of the mountain of height `i`, or
     /// `F::ZERO` if bit `i` of `size` is unset.
-    pub peaks: [F; SIZE],
+    pub peaks: [F; CAPACITY],
 }
 
 /// Witness for a prefix claim: `steps[i]` is the node of the big MMR that is
 /// absorbed when climbing from height `i` to height `i + 1`, on the heights
-/// where the small MMR does not provide a peak of its own. Unused entries
-/// (including `steps[SIZE - 1]`, which can never be consumed) are `F::ZERO`.
+/// where the small MMR does not supply a left sibling of its own. At the
+/// height where the climb starts its peak is the climbing node itself, so a
+/// sibling is witnessed there too. Unused entries
+/// (including `steps[CAPACITY - 1]`, which can never be consumed) are
+/// `F::ZERO`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct SummitPath<F, const SIZE: usize> {
-    pub(crate) steps: [F; SIZE],
+pub struct SummitPath<F, const CAPACITY: usize> {
+    pub(crate) steps: [F; CAPACITY],
 }
 
 /// Witness for a membership claim: a Merkle authentication path from a leaf to
@@ -60,17 +63,16 @@ pub struct SummitPath<F, const SIZE: usize> {
 ///   gives the left/right direction when climbing from level `l` to `l + 1`.
 /// - `siblings[l]` is the sibling node absorbed at that climb.
 ///
-/// Only the low `height` bits of `leaf_index` (which must be smaller than
-/// `2^SIZE`) and the first `height` entries of `siblings` are meaningful; the
-/// rest is padding, ignored by verification ([Mmr::prove_membership] emits it
-/// as `F::ZERO`). The claim fixes no absolute position: `height` and
-/// `leaf_index` are a hint supplied by the prover (see
+/// Only the low `height` bits of `leaf_index` and the first `height` entries
+/// of `siblings` are meaningful; the rest is padding, ignored by verification
+/// ([Mmr::prove_membership] emits it as `F::ZERO`). The claim fixes no absolute
+/// position: `height` and `leaf_index` are a hint supplied by the prover (see
 /// [Mmr::is_member]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct MembershipProof<F, const SIZE: usize> {
+pub struct MembershipProof<F, const CAPACITY: usize> {
     pub(crate) height: usize,
     pub(crate) leaf_index: u64,
-    pub(crate) siblings: [F; SIZE],
+    pub(crate) siblings: [F; CAPACITY],
 }
 
 /// A *mountain*: a complete (perfect) binary Merkle tree of some height `h`,
@@ -146,13 +148,12 @@ fn merge_mountains<F: CircuitField, H: HashCPU<F, F>>(
     let peak = <H as HashCPU<F, F>>::hash(&[left.peak(), right.peak()]);
     // Thanks to the in-order layout, merging is a concatenation. We reuse
     // the left buffer to avoid a fresh allocation on every merge.
-    left.nodes.reserve(right.nodes.len() + 1);
     left.nodes.push(peak);
     left.nodes.extend_from_slice(&right.nodes);
     left
 }
 
-impl<F, H, const SIZE: usize> Mmr<F, H, SIZE>
+impl<F, H, const CAPACITY: usize> Mmr<F, H, CAPACITY>
 where
     F: CircuitField,
     H: HashCPU<F, F>,
@@ -161,21 +162,22 @@ where
     ///
     /// # Panics
     ///
-    /// If `SIZE > 64`.
+    /// If `CAPACITY > 64`.
     pub fn new() -> Self {
-        assert!(SIZE <= 64, "MMR sizes are limited to 64 mountains");
+        assert!(CAPACITY <= 64, "MMR sizes are limited to 64 mountains");
         Mmr {
             size: 0,
             mountains: array::from_fn(|_| None),
         }
     }
 
-    /// The maximum number of elements the MMR can hold: `2^SIZE - 1`.
+    /// The maximum number of elements the MMR can hold, `2^CAPACITY - 1`
+    /// (the `CAPACITY` parameter counts mountains, not elements).
     fn capacity() -> u64 {
-        if SIZE >= 64 {
+        if CAPACITY >= 64 {
             u64::MAX
         } else {
-            (1u64 << SIZE) - 1
+            (1u64 << CAPACITY) - 1
         }
     }
 
@@ -187,24 +189,22 @@ where
     ///
     /// # Panics
     ///
-    /// If the MMR is full, i.e. `size == 2^SIZE - 1`.
+    /// If the MMR is full, i.e. `size == 2^CAPACITY - 1`.
     pub fn append(&mut self, elem: F) {
         assert!(
             self.size < Self::capacity(),
             "MMR is full. No more mountains to climb."
         );
+        // The carry of the binary increment stops at the lowest unset bit,
+        // which the capacity check above guarantees to exist.
+        let trail = self.size.trailing_ones() as usize;
         let mut carried = Mountain::new(elem);
-        for slot in self.mountains.iter_mut() {
-            match slot.take() {
-                Some(mountain) => carried = merge_mountains(mountain, carried),
-                None => {
-                    *slot = Some(carried);
-                    self.size += 1;
-                    return;
-                }
-            }
+        for slot in self.mountains.iter_mut().take(trail) {
+            let mountain = slot.take().expect("a set bit of size has its mountain");
+            carried = merge_mountains(mountain, carried);
         }
-        unreachable!("the capacity check guarantees an empty slot")
+        self.mountains[trail] = Some(carried);
+        self.size += 1;
     }
 
     /// The number of elements appended so far.
@@ -213,12 +213,12 @@ where
     }
 
     /// The peak of each mountain; `None` iff bit `i` of `size` is unset.
-    pub fn peaks(&self) -> [Option<F>; SIZE] {
-        array::from_fn(|i| self.mountains[i].as_ref().map(|m| m.peak()))
+    pub fn peaks(&self) -> [Option<F>; CAPACITY] {
+        array::from_fn(|i| self.mountains[i].as_ref().map(Mountain::peak))
     }
 
     /// The succinct state of the MMR, with absent peaks encoded as `F::ZERO`.
-    pub fn state(&self) -> MmrState<F, SIZE> {
+    pub fn state(&self) -> MmrState<F, CAPACITY> {
         MmrState {
             size: self.size,
             peaks: self.peaks().map(|peak| peak.unwrap_or(F::ZERO)),
@@ -233,12 +233,12 @@ where
     /// # Panics
     ///
     /// If `small_size > self.size()`.
-    pub fn prove_prefix(&self, small_size: u64) -> SummitPath<F, SIZE> {
+    pub fn prove_prefix(&self, small_size: u64) -> SummitPath<F, CAPACITY> {
         assert!(
             small_size <= self.size,
             "a prefix cannot be longer than the MMR itself"
         );
-        let mut steps = [F::ZERO; SIZE];
+        let mut steps = [F::ZERO; CAPACITY];
         let (a, b) = (small_size, self.size);
 
         // Case 1: Identical MMRs, all peaks match directly.
@@ -288,29 +288,29 @@ where
     /// This function is the off-circuit specification of the in-circuit
     /// check: it mirrors, gate by gate, the constraints of the MMR gadget.
     pub fn is_prefix(
-        small: &MmrState<F, SIZE>,
-        big: &MmrState<F, SIZE>,
-        path: &SummitPath<F, SIZE>,
+        small: &MmrState<F, CAPACITY>,
+        big: &MmrState<F, CAPACITY>,
+        path: &SummitPath<F, CAPACITY>,
     ) -> bool {
-        // States whose size exceeds SIZE bits are not representable
-        // in-circuit and are rejected outright.
+        // States whose size does not fit in CAPACITY bits are not
+        // representable in-circuit and are rejected outright.
         if small.size > Self::capacity() || big.size > Self::capacity() {
             return false;
         }
 
-        let a_bits: [bool; SIZE] = array::from_fn(|i| (small.size >> i) & 1 == 1);
-        let b_bits: [bool; SIZE] = array::from_fn(|i| (big.size >> i) & 1 == 1);
+        let a_bits: [bool; CAPACITY] = array::from_fn(|i| (small.size >> i) & 1 == 1);
+        let b_bits: [bool; CAPACITY] = array::from_fn(|i| (big.size >> i) & 1 == 1);
 
         // agree[i]: the two sizes agree on all bits at positions >= i.
-        let mut agree = vec![true; SIZE + 1];
-        for i in (0..SIZE).rev() {
+        let mut agree = vec![true; CAPACITY + 1];
+        for i in (0..CAPACITY).rev() {
             agree[i] = agree[i + 1] && (a_bits[i] == b_bits[i]);
         }
 
         // started[i]: the small MMR has a peak at some height < i, i.e. the
         // climb is underway when reaching height i.
-        let mut started = vec![false; SIZE + 1];
-        for i in 0..SIZE {
+        let mut started = vec![false; CAPACITY + 1];
+        for i in 0..CAPACITY {
             started[i + 1] = started[i] || a_bits[i];
         }
 
@@ -319,16 +319,18 @@ where
         // consumed before being overwritten by a starting peak).
         let mut cur = F::ZERO;
 
-        for i in 0..SIZE {
-            // The sizes agree above height i and both MMRs have a mountain
-            // here: their peaks must match directly.
-            let direct_match = agree[i + 1] && a_bits[i] && b_bits[i];
+        for i in 0..CAPACITY {
+            // The sizes agree from height i up and the small MMR has a
+            // mountain here (hence so does the big one): the peaks must
+            // match directly.
+            let direct_match = agree[i] && a_bits[i];
             if direct_match {
                 ok &= small.peaks[i] == big.peaks[i];
             }
 
-            // Highest bit where the sizes differ (at most one height).
-            let fin = agree[i + 1] && (a_bits[i] != b_bits[i]);
+            // Highest bit where the sizes differ (at most one height): the
+            // single step where the agree chain drops.
+            let fin = agree[i + 1] != agree[i];
 
             // At said height, the small size must have the unset bit;
             // otherwise small > big and it cannot be a prefix.
@@ -336,8 +338,9 @@ where
                 ok = false;
             }
 
-            // The climb starts at the lowest peak of the small MMR.
-            let is_start = a_bits[i] && !started[i];
+            // The climb starts at the lowest peak of the small MMR: the
+            // single step where the started chain rises.
+            let is_start = started[i + 1] != started[i];
             let input = if is_start { small.peaks[i] } else { cur };
 
             // If a climb took place, it must land exactly on big's peak at
@@ -350,19 +353,17 @@ where
             // with small's own peak at this height (as left sibling) or with
             // a witnessed node of the big MMR (as right sibling). The top
             // height never climbs.
-            if i < SIZE - 1 {
+            if i < CAPACITY - 1 {
                 let absorb_own_peak = a_bits[i] && started[i];
                 let (left, right) = if absorb_own_peak {
                     (small.peaks[i], input)
                 } else {
                     (input, path.steps[i])
                 };
-                let climbing = started[i + 1] && !agree[i + 1];
-                cur = if climbing {
-                    <H as HashCPU<F, F>>::hash(&[left, right])
-                } else {
-                    input
-                };
+                // Hashed unconditionally: outside a climb the result is
+                // never read, as the landing check is only ever reached
+                // through an unbroken chain of climbing steps.
+                cur = <H as HashCPU<F, F>>::hash(&[left, right]);
             }
         }
         ok
@@ -375,7 +376,7 @@ where
     /// # Panics
     ///
     /// If `pos >= self.size()`.
-    pub fn prove_membership(&self, pos: u64) -> MembershipProof<F, SIZE> {
+    pub fn prove_membership(&self, pos: u64) -> MembershipProof<F, CAPACITY> {
         assert!(pos < self.size, "position out of range");
 
         // Locate the mountain holding `pos`: taller mountains hold the older
@@ -383,7 +384,7 @@ where
         // until `pos` falls inside one.
         let mut offset = 0u64;
         let (mut height, mut leaf_index) = (0, 0);
-        for h in (0..SIZE).rev() {
+        for h in (0..CAPACITY).rev() {
             if (self.size >> h) & 1 == 1 {
                 let leaves = 1u64 << h;
                 if pos < offset + leaves {
@@ -397,7 +398,7 @@ where
         // The authentication path: the sibling of the climbing node at each
         // level, following the bits of `leaf_index`.
         let mountain = self.mountains[height].as_ref().expect("bit `height` of size is set");
-        let mut siblings = [F::ZERO; SIZE];
+        let mut siblings = [F::ZERO; CAPACITY];
         for (l, sibling) in siblings.iter_mut().enumerate().take(height) {
             *sibling = mountain.node(l, (leaf_index >> l) ^ 1);
         }
@@ -416,16 +417,21 @@ where
     /// `leaf_index` are supplied by the proof as a hint. This is the
     /// off-circuit specification of the in-circuit
     /// [is_member](crate::mmr::mmr_gadget::MmrGadget::is_member).
-    pub fn is_member(state: &MmrState<F, SIZE>, elem: F, proof: &MembershipProof<F, SIZE>) -> bool {
-        // Sizes and leaf indices exceeding SIZE bits are not representable
-        // in-circuit.
-        if state.size > Self::capacity() || proof.leaf_index > Self::capacity() {
+    pub fn is_member(
+        state: &MmrState<F, CAPACITY>,
+        elem: F,
+        proof: &MembershipProof<F, CAPACITY>,
+    ) -> bool {
+        // A size that does not fit in CAPACITY bits is not representable
+        // in-circuit. The leaf index needs no such check: only its bits below
+        // `height` are read, here as in the gadget.
+        if state.size > Self::capacity() {
             return false;
         }
 
         // The target mountain must exist.
         let h = proof.height;
-        if h >= SIZE || (state.size >> h) & 1 == 0 {
+        if h >= CAPACITY || (state.size >> h) & 1 == 0 {
             return false;
         }
 
@@ -444,7 +450,7 @@ where
     }
 }
 
-impl<F, H, const SIZE: usize> Default for Mmr<F, H, SIZE>
+impl<F, H, const CAPACITY: usize> Default for Mmr<F, H, CAPACITY>
 where
     F: CircuitField,
     H: HashCPU<F, F>,
@@ -478,12 +484,12 @@ mod tests {
     /// independently of the [Mmr] logic: the mountain of height `i` exists
     /// iff bit `i` of the number of leaves is set, and taller mountains
     /// contain the older leaves.
-    fn expected_peaks<F: CircuitField, H: HashCPU<F, F>, const SIZE: usize>(
+    fn expected_peaks<F: CircuitField, H: HashCPU<F, F>, const CAPACITY: usize>(
         leaves: &[F],
-    ) -> [Option<F>; SIZE] {
+    ) -> [Option<F>; CAPACITY] {
         let mut peaks = array::from_fn(|_| None);
         let mut offset = 0;
-        for i in (0..SIZE).rev() {
+        for i in (0..CAPACITY).rev() {
             if (leaves.len() >> i) & 1 == 1 {
                 peaks[i] = Some(subtree_root::<F, H>(&leaves[offset..offset + (1 << i)]));
                 offset += 1 << i;
@@ -493,18 +499,18 @@ mod tests {
     }
 
     fn test_append<F: CircuitField, H: HashCPU<F, F>>() {
-        const SIZE: usize = 7;
+        const CAPACITY: usize = 7;
         let mut rng = ChaCha8Rng::seed_from_u64(0xc0ffee);
         let leaves: Vec<F> = (0..64).map(|_| F::random(&mut rng)).collect();
 
-        let mut mmr = Mmr::<F, H, SIZE>::new();
+        let mut mmr = Mmr::<F, H, CAPACITY>::new();
         assert_eq!(mmr.size(), 0);
         assert_eq!(mmr.peaks(), array::from_fn(|_| None));
 
         for n in 1..=leaves.len() {
             mmr.append(leaves[n - 1]);
             assert_eq!(mmr.size(), n as u64);
-            assert_eq!(mmr.peaks(), expected_peaks::<F, H, SIZE>(&leaves[..n]));
+            assert_eq!(mmr.peaks(), expected_peaks::<F, H, CAPACITY>(&leaves[..n]));
 
             // The state encodes absent peaks as zero.
             let state = mmr.state();
@@ -546,8 +552,8 @@ mod tests {
 
     /// The step indices of a [SummitPath] that are actually consumed when
     /// verifying that `a` is a prefix of `b` (mirrors [Mmr::prove_prefix]).
-    fn used_steps<const SIZE: usize>(a: u64, b: u64) -> [bool; SIZE] {
-        let mut used = [false; SIZE];
+    fn used_steps<const CAPACITY: usize>(a: u64, b: u64) -> [bool; CAPACITY] {
+        let mut used = [false; CAPACITY];
         if a == b {
             return used;
         }
@@ -564,9 +570,9 @@ mod tests {
     }
 
     fn test_prefix<F: CircuitField, H: HashCPU<F, F>>() {
-        const SIZE: usize = 5;
+        const CAPACITY: usize = 5;
         const MAX: usize = 24;
-        type M<F, H> = Mmr<F, H, SIZE>;
+        type M<F, H> = Mmr<F, H, CAPACITY>;
 
         // All prefix MMRs over the leaves 0, 1, 2, ..., plus variants with
         // shifted content (leaves 1, 2, 3, ...) for mismatch tests.
@@ -602,7 +608,7 @@ mod tests {
 
                 // Tampering with a consumed step must be rejected, while the
                 // padding entries must remain free.
-                let used = used_steps::<SIZE>(a as u64, b as u64);
+                let used = used_steps::<CAPACITY>(a as u64, b as u64);
                 for (i, step_used) in used.iter().enumerate() {
                     let mut tampered = path;
                     tampered.steps[i] += F::ONE;
@@ -618,7 +624,7 @@ mod tests {
             // the witness.
             for (a, longer) in mmrs.iter().enumerate().skip(b + 1) {
                 let path = SummitPath {
-                    steps: [F::ZERO; SIZE],
+                    steps: [F::ZERO; CAPACITY],
                 };
                 assert!(
                     !M::<F, H>::is_prefix(&longer.state(), &big.state(), &path),
@@ -629,7 +635,7 @@ mod tests {
     }
 
     fn test_membership<F: CircuitField, H: HashCPU<F, F>>() {
-        const SIZE: usize = 6;
+        const CAPACITY: usize = 6;
         let mut rng = ChaCha8Rng::seed_from_u64(0xfeedbeef);
         let n = 45usize;
         // n = 45 = 0b101101, so the height-1 mountain is absent.
@@ -640,20 +646,20 @@ mod tests {
         );
         let leaves: Vec<F> = (0..n).map(|_| F::random(&mut rng)).collect();
 
-        let mut mmr = Mmr::<F, H, SIZE>::new();
+        let mut mmr = Mmr::<F, H, CAPACITY>::new();
         leaves.iter().for_each(|leaf| mmr.append(*leaf));
         let state = mmr.state();
 
         for (pos, &leaf) in leaves.iter().enumerate() {
             let proof = mmr.prove_membership(pos as u64);
             assert!(
-                Mmr::<F, H, SIZE>::is_member(&state, leaf, &proof),
+                Mmr::<F, H, CAPACITY>::is_member(&state, leaf, &proof),
                 "honest membership rejected at pos {pos}"
             );
 
             // A wrong element is rejected against an honest path.
             assert!(
-                !Mmr::<F, H, SIZE>::is_member(&state, leaf + F::ONE, &proof),
+                !Mmr::<F, H, CAPACITY>::is_member(&state, leaf + F::ONE, &proof),
                 "wrong element accepted at pos {pos}"
             );
 
@@ -662,7 +668,7 @@ mod tests {
                 let mut tampered = proof;
                 tampered.siblings[l] += F::ONE;
                 assert!(
-                    !Mmr::<F, H, SIZE>::is_member(&state, leaf, &tampered),
+                    !Mmr::<F, H, CAPACITY>::is_member(&state, leaf, &tampered),
                     "tampered sibling[{l}] accepted at pos {pos}"
                 );
             }
@@ -672,7 +678,7 @@ mod tests {
                 let mut tampered = proof;
                 tampered.leaf_index ^= 1;
                 assert!(
-                    !Mmr::<F, H, SIZE>::is_member(&state, leaf, &tampered),
+                    !Mmr::<F, H, CAPACITY>::is_member(&state, leaf, &tampered),
                     "flipped direction bit accepted at pos {pos}"
                 );
             }
@@ -682,7 +688,7 @@ mod tests {
         let outsider = F::random(&mut rng);
         let proof = mmr.prove_membership(0);
         assert!(
-            !Mmr::<F, H, SIZE>::is_member(&state, outsider, &proof),
+            !Mmr::<F, H, CAPACITY>::is_member(&state, outsider, &proof),
             "non-member accepted"
         );
 
@@ -690,7 +696,7 @@ mod tests {
         let mut absent = mmr.prove_membership(0);
         absent.height = 1;
         assert!(
-            !Mmr::<F, H, SIZE>::is_member(&state, leaves[0], &absent),
+            !Mmr::<F, H, CAPACITY>::is_member(&state, leaves[0], &absent),
             "membership against an absent mountain accepted"
         );
     }
