@@ -184,17 +184,18 @@ pub fn evaluate_lagrange_polynomials<F: CircuitField>(
         .collect()
 }
 
-/// Given n evaluation points {x_i}_i and n evaluations {y_i}_i, returns the
-/// evaluation at x of the minimal polynomial that interpolates them.
+/// Given n evaluation points {x_i}_i, n evaluations {y_i}_i and a value `q`,
+/// returns `(q - f(x)) / Π_i (x - x_i)`.
 ///
-/// That is, let f be the polynomial of smallest degree such that f(x_i) = y_i
-/// for all i in \[n\]. This function returns f(x).
-pub fn evaluate_interpolated_polynomial<F: CircuitField>(
+/// Here f is the polynomial of smallest degree such that f(x_i) = y_i for all
+/// i in \[n\].
+pub fn evaluate_interpolation_quotient<F: CircuitField>(
     layouter: &mut impl Layouter<F>,
     scalar_chip: &impl ArithInstructions<F, AssignedNative<F>>,
     points: &[AssignedNative<F>],
     evals: &[AssignedNative<F>],
     x: &AssignedNative<F>,
+    q: &AssignedNative<F>,
 ) -> Result<AssignedNative<F>, Error> {
     assert_eq!(points.len(), evals.len());
 
@@ -205,31 +206,38 @@ pub fn evaluate_interpolated_polynomial<F: CircuitField>(
         }
     }
 
-    if points.len() == 1 {
-        return Ok(evals[0].clone());
-    }
-
-    // Compute the Lagrange bases L_j evaluated at x.
-    let mut lj_s = vec![];
     let x_minus_xs = points
         .iter()
         .map(|xi| scalar_chip.sub(layouter, x, xi))
         .collect::<Result<Vec<_>, Error>>()?;
-    for (j, xj) in points.iter().enumerate() {
-        let mut num_terms = vec![];
-        let mut den_terms = vec![];
-        for (i, xi) in points.iter().enumerate() {
-            if i != j {
-                num_terms.push(x_minus_xs[i].clone());
-                den_terms.push(scalar_chip.sub(layouter, xj, xi)?);
-            }
-        }
-        let num = prod::<F>(layouter, scalar_chip, &num_terms)?;
-        let den = prod::<F>(layouter, scalar_chip, &den_terms)?;
-        lj_s.push(scalar_chip.div(layouter, &num, &den)?);
+
+    if points.len() == 1 {
+        let num = scalar_chip.sub(layouter, q, &evals[0])?;
+        return scalar_chip.div(layouter, &num, &x_minus_xs[0]);
     }
 
-    inner_product(layouter, scalar_chip, &lj_s, evals)
+    // In factored form, f(x) is
+    // `Π_j (x - x_j) · Σ_i y_i / ((x - x_i) Π_{j≠i} (x_i - x_j))`,
+    // and the quotient is `q / Π_j (x - x_j)` minus the sum.
+    let mut terms = vec![];
+    for (i, (xi, yi)) in points.iter().zip(evals).enumerate() {
+        let mut den = x_minus_xs[i].clone();
+        for (_, xj) in points.iter().enumerate().filter(|(j, _)| *j != i) {
+            // den * (xi - xj) computed as den * xi - den * xj
+            den = scalar_chip.add_and_double_mul(
+                layouter,
+                (F::ZERO, &den),
+                (F::ZERO, xi),
+                (F::ZERO, xj),
+                F::ZERO,
+                (F::ONE, -F::ONE),
+            )?;
+        }
+        terms.push((-F::ONE, scalar_chip.div(layouter, yi, &den)?));
+    }
+    let vanishing = prod::<F>(layouter, scalar_chip, &x_minus_xs)?;
+    terms.push((F::ONE, scalar_chip.div(layouter, q, &vanishing)?));
+    scalar_chip.linear_combination(layouter, &terms, F::ZERO)
 }
 
 /// Computes the addition of all the given scalars.
