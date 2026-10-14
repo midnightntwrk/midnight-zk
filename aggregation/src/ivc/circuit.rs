@@ -12,14 +12,12 @@
 use midnight_circuits::{
     instructions::{BinaryInstructions, PublicInputInstructions},
     types::Instantiable,
-    verifier::{
-        Accumulator, AssignedAccumulator, AssignedKZGMultiCommitment, AssignedVk, InCircuitKZG,
-    },
+    verifier::{Accumulator, AssignedAccumulator, AssignedVk, InCircuitKZG},
 };
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::{ConstraintSystem, VerifyingKey},
-    poly::{EvaluationDomain, PolynomialLabel, kzg::KZGCommitmentScheme},
+    poly::{EvaluationDomain, kzg::KZGCommitmentScheme},
 };
 use midnight_zk_stdlib::{Relation, ZkStdLib, ZkStdLibArch};
 
@@ -195,19 +193,13 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
         ]
         .concat();
 
-        let instance_com = AssignedKZGMultiCommitment::commitment_to_zero(
-            layouter,
-            std_lib.bls12_381(),
-            PolynomialLabel::CommittedInstance(0),
-        )?;
-
         // Verify a witnessed proof that ensures the validity of `prev_state`.
         // The proof is valid iff `prev_proof_acc` satisfies the invariant.
         let mut prev_proof_acc = verifier_gadget.prepare(
             layouter,
             &assigned_self_vk,
-            &[instance_com],
-            &[&prev_proof_pi],
+            &[],
+            &[&[], &prev_proof_pi],
             witness.map(|w| w.prev_proof),
         )?;
 

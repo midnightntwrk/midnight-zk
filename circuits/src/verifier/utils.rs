@@ -255,11 +255,12 @@ pub(crate) fn prod<F: CircuitField>(
     Ok(res)
 }
 
-/// Computes the inner product between terms1 and terms2.
+/// Computes the inner product between terms1 and terms2, zero if they are
+/// empty.
 ///
 /// # Panics
 ///
-/// If `terms1` is empty or `|terms1| != |terms2|`.
+/// If `|terms1| != |terms2|`.
 pub(crate) fn inner_product<F: CircuitField>(
     layouter: &mut impl Layouter<F>,
     scalar_chip: &impl ArithInstructions<F, AssignedNative<F>>,
@@ -269,7 +270,9 @@ pub(crate) fn inner_product<F: CircuitField>(
     assert_eq!(terms1.len(), terms2.len());
 
     let mut iter = terms1.iter().zip(terms2.iter());
-    let (x0, y0) = iter.next().expect("inner_product received an empty input");
+    let Some((x0, y0)) = iter.next() else {
+        return scalar_chip.assign_fixed(layouter, F::ZERO);
+    };
     let init = scalar_chip.mul(layouter, x0, y0, None)?;
     iter.try_fold(init, |acc, (xi, yi)| {
         mul_add(layouter, scalar_chip, xi, yi, &acc)

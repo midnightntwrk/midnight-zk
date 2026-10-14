@@ -27,7 +27,6 @@ use std::{
 };
 
 use ff::Field;
-use group::Group;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
@@ -210,20 +209,6 @@ impl<S: SelfEmulation> AssignedKZGMultiCommitment<S> {
     pub(crate) fn into_single(self) -> AssignedKZGCommitment<S> {
         self.assert_single();
         self.0.into_iter().next().unwrap()
-    }
-
-    /// In-circuit commitment to the zero polynomial (the identity point),
-    /// tagged with `label`. Used e.g. for empty committed-instance columns.
-    pub fn commitment_to_zero(
-        layouter: &mut impl Layouter<S::F>,
-        curve_chip: &S::CurveChip,
-        label: PolynomialLabel,
-    ) -> Result<Self, Error>
-    where
-        S::CurveChip: AssignmentInstructions<S::F, S::AssignedPoint>,
-    {
-        let point = curve_chip.assign_fixed(layouter, S::C::identity())?;
-        Ok(Self(vec![AssignedKZGCommitment::simple(point, label)]))
     }
 }
 
@@ -525,14 +510,8 @@ pub(crate) fn multi_prepare_kzg<S: SelfEmulation>(
         .map(|evals| evals_inner_product(layouter, scalar_chip, evals, &truncated_x1_powers))
         .collect::<Result<Vec<_>, Error>>()?;
 
-    // Sort point sets by ascending cardinality to ensure the first set is the one
-    // that contains fixed commitments (which are evaluated at x only). This
-    // property is not necessary for the actual proving system, but it is important
-    // for in-circuit verification of proofs. (It enables an optimization based on
-    // an internal collapse.)
-    //
-    // The (len, i) key provides a deterministic total order even when two sets
-    // share the same cardinality.
+    // Sort point sets by ascending cardinality. The (len, i) key provides a
+    // deterministic total order even when two sets share the same cardinality.
     let (q_coms, q_eval_sets, point_sets) = {
         let mut order: Vec<usize> = (0..point_sets.len()).collect();
         order.sort_by_key(|&i| (point_sets[i].len(), i));

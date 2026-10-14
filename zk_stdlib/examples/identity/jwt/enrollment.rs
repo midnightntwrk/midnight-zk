@@ -59,11 +59,11 @@ impl Relation for CredentialEnrollment {
         Ok(AssignedForeignPoint::<F, K256, MultiEmulationParams>::as_public_input(instance))
     }
 
-    fn format_committed_instances(witness: &Self::Witness) -> Vec<F> {
+    fn format_committed_instances(witness: &Self::Witness) -> Option<Vec<F>> {
         let json_b64 = &witness.0[HEADER_LEN + 1..PAYLOAD_LEN];
         let json = base64::decode_config(json_b64, base64::STANDARD_NO_PAD)
             .expect("Valid base64 encoded JSON.");
-        json.iter().map(|byte| F::from(*byte as u64)).collect()
+        Some(json.iter().map(|byte| F::from(*byte as u64)).collect())
     }
 
     fn circuit(
@@ -199,7 +199,8 @@ fn main() {
         (w.0, w.1)
     };
     let committed_credential = {
-        let instance = CredentialEnrollment::format_committed_instances(&witness);
+        let instance = CredentialEnrollment::format_committed_instances(&witness)
+            .expect("CredentialEnrollment has no committed instance");
         commit_to_instances::<_, KZGCommitmentScheme<_>>(&srs, vk.vk().get_domain(), &instance)
     };
     println!("... done\n{:?}", wit.elapsed());

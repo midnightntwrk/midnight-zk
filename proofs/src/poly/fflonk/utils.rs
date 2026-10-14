@@ -61,7 +61,7 @@ where
 ///
 /// Panics if `t` is not a power of two, or if `F` has no roots of unity of
 /// order `t`.
-pub(super) fn roots<F: PrimeField>(x: F, t: usize) -> Option<Vec<F>> {
+pub fn roots<F: PrimeField>(x: F, t: usize) -> Option<Vec<F>> {
     assert!(
         t.is_power_of_two(),
         "fflonk roots of order {t}, not a power of two"

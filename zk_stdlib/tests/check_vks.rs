@@ -40,13 +40,13 @@ use exposing_types::{
 };
 
 macro_rules! generate_tests {
-    ($($name:ident: $circuit:ty),*) => {
+    ($($name:ident: $circuit:ty => $has_committed_instance:expr),*) => {
         $(
             #[test]
             fn $name() {
                 let relation = <$circuit>::default();
 
-                update_circuit_goldenfiles(&relation);
+                update_circuit_goldenfiles(&relation, $has_committed_instance);
 
                 let srs = srs_for_test(&relation, None);
                 let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
@@ -57,18 +57,18 @@ macro_rules! generate_tests {
 }
 
 generate_tests!(
-    check_vk_ecc: EccExample,
-    check_vk_bitcoin: BitcoinThresholdECDSA,
-    check_vk_ethereum_sig: EthereumSigExample,
-    check_vk_bitcoin_sig: BitcoinSigExample,
-    check_vk_rsa: RSASignatureCircuit,
-    check_vk_poseidon: PoseidonExample,
-    check_vk_native: NativeGadgetExample,
-    check_vk_membership: MembershipExample,
-    check_vk_cred_full: FullCredential,
-    check_vk_cred_enrollment: CredentialEnrollment,
-    check_vk_cred_property: CredentialProperty,
-    check_vk_hybrid_mt: HybridMtExample,
-    check_vk_sha: ShaPreImageCircuit,
-    check_vk_schnorr: SchnorrExample
+    check_vk_ecc: EccExample => false,
+    check_vk_bitcoin: BitcoinThresholdECDSA => false,
+    check_vk_ethereum_sig: EthereumSigExample => false,
+    check_vk_bitcoin_sig: BitcoinSigExample => false,
+    check_vk_rsa: RSASignatureCircuit => false,
+    check_vk_poseidon: PoseidonExample => false,
+    check_vk_native: NativeGadgetExample => false,
+    check_vk_membership: MembershipExample => false,
+    check_vk_cred_full: FullCredential => false,
+    check_vk_cred_enrollment: CredentialEnrollment => true,
+    check_vk_cred_property: CredentialProperty => true,
+    check_vk_hybrid_mt: HybridMtExample => false,
+    check_vk_sha: ShaPreImageCircuit => false,
+    check_vk_schnorr: SchnorrExample => false
 );

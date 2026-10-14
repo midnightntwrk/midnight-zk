@@ -25,7 +25,6 @@ use midnight_proofs::{
         self, Circuit, ConstraintSystem, Error, ProvingKey, VerifyingKey, keygen_vk_with_k, prepare,
     },
     poly::{
-        PolynomialLabel,
         commitment::{Guard, PolynomialCommitmentScheme},
         kzg::{
             commitment::KZGMultiCommitment,
@@ -37,10 +36,7 @@ use midnight_proofs::{
 };
 use rand::{CryptoRng, RngCore};
 
-use crate::{
-    DefaultPCS, F, NB_COMMITTED_INSTANCES, ZkStdLib, ZkStdLibArch, ZkStdLibConfig,
-    utils::plonk_api::BlstPLONK,
-};
+use crate::{DefaultPCS, F, ZkStdLib, ZkStdLibArch, ZkStdLibConfig, utils::plonk_api::BlstPLONK};
 
 /// Circuit structure which is used to create any circuit that can be compiled
 /// into keys using the ZK standard library.
@@ -352,9 +348,10 @@ pub trait Relation: Clone {
     fn format_instance(instance: &Self::Instance) -> Result<Vec<F>, Self::Error>;
 
     /// Produces a vector of field elements in PLONK format representing the
-    /// data inside the committed instance.
-    fn format_committed_instances(_witness: &Self::Witness) -> Vec<F> {
-        vec![]
+    /// data inside the committed instance, or `None` if the relation has no
+    /// committed instance.
+    fn format_committed_instances(_witness: &Self::Witness) -> Option<Vec<F>> {
+        None
     }
 
     /// Defines the circuit's logic.
@@ -536,6 +533,9 @@ where
 {
     let pi = R::format_instance(instance)?;
     let com_inst = R::format_committed_instances(&witness);
+    // Without a committed instance, its column is an empty instance column,
+    // neither committed to nor opened.
+    let nb_committed_instances = usize::from(com_inst.is_some());
     let circuit = MidnightCircuit::new(
         relation,
         Value::known(instance.clone()),
@@ -546,8 +546,8 @@ where
         params,
         &pk.pk,
         &circuit,
-        NB_COMMITTED_INSTANCES,
-        &[com_inst.as_slice(), &pi],
+        nb_committed_instances,
+        &[com_inst.as_deref().unwrap_or_default(), &pi],
         rng,
     )
     .map_err(|e| circuit.take_error().unwrap_or_else(|| e.into()))
@@ -567,17 +567,20 @@ where
     F: Hashable<H> + Sampleable<H>,
 {
     let pi = R::format_instance(instance)?;
-    let committed_pi = committed_instance.unwrap_or(KZGMultiCommitment::commitment_to_zero(
-        PolynomialLabel::CommittedInstance(0),
-    ));
+    // Without a committed instance, its column is an empty instance column, as
+    // in `prove`.
+    let (committed, instances): (Vec<_>, Vec<&[F]>) = match committed_instance {
+        Some(com) => (vec![com], vec![&pi]),
+        None => (vec![], vec![&[], &pi]),
+    };
     if pi.len() != vk.nb_public_inputs {
         return Err(Error::InvalidInstances.into());
     }
     Ok(BlstPLONK::<MidnightCircuit<R>>::verify::<H>(
         params_verifier,
         &vk.vk,
-        &[committed_pi],
-        &[&pi],
+        &committed,
+        &instances,
         proof,
     )?)
 }
@@ -620,10 +623,8 @@ where
             let mut transcript = CircuitTranscript::init_from_bytes(proof);
             let dual_msm = prepare::<midnight_curves::Fq, DefaultPCS, CircuitTranscript<H>>(
                 &vk.vk,
-                &[KZGMultiCommitment::commitment_to_zero(
-                    PolynomialLabel::CommittedInstance(0),
-                )],
-                &[pi],
+                &[],
+                &[&[], pi],
                 &mut transcript,
             )?;
             let summary: F = transcript.squeeze_challenge();
@@ -656,12 +657,18 @@ where
     acc_guard.verify(params_verifier).map_err(|_| Error::Opening)
 }
 
-/// Cost model of the given relation for the given `k`.
+/// Cost model of the given relation for the given `k`, with a committed
+/// instance if `has_committed_instance` (without one, its column is neither
+/// committed to nor opened).
 /// `k` is the log2 of the circuit size. If `None`, the optimal value is
 /// computed automatically.
-pub fn cost_model<R: Relation>(relation: &R, k: Option<u32>) -> CircuitModel {
+pub fn cost_model<R: Relation>(
+    relation: &R,
+    k: Option<u32>,
+    has_committed_instance: bool,
+) -> CircuitModel {
     let circuit = MidnightCircuit::from_relation(relation, k);
-    circuit_model::<_, DefaultPCS>(&circuit, NB_COMMITTED_INSTANCES)
+    circuit_model::<_, DefaultPCS>(&circuit, usize::from(has_committed_instance))
 }
 
 /// Finds the optimal `k` (log2 of the circuit size) for the given relation.
@@ -671,7 +678,7 @@ pub fn optimal_k<R: Relation>(relation: &R) -> u32 {
     let mut best_k = u32::MAX;
 
     for k in 9..=25 {
-        let model = cost_model(relation, Some(k));
+        let model = cost_model(relation, Some(k), false);
 
         if model.k < best_k {
             best_k = model.k;

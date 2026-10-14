@@ -41,6 +41,16 @@ pub enum PolynomialLabel {
 }
 
 impl PolynomialLabel {
+    /// Whether the label names a polynomial of the verifying key: a fixed or
+    /// permutation column, or a collection of them.
+    pub fn is_fixed(&self) -> bool {
+        match self {
+            Self::Fixed(_) | Self::PermutationFixed(_) => true,
+            Self::Collection(labels) => !labels.is_empty() && labels.iter().all(Self::is_fixed),
+            _ => false,
+        }
+    }
+
     /// Asserts that no label of `labels` is repeated.
     pub fn assert_distinct(labels: &[Self]) {
         let mut seen = rustc_hash::FxHashSet::default();
