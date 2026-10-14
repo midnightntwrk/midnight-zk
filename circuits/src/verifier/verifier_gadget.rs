@@ -794,8 +794,8 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             layouter,
             &self.curve_chip,
             &self.scalar_chip,
-            &mut transcript,
             &queries,
+            &mut transcript,
         )
     }
 
@@ -980,33 +980,16 @@ pub(crate) mod tests {
     {
     }
 
-    impl<T> TestEmulation for T where
-        T: SelfEmulation<
-                F = F,
-                C = C,
-                Engine = E,
-                ScalarChip = NG,
-                CurveChip = ForeignWeierstrassEccChip<F, C, C, NG, NG>,
-                SpongeChip = PoseidonChip<F>,
-                PCS: InCircuitPCS<
-                    T,
-                    OffCircuitPCS: PolynomialCommitmentScheme<
-                        F,
-                        Parameters = ParamsKZG<E>,
-                        Commitment = KZGMultiCommitment<E>,
-                        VerificationGuard = DualMSM<E>,
-                    >,
-                >,
-            >
-    {
-    }
+    impl TestEmulation for BlstrsEmulation {}
+
+    impl<const LOG2_T_MAX: u32> TestEmulation for BlsFflonkEmulation<LOG2_T_MAX> {}
 
     /// [`BlstrsEmulation`] verifying fflonk proofs over KZG, combining at most
     /// `2^LOG2_T_MAX` polynomials per chunk.
     #[derive(Clone, Debug)]
-    struct FflonkEmulation<const LOG2_T_MAX: u32>;
+    struct BlsFflonkEmulation<const LOG2_T_MAX: u32>;
 
-    impl<const LOG2_T_MAX: u32> SelfEmulation for FflonkEmulation<LOG2_T_MAX> {
+    impl<const LOG2_T_MAX: u32> SelfEmulation for BlsFflonkEmulation<LOG2_T_MAX> {
         type F = F;
         type C = C;
         type AssignedPoint = <S as SelfEmulation>::AssignedPoint;
@@ -1254,8 +1237,8 @@ pub(crate) mod tests {
 
     #[test]
     fn test_verify_fflonk_proof() {
-        check_self_verification::<FflonkEmulation<0>>(0);
-        check_self_verification::<FflonkEmulation<1>>(1);
-        check_self_verification::<FflonkEmulation<2>>(2);
+        check_self_verification::<BlsFflonkEmulation<0>>(0);
+        check_self_verification::<BlsFflonkEmulation<1>>(1);
+        check_self_verification::<BlsFflonkEmulation<2>>(2);
     }
 }

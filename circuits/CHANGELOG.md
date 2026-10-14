@@ -19,13 +19,13 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 * The verifier gadget accepts an empty instance column, which evaluates to zero, instead of panicking [#569](https://github.com/midnightntwrk/midnight-zk/pull/569)
-* `AssignedMsm::collapse` yields the identity on an MSM with no variable term, as the off-circuit collapse does, instead of calling the MSM chip on empty input [#575](https://github.com/midnightntwrk/midnight-zk/pull/575)
 * The verifier gadget no longer misreads the fixed evaluations of a circuit with a fixed column queried at more than one rotation [#547](https://github.com/midnightntwrk/midnight-zk/pull/547)
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 
 ### Changed
 * `verifier::fixed_bases` reads the labels carried by the verifying-key commitment, rather than assuming one commitment per fixed polynomial, and `fixed_base_labels` takes the constraint system and lets the new `InCircuitPCS::fixed_base_labels` group its fixed polynomials, returning the labels in the same order [#570](https://github.com/midnightntwrk/midnight-zk/pull/570)
 * BREAKING: `SelfEmulation::PCS` declares the in-circuit PCS of the verified proofs; `AssignedVk` and the `VerifierGadget` methods drop their PCS generic [#570](https://github.com/midnightntwrk/midnight-zk/pull/570)
+* BREAKING: `InCircuitPCS::multi_prepare` takes the transcript last, as the off-circuit `multi_prepare` does [#575](https://github.com/midnightntwrk/midnight-zk/pull/575)
 * `AssignedVk` holds an `AssignedEvaluationDomain` with assigned `k` and `omega` (and in-circuit derived `omega_inv` and `n = 2^k`) [#461](https://github.com/midnightntwrk/midnight-zk/pull/461)
 * The KZG verifier gadget computes the quotient `(q - r(x3)) / Π_i (x3 - point_i)` of each point set directly from the barycentric weights, without building the Lagrange bases [#565](https://github.com/midnightntwrk/midnight-zk/pull/565)
 * Remove the linearization from the verifier gadget, mirroring `midnight-proofs`: the simple selectors are opened through the phase-0 group and `AssignedVk` no longer holds one commitment per simple selector [#566](https://github.com/midnightntwrk/midnight-zk/pull/566)

@@ -190,8 +190,8 @@ pub trait InCircuitPCS<S: SelfEmulation>: Sized + Clone + Debug {
         layouter: &mut impl Layouter<S::F>,
         curve_chip: &S::CurveChip,
         scalar_chip: &S::ScalarChip,
-        transcript: &mut TranscriptGadget<S>,
         queries: &[VerifierQuery<'_, S, Self>],
+        transcript: &mut TranscriptGadget<S>,
     ) -> Result<AssignedAccumulator<S>, Error>;
 }
 

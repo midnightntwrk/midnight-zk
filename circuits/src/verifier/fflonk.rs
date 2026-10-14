@@ -23,25 +23,24 @@ use std::{
     marker::PhantomData,
 };
 
-use ff::PrimeField;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
     poly::{
         PolynomialLabel::{self, Collection},
         commitment::InterleavedCommit,
-        fflonk::{Fflonk, roots},
+        fflonk::Fflonk,
     },
 };
 
 use crate::{
     field::AssignedNative,
-    instructions::{ArithInstructions, AssertionInstructions, AssignmentInstructions},
+    instructions::ArithInstructions,
     verifier::{
         AssignedAccumulator, SelfEmulation,
         pcs::{InCircuitPCS, VerifierQuery},
         transcript_gadget::TranscriptGadget,
-        utils::mul_add,
+        utils::{RootsCache, cached_roots, eval_polynomial},
     },
 };
 
@@ -126,14 +125,13 @@ where
         layouter: &mut impl Layouter<S::F>,
         curve_chip: &S::CurveChip,
         scalar_chip: &S::ScalarChip,
-        transcript: &mut TranscriptGadget<S>,
         queries: &[VerifierQuery<'_, S, Self>],
+        transcript: &mut TranscriptGadget<S>,
     ) -> Result<AssignedAccumulator<S>, Error> {
         // Maps the labels of every queried chunk to its commitment and the points
-        // its polynomials are queried at, in query order. Points are cells: the
-        // verifier gadget hands out one cell per rotation of `x`.
-        let mut chunks_info = BTreeMap::<Vec<PolynomialLabel>, (_, Vec<_>)>::new();
-        for q in queries {
+        // its polynomials are queried at, in query order: `labels -> (commitment,
+        // points)`.
+        let chunks_info = queries.iter().fold(BTreeMap::new(), |mut chunks_info, q| {
             let labels = (Self::commitment_labels(q.commitment).chunks(Self::T_MAX))
                 .find(|labels| labels.contains(&q.label))
                 .map_or_else(|| vec![q.label.clone()], <[_]>::to_vec);
@@ -141,10 +139,11 @@ where
             if !points.contains(&q.point) {
                 points.push(q.point.clone());
             }
-        }
+            chunks_info
+        });
 
-        // The evaluations of the chunks at all the points: the explicit ones from
-        // the queries, the implicit ones read from the transcript here.
+        // The evaluations of the chunks at all the points, both the explicit (taken
+        // from the queries) and the implicit (read from the transcript here) ones.
         let mut evals: HashMap<_, _> = queries
             .iter()
             .map(|q| ((q.label.clone(), q.point.clone()), q.eval.clone()))
@@ -159,19 +158,21 @@ where
             }
         }
 
-        // Each chunk is opened at the `t`-th roots `r` of each of its points `x`,
-        // with value `g(r) = Σ_i r^i f_i(x)`.
+        // Opening a chunk at `x` amounts to opening its `g` polynomial at
+        // the `t`-th roots of `x`, where computing `g(r) = Σ_i r^i f_i(x)` for
+        // such a root `r` is equivalent to evaluating at `r` the polynomial with
+        // coefficients `f_i(x)`.
         let mut inner_queries = Vec::new();
-        let mut roots_cache = RootsCache::default();
+        let mut roots_cache = RootsCache::new();
         for (labels, (commitment, points)) in &chunks_info {
             let t = labels.len().next_power_of_two();
             for x in points {
                 let f_evals: Vec<_> =
                     labels.iter().map(|l| &evals[&(l.clone(), x.clone())]).collect();
-                for root in roots_cache.get(layouter, scalar_chip, x, t)? {
-                    let eval = horner(layouter, scalar_chip, &f_evals, &root)?;
+                for root in cached_roots(layouter, scalar_chip, &mut roots_cache, x, t)? {
+                    let eval = eval_polynomial(layouter, scalar_chip, &f_evals, root)?;
                     let label = Collection(labels.clone());
-                    let query = VerifierQuery::<S, PCS>::new(&root, *commitment, label, &eval);
+                    let query = VerifierQuery::<S, PCS>::new(root, *commitment, label, &eval);
                     inner_queries.push(query.with_root_of(x, t));
                 }
             }
@@ -181,81 +182,8 @@ where
             layouter,
             curve_chip,
             scalar_chip,
-            transcript,
             &inner_queries,
+            transcript,
         )
     }
-}
-
-/// The `t`-th roots of the points computed so far, keyed by the cell of the
-/// point and `t`.
-///
-/// Two chunks opened at the same point must share the very same root cells:
-/// the inner multi-open groups the queries by point cell, so distinct cells for
-/// equal roots would split a point set that the off-circuit verifier keeps
-/// whole.
-struct RootsCache<F: PrimeField>(HashMap<(AssignedNative<F>, usize), Vec<AssignedNative<F>>>);
-
-impl<F: PrimeField> Default for RootsCache<F> {
-    fn default() -> Self {
-        Self(HashMap::new())
-    }
-}
-
-impl<F: PrimeField> RootsCache<F> {
-    /// The roots `[z, z ω_t, ..., z ω_t^{t-1}]` of `x`, for a witness `z`
-    /// constrained by `z^t = x`, in the order of
-    /// [`roots`](midnight_proofs::poly::fflonk::roots).
-    fn get<S>(
-        &mut self,
-        layouter: &mut impl Layouter<F>,
-        scalar_chip: &S,
-        x: &AssignedNative<F>,
-        t: usize,
-    ) -> Result<Vec<AssignedNative<F>>, Error>
-    where
-        S: ArithInstructions<F, AssignedNative<F>>
-            + AssertionInstructions<F, AssignedNative<F>>
-            + AssignmentInstructions<F, AssignedNative<F>>,
-        F: crate::CircuitField,
-    {
-        if let Some(roots) = self.0.get(&(x.clone(), t)) {
-            return Ok(roots.clone());
-        }
-
-        let z = if t == 1 {
-            x.clone()
-        } else {
-            // A point with no `t`-th root gets 0, which fails `z^t = x`.
-            let z = x.value().map(|x| roots(*x, t).map_or(F::ZERO, |roots| roots[0]));
-            let z = scalar_chip.assign(layouter, z)?;
-            let z_pow_t = scalar_chip.pow(layouter, &z, t as u64)?;
-            scalar_chip.assert_equal(layouter, &z_pow_t, x)?;
-            z
-        };
-
-        let omega_t = F::ROOT_OF_UNITY.pow_vartime([1u64 << (F::S - t.trailing_zeros())]);
-        let mut roots = vec![z.clone()];
-        let mut omega_pow = omega_t;
-        for _ in 1..t {
-            roots.push(scalar_chip.mul_by_constant(layouter, &z, omega_pow)?);
-            omega_pow *= omega_t;
-        }
-
-        self.0.insert((x.clone(), t), roots.clone());
-        Ok(roots)
-    }
-}
-
-/// `Σ_i root^i coeffs[i]`, by Horner.
-fn horner<F: crate::CircuitField>(
-    layouter: &mut impl Layouter<F>,
-    scalar_chip: &impl ArithInstructions<F, AssignedNative<F>>,
-    coeffs: &[&AssignedNative<F>],
-    root: &AssignedNative<F>,
-) -> Result<AssignedNative<F>, Error> {
-    let (last, rest) = coeffs.split_last().expect("a chunk holds at least one polynomial");
-    (rest.iter().rev()).try_fold((*last).clone(), |acc, c| {
-        mul_add(layouter, scalar_chip, &acc, root, c)
-    })
 }
