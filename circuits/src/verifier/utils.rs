@@ -11,11 +11,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{cmp::min, ops::Range};
+use std::{
+    cmp::min,
+    collections::{HashMap, hash_map::Entry},
+    ops::Range,
+};
 
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
+    poly::fflonk::roots,
 };
 use num_bigint::BigUint;
 use num_traits::One;
@@ -240,6 +245,64 @@ pub fn evaluate_interpolation_quotient<F: CircuitField>(
     scalar_chip.linear_combination(layouter, &terms, F::ZERO)
 }
 
+/// A point `x` and all its `t`-th roots `p`, each with an evaluation:
+/// `(x, [(p, eval)])`.
+pub(crate) type Coset<F> = (
+    AssignedNative<F>,
+    Vec<(AssignedNative<F>, AssignedNative<F>)>,
+);
+
+/// Given cosets of points with their evaluations and a value `q`, returns
+/// `(q - f(z)) / Z(z)`, for `f` the polynomial interpolating the cosets and
+/// `Z(X) = Π_j (X^t - x_j)` their vanishing polynomial.
+///
+/// The `x_j` of the cosets must be distinct and non-zero, otherwise the circuit
+/// is unsatisfiable. The Lagrange basis at `p` in coset `j` is
+/// `Z(z) p / ((z - p) t x_j Π_{k≠j} (x_j - x_k))`.
+///
+/// # Panics
+///
+/// If `cosets` is empty.
+pub(crate) fn evaluate_interpolation_quotient_on_cosets<F: CircuitField>(
+    layouter: &mut impl Layouter<F>,
+    scalar_chip: &impl ArithInstructions<F, AssignedNative<F>>,
+    t: usize,
+    cosets: &[Coset<F>],
+    z: &AssignedNative<F>,
+    q: &AssignedNative<F>,
+) -> Result<AssignedNative<F>, Error> {
+    let z_pow_t = scalar_chip.pow(layouter, z, t as u64)?;
+    let vanishing_factors = (cosets.iter())
+        .map(|(x, _)| scalar_chip.sub(layouter, &z_pow_t, x))
+        .collect::<Result<Vec<_>, Error>>()?;
+    let vanishing = prod(layouter, scalar_chip, &vanishing_factors)?;
+
+    // f(z) is `Z(z) · Σ_j Σ_p eval_p p / ((z - p) t x_j Π_{k≠j} (x_j - x_k))`,
+    // and the quotient is `q / Z(z)` minus the sum.
+    let mut terms = Vec::with_capacity(cosets.len() + 1);
+    for (j, (xj, coset)) in cosets.iter().enumerate() {
+        // Σ_p eval_p p / (z - p)
+        let coset_terms = (coset.iter())
+            .map(|(p, eval)| {
+                let num = scalar_chip.mul(layouter, eval, p, None)?;
+                let den = scalar_chip.sub(layouter, z, p)?;
+                scalar_chip.div(layouter, &num, &den)
+            })
+            .collect::<Result<Vec<_>, Error>>()?;
+        let coset_sum = sum(layouter, scalar_chip, &coset_terms)?;
+
+        // t x_j Π_{k≠j} (x_j - x_k)
+        let mut den = scalar_chip.mul_by_constant(layouter, xj, F::from(t as u64))?;
+        for (_, (xk, _)) in cosets.iter().enumerate().filter(|(k, _)| *k != j) {
+            let diff = scalar_chip.sub(layouter, xj, xk)?;
+            den = scalar_chip.mul(layouter, &den, &diff, None)?;
+        }
+        terms.push((-F::ONE, scalar_chip.div(layouter, &coset_sum, &den)?));
+    }
+    terms.push((F::ONE, scalar_chip.div(layouter, q, &vanishing)?));
+    scalar_chip.linear_combination(layouter, &terms, F::ZERO)
+}
+
 /// Computes the addition of all the given scalars.
 pub(crate) fn sum<F: CircuitField>(
     layouter: &mut impl Layouter<F>,
@@ -410,4 +473,63 @@ pub(crate) fn mul_add<F: CircuitField>(
         F::ZERO,
         F::ONE,
     )
+}
+
+/// The `t`-th roots of the points computed so far, keyed by the cell of the
+/// point and `t`.
+///
+/// Two chunks opened at the same point must share the very same root cells:
+/// the inner multi-open groups the queries by point cell, so distinct cells for
+/// equal roots would split a point set that the off-circuit verifier keeps
+/// whole.
+pub(crate) type RootsCache<F> = HashMap<(AssignedNative<F>, usize), Vec<AssignedNative<F>>>;
+
+/// The roots `[z, z ω_t, ..., z ω_t^{t-1}]` of `x`, for a witness `z`
+/// constrained by `z^t = x`, in the order of [`roots`], computed once per `x`
+/// and `t` and kept in `cache`.
+pub(crate) fn cached_roots<'c, F: CircuitField>(
+    layouter: &mut impl Layouter<F>,
+    scalar_chip: &impl ArithInstructions<F, AssignedNative<F>>,
+    cache: &'c mut RootsCache<F>,
+    x: &AssignedNative<F>,
+    t: usize,
+) -> Result<&'c [AssignedNative<F>], Error> {
+    let entry = match cache.entry((x.clone(), t)) {
+        Entry::Occupied(entry) => return Ok(entry.into_mut()),
+        Entry::Vacant(entry) => entry,
+    };
+
+    let z = if t == 1 {
+        x.clone()
+    } else {
+        // A point with no `t`-th root gets 0, which fails `z^t = x`.
+        let z = x.value().map(|x| roots(*x, t).map_or(F::ZERO, |roots| roots[0]));
+        let z = scalar_chip.assign(layouter, z)?;
+        let z_pow_t = scalar_chip.pow(layouter, &z, t as u64)?;
+        scalar_chip.assert_equal(layouter, &z_pow_t, x)?;
+        z
+    };
+
+    let omega_t = F::ROOT_OF_UNITY.pow_vartime([1u64 << (F::S - t.trailing_zeros())]);
+    let mut roots = vec![z.clone()];
+    let mut omega_pow = omega_t;
+    for _ in 1..t {
+        roots.push(scalar_chip.mul_by_constant(layouter, &z, omega_pow)?);
+        omega_pow *= omega_t;
+    }
+
+    Ok(entry.insert(roots))
+}
+
+/// `Σ_i point^i coeffs[i]`, by Horner.
+pub(crate) fn eval_polynomial<F: CircuitField>(
+    layouter: &mut impl Layouter<F>,
+    scalar_chip: &impl ArithInstructions<F, AssignedNative<F>>,
+    coeffs: &[&AssignedNative<F>],
+    point: &AssignedNative<F>,
+) -> Result<AssignedNative<F>, Error> {
+    let (last, rest) = coeffs.split_last().expect("a chunk holds at least one polynomial");
+    (rest.iter().rev()).try_fold((*last).clone(), |acc, c| {
+        mul_add(layouter, scalar_chip, &acc, point, c)
+    })
 }

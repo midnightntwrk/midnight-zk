@@ -794,8 +794,8 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             layouter,
             &self.curve_chip,
             &self.scalar_chip,
-            &mut transcript,
             &queries,
+            &mut transcript,
         )
     }
 
@@ -841,7 +841,10 @@ pub(crate) mod tests {
         circuit::SimpleFloorPlanner,
         dev::MockProver,
         plonk::{Circuit, Constraints, Error, create_proof, keygen_pk, keygen_vk_with_k, prepare},
-        poly::kzg::{KZGCommitmentScheme, params::ParamsKZG},
+        poly::{
+            commitment::PolynomialCommitmentScheme,
+            kzg::{commitment::KZGMultiCommitment, msm::DualMSM, params::ParamsKZG},
+        },
         transcript::{CircuitTranscript, Transcript},
     };
     use rand::SeedableRng;
@@ -874,7 +877,7 @@ pub(crate) mod tests {
         },
         testing_utils::FromScratch,
         types::{ComposableChip, Instantiable},
-        verifier::{BlstrsEmulation, accumulator::Accumulator},
+        verifier::{BlstrsEmulation, InCircuitFflonk, InCircuitKZG, accumulator::Accumulator},
     };
 
     type S = BlstrsEmulation;
@@ -886,6 +889,8 @@ pub(crate) mod tests {
     type CBase = <C as CircuitCurve>::Base;
 
     type NG = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
+
+    type OffCircuitPCS<SE> = <<SE as SelfEmulation>::PCS as InCircuitPCS<SE>>::OffCircuitPCS;
 
     const NB_INNER_INSTANCES: usize = 1;
 
@@ -952,15 +957,88 @@ pub(crate) mod tests {
         }
     }
 
+    /// An emulation sharing the chips of [`BlstrsEmulation`], whose in-circuit
+    /// PCS may differ.
+    pub(crate) trait TestEmulation:
+        SelfEmulation<
+            F = F,
+            C = C,
+            Engine = E,
+            ScalarChip = NG,
+            CurveChip = ForeignWeierstrassEccChip<F, C, C, NG, NG>,
+            SpongeChip = PoseidonChip<F>,
+            PCS: InCircuitPCS<
+                Self,
+                OffCircuitPCS: PolynomialCommitmentScheme<
+                    F,
+                    Parameters = ParamsKZG<E>,
+                    Commitment = KZGMultiCommitment<E>,
+                    VerificationGuard = DualMSM<E>,
+                >,
+            >,
+        >
+    {
+    }
+
+    impl TestEmulation for BlstrsEmulation {}
+
+    impl<const LOG2_T_MAX: u32> TestEmulation for BlsFflonkEmulation<LOG2_T_MAX> {}
+
+    /// [`BlstrsEmulation`] verifying fflonk proofs over KZG, combining at most
+    /// `2^LOG2_T_MAX` polynomials per chunk.
     #[derive(Clone, Debug)]
-    pub struct TestCircuit {
+    struct BlsFflonkEmulation<const LOG2_T_MAX: u32>;
+
+    impl<const LOG2_T_MAX: u32> SelfEmulation for BlsFflonkEmulation<LOG2_T_MAX> {
+        type F = F;
+        type C = C;
+        type AssignedPoint = <S as SelfEmulation>::AssignedPoint;
+        type Hash = <S as SelfEmulation>::Hash;
+        type ScalarChip = NG;
+        type CurveChip = ForeignWeierstrassEccChip<F, C, C, NG, NG>;
+        type SpongeChip = PoseidonChip<F>;
+        type G1Affine = <S as SelfEmulation>::G1Affine;
+        type G2Affine = <S as SelfEmulation>::G2Affine;
+        type Engine = E;
+
+        type PCS = InCircuitFflonk<InCircuitKZG<Self>, LOG2_T_MAX>;
+
+        fn msm(
+            layouter: &mut impl Layouter<F>,
+            curve_chip: &Self::CurveChip,
+            scalars: &[(AssignedNative<F>, usize)],
+            bases: &[Self::AssignedPoint],
+        ) -> Result<Self::AssignedPoint, Error> {
+            S::msm(layouter, curve_chip, scalars, bases)
+        }
+
+        fn constrain_scalar_as_committed_public_input(
+            layouter: &mut impl Layouter<F>,
+            scalar_chip: &Self::ScalarChip,
+            assigned_scalar: &AssignedNative<F>,
+        ) -> Result<(), Error> {
+            S::constrain_scalar_as_committed_public_input(layouter, scalar_chip, assigned_scalar)
+        }
+
+        fn assign_without_subgroup_check(
+            layouter: &mut impl Layouter<F>,
+            curve_chip: &Self::CurveChip,
+            base: Value<C>,
+        ) -> Result<Self::AssignedPoint, Error> {
+            S::assign_without_subgroup_check(layouter, curve_chip, base)
+        }
+    }
+
+    /// Verifies in-circuit, with `SE::PCS`, a proof of [`InnerCircuit`].
+    #[derive(Clone, Debug)]
+    pub struct TestCircuit<SE: TestEmulation> {
         // (cs, vk)
-        inner_vk: (ConstraintSystem<F>, Value<VerifyingKey<S>>),
+        inner_vk: (ConstraintSystem<F>, Value<VerifyingKey<SE>>),
         inner_instances: Value<[F; NB_INNER_INSTANCES]>,
         inner_proof: Value<Vec<u8>>,
     }
 
-    impl Circuit<F> for TestCircuit {
+    impl<SE: TestEmulation> Circuit<F> for TestCircuit<SE> {
         type Config = (
             NativeConfig,
             P2RDecompositionConfig,
@@ -1047,9 +1125,9 @@ pub(crate) mod tests {
             let poseidon_chip = PoseidonChip::new(&config.3, &native_chip);
 
             let verifier_chip =
-                VerifierGadget::<S>::new(&curve_chip, &native_gadget, &poseidon_chip);
+                VerifierGadget::<SE>::new(&curve_chip, &native_gadget, &poseidon_chip);
 
-            let assigned_inner_vk: AssignedVk<S> = verifier_chip.assign_vk_as_public_input(
+            let assigned_inner_vk: AssignedVk<SE> = verifier_chip.assign_vk_as_public_input(
                 &mut layouter,
                 self.inner_vk.1.as_ref(),
                 &self.inner_vk.0,
@@ -1074,14 +1152,20 @@ pub(crate) mod tests {
         }
     }
 
-    #[test]
-    fn test_verify_proof() {
+    /// Proves [`InnerCircuit`] with `SE`'s off-circuit PCS and verifies the
+    /// proof in-circuit with `SE::PCS`. `log2_t_max` is the extra SRS room the
+    /// scheme needs on top of the circuit size.
+    fn check_self_verification<SE: TestEmulation>(log2_t_max: u32) {
         let mut rng = ChaCha8Rng::from_seed([0u8; 32]);
 
         let inner_k = 10;
-        let inner_params = ParamsKZG::unsafe_setup(inner_k, &mut rng);
-
-        let inner_vk = keygen_vk_with_k(&inner_params, &InnerCircuit::default(), inner_k).unwrap();
+        let inner_params = ParamsKZG::unsafe_setup(inner_k + log2_t_max, &mut rng);
+        let inner_vk = keygen_vk_with_k::<_, OffCircuitPCS<SE>, _>(
+            &inner_params,
+            &InnerCircuit::default(),
+            inner_k,
+        )
+        .unwrap();
         let inner_pk = keygen_pk(inner_vk.clone(), &InnerCircuit::default()).unwrap();
 
         let preimage = [F::random(&mut rng), F::random(&mut rng)];
@@ -1090,12 +1174,7 @@ pub(crate) mod tests {
 
         let inner_proof = {
             let mut transcript = CircuitTranscript::<PoseidonState<F>>::init();
-            create_proof::<
-                F,
-                KZGCommitmentScheme<E>,
-                CircuitTranscript<PoseidonState<F>>,
-                InnerCircuit,
-            >(
+            create_proof::<F, OffCircuitPCS<SE>, CircuitTranscript<PoseidonState<F>>, InnerCircuit>(
                 &inner_params,
                 &inner_pk,
                 &InnerCircuit::from_witness(preimage),
@@ -1111,7 +1190,7 @@ pub(crate) mod tests {
         let inner_dual_msm = {
             let mut transcript =
                 CircuitTranscript::<PoseidonState<F>>::init_from_bytes(&inner_proof);
-            prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<PoseidonState<F>>>(
+            prepare::<F, OffCircuitPCS<SE>, CircuitTranscript<PoseidonState<F>>>(
                 &inner_vk,
                 &[],
                 &[&[], &inner_public_inputs],
@@ -1120,13 +1199,13 @@ pub(crate) mod tests {
             .expect("Problem preparing the inner proof")
         };
 
-        let fixed_bases = crate::verifier::fixed_bases::<S>(&inner_vk);
+        let fixed_bases = crate::verifier::fixed_bases::<SE>(&inner_vk);
         assert_eq!(
-            crate::verifier::fixed_base_labels::<S>(inner_vk.cs()),
+            crate::verifier::fixed_base_labels::<SE>(inner_vk.cs()),
             fixed_bases.keys().cloned().collect::<Vec<_>>()
         );
 
-        let mut inner_acc = Accumulator::<S>::from_dual_msm(inner_dual_msm.clone(), &fixed_bases);
+        let mut inner_acc = Accumulator::<SE>::from_dual_msm(inner_dual_msm.clone(), &fixed_bases);
 
         let inner_verifier_params = inner_params.verifier_params();
         assert!(inner_dual_msm.check(&inner_verifier_params));
@@ -1137,10 +1216,10 @@ pub(crate) mod tests {
         // The inner proof is ready.
         // Now, let us make a proof that we know an inner proof.
 
-        let mut public_inputs = AssignedVk::<S>::as_public_input(&inner_vk);
+        let mut public_inputs = AssignedVk::<SE>::as_public_input(&inner_vk);
         public_inputs.extend(AssignedAccumulator::as_public_input(&inner_acc));
 
-        let circuit = TestCircuit {
+        let circuit = TestCircuit::<SE> {
             inner_vk: (inner_vk.cs().clone(), Value::known(inner_vk.clone())),
             inner_instances: Value::known([output]),
             inner_proof: Value::known(inner_proof),
@@ -1149,5 +1228,17 @@ pub(crate) mod tests {
         let prover =
             MockProver::run(&circuit, vec![vec![], public_inputs]).expect("MockProver failed");
         prover.assert_satisfied();
+    }
+
+    #[test]
+    fn test_verify_proof() {
+        check_self_verification::<S>(0);
+    }
+
+    #[test]
+    fn test_verify_fflonk_proof() {
+        check_self_verification::<BlsFflonkEmulation<0>>(0);
+        check_self_verification::<BlsFflonkEmulation<1>>(1);
+        check_self_verification::<BlsFflonkEmulation<2>>(2);
     }
 }

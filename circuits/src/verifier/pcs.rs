@@ -33,18 +33,24 @@ use crate::{
 // ---------------------------------------------------------------------------
 
 /// An in-circuit verifier query: a commitment evaluated at a point.
+///
+/// `PCS` is the scheme checking the query (`S::PCS` by default), so that a PCS
+/// can query an inner one, as fflonk does with KZG.
 #[derive(Clone, Debug)]
-pub struct VerifierQuery<'a, S: SelfEmulation> {
+pub struct VerifierQuery<'a, S: SelfEmulation, PCS: InCircuitPCS<S> = <S as SelfEmulation>::PCS> {
     pub(crate) point: AssignedNative<S::F>,
-    pub(crate) commitment: &'a AssignedCommitment<S>,
+    pub(crate) commitment: &'a PCS::AssignedCommitment,
     pub(crate) label: PolynomialLabel,
     pub(crate) eval: AssignedNative<S::F>,
+    /// `Some((x, t))` if `point` is one of the `t`-th roots of `x`, and the
+    /// commitment is queried at all of them.
+    pub(crate) root_of: Option<(AssignedNative<S::F>, usize)>,
 }
 
-impl<'a, S: SelfEmulation> VerifierQuery<'a, S> {
+impl<'a, S: SelfEmulation, PCS: InCircuitPCS<S>> VerifierQuery<'a, S, PCS> {
     pub fn new(
         point: &AssignedNative<S::F>,
-        commitment: &'a AssignedCommitment<S>,
+        commitment: &'a PCS::AssignedCommitment,
         label: PolynomialLabel,
         eval: &AssignedNative<S::F>,
     ) -> Self {
@@ -53,7 +59,17 @@ impl<'a, S: SelfEmulation> VerifierQuery<'a, S> {
             commitment,
             label,
             eval: eval.clone(),
+            root_of: None,
         }
+    }
+
+    /// Marks `self.point` as one of the `t`-th roots of `x`.
+    ///
+    /// The caller guarantees that the commitment is queried at all `t` roots of
+    /// `x`, and that `point^t = x` is constrained.
+    pub(crate) fn with_root_of(mut self, x: &AssignedNative<S::F>, t: usize) -> Self {
+        self.root_of = Some((x.clone(), t));
+        self
     }
 }
 
@@ -154,6 +170,10 @@ pub trait InCircuitPCS<S: SelfEmulation>: Sized + Clone + Debug {
         commitment: &Self::AssignedCommitment,
     ) -> Result<(), Error>;
 
+    /// The labels `commitment` tags its polynomials with. Mirrors
+    /// [`midnight_proofs::poly::commitment::PolynomialCommitmentScheme::commitment_labels`].
+    fn commitment_labels(commitment: &Self::AssignedCommitment) -> Vec<PolynomialLabel>;
+
     /// Squeezes the point at which the protocol opens its committed
     /// polynomials; the default squeezes a plain challenge. Mirrors
     /// [`midnight_proofs::poly::commitment::PolynomialCommitmentScheme::squeeze_evaluation_point`].
@@ -170,8 +190,8 @@ pub trait InCircuitPCS<S: SelfEmulation>: Sized + Clone + Debug {
         layouter: &mut impl Layouter<S::F>,
         curve_chip: &S::CurveChip,
         scalar_chip: &S::ScalarChip,
+        queries: &[VerifierQuery<'_, S, Self>],
         transcript: &mut TranscriptGadget<S>,
-        queries: &[VerifierQuery<'_, S>],
     ) -> Result<AssignedAccumulator<S>, Error>;
 }
 
