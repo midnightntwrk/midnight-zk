@@ -500,7 +500,7 @@ pub(crate) fn cached_roots<'c, F: CircuitField>(
         z
     };
 
-    let omega_t = F::ROOT_OF_UNITY.pow_vartime([1u64 << (F::S - t.trailing_zeros())]);
+    let omega_t = root_of_unity::<F>(t);
     let mut roots = vec![z.clone()];
     let mut omega_pow = omega_t;
     for _ in 1..t {
@@ -511,15 +511,39 @@ pub(crate) fn cached_roots<'c, F: CircuitField>(
     Ok(entry.insert(roots))
 }
 
-/// `Σ_i point^i coeffs[i]`, by Horner.
-pub(crate) fn eval_polynomial<F: CircuitField>(
+/// The primitive `t`-th root of unity of [`cached_roots`].
+fn root_of_unity<F: CircuitField>(t: usize) -> F {
+    F::ROOT_OF_UNITY.pow_vartime([1u64 << (F::S - t.trailing_zeros())])
+}
+
+/// `Σ_i r^i coeffs[i]` for every root `r = z ω_t^j` (`j < t`) of
+/// [`cached_roots`], computed as `Σ_i ω_t^{ij} (z^i coeffs[i])`: one product
+/// per coefficient and one linear combination per root.
+pub(crate) fn eval_polynomial_on_roots<F: CircuitField>(
     layouter: &mut impl Layouter<F>,
     scalar_chip: &impl ArithInstructions<F, AssignedNative<F>>,
     coeffs: &[&AssignedNative<F>],
-    point: &AssignedNative<F>,
-) -> Result<AssignedNative<F>, Error> {
-    let (last, rest) = coeffs.split_last().expect("a chunk holds at least one polynomial");
-    (rest.iter().rev()).try_fold((*last).clone(), |acc, c| {
-        mul_add(layouter, scalar_chip, &acc, point, c)
-    })
+    z: &AssignedNative<F>,
+    t: usize,
+) -> Result<Vec<AssignedNative<F>>, Error> {
+    if coeffs.len() == 1 {
+        return Ok(vec![coeffs[0].clone(); t]);
+    }
+    let z_powers = powers(layouter, scalar_chip, z, coeffs.len())?;
+    let terms = (coeffs.iter().zip(&z_powers).enumerate())
+        .map(|(i, (c, z_i))| match i {
+            0 => Ok((*c).clone()),
+            _ => scalar_chip.mul(layouter, c, z_i, None),
+        })
+        .collect::<Result<Vec<_>, Error>>()?;
+    let omega_t = root_of_unity::<F>(t);
+    (0..t as u64)
+        .map(|j| {
+            let omega_j = omega_t.pow_vartime([j]);
+            let lc = (terms.iter().enumerate())
+                .map(|(i, a)| (omega_j.pow_vartime([i as u64]), a.clone()))
+                .collect::<Vec<_>>();
+            scalar_chip.linear_combination(layouter, &lc, F::ZERO)
+        })
+        .collect()
 }

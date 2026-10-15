@@ -40,7 +40,7 @@ use crate::{
         AssignedAccumulator, SelfEmulation,
         pcs::{InCircuitPCS, VerifierQuery},
         transcript_gadget::TranscriptGadget,
-        utils::{RootsCache, cached_roots, eval_polynomial},
+        utils::{RootsCache, cached_roots, eval_polynomial_on_roots},
     },
 };
 
@@ -169,8 +169,10 @@ where
             for x in points {
                 let f_evals: Vec<_> =
                     labels.iter().map(|l| &evals[&(l.clone(), x.clone())]).collect();
-                for root in cached_roots(layouter, scalar_chip, &mut roots_cache, x, t)? {
-                    let eval = eval_polynomial(layouter, scalar_chip, &f_evals, root)?;
+                let roots = cached_roots(layouter, scalar_chip, &mut roots_cache, x, t)?;
+                let root_evals =
+                    eval_polynomial_on_roots(layouter, scalar_chip, &f_evals, &roots[0], t)?;
+                for (root, eval) in roots.iter().zip(root_evals) {
                     let label = Collection(labels.clone());
                     let query = VerifierQuery::<S, PCS>::new(root, *commitment, label, &eval);
                     inner_queries.push(query.with_root_of(x, t));
