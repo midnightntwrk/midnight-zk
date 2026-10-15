@@ -754,7 +754,7 @@ impl<F: PrimeField> Evaluator<F> {
             ))
         };
         for lookup in cs.lookups.iter() {
-            let lookup = lookup.chunk_by_degree(cs.degree());
+            let lookup = lookup.chunk_by_degree(cs.lookup_chunk_bound());
             let flat_evals = lookup
                 .input_expression_chunks()
                 .iter()
@@ -1099,7 +1099,7 @@ impl<F: PrimeField> Evaluator<F> {
         let all_lookup_cosets: Vec<_> = cs
             .lookups
             .iter()
-            .map(|l| l.chunk_by_degree(cs.degree()))
+            .map(|l| l.chunk_by_degree(cs.lookup_chunk_bound()))
             .enumerate()
             .collect::<Vec<_>>()
             .par_iter()

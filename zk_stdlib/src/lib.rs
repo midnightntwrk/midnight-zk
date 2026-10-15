@@ -109,7 +109,7 @@ type Curve25519BaseChip = FieldChip<F, curve25519_mod::Fp, MEP, NG>;
 type Curve25519ScalarChip = FieldChip<F, curve25519_mod::Scalar, MEP, NG>;
 type Curve25519Chip = ForeignEdwardsEccChip<F, Curve25519, MEP, Curve25519ScalarChip, NG>;
 
-const ZKSTD_VERSION: u32 = 4;
+const ZKSTD_VERSION: u32 = 5;
 
 /// Architecture of the standard library. Specifies what chips need to be
 /// configured.
@@ -175,6 +175,11 @@ pub struct ZkStdLibArch {
     /// Bit size `T` of the range-check lanes. If `None`, it is `k - 1`, see
     /// [ZkStdLibArch::range_check_bit_len()].
     pub range_check_bit_len: Option<u8>,
+
+    /// Degree bound for packing lookup inputs into helper columns (see
+    /// `ConstraintSystem::set_lookup_chunk_bound`). `None` keeps the default
+    /// (the degree of the constraint system).
+    pub lookup_chunk_bound: Option<u8>,
 }
 
 impl Default for ZkStdLibArch {
@@ -196,6 +201,7 @@ impl Default for ZkStdLibArch {
             nb_arith_cols: 5,
             nb_range_check_groups: 1,
             range_check_bit_len: None,
+            lookup_chunk_bound: None,
         }
     }
 }
@@ -436,6 +442,9 @@ impl ZkStdLib {
         meta: &mut ConstraintSystem<F>,
         (arch, max_bit_len): (ZkStdLibArch, u8),
     ) -> ZkStdLibConfig {
+        if let Some(bound) = arch.lookup_chunk_bound {
+            meta.set_lookup_chunk_bound(bound as usize);
+        }
         let nb_advice_cols = [
             arch.nb_arith_cols as usize,
             5 * arch.nb_range_check_groups as usize,

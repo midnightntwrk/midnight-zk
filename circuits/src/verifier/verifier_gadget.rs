@@ -278,7 +278,7 @@ impl<F: CircuitField, PCS: InCircuitPCS<F>> VerifierGadget<F, PCS> {
 
         let trash_challenge = transcript.squeeze_challenge(layouter)?;
 
-        let phase2_labels = argument::phase2_labels(cs, assigned_vk.cs_degree);
+        let phase2_labels = argument::phase2_labels(cs);
         let phase2_committed =
             argument::read_committed(layouter, &self.commitment_chip, &phase2_labels, transcript)?;
 
@@ -538,7 +538,7 @@ impl<F: CircuitField, PCS: InCircuitPCS<F>> VerifierGadget<F, PCS> {
         // Evaluate polys from lookup argument
         cs.lookups()
             .iter()
-            .map(|l| l.chunk_by_degree(assigned_vk.cs_degree))
+            .map(|l| l.chunk_by_degree(cs.lookup_chunk_bound()))
             .enumerate()
             .map(|(argument_index, argument)| {
                 let per_flat_inputs: Vec<&[Vec<_>]> =

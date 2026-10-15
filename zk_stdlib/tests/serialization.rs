@@ -93,6 +93,7 @@ const ARCHITECTURES: [ZkStdLibArch; 4] = [
         nb_arith_cols: 5,
         nb_range_check_groups: 1,
         range_check_bit_len: None,
+        lookup_chunk_bound: None,
         automaton: false,
     },
     ZkStdLibArch {
@@ -111,6 +112,7 @@ const ARCHITECTURES: [ZkStdLibArch; 4] = [
         nb_arith_cols: 5,
         nb_range_check_groups: 1,
         range_check_bit_len: None,
+        lookup_chunk_bound: None,
         automaton: false,
     },
     ZkStdLibArch {
@@ -129,6 +131,7 @@ const ARCHITECTURES: [ZkStdLibArch; 4] = [
         nb_arith_cols: 5,
         nb_range_check_groups: 1,
         range_check_bit_len: None,
+        lookup_chunk_bound: None,
         automaton: false,
     },
     ZkStdLibArch {
@@ -147,6 +150,7 @@ const ARCHITECTURES: [ZkStdLibArch; 4] = [
         nb_arith_cols: 5,
         nb_range_check_groups: 1,
         range_check_bit_len: Some(4),
+        lookup_chunk_bound: None,
         automaton: false,
     },
 ];
@@ -328,7 +332,7 @@ fn vk_version_and_pcs_are_checked_on_read() {
     let err = MidnightVK::<FflonkKZG<4>>::read(&mut &vk_bytes[..], SerdeFormat::Processed).err();
     assert_eq!(err.map(|e| e.kind()), Some(ErrorKind::InvalidData));
 
-    for version in [1u32, 2, 3, 5] {
+    for version in [1u32, 2, 3, 4] {
         let mut bytes = vk_bytes.clone();
         bytes[1..5].copy_from_slice(&version.to_le_bytes());
         let err = MidnightVK::<KZG>::read(&mut &bytes[..], SerdeFormat::Processed).err();
