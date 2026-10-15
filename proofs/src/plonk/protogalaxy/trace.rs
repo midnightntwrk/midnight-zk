@@ -72,6 +72,7 @@ pub(crate) fn evaluate_rows<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitme
     pk: &ProvingKey<F, CS>,
     trace: &ProverTrace<'_, F, LagrangeCoeff>,
 ) -> Polynomial<F, LagrangeCoeff> {
+    let t = std::time::Instant::now();
     let sparse = pk
         .ev
         .sparse_gates
@@ -83,6 +84,8 @@ pub(crate) fn evaluate_rows<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitme
         &pk.fixed_values,
         &trace.y,
     );
+    let gates = t.elapsed().as_secs_f64() * 1e3;
+    eprintln!("[evaluate_numerator] gates={gates:.2}");
     add_non_gate_rows(pk, trace, values)
 }
 

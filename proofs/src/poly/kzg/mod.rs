@@ -609,9 +609,27 @@ where
         chunk.iter().all(|poly| poly.len() == n),
         "the polynomials of a chunk have different lengths"
     );
-    (chunk.iter().enumerate())
-        .map(|(i, poly)| msm_specific(&poly.values, &params.residue_bases::<B>(t, n, i)))
-        .sum()
+    let t_c = std::time::Instant::now();
+    let c0 = crate::utils::perf2_cpu_ms();
+    let mut per = Vec::new();
+    let r = (chunk.iter().enumerate())
+        .map(|(i, poly)| {
+            let tb = std::time::Instant::now();
+            let bases = params.residue_bases::<B>(t, n, i);
+            let tb = tb.elapsed().as_secs_f64() * 1e3;
+            let tm = std::time::Instant::now();
+            let r = msm_specific(&poly.values, &bases);
+            per.push((tb, tm.elapsed().as_secs_f64() * 1e3));
+            r
+        })
+        .sum();
+    let sb: f64 = per.iter().map(|p| p.0).sum();
+    let sm: f64 = per.iter().map(|p| p.1).sum();
+    eprintln!(
+        "[perf2] commit_chunk polys={} n={n} t={t}: total={:.2} ms (bases={sb:.2}, msm={sm:.2}, per-msm={:.2}) cpu={:.2} ms",
+        chunk.len(), t_c.elapsed().as_secs_f64() * 1e3, sm / chunk.len() as f64, crate::utils::perf2_cpu_ms() - c0
+    );
+    r
 }
 
 #[cfg(test)]

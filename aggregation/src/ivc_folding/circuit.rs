@@ -139,6 +139,13 @@ impl<T: Ivc> Relation for FoldingIvcCircuit<T> {
         instance: Value<Self::Instance>,
         witness: Value<Self::Witness>,
     ) -> Result<(), IvcError> {
+        let mut perf2_t = (std::time::Instant::now(), midnight_proofs::utils::perf2_cpu_ms());
+        let mut perf2_lap = |name: &str| {
+            let c = midnight_proofs::utils::perf2_cpu_ms();
+            let w = perf2_t.0.elapsed().as_secs_f64() * 1e3;
+            eprintln!("[perf2-circuit] {name}: {w:.2} ms cpu={:.2} ms", c - perf2_t.1);
+            perf2_t = (std::time::Instant::now(), c);
+        };
         let verifier_gadget = std_lib.verifier();
         let folding = std_lib.folding(self.shape.clone());
         let ivc_gadget = T::new(std_lib.clone(), &self.ctx);
@@ -151,6 +158,7 @@ impl<T: Ivc> Relation for FoldingIvcCircuit<T> {
         )?;
         let vk_pi = verifier_gadget.as_public_input(layouter, &vk)?;
 
+        perf2_lap("assign_vk+vk_pi");
         let prev_state =
             ivc_gadget.assign(layouter, witness.as_ref().map(|w| w.prev_state.clone()))?;
         let next_state = ivc_gadget.circuit_transition(
@@ -158,12 +166,14 @@ impl<T: Ivc> Relation for FoldingIvcCircuit<T> {
             &prev_state,
             witness.as_ref().map(|w| w.transition_witness.clone()),
         )?;
+        perf2_lap("step transition (poseidon-chain)");
         let is_genesis =
             ivc_gadget.circuit_is_genesis(std_lib, layouter, &self.ctx, &prev_state)?;
         let is_first: AssignedBit<F> =
             std_lib.assign(layouter, witness.as_ref().map(|w| w.is_first))?;
         let zero: AssignedNative<F> = std_lib.assign_fixed(layouter, F::ZERO)?;
 
+        perf2_lap("assign is_genesis/is_first");
         // The previous step's instance: its public input binds `prev_state`
         // and the previous accumulator (hash 0 if it is the default one).
         let prev_acc =
@@ -174,6 +184,7 @@ impl<T: Ivc> Relation for FoldingIvcCircuit<T> {
         let prev_hash =
             Self::state_hash(std_lib, &ivc_gadget, layouter, &prev_state, &prev_acc_hash)?;
         let prev_pi = [vk_pi, vec![prev_hash]].concat();
+        perf2_lap("prev acc assign + hashes");
         let fresh = folding.read_instance(
             layouter,
             &vk,
@@ -181,15 +192,18 @@ impl<T: Ivc> Relation for FoldingIvcCircuit<T> {
             witness.as_ref().map(|w| w.partial_proof.clone()),
         )?;
 
+        perf2_lap("read_instance");
         // Next accumulator: init (previous accumulator is the default one) or
         // fold; both are computed and the result is selected.
         let init_acc = folding.init(layouter, fresh.clone())?;
+        perf2_lap("init");
         let fold_acc = folding.fold(
             layouter,
             &prev_acc,
             &fresh,
             witness.map(|w| w.folding_proof),
         )?;
+        perf2_lap("fold");
         let init_pi = init_acc.as_public_input(layouter, curve_chip)?;
         let fold_pi = fold_acc.as_public_input(layouter, curve_chip)?;
         let next_acc_pi = (init_pi.iter().zip(fold_pi.iter()))
@@ -202,6 +216,7 @@ impl<T: Ivc> Relation for FoldingIvcCircuit<T> {
         let next_acc_hash = std_lib.select(layouter, &is_genesis, &zero, &next_acc_hash)?;
         let next_hash =
             Self::state_hash(std_lib, &ivc_gadget, layouter, &next_state, &next_acc_hash)?;
+        perf2_lap("as_public_input/select/hashes tail");
         std_lib.constrain_as_public_input(layouter, &next_hash)?;
         Ok(())
     }
