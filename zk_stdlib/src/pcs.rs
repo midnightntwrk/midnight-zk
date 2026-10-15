@@ -13,7 +13,9 @@
 
 //! The polynomial commitment schemes of zk_stdlib.
 
-use midnight_circuits::verifier::{AssignedAccumulator, CurveChip, InCircuitPCS};
+use midnight_circuits::verifier::{
+    AssignedAccumulator, AssignedKZGMultiCommitment, CurveChip, InCircuitPCS,
+};
 use midnight_curves::{Bls12, Fq};
 use midnight_proofs::poly::{
     commitment::PolynomialCommitmentScheme,
@@ -46,6 +48,7 @@ pub trait MidnightPCS:
     + InCircuitPCS<
         Fq,
         CommitmentChip = CurveChip<Bls12>,
+        AssignedCommitment = AssignedKZGMultiCommitment<Bls12>,
         AssignedVerificationGuard = AssignedAccumulator<Bls12>,
     > + PolynomialCommitmentScheme<
         Fq,
