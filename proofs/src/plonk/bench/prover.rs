@@ -210,7 +210,7 @@ where
         });
         let multiplicities =
             compute_multiplicities(&advice_polys, &instance.instance_values, &mult_blindings)?;
-        let committed = argument::prover::Committed::commit::<CS, T, _>(
+        let (committed, _) = argument::prover::Committed::commit::<CS, T, _>(
             params,
             phase1_polys_map(advice_polys, &multiplicities)?,
             Polynomial::to_delta,
@@ -403,6 +403,7 @@ where
             Polynomial::to_double_delta,
             transcript,
         )?
+        .0
     };
 
     // Obtain challenges for keeping all identities linearly independent

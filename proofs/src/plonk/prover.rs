@@ -22,7 +22,10 @@ use super::{
 };
 use crate::{
     circuit::Value,
-    plonk::{argument, traces::ProverTrace},
+    plonk::{
+        argument,
+        traces::{CommittedTrace, ProverTrace},
+    },
     poly::{
         Coeff, EvaluationDomain, ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial, PolynomialLabel,
         ProverQuery, Rotation, batch_invert_rational, commitment::PolynomialCommitmentScheme,
@@ -50,13 +53,16 @@ where
     CS::commit(params, &poly, PolynomialLabel::CommittedInstance(0))
 }
 
-/// This computes a proof trace for the provided `circuit` when given the
-/// public parameters `params` and the proving key [`ProvingKey`] that was
-/// generated previously for the same circuit. The provided `instances`
-/// are zero-padded internally.
+/// Runs only the commit phases of [`create_proof`] for the provided `circuit`:
+/// it synthesises the witness, commits to phase 1 (advice columns and logup
+/// multiplicities), squeezes `theta`, `beta`, `gamma` and the trash challenge,
+/// commits to phase 2 (permutation, logup and trash columns) and squeezes `y`.
+/// The provided `instances` are zero-padded internally.
 ///
-/// The trace can then be used to finalise the proof.
-pub(crate) fn compute_trace<
+/// The transcript is left right after `y`; the phase-1 and phase-2 polynomials
+/// are returned in Lagrange form. [`compute_trace`] continues from here
+/// towards a proof; a folding prover folds the returned trace instead.
+pub(crate) fn commit_phases<
     'a,
     F,
     CS: PolynomialCommitmentScheme<F>,
@@ -73,7 +79,7 @@ pub(crate) fn compute_trace<
     instances: &[&[F]],
     transcript: &mut T,
     mut rng: impl RngCore + CryptoRng,
-) -> Result<ProverTrace<'a, F>, Error>
+) -> Result<CommittedTrace<'a, F, CS>, Error>
 where
     CS::Commitment: Hashable<T::Hash>,
     F: WithSmallOrderMulGroup<3>
@@ -156,7 +162,7 @@ where
         }
     }
 
-    let phase1_committed = argument::prover::Committed::commit::<CS, T, _>(
+    let (phase1_committed, phase1_commitment) = argument::prover::Committed::commit::<CS, T, _>(
         params,
         phase1_polys_map,
         Polynomial::to_delta,
@@ -253,7 +259,7 @@ where
         }
     }
 
-    let phase2_committed = argument::prover::Committed::commit::<CS, T, _>(
+    let (phase2_committed, phase2_commitment) = argument::prover::Committed::commit::<CS, T, _>(
         params,
         phase2_polys_map,
         Polynomial::to_double_delta,
@@ -268,23 +274,65 @@ where
         instance_values,
     } = instance;
 
-    let domain = pk.vk.get_domain();
-
-    let phase1_committed = phase1_committed.into_coeff(domain);
-    let phase2_committed = phase2_committed.into_coeff(domain);
-
-    Ok(ProverTrace {
-        instance_polys,
-        instance_values,
-        phase0_committed,
-        phase1_committed,
-        phase2_committed,
-        beta,
-        gamma,
-        theta,
-        trash_challenge,
-        y,
+    Ok(CommittedTrace {
+        trace: ProverTrace {
+            instance_polys,
+            instance_values,
+            phase0_committed,
+            phase1_committed,
+            phase2_committed,
+            beta,
+            gamma,
+            theta,
+            trash_challenge,
+            y,
+        },
+        phase1_commitment,
+        phase2_commitment,
     })
+}
+
+/// This computes a proof trace for the provided `circuit` when given the
+/// public parameters `params` and the proving key [`ProvingKey`] that was
+/// generated previously for the same circuit. The provided `instances`
+/// are zero-padded internally.
+///
+/// The trace can then be used to finalise the proof.
+pub(crate) fn compute_trace<
+    'a,
+    F,
+    CS: PolynomialCommitmentScheme<F>,
+    T: Transcript,
+    ConcreteCircuit: Circuit<F>,
+>(
+    params: &CS::Parameters,
+    pk: &'a ProvingKey<F, CS>,
+    circuit: &ConcreteCircuit,
+    #[cfg(feature = "committed-instances")] nb_committed_instances: usize,
+    instances: &[&[F]],
+    transcript: &mut T,
+    rng: impl RngCore + CryptoRng,
+) -> Result<ProverTrace<'a, F>, Error>
+where
+    CS::Commitment: Hashable<T::Hash>,
+    F: WithSmallOrderMulGroup<3>
+        + Sampleable<T::Hash>
+        + Hashable<T::Hash>
+        + Hash
+        + Ord
+        + FromUniformBytes<64>,
+{
+    let committed = commit_phases(
+        params,
+        pk,
+        circuit,
+        #[cfg(feature = "committed-instances")]
+        nb_committed_instances,
+        instances,
+        transcript,
+        rng,
+    )?;
+    Ok(committed.trace.into_coeff(pk.vk.get_domain()))
 }
 
 /// This takes the computed trace of a set of witnesses and creates a proof
@@ -316,8 +364,8 @@ where
 
     let nu_poly = compute_nu_poly(pk, &trace);
 
-    // Construct the quotient polynomial h(X) = nu(X)/(X^n-1), split it into limbs,
-    // and commit to each limb separately
+    // Construct the quotient polynomial h(X) = nu(X)/(X^n-1), split it into
+    // limbs, and commit to each limb separately
     let quotient_limbs =
         compute_h_poly::<F, CS, T>(params, pk.get_vk().get_domain(), nu_poly, transcript)?;
 

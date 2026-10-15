@@ -26,6 +26,8 @@ use crate::{
 mod absorbed_vk;
 pub(crate) mod argument;
 mod circuit;
+#[cfg(test)]
+mod commit_phases_tests;
 mod error;
 pub(crate) mod evaluation;
 mod keygen;

@@ -27,6 +27,11 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> Committed<F, CS> {
         }
     }
 
+    /// The commitment to the group's polynomials.
+    pub(crate) fn commitment(&self) -> &CS::Commitment {
+        &self.commitment
+    }
+
     pub(crate) fn read<T: Transcript>(
         labels: &[PolynomialLabel],
         transcript: &mut T,
