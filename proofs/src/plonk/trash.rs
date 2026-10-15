@@ -7,6 +7,12 @@ use crate::{plonk::argument, poly::PolynomialLabel};
 
 pub(crate) mod prover;
 
+/// `(1, c, ..., c^{m-1})`: the powers of the trash challenge `c` that the
+/// trashcans of a circuit read (`m = cs.max_trash_terms()`).
+pub(crate) fn trash_powers<F: Field>(c: F, m: usize) -> Vec<F> {
+    std::iter::successors(Some(F::ONE), |p| Some(*p * c)).take(m).collect()
+}
+
 #[derive(Clone, Debug)]
 pub struct Argument<F: Field> {
     pub(crate) argument_index: usize,
@@ -53,7 +59,7 @@ impl<F: PrimeField> Argument<F> {
     pub(crate) fn expressions(
         &self,
         evals_map: &BTreeMap<PolynomialLabel, Vec<argument::Evaluation<F>>>,
-        trash_challenge: F,
+        trash_powers: &[F],
         advice_evals: &[F],
         fixed_evals: &[F],
         instance_evals: &[F],
@@ -75,9 +81,12 @@ impl<F: PrimeField> Argument<F> {
             )
         };
 
+        // Σ_j c^{m-1-j} · e_j, with `trash_powers[i] = c^i`.
+        let m = self.constraint_expressions.len();
         let compressed_expressions = (self.constraint_expressions.iter())
-            .map(evaluate_expression)
-            .fold(F::ZERO, |acc, eval| acc * &trash_challenge + &eval);
+            .enumerate()
+            .map(|(j, expr)| trash_powers[m - 1 - j] * evaluate_expression(expr))
+            .sum::<F>();
 
         let q = evaluate_expression(self.selector());
         vec![compressed_expressions - (F::ONE - q) * trash_eval].into_iter()

@@ -56,7 +56,7 @@ use crate::{
         InCircuitPCS, InCircuitTranscript, PoseidonTranscriptGadget, ScalarChip, VerifierGadget,
         folding_types::{
             AssignedChallenges, AssignedFoldingAccumulator, AssignedFoldingInstance, FoldingEngine,
-            FoldingShape, NativeAccumulator, points,
+            FoldingShape, NativeAccumulator, points, trash_powers,
         },
         utils::{AssignedBoundedScalar, eval_polynomial, mul_add},
     },
@@ -137,6 +137,12 @@ where
         let verifier = VerifierGadget::<E::Fr, PCS>::new(&self.curve_chip, &self.scalar_chip);
         let mut transcript = self.new_transcript(layouter, partial_proof)?;
         let trace = verifier.parse_trace(layouter, vk, &[], instances, &mut transcript)?;
+        let trash_powers = trash_powers::<E>(
+            layouter,
+            &self.scalar_chip,
+            &trace.trash_challenge,
+            self.shape.nb_trash,
+        )?;
         Ok(AssignedFoldingInstance {
             phase1: trace.phase1_committed.commitment().clone(),
             phase2: trace.phase2_committed.commitment().clone(),
@@ -145,7 +151,7 @@ where
                 theta: trace.theta,
                 beta: trace.beta,
                 gamma: trace.gamma,
-                trash_challenge: trace.trash_challenge,
+                trash_powers,
                 y: trace.y,
             },
         })

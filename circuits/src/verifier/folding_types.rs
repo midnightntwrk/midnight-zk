@@ -16,6 +16,7 @@
 //! [`Challenges`], `FoldingInstance` and [`Accumulator`], their shape, their
 //! transcript encoding and their public-input encoding.
 
+use ff::Field;
 use midnight_curves::pairing::Engine;
 use midnight_proofs::{
     circuit::{Layouter, Value},
@@ -30,7 +31,7 @@ use midnight_proofs::{
 use crate::{
     field::AssignedNative,
     hash::poseidon::{PoseidonState, constants::PoseidonField},
-    instructions::{AssignmentInstructions, PublicInputInstructions},
+    instructions::{ArithInstructions, AssignmentInstructions, PublicInputInstructions},
     types::Instantiable,
     verifier::{
         AssignedG1, AssignedKZGCommitment, AssignedKZGMultiCommitment, AssignedPoint,
@@ -75,6 +76,8 @@ pub struct FoldingShape {
     /// Number of public inputs per instance column.
     pub(crate) instance_lens: Vec<usize>,
     pub(crate) nb_theta: usize,
+    /// Number of powers of the trash challenge (`cs.max_trash_terms()`).
+    pub(crate) nb_trash: usize,
     pub(crate) nb_y: usize,
 }
 
@@ -95,6 +98,7 @@ impl FoldingShape {
             phase2_labels: PCS::fixed_base_labels(&phase2_labels(cs, cs.degree())),
             instance_lens: instance_lens.to_vec(),
             nb_theta: cs.nb_theta_challenges(),
+            nb_trash: cs.max_trash_terms(),
             nb_y: cs.nb_y_challenges(),
         }
     }
@@ -111,13 +115,13 @@ impl FoldingShape {
     }
 }
 
-/// In-circuit [`Challenges`]: `θ⃗, β, γ, trash, y⃗`.
+/// In-circuit [`Challenges`]: `θ⃗, β, γ, trash⃗, y⃗`.
 #[derive(Clone, Debug)]
 pub struct AssignedChallenges<E: InCircuitKZGEngine> {
     pub(crate) theta: Vec<AssignedNative<E::Fr>>,
     pub(crate) beta: AssignedNative<E::Fr>,
     pub(crate) gamma: AssignedNative<E::Fr>,
-    pub(crate) trash_challenge: AssignedNative<E::Fr>,
+    pub(crate) trash_powers: Vec<AssignedNative<E::Fr>>,
     pub(crate) y: Vec<AssignedNative<E::Fr>>,
 }
 
@@ -125,7 +129,8 @@ impl<E: InCircuitKZGEngine> AssignedChallenges<E> {
     /// The challenges in absorption order: `θ⃗, β, γ, trash, y⃗`.
     pub(crate) fn scalars(&self) -> impl Iterator<Item = &AssignedNative<E::Fr>> {
         (self.theta.iter())
-            .chain([&self.beta, &self.gamma, &self.trash_challenge])
+            .chain([&self.beta, &self.gamma])
+            .chain(&self.trash_powers)
             .chain(&self.y)
     }
 
@@ -136,16 +141,40 @@ impl<E: InCircuitKZGEngine> AssignedChallenges<E> {
     ) -> Self {
         let mut next = || scalars.next().expect("enough challenges");
         let theta = (0..shape.nb_theta).map(|_| next()).collect();
-        let (beta, gamma, trash_challenge) = (next(), next(), next());
+        let (beta, gamma) = (next(), next());
+        let trash_powers = (0..shape.nb_trash).map(|_| next()).collect();
         let y = (0..shape.nb_y).map(|_| next()).collect();
         Self {
             theta,
             beta,
             gamma,
-            trash_challenge,
+            trash_powers,
             y,
         }
     }
+}
+
+/// `(1, c, ..., c^{m-1})` for the trash challenge `c`: in-circuit analog of
+/// the powers a fresh instance carries (`m - 1` multiplications).
+pub(crate) fn trash_powers<E: FoldingEngine>(
+    layouter: &mut impl Layouter<E::Fr>,
+    scalar_chip: &ScalarChip<E::Fr>,
+    c: &AssignedNative<E::Fr>,
+    m: usize,
+) -> Result<Vec<AssignedNative<E::Fr>>, Error> {
+    if m == 0 {
+        return Ok(vec![]);
+    }
+    let mut powers = vec![scalar_chip.assign_fixed(layouter, E::Fr::ONE)?];
+    for i in 1..m {
+        let next = if i == 1 {
+            c.clone()
+        } else {
+            scalar_chip.mul(layouter, &powers[i - 1], c, None)?
+        };
+        powers.push(next);
+    }
+    Ok(powers)
 }
 
 /// In-circuit `FoldingInstance`: the phase-1 and phase-2 commitments (one
@@ -227,7 +256,8 @@ fn native_points<C>(commitment: &impl CommitmentBases<C>) -> Vec<C> {
 
 fn native_challenges<F: Copy>(c: &Challenges<F>) -> Vec<F> {
     (c.theta.iter())
-        .chain([&c.beta, &c.gamma, &c.trash_challenge])
+        .chain([&c.beta, &c.gamma])
+        .chain(&c.trash_powers)
         .chain(&c.y)
         .copied()
         .collect()
@@ -267,7 +297,7 @@ impl<E: InCircuitKZGEngine> AssignedFoldingAccumulator<E> {
                 assign_scalars::<E>(layouter, scalar_chip, *len, values)
             })
             .collect::<Result<_, Error>>()?;
-        let nb_challenges = shape.nb_theta + 3 + shape.nb_y;
+        let nb_challenges = shape.nb_theta + 2 + shape.nb_trash + shape.nb_y;
         let challenges = instance.map(|i| native_challenges(i.challenges()));
         let challenges = assign_scalars::<E>(layouter, scalar_chip, nb_challenges, challenges)?;
         let betas = acc.map(|acc| acc.betas().to_vec());
@@ -285,7 +315,7 @@ impl<E: InCircuitKZGEngine> AssignedFoldingAccumulator<E> {
 
     /// The accumulator as field elements: the points of the phase-1 and
     /// phase-2 commitments (in public-input format), the public inputs,
-    /// `θ⃗, β, γ, trash, y⃗`, `β⃗`, `e`. In-circuit analog of
+    /// `θ⃗, β, γ, trash⃗, y⃗`, `β⃗`, `e`. In-circuit analog of
     /// [`accumulator_as_public_input`]; hash these to bind an accumulator.
     pub fn as_public_input(
         &self,
@@ -344,7 +374,7 @@ impl<E: FoldingEngine> AssignedFoldingInstance<E> {
 
 impl<E: FoldingEngine> AssignedFoldingAccumulator<E> {
     /// Absorbs the whole accumulator: the instance (see
-    /// [`AssignedFoldingInstance::absorb`]), `θ⃗, β, γ, trash, y⃗`, `β⃗`, `e`.
+    /// [`AssignedFoldingInstance::absorb`]), `θ⃗, β, γ, trash⃗, y⃗`, `β⃗`, `e`.
     pub(crate) fn absorb(
         &self,
         layouter: &mut impl Layouter<E::Fr>,

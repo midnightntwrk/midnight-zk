@@ -78,7 +78,7 @@ where
             theta: trace.theta.clone(),
             beta: trace.beta,
             gamma: trace.gamma,
-            trash_challenge: trace.trash_challenge,
+            trash_powers: trace.trash_powers.clone(),
             y: trace.y.clone(),
         },
     };

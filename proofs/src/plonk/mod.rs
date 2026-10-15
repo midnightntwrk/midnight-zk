@@ -598,7 +598,7 @@ pub(crate) fn evaluate_identities<'a, F, PCS>(
     beta: F,
     gamma: F,
     theta: &'a [F],
-    trash_challenge: F,
+    trash_powers: &'a [F],
     y: &[F],
 ) -> F
 where
@@ -706,7 +706,7 @@ where
         .chain(vk.cs.trashcans.iter().flat_map(move |argument| {
             argument.expressions(
                 phase2_evals,
-                trash_challenge,
+                trash_powers,
                 advice_evals,
                 fixed_evals,
                 instance_evals,

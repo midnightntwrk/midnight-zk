@@ -19,6 +19,7 @@ use super::{
         QUOTIENT_LIMB_BLINDERS, Selector,
     },
     logup,
+    trash::trash_powers,
 };
 use crate::{
     circuit::Value,
@@ -186,6 +187,7 @@ where
 
     // Sample the trash challenge after the advices have been committed to
     let trash_challenge: F = transcript.squeeze_challenge();
+    let trash_powers = trash_powers(trash_challenge, pk.vk.cs.max_trash_terms());
 
     let blinding_factors = pk.vk.cs.blinding_factors();
     let num_perm_sets = pk.vk.cs.permutation.num_sets(pk.vk.cs_degree);
@@ -290,7 +292,7 @@ where
             beta,
             gamma,
             theta,
-            trash_challenge,
+            trash_powers,
             y,
         },
         phase1_commitment,
@@ -604,7 +606,7 @@ pub(super) fn compute_nu_poly<F: PrimeField, PCS: PolynomialCommitmentScheme<F>>
         beta,
         gamma,
         theta,
-        trash_challenge,
+        trash_powers,
         y,
         ..
     } = &trace;
@@ -633,7 +635,7 @@ pub(super) fn compute_nu_poly<F: PrimeField, PCS: PolynomialCommitmentScheme<F>>
         *beta,
         *gamma,
         theta,
-        *trash_challenge,
+        trash_powers,
         phase1_committed,
         phase2_committed,
         |poly| Cow::Owned(fft_domain.coeff_to_extended(poly.clone())),

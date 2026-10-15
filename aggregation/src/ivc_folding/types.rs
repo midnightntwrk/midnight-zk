@@ -50,7 +50,8 @@ impl<T: Ivc> FoldingIvcInstance<T> {
             let c = inst.challenges();
             let nb_scalars = inst.instances().iter().map(Vec::len).sum::<usize>()
                 + c.theta.len()
-                + 3
+                + 2
+                + c.trash_powers.len()
                 + c.y.len()
                 + acc.betas().len()
                 + 1;
