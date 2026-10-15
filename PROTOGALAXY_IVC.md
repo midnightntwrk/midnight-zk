@@ -955,3 +955,129 @@ failures: the known `check_vk_cred_enrollment`, `check_vk_cred_full`, `public_in
 - Single contended runs; C.4 must re-measure on a quiet machine, with and without `truncated-challenges`.
 - SNARK IVC at `K = 16` with `T_MAX = 16` not tried (62,310 logic rows at `K = 17` would grow with a 15-bit
   table).
+
+## [B.4r] One-shot folding vs k proofs (regression check vs accordion)
+Commit: this commit   Date: 2026-10-15   Machine: M1 Pro 10c/16GB   Features: truncated-challenges
+**Contended** (load average 10–23 during all runs, mostly decaying from builds; the oracle and the port were
+run back to back under the same conditions). Oracle details: `.claude/plans/reports/B.oracle.md` (git-ignored).
+
+### What and why
+User request: bring back accordion's `protogalaxy` example and check one-shot folding against normal proving for a
+regression. B.3 (accordion's k-ary vector-E prover) was dropped, so the port runs "one-shot folding of `k`
+instances" on the C.1 scalar-e API: `commit_instance` ×k (partial proofs), `ProverAccumulator::init` with the
+first, `fold` the other `k − 1` sequentially (2-to-1), one `prove_relaxed_trace`; the verifier runs
+`read_instance` ×k, `Accumulator::init` + `k − 1` native folds (asserts it equals the prover's accumulator),
+`verify_relaxed_trace` + PCS check. Baseline: `k` sequential `create_proof`s of the same circuit, verified.
+Files: `aggregation/examples/protogalaxy.rs`, `aggregation/examples/circuits/sha_multi.rs` (accordion's circuit,
+unchanged apart from rustfmt / `r#gen`), `[[example]] protogalaxy` (required-features truncated-challenges).
+Same CLI/env knobs as accordion (width as argument, `PG_REPS`, `PG_PLONK`, `PG_PLONK_ONLY`) plus `PG_PCS=kzg`
+(default: branch fflonk `T_MAX = 16`). Uses raw `midnight_proofs` keygen/prove/verify so the PCS is a type
+parameter. Circuit: 4× SHA-256, K = 13 (7,572 used rows), cs degree 5, 8 advice / 41 fixed columns, 2 lookups,
+9 permutation columns, **`d_total = 6`**. `ParamsKZG::unsafe_setup` (benchmark only).
+
+### How to reproduce
+```
+# oracle (untouched accordion worktree)
+cd .claude/worktrees/accordion/aggregation
+PG_PLONK=1 PG_REPS=3 /usr/bin/time -l cargo run --release --features truncated-challenges --example protogalaxy -- 2   # and -- 4
+# this branch
+cd aggregation
+PG_PLONK=1 PG_REPS=3 /usr/bin/time -l cargo run --release --features truncated-challenges --example protogalaxy -- 2   # and -- 4
+PG_PCS=kzg PG_PLONK=1 PG_REPS=3 /usr/bin/time -l cargo run --release --features truncated-challenges --example protogalaxy -- 2   # and -- 4
+```
+
+### Results
+Medians of 3 reps (fflonk width 2: 6 reps over two runs; fflonk PLONK medians exclude rep 1, whose first
+`create_proof` pays a one-off ≈9 s, see below). Times in ms. Accordion is KZG, so **"ours KZG" is the like-for-like
+column**. Accordion's "commit" is its step 1 (sequential synthesis + commit phases), its "fold" is steps 5–10
+(batch traces, `G` on `k·(deg − 1)` points, `K` and `E` commitments, `nu(folded)`), its "final proof" is step 11
+(PLONK proof of the folded trace with the `E` correction). Ours: "fold" = `k − 1` 2-to-1 folds
+(`d_total` = 6 identity evaluations over all rows + 5 trace folds each), "final proof" = grand-sum decider.
+
+| width 2 | accordion (KZG) | ours KZG | ours fflonk 16 |
+|---|---|---|---|
+| per-instance commit | 81.3 | 104.7 | 112.3 (103–331) |
+| fold total (per fold) | 84.5 (1 k-ary fold) | 65.8 (65.8) | 69.0 (69.0) |
+| final proof (accordion step 11 / decider) | 146.9 | 265.1 | 628 (474–1,170) |
+| one-shot total | 406.9 | 538.6 | 1,160 (745–1,480) |
+| k-PLONK prove (per proof) | 432.5 (216.2) | 429.4 (214.7) | 950 (475) |
+| **fold / k-PLONK** | **0.94** | **1.25** | 1.22 |
+| verify one-shot (of which read + init + folds / decider / PCS) | 8.7 | 16.7 (9.9 / 5.8 / 1.0) | 10.7 (3.6 / 5.6 / 1.1) |
+| k-PLONK verify | 11.1 | 10.9 | 9.0 |
+| one-shot proof size (partial + folding + decider) | 4,384 B | 5,424 B (1,648 + 576 + 3,200) | 4,368 B (208 + 576 + 3,584) |
+| PLONK proof size (one) | 3,408 B | 3,856 B | 3,488 B |
+| peak RSS (process) | 293 MB | 245 MB | 330–342 MB |
+
+| width 4 | accordion (KZG) | ours KZG | ours fflonk 16 |
+|---|---|---|---|
+| per-instance commit | 86.4 | 106.6 | 113.8 |
+| fold total (per fold) | 150.0 (1 k-ary fold) | 210.2 (70.1) | 204.5 (68.2) |
+| final proof (accordion step 11 / decider) | 147.8 | 280.3 | 483.5 |
+| one-shot total | 672.2 | 924.6 | 1,140 |
+| k-PLONK prove (per proof) | 858.8 (214.7) | 870.7 (217.7) | 1,755 (438.9) |
+| **fold / k-PLONK** | **0.78** | **1.06** | 0.65 |
+| verify one-shot (of which read + init + folds / decider / PCS) | 14.1 | 30.2 (23.3 / 5.8 / 1.0) | 14.8 (8.2 / 5.5 / 1.0) |
+| k-PLONK verify | 22.5 | 21.6 | 17.3 |
+| one-shot proof size (partial + folding + decider) | 6,016 B | 8,224 B (3,296 + 1,728 + 3,200) | 5,728 B (416 + 1,728 + 3,584) |
+| peak RSS (process) | 330 MB | 252 MB | 412 MB |
+
+Setup: accordion 0.52 s, ours KZG 0.37 s, ours fflonk 22.5 s (keygen + fflonk residue bases); fflonk rep 1's
+two/four PLONK proofs took 9.3–9.8 s in total (one-off, first `create_proof`), later reps 0.9 / 1.75 s.
+Every run verified (PLONK, folding verifier = prover accumulator, decider + PCS).
+
+### Interpretation
+- **Plain proving did not regress**: KZG `create_proof` is 214.7–217.7 ms per proof on this branch vs 214.7–216.2 ms
+  on accordion (same circuit, same `K`), and verification is the same (≈5.5 ms per proof). Pippenger, vector
+  `θ⃗`/`y⃗` and main's prover rewrite net out to zero here. The branch default fflonk `T_MAX = 16` makes a proof
+  **2.0–2.2× slower** at `K = 13` (439–475 ms; commitments to 16-chunk combinations over a `2^17` SRS) with a 10%
+  smaller proof than KZG; that is a PCS choice, not a regression, and it is why the fflonk fold/k-PLONK ratio looks good at
+  width 4 (0.65).
+- **One-shot folding is ≈1.32× (width 2) / 1.38× (width 4) slower than accordion** like for like (KZG):
+  538.6 vs 406.9 ms and 924.6 vs 672.2 ms. Folding no longer beats `k` proofs at these widths
+  (fold/k-PLONK 1.25 / 1.06 vs 0.94 / 0.78). Gap decomposition (medians, KZG):
+
+  | Δ ours − accordion (ms, medians: not additive) | width 2 | width 4 |
+  |---|---|---|
+  | commit, all instances | +47 (2 × 23) | +81 (4 × 20) |
+  | fold | −19 | +60 |
+  | final proof | **+118** | **+132** |
+
+- **Dominating step: the decider**, 265–280 ms vs accordion's 147–148 ms step 11 (1.8–1.9×), constant in `k`.
+  Its quotient is built for `cs.degree() + 1 = 6` (the extra factor `W`), and `EvaluationDomain::new` rounds the
+  quotient degree `5n` up to an **`8n` extended domain (`2^16`)** where a degree-5 PLONK proof (and accordion's step
+  11) uses `4n` (`2^15`): every coset FFT and the numerator evaluation double, plus one more quotient limb to commit,
+  plus `evaluate_rows` over `H` for the grand sum and the `S` commitment. Fix (not done): keep the decider at degree
+  `cs.degree()` (e.g. split `W·f` with an auxiliary committed column, or fold `W` into the grand sum recurrence) so
+  it uses the same `4n` domain as a proof; that should recover a large part of the ≈120 ms (not measured).
+- **Fold**: ours costs ≈66–70 ms per 2-to-1 fold (`d_total = 6` evaluations of all identities over `2^13` rows +
+  5 trace folds + perturbator), so it scales as `(k − 1)·d_total` evaluations; accordion's single k-ary fold evaluates
+  `k·(deg − 1) = 4k` points (≈6 ms each, parallel over points) plus two constant commitments (`K`, `E`). At width 2
+  ours is cheaper (one fold, no commitments), at width 4 it is 1.4× more expensive, and the gap grows with `k`:
+  sequential 2-to-1 folding is the wrong shape for one-shot folding of many fresh instances (expected; this API is
+  built for the IVC's one-fold-per-step). Not decomposed further (no per-phase timers in the C.1 prover).
+- **Commit**: ≈+20–25 ms per instance (105 vs 81–86 ms, +25–30%), although the full KZG proof, which runs the same
+  synthesis and commit phases, is not slower. Not decomposed; candidates: each instance runs its own transcript
+  (vk absorbed per instance; accordion shares one transcript) and `commit_phases` keeps the Lagrange trace for
+  folding. Worth a profile if one-shot folding matters.
+- **Verifier**: ours KZG 16.7 / 30.2 ms vs 8.7 / 14.1 ms. The decider check is constant (5.8 + 1.0 ms PCS); the
+  difference is `read_instance` replaying each instance's own transcript (vk with ≈50 KZG commitments hashed with
+  Poseidon per instance) plus a native fold per instance. With fflonk the vk is a few chunk points, and the verifier
+  is on par with accordion (10.7 / 14.8 ms).
+- **Proof size**: ours KZG is larger (5,424 / 8,224 B vs 4,384 / 6,016 B): each partial proof carries all
+  per-column phase-1/2 commitments (824 B per instance; accordion's transcript has the same commitments, but its
+  one PLONK proof is 448 B smaller, probably because main removed linearisation (#566), not checked), plus 576 B per fold (13 `F` + 5 `K`
+  scalars). With fflonk 16 the partial proof is 104 B per instance and the total is at most accordion's KZG size (4,368 / 5,728 B).
+- **Memory**: no regression; KZG uses less (245–252 MB vs 293–330 MB). fflonk's 2^17 SRS and residue bases push it
+  to 330–412 MB.
+- **Verdict**: no regression in plain proving (KZG). One-shot folding is ≈32–38% slower than accordion. The decider
+  (+118 / +132 ms, plausibly mostly its doubled extended domain) is almost all of the gap at width 2 and about half at
+  width 4; at larger widths the sequential 2-to-1 folds (`(k − 1)·d_total` evaluations) become the dominant difference.
+
+### Deviations from the plan, open problems
+- Plan 0.4.8 dropped the k-ary one-shot benchmarks (B.4, B.4b); this is a user-requested regression check
+  (`[B.4r]`), on the C.1 API, not a port of accordion's prover.
+- Accordion's widths must be powers of two (const generic); ours accept any `k ≥ 1`. Widths 2 and 4 only (plan 0.3).
+- Contended machine (load 10–23); fflonk width 2 had large outliers (decider 474–1,170 ms), hence medians and ranges.
+- The oracle's example has no required features; it was run with `truncated-challenges` like ours (plan 0.4.0b).
+- Accordion's `G` is evaluated in parallel over the extended points; our fold's parallelism is inside
+  `evaluate_rows`. Per-phase timers inside our fold/decider were not added (no library change for this step).
