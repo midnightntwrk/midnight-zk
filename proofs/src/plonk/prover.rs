@@ -20,7 +20,7 @@ use super::{
         Selector,
     },
     logup,
-    trash::powers_of,
+    trash::{powers_of, prover::compute_trash_poly},
 };
 use crate::{
     circuit::Value,
@@ -265,11 +265,12 @@ where
         }
     }
 
-    for (i, trash) in pk.vk.cs.trashcans.iter().enumerate() {
+    for (i, flat) in pk.ev.trashcans_flat.iter().enumerate() {
         let t_tr = std::time::Instant::now();
-        let p = trash.compute_trash_poly(
+        let p = compute_trash_poly(
+            flat,
             domain,
-            trash_challenge,
+            &trash_powers,
             phase1_committed.polys_of(&advice_labels),
             &pk.fixed_values,
             &instance.instance_values,
