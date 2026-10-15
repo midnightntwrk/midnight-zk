@@ -39,6 +39,10 @@ Due to the assembly based nature of the implementation in `blst`, currently only
 
 To enable portable features when building the blst dependency, use the 'portable' feature: `--features portable`.
 
+### MSM Backend
+
+MSMs on every curve go through `CurveAffine::msm`, the same Rust Pippenger (`msm::msm_best`). `G1Affine::multi_exp_affine` (blst's) stays available to call directly.
+
 
 ### Benchmarking
 
