@@ -34,8 +34,8 @@ pub enum ValueSource {
     Beta(),
     /// theta\[i\]
     Theta(usize),
-    /// trash challenge
-    TrashChallenge(),
+    /// trash_powers\[i\] (`c^i` for a fresh instance)
+    TrashPow(usize),
     /// y\[i\]
     Y(usize),
     /// Previous value
@@ -64,6 +64,7 @@ pub enum Calculation {
     /// This is a negation
     Negate(ValueSource),
     /// This is Horner's rule: `val = a; val = val * c + b[]`
+    #[allow(dead_code)]
     Horner(ValueSource, Vec<ValueSource>, ValueSource),
     /// This is a linear combination: `val = a + Σᵢ cᵢ * bᵢ` over `(cᵢ, bᵢ)`
     LinearCombination(ValueSource, Vec<(ValueSource, ValueSource)>),
@@ -180,8 +181,8 @@ pub struct FlatOp {
 }
 
 /// Number of scalar named slots in the values buffer
-/// (beta, trash_challenge, previous_value). The `theta` and `y` slots follow.
-const NUM_SCALAR_SLOTS: usize = 3;
+/// (beta, previous_value). The `trash`, `theta` and `y` slots follow.
+const NUM_SCALAR_SLOTS: usize = 2;
 
 /// Tag values for [`ColumnRead::col_type`].
 const COL_TYPE_FIXED: u8 = 0;
@@ -205,16 +206,16 @@ pub struct ColumnRead {
 /// Pre-flattened graph for fast evaluation. Built from a [`GraphEvaluator`]
 /// at keygen time via [`GraphEvaluator::flatten`].
 ///
-/// The values buffer layout (with `S = NUM_SCALAR_SLOTS + n_theta + n_y`):
+/// The values buffer layout (with `S = NUM_SCALAR_SLOTS + n_trash + n_theta + n_y`):
 /// ```text
 /// [0 .. C)                   constants (static)
-/// [C .. C+S)                 beta, trash_challenge, previous_value,
-///                            theta[0..n_theta], y[0..n_y]
+/// [C .. C+S)                 beta, previous_value,
+///                            trash[0..n_trash], theta[0..n_theta], y[0..n_y]
 /// [C+S .. C+S+R)             column read results (loaded per element)
 /// [C+S+R .. C+S+R+I)         intermediates (computed per element)
 /// ```
-/// `n_theta` (resp. `n_y`) is one more than the largest `Theta(i)` (resp.
-/// `Y(i)`) the graph reads.
+/// `n_trash` (resp. `n_theta`, `n_y`) is one more than the largest `TrashPow(i)`
+/// (resp. `Theta(i)`, `Y(i)`) the graph reads.
 #[derive(Clone, Debug)]
 pub struct FlatGraphEvaluator<F> {
     /// Pre-loaded constants (copied into values buffer once per prove).
@@ -229,8 +230,10 @@ pub struct FlatGraphEvaluator<F> {
     pub values_len: usize,
     /// Index offsets for named slots.
     pub beta_idx: u32,
-    pub trash_challenge_idx: u32,
     pub previous_value_idx: u32,
+    /// Index of `trash[0]`, followed by the other `n_trash - 1` slots.
+    pub trash_idx: u32,
+    pub n_trash: usize,
     /// Index of `theta[0]`, followed by the other `n_theta - 1` slots.
     pub theta_idx: u32,
     pub n_theta: usize,
@@ -248,24 +251,25 @@ impl<F: PrimeField> GraphEvaluator<F> {
     pub fn flatten(&self) -> FlatGraphEvaluator<F> {
         let challenge_offset = self.constants.len();
         let beta_idx = challenge_offset as u32;
-        let trash_challenge_idx = (challenge_offset + 1) as u32;
-        let previous_value_idx = (challenge_offset + 2) as u32;
+        let previous_value_idx = (challenge_offset + 1) as u32;
 
-        // Number of `theta`/`y` slots: one past the largest index read.
-        let (mut n_theta, mut n_y) = (0, 0);
+        // Number of `trash`/`theta`/`y` slots: one past the largest index read.
+        let (mut n_trash, mut n_theta, mut n_y) = (0, 0, 0);
         for calc_info in &self.calculations {
             for vs in calc_info.calculation.sources() {
                 match *vs {
+                    ValueSource::TrashPow(i) => n_trash = n_trash.max(i + 1),
                     ValueSource::Theta(i) => n_theta = n_theta.max(i + 1),
                     ValueSource::Y(i) => n_y = n_y.max(i + 1),
                     _ => (),
                 }
             }
         }
-        let theta_idx = (challenge_offset + NUM_SCALAR_SLOTS) as u32;
+        let trash_idx = (challenge_offset + NUM_SCALAR_SLOTS) as u32;
+        let theta_idx = trash_idx + n_trash as u32;
         let y_idx = theta_idx + n_theta as u32;
 
-        let column_read_offset = challenge_offset + NUM_SCALAR_SLOTS + n_theta + n_y;
+        let column_read_offset = challenge_offset + NUM_SCALAR_SLOTS + n_trash + n_theta + n_y;
 
         // First pass: collect column reads and assign their buffer indices.
         let mut column_reads = Vec::new();
@@ -348,7 +352,7 @@ impl<F: PrimeField> GraphEvaluator<F> {
                 ValueSource::Intermediate(idx) => (intermediates_offset + idx) as u32,
                 ValueSource::Beta() => beta_idx,
                 ValueSource::Theta(i) => theta_idx + i as u32,
-                ValueSource::TrashChallenge() => trash_challenge_idx,
+                ValueSource::TrashPow(i) => trash_idx + i as u32,
                 ValueSource::Y(i) => y_idx + i as u32,
                 ValueSource::PreviousValue() => previous_value_idx,
                 ValueSource::Fixed(..) | ValueSource::Advice(..) | ValueSource::Instance(..) => {
@@ -482,8 +486,9 @@ impl<F: PrimeField> GraphEvaluator<F> {
             ops,
             values_len,
             beta_idx,
-            trash_challenge_idx,
             previous_value_idx,
+            trash_idx,
+            n_trash,
             theta_idx,
             n_theta,
             y_idx,
@@ -506,13 +511,15 @@ impl<F: PrimeField> FlatGraphEvaluator<F> {
     }
 
     /// Create a fresh values buffer, pre-filled with constants and challenges.
-    /// Only the first `n_theta` (resp. `n_y`) elements of `theta` (resp. `y`)
+    /// Only the first `n_trash` (resp. `n_theta`, `n_y`) elements of `trash_powers`
+    /// (resp. `theta`, `y`)
     /// are read by the graph.
-    pub fn new_values_buffer(&self, beta: &F, theta: &[F], trash_challenge: &F, y: &[F]) -> Vec<F> {
+    pub fn new_values_buffer(&self, beta: &F, theta: &[F], trash_powers: &[F], y: &[F]) -> Vec<F> {
         let mut values = vec![F::ZERO; self.values_len];
         values[..self.constants.len()].copy_from_slice(&self.constants);
         values[self.beta_idx as usize] = *beta;
-        values[self.trash_challenge_idx as usize] = *trash_challenge;
+        let trash_idx = self.trash_idx as usize;
+        values[trash_idx..trash_idx + self.n_trash].copy_from_slice(&trash_powers[..self.n_trash]);
         let theta_idx = self.theta_idx as usize;
         values[theta_idx..theta_idx + self.n_theta].copy_from_slice(&theta[..self.n_theta]);
         let y_idx = self.y_idx as usize;
@@ -711,8 +718,9 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
             ops: Vec::new(),
             values_len: 0,
             beta_idx: 0,
-            trash_challenge_idx: 0,
             previous_value_idx: 0,
+            trash_idx: 0,
+            n_trash: 0,
             theta_idx: 0,
             n_theta: 0,
             y_idx: 0,
@@ -824,16 +832,18 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
         for trash in cs.trashcans.iter() {
             let mut graph = GraphEvaluator::default();
 
-            let parts = trash
+            // Σ_j c^{m-1-j} · e_j, with the powers of `c` read from the buffer.
+            let m = trash.constraint_expressions().len();
+            let terms = trash
                 .constraint_expressions()
                 .iter()
-                .map(|expr| graph.add_expression(expr))
+                .enumerate()
+                .map(|(j, expr)| (ValueSource::TrashPow(m - 1 - j), graph.add_expression(expr)))
                 .collect();
 
-            graph.add_calculation(Calculation::Horner(
+            graph.add_calculation(Calculation::LinearCombination(
                 ValueSource::Constant(0),
-                parts,
-                ValueSource::TrashChallenge(),
+                terms,
             ));
 
             ev.trashcans.push(graph);
@@ -880,7 +890,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
         beta: F,
         gamma: F,
         theta: &[F],
-        trash_challenge: F,
+        trash_powers: &[F],
         phase1_committed: &'p argument::prover::Committed<F, P>,
         phase2_committed: &'p argument::prover::Committed<F, P>,
         to_b: impl Fn(&'p Polynomial<F, P>) -> Cow<'p, Polynomial<F, B>> + Sync,
@@ -899,7 +909,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
             y,
             beta,
             theta,
-            trash_challenge,
+            trash_powers,
         );
         let en_gates = t_en.elapsed().as_secs_f64() * 1e3;
         let [en_perm, en_lookup_pre, en_final] = self.add_non_gate_identities(
@@ -913,7 +923,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
             beta,
             gamma,
             theta,
-            trash_challenge,
+            trash_powers,
             phase1_committed,
             phase2_committed,
             to_b,
@@ -941,7 +951,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
         y: &[F],
         beta: F,
         theta: &[F],
-        trash_challenge: F,
+        trash_powers: &[F],
     ) -> Polynomial<F, B> {
         let log_scale = B::k(domain) - domain.k();
         let log_n = B::k(domain);
@@ -957,7 +967,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
         // BATCH elements and exposing independent Fq ops to the CPU's
         // out-of-order pipeline.
         let flat = &self.custom_gates_flat;
-        let template = flat.new_values_buffer(&beta, theta, &trash_challenge, y_gates);
+        let template = flat.new_values_buffer(&beta, theta, trash_powers, y_gates);
         parallelize(&mut values, |values, start| {
             flat.evaluate_chunk::<4, B>(
                 &template, values, start, fixed, advice, instance, log_scale, log_n,
@@ -986,7 +996,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
         beta: F,
         gamma: F,
         theta: &[F],
-        trash_challenge: F,
+        trash_powers: &[F],
         phase1_committed: &'p argument::prover::Committed<F, P>,
         phase2_committed: &'p argument::prover::Committed<F, P>,
         to_b: impl Fn(&'p Polynomial<F, P>) -> Cow<'p, Polynomial<F, B>> + Sync,
@@ -1206,7 +1216,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                 .map(|batch| {
                     batch
                         .iter()
-                        .map(|flat| flat.new_values_buffer(&beta, theta, &trash_challenge, y))
+                        .map(|flat| flat.new_values_buffer(&beta, theta, trash_powers, y))
                         .collect()
                 })
                 .collect();
@@ -1214,7 +1224,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
             let mut trash_bufs: Vec<Vec<F>> = self
                 .trashcans_flat
                 .iter()
-                .map(|flat| flat.new_values_buffer(&beta, theta, &trash_challenge, y))
+                .map(|flat| flat.new_values_buffer(&beta, theta, trash_powers, y))
                 .collect();
 
             let mut rot_indices = vec![
@@ -1558,7 +1568,7 @@ mod tests {
         rots: &[usize],
         beta: Fq,
         theta: &[Fq],
-        tc: Fq,
+        tc: &[Fq],
         y: &[Fq],
         prev: Fq,
     ) -> Fq {
@@ -1571,7 +1581,7 @@ mod tests {
             ValueSource::Instance(c, k) => instance[c][rots[k]],
             ValueSource::Beta() => beta,
             ValueSource::Theta(i) => theta[i],
-            ValueSource::TrashChallenge() => tc,
+            ValueSource::TrashPow(i) => tc[i],
             ValueSource::Y(i) => y[i],
             ValueSource::PreviousValue() => prev,
         };
@@ -1619,7 +1629,8 @@ mod tests {
 
         let prev: Vec<_> = (0..n).map(|_| Fq::random(&mut rng)).collect();
 
-        let (beta, tc) = (Fq::random(&mut rng), Fq::random(&mut rng));
+        let beta = Fq::random(&mut rng);
+        let tc: Vec<Fq> = (0..2).map(|_| Fq::random(&mut rng)).collect();
         let theta: Vec<Fq> = (0..3).map(|_| Fq::random(&mut rng)).collect();
         let y: Vec<Fq> = (0..3).map(|_| Fq::random(&mut rng)).collect();
 
@@ -1643,7 +1654,7 @@ mod tests {
                     &rots(idx),
                     beta,
                     &theta,
-                    tc,
+                    &tc,
                     &y,
                     prev[idx],
                 )
@@ -1730,7 +1741,7 @@ mod tests {
         let neg = g.add_calculation(Calculation::Negate(mul));
         let wb = g.add_calculation(Calculation::Mul(add, ValueSource::Beta()));
         let wt = g.add_calculation(Calculation::Add(wb, ValueSource::Theta(1)));
-        let wc = g.add_calculation(Calculation::Sub(wt, ValueSource::TrashChallenge()));
+        let wc = g.add_calculation(Calculation::Sub(wt, ValueSource::TrashPow(1)));
 
         // Constant as a Calculation operand.
         let with_const = g.add_calculation(Calculation::Add(neg, ValueSource::Constant(2)));

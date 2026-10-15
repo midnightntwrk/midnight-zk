@@ -50,7 +50,7 @@ use crate::{
         VerifierGadget,
         folding_types::{
             AssignedChallenges, AssignedFoldingAccumulator, AssignedFoldingInstance, FoldingShape,
-            NativeAccumulator, points,
+            NativeAccumulator, points, trash_powers,
         },
         transcript_gadget::TranscriptGadget,
         utils::{AssignedBoundedScalar, eval_polynomial, mul_add},
@@ -126,6 +126,12 @@ where
         let verifier =
             VerifierGadget::<S>::new(&self.curve_chip, &self.scalar_chip, &self.sponge_chip);
         let (trace, _) = verifier.parse_trace(layouter, vk, &[], instances, partial_proof)?;
+        let trash_powers = trash_powers::<S>(
+            layouter,
+            &self.scalar_chip,
+            &trace.trash_challenge,
+            self.shape.nb_trash,
+        )?;
         Ok(AssignedFoldingInstance {
             phase1: trace.phase1_committed.commitment().clone(),
             phase2: trace.phase2_committed.commitment().clone(),
@@ -134,7 +140,7 @@ where
                 theta: trace.theta,
                 beta: trace.beta,
                 gamma: trace.gamma,
-                trash_challenge: trace.trash_challenge,
+                trash_powers,
                 y: trace.y,
             },
         })

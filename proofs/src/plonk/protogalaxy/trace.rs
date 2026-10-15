@@ -40,7 +40,7 @@ pub(crate) fn fold_trace<'a, F: WithSmallOrderMulGroup<3>>(
         beta: fold_scalar(acc.beta, fresh.beta, x),
         gamma: fold_scalar(acc.gamma, fresh.gamma, x),
         theta: fold_vec(&acc.theta, &fresh.theta),
-        trash_challenge: fold_scalar(acc.trash_challenge, fresh.trash_challenge, x),
+        trash_powers: fold_vec(&acc.trash_powers, &fresh.trash_powers),
         y: fold_vec(&acc.y, &fresh.y),
     }
 }
@@ -108,7 +108,7 @@ pub(crate) fn evaluate_rows_dense<
         &trace.y,
         trace.beta,
         &trace.theta,
-        trace.trash_challenge,
+        &trace.trash_powers,
     );
     add_non_gate_rows(pk, trace, values).0
 }
@@ -132,7 +132,7 @@ fn add_non_gate_rows<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentSchem
         trace.beta,
         trace.gamma,
         &trace.theta,
-        trace.trash_challenge,
+        &trace.trash_powers,
         &trace.phase1_committed,
         &trace.phase2_committed,
         Cow::Borrowed,

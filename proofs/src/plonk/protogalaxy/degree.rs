@@ -4,7 +4,7 @@
 //! linearly in the folding variable `X` (`L₀(X)·acc + L₁(X)·fresh`), so the
 //! degree in `X` of `f_i(L₀(X)ω + L₁(X)ω')` is the total degree of the
 //! `y⃗`-combined identity in all folded variables: advice and instance values
-//! and the challenges `θ⃗, β, γ, trash, y⃗`. Fixed columns (and selectors,
+//! and the challenges `θ⃗, β, γ, trash⃗, y⃗`. Fixed columns (and selectors,
 //! which become fixed columns) are constants.
 
 use ff::Field;
@@ -66,15 +66,12 @@ fn identity_degrees<F: Field>(cs: &ConstraintSystem<F>) -> Vec<usize> {
         degrees.push((1 + selector) + table);
     }
 
-    // Trash: `Σⱼ c^{m−1−j}·eⱼ − (1 − q)·trash` (Horner in the trash challenge
-    // `c`, which is folded too).
+    // Trash: `Σⱼ cᵐ⁻¹⁻ʲ·eⱼ − (1 − q)·trash`, where the powers of `c` are
+    // folded as independent scalars (degree 1 each).
     for trash in &cs.trashcans {
-        let m = trash.constraint_expressions.len();
-        let compressed = (trash.constraint_expressions.iter().enumerate())
-            .map(|(j, e)| (m - 1 - j) + expression_degree(e))
-            .max()
-            .unwrap_or(0);
-        degrees.push(compressed.max(1));
+        let compressed =
+            trash.constraint_expressions.iter().map(expression_degree).max().unwrap_or(0);
+        degrees.push(1 + compressed);
     }
 
     debug_assert_eq!(degrees.len(), cs.nb_y_challenges());

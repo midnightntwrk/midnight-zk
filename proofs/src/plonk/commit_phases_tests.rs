@@ -189,7 +189,7 @@ where
     assert_eq!(parsed.theta, trace.theta);
     assert_eq!(parsed.beta, trace.beta);
     assert_eq!(parsed.gamma, trace.gamma);
-    assert_eq!(parsed.trash_challenge, trace.trash_challenge);
+    assert_eq!(parsed.trash_powers, trace.trash_powers);
     assert_eq!(parsed.y, trace.y);
     // Both transcripts are left in the same state.
     let verifier_after: Fq = verifier_transcript.squeeze_challenge();

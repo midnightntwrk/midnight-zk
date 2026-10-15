@@ -27,7 +27,8 @@ pub struct ProverTrace<'a, F: PrimeField, B: PolynomialRepresentation = Coeff> {
     pub(crate) beta: F,
     pub(crate) gamma: F,
     pub(crate) theta: Vec<F>,
-    pub(crate) trash_challenge: F,
+    /// `(1, c, ..., c^{M-1})` for the trash challenge `c`, `M = cs.max_trash_terms()`.
+    pub(crate) trash_powers: Vec<F>,
     pub(crate) y: Vec<F>,
 }
 
@@ -43,7 +44,7 @@ impl<'a, F: WithSmallOrderMulGroup<3>> ProverTrace<'a, F, LagrangeCoeff> {
             beta: self.beta,
             gamma: self.gamma,
             theta: self.theta,
-            trash_challenge: self.trash_challenge,
+            trash_powers: self.trash_powers,
             y: self.y,
         }
     }
@@ -72,7 +73,8 @@ pub struct VerifierTrace<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> {
     pub(crate) beta: F,
     pub(crate) gamma: F,
     pub(crate) theta: Vec<F>,
-    pub(crate) trash_challenge: F,
+    /// `(1, c, ..., c^{M-1})` for the trash challenge `c`, `M = cs.max_trash_terms()`.
+    pub(crate) trash_powers: Vec<F>,
     pub(crate) y: Vec<F>,
 }
 

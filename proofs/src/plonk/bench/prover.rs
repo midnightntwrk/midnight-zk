@@ -230,6 +230,7 @@ where
 
     // Sample the trash challenge after the advices have been committed to
     let trash_challenge: F = transcript.squeeze_challenge();
+    let trash_powers = crate::plonk::trash::trash_powers(trash_challenge, pk.vk.cs.max_trash_terms());
 
     // Pre-generate permutation blindings for the per-iteration compute.
     let blinding_factors = pk.vk.cs.blinding_factors();
@@ -424,7 +425,7 @@ where
         beta,
         gamma,
         theta,
-        trash_challenge,
+        trash_powers,
         y,
     })
 }

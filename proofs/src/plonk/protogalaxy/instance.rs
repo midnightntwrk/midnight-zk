@@ -28,8 +28,9 @@ pub struct Challenges<F> {
     pub beta: F,
     /// Permutation `γ`.
     pub gamma: F,
-    /// Trash compression challenge.
-    pub trash_challenge: F,
+    /// Powers `(1, c, ..., c^{M-1})` of the trash challenge, `M = cs.max_trash_terms()`;
+    /// folded entry-wise, so a folded instance does not carry a single `c`.
+    pub trash_powers: Vec<F>,
     /// Identity batching, one per identity.
     pub y: Vec<F>,
 }
@@ -40,7 +41,7 @@ impl<F: Field> Challenges<F> {
             theta: fold_scalars(&self.theta, &other.theta, x),
             beta: fold_scalar(self.beta, other.beta, x),
             gamma: fold_scalar(self.gamma, other.gamma, x),
-            trash_challenge: fold_scalar(self.trash_challenge, other.trash_challenge, x),
+            trash_powers: fold_scalars(&self.trash_powers, &other.trash_powers, x),
             y: fold_scalars(&self.y, &other.y, x),
         }
     }
@@ -51,7 +52,8 @@ impl<F: Field> Challenges<F> {
         F: Hashable<T::Hash>,
     {
         let scalars = (self.theta.iter())
-            .chain([&self.beta, &self.gamma, &self.trash_challenge])
+            .chain([&self.beta, &self.gamma])
+            .chain(&self.trash_powers)
             .chain(&self.y);
         for scalar in scalars {
             transcript.common(scalar)?;

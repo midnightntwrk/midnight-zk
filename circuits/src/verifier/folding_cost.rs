@@ -45,6 +45,7 @@ use crate::{
         InCircuitPCS, SelfEmulation,
         folding_types::{
             AssignedChallenges, AssignedFoldingAccumulator, AssignedFoldingInstance, points,
+            trash_powers,
         },
         transcript_gadget::TranscriptGadget,
         utils::AssignedBoundedScalar,
@@ -116,7 +117,9 @@ fn replay(
         instances.push(pis);
     }
     let phase1 = transcript.read_commitment(layouter, &shape.phase1_labels)?;
-    let mut challenges = transcript.squeeze_challenges(layouter, shape.nb_theta + 3)?;
+    let mut challenges = transcript.squeeze_challenges(layouter, shape.nb_theta + 2)?;
+    let trash = transcript.squeeze_challenge(layouter)?;
+    challenges.extend(trash_powers::<S>(layouter, &chips.scalar, &trash, shape.nb_trash)?);
     let phase2 = transcript.read_commitment(layouter, &shape.phase2_labels)?;
     challenges.extend(transcript.squeeze_challenges(layouter, shape.nb_y)?);
     Ok(AssignedFoldingInstance {
@@ -321,6 +324,7 @@ impl FoldingShape {
             phase2_labels: labels(2, c2).collect(),
             instance_lens: instance_lens.to_vec(),
             nb_theta,
+            nb_trash: 8, // the Poseidon partial-round trashcan
             nb_y,
         }
     }

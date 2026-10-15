@@ -101,7 +101,7 @@ where
             theta: trace.theta,
             beta: trace.beta,
             gamma: trace.gamma,
-            trash_challenge: trace.trash_challenge,
+            trash_powers: trace.trash_powers,
             y: trace.y,
         },
     })

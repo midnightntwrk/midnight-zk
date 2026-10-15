@@ -2169,6 +2169,13 @@ impl<F: Field> ConstraintSystem<F> {
         self.lookups.iter().map(|l| l.table_expressions().len()).max().unwrap_or(0)
     }
 
+    /// Largest number of constraint expressions in a trashcan (0 if none). A
+    /// trashcan with `m` expressions reads `c^0, ..., c^{m-1}` of the trash
+    /// challenge `c`.
+    pub fn max_trash_terms(&self) -> usize {
+        self.trashcans.iter().map(|t| t.constraint_expressions().len()).max().unwrap_or(0)
+    }
+
     /// Number of `y` challenges: one per identity of the constraint system, in
     /// this order: gate polynomials, permutation (`2·sets + 1`), lookups
     /// (`2 + chunks` each), trashcans (one each). Identity `k` is multiplied

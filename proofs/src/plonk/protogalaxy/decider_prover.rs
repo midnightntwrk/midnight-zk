@@ -106,7 +106,7 @@ where
         trace.beta,
         trace.gamma,
         &trace.theta,
-        trace.trash_challenge,
+        &trace.trash_powers,
         &trace.phase1_committed,
         &trace.phase2_committed,
         |p| Cow::Owned(to_ext(p)),

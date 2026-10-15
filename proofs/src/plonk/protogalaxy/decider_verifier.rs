@@ -111,7 +111,7 @@ where
         challenges.beta,
         challenges.gamma,
         &challenges.theta,
-        challenges.trash_challenge,
+        &challenges.trash_powers,
         &challenges.y,
     );
 

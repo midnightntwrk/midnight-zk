@@ -123,7 +123,7 @@ impl<F: WithSmallOrderMulGroup<3>> SparseGates<F> {
             let mut bufs: Vec<Vec<F>> = self
                 .evaluators
                 .iter()
-                .map(|e| e.new_values_buffer(&F::ZERO, &[], &F::ZERO, y))
+                .map(|e| e.new_values_buffer(&F::ZERO, &[], &[], y))
                 .collect();
             let mut rots = Vec::new();
             for (j, value) in values.iter_mut().enumerate() {

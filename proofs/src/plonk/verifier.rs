@@ -6,7 +6,7 @@ use std::{
 
 use ff::{FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
 
-use super::{Error, VerifyingKey};
+use super::{Error, VerifyingKey, trash::trash_powers};
 use crate::{
     plonk::{argument, evaluate_identities, traces::VerifierTrace},
     poly::{PolynomialLabel, Rotation, VerifierQuery, commitment::PolynomialCommitmentScheme},
@@ -74,6 +74,7 @@ where
 
     // Sample the trash challenge after the advices have been committed to
     let trash_challenge: F = transcript.squeeze_challenge();
+    let trash_powers = trash_powers(trash_challenge, vk.cs.max_trash_terms());
 
     let phase2_committed = argument::verifier::Committed::read(&vk.phase2_labels(), transcript)?;
 
@@ -87,7 +88,7 @@ where
         beta,
         gamma,
         theta,
-        trash_challenge,
+        trash_powers,
         y,
     })
 }
@@ -130,7 +131,7 @@ where
         beta,
         gamma,
         theta,
-        trash_challenge,
+        trash_powers,
         y,
     } = trace;
 
@@ -179,7 +180,7 @@ where
         beta,
         gamma,
         &theta,
-        trash_challenge,
+        &trash_powers,
         &y,
     );
 
