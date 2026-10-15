@@ -281,8 +281,8 @@ impl<F: CircuitField, PCS: InCircuitPCS<F>> VerifierGadget<F, PCS> {
         let phase1_committed =
             argument::read_committed(layouter, &self.commitment_chip, &phase1_labels, transcript)?;
 
-        // Sample theta challenge for keeping lookup columns linearly independent
-        let theta = transcript.squeeze_challenge(layouter)?;
+        // Sample theta challenges for keeping lookup columns linearly independent
+        let theta = transcript.squeeze_challenges(layouter, cs.nb_theta_challenges())?;
 
         let beta = transcript.squeeze_challenge(layouter)?;
         let gamma = transcript.squeeze_challenge(layouter)?;
@@ -308,8 +308,8 @@ impl<F: CircuitField, PCS: InCircuitPCS<F>> VerifierGadget<F, PCS> {
         let phase2_committed =
             argument::read_committed(layouter, &self.commitment_chip, &phase2_labels, transcript)?;
 
-        // Sample y challenge, which keeps the gates linearly independent
-        let y = transcript.squeeze_challenge(layouter)?;
+        // Sample y challenges, which keep the identities linearly independent
+        let y = transcript.squeeze_challenges(layouter, cs.nb_y_challenges())?;
 
         Ok(VerifierTrace {
             phase0_committed,
@@ -621,17 +621,18 @@ impl<F: CircuitField, PCS: InCircuitPCS<F>> VerifierGadget<F, PCS> {
         let x_pow_s = self.scalar_chip.pow(layouter, &x, QUOTIENT_LIMB_BLINDERS as u64)?;
         let splitting_factor = self.scalar_chip.div(layouter, &xn, &x_pow_s)?;
 
-        // -nu(x): the identities batched with y by Horner's rule, negated.
+        // -nu(x): the identities batched with y (identity k times y[k]), negated.
+        assert_eq!(expressions.len(), y.len());
         let zero: AssignedNative<F> = self.scalar_chip.assign_fixed(layouter, F::ZERO)?;
-        let neg_nu_eval = expressions.iter().try_fold(zero, |acc, id| {
+        let neg_nu_eval = expressions.iter().zip(y.iter()).try_fold(zero, |acc, (id, y)| {
             self.scalar_chip.add_and_mul(
                 layouter,
-                (F::ZERO, &acc),
-                (F::ZERO, &y),
-                (-F::ONE, id),
+                (F::ZERO, y),
+                (F::ZERO, id),
+                (F::ONE, &acc),
                 F::ZERO,
-                F::ONE,
-            ) // acc * y - id
+                -F::ONE,
+            ) // acc - y * id
         })?;
 
         // h_0(x) is derived from -nu(x) = (1 - x^n) h(x), for

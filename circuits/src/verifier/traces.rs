@@ -8,7 +8,7 @@ pub struct VerifierTrace<F: CircuitField, PCS: InCircuitPCS<F>> {
     pub(crate) phase2_committed: super::argument::Committed<F, PCS>,
     pub(crate) beta: AssignedNative<F>,
     pub(crate) gamma: AssignedNative<F>,
-    pub(crate) theta: AssignedNative<F>,
+    pub(crate) theta: Vec<AssignedNative<F>>,
     pub(crate) trash_challenge: AssignedNative<F>,
-    pub(crate) y: AssignedNative<F>,
+    pub(crate) y: Vec<AssignedNative<F>>,
 }

@@ -176,6 +176,38 @@ fn add_factors<F: CircuitField>(
     Ok(())
 }
 
+/// Compresses `(e_0, …, e_{l-1})` into `Σᵢ r[i]·eᵢ`, one operation per term.
+pub(crate) fn compress_expressions_indexed<F: CircuitField>(
+    layouter: &mut impl Layouter<F>,
+    scalar_chip: &ScalarChip<F>,
+    advice_evals: &[AssignedNative<F>],
+    fixed_evals: &[AssignedNative<F>],
+    instance_evals: &[AssignedNative<F>],
+    r: &[AssignedNative<F>],
+    expressions: &[Expression<F>],
+) -> Result<AssignedNative<F>, Error> {
+    assert!(!expressions.is_empty() && expressions.len() <= r.len());
+    let evals = expressions
+        .iter()
+        .map(|e| {
+            eval_expression::<F>(
+                layouter,
+                scalar_chip,
+                advice_evals,
+                fixed_evals,
+                instance_evals,
+                e,
+            )
+        })
+        .collect::<Result<Vec<_>, Error>>()?;
+
+    let first = scalar_chip.mul(layouter, &r[0], &evals[0], None)?;
+    evals.iter().zip(r).skip(1).try_fold(first, |acc, (eval, r)| {
+        // acc := r * eval + acc
+        mul_add(layouter, scalar_chip, r, eval, &acc)
+    })
+}
+
 pub(crate) fn compress_expressions<F: CircuitField>(
     layouter: &mut impl Layouter<F>,
     scalar_chip: &ScalarChip<F>,

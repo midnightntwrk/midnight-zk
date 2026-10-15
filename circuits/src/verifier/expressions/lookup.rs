@@ -31,7 +31,7 @@ use crate::{
     verifier::{
         ScalarChip,
         argument::Evaluation,
-        expressions::{compress_expressions, eval_at, eval_expression},
+        expressions::{compress_expressions_indexed, eval_at, eval_expression},
     },
 };
 
@@ -51,7 +51,7 @@ pub(crate) fn lookup_expressions<F: CircuitField>(
     l_0: &AssignedNative<F>,
     l_last: &AssignedNative<F>,
     l_blind: &AssignedNative<F>,
-    theta: &AssignedNative<F>,
+    theta: &[AssignedNative<F>],
     beta: &AssignedNative<F>,
 ) -> Result<Vec<AssignedNative<F>>, Error> {
     let multiplicities_eval = eval_at::<F>(
@@ -81,7 +81,7 @@ pub(crate) fn lookup_expressions<F: CircuitField>(
         selector_expression,
     )?;
 
-    let compressed_table = compress_expressions::<F>(
+    let compressed_table = compress_expressions_indexed::<F>(
         layouter,
         scalar_chip,
         advice_evals,
@@ -109,7 +109,7 @@ pub(crate) fn lookup_expressions<F: CircuitField>(
         let compressed_inputs_with_beta = input_expressions
             .iter()
             .map(|input| {
-                let compressed = compress_expressions::<F>(
+                let compressed = compress_expressions_indexed::<F>(
                     layouter,
                     scalar_chip,
                     advice_evals,
