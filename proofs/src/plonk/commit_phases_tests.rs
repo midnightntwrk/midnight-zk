@@ -23,17 +23,17 @@ use crate::{
     transcript::{CircuitTranscript, Hashable, Transcript},
 };
 
-const K: u32 = 6;
-const TABLE_SIZE: u64 = 16;
+pub(in crate::plonk) const K: u32 = 6;
+pub(in crate::plonk) const TABLE_SIZE: u64 = 16;
 
 type T = CircuitTranscript<State>;
 
 /// `b = a²` on enabled rows, `a ∈ {1..16}` by lookup, `b` of row 0 is public.
 #[derive(Clone, Copy)]
-struct SquareCircuit;
+pub(in crate::plonk) struct SquareCircuit;
 
 #[derive(Clone, Debug)]
-struct SquareConfig {
+pub(in crate::plonk) struct SquareConfig {
     s: Selector,
     a: Column<Advice>,
     b: Column<Advice>,

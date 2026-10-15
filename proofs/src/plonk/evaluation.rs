@@ -123,10 +123,13 @@ pub struct Evaluator<F: PrimeField> {
     /// Flattened trash evaluators (parallel to `trashcans`).
     pub trashcans_flat: Vec<FlatGraphEvaluator<F>>,
     /// Row-sparse custom-gate evaluator of the folding prover, built on first
-    /// use (a clone starts with an empty cell).
+    /// use. A clone copies an already initialised cell. Like `logup_tables`,
+    /// it is tied to the `pk.fixed_values` it was built from, which must not
+    /// change afterwards.
     pub(crate) sparse_gates: OnceLock<SparseGates<F>>,
     /// Table side of each lookup, built on first use (`None` when the table
-    /// reads columns other than fixed ones).
+    /// reads columns other than fixed ones). Tied to `pk.fixed_values` as
+    /// `sparse_gates` is.
     pub(crate) logup_tables: Vec<OnceLock<Option<TableSide<F>>>>,
 }
 
