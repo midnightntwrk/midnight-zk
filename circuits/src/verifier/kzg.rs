@@ -38,6 +38,7 @@ use midnight_proofs::{
         kzg::{
             KZGCommitmentScheme,
             commitment::{KZGCommitment, KZGMultiCommitment},
+            point_set_order,
         },
     },
 };
@@ -518,6 +519,7 @@ pub(crate) fn multi_prepare_kzg<S: SelfEmulation>(
 
     let mut q_coms: Vec<_> = vec![vec![]; point_sets.len()];
     let mut q_eval_sets = vec![vec![]; point_sets.len()];
+    let mut set_sizes: Vec<_> = point_sets.iter().map(|points| (points.len(), 0)).collect();
 
     for com_data in commitment_map.into_iter() {
         let mut msm = AssignedMsm::empty();
@@ -529,6 +531,7 @@ pub(crate) fn multi_prepare_kzg<S: SelfEmulation>(
         }
         q_coms[com_data.set_index].push(msm);
         q_eval_sets[com_data.set_index].push(com_data.evals);
+        set_sizes[com_data.set_index].1 += usize::from(!com_data.label.is_fixed());
     }
 
     let truncated_x1_powers = {
@@ -547,11 +550,8 @@ pub(crate) fn multi_prepare_kzg<S: SelfEmulation>(
         .map(|evals| evals_inner_product(layouter, scalar_chip, evals, &truncated_x1_powers))
         .collect::<Result<Vec<_>, Error>>()?;
 
-    // Sort point sets by ascending cardinality. The (len, i) key provides a
-    // deterministic total order even when two sets share the same cardinality.
     let (q_coms, q_eval_sets, point_sets) = {
-        let mut order: Vec<usize> = (0..point_sets.len()).collect();
-        order.sort_by_key(|&i| (point_sets[i].len(), i));
+        let order = point_set_order(&set_sizes);
         let q_coms: Vec<_> = order.iter().map(|&i| q_coms[i].clone()).collect();
         let q_eval_sets: Vec<_> = order.iter().map(|&i| q_eval_sets[i].clone()).collect();
         let point_sets: Vec<_> = order.iter().map(|&i| point_sets[i].clone()).collect();

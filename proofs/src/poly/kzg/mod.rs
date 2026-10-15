@@ -64,6 +64,17 @@ use crate::{
 /// fewer keeps its terms, scaled by `x4` one by one.
 pub const COLLAPSE_THRESHOLD: usize = 4;
 
+/// The order in which the multi-open argument takes its point sets, given the
+/// number of points and of variable-base polynomials of every set: the sets
+/// with more variable-base polynomials first, then by ascending number of
+/// points and by index. The first set is scaled by the unit power of `x4`, so
+/// its variable bases keep the scalars of a single truncated challenge.
+pub fn point_set_order(sets: &[(usize, usize)]) -> Vec<usize> {
+    let mut order: Vec<usize> = (0..sets.len()).collect();
+    order.sort_by_key(|&i| (std::cmp::Reverse(sets[i].1), sets[i].0, i));
+    order
+}
+
 #[derive(Clone, Debug)]
 /// KZG verifier
 pub struct KZGCommitmentScheme<E: Engine> {
@@ -295,9 +306,11 @@ where
         let (poly_map, point_sets) = construct_intermediate_sets(&kzg_queries)?;
 
         let mut q_polys = vec![vec![]; point_sets.len()];
+        let mut set_sizes: Vec<_> = point_sets.iter().map(|points| (points.len(), 0)).collect();
 
         for com_data in poly_map.iter() {
             q_polys[com_data.set_index].push(label_to_poly[&com_data.label]);
+            set_sizes[com_data.set_index].1 += usize::from(!com_data.label.is_fixed());
         }
 
         let q_polys: Vec<_> = q_polys
@@ -313,12 +326,9 @@ where
             })
             .collect();
 
-        // Sort point sets by ascending cardinality, as the verifier does. The (len, i)
-        // key provides a deterministic total order even when two sets share the same
-        // cardinality.
+        // Order the point sets as the verifier does.
         let (q_polys, point_sets) = {
-            let mut order: Vec<usize> = (0..point_sets.len()).collect();
-            order.sort_by_key(|&i| (point_sets[i].len(), i));
+            let order = point_set_order(&set_sizes);
             let q_polys: Vec<_> = order.iter().map(|&i| &q_polys[i]).collect();
             let point_sets: Vec<_> = order.iter().map(|&i| point_sets[i].clone()).collect();
             (q_polys, point_sets)
@@ -433,9 +443,11 @@ where
         let mut q_coms: Vec<_> = vec![vec![]; point_sets.len()];
         let mut q_eval_sets = vec![vec![]; point_sets.len()];
 
+        let mut set_sizes: Vec<_> = point_sets.iter().map(|points| (points.len(), 0)).collect();
         for com_data in commitment_map.into_iter() {
             q_coms[com_data.set_index].push(label_to_commitment[&com_data.label].clone());
             q_eval_sets[com_data.set_index].push(com_data.evals);
+            set_sizes[com_data.set_index].1 += usize::from(!com_data.label.is_fixed());
         }
 
         let nb_x1_powers = q_coms.iter().map(Vec::len).max().unwrap_or(0);
@@ -457,11 +469,8 @@ where
             .map(|evals| evals_inner_product(evals, &powers_x1))
             .collect::<Vec<_>>();
 
-        // Sort point sets by ascending cardinality. The (len, i) key provides a
-        // deterministic total order even when two sets share the same cardinality.
         let (q_coms, q_eval_sets, point_sets) = {
-            let mut order: Vec<usize> = (0..point_sets.len()).collect();
-            order.sort_by_key(|&i| (point_sets[i].len(), i));
+            let order = point_set_order(&set_sizes);
             let q_coms: Vec<_> = order.iter().map(|&i| q_coms[i].clone()).collect();
             let q_eval_sets: Vec<_> = order.iter().map(|&i| q_eval_sets[i].clone()).collect();
             let point_sets: Vec<_> = order.iter().map(|&i| point_sets[i].clone()).collect();
