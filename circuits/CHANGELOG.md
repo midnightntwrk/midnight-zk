@@ -19,7 +19,6 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 * The verifier gadget accepts an empty instance column, which evaluates to zero, instead of panicking [#569](https://github.com/midnightntwrk/midnight-zk/pull/569)
-* `AssignedMsm::collapse` yields the identity on an MSM with no variable term, as the off-circuit collapse does, instead of calling the MSM chip on empty input [#575](https://github.com/midnightntwrk/midnight-zk/pull/575)
 * The verifier gadget no longer misreads the fixed evaluations of a circuit with a fixed column queried at more than one rotation [#547](https://github.com/midnightntwrk/midnight-zk/pull/547)
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 
