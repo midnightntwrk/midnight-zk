@@ -23,6 +23,9 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 
 ### Changed
+* The foreign Weierstrass ECC chip enforces point addition and doubling with a single unified custom identity, `cond · [a·A² + b·B + d·D + e·E + ca·(C·A) + cd·(C·D) + k·α − (u + k_min)·m] = 0` for `α` the curve coefficient `a`, instantiated three times per operation in fused regions sharing rows, instead of the `slope`, `tangent` and `lambda_squared` gates. This changes the verifying keys of circuits using the chip [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
+* The auxiliary moduli of Secp256r1's base field over BLS12-381's scalar field are now 2^118 and 2^118 - 270, so that it fits the unified identity [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
+* `foreign_params_gen.py` optimizes the parameters for the unified identity of the foreign Weierstrass ECC chip [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 * The foreign Weierstrass ECC chip checks that points are on the curve with foreign-field arithmetic instead of a dedicated `on_curve` custom gate, which is removed. This changes the verifying keys of circuits using the chip [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 * The foreign-field multiplication identity and the foreign Weierstrass ECC identities compute their limb-product sums with Karatsuba, `karatsuba_bilinear_sum`, using fewer multiplications per identity. The constraints are unchanged, as are the verifying keys [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 * The in-circuit fflonk splits groups into `fflonk::balanced_chunks`, as off-circuit [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
