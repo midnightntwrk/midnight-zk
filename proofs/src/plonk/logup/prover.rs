@@ -41,7 +41,6 @@ use crate::{
 pub(crate) struct ComputedMultiplicities<F: PrimeField> {
     pub(crate) argument_index: usize,
     pub(crate) selector: Polynomial<F, LagrangeCoeff>,
-    pub(crate) multiplicities: Polynomial<F, LagrangeCoeff>,
     /// Per chunk, per input, the evaluation of each of its expressions.
     chunked_input_evals: Vec<Vec<Vec<Polynomial<F, LagrangeCoeff>>>>,
     /// The evaluation of each table expression.
@@ -50,6 +49,7 @@ pub(crate) struct ComputedMultiplicities<F: PrimeField> {
 
 /// Intermediate result from logderivative computation, before transcript
 /// write and FFT conversion to coefficient form.
+#[cfg_attr(feature = "bench-internal", derive(Clone))]
 pub(crate) struct ComputedLogderivative<F: PrimeField> {
     pub(crate) argument_index: usize,
     pub(crate) helper_polys_lagrange: Vec<Vec<F>>,
@@ -59,9 +59,9 @@ pub(crate) struct ComputedLogderivative<F: PrimeField> {
 impl<F: WithSmallOrderMulGroup<3> + Hash> ChunkedArgument<F> {
     /// Evaluates the input and table expressions and computes the
     /// multiplicities, comparing the input and table tuples directly. The
-    /// multiplicities are neither committed nor written to the transcript: the
-    /// caller commits them as part of the phase1 argument group, before
-    /// `theta` is squeezed.
+    /// multiplicities are returned apart, neither committed nor written to the
+    /// transcript: the caller commits them as part of the phase1 argument
+    /// group, before `theta` is squeezed.
     ///
     /// `blinding_values` are pre-generated random field elements for the
     /// blinding rows, so this method does not need `&mut rng` and can be
@@ -75,7 +75,7 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ChunkedArgument<F> {
         fixed_values: &'a [Polynomial<F, LagrangeCoeff>],
         instance_values: &'a [Polynomial<F, LagrangeCoeff>],
         blinding_values: &[F],
-    ) -> Result<ComputedMultiplicities<F>, Error>
+    ) -> Result<(ComputedMultiplicities<F>, Polynomial<F, LagrangeCoeff>), Error>
     where
         F: WithSmallOrderMulGroup<3> + FromUniformBytes<64>,
     {
@@ -120,13 +120,15 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ChunkedArgument<F> {
 
         let multiplicities = pk.vk.domain.lagrange_from_vec(multiplicities);
 
-        Ok(ComputedMultiplicities {
-            argument_index,
-            selector,
+        Ok((
+            ComputedMultiplicities {
+                argument_index,
+                selector,
+                chunked_input_evals,
+                table_evals,
+            },
             multiplicities,
-            chunked_input_evals,
-            table_evals,
-        })
+        ))
     }
 }
 
@@ -135,7 +137,8 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ComputedMultiplicities<F> {
     /// write to the transcript or convert to coefficient form. The caller
     /// handles transcript ordering and can batch the FFTs.
     ///
-    /// The input and table expressions are compressed with `theta` here.
+    /// The input and table expressions are compressed with `theta` here, and
+    /// `multiplicities` are those of [`Self::compute_multiplicities_parallel`].
     ///
     /// `blinding_values` must contain exactly `blinding_factors` random field
     /// elements. They are provided externally so the caller can pre-generate
@@ -145,6 +148,7 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ComputedMultiplicities<F> {
         pk: &ProvingKey<F, CS>,
         theta: F,
         beta: F,
+        multiplicities: &Polynomial<F, LagrangeCoeff>,
         blinding_values: Vec<F>,
     ) -> Result<ComputedLogderivative<F>, Error>
     where
@@ -220,7 +224,7 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ComputedMultiplicities<F> {
             for (i, coeff) in poly.iter_mut().enumerate() {
                 let i = i + start;
                 let sum_helpers: F = helper_polys_lagrange.iter().map(|h| h[i]).sum();
-                *coeff = self.selector[i] * sum_helpers - self.multiplicities[i] * table_denoms[i];
+                *coeff = self.selector[i] * sum_helpers - multiplicities[i] * table_denoms[i];
             }
         });
 
