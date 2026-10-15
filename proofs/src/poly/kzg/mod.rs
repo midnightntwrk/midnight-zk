@@ -40,7 +40,7 @@ use crate::{
         commitment::{InterleavedCommit, PolynomialCommitmentScheme},
         kzg::{
             commitment::NB_POLYS_PREFIX_BYTES,
-            msm::{DualMSM, msm_specific},
+            msm::{DualMSM, msm_nonzero, msm_specific},
             params::{ParamsKZG, ParamsVerifierKZG},
             utils::construct_intermediate_sets,
         },
@@ -133,7 +133,7 @@ where
 
         let bases = params.bases::<B>();
         KZGMultiCommitment(
-            (polynomials.iter().zip(labels))
+            (polynomials.par_iter().zip(labels.par_iter()))
                 .map(|(polynomial, label)| {
                     let size = polynomial.values.len();
                     assert!(bases.len() >= size);
@@ -558,7 +558,7 @@ where
         PolynomialLabel::assert_distinct(labels);
 
         KZGMultiCommitment(
-            (chunks.iter().zip(labels))
+            (chunks.par_iter().zip(labels.par_iter()))
                 .map(|(chunk, label)| {
                     KZGCommitment::Simple(commit_chunk(params, chunk), label.clone())
                 })
@@ -568,7 +568,8 @@ where
 }
 
 /// Commitment to `Σ_i X^i f_i(X^t)`, for `chunk` the polynomials `f_i` and
-/// `t` the next power of two of their number.
+/// `t` the next power of two of their number: one MSM of the nonzero values of
+/// every `f_i` against the bases of its residue.
 fn commit_chunk<E: MultiMillerLoop, B: PolynomialRepresentation>(
     params: &ParamsKZG<E>,
     chunk: &[&Polynomial<E::Fr, B>],
@@ -582,9 +583,20 @@ where
         chunk.iter().all(|poly| poly.len() == n),
         "the polynomials of a chunk have different lengths"
     );
-    (chunk.iter().enumerate())
-        .map(|(i, poly)| msm_specific(&poly.values, &params.residue_bases::<B>(t, n, i)))
-        .sum()
+    let (scalars, points): (Vec<E::Fr>, Vec<E::G1Affine>) = (chunk.par_iter().enumerate())
+        .map(|(i, poly)| {
+            let bases = params.residue_bases::<B>(t, n, i);
+            (poly.values.iter().zip(bases.iter()))
+                .filter(|(scalar, _)| !scalar.is_zero_vartime())
+                .map(|(scalar, base)| (*scalar, *base))
+                .unzip::<_, _, Vec<_>, Vec<_>>()
+        })
+        .reduce(Default::default, |(mut scalars, mut points), (s, p)| {
+            scalars.extend(s);
+            points.extend(p);
+            (scalars, points)
+        });
+    msm_nonzero(&scalars, &points)
 }
 
 #[cfg(test)]

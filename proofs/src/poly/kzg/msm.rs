@@ -165,7 +165,6 @@ where
     }
 }
 
-#[allow(unsafe_code)]
 /// Wrapper over the MSM function:
 /// Bls12-381 uses blstrs [`G1Affine::multi_exp_affine`], other curves use
 /// `msm_best`.
@@ -178,19 +177,25 @@ pub fn msm_specific<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Cur
         .map(|(s, b)| (*s, *b))
         .unzip();
 
+    msm_nonzero(&coeffs, &bases)
+}
+
+#[allow(unsafe_code)]
+/// [`msm_specific`] for coefficients that are all nonzero.
+pub(crate) fn msm_nonzero<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
     if coeffs.is_empty() {
         return C::Curve::identity();
     }
 
     if TypeId::of::<C>() == TypeId::of::<G1Affine>() {
-        let coeffs = unsafe { &*(coeffs.as_slice() as *const _ as *const [Fq]) };
-        let bases = unsafe { &*(bases.as_slice() as *const _ as *const [G1Affine]) };
+        let coeffs = unsafe { &*(coeffs as *const _ as *const [Fq]) };
+        let bases = unsafe { &*(bases as *const _ as *const [G1Affine]) };
         // TODO: 255 is fine because type is checked. Another option is propagating
         // nbits as an input of msm_specific.
         let res = G1Affine::multi_exp_affine(bases, coeffs);
         unsafe { std::mem::transmute_copy(&res) }
     } else {
-        msm_best(&coeffs, &bases)
+        msm_best(coeffs, bases)
     }
 }
 
