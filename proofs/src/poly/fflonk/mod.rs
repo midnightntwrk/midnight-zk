@@ -52,7 +52,7 @@ use utils::{cached_roots, compute_g};
 
 use crate::{
     poly::{
-        CommitPoly, Error, PolynomialLabel,
+        CommitPoly, Error, PolynomialBasis, PolynomialLabel,
         PolynomialLabel::Collection,
         ProverQuery, VerifierQuery,
         commitment::{InterleavedCommit, PolynomialCommitmentScheme},
@@ -119,6 +119,14 @@ where
         let g_labels = Self::chunk_labels(labels);
         let chunks: Vec<_> = balanced_chunks(polynomials, Self::T_MAX).collect();
         PCS::commit_interleaved(params, &chunks, &g_labels)
+    }
+
+    fn precompute_bases(params: &Self::Parameters, n: usize, groups: &[&[PolynomialBasis]]) {
+        let chunks: Vec<_> =
+            groups.iter().flat_map(|group| balanced_chunks(group, Self::T_MAX)).collect();
+        chunks
+            .par_iter()
+            .for_each(|chunk| PCS::precompute_interleaved_bases(params, n, chunk));
     }
 
     fn read_commitment<T: Transcript>(

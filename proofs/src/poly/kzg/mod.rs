@@ -36,7 +36,7 @@ use rand_core::OsRng;
 
 use crate::{
     poly::{
-        Coeff, CommitPoly, Error, Polynomial, ProverQuery,
+        Coeff, CommitPoly, Error, Polynomial, PolynomialBasis, ProverQuery,
         commitment::{InterleavedCommit, PolynomialCommitmentScheme},
         kzg::{
             commitment::NB_POLYS_PREFIX_BYTES,
@@ -564,6 +564,17 @@ where
                 })
                 .collect(),
         )
+    }
+
+    fn precompute_interleaved_bases(
+        params: &Self::Parameters,
+        n: usize,
+        chunk: &[PolynomialBasis],
+    ) {
+        let t = chunk.len().next_power_of_two();
+        chunk.par_iter().enumerate().for_each(|(i, basis)| {
+            params.residue_bases(*basis, t, n, i);
+        });
     }
 }
 

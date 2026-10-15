@@ -9,8 +9,8 @@ use ff::PrimeField;
 
 use crate::{
     poly::{
-        CommitPoly, Error, Polynomial, PolynomialRepresentation, ProverQuery, VerifierQuery,
-        query::PolynomialLabel,
+        CommitPoly, Error, Polynomial, PolynomialBasis, PolynomialRepresentation, ProverQuery,
+        VerifierQuery, query::PolynomialLabel,
     },
     transcript::{Hashable, Sampleable, Transcript},
     utils::helpers::{ProcessedSerdeObject, SerdeFormat},
@@ -72,6 +72,11 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
         polynomials: &[CommitPoly<F>],
         labels: &[PolynomialLabel],
     ) -> Self::Commitment;
+
+    /// Precomputes whatever `params` need to commit to each group of `groups`
+    /// with [`commit_many`](Self::commit_many), given as the bases of its
+    /// polynomials, of `n` values each. Nothing by default.
+    fn precompute_bases(_params: &Self::Parameters, _n: usize, _groups: &[&[PolynomialBasis]]) {}
 
     /// Commit to a single polynomial, tagging the result with `label`.
     /// Convenience wrapper around [`commit_many`](Self::commit_many).
@@ -203,6 +208,11 @@ pub trait InterleavedCommit<F: PrimeField>: PolynomialCommitmentScheme<F> {
         chunks: &[&[CommitPoly<F>]],
         labels: &[PolynomialLabel],
     ) -> Self::Commitment;
+
+    /// Precomputes whatever `params` need to commit with
+    /// [`commit_interleaved`](Self::commit_interleaved) to a chunk of
+    /// polynomials of `n` values each, in the bases `chunk`.
+    fn precompute_interleaved_bases(params: &Self::Parameters, n: usize, chunk: &[PolynomialBasis]);
 }
 
 /// Interface for verifier finalizer, given the verifier parameters `VP` of
