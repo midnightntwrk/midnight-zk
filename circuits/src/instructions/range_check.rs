@@ -64,6 +64,17 @@ where
             .collect()
     }
 
+    /// Asserts that each of the given assigned elements is in the range
+    /// [0, bound), possibly sharing rows between their range checks.
+    fn assert_many_lower_than_fixed(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        xs: &[Assigned],
+        bound: &BigUint,
+    ) -> Result<(), Error> {
+        xs.iter().try_for_each(|x| self.assert_lower_than_fixed(layouter, x, bound))
+    }
+
     /// Asserts that the given assigned element is in the range [0, bound).
     ///
     /// This function is potentially more efficient than calling

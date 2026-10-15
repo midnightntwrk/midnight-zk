@@ -286,6 +286,39 @@ where
         self.core_decomposition_chip.assign_many_less_than_pow2(layouter, values, k)
     }
 
+    fn assert_many_lower_than_fixed(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        xs: &[AssignedNative<F>],
+        bound: &BigUint,
+    ) -> Result<(), Error> {
+        let k = bound.bits().saturating_sub(1) as usize;
+        if bound.is_zero() || *bound != BigUint::from(1u8) << k {
+            return xs.iter().try_for_each(|x| self.assert_lower_than_fixed(layouter, x, bound));
+        }
+        // The cells not already known to be in range, each once.
+        let mut pending: Vec<AssignedNative<F>> = Vec::with_capacity(xs.len());
+        for x in xs {
+            let bounded = matches!(self.constrained_cells.borrow().get(x), Some(b) if b <= bound);
+            if !bounded && !pending.contains(x) {
+                pending.push(x.clone());
+            }
+        }
+        let values: Vec<_> = pending.iter().map(|x| x.value().copied()).collect();
+        let ys = self.core_decomposition_chip.assign_many_less_than_pow2(layouter, &values, k)?;
+        layouter.assign_region(
+            || "copy",
+            |mut region| {
+                pending
+                    .iter()
+                    .zip(ys.iter())
+                    .try_for_each(|(x, y)| region.constrain_equal(x.cell(), y.cell()))
+            },
+        )?;
+        pending.iter().for_each(|x| self.update_bound(x, bound.clone()));
+        Ok(())
+    }
+
     fn assert_lower_than_fixed(
         &self,
         layouter: &mut impl Layouter<F>,

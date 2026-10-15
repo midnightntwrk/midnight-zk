@@ -1062,8 +1062,9 @@ where
                 (coordinates.0, coordinates.1, false)
             }
         });
-        let x = self.base_field_chip().assign(layouter, values.map(|v| v.0))?;
-        let y = self.base_field_chip().assign(layouter, values.map(|v| v.1))?;
+        let mut xy = (self.base_field_chip())
+            .assign_many(layouter, &[values.map(|v| v.0), values.map(|v| v.1)])?;
+        let (x, y) = (xy.remove(0), xy.remove(0));
         let is_id = self.native_gadget.assign(layouter, values.map(|v| v.2))?;
         let p = AssignedForeignPoint::<F, C, B> {
             point: p,
