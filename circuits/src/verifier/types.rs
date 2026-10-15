@@ -172,7 +172,7 @@ impl SelfEmulation for BlstrsEmulation {
     type G2Affine = midnight_curves::G2Affine;
     type Engine = midnight_curves::Bls12;
 
-    type PCS = InCircuitFflonk<InCircuitKZG<Self>, 3>;
+    type PCS = InCircuitFflonk<InCircuitKZG<Self>, 4>;
 
     fn msm(
         layouter: &mut impl Layouter<Self::F>,

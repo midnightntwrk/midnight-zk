@@ -13,7 +13,7 @@
 
 //! Tests of [`FoldingGadget`] against the native folding verifier of
 //! `midnight_proofs::plonk::protogalaxy` (BLS12-381 self-emulation, fflonk
-//! with `T_MAX = 8` over KZG): the accumulator computed in-circuit must equal
+//! with `T_MAX = 16` over KZG): the accumulator computed in-circuit must equal
 //! the native one, constrained as public input of a MockProver run.
 
 use ff::Field;

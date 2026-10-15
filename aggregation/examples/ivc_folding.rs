@@ -26,9 +26,9 @@ use midnight_zk_stdlib::{
 use poseidon_chain::PoseidonChain;
 
 fn main() {
-    // Circuit size parameter (log2 of rows); fflonk needs an SRS of
-    // 2^(K + LOG2_T_MAX) points.
-    const K: u32 = 16;
+    // Circuit size parameter (log2 of rows), overridable with `IVC_K`; fflonk
+    // needs an SRS of 2^(K + LOG2_T_MAX) points.
+    let k: u32 = std::env::var("IVC_K").map_or(16, |s| s.parse().expect("IVC_K: log2 of rows"));
 
     const N: usize = 1; // Number of Poseidon iteration per IVC step.
     const STEPS: usize = 10; // Number of IVC steps to run.
@@ -39,16 +39,16 @@ fn main() {
         .ok()
         .map(|s| s.parse().expect("TAMPER_STEP: step index"));
 
-    let model = midnight_zk_stdlib::cost_model(&FoldingIvcCircuit::<T>::new(K, ()), Some(K), false);
+    let model = midnight_zk_stdlib::cost_model(&FoldingIvcCircuit::<T>::new(k, ()), Some(k), false);
     println!(
         "Step circuit: k = {}, rows = {}, table rows = {}",
         model.k, model.rows, model.table_rows
     );
 
-    let srs = load_srs::<DefaultPCS>(SrsSource::Midnight, K);
+    let srs = load_srs::<DefaultPCS>(SrsSource::Midnight, k);
 
     let start = Instant::now();
-    let (keys, verifier) = ivc_folding::setup::<T>(srs, K, ());
+    let (keys, verifier) = ivc_folding::setup::<T>(srs, k, ());
     println!("Setup completed in {:.2?}", start.elapsed());
 
     let mut prover = FoldingIvcProver::new(&keys);

@@ -851,3 +851,107 @@ changed; `examples/ivc` (truncated-challenges) all 10 steps verify.
 - Timings are a single contended run; per-step fold times vary 5.6–9.1 s with load. C.4: quiet re-run,
   with and without `truncated-challenges` (this example requires it, like `ivc`), cost-model ablation of
   the step circuit, real SNARK-IVC proof size.
+
+## [C.3d] fflonk T_MAX = 16
+Commit: this commit   Date: 2026-10-15   Machine: M1 Pro 10c/16GB   Features: truncated-challenges
+**Contended** (load average 23–43 during the runs)
+
+### What and why
+User request after C.3: switch the branch default to `T_MAX = 16` (exactly as A.2 did for 8) and re-run both
+IVCs like for like; no folding optimisation ("as long as it works and runs"). `T_MAX = 16` gives `c_var = 3`
+(2 phase-1 + 1 phase-2 chunks) instead of 5, i.e. two fewer in-circuit scalar multiplications per fold (C.0).
+Changes: `zk_stdlib/src/pcs.rs` `DefaultPCS = Fflonk<KZGCommitmentScheme<Bls12>, 4>`;
+`circuits/src/verifier/types.rs` `BlstrsEmulation::PCS = InCircuitFflonk<InCircuitKZG<Self>, 4>`;
+`verifier_gadget.rs` `test_verify_proof` passes `4`; `folding_test.rs` doc comment. Explicit test PCS
+choices that are not "the branch default" are unchanged (`proofs` `commit_phases_tests` and
+`protogalaxy/tests.rs` fflonk `T_MAX = 8`; `folding_cost.rs` synthetic shapes). The `ivc_folding` example
+takes `K` from `IVC_K` (default 16). SRS: folding IVC `K = 16` → Midnight `2^20`; SNARK IVC `K = 17` →
+Midnight `2^21`.
+
+Regenerated (`CHANGE_VK=BREAKING`): static VKs `BitcoinSigExampleVk`, `CredentialPropertyVk`,
+`EccExampleVk`, `EthereumSigExampleVk`, `HybridMtExampleVk`, `MembershipExampleVk`, `NativeGadgetExampleVk`,
+`PoseidonExampleVk`, `RSASignatureCircuitVk`, `SchnorrExampleVk`, `ShaPreImageCircuitVk`; goldenfiles
+`BitcoinSigExample`, `BitcoinThresholdECDSA`, `CredentialEnrollment`, `CredentialProperty`, `EccExample`,
+`EthereumSigExample`, `FullCredential`, `HybridMtExample`, `MembershipExample`, `PoseidonExample`,
+`SchnorrExample`, `ShaPreImageCircuit`. Not regenerated (no SRS): `BitcoinThresholdECDSAVk` (needs Filecoin
+`2^20` now), `CredentialEnrollmentVk`, `FullCredentialVk` (as before).
+
+### How to reproduce
+```
+CHANGE_VK=BREAKING cargo test --release -p midnight-zk-stdlib --test check_vks
+cd aggregation
+IVC_K=15 cargo run --release --features truncated-challenges --example ivc_folding     # does not fit
+/usr/bin/time -l cargo run --release --features truncated-challenges --example ivc_folding   # K = 16
+/usr/bin/time -l cargo run --release --features truncated-challenges --example ivc
+```
+SNARK-IVC rows and real proof bytes: temporary prints (not committed) of `cost_model` in `ivc::setup` and
+of `proof.len()` in `examples/ivc.rs`.
+
+### Results
+Smallest `K` for the folding step circuit (cost model):
+
+| `K` | logic rows | table rows | fits `2^K`? |
+|---|---|---|---|
+| 15 (14-bit decomposition table) | 35,750 | 31,379 | no: logic rows > 32,768 (keygen fails) |
+| 16 (15-bit table) | 30,858 | 61,459 | yes |
+
+Side by side (single runs, contended; `T_MAX = 8` columns from [C.3] and A.3/C.1):
+
+| | Folding `T_MAX` 8 | **Folding `T_MAX` 16** | SNARK `T_MAX` 8 | **SNARK `T_MAX` 16** |
+|---|---|---|---|---|
+| `k` / logic rows / table rows | 16 / 47,954 / 61,459 | **16 / 30,858 / 61,459** | 17 / 71,546 / 122,899 | **17 / 62,310 / 122,899** |
+| `c_var` (folded points) | 5 | **3** | – | – |
+| SRS | `2^19` | `2^20` | `2^20` | `2^21` |
+| setup | 124.3 s | 173.2 s | 203.1 s | 356.5 s |
+| step 0 | 57.2 s | 2.37 s | 95.8–100.5 s | 11.97 s |
+| step 1 (`init` + commit) | 1.79 s | 1.03 s | – | 9.80 s |
+| per step, steps 2–9 (mean, range) | 8.61 s (7.39–10.93) | **5.47 s (5.25–5.95)** | 9.10 s | **9.54 s (9.13–10.74)** |
+| — native fold | 6.63 s | **4.35 s** | – | – |
+| — synthesis + commit (steps 1–9) | 1.96 s | **1.11 s** | – | – |
+| finalize: last fold / decider prove | 6.97 s / 12.61 s | 4.80 s / **8.11 s** | – | – |
+| final verify | 24.5 ms | 24.7 ms | ≈16.6 ms | ≈16.8 ms (14.7–23.3) |
+| peak RSS | 1.05 GB | 1.48 GB | 3.04–3.14 GB | 3.38 GB |
+
+Real sizes (bytes):
+
+| | Folding `T_MAX` 8 | Folding `T_MAX` 16 | SNARK `T_MAX` 16 |
+|---|---|---|---|
+| accumulator | 3,120 (5 points + 90 scalars) | 3,024 (3 points + 90 scalars) | – |
+| partial proof of a step | 248 | 152 | – |
+| folding proof | 896 | 896 | – |
+| decider proof / step proof | 4,832 | 4,928 | 4,880 (every step) |
+
+`examples/ivc_folding` verifies end to end at `K = 16`; `examples/ivc` verifies all 10 steps. Suite:
+workspace examples build ok; `midnight-proofs` ok (75 passed, 1 ignored);
+`midnight-circuits verifier` ok with and without `truncated-challenges` (6 passed, 1 ignored); `midnight-zk-stdlib`
+failures: the known `check_vk_cred_enrollment`, `check_vk_cred_full`, `public_inputs_test` plus `check_vk_bitcoin`
+(SRS only, see deviations). Negative check `TAMPER_STEP=5` at `T_MAX = 16`: rejected (`InvalidProof`).
+
+### Interpretation
+- **The folding step circuit drops to 30,858 rows** (−17.1k vs `T_MAX = 8`, ≈8.5k per removed point, close to
+  C.2's 9.9k per commitment in the test configuration) and is now half the SNARK step (62,310). It is
+  **`k = 16` because of the lookup table, not the logic**: at `K = 16` the logic fits in `2^15` (30,858 < 32,768)
+  but ZkStdLib sizes its decomposition table by `K − 1` bits (61,459 rows); at `K = 15` the table shrinks to
+  14 bits (31,379 rows) but the foreign-field/ECC range checks then need more limbs and the logic grows to
+  35,750 rows > 32,768. So at `K = 15` the logic rows set `K`, at `K = 16` the table rows do.
+- **The folding prover is now faster per step: 5.5 s vs 9.5 s (−43%)**, contended. Both parts shrank: commit
+  1.1 s (fewer, larger fflonk chunks), fold 4.4 s. The fold is still ≈4× the commit and remains the dominant
+  per-step cost (`d_total = 13` row evaluations of all identities); not optimised (user).
+- The SNARK IVC also shrinks (71.5k → 62.3k rows) but stays at `k = 17` (table rows at `K = 17`; whether it
+  would fit `K = 16` with a 15-bit table was not tested). Its per-step time is unchanged within noise.
+- One-off costs move into setup: with `T_MAX = 16` the residue bases for every chunk size are computed during
+  keygen, so step 0 is no longer slow (2.4 s / 12 s), and setup is longer. The decider (8.1 s) is now ≈0.85 of
+  one SNARK step.
+- Sizes barely change: the accumulator is dominated by its 90 scalars; the decider proof (4,928 B) and a SNARK
+  step proof (4,880 B) are about the same size, the folding verifier additionally receives the accumulator
+  (3,024 B) and the last partial + folding proofs (1,048 B).
+- Peak RSS of the folding IVC rises 1.05 → 1.48 GB (`2^20` SRS and larger residue-base caches), still ≈2.3×
+  below the SNARK IVC.
+
+### Deviations from the plan, open problems
+- `check_vk_bitcoin` now also fails for lack of SRS (Filecoin `2^20`, needed since `2^(16+4)`); its static VK
+  is stale like the two credential VKs. Same class as the known failures; not fixed (would need a Filecoin
+  `2^20` file; a Midnight file would change the VK).
+- Single contended runs; C.4 must re-measure on a quiet machine, with and without `truncated-challenges`.
+- SNARK IVC at `K = 16` with `T_MAX = 16` not tried (62,310 logic rows at `K = 17` would grow with a 15-bit
+  table).
