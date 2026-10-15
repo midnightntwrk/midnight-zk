@@ -182,13 +182,13 @@ struct Fresh {
     pi: F,
 }
 
-struct Native {
+pub(super) struct Native {
     params: <CS as PolynomialCommitmentScheme<F>>::Parameters,
     pk: ProvingKey<F, CS>,
 }
 
 impl Native {
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         let params = CS::gen_params(INNER_K);
         let circuit = SquareCircuit { start: 0 };
         let vk = keygen_vk_with_k::<_, CS, _>(&params, &circuit, INNER_K).unwrap();
@@ -221,7 +221,7 @@ impl Native {
         (prover, Fresh { public, proof, pi })
     }
 
-    fn shape(&self) -> FoldingShape {
+    pub(super) fn shape(&self) -> FoldingShape {
         FoldingShape::new::<S>(self.vk().cs(), INNER_K, &[1])
     }
 }

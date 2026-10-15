@@ -30,6 +30,8 @@ mod expressions;
 mod fflonk;
 mod folding;
 #[cfg(test)]
+mod folding_cost;
+#[cfg(test)]
 mod folding_test;
 mod folding_types;
 mod kzg;

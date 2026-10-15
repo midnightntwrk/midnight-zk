@@ -585,3 +585,138 @@ load average 10–18):
 - Committed instances (`committed-instances` feature) are not supported by folding (0 passed through).
 - `ProverAccumulator` keeps both the folded trace and the public accumulator (challenges and PI are
   duplicated; both folded with the same `γ`).
+
+## [C.2] In-circuit folding verifier gadget
+Commits: `20aee517` ([C.2a], point add/negate on `SelfEmulation`, phase-label helpers), `772f2cf1`
+([C.2b], gadget + tests), this commit ([C.2c], cost measurements + doc)   Date: 2026-10-15
+Machine: M1 Pro 10c/16GB   Features: none and truncated-challenges (both measured)
+
+### What and why
+The step circuit of the folding IVC runs only the folding verifier. C.2 is that verifier as a gadget,
+replicating C.1's native `read_instance` / `Accumulator::{init, fold}` exactly, so that the accumulator
+computed in-circuit equals the native one. Code (`midnight_circuits::verifier`):
+
+| File | Content |
+|---|---|
+| `folding.rs` | `FoldingGadget::{new, read_instance, assign_accumulator, init, fold}` (+ `fold_scalars`, `fold_commitment`, crate-internal, for the ablation) |
+| `folding_types.rs` | `FoldingShape::new::<S>(cs, log_n, instance_lens)`, `AssignedChallenges`, `AssignedFoldingInstance`, `AssignedFoldingAccumulator::{assign, as_public_input}`, `NativeAccumulator<S>`, `accumulator_as_public_input::<S>` (off-circuit encoding, same order) |
+| `folding_test.rs` | inner `SquareCircuit` (C.1's test relation), `FoldingCircuit`, 3 tests |
+| `folding_cost.rs` | cost-model row counts, real and synthetic shapes, naive vs optimistic commitment folding (ignored test) |
+
+Shared-path changes ([C.2a], mechanical): `SelfEmulation::{add, negate}` (complete addition and
+negation, delegating to the curve chip, implemented for `BlstrsEmulation`, `BnEmulation` and the
+test emulation); `argument::{phase1_labels, phase2_labels}` factored out of `parse_trace`;
+`argument::Committed::commitment()`. No change in any circuit or proof.
+
+Protocol as implemented (mirrors the C.1 section):
+- `read_instance`: constrains the vk's `k` to the shape's `log n`, then **replays the fresh instance's own
+  transcript with `VerifierGadget::parse_trace`** (vk `transcript_repr`, per instance column length + PI,
+  phase-1 commitment, `θ⃗, β, γ, trash`, phase-2 commitment, `y⃗`) on the partial-proof bytes. Points are
+  assigned without subgroup check (as the existing verifier gadget does).
+- `init`: fresh transcript, absorb phase-1 points, phase-2 points, PI; squeeze `β`; `β⃗ = (β, β², …)`; `e = 0`.
+- `fold`: fresh transcript on the folding-proof bytes; absorb the accumulator (points, PI, `θ⃗, β, γ, trash,
+  y⃗`, `β⃗`, `e`) and the fresh instance (points, PI); squeeze `δ`, `δ⃗` by squaring; read `F_1..F_{log n}`
+  (witness, absorbed); squeeze `α`; read `K_0..K_{d−2}`; squeeze `γ` and truncate it in-circuit to 128 bits
+  under `truncated-challenges` (`utils::truncate`, same low 16 bytes as native `truncate`). Scalars:
+  `β⃗* = β⃗ + α·δ⃗`, `e' = F(α)(1 − γ) + (γ² − γ)K(γ)` (Horner), PI and challenges `a + γ(b − a)`.
+  Commitments: per point (one per fflonk chunk) `D = C + (−acc)` (complete addition), `[γ]D` with
+  `msm_by_bounded_scalars` (bound 128 bits → one GLV base; 255 bits otherwise → two), `acc + [γ]D` (complete
+  addition). `C = acc` (`D = O`) and identity points are handled by the complete addition and by the MSM's
+  identity-base select; no exceptional case reachable.
+- The accumulator is a witness; binding it is the caller's job (C.3: hash of `as_public_input`).
+
+### How to reproduce
+From the repo root:
+```
+cargo test --release -p midnight-circuits --lib folding_gadget                                   # 3 tests
+cargo test --release -p midnight-circuits --features truncated-challenges --lib folding_gadget
+cargo test --release -p midnight-circuits --lib folding_gadget_costs -- --ignored --nocapture   # rows
+cargo test --release -p midnight-circuits --features truncated-challenges --lib folding_gadget_costs -- --ignored --nocapture
+```
+
+### Results
+Tests (MockProver; BLS12-381 self-emulation, fflonk `T_MAX = 8` over KZG; inner relation = C.1's
+`SquareCircuit` at k = 6, `d_total = 4`, `c_var = 2`), all pass with and without `truncated-challenges`
+(≈10 s, 1.1 GB RSS):
+
+| Test | Checks |
+|---|---|
+| `folding_gadget_init` | gadget `init` of instance 0 = native `Accumulator::init` (all points and scalars, as public input) |
+| `folding_gadget_fold` | instance 2 folded into the accumulator of init(0)+fold(1) (non-zero `e`, non-trivial `F`): gadget = native `Accumulator::fold` = prover's `ProverAccumulator::fold` |
+| `folding_gadget_tampered` | `F_1 + 1`, `K_0 + 1`, or the fresh phase-1 point replaced by the generator: circuit satisfied with the native verifier's output on the tampered data and **unsatisfied** with the honest accumulator |
+
+Suite: `midnight-circuits verifier` ok with and without `truncated-challenges` (6 passed, 1 ignored =
+the cost test); workspace examples build ok; `midnight-proofs` ok (75 passed); `midnight-zk-stdlib` known
+failures only (`check_vk_cred_enrollment`, `check_vk_cred_full`, `public_inputs_test`); no goldenfile/VK
+changed.
+
+Notion used by the negative test: the folding verifier has no rejecting path (as natively: soundness
+comes from the decider, C.1 tests show it rejects), so "tampered input ⇒ different output, identical to
+the native verifier's" is the right check.
+
+Rows (cost model, no witnesses). Circuit = read fresh instance + assign accumulator + `fold` + one
+Poseidon hash of the output accumulator; verifier-gadget test configuration (5 arithmetic columns,
+16-bit decomposition table, which forces the reported `k = 17` even for tiny circuits; `k` is therefore
+not meaningful here, rows are). IVC rows are a **synthetic** shape with the IVC counts (`c_var` points,
+`log n = 16`, `d_total = 13`, `|PI| = 2`, `nb_theta = 16`, `nb_y = 50`): the gadget's cost only depends on
+these counts; the replay uses exactly `parse_trace`'s transcript operations. Building the actual IVC step
+circuit is C.3.
+
+| rows | test rel., trunc. | test rel., full γ | IVC `T_MAX` 8, trunc. | IVC `T_MAX` 8, full γ | IVC `T_MAX` 16, trunc. |
+|---|---|---|---|---|---|
+| `c_var` | 2 | 2 | 5 | 5 | 3 |
+| read fresh instance (transcript replay) | 361 | 361 | 1,227 | 1,227 | 1,031 |
+| assign accumulator | 99 | 99 | 283 | 283 | 205 |
+| `fold` without commitments (transcript + scalars) | 799 | 688 | 2,292 | 2,181 | 2,056 |
+| commitment folding | 20,043 | 25,613 | 49,566 | 63,491 | 29,884 |
+| — per commitment | **10,021** | 12,806 | **9,913** | 12,698 | 9,961 |
+| hash output accumulator (Poseidon, once) | 357 | 357 | 1,271 | 1,271 | 1,153 |
+| **whole fold circuit** | 21,659 | 27,118 | **54,639** | 68,453 | 34,329 |
+| ablation: circuit without commitment folding | 1,616 | 1,505 | 5,073 | 4,962 | 4,445 |
+| `init` (replaces assign + fold) | 143 | 143 | 341 | 341 | 223 |
+| optimistic commitment folding (plan 5.5) | 22,222 | 24,846 | 48,662 | 59,158 | 31,002 |
+
+Comparison with C.0 (`T_MAX = 8`, truncated γ):
+
+| term | C.0 estimate | C.2 measured |
+|---|---|---|
+| per commitment `acc + [γ](C − acc)` | 9,300 | 9,913 (+6.6%) |
+| commitment folding, 5 points | 46,500 | 49,566 |
+| fresh commitments + F, K, challenges through transcripts | 95·5 + 12·(16 + 13 + 16 + 50) ≈ 1,600 | replay 1,227 + fold transcript/scalars 2,292 = 3,519 (includes absorbing the 88 accumulator scalars and 5 points into the folding transcript) |
+| hashing accumulator in and out | 95·10 + 12·2·88 ≈ 3,060 | 1,271 per hash → ≈ 2,540 |
+| vk, PI, genesis select, scalar folding, transition | 5,000 | not built (C.3); scalar folding is inside the 2,292 |
+| total | ≈ 56,100 | 54,639 measured + 2nd hash ≈ 55,900 before C.3's vk/PI/select/transition |
+
+### Interpretation
+- The gadget equals the native verifier bit for bit (all points and scalars, both feature sets), so the
+  per-step fresh-transcript design of C.1 carries over unchanged; nothing in the protocol had to change.
+- Commitment folding is **91%** of the fold circuit at `T_MAX = 8` (49.6k of 54.6k). One commitment costs
+  9.9k rows, ≈600 more than C.0's 9,300: C.0 counted only the windowed MSM (one ladder + one base), not the
+  two complete additions (`C − acc`, `acc + [γ]D`) and the MSM's identity-base select; this split is
+  inferred, not measured separately. Truncation saves ≈2,800 rows per commitment (12.7k → 9.9k), exactly
+  one GLV base, as predicted.
+- Everything else is ≈5k rows, cheaper than C.0's 9.6k "rest", mainly because hashing a point costs
+  far less than 95 rows in the sponge (the whole accumulator, 5 points + 88 scalars, hashes in 1,271
+  rows) — though C.0's 5,000 "misc" term is not built yet.
+- Projection for C.3 (`T_MAX = 8`): 54.6k + one more accumulator hash (1.3k) + `init` path for genesis
+  (0.3k) + select between init and fold (≈ 5 points + 93 scalars) + vk/PI + Poseidon transition (small)
+  ≈ **57–59k rows < 65,536**, so `k = 16` should hold, with ≈10% margin, if the ZkStdLib configuration's
+  ECC rows are close to this test configuration's (C.3 will tell; fallback per C.0: `T_MAX = 16`,
+  −19.7k rows measured here).
+- Optimistic check (plan 5.5): −904 rows (−1.8%) at `c_var = 5`, +1.1k at `c_var = 3`, +2.2k at `c_var = 2`;
+  matches the plan's "wash" verdict. Not worth the extra protocol (witnessed points, extra squeezes, a
+  final-verifier subgroup argument). Kept only as a measured ablation in `folding_cost.rs`.
+
+### Deviations from the plan, open problems
+- `cf33413e`'s `FoldingGadget` kept folded commitments as lazy MSMs with `L₀(γ)·acc + L₁(γ)·C`
+  (two bases, `1 − γ` full width); replaced by `acc + [γ](C − acc)` (one 128-bit base) as the plan asks.
+  Its trivial (identity) accumulator is replaced by C.1's genesis `init`.
+- Subgroup checks out of scope (user decision); all points assigned without subgroup check.
+- IVC-shape rows are synthetic (counts only); the real IVC step circuit, its `k` and the vk/PI/
+  genesis-select/transition terms are C.3. The cost configuration is the verifier-gadget test's, not
+  ZkStdLib's.
+- The gadget requires `S::PCS::AssignedCommitment = AssignedKZGMultiCommitment<S>` (true for KZG and
+  fflonk over KZG) to reach the curve points of a commitment.
+- Open for C.3: genesis select (`init` vs `fold` in one circuit: compute both and select, or select the
+  inputs); which encoding of the accumulator to hash (`as_public_input` is ready); how the ZkStdLib step
+  circuit's committed-instance column is handled (folding does not support committed instances, C.1).
