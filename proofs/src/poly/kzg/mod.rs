@@ -36,7 +36,7 @@ use rand_core::OsRng;
 
 use crate::{
     poly::{
-        Coeff, Error, Polynomial, PolynomialRepresentation, ProverQuery,
+        Coeff, CommitPolynomial, Error, Polynomial, ProverQuery,
         commitment::PolynomialCommitmentScheme,
         kzg::{
             commitment::NB_POLYS_PREFIX_BYTES,
@@ -117,9 +117,9 @@ impl<E: KZGEngine> PolynomialCommitmentScheme<E::Fr> for KZGCommitmentScheme<E> 
         params.verifier_params()
     }
 
-    fn commit_many<B: PolynomialRepresentation>(
+    fn commit_many(
         params: &Self::Parameters,
-        polynomials: &[&Polynomial<E::Fr, B>],
+        polynomials: &[CommitPolynomial<E::Fr>],
         labels: &[PolynomialLabel],
     ) -> Self::Commitment {
         assert_eq!(
@@ -129,14 +129,14 @@ impl<E: KZGEngine> PolynomialCommitmentScheme<E::Fr> for KZGCommitmentScheme<E> 
         );
         PolynomialLabel::assert_distinct(labels);
 
-        let bases = params.bases::<B>();
         KZGMultiCommitment(
             (polynomials.par_iter().zip(labels.par_iter()))
                 .map(|(polynomial, label)| {
-                    let size = polynomial.values.len();
-                    assert!(bases.len() >= size);
+                    let bases = params.bases(polynomial.basis);
+                    let values = &polynomial.values;
+                    assert!(bases.len() >= values.len());
                     KZGCommitment::Simple(
-                        commit_msm::<E::G1Affine>(&polynomial.values, &bases[..size]),
+                        commit_msm::<E::G1Affine>(values, &bases[..values.len()]),
                         label.clone(),
                     )
                 })
@@ -563,7 +563,7 @@ mod tests {
 
     use crate::{
         poly::{
-            Coeff, EvaluationDomain, PolynomialLabel,
+            EvaluationDomain, PolynomialLabel,
             commitment::{Guard, PolynomialCommitmentScheme},
             kzg::{
                 KZGCommitmentScheme, KZGEngine,
@@ -601,7 +601,7 @@ mod tests {
         type T = CircuitTranscript<Blake2bState>;
 
         let params: ParamsKZG<Bls12> = ParamsKZG::unsafe_setup(4, OsRng);
-        let commitment = PCS::commit_many::<Coeff>(&params, &[], &[]);
+        let commitment = PCS::commit_many(&params, &[], &[]);
         assert!(commitment.0.is_empty());
 
         let fresh_challenge: Fq = T::init().squeeze_challenge();

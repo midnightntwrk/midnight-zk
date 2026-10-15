@@ -53,9 +53,9 @@ use utils::{cached_roots, compute_g};
 
 use crate::{
     poly::{
-        Error, Polynomial, PolynomialLabel,
+        CommitPolynomial, Error, PolynomialLabel,
         PolynomialLabel::Collection,
-        PolynomialRepresentation, ProverQuery, VerifierQuery,
+        ProverQuery, VerifierQuery,
         commitment::{InterleavedCommit, PolynomialCommitmentScheme},
     },
     transcript::{Hashable, Sampleable, Transcript, TranscriptField},
@@ -107,9 +107,9 @@ where
         PCS::get_verifier_params(params.borrow())
     }
 
-    fn commit_many<B: PolynomialRepresentation>(
+    fn commit_many(
         params: &Self::Parameters,
-        polynomials: &[&Polynomial<F, B>],
+        polynomials: &[CommitPolynomial<F>],
         labels: &[PolynomialLabel],
     ) -> Self::Commitment {
         let g_labels = Self::chunk_labels(labels);
@@ -318,7 +318,8 @@ mod tests {
     use super::{Fflonk, params::ParamsFflonkKZG};
     use crate::{
         poly::{
-            Error, EvaluationDomain, FftDomain, PolynomialLabel, ProverQuery, VerifierQuery,
+            CommitPolynomial, Error, EvaluationDomain, FftDomain, PolynomialLabel, ProverQuery,
+            VerifierQuery,
             commitment::{Guard, PolynomialCommitmentScheme},
             kzg::{KZGCommitmentScheme, params::ParamsKZG},
         },
@@ -343,7 +344,11 @@ mod tests {
         let polys: Vec<_> = (0..2)
             .map(|_| domain.coeff_from_vec((0..1 << k).map(|_| Fq::random(OsRng)).collect()))
             .collect();
-        let commitment = PCS::commit_many(&params, &polys.iter().collect::<Vec<_>>(), &labels);
+        let commitment = PCS::commit_many(
+            &params,
+            &polys.iter().cloned().map(CommitPolynomial::new).collect::<Vec<_>>(),
+            &labels,
+        );
 
         let (mut seen_lt, mut seen_gt) = (false, false);
         while !(seen_lt && seen_gt) {
@@ -391,7 +396,11 @@ mod tests {
         let polys: Vec<_> = (0..2)
             .map(|_| domain.coeff_from_vec((0..1 << k).map(|_| Fq::random(OsRng)).collect()))
             .collect();
-        let commitment = PCS::commit_many(&params, &polys.iter().collect::<Vec<_>>(), &labels);
+        let commitment = PCS::commit_many(
+            &params,
+            &polys.iter().cloned().map(CommitPolynomial::new).collect::<Vec<_>>(),
+            &labels,
+        );
 
         let x = Fq::random(OsRng).square();
         let queries = [
@@ -404,8 +413,8 @@ mod tests {
     }
 
     /// Commits to `nb_polys` sparse polynomials of `2^k` rows, given in
-    /// Lagrange form, in its delta forms and in coefficient form, and checks
-    /// that the commitments agree.
+    /// Lagrange form, in its delta forms, in coefficient form and in a mix of
+    /// them, and checks that the commitments agree.
     fn assert_lagrange_matches_coeff(params: &ParamsFflonkKZG<Bls12, 2>, k: u32, nb_polys: usize) {
         #[allow(clippy::upper_case_acronyms)]
         type PCS = Fflonk<Kzg, 2>;
@@ -430,19 +439,30 @@ mod tests {
         let delta: Vec<_> = lagrange.iter().map(|p| p.to_delta()).collect();
         let double_delta: Vec<_> = lagrange.iter().map(|p| p.to_double_delta()).collect();
         let labels: Vec<_> = (0..nb_polys).map(PolynomialLabel::Advice).collect();
-        let expected = PCS::commit_many(params, &coeff.iter().collect::<Vec<_>>(), &labels);
+        let commit_all =
+            |polys: Vec<CommitPolynomial<Fq>>| PCS::commit_many(params, &polys, &labels);
+        let expected = commit_all(coeff.iter().cloned().map(CommitPolynomial::new).collect());
         assert_eq!(
-            PCS::commit_many(params, &lagrange.iter().collect::<Vec<_>>(), &labels),
+            commit_all(lagrange.iter().cloned().map(CommitPolynomial::new).collect()),
             expected
         );
         assert_eq!(
-            PCS::commit_many(params, &delta.iter().collect::<Vec<_>>(), &labels),
+            commit_all(delta.iter().cloned().map(CommitPolynomial::new).collect()),
             expected
         );
         assert_eq!(
-            PCS::commit_many(params, &double_delta.iter().collect::<Vec<_>>(), &labels),
+            commit_all(double_delta.iter().cloned().map(CommitPolynomial::new).collect()),
             expected
         );
+        let mixed = (0..nb_polys)
+            .map(|i| match i % 4 {
+                0 => CommitPolynomial::new(coeff[i].clone()),
+                1 => CommitPolynomial::new(lagrange[i].clone()),
+                2 => CommitPolynomial::new(delta[i].clone()),
+                _ => CommitPolynomial::new(double_delta[i].clone()),
+            })
+            .collect();
+        assert_eq!(commit_all(mixed), expected);
     }
 
     #[test]

@@ -189,10 +189,9 @@ where
                         &instance.instance_values,
                         &mult_blinds,
                     )?;
-                    argument::prover::Committed::commit::<PCS, _, _>(
+                    argument::prover::Committed::commit::<PCS, _>(
                         params,
                         phase1_polys_map(advice_polys, &multiplicities)?,
-                        Polynomial::to_delta,
                         &mut t,
                     )?;
                     Ok(())
@@ -202,10 +201,9 @@ where
         });
         let multiplicities =
             compute_multiplicities(&advice_polys, &instance.instance_values, &mult_blindings)?;
-        let committed = argument::prover::Committed::commit::<PCS, T, _>(
+        let committed = argument::prover::Committed::commit::<PCS, T>(
             params,
             phase1_polys_map(advice_polys, &multiplicities)?,
-            Polynomial::to_delta,
             transcript,
         )?;
         (multiplicities, committed)
@@ -371,12 +369,7 @@ where
                         phase1_committed.polys_of(&advice_labels),
                         &instance.instance_values,
                     )?;
-                    argument::prover::Committed::commit::<PCS, _, _>(
-                        params,
-                        polys_map,
-                        Polynomial::to_double_delta,
-                        &mut t,
-                    )?;
+                    argument::prover::Committed::commit::<PCS, _>(params, polys_map, &mut t)?;
                     Ok(())
                 },
                 criterion::BatchSize::LargeInput,
@@ -389,12 +382,7 @@ where
             phase1_committed.polys_of(&advice_labels),
             &instance.instance_values,
         )?;
-        argument::prover::Committed::commit::<PCS, T, _>(
-            params,
-            polys_map,
-            Polynomial::to_double_delta,
-            transcript,
-        )?
+        argument::prover::Committed::commit::<PCS, T>(params, polys_map, transcript)?
     };
 
     // Obtain challenge for keeping all separate gates linearly independent

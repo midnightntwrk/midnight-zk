@@ -7,7 +7,7 @@
 
 use std::{
     borrow::Borrow,
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     fmt::Debug,
     io,
     sync::{Arc, RwLock},
@@ -21,8 +21,7 @@ use rayon::prelude::*;
 
 use crate::{
     poly::{
-        Coeff, LagrangeCoeff, LagrangeDeltaCoeff, LagrangeDoubleDeltaCoeff, Polynomial,
-        PolynomialBasis, PolynomialLabel, PolynomialRepresentation,
+        CommitPolynomial, PolynomialBasis, PolynomialLabel,
         commitment::InterleavedCommit,
         kzg::{
             KZGCommitmentScheme, KZGEngine, commit_msm,
@@ -128,7 +127,7 @@ where
             residue_bases: Default::default(),
         };
         for (t, i) in Self::residues() {
-            params.residue_bases::<LagrangeDoubleDeltaCoeff>(t, n, i);
+            params.residue_bases(PolynomialBasis::LagrangeDoubleDelta, t, n, i);
         }
         params
     }
@@ -139,31 +138,27 @@ where
     }
 
     /// The bases of the [`Residue`] `i` modulo `t`, for committing to
-    /// `X^i f(X^t)` from the `n` values of `f` in the representation `B`.
+    /// `X^i f(X^t)` from the `n` values of `f` in the basis `basis`.
     ///
     /// # Panics
     ///
-    /// If `B` is the extended Lagrange basis, if `t·n` is larger than the SRS,
-    /// or if `B` is Lagrange or one of its delta forms and `n` is not a power
-    /// of two.
-    fn residue_bases<B: PolynomialRepresentation>(
+    /// If `basis` is the extended Lagrange basis, if `t·n` is larger than the
+    /// SRS, or if `basis` is Lagrange or one of its delta forms and `n` is not
+    /// a power of two.
+    fn residue_bases(
         &self,
+        basis: PolynomialBasis,
         t: usize,
         n: usize,
         i: usize,
     ) -> Arc<[E::G1Affine]> {
-        let residue = Residue {
-            basis: B::BASIS,
-            t,
-            n,
-            i,
-        };
+        let residue = Residue { basis, t, n, i };
         if let Some(bases) =
             self.residue_bases.read().expect("residue bases lock poisoned").get(&residue)
         {
             return bases.clone();
         }
-        let bases: Arc<[_]> = match B::BASIS {
+        let bases: Arc<[_]> = match basis {
             PolynomialBasis::Coeff => {
                 assert!(
                     t * n <= self.kzg.g.len(),
@@ -173,13 +168,17 @@ where
             }
             PolynomialBasis::Lagrange => {
                 assert!(n.is_power_of_two(), "no Lagrange residue bases of size {n}");
-                g_to_lagrange(&self.residue_bases::<Coeff>(t, n, i), n.ilog2()).into()
+                g_to_lagrange(
+                    &self.residue_bases(PolynomialBasis::Coeff, t, n, i),
+                    n.ilog2(),
+                )
+                .into()
             }
             PolynomialBasis::LagrangeDelta => {
-                suffix_sum(&self.residue_bases::<LagrangeCoeff>(t, n, i)).into()
+                suffix_sum(&self.residue_bases(PolynomialBasis::Lagrange, t, n, i)).into()
             }
             PolynomialBasis::LagrangeDoubleDelta => {
-                suffix_sum(&self.residue_bases::<LagrangeDeltaCoeff>(t, n, i)).into()
+                suffix_sum(&self.residue_bases(PolynomialBasis::LagrangeDelta, t, n, i)).into()
             }
             basis => panic!("no residue bases in the {basis:?} basis"),
         };
@@ -200,9 +199,9 @@ where
         writer.write_all(&LOG2_T_MAX.to_le_bytes())?;
         let n = self.kzg.g.len() >> LOG2_T_MAX;
         for (t, i) in Self::residues() {
-            let delta = self.residue_bases::<LagrangeDeltaCoeff>(t, n, i);
+            let delta = self.residue_bases(PolynomialBasis::LagrangeDelta, t, n, i);
             write_points(&delta, writer, format)?;
-            let double_delta = self.residue_bases::<LagrangeDoubleDeltaCoeff>(t, n, i);
+            let double_delta = self.residue_bases(PolynomialBasis::LagrangeDoubleDelta, t, n, i);
             write_points(&double_delta, writer, format)?;
         }
         Ok(())
@@ -249,9 +248,9 @@ impl<E: KZGEngine, const LOG2_T_MAX: u32> InterleavedCommit<E::Fr, LOG2_T_MAX>
     /// Building them is costly: see [`ParamsFflonkKZG`].
     type Parameters = ParamsFflonkKZG<E, LOG2_T_MAX>;
 
-    fn commit_interleaved<B: PolynomialRepresentation>(
+    fn commit_interleaved(
         params: &<Self as InterleavedCommit<E::Fr, LOG2_T_MAX>>::Parameters,
-        chunks: &[&[&Polynomial<E::Fr, B>]],
+        chunks: &[&[CommitPolynomial<E::Fr>]],
         labels: &[PolynomialLabel],
     ) -> Self::Commitment {
         assert_eq!(
@@ -262,15 +261,22 @@ impl<E: KZGEngine, const LOG2_T_MAX: u32> InterleavedCommit<E::Fr, LOG2_T_MAX>
         PolynomialLabel::assert_distinct(labels);
 
         // Build each missing residue basis once, before the chunks ask for it
-        // concurrently.
-        let residues: HashSet<_> = (chunks.iter())
-            .flat_map(|chunk| {
-                let (t, n) = (chunk.len().next_power_of_two(), chunk[0].len());
-                (0..chunk.len()).map(move |i| (t, n, i))
-            })
-            .collect();
-        residues.par_iter().for_each(|&(t, n, i)| {
-            params.residue_bases::<B>(t, n, i);
+        // concurrently. The bases of a residue are built from one another, so
+        // they are built in sequence.
+        let mut residues: HashMap<_, Vec<_>> = HashMap::new();
+        for chunk in chunks {
+            let (t, n) = (chunk.len().next_power_of_two(), chunk[0].values.len());
+            for (i, poly) in chunk.iter().enumerate() {
+                let bases = residues.entry((t, n, i)).or_default();
+                if !bases.contains(&poly.basis) {
+                    bases.push(poly.basis);
+                }
+            }
+        }
+        residues.par_iter().for_each(|(&(t, n, i), bases)| {
+            for &basis in bases {
+                params.residue_bases(basis, t, n, i);
+            }
         });
 
         KZGMultiCommitment(
@@ -286,25 +292,24 @@ impl<E: KZGEngine, const LOG2_T_MAX: u32> InterleavedCommit<E::Fr, LOG2_T_MAX>
 /// Commitment to `Σ_i X^i f_i(X^t)`, for `chunk` the polynomials `f_i` and
 /// `t` the next power of two of their number: one MSM of the values of every
 /// `f_i` against the bases of its residue.
-fn commit_chunk<E, B, const LOG2_T_MAX: u32>(
+fn commit_chunk<E, const LOG2_T_MAX: u32>(
     params: &ParamsFflonkKZG<E, LOG2_T_MAX>,
-    chunk: &[&Polynomial<E::Fr, B>],
+    chunk: &[CommitPolynomial<E::Fr>],
 ) -> E::G1
 where
     E: MultiMillerLoop + Debug,
     E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
-    B: PolynomialRepresentation,
 {
     let t = chunk.len().next_power_of_two();
-    let n = chunk[0].len();
+    let n = chunk[0].values.len();
     assert!(
-        chunk.iter().all(|poly| poly.len() == n),
+        chunk.iter().all(|poly| poly.values.len() == n),
         "the polynomials of a chunk have different lengths"
     );
     let (scalars, points): (Vec<E::Fr>, Vec<E::G1Affine>) = (chunk.par_iter().enumerate())
         .map(|(i, poly)| {
-            let bases = params.residue_bases::<B>(t, n, i);
-            (poly.values.to_vec(), bases.to_vec())
+            let bases = params.residue_bases(poly.basis, t, n, i);
+            (poly.values.clone(), bases.to_vec())
         })
         .reduce(Default::default, |(mut scalars, mut points), (s, p)| {
             scalars.extend(s);

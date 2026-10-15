@@ -11,8 +11,8 @@ use crate::{
         argument::{self, Evaluation},
     },
     poly::{
-        Coeff, FftDomain, Polynomial, PolynomialLabel, PolynomialRepresentation, ProverQuery,
-        Rotation, commitment::PolynomialCommitmentScheme,
+        Coeff, CommitPolynomial, FftDomain, LagrangeCoeff, Polynomial, PolynomialLabel,
+        PolynomialRepresentation, ProverQuery, Rotation, commitment::PolynomialCommitmentScheme,
     },
     transcript::{Hashable, Transcript},
     utils::arithmetic::eval_polynomial,
@@ -72,25 +72,59 @@ impl<F: PrimeField, B: PolynomialRepresentation> Committed<F, B> {
     }
 }
 
-impl<F: PrimeField, B: PolynomialRepresentation> Committed<F, B> {
-    /// Commits to the polynomials of `polys_map` in the representation given by
-    /// `encode`. The group keeps them as given.
-    pub fn commit<PCS, T, E>(
+impl<F: PrimeField> Committed<F, LagrangeCoeff> {
+    /// Commits to the polynomials of `polys_map`, each in the basis its values
+    /// are the sparsest in: the delta forms zero the rows where multiplicities,
+    /// accumulators, helpers and trash polynomials are constant, and those
+    /// where the logup aggregators are linear. The group keeps them in Lagrange
+    /// form.
+    pub fn commit<PCS, T>(
         params: &PCS::Parameters,
-        polys_map: BTreeMap<PolynomialLabel, Polynomial<F, B>>,
-        encode: impl Fn(&Polynomial<F, B>) -> Polynomial<F, E> + Send + Sync,
+        polys_map: BTreeMap<PolynomialLabel, Polynomial<F, LagrangeCoeff>>,
         transcript: &mut T,
     ) -> Result<Self, Error>
     where
         PCS: PolynomialCommitmentScheme<F>,
         PCS::Commitment: Hashable<T::Hash>,
         T: Transcript,
-        E: PolynomialRepresentation,
     {
         let group = Self::from_map(polys_map);
-        let encoded: Vec<_> = group.polys.par_iter().map(encode).collect();
-        let commitment =
-            PCS::commit_many(params, &encoded.iter().collect::<Vec<_>>(), &group.labels);
+        let polys: Vec<_> = (group.labels.par_iter().zip(group.polys.par_iter()))
+            .map(|(label, poly)| match label {
+                PolynomialLabel::Advice(_) => CommitPolynomial::new(poly.clone()),
+                PolynomialLabel::LogupMultiplicities(_)
+                | PolynomialLabel::PermutationAccumulator(_)
+                | PolynomialLabel::LogupHelper(..)
+                | PolynomialLabel::Trash(_) => CommitPolynomial::new(poly.to_delta()),
+                PolynomialLabel::LogupAggregator(_) => {
+                    CommitPolynomial::new(poly.to_double_delta())
+                }
+                label => panic!("no commit basis for {label}"),
+            })
+            .collect();
+        let commitment = PCS::commit_many(params, &polys, &group.labels);
+
+        PCS::write_commitment(transcript, &commitment)?;
+
+        Ok(group)
+    }
+}
+
+impl<F: PrimeField> Committed<F, Coeff> {
+    /// Commits to the coefficient-form polynomials of `polys_map`, as they are.
+    pub(crate) fn commit_coeff<PCS, T>(
+        params: &PCS::Parameters,
+        polys_map: BTreeMap<PolynomialLabel, Polynomial<F, Coeff>>,
+        transcript: &mut T,
+    ) -> Result<Self, Error>
+    where
+        PCS: PolynomialCommitmentScheme<F>,
+        PCS::Commitment: Hashable<T::Hash>,
+        T: Transcript,
+    {
+        let group = Self::from_map(polys_map);
+        let polys: Vec<_> = group.polys.iter().cloned().map(CommitPolynomial::new).collect();
+        let commitment = PCS::commit_many(params, &polys, &group.labels);
 
         PCS::write_commitment(transcript, &commitment)?;
 
