@@ -565,6 +565,27 @@ mod test {
         assert_eq!(restored_stepwise.values, a.values);
     }
 
+    /// Precomputing the bases of a chunk caches every residue it needs: the
+    /// Lagrange ones derive from the coefficient ones, the delta ones from the
+    /// Lagrange ones.
+    #[test]
+    fn test_precompute_interleaved_bases() {
+        use midnight_curves::{Bls12, Fq};
+
+        use crate::poly::{PolynomialBasis, commitment::InterleavedCommit};
+
+        let params: ParamsKZG<Bls12> = ParamsKZG::unsafe_setup(6, OsRng);
+        let chunk = [
+            PolynomialBasis::Coeff,
+            PolynomialBasis::Lagrange,
+            PolynomialBasis::LagrangeDelta,
+        ];
+        <KZGCommitmentScheme<Bls12> as InterleavedCommit<Fq>>::precompute_interleaved_bases(
+            &params, 16, &chunk,
+        );
+        assert_eq!(params.residue_bases.read().unwrap().len(), 6);
+    }
+
     #[test]
     fn test_parameter_serialisation_roundtrip() {
         const K: u32 = 4;

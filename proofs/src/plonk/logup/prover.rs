@@ -138,7 +138,7 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ComputedMultiplicities<F> {
     /// handles transcript ordering and can batch the FFTs.
     ///
     /// The input and table expressions are compressed with `theta` here, and
-    /// `multiplicities` are those of [`Self::compute_multiplicities_parallel`].
+    /// `multiplicities` are those of `compute_multiplicities_parallel`.
     ///
     /// `blinding_values` must contain exactly `blinding_factors` random field
     /// elements. They are provided externally so the caller can pre-generate

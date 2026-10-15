@@ -53,7 +53,7 @@ pub use prover::*;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 pub use verifier::*;
 
-use crate::poly::{PolynomialLabel, commitment::PolynomialCommitmentScheme};
+use crate::poly::{PolynomialBasis, PolynomialLabel, commitment::PolynomialCommitmentScheme};
 
 /// This is a verifying key which allows for the verification of proofs for a
 /// particular circuit.
@@ -408,6 +408,27 @@ where
     /// Get the underlying [`VerifyingKey`].
     pub fn get_vk(&self) -> &VerifyingKey<F, CS> {
         &self.vk
+    }
+
+    /// Precomputes whatever `params` need to commit to the polynomials of a
+    /// proof, so that no proof computes it on its first use: the phase1 and
+    /// phase2 groups, the quotient limbs and the committed instances.
+    pub fn precompute_bases(&self, params: &CS::Parameters) {
+        let bases = |mut labels: Vec<PolynomialLabel>| -> Vec<PolynomialBasis> {
+            labels.sort();
+            labels.iter().map(argument::commit_basis).collect()
+        };
+        let phase1 = bases(self.vk.phase1_labels());
+        let phase2 = bases(self.vk.phase2_labels());
+        let quotient = vec![PolynomialBasis::Coeff; self.vk.domain.get_quotient_poly_degree() + 1];
+        let groups: Vec<&[PolynomialBasis]> = vec![
+            &phase1,
+            &phase2,
+            &quotient,
+            #[cfg(feature = "committed-instances")]
+            &[PolynomialBasis::Lagrange],
+        ];
+        CS::precompute_bases(params, self.vk.domain.n as usize, &groups);
     }
 
     /// Gets the total number of bytes in the serialization of `self`
