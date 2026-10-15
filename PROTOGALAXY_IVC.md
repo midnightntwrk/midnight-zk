@@ -349,3 +349,53 @@ folding verifier's input; neither computes a quotient, opens anything or touches
   binary. Consequence: cost-model `size` (goldenfiles, A.3's 4,432 bytes) is not the real fflonk
   proof size; C.4 measures real proof bytes. Not fixed on this branch.
 - `check_vk_cred_enrollment` / `check_vk_cred_full` fail as before (need a `2^20` Filecoin SRS, A.2).
+
+## [C.0] Estimate gate for the folding step circuit
+Date: 2026-10-15   No code; estimate from the A.3 census and B.1 counts.
+
+### What and why
+Before building Phase C, estimate the folding-IVC step circuit (scalar-e Protogalaxy verifier in-circuit,
+no SNARK verifier) and check it beats the baseline (B.1 re-measure: 71,546 rows, `k = 17`).
+Plan revision (2026-10-15): `T_MAX ∈ {8, 16}` only; one-shot Protogalaxy (B.3–B.5) dropped: no IVC step
+produces a full proof, only phase-1/2 commitments plus the folding messages; the only full proof is the
+final decider.
+
+### Model
+```
+rows ≈ c_var·M                       # [γ](C_i − acc_i); M = 9,300 (128-bit γ) or 12,100 (full-width γ)
+     + 95·3·c_var                    # hash acc in/out + fresh commitments
+     + 12·2·S                        # hash the accumulator scalars in/out
+     + 12·(log n + d + nb_theta + nb_y)   # F, K coefficients + challenges through the transcript
+     + 5,000                         # vk, PI, genesis select, scalar folding, transition (N = 1)
+S = |PI| + nb_theta + nb_y + 3 + log n + 1 = 2 + 16 + 50 + 3 + 16 + 1 = 88
+```
+Inputs: `c_var` 5 (`T_MAX = 8`) / 3 (`T_MAX = 16`) from A.3; `nb_theta = 16`, `nb_y = 50` (B.1);
+`log n = 16` (target `k`); `d ≈ 8` (identity degree 5 plus challenge degree, exact value computed in C.1).
+The ladder/base constants are the 2026-08 measurements of `windowed_msm` (unchanged since).
+
+### Results
+| `T_MAX` | `c_var` | γ | commitment folding | rest | total rows | `k` |
+|---|---|---|---|---|---|---|
+| 8 | 5 | 128-bit | 46,500 | 9,617 | **≈56,100** | 16 |
+| 16 | 3 | 128-bit | 27,900 | 9,047 | **≈36,900** | 16 |
+| 8 | 5 | full | 60,500 | 9,617 | ≈70,100 | 17 |
+| 16 | 3 | full | 36,300 | 9,047 | ≈45,300 | 16 |
+| baseline (SNARK verifier) | – | – | – | – | 71,546 | 17 |
+
+`k = 15` is out of reach in all rows (the decomposition table alone is ≈30.7k rows at `k = 15` and the
+circuit is > 32,768). The SRS for `k = 16` is `2^19` (`T_MAX = 8`) or `2^20` (`T_MAX = 16`); both exist.
+
+### Interpretation
+- The gate passes: with truncated γ (the IVC example already requires `truncated-challenges`) both
+  choices land at `k = 16`, half the baseline's domain. Commitment folding is 83% (`T_MAX = 8`) or 76%
+  (`T_MAX = 16`) of the circuit; everything else together is < 10k rows.
+- **Choice: `T_MAX = 8`** (branch default; 16 does not change `k`). Margin to `2^16` is ≈9.4k rows (14%),
+  inside the uncertainty of the "5,000 rest" term; if C.2 measures > 65.5k rows, switch to `T_MAX = 16`
+  (−18.6k rows) rather than going to `k = 17`.
+- Without truncation, `T_MAX = 8` would hit `k = 17` and lose the domain advantage, so 128-bit γ matters.
+- The optimistic scalar-multiplication check (plan 5.5) would save ≈1.5k rows at `c_var = 5` (−3%);
+  kept as an optional ablation in C.2.
+
+### Deviations from the plan, open problems
+- Baseline is `k = 17`, not 16 (A.3), so the comparison is `k = 16` folding vs `k = 17` SNARK verifier.
+- `d` is an estimate; C.1 computes `d_total` exactly.
