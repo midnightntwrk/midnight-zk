@@ -13,7 +13,11 @@
 
 // Util functions of the foreign arithmetic module
 
-use std::ops::{Mul, Rem};
+use std::{
+    collections::HashMap,
+    ops::{Mul, Rem},
+    sync::{LazyLock, Mutex},
+};
 
 use midnight_proofs::{
     circuit::Value,
@@ -63,8 +67,14 @@ pub fn ceil_log2(value: &BI) -> u32 {
 /// if its bit count aligns better with the decomposition chip's parallel
 /// lookup structure (all lookups in a row must use the same bit-length tag).
 fn next_cheapest_power_of_two(nb_parallel_range_checks: usize, max_bit_len: u32, x: &BI) -> BI {
-    let mut solutions = std::collections::HashMap::new();
-    let cost = |solutions: &mut std::collections::HashMap<i32, Vec<Vec<usize>>>, bound: u32| {
+    // The optimal limb sizes only depend on these two parameters, so the table
+    // is shared by all the gates configured with them (and by later proofs).
+    type Solutions = HashMap<i32, Vec<Vec<usize>>>;
+    static TABLES: LazyLock<Mutex<HashMap<(usize, u32), Solutions>>> =
+        LazyLock::new(Default::default);
+    let mut tables = TABLES.lock().unwrap();
+    let solutions = tables.entry((nb_parallel_range_checks, max_bit_len)).or_default();
+    let cost = |solutions: &mut Solutions, bound: u32| {
         compute_optimal_limb_sizes(
             solutions,
             nb_parallel_range_checks,
@@ -76,12 +86,12 @@ fn next_cheapest_power_of_two(nb_parallel_range_checks: usize, max_bit_len: u32,
 
     let base_log = ceil_log2(x);
     let mut best_log = base_log;
-    let mut best_cost = cost(&mut solutions, base_log);
+    let mut best_cost = cost(solutions, base_log);
 
     // Search for a larger power of 2 that is cheaper to range-check.
     // Looking amongst the next 128 powers is more than enough.
     for i in 1..=128 {
-        let c = cost(&mut solutions, base_log + i);
+        let c = cost(solutions, base_log + i);
         if c < best_cost {
             best_cost = c;
             best_log = base_log + i;
