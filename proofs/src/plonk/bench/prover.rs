@@ -1,6 +1,6 @@
 //! Benchmarking utilities for the PLONK prover.
 
-use std::{collections::BTreeMap, hash::Hash, iter};
+use std::{collections::BTreeMap, hash::Hash};
 
 use criterion::BenchmarkGroup;
 use ff::{FromUniformBytes, WithSmallOrderMulGroup};
@@ -25,6 +25,7 @@ use crate::{
         commitment::PolynomialCommitmentScheme,
     },
     transcript::{Hashable, Sampleable, Transcript},
+    utils::arithmetic::eval_polynomial,
 };
 
 /// The polynomials of one argument phase group, keyed by their label.
@@ -468,8 +469,8 @@ where
     };
 
     // Construct the quotient polynomial h(X) = nu(X)/(X^n-1), split it into
-    // limbs and commit to each limb separately.
-    let quotient_limbs = {
+    // limbs and commit to the limbs as one group.
+    let quotient_committed = {
         group.bench_function("Compute quotient poly", |b| {
             b.iter_batched(
                 || transcript.clone(),
@@ -544,17 +545,15 @@ where
     // Evaluate the phase1 and phase2 arguments, if any, at their opening points.
     let phase1_evaluated = phase1_committed.evaluate(cs, &x_rotations, transcript)?;
     let phase2_evaluated = phase2_committed.evaluate(cs, &x_rotations, transcript)?;
+    let mut quotient_evaluated = quotient_committed.evaluate(cs, &x_rotations, transcript)?;
 
-    // h(X) = h_0(X) + x^{n-1} h_1(X) + ..., scaled by (1 - x^n): the
-    // polynomial behind the verifier's quotient commitment, which opens to
-    // -nu(x) at x.
-    let splitting_factor = x.pow_vartime([pk.vk.n() - 1]);
-    let xn = splitting_factor * x;
-    let quotient_poly = iter::successors(Some(xn - F::ONE), |pow| Some(*pow * splitting_factor))
-        .zip(quotient_limbs)
-        .fold(Polynomial::init(0), |acc, (scalar, limb)| {
-            acc.padded_sub(&(limb * scalar))
-        });
+    // h_0(x) is not written to the proof, the verifier derives it.
+    let h0 = PolynomialLabel::QuotientPiece(0);
+    let h0_eval = eval_polynomial(
+        quotient_committed.poly(&h0).expect("a quotient limb h_0"),
+        x,
+    );
+    quotient_evaluated.insert(h0, x, h0_eval);
 
     let instance_labels: Vec<_> = (0..nb_committed_instances)
         .map(|i| [PolynomialLabel::CommittedInstance(i)])
@@ -569,8 +568,8 @@ where
                     &phase0_evaluated,
                     &phase1_evaluated,
                     &phase2_evaluated,
+                    &quotient_evaluated,
                     &x_rotations,
-                    &quotient_poly,
                 );
             })
         });
@@ -581,8 +580,8 @@ where
             &phase0_evaluated,
             &phase1_evaluated,
             &phase2_evaluated,
+            &quotient_evaluated,
             &x_rotations,
-            &quotient_poly,
         )
     };
 

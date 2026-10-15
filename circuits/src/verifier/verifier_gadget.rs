@@ -40,10 +40,12 @@ use crate::{
             eval_expression, lookup::lookup_expressions, permutation::permutation_expressions,
             trash::trash_expressions,
         },
-        pcs::{AssignedCommitment, InCircuitHomomorphicCommitment, InCircuitPCS, VerifierQuery},
+        pcs::{AssignedCommitment, InCircuitPCS, VerifierQuery},
         traces::VerifierTrace,
         transcript_gadget::TranscriptGadget,
-        utils::{evaluate_lagrange_polynomials, inner_product, pow_of_two, square_k_times, sum},
+        utils::{
+            evaluate_lagrange_polynomials, inner_product, mul_add, pow_of_two, square_k_times, sum,
+        },
     },
 };
 
@@ -433,38 +435,6 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         ))
     }
 
-    /// Construct, in-circuit, the commitment to the quotient polynomial
-    ///
-    ///  `(h_0 + x^{n-1} * h_1 + ... + x^{l*(n-1)} * h_l) * (1 - x^n)`,
-    ///
-    /// where `h_k` are commitments to the limbs of the quotient polynomial. It
-    /// is expected to open to `-nu(x)` at `x`.
-    fn compute_quotient_commitment(
-        layouter: &mut impl Layouter<S::F>,
-        scalar_chip: &S::ScalarChip,
-        xn: AssignedNative<S::F>,
-        splitting_factor: AssignedNative<S::F>,
-        quotient_limb_commitments: &[AssignedCommitment<S>],
-    ) -> Result<AssignedCommitment<S>, Error> {
-        let mut splitting_pow =
-            scalar_chip.linear_combination(layouter, &[(-S::F::ONE, xn)], S::F::ONE)?;
-        let (first_com, rest_coms) = quotient_limb_commitments
-            .split_first()
-            .expect("at least one quotient limb commitment");
-
-        let init = {
-            let term = first_com.clone().mul(layouter, scalar_chip, &splitting_pow)?;
-            splitting_pow = scalar_chip.mul(layouter, &splitting_pow, &splitting_factor, None)?;
-            term
-        };
-
-        rest_coms.iter().try_fold(init, |acc, com| {
-            let term = com.clone().mul(layouter, scalar_chip, &splitting_pow)?;
-            splitting_pow = scalar_chip.mul(layouter, &splitting_pow, &splitting_factor, None)?;
-            acc.add(layouter, scalar_chip, term)
-        })
-    }
-
     /// Given a [VerifierTrace], this function computes the opening challenge,
     /// x, and proceeds to verify the algebraic constraints with the claimed
     /// evaluations. This function does not verify the PCS proof.
@@ -496,21 +466,14 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             y,
         } = trace;
 
-        // Read commitment(s) to the quotient polynomial h(X) = nu(X)/(X^n-1) from
-        // the transcript. The prover splits h(X) into `quotient_poly_degree` limbs,
-        // where `quotient_poly_degree = cs_degree - 1`.
-        let nb_quotient_coms = assigned_vk.cs_degree - 1;
-        let limb_commitments = {
-            (0..nb_quotient_coms)
-                .map(|i| {
-                    S::PCS::read_commitment(
-                        &mut transcript,
-                        layouter,
-                        &[PolynomialLabel::QuotientPiece(i)],
-                    )
-                })
-                .collect::<Result<Vec<_>, Error>>()?
-        };
+        // Read the commitment to the quotient polynomial h(X) = nu(X)/(X^n-1) from
+        // the transcript. The prover splits h(X) into `quotient_poly_degree + 1`
+        // limbs, where `quotient_poly_degree = cs_degree - 1`, committed to as one
+        // group.
+        let quotient_labels: Vec<_> =
+            (0..assigned_vk.cs_degree).map(PolynomialLabel::QuotientPiece).collect();
+        let quotient_committed =
+            argument::read_committed(&quotient_labels, layouter, &mut transcript)?;
 
         // Sample x challenge, which is used to ensure the circuit is satisfied with
         // high probability
@@ -587,6 +550,8 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             phase1_committed.evaluate(cs, &x_rotations, layouter, &mut transcript)?;
         let phase2_evaluated =
             phase2_committed.evaluate(cs, &x_rotations, layouter, &mut transcript)?;
+        let mut quotient_evaluated =
+            quotient_committed.evaluate(cs, &x_rotations, layouter, &mut transcript)?;
 
         let phase0_evals = &phase0_evaluated.evals_map;
         let phase1_evals = &phase1_evaluated.evals_map;
@@ -733,7 +698,8 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             .into_iter()
             .for_each(|trash_id| expressions.push(trash_id));
 
-        let splitting_factor = self.scalar_chip.div(layouter, &xn, &x)?;
+        let x_squared = self.scalar_chip.mul(layouter, &x, &x, None)?;
+        let splitting_factor = self.scalar_chip.div(layouter, &xn, &x_squared)?;
 
         // -nu(x): the identities batched with y by Horner's rule, negated.
         let zero: AssignedNative<S::F> = self.scalar_chip.assign_fixed(layouter, S::F::ZERO)?;
@@ -748,13 +714,23 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             ) // acc * y - id
         })?;
 
-        let quotient_commitment = Self::compute_quotient_commitment(
-            layouter,
-            &self.scalar_chip,
-            xn,
-            splitting_factor,
-            &limb_commitments,
-        )?;
+        // h_0(x) is derived from -nu(x) = (1 - x^n) h(x), for
+        // h(x) = h_0(x) + x^{n-2} h_1(x) + ..., so that opening h_0 at it checks
+        // the identities.
+        let higher_limbs = {
+            let mut limb_evals =
+                quotient_evaluated.evals_map.values().skip(1).rev().map(|e| e[0].eval());
+            let last = limb_evals.next().expect("a quotient limb h_1").clone();
+            let horner = limb_evals.try_fold(last, |acc, eval| {
+                mul_add(layouter, &self.scalar_chip, &acc, &splitting_factor, eval)
+            })?;
+            self.scalar_chip.mul(layouter, &horner, &splitting_factor, None)?
+        };
+        let one_minus_xn =
+            self.scalar_chip.linear_combination(layouter, &[(-S::F::ONE, xn)], S::F::ONE)?;
+        let h_eval = self.scalar_chip.div(layouter, &neg_nu_eval, &one_minus_xn)?;
+        let h0_eval = self.scalar_chip.sub(layouter, &h_eval, &higher_limbs)?;
+        quotient_evaluated.insert(PolynomialLabel::QuotientPiece(0), x.clone(), h0_eval);
 
         // Collect queries that are checked in the multi-open argument
         //
@@ -779,12 +755,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                     }
                 },
             ))
-            .chain(iter::once(VerifierQuery::new(
-                &x,
-                &quotient_commitment,
-                PolynomialLabel::Quotient,
-                &neg_nu_eval,
-            )))
+            .chain(quotient_evaluated.queries())
             .collect::<Vec<_>>();
 
         // We are now convinced the circuit is satisfied so long as the

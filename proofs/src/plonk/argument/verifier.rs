@@ -82,6 +82,12 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Committed<
 }
 
 impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<F, CS> {
+    /// Adds the evaluation `eval` at `point` of the group's polynomial `label`,
+    /// one derived rather than read from the proof.
+    pub(crate) fn insert(&mut self, label: PolynomialLabel, point: F, eval: F) {
+        self.evals_map.insert(label, vec![Evaluation { point, eval }]);
+    }
+
     pub(crate) fn queries(&self) -> impl Iterator<Item = VerifierQuery<'_, F, CS>> + Clone {
         self.evals_map.iter().flat_map(|(label, evaluations)| {
             evaluations.iter().map(|evaluation| {
