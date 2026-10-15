@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use ff::{PrimeField, WithSmallOrderMulGroup};
+use ff::{Field, PrimeField, WithSmallOrderMulGroup};
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
@@ -11,8 +11,9 @@ use crate::{
         argument::{self, Evaluation},
     },
     poly::{
-        Coeff, EvaluationDomain, Polynomial, PolynomialLabel, PolynomialRepresentation,
-        ProverQuery, Rotation, commitment::PolynomialCommitmentScheme,
+        Coeff, CommitPoly, EvaluationDomain, LagrangeCoeff, LagrangeDeltaCoeff,
+        LagrangeDoubleDeltaCoeff, Polynomial, PolynomialBasis, PolynomialLabel,
+        PolynomialRepresentation, ProverQuery, Rotation, commitment::PolynomialCommitmentScheme,
     },
     transcript::{Hashable, Transcript},
     utils::arithmetic::eval_polynomial,
@@ -72,29 +73,85 @@ impl<F: WithSmallOrderMulGroup<3>, B: PolynomialRepresentation> Committed<F, B> 
     }
 }
 
-impl<F: PrimeField, B: PolynomialRepresentation> Committed<F, B> {
-    /// Commits to the polynomials of `polys_map` in the representation given by
-    /// `encode`. The group keeps them as given.
-    pub fn commit<CS, T, E>(
+impl<F: PrimeField> Committed<F, LagrangeCoeff> {
+    /// Commits to the polynomials of `polys_map`, each in the basis of
+    /// [`argument::commit_basis`]. The group keeps them in Lagrange form.
+    pub fn commit<CS, T>(
         params: &CS::Parameters,
-        polys_map: BTreeMap<PolynomialLabel, Polynomial<F, B>>,
-        encode: impl Fn(&Polynomial<F, B>) -> Polynomial<F, E> + Send + Sync,
+        polys_map: BTreeMap<PolynomialLabel, Polynomial<F, LagrangeCoeff>>,
         transcript: &mut T,
     ) -> Result<Self, Error>
     where
         CS: PolynomialCommitmentScheme<F>,
         CS::Commitment: Hashable<T::Hash>,
         T: Transcript,
-        E: PolynomialRepresentation,
     {
         let group = Self::from_map(polys_map);
-        let encoded: Vec<_> = group.polys.par_iter().map(encode).collect();
-        let commitment =
-            CS::commit_many(params, &encoded.iter().collect::<Vec<_>>(), &group.labels);
+        let encoded: Vec<_> = (group.labels.par_iter().zip(group.polys.par_iter()))
+            .map(|(label, poly)| Encoded::new(argument::commit_basis(label), poly))
+            .collect();
+        let commitment = CS::commit_many(
+            params,
+            &encoded.iter().map(Encoded::as_commit_poly).collect::<Vec<_>>(),
+            &group.labels,
+        );
 
         CS::write_commitment(transcript, &commitment)?;
 
         Ok(group)
+    }
+}
+
+impl<F: PrimeField> Committed<F, Coeff> {
+    /// Commits to the coefficient-form polynomials of `polys_map`, as they are.
+    pub fn commit_coeff<CS, T>(
+        params: &CS::Parameters,
+        polys_map: BTreeMap<PolynomialLabel, Polynomial<F, Coeff>>,
+        transcript: &mut T,
+    ) -> Result<Self, Error>
+    where
+        CS: PolynomialCommitmentScheme<F>,
+        CS::Commitment: Hashable<T::Hash>,
+        T: Transcript,
+    {
+        let group = Self::from_map(polys_map);
+        let polys: Vec<_> = group.polys.iter().map(CommitPoly::new).collect();
+        let commitment = CS::commit_many(params, &polys, &group.labels);
+
+        CS::write_commitment(transcript, &commitment)?;
+
+        Ok(group)
+    }
+}
+
+/// A polynomial given in Lagrange form, encoded in one of its commit bases.
+enum Encoded<'a, F> {
+    Lagrange(&'a Polynomial<F, LagrangeCoeff>),
+    Delta(Polynomial<F, LagrangeDeltaCoeff>),
+    DoubleDelta(Polynomial<F, LagrangeDoubleDeltaCoeff>),
+}
+
+impl<'a, F: Field> Encoded<'a, F> {
+    /// `poly` encoded in `basis`.
+    ///
+    /// # Panics
+    ///
+    /// If `basis` is not Lagrange or one of its delta forms.
+    fn new(basis: PolynomialBasis, poly: &'a Polynomial<F, LagrangeCoeff>) -> Self {
+        match basis {
+            PolynomialBasis::Lagrange => Self::Lagrange(poly),
+            PolynomialBasis::LagrangeDelta => Self::Delta(poly.to_delta()),
+            PolynomialBasis::LagrangeDoubleDelta => Self::DoubleDelta(poly.to_double_delta()),
+            basis => panic!("no encoding of a Lagrange polynomial in the {basis:?} basis"),
+        }
+    }
+
+    fn as_commit_poly(&self) -> CommitPoly<'_, F> {
+        match self {
+            Self::Lagrange(poly) => CommitPoly::new(*poly),
+            Self::Delta(poly) => CommitPoly::new(poly),
+            Self::DoubleDelta(poly) => CommitPoly::new(poly),
+        }
     }
 }
 

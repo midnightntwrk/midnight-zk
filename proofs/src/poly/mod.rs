@@ -330,6 +330,39 @@ pub struct Polynomial<F, B> {
     pub(crate) _marker: PhantomData<B>,
 }
 
+/// The values of a polynomial in the basis they are given in, for committing.
+#[derive(Clone, Copy, Debug)]
+pub struct CommitPoly<'a, F> {
+    basis: PolynomialBasis,
+    values: &'a [F],
+}
+
+impl<'a, F> CommitPoly<'a, F> {
+    /// The values of `poly`, in its basis.
+    pub fn new<B: PolynomialRepresentation>(poly: &'a Polynomial<F, B>) -> Self {
+        CommitPoly {
+            basis: B::BASIS,
+            values: &poly.values,
+        }
+    }
+
+    /// The basis of the values.
+    pub fn basis(&self) -> PolynomialBasis {
+        self.basis
+    }
+
+    /// The values.
+    pub fn values(&self) -> &'a [F] {
+        self.values
+    }
+}
+
+impl<'a, F, B: PolynomialRepresentation> From<&'a Polynomial<F, B>> for CommitPoly<'a, F> {
+    fn from(poly: &'a Polynomial<F, B>) -> Self {
+        Self::new(poly)
+    }
+}
+
 impl<F: Field> Polynomial<F, LagrangeCoeff> {
     /// Produce the delta encoding of a Lagrange-form polynomial:
     /// b_0 = a_0 ; b_i = a_i - a_{i-1} for all i > 0,

@@ -159,12 +159,8 @@ where
         }
     }
 
-    let phase1_committed = argument::prover::Committed::commit::<CS, T, _>(
-        params,
-        phase1_polys_map,
-        Polynomial::to_delta,
-        transcript,
-    )?;
+    let phase1_committed =
+        argument::prover::Committed::commit::<CS, T>(params, phase1_polys_map, transcript)?;
 
     // Sample theta challenge for keeping lookup columns linearly independent
     let theta: F = transcript.squeeze_challenge();
@@ -256,12 +252,8 @@ where
         }
     }
 
-    let phase2_committed = argument::prover::Committed::commit::<CS, T, _>(
-        params,
-        phase2_polys_map,
-        Polynomial::to_double_delta,
-        transcript,
-    )?;
+    let phase2_committed =
+        argument::prover::Committed::commit::<CS, T>(params, phase2_polys_map, transcript)?;
 
     // Obtain challenge for keeping all separate gates linearly independent
     let y: F = transcript.squeeze_challenge();
@@ -676,7 +668,7 @@ where
         })
         .collect();
 
-    argument::prover::Committed::commit::<CS, T, _>(params, h_limbs, Polynomial::clone, transcript)
+    argument::prover::Committed::commit_coeff::<CS, T>(params, h_limbs, transcript)
 }
 
 /// Blinds the limbs `h_k(X)` of `h(X) = Σ_k X^{k(n-2)} h_k(X)`, of `n-2`
