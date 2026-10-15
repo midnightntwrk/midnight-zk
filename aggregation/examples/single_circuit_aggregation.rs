@@ -33,10 +33,7 @@ use midnight_circuits::{
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::{self, Error},
-    poly::{
-        EvaluationDomain, PolynomialLabel,
-        kzg::{KZGCommitmentScheme, params::ParamsVerifierKZG},
-    },
+    poly::{EvaluationDomain, PolynomialLabel, kzg::params::ParamsVerifierKZG},
     transcript::{CircuitTranscript, Transcript},
 };
 use midnight_zk_stdlib::{
@@ -232,11 +229,12 @@ impl IvcTransition for ProofAggregation {
         let inner_proof_acc = {
             let mut transcript =
                 CircuitTranscript::<PoseidonState<F>>::init_from_bytes(&witness.inner_proof);
-            let dual_msm = plonk::prepare::<
-                F,
-                KZGCommitmentScheme<E>,
-                CircuitTranscript<PoseidonState<F>>,
-            >(ctx.vk.vk(), &[], &[&[], &statement_pis], &mut transcript)
+            let dual_msm = plonk::prepare::<F, DefaultPCS, CircuitTranscript<PoseidonState<F>>>(
+                ctx.vk.vk(),
+                &[],
+                &[&[], &statement_pis],
+                &mut transcript,
+            )
             .expect("off-circuit prepare should succeed");
 
             // Sanity check.

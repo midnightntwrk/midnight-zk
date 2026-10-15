@@ -10,6 +10,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 * `InCircuitPCS::squeeze_evaluation_point`, mirroring `PolynomialCommitmentScheme::squeeze_evaluation_point`, and `InCircuitPCS::OffCircuitPCS`, the off-circuit scheme of the proofs the gadget verifies [#570](https://github.com/midnightntwrk/midnight-zk/pull/570)
 * `CommitmentBases`, the labelled points of an off-circuit commitment [#570](https://github.com/midnightntwrk/midnight-zk/pull/570)
+* in-circuit verifier and dependency of the whole library on DefaultPCS [#575](https://github.com/midnightntwrk/midnight-zk/pull/575)
 * Merkle Mountain Range module (`mmr`): append-only accumulator with membership and prefix proofs [#509](https://github.com/midnightntwrk/midnight-zk/pull/509)
 * `Point`/`AssignedPoint` enums and flat-triple `Msm`/`AssignedMsm` representation to distinguish variable-base from globally-fixed bases [#430](https://github.com/midnightntwrk/midnight-zk/pull/430)
 * `AssignedKZGCommitment` enum as the in-circuit analog of `KZGCommitment` [#430](https://github.com/midnightntwrk/midnight-zk/pull/430)

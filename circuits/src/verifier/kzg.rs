@@ -53,8 +53,9 @@ use crate::{
         pcs::{CommitmentBases, InCircuitHomomorphicCommitment, InCircuitPCS, VerifierQuery},
         transcript_gadget::TranscriptGadget,
         utils::{
-            AssignedBoundedScalar, evaluate_interpolation_quotient, inner_product, mul_add,
-            mul_bounded_scalars, truncated_powers,
+            AssignedBoundedScalar, Coset, evaluate_interpolation_quotient,
+            evaluate_interpolation_quotient_on_cosets, inner_product, mul_add, mul_bounded_scalars,
+            truncated_powers,
         },
     },
 };
@@ -284,6 +285,29 @@ type IntermediateSets<S> = (
     Vec<Vec<AssignedNative<<S as SelfEmulation>::F>>>,
 );
 
+/// Groups `points` and their `evals` by the coset they were given as roots of,
+/// if every point was, each coset is whole and `t > 1`.
+fn as_cosets<F: CircuitField>(
+    points: &[AssignedNative<F>],
+    evals: &[AssignedNative<F>],
+    roots_of: &HashMap<AssignedNative<F>, (AssignedNative<F>, usize)>,
+) -> Option<(usize, Vec<Coset<F>>)> {
+    let mut t = None;
+    let mut cosets: Vec<Coset<F>> = Vec::new();
+    for (point, eval) in points.iter().zip(evals) {
+        let (x, point_t) = roots_of.get(point)?;
+        if *t.get_or_insert(*point_t) != *point_t {
+            return None;
+        }
+        match cosets.iter_mut().find(|(y, _)| y == x) {
+            Some((_, coset)) => coset.push((point.clone(), eval.clone())),
+            None => cosets.push((x.clone(), vec![(point.clone(), eval.clone())])),
+        }
+    }
+    let t = t.filter(|t| *t > 1)?;
+    cosets.iter().all(|(_, coset)| coset.len() == t).then_some((t, cosets))
+}
+
 #[allow(clippy::type_complexity)]
 fn construct_intermediate_sets<S: SelfEmulation>(
     queries: &[(PolynomialLabel, AssignedNative<S::F>, AssignedNative<S::F>)],
@@ -443,12 +467,12 @@ fn evals_inner_product<F: CircuitField>(
 
 /// Verifies a bunch of KZG queries in a multi-open argument.
 /// The resulting accumulator satisfies the invariant iff all queries are valid.
-pub(crate) fn multi_prepare_kzg<S: SelfEmulation<PCS = InCircuitKZG<S>>>(
+pub(crate) fn multi_prepare_kzg<S: SelfEmulation>(
     layouter: &mut impl Layouter<S::F>,
     #[cfg(feature = "truncated-challenges")] curve_chip: &S::CurveChip,
     scalar_chip: &S::ScalarChip,
+    queries: &[VerifierQuery<S, InCircuitKZG<S>>],
     transcript_gadget: &mut TranscriptGadget<S>,
-    queries: &[VerifierQuery<S>],
 ) -> Result<AssignedAccumulator<S>, Error> {
     let one = AssignedBoundedScalar::one(layouter, scalar_chip)?;
 
@@ -475,6 +499,11 @@ pub(crate) fn multi_prepare_kzg<S: SelfEmulation<PCS = InCircuitKZG<S>>>(
             };
             (q.label.clone(), inner)
         })
+        .collect();
+
+    // The coset of every point given as a root: `point -> (x, t)`.
+    let roots_of: HashMap<_, _> = (queries.iter())
+        .filter_map(|q| q.root_of.clone().map(|root_of| (q.point.clone(), root_of)))
         .collect();
 
     let default_eval = scalar_chip.assign_fixed(layouter, S::F::default())?;
@@ -550,14 +579,24 @@ pub(crate) fn multi_prepare_kzg<S: SelfEmulation<PCS = InCircuitKZG<S>>>(
         .rev()
         .try_fold(zero, |acc_eval, ((points, evals), proof_eval)| {
             // eval = (proof_eval - r_eval) / prod_i (x3 - point_i)
-            let eval = evaluate_interpolation_quotient(
-                layouter,
-                scalar_chip,
-                points,
-                evals,
-                &x3.scalar,
-                proof_eval,
-            )?;
+            let eval = match as_cosets(points, evals, &roots_of) {
+                Some((t, cosets)) => evaluate_interpolation_quotient_on_cosets(
+                    layouter,
+                    scalar_chip,
+                    t,
+                    &cosets,
+                    &x3.scalar,
+                    proof_eval,
+                )?,
+                None => evaluate_interpolation_quotient(
+                    layouter,
+                    scalar_chip,
+                    points,
+                    evals,
+                    &x3.scalar,
+                    proof_eval,
+                )?,
+            };
 
             // acc_eval * x2 + eval
             mul_add(layouter, scalar_chip, &acc_eval, &x2, &eval)
@@ -633,7 +672,7 @@ impl<E: MultiMillerLoop> CommitmentBases<E::G1> for KZGMultiCommitment<E> {
     }
 }
 
-impl<S: SelfEmulation<PCS = Self>> InCircuitPCS<S> for InCircuitKZG<S> {
+impl<S: SelfEmulation> InCircuitPCS<S> for InCircuitKZG<S> {
     type OffCircuitPCS = KZGCommitmentScheme<S::Engine>;
     type AssignedCommitment = AssignedKZGMultiCommitment<S>;
 
@@ -651,14 +690,6 @@ impl<S: SelfEmulation<PCS = Self>> InCircuitPCS<S> for InCircuitKZG<S> {
         labels.to_vec()
     }
 
-    fn read_commitment(
-        transcript: &mut TranscriptGadget<S>,
-        layouter: &mut impl Layouter<S::F>,
-        labels: &[PolynomialLabel],
-    ) -> Result<Self::AssignedCommitment, Error> {
-        transcript.read_commitment(layouter, labels)
-    }
-
     fn assign_commitment(
         layouter: &mut impl Layouter<S::F>,
         curve_chip: &S::CurveChip,
@@ -670,6 +701,14 @@ impl<S: SelfEmulation<PCS = Self>> InCircuitPCS<S> for InCircuitKZG<S> {
         ]))
     }
 
+    fn read_commitment(
+        transcript: &mut TranscriptGadget<S>,
+        layouter: &mut impl Layouter<S::F>,
+        labels: &[PolynomialLabel],
+    ) -> Result<Self::AssignedCommitment, Error> {
+        transcript.read_commitment(layouter, labels)
+    }
+
     fn common_commitment(
         transcript: &mut TranscriptGadget<S>,
         layouter: &mut impl Layouter<S::F>,
@@ -678,20 +717,29 @@ impl<S: SelfEmulation<PCS = Self>> InCircuitPCS<S> for InCircuitKZG<S> {
         transcript.common_commitment(layouter, commitment)
     }
 
+    fn commitment_labels(commitment: &Self::AssignedCommitment) -> Vec<PolynomialLabel> {
+        (commitment.0.iter())
+            .flat_map(|c| match c {
+                AssignedKZGCommitment::Simple(_, label) => vec![label.clone()],
+                AssignedKZGCommitment::Linear(_, _, labels) => labels.clone(),
+            })
+            .collect()
+    }
+
     fn multi_prepare(
         layouter: &mut impl Layouter<S::F>,
         _curve_chip: &S::CurveChip,
         scalar_chip: &S::ScalarChip,
+        queries: &[VerifierQuery<'_, S, Self>],
         transcript: &mut TranscriptGadget<S>,
-        queries: &[VerifierQuery<'_, S>],
     ) -> Result<AssignedAccumulator<S>, Error> {
         multi_prepare_kzg(
             layouter,
             #[cfg(feature = "truncated-challenges")]
             _curve_chip,
             scalar_chip,
-            transcript,
             queries,
+            transcript,
         )
     }
 }

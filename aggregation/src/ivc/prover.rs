@@ -14,10 +14,10 @@ use midnight_circuits::{
 };
 use midnight_proofs::{
     plonk::{self},
-    poly::kzg::{KZGCommitmentScheme, params::ParamsKZG},
+    poly::kzg::params::ParamsKZG,
     transcript::{CircuitTranscript, Transcript},
 };
-use midnight_zk_stdlib::MidnightPK;
+use midnight_zk_stdlib::{DefaultPCS, MidnightPK};
 use rand::rngs::OsRng;
 
 use super::{
@@ -94,11 +94,12 @@ impl<T: Ivc> IvcProver<T> {
 
             let mut transcript =
                 CircuitTranscript::<PoseidonState<F>>::init_from_bytes(&self.proof);
-            let dual_msm = plonk::prepare::<
-                F,
-                KZGCommitmentScheme<E>,
-                CircuitTranscript<PoseidonState<F>>,
-            >(vk, &[], &[&[], &prev_pi], &mut transcript)?;
+            let dual_msm = plonk::prepare::<F, DefaultPCS, CircuitTranscript<PoseidonState<F>>>(
+                vk,
+                &[],
+                &[&[], &prev_pi],
+                &mut transcript,
+            )?;
 
             if !dual_msm.clone().check(&self.params.verifier_params()) {
                 return Err(IvcError::InvalidProof);

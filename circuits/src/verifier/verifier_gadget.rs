@@ -794,8 +794,8 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             layouter,
             &self.curve_chip,
             &self.scalar_chip,
-            &mut transcript,
             &queries,
+            &mut transcript,
         )
     }
 
@@ -841,7 +841,7 @@ pub(crate) mod tests {
         circuit::SimpleFloorPlanner,
         dev::MockProver,
         plonk::{Circuit, Constraints, Error, create_proof, keygen_pk, keygen_vk_with_k, prepare},
-        poly::kzg::{KZGCommitmentScheme, params::ParamsKZG},
+        poly::commitment::PolynomialCommitmentScheme,
         transcript::{CircuitTranscript, Transcript},
     };
     use rand::SeedableRng;
@@ -874,15 +874,13 @@ pub(crate) mod tests {
         },
         testing_utils::FromScratch,
         types::{ComposableChip, Instantiable},
-        verifier::{BlstrsEmulation, accumulator::Accumulator},
+        verifier::{BlstrsEmulation, DefaultPCS, accumulator::Accumulator},
     };
 
     type S = BlstrsEmulation;
 
     type F = <S as SelfEmulation>::F;
     type C = <S as SelfEmulation>::C;
-
-    type E = <S as SelfEmulation>::Engine;
     type CBase = <C as CircuitCurve>::Base;
 
     type NG = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
@@ -1079,7 +1077,7 @@ pub(crate) mod tests {
         let mut rng = ChaCha8Rng::from_seed([0u8; 32]);
 
         let inner_k = 10;
-        let inner_params = ParamsKZG::unsafe_setup(inner_k, &mut rng);
+        let inner_params = DefaultPCS::gen_params(inner_k);
 
         let inner_vk = keygen_vk_with_k(&inner_params, &InnerCircuit::default(), inner_k).unwrap();
         let inner_pk = keygen_pk(inner_vk.clone(), &InnerCircuit::default()).unwrap();
@@ -1090,12 +1088,7 @@ pub(crate) mod tests {
 
         let inner_proof = {
             let mut transcript = CircuitTranscript::<PoseidonState<F>>::init();
-            create_proof::<
-                F,
-                KZGCommitmentScheme<E>,
-                CircuitTranscript<PoseidonState<F>>,
-                InnerCircuit,
-            >(
+            create_proof::<F, DefaultPCS, CircuitTranscript<PoseidonState<F>>, InnerCircuit>(
                 &inner_params,
                 &inner_pk,
                 &InnerCircuit::from_witness(preimage),
@@ -1111,7 +1104,7 @@ pub(crate) mod tests {
         let inner_dual_msm = {
             let mut transcript =
                 CircuitTranscript::<PoseidonState<F>>::init_from_bytes(&inner_proof);
-            prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<PoseidonState<F>>>(
+            prepare::<F, DefaultPCS, CircuitTranscript<PoseidonState<F>>>(
                 &inner_vk,
                 &[],
                 &[&[], &inner_public_inputs],

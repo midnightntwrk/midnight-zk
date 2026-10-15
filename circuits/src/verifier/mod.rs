@@ -16,7 +16,12 @@
 use std::collections::BTreeMap;
 
 use group::Group;
-use midnight_proofs::{circuit::Value, plonk, plonk::ConstraintSystem, poly::PolynomialLabel};
+use midnight_proofs::{
+    circuit::Value,
+    plonk,
+    plonk::ConstraintSystem,
+    poly::{PolynomialLabel, kzg::KZGCommitmentScheme},
+};
 
 use crate::{
     field::AssignedNative,
@@ -27,6 +32,7 @@ mod absorbed_vk;
 mod accumulator;
 mod argument;
 mod expressions;
+mod fflonk;
 mod kzg;
 mod msm;
 pub(crate) mod pcs;
@@ -37,6 +43,7 @@ mod utils;
 mod verifier_gadget;
 
 pub use accumulator::{Accumulator, AssignedAccumulator};
+pub use fflonk::InCircuitFflonk;
 pub use kzg::{AssignedKZGCommitment, AssignedKZGMultiCommitment, InCircuitKZG};
 pub use msm::{AssignedMsm, AssignedPoint, Msm, Point};
 pub use pcs::{AssignedCommitment, CommitmentBases, InCircuitHomomorphicCommitment, InCircuitPCS};
@@ -44,6 +51,10 @@ pub use pcs::{AssignedCommitment, CommitmentBases, InCircuitHomomorphicCommitmen
 pub use types::BnEmulation;
 pub use types::{BlstrsEmulation, SelfEmulation};
 pub use verifier_gadget::VerifierGadget;
+
+/// The polynomial commitment scheme of Midnight proofs, verified in-circuit by
+/// [`BlstrsEmulation`].
+pub type DefaultPCS = KZGCommitmentScheme<midnight_curves::Bls12>;
 
 /// The off-circuit verifying key of the proofs that `S` verifies in-circuit.
 type VerifyingKey<S> = plonk::VerifyingKey<
