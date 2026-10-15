@@ -129,6 +129,16 @@ pub trait InCircuitTranscript<F: CircuitField>: Clone {
         layouter: &mut impl Layouter<F>,
     ) -> Result<AssignedNative<F>, Error>;
 
+    /// Derives `n` scalar challenges from the current transcript, one after
+    /// the other.
+    fn squeeze_challenges(
+        &mut self,
+        layouter: &mut impl Layouter<F>,
+        n: usize,
+    ) -> Result<Vec<AssignedNative<F>>, Error> {
+        (0..n).map(|_| self.squeeze_challenge(layouter)).collect()
+    }
+
     /// Absorbs the given value into the transcript.
     fn common<V>(
         &mut self,

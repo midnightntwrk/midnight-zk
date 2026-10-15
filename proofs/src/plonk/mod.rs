@@ -577,8 +577,8 @@ impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> VerifyingKey<F, PCS> {
 }
 
 /// Evaluates the identities at the evaluation challenge `x` and batches them
-/// with `y`, the same way the prover batches them into the quotient's numerator
-/// `nu(X)`.
+/// with `y` (identity `k` times `y[k]`), the same way the prover batches them
+/// into the quotient's numerator `nu(X)`.
 ///
 /// # Returns
 ///
@@ -594,9 +594,9 @@ pub(crate) fn evaluate_identities<'a, F, PCS>(
     xn: F,
     beta: F,
     gamma: F,
-    theta: F,
+    theta: &'a [F],
     trash_challenge: F,
-    y: F,
+    y: &[F],
 ) -> F
 where
     F: FromUniformBytes<64>,
@@ -642,7 +642,8 @@ where
         l_evals[1..(1 + blinding_factors)].iter().fold(F::ZERO, |acc, eval| acc + eval);
     let l_0 = l_evals[1 + blinding_factors];
     // Evaluate the circuit using the custom gates provided
-    vk.cs
+    let identities: Vec<F> = vk
+        .cs
         .gates
         .iter()
         .flat_map(move |gate| {
@@ -708,5 +709,7 @@ where
                 instance_evals,
             )
         }))
-        .fold(F::ZERO, |acc, eval| acc * y + eval)
+        .collect();
+    assert_eq!(identities.len(), y.len());
+    identities.iter().zip(y).map(|(id, y)| *y * id).sum()
 }
