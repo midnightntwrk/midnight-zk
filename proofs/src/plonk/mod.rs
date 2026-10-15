@@ -33,6 +33,7 @@ pub(crate) mod evaluation;
 mod keygen;
 pub(crate) mod logup;
 pub mod permutation;
+pub mod protogalaxy;
 pub(crate) mod traces;
 pub(crate) mod trash;
 

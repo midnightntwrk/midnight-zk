@@ -399,3 +399,189 @@ circuit is > 32,768). The SRS for `k = 16` is `2^19` (`T_MAX = 8`) or `2^20` (`T
 ### Deviations from the plan, open problems
 - Baseline is `k = 17`, not 16 (A.3), so the comparison is `k = 16` folding vs `k = 17` SNARK verifier.
 - `d` is an estimate; C.1 computes `d_total` exactly.
+
+## [C.1] Native running-accumulator folding + decider
+Commits: `eb4bf78c` ([C.1a], pub(crate) helpers), `4f0ca47d` ([C.1b], quotient helpers), this commit
+([C.1c], protogalaxy module + doc)   Date: 2026-10-15   Machine: M1 Pro 10c/16GB
+Features: none (tests), truncated-challenges (IVC example)   **Contended** (load average 10–18 during timings)
+
+### What and why
+Native side of the folding IVC (plan 0.4.4, scalar-e Protogalaxy, 2-to-1): a fresh instance is the
+B.2 commit phases only (partial proof), folded into a running accumulator; the only full proof is
+the decider of the final accumulator. Code: `proofs/src/plonk/protogalaxy/` (public module
+`midnight_proofs::plonk::protogalaxy`):
+
+| File | Content |
+|---|---|
+| `instance.rs` | `Challenges`, `FoldingInstance` (verifier view of an instance), `Accumulator`; transcript encoding; folding of the public data |
+| `prover.rs` | `commit_instance` → `ProverInstance`; `ProverAccumulator::{init, fold, accumulator}` |
+| `verifier.rs` | `read_instance`; `Accumulator::{init, fold}`; transcript steps shared with the prover (`fold_public`) |
+| `trace.rs` | `fold_trace` (Lagrange-form trace, `acc + x·(fresh − acc)`), `evaluate_rows` (`fᵢ` on every row of `H`, B.1 evaluator, no FFT) |
+| `degree.rs` | `folding_degree(cs)` = `d_total` |
+| `poly.rs` | `pow_vector`, perturbator `F` (bottom-up tree, `O(n)`), interpolation, `L₀`, `Z`, `e'` |
+| `decider_prover.rs`, `decider_verifier.rs` | `prove_relaxed_trace`, `verify_relaxed_trace` |
+| `tests.rs` | chain of 4 folds + decider (KZG and fflonk), negative tests, timings |
+
+Shared-path changes ([C.1a], [C.1b], mechanical, no change in proof bytes or VKs):
+`PolynomialCommitmentScheme::fold_commitments` (KZG per labelled point; fflonk delegates: folding
+commutes with `g = Σ_j X^j f_j(X^t)`); `Polynomial::fold`, `argument::prover::Committed::fold`;
+`Evaluator::evaluate_numerator` generic in the representation of the committed polynomials
+(conversion closure; Lagrange in, Lagrange out for folding); `verifier::instance_evals`,
+`argument::verifier::Committed::new`; `keygen::compute_lagrange_polys(domain, cs)`;
+`prover::scaled_quotient_poly`, `verifier::scaled_quotient_commitment`.
+
+**Accumulator layout** (`Accumulator`, verifier side): `FoldingInstance { phase1_commitment,
+phase2_commitment (CS::Commitment each; fflonk: one point per chunk of ≤ T_MAX polys), instances:
+Vec<Vec<F>> (PI per instance column), challenges: { θ⃗, β, γ, trash, y⃗ } }`, `betas: Vec<F>`
+(`log n`), `error: F`. Prover side (`ProverAccumulator`) adds the folded `ProverTrace` in Lagrange
+form (phase-1/2 polynomials, instance values and polynomials, challenges). Fixed/VK commitments
+are never folded (the folded trace keeps a reference to the proving key's phase-0 group).
+
+**Initialisation (choice)**: the first fresh instance becomes the accumulator. Fresh transcript,
+absorb the instance (phase-1 commitment, phase-2 commitment, PI column by column), squeeze `β`,
+`β⃗ = (β, β², β⁴, …)`, `e = 0`. Sound: `Σᵢ powᵢ(β⃗)·fᵢ = Σᵢ βⁱ·fᵢ`, a polynomial of degree `< n` in a
+`β` squeezed after the instance (and hence its challenges) is fixed, so a non-satisfying instance
+passes with probability `≤ (n − 1)/|F|`. In-circuit cost for C.2: one extra sponge over the fresh
+instance (same encoding as the fold absorbs), one squeeze, `log n` squarings, and a genesis select
+(step 1 inits, later steps fold). Rejected: cf33413e's trivial accumulator (identity commitments:
+`acc + γ(C − acc)` with `acc = O` needs complete addition in the foreign ECC chip, plan 5.5), and
+"`β⃗ = 0`" (only checks row 0, unsound).
+
+**Folding transcript** (fresh `T::init()` per round; C.2 must replicate it with Poseidon):
+1. absorb accumulator: phase-1 commitment, phase-2 commitment, PI (column by column, no lengths),
+   `θ⃗`, `β`, `γ`, `trash`, `y⃗`, `β⃗`, `e`;
+2. absorb fresh instance: phase-1 commitment, phase-2 commitment, PI (its challenges are not
+   absorbed: they are derived from its own transcript = vk, PI, commitments; the circuit must
+   replay that transcript);
+3. squeeze `δ`, `δ⃗ = (δ, δ², δ⁴, …)`;
+4. prover writes `F_1 … F_{log n}` (`F_0 = e` implicit, replaces the `F(0) = e` check);
+5. squeeze `α`; `β⃗* = β⃗ + α·δ⃗`;
+6. prover writes `K_0 … K_{d_total − 2}`;
+7. squeeze `γ` (truncated to 128 bits under `truncated-challenges`);
+8. `e' = F(α)·(1 − γ) + γ(γ − 1)·K(γ)`; commitments, PI and challenges `acc + γ·(fresh − acc)`.
+
+The vk is not absorbed: it is fixed for the whole IVC (the step circuit pins it, e.g. via
+`vk_repr` in its PI); the fresh instance's own transcript starts with it.
+
+**Prover per round**: `fᵢ(acc)` over `H` (Lagrange, B.1 evaluator), `F` by the `O(n)` tree; then
+`G(x) = Σᵢ powᵢ(β⃗*)·fᵢ(fold(acc, fresh, x))` at `x = 2..d_total` and `K` interpolated from
+`K(x) = (G(x) − F(α)(1 − x))/(x(x − 1))` (`G(0) = F(α)` and `G(1) = 0` are the other two of the
+`d_total + 1` points); finally the trace is folded at `γ`. That is `d_total` row evaluations and
+`d_total` trace folds per round, no FFT, no MSM. `debug_assert!(F(0) == e)`; debug builds also
+evaluate `G` on `0..=d_total + 1` and assert the degree-`(d_total + 1)` coefficient vanishes
+(checked to fire with `d_total − 1`).
+
+**`d_total`** (`folding_degree`, computed once from the constraint system): per identity, its
+degree in all folded variables (advice and instance values, `θ⃗, β, γ, trash`; fixed columns and
+selectors are constants), plus 1 for `y_k`; max over identities. Gates: expression degree;
+permutation: `1 + |chunk|`; logup helper: `1 + Σ_inputs (1 + deg)` (each compressed input
+`Σ θᵢeᵢ + β` has degree `1 + max deg eᵢ`), accumulator `(1 + deg s) + (1 + deg t)`; trash: Horner
+in `trash`, `max_j (m − 1 − j + deg e_j)`.
+
+**Decider** (grand sum, plan C.1 revised): prover commits `S` (after `β⃗`, `e` are absorbed) with
+`S(ω⁰) = 0`, `S(ω^{i+1}) = S(ωⁱ) + W(ωⁱ)·f(ωⁱ)`, `W = Σᵢ powᵢ(β⃗)·Lᵢ`, and proves on all of `H`
+(true `L₀`, `L_{n−1}`): `L₀·S = 0` and `S(ωX) − S(X) − W(X)·f(X) + e·L_{n−1}(X) = 0`, combined
+with a fresh `ζ`; quotient on a domain built for `cs.degree() + 1` (`cs.degree()` limbs, one
+more than a plonk proof); opened with the PCS multi-open together with `S` at `x` and `ωx`.
+Transcript: vk, accumulator (as in folding), `[S]`, `ζ`, quotient limbs, `x`, phase-0/1/2
+evaluations, `S(x)`, `S(ωx)`, multi-open. Verifier: `f(x)` from the openings with the folded
+challenges (`evaluate_identities`), `W(x)`, `L₀(x)`, `L_{n−1}(x)` natively in `O(n)` (barycentric,
+one batch inversion of `n` elements), no MSM beyond the PCS.
+
+### How to reproduce
+From the repo root:
+```
+cargo test --release -p midnight-proofs --lib protogalaxy             # 8 tests (KZG + fflonk T_MAX = 8)
+cargo test -p midnight-proofs --lib protogalaxy                       # debug: F(0) = e, degree check
+cargo test --release -p midnight-proofs --lib fold_timings -- --ignored --nocapture   # k = 14
+cargo build --release --workspace --examples
+cargo test --release -p midnight-proofs
+cargo test --release -p midnight-circuits verifier
+cargo test --release -p midnight-zk-stdlib --no-fail-fast
+cd aggregation && /usr/bin/time -l cargo run --release --features truncated-challenges --example ivc
+```
+`d_total` of the IVC circuit: a throw-away example (not committed) calling
+`folding_degree` on `ZkStdLib::configure(cs, (arch, 16))` with the `examples/ivc` arch
+(`poseidon`, `bls12_381`, 9 arith cols, 8 pow2range cols).
+
+### Results
+Test circuit (`tests.rs`): `b = a²` gate, `a ∈ [1, 16]` lookup, `b₀` copied to a public input,
+16 used rows; instance `i` uses a shifted witness. `fold_chain`: init with instance 0, fold
+instances 1–4, at every step assert prover and verifier accumulators equal (commitments, PI,
+challenges, `β⃗`, `e`), `fᵢ = 0` on every row of `H` for each honest fresh instance, and
+`e' = Σᵢ powᵢ(β⃗*)·fᵢ(ω')` recomputed from the folded trace; then decider prove + verify.
+
+| Test | KZG | fflonk `T_MAX = 8` |
+|---|---|---|
+| 4 folds + decider (k = 6) | verifies | verifies |
+| last fresh instance with one wrong `b` (gate broken on one row) | decider rejects | decider rejects |
+| decider on the init accumulator / with `e + 1` | accepts / rejects | accepts / rejects |
+| debug build (asserts `F(0) = e` and `deg G ≤ d_total`) | ok | ok |
+| degree check with `d_total − 1` (manual sanity, not committed) | fires | – |
+
+Suite: workspace build ok; `midnight-proofs` ok (lib 60 + 1 ignored, plonk_api 3, adversarial 9,
+vk_serialization 2, doc 1); `midnight-circuits verifier` ok (3); `midnight-zk-stdlib` known failures
+only (`check_vk_cred_enrollment`, `check_vk_cred_full`: no 2^20 SRS; `public_inputs_test`: cost model
+vs fflonk, B.2); no goldenfile/VK changed (`CHANGE_VK` not needed). `examples/ivc`
+(truncated-challenges, K = 17): all 10 steps verify, step 0 prove 95.8 s, steps 1–9 7.5–10.4 s,
+verify 15–66 ms, peak RSS 3.04 GB, 427 s total (contended).
+
+`d_total`: test circuit **4**; IVC circuit (`cs.degree() = 5`, `nb_y = 50`) **13**:
+
+| identity group | folded degree (+1 for `y`) |
+|---|---|
+| gates | ≤ 3 (4) |
+| permutation sets (3 columns per chunk) | 4 (5) |
+| logup helper, chunk of 4 inputs of degree 1 (tuple `(tag, value)`) | `1 + 4·(1 + 1)` = 9 (10) |
+| trash, Horner over 8 expressions of degree 5 | `7 + 5` = 12 (**13**) |
+
+Per-fold prover, test circuit at k = 14 (2^14 rows, 2 advice columns; mean of 4 folds; **contended**,
+load average 10–18):
+
+| | KZG | fflonk `T_MAX = 8` |
+|---|---|---|
+| commit instance (synthesis + phase-1/2 commits) | 16.5 ms | 19.6 ms |
+| fold (prover), total | 24.2 ms | 21.9 ms |
+| — one `evaluate_rows` (×`d_total` = 4 per fold) | 3.7 ms | 3.5 ms |
+| — one `fold_trace` (×4 per fold) | 1.0 ms | 0.9 ms |
+| — rest (perturbator, `pow`, interpolation) | ≈ 5 ms | ≈ 4 ms |
+| fold (native verifier) | 0.72 ms | 0.29 ms |
+| decider prove / verify | 211 ms / 5.1 ms | 319 ms / 4.8 ms |
+| decider proof size | 952 B | 1,112 B |
+
+### Interpretation
+- Prover and verifier agree by construction (both fold the public data with `fold_public`), and the
+  tests show the protocol is complete over 4 rounds with a non-trivial lookup, copy constraint and
+  public input, for both PCS, and that a single wrong witness cell in a fresh instance is caught by the
+  decider (the folding verifier itself cannot detect it, as expected).
+- A fold costs `d_total` full row evaluations plus `d_total` trace copies, with no FFT and no MSM: at
+  k = 14 for this tiny circuit it is about 1.5× the commit phases. For the IVC circuit the commit phases
+  (17 + 12 polynomials, MSMs) dominate more, but the evaluation count is **13**, not the ≈ 8 assumed in
+  C.0. The in-circuit effect is small (5 more `K` coefficients, ≈ 60 rows); the prover effect is ~1.6×
+  more identity evaluations per fold than assumed.
+- `d_total = 13` comes from folding the challenges: the trash identity is Horner in the scalar trash
+  challenge (degree 7 in it), and each logup input factor `(Σθᵢeᵢ + β)` has degree 2 in folded variables
+  instead of 1 in plonk. Cheapest fixes (Phase D, not done): a vector trash challenge (one per
+  expression, like `θ⃗`/`y⃗`; trash → 6, `d_total` → 10, then logup dominates), and/or smaller logup
+  chunks for the folding circuit (helper degree `1 + 2·inputs`).
+- Decider: grand sum needs no degree bound, so it inherits plonk's soundness argument (quotient check at
+  random `x`); its only extra costs are one committed column, one quotient limb and an `O(n)` field loop
+  in the verifier (5 ms at k = 14 including the PCS check).
+
+### Deviations from the plan, open problems
+- Decider identities written as two instead of three: `S(ωX) − S − W·f + e·L_{n−1} = 0` on all of `H`
+  is exactly the plan's `(1 − L_{n−1})(S(ωX) − S − W·f)` and `L_{n−1}(S + W·f − e)` pair (at the last row
+  `S(ω^n) = S(ω⁰) = 0`), and avoids multiplying `W·f` by a degree-`(n−1)` Lagrange polynomial (which would
+  need two extra quotient limbs). `L₀·S = 0` kept. Same relation, no protocol change.
+- `F_0` is not sent (set to `e`), equivalent to the verifier check `F(0) = e`.
+- The prover computes `K` from `G` at `2..=d_total` only; `G(0) = F(α)` and `G(1) = 0` are implied
+  (honest fresh instance). The degree check is a `debug_assertions` path (2 extra evaluations of `G`).
+- Torsion/subgroup: natively, commitments are read with `from_compressed`, which rejects points outside
+  the prime-order subgroup, so folded commitments stay in it. In-circuit (C.2) fresh commitments are
+  assigned without subgroup check; the final native verifier must therefore subgroup-check (or decode
+  via the transcript) the accumulator commitments it receives from the IVC before running the decider.
+- The decider is not zero-knowledge (`S` unblinded; folded witness opened). The vk is not absorbed by
+  the folding transcript (fixed for the IVC; the fresh transcripts start with it).
+- Committed instances (`committed-instances` feature) are not supported by folding (0 passed through).
+- `ProverAccumulator` keeps both the folded trace and the public accumulator (challenges and PI are
+  duplicated; both folded with the same `γ`).
