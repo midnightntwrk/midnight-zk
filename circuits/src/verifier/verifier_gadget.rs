@@ -375,18 +375,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             instance.iter().try_for_each(|pi| transcript.common_scalar(layouter, pi))?;
         }
 
-        let logups = cs
-            .lookups()
-            .iter()
-            .map(|l| l.chunk_by_degree(assigned_vk.cs_degree))
-            .collect::<Vec<_>>();
-
-        // The advice columns and the logup multiplicities form the phase1 group.
-        let phase1_labels = (0..cs.num_advice_columns())
-            .map(PolynomialLabel::Advice)
-            .chain((0..logups.len()).map(PolynomialLabel::LogupMultiplicities))
-            .collect::<Vec<_>>();
-
+        let phase1_labels = argument::phase1_labels(cs);
         let phase1_committed = argument::read_committed(&phase1_labels, layouter, &mut transcript)?;
 
         // Sample theta challenges for keeping lookup columns linearly independent
@@ -397,21 +386,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
 
         let trash_challenge = transcript.squeeze_challenge(layouter)?;
 
-        let mut phase2_labels = cs.permutation().accumulator_labels(cs.degree());
-
-        for (argument_index, logup_argument) in logups.iter().enumerate() {
-            for j in 0..logup_argument.num_chunks() {
-                phase2_labels.push(PolynomialLabel::LogupHelper(argument_index, j));
-            }
-        }
-
-        for argument_index in 0..logups.len() {
-            phase2_labels.push(PolynomialLabel::LogupAggregator(argument_index));
-        }
-
-        for argument_index in 0..cs.trashcans().len() {
-            phase2_labels.push(PolynomialLabel::Trash(argument_index));
-        }
+        let phase2_labels = argument::phase2_labels(cs, assigned_vk.cs_degree);
 
         let phase2_committed = argument::read_committed(&phase2_labels, layouter, &mut transcript)?;
 
@@ -1011,6 +986,23 @@ pub(crate) mod tests {
             bases: &[Self::AssignedPoint],
         ) -> Result<Self::AssignedPoint, Error> {
             S::msm(layouter, curve_chip, scalars, bases)
+        }
+
+        fn add(
+            layouter: &mut impl Layouter<F>,
+            curve_chip: &Self::CurveChip,
+            p: &Self::AssignedPoint,
+            q: &Self::AssignedPoint,
+        ) -> Result<Self::AssignedPoint, Error> {
+            S::add(layouter, curve_chip, p, q)
+        }
+
+        fn negate(
+            layouter: &mut impl Layouter<F>,
+            curve_chip: &Self::CurveChip,
+            p: &Self::AssignedPoint,
+        ) -> Result<Self::AssignedPoint, Error> {
+            S::negate(layouter, curve_chip, p)
         }
 
         fn constrain_scalar_as_committed_public_input(

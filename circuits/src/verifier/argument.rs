@@ -146,6 +146,40 @@ pub(crate) fn read_committed<S: SelfEmulation>(
     })
 }
 
+/// The labels of the phase-1 group: the advice columns, then the logup
+/// multiplicities. Mirrors `VerifyingKey::phase1_labels`.
+pub(crate) fn phase1_labels<F: ff::Field>(cs: &ConstraintSystem<F>) -> Vec<PolynomialLabel> {
+    (0..cs.num_advice_columns())
+        .map(PolynomialLabel::Advice)
+        .chain((0..cs.lookups().len()).map(PolynomialLabel::LogupMultiplicities))
+        .collect()
+}
+
+/// The labels of the phase-2 group: the permutation accumulators, the logup
+/// helpers and aggregators, and the trash polynomials. Mirrors
+/// `VerifyingKey::phase2_labels`.
+pub(crate) fn phase2_labels<F: ff::Field>(
+    cs: &ConstraintSystem<F>,
+    cs_degree: usize,
+) -> Vec<PolynomialLabel> {
+    let mut labels = cs.permutation().accumulator_labels(cs.degree());
+    for (argument_index, logup) in cs.lookups().iter().enumerate() {
+        for j in 0..logup.chunk_by_degree(cs_degree).num_chunks() {
+            labels.push(PolynomialLabel::LogupHelper(argument_index, j));
+        }
+    }
+    labels.extend((0..cs.lookups().len()).map(PolynomialLabel::LogupAggregator));
+    labels.extend((0..cs.trashcans().len()).map(PolynomialLabel::Trash));
+    labels
+}
+
+impl<S: SelfEmulation> Committed<S> {
+    /// The commitment to the group.
+    pub(crate) fn commitment(&self) -> &AssignedCommitment<S> {
+        &self.commitment
+    }
+}
+
 /// A [Committed] group whose polynomials have been opened at their evaluation
 /// points.
 #[derive(Clone, Debug)]
