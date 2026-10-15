@@ -13,7 +13,12 @@
 
 //! The P2RDecomposition chip perfoming the in-circuit operations
 
-use std::{collections::HashMap, marker::PhantomData};
+use std::{
+    cell::{Cell, RefCell},
+    collections::{BTreeMap, HashMap},
+    marker::PhantomData,
+    rc::Rc,
+};
 
 use midnight_proofs::{
     circuit::{Chip, Layouter, Value},
@@ -101,6 +106,10 @@ pub struct P2RDecompositionChip<F: CircuitField> {
     max_bit_len: usize,
     native_chip: NativeChip<F>,
     pow2range_chip: Pow2RangeChip<F>,
+    // The cells whose range checks are deferred to [Self::load], by bit length.
+    deferred: Rc<RefCell<BTreeMap<usize, Vec<AssignedNative<F>>>>>,
+    // Whether [Self::load] has run, after which range checks are not deferred.
+    loaded: Rc<Cell<bool>>,
     _marker: PhantomData<F>,
 }
 
@@ -142,6 +151,8 @@ impl<F: CircuitField> ComposableChip<F> for P2RDecompositionChip<F> {
             max_bit_len,
             native_chip: NativeChip::new(&config.native_config, &()),
             pow2range_chip: Pow2RangeChip::new(&config.pow2range_config, max_bit_len),
+            deferred: Rc::new(RefCell::new(BTreeMap::new())),
+            loaded: Rc::new(Cell::new(false)),
             _marker: PhantomData,
         }
     }
@@ -157,7 +168,13 @@ impl<F: CircuitField> ComposableChip<F> for P2RDecompositionChip<F> {
         }
     }
 
+    /// Lays out the deferred range checks, the cells of equal bit length
+    /// sharing rows, and loads the lookup table.
     fn load(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
+        self.loaded.set(true);
+        for (bit_length, xs) in self.deferred.take() {
+            self.assert_many_less_than_pow2(layouter, &xs, bit_length)?;
+        }
         self.pow2range_chip.load_table(layouter)
     }
 }
@@ -567,16 +584,40 @@ impl<F: CircuitField> CoreDecompositionInstructions<F> for P2RDecompositionChip<
         self.assign_many_packed(layouter, values, bit_length)
     }
 
+    fn assert_many_less_than_pow2(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        xs: &[AssignedNative<F>],
+        bit_length: usize,
+    ) -> Result<(), Error> {
+        let values: Vec<_> = xs.iter().map(|x| x.value().copied()).collect();
+        let ys = if bit_length > self.max_bit_len || bit_length == 0 {
+            self.assign_many_less_than_pow2(layouter, &values, bit_length)?
+        } else if !self.loaded.get() {
+            self.deferred.borrow_mut().entry(bit_length).or_default().extend_from_slice(xs);
+            return Ok(());
+        } else {
+            self.assign_many_small(layouter, &values, bit_length)?
+        };
+        layouter.assign_region(
+            || "copy",
+            |mut region| {
+                (xs.iter().zip(&ys))
+                    .try_for_each(|(x, y)| region.constrain_equal(x.cell(), y.cell()))
+            },
+        )
+    }
+
     fn assign_many_small(
         &self,
         layouter: &mut impl Layouter<F>,
         values: &[Value<F>],
         bit_length: usize,
     ) -> Result<Vec<AssignedNative<F>>, Error> {
-        assert!(8 < F::NUM_BITS);
         assert!(
-            bit_length <= 8,
-            "assign_many_small expects a bit_length <= 8"
+            bit_length <= self.max_bit_len,
+            "assign_many_small expects a bit_length <= {}",
+            self.max_bit_len
         );
 
         let mut assigned_values = Vec::with_capacity(values.len());
