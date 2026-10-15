@@ -23,6 +23,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 
 ### Changed
+* The foreign Weierstrass ECC chip checks that points are on the curve with foreign-field arithmetic instead of a dedicated `on_curve` custom gate, which is removed. This changes the verifying keys of circuits using the chip [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 * The foreign-field multiplication identity and the foreign Weierstrass ECC identities compute their limb-product sums with Karatsuba, `karatsuba_bilinear_sum`, using fewer multiplications per identity. The constraints are unchanged, as are the verifying keys [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 * The in-circuit fflonk splits groups into `fflonk::balanced_chunks`, as off-circuit [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 * The in-circuit KZG multi-open collapses the combined commitment of a point set only if it has at least `COLLAPSE_THRESHOLD` variable bases, as the off-circuit verifier does [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
