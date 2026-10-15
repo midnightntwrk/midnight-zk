@@ -21,7 +21,7 @@ use midnight_proofs::poly::{
 };
 
 /// The polynomial commitment scheme of zk_stdlib.
-pub type DefaultPCS = KZGCommitmentScheme<Bls12>;
+pub type DefaultPCS = Fflonk<KZGCommitmentScheme<Bls12>, 3>;
 
 /// The catalog of polynomial commitment schemes supported by zk_stdlib: KZG
 /// and fflonk over KZG, for any `LOG2_T_MAX`. Their parameters are a KZG SRS

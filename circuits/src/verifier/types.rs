@@ -46,7 +46,7 @@ use crate::{
         ecc::EccInstructions, public_input::CommittedInstanceInstructions,
     },
     types::{AssignedForeignPoint, InnerValue, Instantiable},
-    verifier::{InCircuitKZG, InCircuitPCS},
+    verifier::{InCircuitFflonk, InCircuitKZG, InCircuitPCS},
 };
 
 /// A trait for parametrizing the VerifierGadget.
@@ -156,7 +156,7 @@ impl SelfEmulation for BlstrsEmulation {
     type G2Affine = midnight_curves::G2Affine;
     type Engine = midnight_curves::Bls12;
 
-    type PCS = InCircuitKZG<Self>;
+    type PCS = InCircuitFflonk<InCircuitKZG<Self>, 3>;
 
     fn msm(
         layouter: &mut impl Layouter<Self::F>,

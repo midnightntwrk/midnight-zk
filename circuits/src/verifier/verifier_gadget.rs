@@ -1232,7 +1232,7 @@ pub(crate) mod tests {
 
     #[test]
     fn test_verify_proof() {
-        check_self_verification::<S>(0);
+        check_self_verification::<S>(3);
     }
 
     #[test]
