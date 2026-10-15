@@ -4,7 +4,10 @@ use ff::{PrimeField, WithSmallOrderMulGroup};
 use group::ff::Field;
 use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
-use super::{ConstraintSystem, Expression, protogalaxy::sparse_gates::SparseGates, trash};
+use super::{
+    ConstraintSystem, Expression, logup::table::TableSide, protogalaxy::sparse_gates::SparseGates,
+    trash,
+};
 use crate::{
     plonk::{Any, argument},
     poly::{EvaluationDomain, Polynomial, PolynomialLabel, PolynomialRepresentation, Rotation},
@@ -120,6 +123,9 @@ pub struct Evaluator<F: PrimeField> {
     /// Row-sparse custom-gate evaluator of the folding prover, built on first
     /// use (a clone starts with an empty cell).
     pub(crate) sparse_gates: OnceLock<SparseGates<F>>,
+    /// Table side of each lookup, built on first use (`None` when the table
+    /// reads columns other than fixed ones).
+    pub(crate) logup_tables: Vec<OnceLock<Option<TableSide<F>>>>,
 }
 
 /// GraphEvaluator
@@ -711,6 +717,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
             trashcans: Vec::new(),
             trashcans_flat: Vec::new(),
             sparse_gates: OnceLock::new(),
+            logup_tables: cs.lookups.iter().map(|_| OnceLock::new()).collect(),
         };
 
         // Custom gates: gate polynomial `k` is multiplied by `y[k]`.
