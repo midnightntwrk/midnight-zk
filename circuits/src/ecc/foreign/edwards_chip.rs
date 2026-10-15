@@ -46,7 +46,8 @@ use {
 };
 
 use super::common::{
-    add_1bit_scalar_bases, configure_multi_select_lookup, fill_dynamic_lookup_row, msm_preprocess,
+    MultiSelectRow, add_1bit_scalar_bases, configure_multi_select_lookup, fill_dynamic_lookup_row,
+    msm_preprocess,
 };
 use crate::{
     CircuitField,
@@ -78,9 +79,7 @@ where
 {
     // Here we only account for the columns that this chip requires for its own
     // custom gates.
-    // The outer `+ 1` corresponds to the advice column for the index of
-    // `multi_select`.
-    B::NB_LIMBS as usize + std::cmp::max(B::NB_LIMBS as usize, 1 + B::moduli().len()) + 1
+    B::NB_LIMBS as usize + std::cmp::max(B::NB_LIMBS as usize, 1 + B::moduli().len())
 }
 
 /// Foreign Edwards ECC configuration.
@@ -93,7 +92,6 @@ where
     addition_config: AdditionConfig<C>,
     // Dynamic lookup columns for windowed MSM table selection.
     q_multi_select: Selector,
-    idx_col_multi_select: Column<Advice>,
     tag_col_multi_select: Column<Fixed>,
 }
 
@@ -153,14 +151,13 @@ where
             max_bit_len,
         );
 
-        let (q_multi_select, idx_col_multi_select, tag_col_multi_select) =
+        let (q_multi_select, tag_col_multi_select) =
             configure_multi_select_lookup(meta, advice_columns, base_field_config);
 
         ForeignEdwardsEccConfig {
             base_field_config: base_field_config.clone(),
             addition_config,
             q_multi_select,
-            idx_col_multi_select,
             tag_col_multi_select,
         }
     }
@@ -1174,22 +1171,19 @@ where
         &self,
         layouter: &mut impl Layouter<F>,
         point: &AssignedForeignEdwardsPoint<F, C, B>,
-        index: &AssignedNative<F>,
+        row: MultiSelectRow<'_, F>,
         table_tag: F,
-        enable_lookup: bool,
     ) -> Result<(Vec<AssignedNative<F>>, Vec<AssignedNative<F>>), Error> {
         fill_dynamic_lookup_row(
             layouter,
             &point.x.limb_values(),
             &point.y.limb_values(),
-            index,
+            row,
             &self.config.base_field_config.x_cols,
             &self.config.base_field_config.z_cols, // z_cols used for y (y_cols == x_cols)
-            self.config.idx_col_multi_select,
             self.config.tag_col_multi_select,
             self.config.q_multi_select,
             table_tag,
-            enable_lookup,
         )
     }
 
@@ -1202,8 +1196,7 @@ where
         table_tag: F,
     ) -> Result<(), Error> {
         for (i, point) in point_table.iter().enumerate() {
-            let index = self.native_gadget.assign_fixed(layouter, F::from(i as u64))?;
-            self.fill_dynamic_lookup_row(layouter, point, &index, table_tag, false)?;
+            self.fill_dynamic_lookup_row(layouter, point, MultiSelectRow::Table(i), table_tag)?;
         }
         Ok(())
     }
@@ -1230,8 +1223,12 @@ where
 
         let selected = point_table[selector_idx].clone();
 
-        let (xs, ys) =
-            self.fill_dynamic_lookup_row(layouter, &selected, selector, table_tag, true)?;
+        let (xs, ys) = self.fill_dynamic_lookup_row(
+            layouter,
+            &selected,
+            MultiSelectRow::Lookup(selector),
+            table_tag,
+        )?;
         let x = AssignedField::<F, C::Base, B>::from_limbs_unsafe(xs);
         let y = AssignedField::<F, C::Base, B>::from_limbs_unsafe(ys);
 
