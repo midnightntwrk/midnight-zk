@@ -20,8 +20,14 @@ Notation:
 import sys
 from math import ceil, log, gcd
 
-# The number of parallel lookups that we support in one row.
-NB_PARALLEL_LOOKUPS = 4
+# The number of parallel lookups (range-check columns) in one row, the
+# `nr_pow2range_cols` of the circuit's architecture; set it with
+# --parallel-lookups=N (default 4).
+NB_PARALLEL_LOOKUPS = next((int(arg.split('=', 1)[1]) for arg in sys.argv
+                            if arg.startswith('--parallel-lookups=')), 4)
+
+# The positional arguments, without the --options.
+ARGS = [arg for arg in sys.argv[1:] if not arg.startswith('--')]
 
 DEBUG = "--debug" in sys.argv
 
@@ -450,27 +456,29 @@ def parse_curve(name):
     return None
 
 if __name__ == '__main__':
-    if len(sys.argv) < 3:
+    if len(ARGS) < 2:
         keys = "\n".join([" - " + k for k in ORDERS.keys()])
         curves = "\n".join([" - " + k for k in CURVES.keys()])
-        sys.exit("Usage: python3 foreign_params_gen.py NATIVE EMULATED [CURVE | a]\n"\
+        sys.exit("Usage: python3 foreign_params_gen.py NATIVE EMULATED [CURVE | a] "\
+                 "[--parallel-lookups=N] [--debug]\n"\
                  "Where NATIVE and EMULATED must be replaced by concrete constants or "\
                  "one of the following supported values:\n" + keys + "\n\n" \
                  "The Weierstrass coefficient a (y^2 = x^3 + ax + b) can be specified as a\n"\
                  "curve name or an explicit value (default 0). Supported curves:\n" + curves)
 
-    p = parse_modulus(sys.argv[1])
-    q = parse_modulus(sys.argv[2])
+    p = parse_modulus(ARGS[0])
+    q = parse_modulus(ARGS[1])
 
     a = 0
-    if len(sys.argv) >= 4:
-        curve = parse_curve(sys.argv[3])
+    if len(ARGS) >= 3:
+        curve = parse_curve(ARGS[2])
         if curve != None:
             a, _ = curve
         else:
-            a = int(sys.argv[3], 0)
+            a = int(ARGS[2], 0)
 
     print("Optimizing parameters for:\n   Native modulus: %d\n Emulated modulus: %d" % (p, q))
+    print(" Parallel lookups per row: %d" % NB_PARALLEL_LOOKUPS)
     if a != 0:
         print(" Weierstrass coefficient a: %d" % a)
     optimize(p, q, a=a)
