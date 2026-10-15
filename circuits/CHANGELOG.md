@@ -23,6 +23,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 
 ### Changed
+* The foreign-field multiplication identity and the foreign Weierstrass ECC identities compute their limb-product sums with Karatsuba, `karatsuba_bilinear_sum`, using fewer multiplications per identity. The constraints are unchanged, as are the verifying keys [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 * The in-circuit fflonk splits groups into `fflonk::balanced_chunks`, as off-circuit [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 * The in-circuit KZG multi-open collapses the combined commitment of a point set only if it has at least `COLLAPSE_THRESHOLD` variable bases, as the off-circuit verifier does [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 * The verifier gadget reads the `cs_degree` quotient limbs as one group and opens them one by one, deriving the first limb's evaluation, rather than opening the combination of their commitments, scaled by full-width scalars [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
