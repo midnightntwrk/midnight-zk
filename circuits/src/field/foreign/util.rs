@@ -13,11 +13,7 @@
 
 // Util functions of the foreign arithmetic module
 
-use std::{
-    collections::HashMap,
-    ops::{Mul, Rem},
-    sync::{LazyLock, Mutex},
-};
+use std::ops::{Mul, Rem};
 
 use midnight_proofs::{
     circuit::Value,
@@ -28,10 +24,7 @@ use num_bigint::{BigInt as BI, BigUint, ToBigInt};
 use num_integer::Integer;
 use num_traits::{One, Signed, Zero};
 
-use crate::{
-    CircuitField, field::decomposition::cpu_utils::compute_optimal_limb_sizes,
-    utils::util::bigint_to_fe,
-};
+use crate::{CircuitField, utils::util::bigint_to_fe};
 
 /// Like .rem, but gives positive answers only.
 pub fn urem(value: &BI, modulus: &BI) -> BI {
@@ -67,37 +60,30 @@ pub fn ceil_log2(value: &BI) -> u32 {
 /// if its bit count aligns better with the decomposition chip's parallel
 /// lookup structure (all lookups in a row must use the same bit-length tag).
 fn next_cheapest_power_of_two(nb_parallel_range_checks: usize, max_bit_len: u32, x: &BI) -> BI {
-    // The optimal limb sizes only depend on these two parameters, so the table
-    // is shared by all the gates configured with them (and by later proofs).
-    type Solutions = HashMap<i32, Vec<Vec<usize>>>;
-    static TABLES: LazyLock<Mutex<HashMap<(usize, u32), Solutions>>> =
-        LazyLock::new(Default::default);
-    let mut tables = TABLES.lock().unwrap();
-    let solutions = tables.entry((nb_parallel_range_checks, max_bit_len)).or_default();
-    let cost = |solutions: &mut Solutions, bound: u32| {
-        compute_optimal_limb_sizes(
-            solutions,
-            nb_parallel_range_checks,
-            max_bit_len as usize,
-            bound as i32,
-        )
-        .len()
-    };
+    let base_log = ceil_log2(x) as usize;
+    // Looking amongst the next 128 powers is more than enough.
+    let max_bound = base_log + 128;
 
-    let base_log = ceil_log2(x);
-    let mut best_log = base_log;
-    let mut best_cost = cost(solutions, base_log);
+    // cost[b] = minimum number of rows to range-check `b` bits (same recurrence
+    // as `compute_optimal_limb_sizes`, keeping only the length).
+    let mut cost = vec![0usize; max_bound + 1];
+    for b in 1..=max_bound {
+        cost[b] = (1..=nb_parallel_range_checks)
+            .flat_map(|p| (1..=max_bit_len as usize).map(move |l| p * l))
+            .filter(|&w| w <= b)
+            .map(|w| 1 + cost[b - w])
+            .min()
+            .unwrap_or(usize::MAX);
+    }
 
     // Search for a larger power of 2 that is cheaper to range-check.
-    // Looking amongst the next 128 powers is more than enough.
-    for i in 1..=128 {
-        let c = cost(solutions, base_log + i);
-        if c < best_cost {
-            best_cost = c;
-            best_log = base_log + i;
+    let mut best_log = base_log;
+    for i in base_log + 1..=max_bound {
+        if cost[i] < cost[best_log] {
+            best_log = i;
         }
     }
-    BI::pow(&BI::from(2), best_log)
+    BI::pow(&BI::from(2), best_log as u32)
 }
 
 /// Breaks the given `value` into `nb_limbs` limbs representing the value in the

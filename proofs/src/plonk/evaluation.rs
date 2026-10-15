@@ -121,10 +121,13 @@ pub struct Evaluator<F: PrimeField> {
     /// Flattened trash evaluators (parallel to `trashcans`).
     pub trashcans_flat: Vec<FlatGraphEvaluator<F>>,
     /// Row-sparse custom-gate evaluator of the folding prover, built on first
-    /// use (a clone starts with an empty cell).
+    /// use. A clone copies an already initialised cell. Like `logup_tables`,
+    /// it is tied to the `pk.fixed_values` it was built from, which must not
+    /// change afterwards.
     pub(crate) sparse_gates: OnceLock<SparseGates<F>>,
     /// Table side of each lookup, built on first use (`None` when the table
-    /// reads columns other than fixed ones).
+    /// reads columns other than fixed ones). Tied to `pk.fixed_values` as
+    /// `sparse_gates` is.
     pub(crate) logup_tables: Vec<OnceLock<Option<TableSide<F>>>>,
 }
 
@@ -1784,24 +1787,29 @@ mod tests {
             a1 * a2 - f0,
             a0,
         ];
-        let trash = trash::Argument::new(0, Expression::Constant(Fq::ONE), exprs);
+        let single = vec![exprs[0].clone()];
+        // (expressions, number of powers beyond `m`)
+        for (exprs, extra) in [(exprs.clone(), 0), (exprs, 3), (single, 0)] {
+            let trash = trash::Argument::new(0, Expression::Constant(Fq::ONE), exprs);
 
-        let fixed: Vec<_> = (0..3).map(|_| rand_poly(&mut rng, n)).collect();
-        let advice: Vec<_> = (0..3).map(|_| rand_poly(&mut rng, n)).collect();
-        let instance: Vec<_> = (0..2).map(|_| rand_poly(&mut rng, n)).collect();
-        let c = Fq::random(&mut rng);
+            let fixed: Vec<_> = (0..3).map(|_| rand_poly(&mut rng, n)).collect();
+            let advice: Vec<_> = (0..3).map(|_| rand_poly(&mut rng, n)).collect();
+            let instance: Vec<_> = (0..2).map(|_| rand_poly(&mut rng, n)).collect();
+            let c = Fq::random(&mut rng);
 
-        let expected = trash
-            .constraint_expressions()
-            .iter()
-            .map(|e| domain.lagrange_from_vec(evaluate(e, n, 0, &fixed, &advice, &instance)))
-            .fold(domain.empty_lagrange(), |acc, e| acc * c + &e);
+            let expected = trash
+                .constraint_expressions()
+                .iter()
+                .map(|e| domain.lagrange_from_vec(evaluate(e, n, 0, &fixed, &advice, &instance)))
+                .fold(domain.empty_lagrange(), |acc, e| acc * c + &e);
 
-        let flat = GraphEvaluator::for_trash(&trash).flatten();
-        let powers = trash::powers_of(c, trash.constraint_expressions().len());
-        let got = trash::prover::compute_trash_poly(
-            &flat, &domain, &powers, &advice, &fixed, &instance,
-        );
-        assert_eq!(expected.values, got.values);
+            let flat = GraphEvaluator::for_trash(&trash).flatten();
+            let m = trash.constraint_expressions().len();
+            let powers = trash::powers_of(c, m + extra);
+            let got = trash::prover::compute_trash_poly(
+                &flat, &domain, &powers, &advice, &fixed, &instance,
+            );
+            assert_eq!(expected.values, got.values);
+        }
     }
 }

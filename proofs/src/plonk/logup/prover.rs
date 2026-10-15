@@ -20,7 +20,7 @@
 //!   iterates over columns
 //! - **Accumulator `Z(X)`**: Running sum of log-derivative differences
 
-use std::{hash::Hash, iter};
+use std::{hash::Hash, iter, sync::Arc};
 
 use ff::{BatchInvert, FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
@@ -49,7 +49,7 @@ pub(crate) struct ComputedMultiplicities<F: PrimeField> {
     /// Per chunk, per input, the evaluation of each of its expressions.
     chunked_input_evals: Vec<Vec<Vec<Polynomial<F, LagrangeCoeff>>>>,
     /// The evaluation of each table expression.
-    table_evals: Vec<Polynomial<F, LagrangeCoeff>>,
+    table_evals: Arc<Vec<Polynomial<F, LagrangeCoeff>>>,
 }
 
 /// Intermediate result from logderivative computation, before transcript
@@ -61,7 +61,9 @@ pub(crate) struct ComputedLogderivative<F: PrimeField> {
 }
 
 impl<F: WithSmallOrderMulGroup<3> + Hash> ChunkedArgument<F> {
-    /// Whether the table expressions read fixed columns only.
+    /// Whether the table expressions read fixed columns only. `Expression` has
+    /// no challenge variant and selectors are already removed, so checking the
+    /// advice and instance queries is exact.
     fn table_is_fixed(&self) -> bool {
         self.table_expressions.iter().all(|expression| {
             expression.evaluate(
@@ -133,6 +135,8 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ChunkedArgument<F> {
         // The table side depends on the fixed columns only: it is built once
         // per proving key, unless a table expression reads other columns.
         let build_table = || TableSide::new(eval_expressions(&self.table_expressions), usable_rows);
+        // The init closure runs a nested `parallelize`: two proofs sharing one `&pk`
+        // on the same rayon pool must not race on a cold cell (unsupported today).
         let cached = pk.ev.logup_tables[argument_index]
             .get_or_init(|| self.table_is_fixed().then(build_table))
             .as_ref();
@@ -158,7 +162,7 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ChunkedArgument<F> {
             selector,
             multiplicities,
             chunked_input_evals,
-            table_evals: table.evals.clone(),
+            table_evals: Arc::clone(&table.evals),
         })
     }
 }
@@ -299,7 +303,7 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ComputedMultiplicities<F> {
     }
 }
 
-/// Multiplicities of the table tuples (see [`TableSide::multiplicities`]),
+/// Multiplicities of the table tuples (see [TableSide::multiplicities]),
 /// building the table side from scratch.
 #[cfg(test)]
 pub(crate) fn compute_multiplicities<F>(
@@ -310,7 +314,7 @@ pub(crate) fn compute_multiplicities<F>(
     blinding_values: &[F],
 ) -> Vec<F>
 where
-    F: PrimeField + Hash + Eq,
+    F: PrimeField + Hash,
 {
     TableSide::new(table.to_vec(), usable_rows).multiplicities(
         selector,
@@ -611,5 +615,40 @@ mod tests {
         let got = compute_multiplicities(&selector, &values, &table, usable_rows, &blinding);
         assert_eq!(expected, got);
         assert!(got[..usable_rows].iter().any(|m| *m != Fq::ZERO));
+    }
+
+    /// The table side cached in the proving key gives the same result on a
+    /// second call.
+    #[test]
+    fn test_multiplicities_cache_reuse() {
+        use midnight_curves::Bls12;
+
+        use crate::plonk::{
+            commit_phases_tests::{K, SquareCircuit, TABLE_SIZE},
+            keygen_pk, keygen_vk_with_k,
+        };
+        use crate::poly::kzg::KZGCommitmentScheme;
+
+        type CS = KZGCommitmentScheme<Bls12>;
+        let params = <CS as PolynomialCommitmentScheme<Fq>>::gen_params(K);
+        let vk = keygen_vk_with_k::<_, CS, _>(&params, &SquareCircuit, K).unwrap();
+        let pk = keygen_pk(vk, &SquareCircuit).unwrap();
+
+        let n = 1usize << K;
+        let a = (0..n as u64).map(|row| Fq::from(row % TABLE_SIZE + 1)).collect();
+        let advice = [pk.vk.domain.lagrange_from_vec(a), pk.vk.domain.empty_lagrange()];
+        let blinding = vec![Fq::from(7u64); pk.vk.cs.blinding_factors() + 1];
+        let arg = pk.vk.cs.lookups[0].chunk_by_degree(pk.vk.cs.lookup_chunk_bound());
+
+        let run = || {
+            arg.compute_multiplicities_parallel(0, &pk, &advice, &pk.fixed_values, &[], &blinding)
+                .unwrap()
+        };
+        assert!(pk.ev.logup_tables[0].get().is_none());
+        let cold = run();
+        assert!(pk.ev.logup_tables[0].get().is_some());
+        let warm = run();
+        assert_eq!(cold.multiplicities.values, warm.multiplicities.values);
+        assert_eq!(cold.selector.values, warm.selector.values);
     }
 }

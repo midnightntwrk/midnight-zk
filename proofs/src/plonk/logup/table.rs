@@ -2,7 +2,7 @@
 //! tuples among its active rows. It depends on the fixed columns only, so it
 //! can be built once per proving key.
 
-use std::hash::Hash;
+use std::{hash::Hash, sync::Arc};
 
 use ff::PrimeField;
 use rustc_hash::FxHashMap;
@@ -16,7 +16,7 @@ use crate::poly::{LagrangeCoeff, Polynomial};
 #[derive(Clone, Debug)]
 pub(crate) struct TableSide<F> {
     /// The evaluation of each table expression.
-    pub(crate) evals: Vec<Polynomial<F, LagrangeCoeff>>,
+    pub(crate) evals: Arc<Vec<Polynomial<F, LagrangeCoeff>>>,
     /// Class of each active row.
     class_of_row: Vec<u32>,
     /// Class of each tuple of the table.
@@ -46,7 +46,7 @@ impl<F: PrimeField + Hash + Eq> TableSide<F> {
             class_size.into_iter().map(|t| F::from(t).invert().unwrap()).collect();
 
         Self {
-            evals,
+            evals: Arc::new(evals),
             class_of_row,
             classes,
             class_size_inv,
