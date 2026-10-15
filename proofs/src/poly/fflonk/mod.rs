@@ -46,6 +46,7 @@ use std::{
 };
 
 use ff::WithSmallOrderMulGroup;
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 pub use utils::{balanced_chunks, roots};
 use utils::{cached_roots, compute_g};
 
@@ -57,10 +58,7 @@ use crate::{
         commitment::{InterleavedCommit, PolynomialCommitmentScheme},
     },
     transcript::{Hashable, Sampleable, Transcript},
-    utils::{
-        arithmetic::{eval_polynomial, eval_polynomial_seq},
-        helpers::SerdeFormat,
-    },
+    utils::{arithmetic::eval_polynomial_seq, helpers::SerdeFormat},
 };
 
 /// fflonk over the polynomial commitment scheme `PCS`.
@@ -189,15 +187,22 @@ where
         // and write them to the transcript. Note that the evaluations of explicit
         // queries are expected to be in the transcript before the call to `multi_open`.
         let queried: HashSet<_> = queries.iter().map(|q| (q.label.clone(), q.point)).collect();
+        let mut missing = Vec::new();
         for (labels, (polys, points)) in &chunks_info {
             for point in points {
                 for (label, poly) in labels.iter().zip(polys.iter()) {
                     if !queried.contains(&(label.clone(), *point)) {
-                        let eval = eval_polynomial(poly, *point);
-                        transcript.write(&eval).map_err(|_| Error::OpeningError)?;
+                        missing.push((*poly, *point));
                     }
                 }
             }
+        }
+        let evals: Vec<F> = missing
+            .par_iter()
+            .map(|(poly, point)| eval_polynomial_seq(poly, *point))
+            .collect();
+        for eval in &evals {
+            transcript.write(eval).map_err(|_| Error::OpeningError)?;
         }
 
         // Compute g for every chunk as in `commit_many`. This step needs to be
