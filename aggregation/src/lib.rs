@@ -9,4 +9,5 @@
 extern crate core;
 
 pub mod ivc;
+pub mod ivc_folding;
 pub mod multi_circuit_aggregator;
