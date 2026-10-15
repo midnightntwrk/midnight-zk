@@ -245,17 +245,18 @@ impl<S: SelfEmulation> AssignedAccumulator<S> {
 }
 
 impl<S: SelfEmulation> AssignedAccumulator<S> {
-    /// Witnesses both sides of a KZG accumulator in the circuit.
+    /// Assigns both sides of a collapsed KZG accumulator in the circuit, as
+    /// [`AssignedMsm::assign`] does.
     ///
     /// Each side is shaped by its `labels` slice (one entry per scalar/base
     /// pair) and its `fixed_base_labels` set (entries whose label appears
     /// there become `AssignedPoint::Fixed`; the rest are assigned as
-    /// variable-base points).
+    /// variable-base points with scalar 1).
     ///
     /// # Errors
     ///
     /// If the known accumulator value's label list does not match the supplied
-    /// `lhs_labels` / `rhs_labels`.
+    /// `lhs_labels` / `rhs_labels`, or a variable-base point's scalar is not 1.
     #[allow(clippy::too_many_arguments)]
     pub fn assign(
         layouter: &mut impl Layouter<S::F>,

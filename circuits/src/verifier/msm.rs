@@ -486,7 +486,9 @@ impl<S: SelfEmulation> AssignedMsm<S> {
 }
 
 impl<S: SelfEmulation> AssignedMsm<S> {
-    /// Witnesses all scalar cells and variable-base point cells for this MSM.
+    /// Assigns a collapsed MSM: witnesses its variable-base points and the
+    /// scalars of its fixed bases, and gives every variable-base point the
+    /// constant scalar 1.
     ///
     /// The `labels` slice determines the shape: entries whose label is in
     /// `fixed_base_labels` are represented as `AssignedPoint::Fixed` (no cell
@@ -499,7 +501,8 @@ impl<S: SelfEmulation> AssignedMsm<S> {
     ///
     /// # Errors
     ///
-    /// If `msm_value` is known and its label list differs from `labels`.
+    /// If `msm_value` is known and its label list differs from `labels`, or a
+    /// variable-base point's scalar is not 1.
     pub fn assign(
         layouter: &mut impl Layouter<S::F>,
         curve_chip: &S::CurveChip,
@@ -515,15 +518,23 @@ impl<S: SelfEmulation> AssignedMsm<S> {
         let scalars_val = msm_value.as_ref().map(|msm| msm.scalars.clone()).transpose_vec(len);
         let bases_val = msm_value.as_ref().map(|msm| msm.bases.clone()).transpose_vec(len);
 
-        let scalars = assign_bounded_scalars(layouter, scalar_chip, &scalars_val)?;
+        let one = AssignedBoundedScalar::one(layouter, scalar_chip)?;
+        let mut scalars = Vec::with_capacity(len);
         let mut bases = Vec::<AssignedPoint<S>>::with_capacity(len);
 
         for i in 0..len {
             if fixed_base_labels.contains(&labels[i]) {
                 bases_val[i].error_if_known_and(|p| matches!(p, Point::Variable(..)))?;
+                scalars.extend(assign_bounded_scalars(
+                    layouter,
+                    scalar_chip,
+                    &[scalars_val[i]],
+                )?);
                 bases.push(AssignedPoint::Fixed);
             } else {
                 bases_val[i].error_if_known_and(|p| matches!(p, Point::Fixed))?;
+                scalars_val[i].error_if_known_and(|s| *s != S::F::ONE)?;
+                scalars.push(one.clone());
                 let p_val = bases_val[i].clone().map(|p| match p {
                     Point::Variable(p) => p,
                     Point::Fixed => unreachable!(),
