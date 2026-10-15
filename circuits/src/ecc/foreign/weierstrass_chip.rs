@@ -51,8 +51,8 @@ use crate::{
     ecc::{
         curves::WeierstrassCurve,
         foreign::common::{
-            add_1bit_scalar_bases, configure_multi_select_lookup, fill_dynamic_lookup_row,
-            msm_preprocess,
+            MultiSelectRow, add_1bit_scalar_bases, configure_multi_select_lookup,
+            fill_dynamic_lookup_row, msm_preprocess,
         },
     },
     field::foreign::{
@@ -78,7 +78,6 @@ where
     unified_config: unified::UnifiedConfig<C>,
     // columns for the dynamic lookup
     q_multi_select: Selector,
-    idx_col_multi_select: Column<Advice>,
     tag_col_multi_select: Column<Fixed>,
 }
 
@@ -92,9 +91,7 @@ where
     // The scalar field is treated as a gadget. Here we only account for the columns
     // that this chip requires for its own custom gates.
     // The 2 in `2 + |moduli|` corresponds to `u_col` + `cond_col`.
-    // The outer `+ 1` corresponds to the advice column for the index of
-    // `multi_select`.
-    B::NB_LIMBS as usize + max(B::NB_LIMBS as usize, 2 + B::moduli().len()) + 1
+    B::NB_LIMBS as usize + max(B::NB_LIMBS as usize, 2 + B::moduli().len())
 }
 
 /// Shared MSM randomness for the windowed double-and-add algorithm.
@@ -1036,14 +1033,13 @@ where
             max_bit_len,
         );
 
-        let (q_multi_select, idx_col_multi_select, tag_col_multi_select) =
+        let (q_multi_select, tag_col_multi_select) =
             configure_multi_select_lookup(meta, advice_columns, base_field_config);
 
         ForeignWeierstrassEccConfig {
             base_field_config: base_field_config.clone(),
             unified_config,
             q_multi_select,
-            idx_col_multi_select,
             tag_col_multi_select,
         }
     }
@@ -1290,22 +1286,19 @@ where
         &self,
         layouter: &mut impl Layouter<F>,
         point: &AssignedForeignPoint<F, C, B>,
-        index: &AssignedNative<F>,
+        row: MultiSelectRow<'_, F>,
         table_tag: F,
-        enable_lookup: bool,
     ) -> Result<(Vec<AssignedNative<F>>, Vec<AssignedNative<F>>), Error> {
         fill_dynamic_lookup_row(
             layouter,
             &point.x.limb_values(),
             &point.y.limb_values(),
-            index,
+            row,
             &self.config.base_field_config.x_cols,
             &self.config.base_field_config.z_cols, // z_cols used for y (y_cols == x_cols)
-            self.config.idx_col_multi_select,
             self.config.tag_col_multi_select,
             self.config.q_multi_select,
             table_tag,
-            enable_lookup,
         )
     }
 
@@ -1327,8 +1320,7 @@ where
         table_tag: F,
     ) -> Result<(), Error> {
         for (i, point) in point_table.iter().enumerate() {
-            let index = self.native_gadget.assign_fixed(layouter, F::from(i as u64))?;
-            self.fill_dynamic_lookup_row(layouter, point, &index, table_tag, false)?;
+            self.fill_dynamic_lookup_row(layouter, point, MultiSelectRow::Table(i), table_tag)?;
         }
         Ok(())
     }
@@ -1377,8 +1369,12 @@ where
         // Make sure that the limbs of `selected` appear in the lookup for this table.
         // Only one point can appear next to `selector`, this ensures `selected` is
         // correct.
-        let (xs, ys) =
-            self.fill_dynamic_lookup_row(layouter, &selected, selector, table_tag, true)?;
+        let (xs, ys) = self.fill_dynamic_lookup_row(
+            layouter,
+            &selected,
+            MultiSelectRow::Lookup(selector),
+            table_tag,
+        )?;
         let x = AssignedField::<F, C::Base, B>::from_limbs_unsafe(xs);
         let y = AssignedField::<F, C::Base, B>::from_limbs_unsafe(ys);
         let is_id = self.native_gadget.assign_fixed(layouter, false)?;
@@ -1420,8 +1416,8 @@ where
         let k = selected.len();
         assert!(k <= n);
 
-        // Just to make sure, although we would have RAM issues otherwise.
-        assert!((n as u128) < (1 << (F::NUM_BITS / 2)));
+        // Keeps every selected index below `MULTI_SELECT_INDEX_SHIFT`, see below.
+        assert!(n < (1 << 31));
 
         // Assert that the table points are not the identity.
         table.iter().try_for_each(|point| self.assert_non_zero(layouter, point))?;
@@ -1465,6 +1461,11 @@ where
         // or equal to `n` for completeness, that prevents wrap-arounds.
         // Choosing `l` as a power of 2 will make range-checks slightly more efficient.
         let l = BigUint::one() << BigUint::from(n).bits();
+        // Bounding the first index bounds them all (by `(k + 1) * l`), which the
+        // lookup needs to tell the tables apart.
+        if let Some(first_idx) = assigned_selected_idxs.first() {
+            self.native_gadget.assert_lower_than_fixed(layouter, first_idx, &l)?;
+        }
         assigned_selected_idxs
             .iter()
             .zip(assigned_selected_idxs.iter().skip(1))
@@ -1489,9 +1490,8 @@ where
                 let (xs, ys) = self.fill_dynamic_lookup_row(
                     layouter,
                     &table[*i],
-                    selected_idx,
+                    MultiSelectRow::Lookup(selected_idx),
                     F::from(tag_cnt),
-                    true,
                 )?;
                 let x = AssignedField::<F, C::Base, B>::from_limbs_unsafe(xs);
                 let y = AssignedField::<F, C::Base, B>::from_limbs_unsafe(ys);

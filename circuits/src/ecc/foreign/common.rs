@@ -183,18 +183,25 @@ where
 
 /// Configures the self-referential dynamic lookup used by `multi_select`.
 ///
-/// Returns `(q_multi_select, idx_col_multi_select, tag_col_multi_select)`.
-/// The caller must store these in its config and pass them to
-/// [`fill_dynamic_lookup_row`].
+/// Returns `(q_multi_select, tag_col_multi_select)`. The caller must store
+/// these in its config and pass them to [`fill_dynamic_lookup_row`].
+///
+/// A row of the lookup holds the limbs of a point in the `x_cols` and
+/// `z_cols` of the base field chip, plus a fixed tag. A table entry encodes
+/// its index in the tag, `tag * MULTI_SELECT_INDEX_SHIFT + index`, so it
+/// needs no advice cell for it. A lookup row holds the bare `tag * SHIFT` in
+/// its fixed cell and its (witnessed) index in the next row, first `x` column.
 pub(crate) fn configure_multi_select_lookup<F: CircuitField>(
     meta: &mut ConstraintSystem<F>,
     advice_columns: &[Column<Advice>],
     base_field_config: &FieldChipConfig,
-) -> (Selector, Column<Advice>, Column<Fixed>) {
+) -> (Selector, Column<Fixed>) {
     let q_multi_select = meta.complex_selector();
-    assert!(advice_columns.len() > 2 * base_field_config.x_cols.len());
-    let idx_col_multi_select = *advice_columns.last().unwrap();
-    meta.enable_equality(idx_col_multi_select);
+    assert!(advice_columns.len() >= 2 * base_field_config.x_cols.len());
+
+    // The index of a lookup row lives in the next row (equality is enabled on
+    // `x_cols` by the field chip).
+    let idx_col_multi_select = base_field_config.x_cols[0];
 
     // The tag column should not be shared with other fixed columns since it is used
     // as a separator. It could be done if an extra selector were used as a
@@ -203,7 +210,7 @@ pub(crate) fn configure_multi_select_lookup<F: CircuitField>(
 
     meta.lookup_any("multi_select lookup", None, |meta| {
         let sel = meta.query_selector(q_multi_select);
-        let not_sel = Expression::from(1) - sel;
+        let not_sel = Expression::from(1) - sel.clone();
 
         // This is a lookup of a column (set) on itself!
         //
@@ -236,9 +243,7 @@ pub(crate) fn configure_multi_select_lookup<F: CircuitField>(
         //
         // Note that different values of `tag` can be used to encode independent tables
         // with the same lookup argument.
-        let mut identities = [idx_col_multi_select]
-            .iter()
-            .chain(base_field_config.x_cols.iter())
+        let mut identities = (base_field_config.x_cols.iter())
             .chain(base_field_config.z_cols.iter())
             .map(|col| {
                 let val = meta.query_advice(*col, Rotation::cur());
@@ -246,69 +251,85 @@ pub(crate) fn configure_multi_select_lookup<F: CircuitField>(
             })
             .collect::<Vec<_>>();
 
-        // Handle tag independently, since it is a fixed column
+        // The tag of a table entry carries its index. A lookup row (sel = 1) adds
+        // its witnessed index, read from the next row, to its bare tag.
         let tag = meta.query_fixed(tag_col_multi_select, Rotation::cur());
-        identities.push((tag.clone(), not_sel * tag));
+        let idx = meta.query_advice(idx_col_multi_select, Rotation::next());
+        identities.push((tag.clone() + sel * idx, not_sel * tag));
 
         identities
     });
 
-    (q_multi_select, idx_col_multi_select, tag_col_multi_select)
+    (q_multi_select, tag_col_multi_select)
 }
 
-/// Fills a single row in the dynamic-lookup region for `multi_select`.
+/// Shift separating the table tag from the entry index in the tag cell of
+/// the `multi_select` lookup. Lookup indices must be below it, see
+/// [`configure_multi_select_lookup`].
+pub(crate) const MULTI_SELECT_INDEX_SHIFT: u128 = 1 << 64;
+
+/// What a row of the `multi_select` lookup region is.
+pub(crate) enum MultiSelectRow<'a, F: CircuitField> {
+    /// A table entry with the given index.
+    Table(usize),
+    /// A lookup of the entry at the given (assigned) index.
+    Lookup(&'a AssignedNative<F>),
+}
+
+/// Fills the `multi_select` lookup region of one table entry or one lookup.
 ///
 /// Returns a pair of vectors corresponding to the assigned limbs of the
 /// x coordinate and the y coordinate respectively.
-/// (The assigned index and table_tag are not returned.)
 ///
-/// If `enable_lookup` is set, the selector `q_multi_select` is enabled at
-/// this row and the values of the coordinate limbs ARE NOT copied, but
-/// witnessed freely. It is the responsibility of the caller (with
-/// `enable_lookup = true`) to further restrict these cells, which are an
-/// output of this function.
+/// For a lookup, `q_multi_select` is enabled and the values of the coordinate
+/// limbs ARE NOT copied, but witnessed freely. It is the responsibility of
+/// the caller to further restrict these cells, which are an output of this
+/// function. The index must be below [`MULTI_SELECT_INDEX_SHIFT`].
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub(crate) fn fill_dynamic_lookup_row<F: CircuitField>(
     layouter: &mut impl Layouter<F>,
     x_limbs: &[AssignedNative<F>],
     y_limbs: &[AssignedNative<F>],
-    index: &AssignedNative<F>,
+    row: MultiSelectRow<'_, F>,
     x_cols: &[Column<Advice>],
     y_cols: &[Column<Advice>],
-    idx_col: Column<Advice>,
     tag_col: Column<Fixed>,
     q_multi_select: Selector,
     table_tag: F,
-    enable_lookup: bool,
 ) -> Result<(Vec<AssignedNative<F>>, Vec<AssignedNative<F>>), Error> {
+    let shifted_tag = table_tag * F::from_u128(MULTI_SELECT_INDEX_SHIFT);
     layouter.assign_region(
         || "multi_select table",
         |mut region| {
-            if enable_lookup {
-                q_multi_select.enable(&mut region, 0)?;
-            };
-
             let mut xs = vec![];
             let mut ys = vec![];
             for i in 0..x_limbs.len() {
-                // If the lookup is enabled, we do not copy the limbs into the current row,
-                // because copying imposes restrictions at compile-time (through the permutation
-                // argument). Instead, we want to give freedom to witness any value (from the
-                // table) and we will enforce that it is correct through the lookup check.
-                if enable_lookup {
-                    let x_val = x_limbs[i].value().copied();
-                    let y_val = y_limbs[i].value().copied();
-                    xs.push(region.assign_advice(|| "x", x_cols[i], 0, || x_val)?);
-                    ys.push(region.assign_advice(|| "y", y_cols[i], 0, || y_val)?);
-                }
-                // If the lookup is disabled we copy the limbs into the current row.
-                else {
-                    xs.push(x_limbs[i].copy_advice(|| "x", &mut region, x_cols[i], 0)?);
-                    ys.push(y_limbs[i].copy_advice(|| "y", &mut region, y_cols[i], 0)?);
+                match row {
+                    // The limbs of a lookup are not copied into the current row, because
+                    // copying imposes restrictions at compile-time (through the permutation
+                    // argument). Instead, we want to give freedom to witness any value (from
+                    // the table) and we will enforce that it is correct through the lookup.
+                    MultiSelectRow::Lookup(_) => {
+                        let x_val = x_limbs[i].value().copied();
+                        let y_val = y_limbs[i].value().copied();
+                        xs.push(region.assign_advice(|| "x", x_cols[i], 0, || x_val)?);
+                        ys.push(region.assign_advice(|| "y", y_cols[i], 0, || y_val)?);
+                    }
+                    MultiSelectRow::Table(_) => {
+                        xs.push(x_limbs[i].copy_advice(|| "x", &mut region, x_cols[i], 0)?);
+                        ys.push(y_limbs[i].copy_advice(|| "y", &mut region, y_cols[i], 0)?);
+                    }
                 }
             }
-            index.copy_advice(|| "x", &mut region, idx_col, 0)?;
-            region.assign_fixed(|| "assign tag", tag_col, 0, || Value::known(table_tag))?;
+            let tag = match row {
+                MultiSelectRow::Table(index) => shifted_tag + F::from(index as u64),
+                MultiSelectRow::Lookup(index) => {
+                    q_multi_select.enable(&mut region, 0)?;
+                    index.copy_advice(|| "index", &mut region, x_cols[0], 1)?;
+                    shifted_tag
+                }
+            };
+            region.assign_fixed(|| "assign tag", tag_col, 0, || Value::known(tag))?;
 
             Ok((xs, ys))
         },
