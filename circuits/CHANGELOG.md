@@ -23,6 +23,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 
 ### Changed
+* The in-circuit fflonk splits groups into `fflonk::balanced_chunks`, as off-circuit [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 * The in-circuit KZG multi-open collapses the combined commitment of a point set only if it has at least `COLLAPSE_THRESHOLD` variable bases, as the off-circuit verifier does [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 * The verifier gadget reads the `cs_degree` quotient limbs as one group and opens them one by one, deriving the first limb's evaluation, rather than opening the combination of their commitments, scaled by full-width scalars [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 * `AssignedMsm::assign`, and so `AssignedAccumulator::assign` and `VerifierGadget::assign_collapsed_accumulator`, assign a collapsed MSM: its variable-base points get the constant scalar 1 instead of a witnessed one, so accumulating it keeps its scalars as short as the accumulation challenge [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)

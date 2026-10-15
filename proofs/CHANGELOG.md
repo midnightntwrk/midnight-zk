@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+* `fflonk::balanced_chunks`, the split of a group into the fewest chunks of at most `T_MAX`, of balanced sizes [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 * `kzg::COLLAPSE_THRESHOLD`, the number of variable-base terms from which the KZG multi-open collapses a point set's combined commitment [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 * `VerifyingKey` implements `Default`: a placeholder key of an empty constraint system [#461](https://github.com/midnightntwrk/midnight-zk/pull/461)
 * `ConstraintSystem::fixed_polys_labels` [#547](https://github.com/midnightntwrk/midnight-zk/pull/547)
@@ -50,6 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Fix cost-model [#435](https://github.com/midnightntwrk/midnight-zk/pull/435)
 
 ### Changed
+* fflonk splits the polynomials of a `commit_many` call into the same number of chunks as before, of balanced sizes (e.g. 6, 6, 5 rather than 8, 8, 1), instead of chunks of `T_MAX` and a remainder. This changes fflonk verifying keys and proofs [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 * With truncated challenges, the KZG multi-open collapses the combined commitment of a point set only if it has at least `COLLAPSE_THRESHOLD` variable-base terms; a set with fewer keeps its terms, scaled by `x4` one by one [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 * The quotient is split into `quotient_poly_degree + 1` limbs of `n - 2` coefficients, with two blinders per boundary between limbs, committed to as one group and opened one by one at `x`, rather than through the combination of their commitments. The proof carries the evaluations of all limbs but the first, which the verifier derives from the identities. This changes the proof [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 * Remove the linearization: the simple selectors are committed, evaluated and opened in the phase-0 group like any other fixed column, and the verifier checks that the quotient commitment, scaled by `1 - x^n`, opens to `-nu(x)` at `x`. Proofs grow by one scalar per simple selector, and every verifying key and its `transcript_repr` change. `create_gate` no longer requires the polynomials of a gate to be multiples of one simple selector [#566](https://github.com/midnightntwrk/midnight-zk/pull/566)

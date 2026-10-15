@@ -14,9 +14,9 @@
 //! In-circuit fflonk over a generic in-circuit PCS.
 //!
 //! In-circuit analog of [`midnight_proofs::poly::fflonk`]: the polynomials of
-//! a group are committed in chunks of at most `T_MAX`, each chunk under the
-//! label `Collection(chunk)`, and opening a chunk at `x` amounts to opening it
-//! with the inner PCS at the `t`-th roots of `x`.
+//! a group are committed in the [`balanced_chunks`] of at most `T_MAX`, each
+//! chunk under the label `Collection(chunk)`, and opening a chunk at `x`
+//! amounts to opening it with the inner PCS at the `t`-th roots of `x`.
 
 use std::{
     collections::{BTreeMap, HashMap, hash_map::Entry},
@@ -29,7 +29,7 @@ use midnight_proofs::{
     poly::{
         PolynomialLabel::{self, Collection},
         commitment::InterleavedCommit,
-        fflonk::Fflonk,
+        fflonk::{Fflonk, balanced_chunks},
     },
 };
 
@@ -57,7 +57,7 @@ impl<PCS, const LOG2_T_MAX: u32> InCircuitFflonk<PCS, LOG2_T_MAX> {
     /// The labels of the inner commitments to the group `labels`.
     fn chunk_labels(labels: &[PolynomialLabel]) -> Vec<PolynomialLabel> {
         PolynomialLabel::assert_distinct(labels);
-        labels.chunks(Self::T_MAX).map(|l| Collection(l.to_vec())).collect()
+        balanced_chunks(labels, Self::T_MAX).map(|l| Collection(l.to_vec())).collect()
     }
 }
 
@@ -132,7 +132,7 @@ where
         // its polynomials are queried at, in query order: `labels -> (commitment,
         // points)`.
         let chunks_info = queries.iter().fold(BTreeMap::new(), |mut chunks_info, q| {
-            let labels = (Self::commitment_labels(q.commitment).chunks(Self::T_MAX))
+            let labels = balanced_chunks(&Self::commitment_labels(q.commitment), Self::T_MAX)
                 .find(|labels| labels.contains(&q.label))
                 .map_or_else(|| vec![q.label.clone()], <[_]>::to_vec);
             let (_, points) = chunks_info.entry(labels).or_insert((q.commitment, Vec::new()));
