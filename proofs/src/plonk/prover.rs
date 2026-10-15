@@ -99,16 +99,6 @@ where
         return Err(Error::InvalidInstances);
     }
 
-    let t_cp = std::time::Instant::now();
-    let mut t_lap = std::time::Instant::now();
-    let mut c_lap = crate::utils::perf2_cpu_ms();
-    let mut lap = |name: &str| {
-        let c = crate::utils::perf2_cpu_ms();
-        let w = t_lap.elapsed().as_secs_f64() * 1e3;
-        eprintln!("[commit_phases] {name}: {w:.2} ms cpu={:.2} ms (x{:.2})", c - c_lap, (c - c_lap) / w);
-        c_lap = c;
-        t_lap = std::time::Instant::now();
-    };
     // Hash verification key into transcript
     let vk_absorbed = pk.vk.absorb_into(transcript)?;
     let phase0_committed = pk.phase0_polys.committed(&vk_absorbed);
@@ -117,9 +107,7 @@ where
 
     let instance = compute_instances(params, pk, instances, nb_committed_instances, transcript)?;
 
-    lap("vk absorb + compute_instances");
     let advice_polys = parse_advices(pk, circuit, instances, &mut rng)?;
-    lap("synthesis / parse_advices (witness gen)");
 
     // Helper: sample `num_sets` blinding vectors, each of length `inner_len`.
     // Used to pre-generate every blinding the parallel compute sections below
@@ -157,7 +145,6 @@ where
             .collect::<Result<Vec<_>, Error>>()?
     };
 
-    lap("logup multiplicities");
     let logup_multiplicities_len = logup_multiplicities.len();
     // The advice columns and the multiplicities form the phase1 group.
     // TODO: Check the multiplicities clone - see if we can remove it.
@@ -185,7 +172,6 @@ where
         transcript,
     )?;
 
-    lap("phase-1 commit (advice MSMs)");
     // Sample theta challenges for keeping lookup columns linearly independent
     let theta: Vec<F> = transcript.squeeze_challenges(pk.vk.cs.nb_theta_challenges());
 
@@ -217,7 +203,6 @@ where
         perm_blindings,
     );
 
-    lap("phase-2 perm grand product");
     for (i, poly) in perm_z_polys.into_iter().enumerate() {
         if phase2_polys_map
             .insert(PolynomialLabel::PermutationAccumulator(i), poly)
@@ -256,7 +241,6 @@ where
         })
         .collect::<Vec<_>>();
 
-    lap("phase-2 logup helpers/aggregator");
     for polys_map in logup_polys_maps {
         for (label, p) in polys_map {
             if phase2_polys_map.insert(label, p).is_some() {
@@ -266,7 +250,6 @@ where
     }
 
     for (i, flat) in pk.ev.trashcans_flat.iter().enumerate() {
-        let t_tr = std::time::Instant::now();
         let p = compute_trash_poly(
             flat,
             domain,
@@ -276,13 +259,11 @@ where
             &instance.instance_values,
         );
 
-        eprintln!("[perf2] trash poly {i}: {:.2} ms", t_tr.elapsed().as_secs_f64() * 1e3);
         if phase2_polys_map.insert(PolynomialLabel::Trash(i), p).is_some() {
             return Err(Error::DuplicatedLabel);
         }
     }
 
-    lap("phase-2 trash polys");
     let (phase2_committed, phase2_commitment) = argument::prover::Committed::commit::<CS, T, _>(
         params,
         phase2_polys_map,
@@ -290,7 +271,6 @@ where
         transcript,
     )?;
 
-    lap("phase-2 commit (MSMs)");
     // Obtain challenges for keeping all identities linearly independent
     let y: Vec<F> = transcript.squeeze_challenges(pk.vk.cs.nb_y_challenges());
 
@@ -299,8 +279,6 @@ where
         instance_values,
     } = instance;
 
-    lap("tail (y, destructure)");
-    eprintln!("[commit_phases] TOTAL: {:.2} ms", t_cp.elapsed().as_secs_f64() * 1e3);
     Ok(CommittedTrace {
         trace: ProverTrace {
             instance_polys,
@@ -590,14 +568,11 @@ where
     CS: PolynomialCommitmentScheme<F>,
     ConcreteCircuit: Circuit<F>,
 {
-    let t_cfg = std::time::Instant::now();
     let mut meta = ConstraintSystem::default();
     #[cfg(feature = "circuit-params")]
     let config = ConcreteCircuit::configure_with_params(&mut meta, circuit.params());
     #[cfg(not(feature = "circuit-params"))]
     let config = ConcreteCircuit::configure(&mut meta);
-    eprintln!("[perf2] parse_advices: configure={:.2} ms", t_cfg.elapsed().as_secs_f64()*1e3);
-    let t_alloc = std::time::Instant::now();
 
     let domain = &pk.vk.domain;
     // Selector optimizations cannot be applied here; use the ConstraintSystem
@@ -623,9 +598,6 @@ where
     // the region layout (see `ProvingKey::region_starts`), we reuse it
     // here to skip the shape pass; otherwise the floor planner falls
     // back to computing it.
-    eprintln!("[perf2] parse_advices: witness alloc={:.2} ms", t_alloc.elapsed().as_secs_f64()*1e3);
-    let t_syn = std::time::Instant::now();
-    let c_syn = crate::utils::perf2_cpu_ms();
     ConcreteCircuit::FloorPlanner::synthesize_with_cached_regions(
         &mut witness,
         circuit,
@@ -634,11 +606,7 @@ where
         pk.region_starts.as_deref(),
     )?;
 
-    let (w_syn, c_syn) = (t_syn.elapsed().as_secs_f64() * 1e3, crate::utils::perf2_cpu_ms() - c_syn);
-    let t_bi = std::time::Instant::now();
     let mut advice_polys = batch_invert_rational::<F>(witness.advice);
-    let w_bi = t_bi.elapsed().as_secs_f64() * 1e3;
-    eprintln!("[perf2] parse_advices: synthesize={w_syn:.2} ms (cpu {c_syn:.2}) batch_invert_rational={w_bi:.2} ms");
 
     for (i, advice_polys) in advice_polys.iter_mut().enumerate() {
         if !witness.unblinded_advice.contains(&i) {
@@ -653,7 +621,6 @@ where
         }
     }
 
-    eprintln!("[perf2] parse_advices: total {:.2} ms", t_cfg.elapsed().as_secs_f64()*1e3);
     Ok(advice_polys)
 }
 
