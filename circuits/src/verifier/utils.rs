@@ -516,12 +516,17 @@ fn root_of_unity<F: CircuitField>(t: usize) -> F {
     F::ROOT_OF_UNITY.pow_vartime([1u64 << (F::S - t.trailing_zeros())])
 }
 
+/// The powers `[z, z^2, ...]` computed so far, keyed by the cell of `z`.
+pub(crate) type PowersCache<F> = HashMap<AssignedNative<F>, Vec<AssignedNative<F>>>;
+
 /// `Σ_i r^i coeffs[i]` for every root `r = z ω_t^j` (`j < t`) of
 /// [`cached_roots`], computed as `Σ_i ω_t^{ij} (z^i coeffs[i])`: one product
-/// per coefficient and one linear combination per root.
+/// per coefficient and one linear combination per root. The powers of `z` are
+/// kept in `z_powers`.
 pub(crate) fn eval_polynomial_on_roots<F: CircuitField>(
     layouter: &mut impl Layouter<F>,
     scalar_chip: &impl ArithInstructions<F, AssignedNative<F>>,
+    z_powers: &mut PowersCache<F>,
     coeffs: &[&AssignedNative<F>],
     z: &AssignedNative<F>,
     t: usize,
@@ -529,12 +534,16 @@ pub(crate) fn eval_polynomial_on_roots<F: CircuitField>(
     if coeffs.len() == 1 {
         return Ok(vec![coeffs[0].clone(); t]);
     }
-    let z_powers = powers(layouter, scalar_chip, z, coeffs.len())?;
-    let terms = (coeffs.iter().zip(&z_powers).enumerate())
-        .map(|(i, (c, z_i))| match i {
-            0 => Ok((*c).clone()),
-            _ => scalar_chip.mul(layouter, c, z_i, None),
-        })
+    let z_powers = z_powers.entry(z.clone()).or_insert_with(|| vec![z.clone()]);
+    while z_powers.len() < coeffs.len() - 1 {
+        let next = scalar_chip.mul(layouter, z_powers.last().unwrap(), z, None)?;
+        z_powers.push(next);
+    }
+    let terms = std::iter::once(Ok(coeffs[0].clone()))
+        .chain(
+            (coeffs[1..].iter().zip(z_powers.iter()))
+                .map(|(c, z_i)| scalar_chip.mul(layouter, c, z_i, None)),
+        )
         .collect::<Result<Vec<_>, Error>>()?;
     let omega_t = root_of_unity::<F>(t);
     (0..t as u64)
