@@ -751,15 +751,13 @@ where
         p: &AssignedForeignPoint<F, C, B>,
     ) -> Result<AssignedForeignPoint<F, C, B>, Error> {
         let r_curve = p.value().map(|p| p + p);
-        let r = self.assign_point_unchecked(layouter, r_curve)?;
-
-        // (There are no points of order 2 by assumption.)
-        self.native_gadget.assert_equal(layouter, &p.is_id, &r.is_id)?;
+        // r = id iff p = id, since there are no points of order 2 by assumption.
+        let r = self.assign_point_with_id_unchecked(layouter, r_curve, p.is_id.clone())?;
 
         // If `p` is not the identity, make sure the double relation is satisfied.
         // Note that the following call to [assert_double] satisfies the required
-        // preconditions because we set cond := (p != id) and we have asserted that
-        // p = id <=> r = id, so both preconditions of [assert_double] are guaranteed.
+        // preconditions because we set cond := (p != id) and r takes the identity
+        // flag of p, so both preconditions of [assert_double] are guaranteed.
         let cond = self.native_gadget.not(layouter, &p.is_id)?;
         self.assert_double(layouter, p, &r, &cond)?;
 
@@ -1053,26 +1051,39 @@ where
         layouter: &mut impl Layouter<F>,
         p: Value<C::CryptographicGroup>,
     ) -> Result<AssignedForeignPoint<F, C, B>, Error> {
-        let values = p.map(|p| {
+        let is_id = (self.native_gadget).assign(
+            layouter,
+            p.map(|p| C::CryptographicGroup::is_identity(&p).into()),
+        )?;
+        self.assign_point_with_id_unchecked(layouter, p, is_id)
+    }
+
+    /// Like [Self::assign_point_unchecked], with the given `is_id` as the
+    /// identity flag of the point.
+    fn assign_point_with_id_unchecked(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        p: Value<C::CryptographicGroup>,
+        is_id: AssignedBit<F>,
+    ) -> Result<AssignedForeignPoint<F, C, B>, Error> {
+        let coordinates = p.map(|p| {
             if C::CryptographicGroup::is_identity(&p).into() {
-                (C::Base::ZERO, C::Base::ZERO, true)
+                (C::Base::ZERO, C::Base::ZERO)
             } else {
-                let coordinates =
-                    p.into().coordinates().expect("assign_point_unchecked: invalid point given");
-                (coordinates.0, coordinates.1, false)
+                p.into().coordinates().expect("assign_point_unchecked: invalid point given")
             }
         });
-        let mut xy = (self.base_field_chip())
-            .assign_many(layouter, &[values.map(|v| v.0), values.map(|v| v.1)])?;
+        let mut xy = (self.base_field_chip()).assign_many(
+            layouter,
+            &[coordinates.map(|c| c.0), coordinates.map(|c| c.1)],
+        )?;
         let (x, y) = (xy.remove(0), xy.remove(0));
-        let is_id = self.native_gadget.assign(layouter, values.map(|v| v.2))?;
-        let p = AssignedForeignPoint::<F, C, B> {
+        Ok(AssignedForeignPoint {
             point: p,
             is_id,
             x,
             y,
-        };
-        Ok(p)
+        })
     }
 
     /// Asserts that the given point satisfies the Weierstrass curve equation
@@ -1123,14 +1134,11 @@ where
         q: &AssignedForeignPoint<F, C, B>,
     ) -> Result<AssignedForeignPoint<F, C, B>, Error> {
         let r_curve = p.value().zip(q.value()).map(|(p, q)| p + q);
-        let r = self.assign_point_unchecked(layouter, r_curve)?;
+        // r is not the identity, since it takes the identity flag of p.
+        let r = self.assign_point_with_id_unchecked(layouter, r_curve, p.is_id.clone())?;
 
-        // Assert that r is not the identity.
-        self.native_gadget.assert_equal(layouter, &p.is_id, &r.is_id)?;
-
-        // The preconditions of [incomplete_add] (and the previous assertion
-        // that r != id) guarantee that the following call satisfies all the
-        // preconditions of [assert_add].
+        // The preconditions of [incomplete_add] (and r != id) guarantee that the
+        // following call satisfies all the preconditions of [assert_add].
         // Note that the following call to [assert_add] will make the circuit
         // unsatisfiable if `p = -q`, but that is the intended behavior of
         // [incomplete_add].
