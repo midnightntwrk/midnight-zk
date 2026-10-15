@@ -266,18 +266,7 @@ impl<F: CircuitField, PCS: InCircuitPCS<F>> VerifierGadget<F, PCS> {
                 .try_for_each(|pi| transcript.common(layouter, &self.scalar_chip, pi))?;
         }
 
-        let logups = cs
-            .lookups()
-            .iter()
-            .map(|l| l.chunk_by_degree(assigned_vk.cs_degree))
-            .collect::<Vec<_>>();
-
-        // The advice columns and the logup multiplicities form the phase1 group.
-        let phase1_labels = (0..cs.num_advice_columns())
-            .map(PolynomialLabel::Advice)
-            .chain((0..logups.len()).map(PolynomialLabel::LogupMultiplicities))
-            .collect::<Vec<_>>();
-
+        let phase1_labels = argument::phase1_labels(cs);
         let phase1_committed =
             argument::read_committed(layouter, &self.commitment_chip, &phase1_labels, transcript)?;
 
@@ -289,22 +278,7 @@ impl<F: CircuitField, PCS: InCircuitPCS<F>> VerifierGadget<F, PCS> {
 
         let trash_challenge = transcript.squeeze_challenge(layouter)?;
 
-        let mut phase2_labels = cs.permutation().accumulator_labels(cs.degree());
-
-        for (argument_index, logup_argument) in logups.iter().enumerate() {
-            for j in 0..logup_argument.num_chunks() {
-                phase2_labels.push(PolynomialLabel::LogupHelper(argument_index, j));
-            }
-        }
-
-        for argument_index in 0..logups.len() {
-            phase2_labels.push(PolynomialLabel::LogupAggregator(argument_index));
-        }
-
-        for argument_index in 0..cs.trashcans().len() {
-            phase2_labels.push(PolynomialLabel::Trash(argument_index));
-        }
-
+        let phase2_labels = argument::phase2_labels(cs, assigned_vk.cs_degree);
         let phase2_committed =
             argument::read_committed(layouter, &self.commitment_chip, &phase2_labels, transcript)?;
 

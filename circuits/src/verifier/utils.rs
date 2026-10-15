@@ -517,6 +517,19 @@ fn root_of_unity<F: CircuitField>(t: usize) -> F {
     F::ROOT_OF_UNITY.pow_vartime([1u64 << (F::S - t.trailing_zeros())])
 }
 
+/// `Σ_i point^i coeffs[i]`, by Horner.
+pub(crate) fn eval_polynomial<F: CircuitField>(
+    layouter: &mut impl Layouter<F>,
+    scalar_chip: &impl ArithInstructions<F, AssignedNative<F>>,
+    coeffs: &[&AssignedNative<F>],
+    point: &AssignedNative<F>,
+) -> Result<AssignedNative<F>, Error> {
+    let (last, rest) = coeffs.split_last().expect("a polynomial has at least one coefficient");
+    (rest.iter().rev()).try_fold((*last).clone(), |acc, c| {
+        mul_add(layouter, scalar_chip, &acc, point, c)
+    })
+}
+
 /// The powers `[z, z^2, ...]` computed so far, keyed by `z` (by pointer).
 pub(crate) type PowersCache<F> = HashMap<AssignedNative<F>, Vec<AssignedNative<F>>>;
 
