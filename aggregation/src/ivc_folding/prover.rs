@@ -142,7 +142,8 @@ impl<'a, T: Ivc> FoldingIvcProver<'a, T> {
                 (acc, true, dummy.folding_proof.clone())
             }
             Some(acc) => {
-                let acc = acc.fold(pk, fresh, &mut transcript)?;
+                let acc_hash = accumulator_hash(Some(acc.accumulator()));
+                let acc = acc.fold(pk, fresh, Some(acc_hash), &mut transcript)?;
                 (acc, false, transcript.finalize())
             }
         };
@@ -172,7 +173,10 @@ impl<'a, T: Ivc> FoldingIvcProver<'a, T> {
         let mut transcript = Tr::init();
         let acc = match self.acc.take() {
             None => ProverAccumulator::init(pk, fresh, &mut transcript)?,
-            Some(acc) => acc.fold(pk, fresh, &mut transcript)?,
+            Some(acc) => {
+                let acc_hash = accumulator_hash(Some(acc.accumulator()));
+                acc.fold(pk, fresh, Some(acc_hash), &mut transcript)?
+            }
         };
         let folding_proof = transcript.finalize();
         let fold = start.elapsed();

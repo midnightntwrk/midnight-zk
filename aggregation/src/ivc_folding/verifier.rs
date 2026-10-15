@@ -52,7 +52,7 @@ impl<T: Ivc> FoldingIvcVerifier<T> {
         let mut transcript = Tr::init_from_bytes(&proof.folding_proof);
         let acc = match &instance.acc {
             None => Accumulator::init(vk, fresh, &mut transcript),
-            Some(acc) => acc.fold(vk, &fresh, &mut transcript),
+            Some(acc) => acc.fold(vk, &fresh, Some(acc_hash), &mut transcript),
         }
         .map_err(|_| IvcError::InvalidProof)?;
         transcript.assert_empty().map_err(|_| IvcError::TranscriptNotEmpty)?;

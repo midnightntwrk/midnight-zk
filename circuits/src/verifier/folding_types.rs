@@ -343,19 +343,3 @@ impl<S: SelfEmulation> AssignedFoldingInstance<S> {
         (self.instances.iter().flatten()).try_for_each(|pi| transcript.common_scalar(layouter, pi))
     }
 }
-
-impl<S: SelfEmulation> AssignedFoldingAccumulator<S> {
-    /// Absorbs the whole accumulator: the instance (see
-    /// [`AssignedFoldingInstance::absorb`]), `θ⃗, β, γ, trash⃗, y⃗`, `β⃗`, `e`.
-    pub(crate) fn absorb(
-        &self,
-        layouter: &mut impl Layouter<S::F>,
-        transcript: &mut TranscriptGadget<S>,
-    ) -> Result<(), Error> {
-        self.instance.absorb(layouter, transcript)?;
-        (self.instance.challenges.scalars())
-            .chain(&self.betas)
-            .chain([&self.error])
-            .try_for_each(|s| transcript.common_scalar(layouter, s))
-    }
-}

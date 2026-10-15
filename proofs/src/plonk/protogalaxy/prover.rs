@@ -122,10 +122,12 @@ where
 
     /// Prover side of [`Accumulator::fold`]: writes the perturbator `F(X)`
     /// (without its constant term `e`) and `K(X)`, then folds with `γ`.
+    /// `acc_hash` as in [`Accumulator::fold`].
     pub fn fold<T>(
         self,
         pk: &ProvingKey<F, CS>,
         fresh: ProverInstance<'a, F, CS>,
+        acc_hash: Option<F>,
         transcript: &mut T,
     ) -> Result<Self, Error>
     where
@@ -136,7 +138,7 @@ where
         let log_n = pk.vk.domain.k() as usize;
         let d = folding_degree(&pk.vk.cs);
 
-        self.public.absorb(transcript)?;
+        self.public.absorb_bound(acc_hash, transcript)?;
         fresh.public.absorb_commitments_and_instances(transcript)?;
 
         // F(X) = Σᵢ powᵢ(β⃗ + X·δ⃗)·fᵢ(acc), with F(0) = e.

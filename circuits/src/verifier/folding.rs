@@ -192,6 +192,10 @@ where
     /// messages (`F_1 … F_{log n}`, then `K_0 … K_{d−2}`) and the commitment
     /// products from `folding_proof`.
     ///
+    /// The transcript absorbs `acc_hash` (one element) instead of the
+    /// accumulator: it must be the hash that binds `acc`, e.g. the one in the
+    /// previous step's public input (the native fold takes it as `acc_hash`).
+    ///
     /// The products are checked (the circuit is unsatisfiable on a wrong
     /// one), unless `discarded` is set: for a caller that throws the result
     /// away in some cases (a genesis step, with no real fold to prove), it
@@ -200,12 +204,13 @@ where
         &self,
         layouter: &mut impl Layouter<S::F>,
         acc: &AssignedFoldingAccumulator<S>,
+        acc_hash: &AssignedNative<S::F>,
         fresh: &AssignedFoldingInstance<S>,
         folding_proof: Value<Vec<u8>>,
         discarded: Option<&AssignedBit<S::F>>,
     ) -> Result<AssignedFoldingAccumulator<S>, Error> {
         let (mut next, gamma, mut transcript) =
-            self.fold_scalars(layouter, acc, fresh, folding_proof)?;
+            self.fold_scalars(layouter, acc, acc_hash, fresh, folding_proof)?;
         let (phase1, phase2) = self.fold_commitments(
             layouter,
             &acc.instance,
@@ -227,6 +232,7 @@ where
         &self,
         layouter: &mut impl Layouter<S::F>,
         acc: &AssignedFoldingAccumulator<S>,
+        acc_hash: &AssignedNative<S::F>,
         fresh: &AssignedFoldingInstance<S>,
         folding_proof: Value<Vec<u8>>,
     ) -> Result<
@@ -239,7 +245,7 @@ where
     > {
         let chip = &self.scalar_chip;
         let mut transcript = self.new_transcript(layouter, folding_proof)?;
-        acc.absorb(layouter, &mut transcript)?;
+        transcript.common_scalar(layouter, acc_hash)?;
         fresh.absorb(layouter, &mut transcript)?;
 
         let delta = transcript.squeeze_challenge(layouter)?;

@@ -316,12 +316,12 @@ where
 
         let mut transcript = T::init();
         let start = Instant::now();
-        acc = acc.fold(&pk, instance, &mut transcript).unwrap();
+        acc = acc.fold(&pk, instance, None, &mut transcript).unwrap();
         timings.fold += start.elapsed();
         let bytes = transcript.finalize();
 
         let start = Instant::now();
-        acc_v = acc_v.fold(vk, &fresh, &mut T::init_from_bytes(&bytes)).unwrap();
+        acc_v = acc_v.fold(vk, &fresh, None, &mut T::init_from_bytes(&bytes)).unwrap();
         timings.fold_verify += start.elapsed();
         assert_eq!(&acc_v, acc.accumulator());
         if !corrupt_last {

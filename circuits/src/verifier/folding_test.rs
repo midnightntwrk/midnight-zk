@@ -55,7 +55,10 @@ use crate::{
         NB_POSEIDON_ADVICE_COLS, NB_POSEIDON_FIXED_COLS, PoseidonChip, PoseidonConfig,
         PoseidonState,
     },
-    instructions::{AssignmentInstructions, PublicInputInstructions},
+    instructions::{
+        AssignmentInstructions, PublicInputInstructions,
+        hash::{HashCPU, HashInstructions},
+    },
     types::ComposableChip,
     verifier::{
         BlstrsEmulation, FoldingGadget, FoldingShape, InCircuitPCS, NativeAccumulator,
@@ -373,7 +376,16 @@ impl Circuit<F> for FoldingCircuit {
             Step::Init => gadget.init(&mut layouter, fresh)?,
             Step::Fold { acc, folding_proof } => {
                 let acc = gadget.assign_accumulator(&mut layouter, acc.as_ref())?;
-                gadget.fold(&mut layouter, &acc, &fresh, folding_proof.clone(), None)?
+                let acc_pi = acc.as_public_input(&mut layouter, &chips.curve)?;
+                let acc_hash = chips.sponge.hash(&mut layouter, &acc_pi)?;
+                gadget.fold(
+                    &mut layouter,
+                    &acc,
+                    &acc_hash,
+                    &fresh,
+                    folding_proof.clone(),
+                    None,
+                )?
             }
         };
         for x in next.as_public_input(&mut layouter, &chips.curve)? {
@@ -423,18 +435,30 @@ struct Chain {
     acc2: NativeAccumulator<S>,
 }
 
+/// The hash binding an accumulator (a Poseidon hash of its public input).
+fn acc_hash(acc: &NativeAccumulator<S>) -> F {
+    <PoseidonChip<F> as HashCPU<F, F>>::hash(&accumulator_as_public_input::<S>(acc))
+}
+
 fn chain(native: &Native) -> Chain {
     let (pk, vk) = (&native.pk, native.vk());
     let acc0 = ProverAccumulator::init(pk, native.step(0).0, &mut T::init()).unwrap();
-    let acc1 = acc0.fold(pk, native.step(1).0, &mut T::init()).unwrap();
+    let acc0_hash = acc_hash(acc0.accumulator());
+    let acc1 = acc0.fold(pk, native.step(1).0, Some(acc0_hash), &mut T::init()).unwrap();
     let acc1_public = acc1.accumulator().clone();
+    let hash1 = acc_hash(&acc1_public);
 
     let (prover2, fresh2) = native.step(2);
     let mut transcript = T::init();
-    let acc2_prover = acc1.fold(pk, prover2, &mut transcript).unwrap();
+    let acc2_prover = acc1.fold(pk, prover2, Some(hash1), &mut transcript).unwrap();
     let folding_proof = transcript.finalize();
-    let acc2 =
-        (acc1_public.fold(vk, &fresh2.public, &mut T::init_from_bytes(&folding_proof))).unwrap();
+    let acc2 = (acc1_public.fold(
+        vk,
+        &fresh2.public,
+        Some(hash1),
+        &mut T::init_from_bytes(&folding_proof),
+    ))
+    .unwrap();
     assert_eq!(&acc2, acc2_prover.accumulator());
     assert_ne!(acc2.error(), F::ZERO, "e' should be non-trivial");
     Chain {
@@ -481,7 +505,12 @@ fn folding_gadget_tampered() {
     let point = point.as_ref();
 
     let rejected = |fresh: &Fresh, proof: &[u8]| {
-        let native_fold = acc1.fold(vk, &fresh.public, &mut T::init_from_bytes(proof));
+        let native_fold = acc1.fold(
+            vk,
+            &fresh.public,
+            Some(acc_hash(acc1)),
+            &mut T::init_from_bytes(proof),
+        );
         assert!(native_fold.is_err());
         let circuit = FoldingCircuit::fold(&native, acc1, fresh, proof);
         assert!(!circuit.outputs(&c.acc2));

@@ -192,11 +192,14 @@ impl<T: Ivc> Relation for FoldingIvcCircuit<T> {
         let init_acc = folding.init(layouter, fresh.clone())?;
         // The fold is discarded at the first step (the init is selected) and at
         // genesis (the default accumulator): there the dummy folding proof need
-        // not carry the right commitment products.
+        // not carry the right commitment products, and the fold transcript
+        // absorbs `prev_acc_hash = 0` instead of a hash of the dummy
+        // accumulator, which is sound as the result is not used.
         let discarded = std_lib.or(layouter, &[is_first.clone(), is_genesis.clone()])?;
         let fold_acc = folding.fold(
             layouter,
             &prev_acc,
+            &prev_acc_hash,
             &fresh,
             witness.map(|w| w.folding_proof),
             Some(&discarded),

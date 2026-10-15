@@ -161,10 +161,14 @@ where
     /// Folds `fresh` into the accumulator, reading the folding messages (the
     /// perturbator `F` without its constant term, then `K`) from a fresh
     /// folding `transcript`. See the module documentation for the order.
+    /// `acc_hash` is the accumulator's hash if the caller binds it (the
+    /// in-circuit verifier absorbs only that); `None` absorbs the whole
+    /// accumulator.
     pub fn fold<T>(
         &self,
         vk: &VerifyingKey<F, CS>,
         fresh: &FoldingInstance<F, CS>,
+        acc_hash: Option<F>,
         transcript: &mut T,
     ) -> Result<Self, Error>
     where
@@ -175,7 +179,7 @@ where
         let log_n = vk.domain.k() as usize;
         let d = folding_degree(&vk.cs);
 
-        self.absorb(transcript)?;
+        self.absorb_bound(acc_hash, transcript)?;
         fresh.absorb_commitments_and_instances(transcript)?;
 
         let deltas = squeeze_deltas(transcript, log_n);

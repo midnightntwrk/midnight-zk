@@ -198,4 +198,23 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> Accumulator<F, CS> {
         transcript.common(&self.error)?;
         Ok(())
     }
+
+    /// What a folding round absorbs for the accumulator: its hash `acc_hash`
+    /// (one element, the same hash the caller binds the accumulator with, e.g.
+    /// in a step circuit's public input) or, without one, the whole
+    /// accumulator ([`Self::absorb`]).
+    pub(crate) fn absorb_bound<T: Transcript>(
+        &self,
+        acc_hash: Option<F>,
+        transcript: &mut T,
+    ) -> Result<(), Error>
+    where
+        F: Hashable<T::Hash>,
+        CS::Commitment: Hashable<T::Hash>,
+    {
+        match acc_hash {
+            Some(hash) => Ok(transcript.common(&hash)?),
+            None => self.absorb(transcript),
+        }
+    }
 }

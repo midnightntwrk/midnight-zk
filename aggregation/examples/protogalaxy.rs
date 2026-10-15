@@ -185,7 +185,7 @@ where
         for instance in fresh {
             let t = Instant::now();
             let mut transcript = T::init();
-            acc = acc.fold(pk, instance, &mut transcript).expect("fold failed");
+            acc = acc.fold(pk, instance, None, &mut transcript).expect("fold failed");
             folding_proofs.push(transcript.finalize());
             fold_times.push(t.elapsed());
         }
@@ -230,7 +230,7 @@ where
         let mut acc_v = Accumulator::init(vk, instances.next().unwrap(), &mut T::init()).unwrap();
         for (instance, proof) in instances.zip(&folding_proofs) {
             acc_v = acc_v
-                .fold(vk, &instance, &mut T::init_from_bytes(proof))
+                .fold(vk, &instance, None, &mut T::init_from_bytes(proof))
                 .expect("verifier fold failed");
         }
         let fold_verify = t.elapsed();

@@ -173,9 +173,11 @@ impl Circuit<F> for CostCircuit {
             let acc = gadget.assign_accumulator(layouter, Value::unknown())?;
             end(Window::AssignAcc, layouter);
 
+            // Stands for the hash of `acc`, which the caller has computed already.
+            let acc_hash = chips.scalar.assign(layouter, Value::unknown())?;
             start(Window::FoldScalars, layouter);
             let (mut next, gamma, mut transcript) =
-                gadget.fold_scalars(layouter, &acc, &fresh, Value::unknown())?;
+                gadget.fold_scalars(layouter, &acc, &acc_hash, &fresh, Value::unknown())?;
             end(Window::FoldScalars, layouter);
 
             start(Window::FoldCommitments, layouter);
