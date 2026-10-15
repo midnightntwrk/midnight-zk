@@ -622,6 +622,7 @@ where
         let native_gadget_config = P2RDecompositionConfig {
             native_config,
             pow2range_config,
+            pack: None,
         };
 
         (native_gadget_config, scanner_config)

@@ -52,6 +52,19 @@ pub trait CoreDecompositionInstructions<F: CircuitField>: Clone + Debug {
         bit_length: usize,
     ) -> Result<AssignedNative<F>, Error>;
 
+    /// Assigns several values, guaranteeing that each is strictly lower than
+    /// 2^{bit_length}, possibly range-checking several of them in one row.
+    fn assign_many_less_than_pow2(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        values: &[Value<F>],
+        bit_length: usize,
+    ) -> Result<Vec<AssignedNative<F>>, Error> {
+        (values.iter())
+            .map(|v| self.assign_less_than_pow2(layouter, *v, bit_length))
+            .collect()
+    }
+
     /// Function that guarantees that x < 2^{bit_length}
     fn assert_less_than_pow2(
         &self,
