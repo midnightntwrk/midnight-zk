@@ -176,6 +176,18 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
     /// The labels `commitment` tags its polynomials with.
     fn commitment_labels(commitment: &Self::Commitment) -> Vec<PolynomialLabel>;
 
+    /// Folds two commitments to the same group of polynomials (same labels, as
+    /// returned by `commit_many`): `acc + gamma·(fresh − acc)`, the commitment
+    /// to `(1 − gamma)·p + gamma·q` when `acc = [p]` and `fresh = [q]`.
+    ///
+    /// The result is evaluated (one point per committed point), so it can be
+    /// hashed and folded again. Used by Protogalaxy folding.
+    fn fold_commitments(
+        acc: &Self::Commitment,
+        fresh: &Self::Commitment,
+        gamma: F,
+    ) -> Self::Commitment;
+
     /// Total byte length when committing to `n` polynomials, which is 0 when
     /// `n` is 0.
     ///

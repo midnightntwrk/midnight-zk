@@ -230,6 +230,16 @@ where
             .collect()
     }
 
+    fn fold_commitments(
+        acc: &Self::Commitment,
+        fresh: &Self::Commitment,
+        gamma: F,
+    ) -> Self::Commitment {
+        // Folding commutes with the chunk combination `Σ_j X^j f_j(X^t)`,
+        // which is linear in the `f_j`.
+        PCS::fold_commitments(acc, fresh, gamma)
+    }
+
     fn commitment_byte_length(n: usize) -> usize {
         PCS::commitment_byte_length(n.div_ceil(Self::T_MAX))
     }

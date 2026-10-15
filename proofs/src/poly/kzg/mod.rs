@@ -203,6 +203,29 @@ where
             .collect()
     }
 
+    fn fold_commitments(
+        acc: &Self::Commitment,
+        fresh: &Self::Commitment,
+        gamma: E::Fr,
+    ) -> Self::Commitment {
+        assert_eq!(
+            acc.0.len(),
+            fresh.0.len(),
+            "folding commitments of different groups"
+        );
+        KZGMultiCommitment(
+            (acc.0.iter().zip(fresh.0.iter()))
+                .map(|(a, f)| match (a, f) {
+                    (KZGCommitment::Simple(a, label), KZGCommitment::Simple(f, f_label)) => {
+                        assert_eq!(label, f_label, "folding commitments of different labels");
+                        KZGCommitment::Simple(*a + (*f - *a) * gamma, label.clone())
+                    }
+                    _ => panic!("only evaluated (simple) commitments can be folded"),
+                })
+                .collect(),
+        )
+    }
+
     fn commitment_byte_length(n: usize) -> usize {
         // A non-empty group of `n` polynomials travels through the transcript
         // as one length-prefixed message: the prefix, then one point per

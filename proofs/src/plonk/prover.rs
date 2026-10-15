@@ -1,4 +1,5 @@
 use std::{
+    borrow::Cow,
     collections::{BTreeMap, HashSet},
     hash::Hash,
     iter::{self},
@@ -641,7 +642,7 @@ pub(super) fn compute_nu_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommit
     // Evaluate the numerator polynomial nu(X) of the quotient polynomial
     // h(X) = nu(X) / (X^n-1): nu(X) is a random linear combination of all
     // independent identities
-    pk.ev.evaluate_numerator::<ExtendedLagrangeCoeff>(
+    pk.ev.evaluate_numerator::<ExtendedLagrangeCoeff, Coeff>(
         &pk.vk.domain,
         &pk.vk.cs,
         &advice_cosets,
@@ -654,6 +655,7 @@ pub(super) fn compute_nu_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommit
         *trash_challenge,
         phase1_committed,
         phase2_committed,
+        |poly| Cow::Owned(domain.coeff_to_extended(poly.clone())),
         &pk.l0,
         &pk.l_last,
         &pk.l_active_row,

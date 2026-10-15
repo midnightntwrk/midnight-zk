@@ -472,7 +472,7 @@ where
             #[cfg(feature = "circuit-params")]
             params,
         )?;
-        let [l0, l_last, l_active_row] = compute_lagrange_polys(&vk, &vk.cs);
+        let [l0, l_last, l_active_row] = compute_lagrange_polys(&vk.domain, &vk.cs);
         let fixed_values: Vec<_> = read_polynomial_vec(reader, format)?;
         let permutations: Vec<_> = read_polynomial_vec(reader, format)?;
         if permutations.len() != vk.cs.permutation.columns.len() {

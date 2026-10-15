@@ -468,6 +468,22 @@ impl<F: PrimeField, B> Polynomial<F, B> {
     }
 }
 
+impl<F: Field, B: Clone + Send + Sync> Polynomial<F, B> {
+    /// The polynomial `self + x·(other − self)`, value by value (the
+    /// Protogalaxy fold on the domain `{0, 1}`). Both must have the same
+    /// length.
+    pub(crate) fn fold(&self, other: &Self, x: F) -> Self {
+        assert_eq!(self.values.len(), other.values.len());
+        let mut out = self.clone();
+        parallelize(&mut out.values, |chunk, start| {
+            for (o, b) in chunk.iter_mut().zip(other.values[start..].iter()) {
+                *o += (*b - *o) * x;
+            }
+        });
+        out
+    }
+}
+
 impl<F: Field> Polynomial<F, Coeff> {
     /// Subtracts two coefficient-form polynomials that may have different
     /// lengths, zero-extending the shorter one. Returns a polynomial whose
