@@ -29,8 +29,9 @@ use crate::{
         field_chip::{FieldChip, FieldChipConfig},
         params::FieldEmulationParams,
         util::{
-            compute_u, compute_vj, get_advice_vec, get_identity_auxiliary_bounds, pair_wise_prod,
-            signed_mod, signed_repr, sum_bigints, sum_exprs, urem,
+            compute_u, compute_vj, get_advice_vec, get_identity_auxiliary_bounds,
+            karatsuba_bilinear_sum, pair_wise_prod, signed_mod, signed_repr, sum_bigints,
+            sum_exprs, urem,
         },
     },
     instructions::{ArithInstructions, NativeInstructions},
@@ -197,17 +198,15 @@ impl<C: WeierstrassCurve> OnCurveConfig<C> {
             let u = meta.query_advice(field_chip_config.u_col, Rotation::next());
             let vs = get_advice_vec(meta, &field_chip_config.v_cols, Rotation::next());
 
-            let xzs = pair_wise_prod(&xs, &zs);
-            let y2s = pair_wise_prod(&ys, &ys);
-
             let const_a_plus_1 = Expression::Constant(bigint_to_fe::<F>(&a_plus_1));
             let const_a_plus_b = Expression::Constant(bigint_to_fe::<F>(&a_plus_b));
 
             // 2 * sum_y + sum_y2 - (sum_xz + sum_z + (a + 1) * sum_x + (a + b))
             // = (u + k_min) * m
             let native_id = &cond
-                * (Expression::from(2) * sum_exprs::<F>(&bs, &ys) + sum_exprs::<F>(&bs2, &y2s)
-                    - (sum_exprs::<F>(&bs2, &xzs)
+                * (Expression::from(2) * sum_exprs::<F>(&bs, &ys)
+                    + karatsuba_bilinear_sum::<F>(&bs2, &ys, &ys)
+                    - (karatsuba_bilinear_sum::<F>(&bs2, &xs, &zs)
                         + sum_exprs::<F>(&bs, &zs)
                         + const_a_plus_1 * sum_exprs::<F>(&bs, &xs)
                         + const_a_plus_b)
@@ -231,8 +230,8 @@ impl<C: WeierstrassCurve> OnCurveConfig<C> {
                     //  - u * (m % mj) - (k_min * m) % mj - (vj + lj_min) * mj = 0
                     &cond
                         * (Expression::from(2) * sum_exprs::<F>(&bs_mj, &ys)
-                            + sum_exprs::<F>(&bs2_mj, &y2s)
-                            - (sum_exprs::<F>(&bs2_mj, &xzs)
+                            + karatsuba_bilinear_sum::<F>(&bs2_mj, &ys, &ys)
+                            - (karatsuba_bilinear_sum::<F>(&bs2_mj, &xs, &zs)
                                 + sum_exprs::<F>(&bs_mj, &zs)
                                 + const_a_plus_1_mj * sum_exprs::<F>(&bs_mj, &xs)
                                 + const_a_plus_b_mj)
