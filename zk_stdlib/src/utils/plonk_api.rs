@@ -277,7 +277,9 @@ pub fn srs_for_test<R: Relation>(relation: &R, k: Option<u32>) -> ParamsKZG<Bls1
 /// under the commitment scheme `PCS`.
 ///
 /// The SRS files are expected at `$SRS_DIR/midnight-srs-2p<j>`, for
-/// `j = PCS::srs_k(k)`.
+/// `j = PCS::srs_k(k)`. If that file is missing and `$MIDNIGHT_SRS_FROM` is
+/// set to some `j' > j`, the SRS is downsized from `midnight-srs-2p<j'>`
+/// (a prefix of the larger SRS) instead.
 ///
 /// For checksums and extra validation steps, see `MIDNIGHT_SRS_CATALOG.md` in
 /// the official repository of the Midnight trusted ceremony:
@@ -285,7 +287,12 @@ pub fn srs_for_test<R: Relation>(relation: &R, k: Option<u32>) -> ParamsKZG<Bls1
 fn midnight_srs<PCS: MidnightPCS>(k: u32) -> ParamsKZG<Bls12> {
     let j = PCS::srs_k(k);
     let srs_dir = env::var("SRS_DIR").unwrap_or("./examples/assets".into());
-    let srs_path = format!("{srs_dir}/midnight-srs-2p{j}");
+    let mut srs_path = format!("{srs_dir}/midnight-srs-2p{j}");
+    if !Path::new(&srs_path).exists() {
+        if let Ok(from) = env::var("MIDNIGHT_SRS_FROM") {
+            srs_path = format!("{srs_dir}/midnight-srs-2p{from}");
+        }
+    }
 
     let params_fs = File::open(Path::new(&srs_path)).unwrap_or_else(|_| {
         panic!(

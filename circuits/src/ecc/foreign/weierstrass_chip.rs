@@ -1994,26 +1994,31 @@ where
         self.scalar_field_chip.assert_equal(layouter, &x, scalar)?;
 
         let zeta_x = self.base_field_chip.mul_by_constant(layouter, &base.x, zeta_base)?;
-        let zeta_p = AssignedForeignPoint::<F, C, B> {
-            point: base.point.map(|p| {
-                if p.is_identity().into() {
-                    p
-                } else {
-                    let coordinates = p.into().coordinates().unwrap();
-                    let zeta_x = zeta_base * coordinates.0;
-                    C::from_xy(zeta_x, coordinates.1).unwrap().into_subgroup()
-                }
-            }),
-            is_id: base.is_id.clone(),
-            x: zeta_x,
-            y: base.y.clone(),
+        let zeta_point = base.point.map(|p| {
+            if p.is_identity().into() {
+                p
+            } else {
+                let coordinates = p.into().coordinates().unwrap();
+                let zeta_x = zeta_base * coordinates.0;
+                C::from_xy(zeta_x, coordinates.1).unwrap().into_subgroup()
+            }
+        });
+
+        // `±P` and `±φ(P)` share the two possible ordinates, `y` and `-y`.
+        let neg_y = self.base_field_chip().neg(layouter, &base.y)?;
+        let neg_y = self.base_field_chip().normalize(layouter, &neg_y)?;
+        let mut signed = |sign: &AssignedBit<F>, x, point: Value<C::CryptographicGroup>| {
+            let y = self.base_field_chip().select(layouter, sign, &base.y, &neg_y)?;
+            let point = point.zip(sign.value()).map(|(p, s)| if s { p } else { -p });
+            Ok::<_, Error>(AssignedForeignPoint::<F, C, B> {
+                point,
+                is_id: base.is_id.clone(),
+                x,
+                y,
+            })
         };
-
-        let neg_zeta_p = self.negate(layouter, &zeta_p)?;
-        let neg_base = self.negate(layouter, base)?;
-
-        let p1 = self.select(layouter, &s1, base, &neg_base)?;
-        let p2 = self.select(layouter, &s2, &zeta_p, &neg_zeta_p)?;
+        let p1 = signed(&s1, base.x.clone(), base.point)?;
+        let p2 = signed(&s2, zeta_x, zeta_point)?;
 
         Ok(((x1, x2), (p1, p2)))
     }

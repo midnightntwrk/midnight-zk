@@ -27,8 +27,9 @@ use poseidon_chain::PoseidonChain;
 
 fn main() {
     // Circuit size parameter (log2 of rows), overridable with `IVC_K`; fflonk
-    // needs an SRS of 2^(K + LOG2_T_MAX) points.
-    let k: u32 = std::env::var("IVC_K").map_or(16, |s| s.parse().expect("IVC_K: log2 of rows"));
+    // needs an SRS of 2^(K + LOG2_T_MAX) points (`MIDNIGHT_SRS_FROM=20` downsizes
+    // `midnight-srs-2p20` if `2p19` is missing).
+    let k: u32 = std::env::var("IVC_K").map_or(15, |s| s.parse().expect("IVC_K: log2 of rows"));
 
     const N: usize = 1; // Number of Poseidon iteration per IVC step.
     const STEPS: usize = 10; // Number of IVC steps to run.

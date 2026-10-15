@@ -41,7 +41,6 @@
 //! points. Points are assigned without subgroup check (out of scope).
 
 use ff::{Field, PrimeField};
-use group::Group;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
@@ -374,13 +373,13 @@ where
                 label.clone(),
             ));
         }
-        let msm = S::msm(layouter, curve, &scalars, &bases)?;
-        let mut check = S::add(layouter, curve, &msm, points(&products[0])?[0].0)?;
+        // The MSM covers all terms but `R_1` (`ρ_1 = 1`): it must equal `−R_1`.
+        let mut lhs = S::msm(layouter, curve, &scalars, &bases)?;
+        let neg_r1 = S::negate(layouter, curve, points(&products[0])?[0].0)?;
         if let Some(discarded) = discarded {
-            let identity = curve.assign_fixed(layouter, S::C::identity())?;
-            check = curve.select(layouter, discarded, &identity, &check)?;
+            lhs = curve.select(layouter, discarded, &neg_r1, &lhs)?;
         }
-        curve.assert_equal_to_fixed(layouter, &check, S::C::identity())?;
+        curve.assert_equal(layouter, &lhs, &neg_r1)?;
 
         let split = self.shape.phase1_labels.len();
         let phase2 = folded.split_off(split);
