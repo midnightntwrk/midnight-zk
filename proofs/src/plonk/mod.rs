@@ -553,7 +553,7 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> VerifyingKey<F, CS> {
     pub(crate) fn phase2_labels(&self) -> Vec<PolynomialLabel> {
         let mut labels = self.cs.permutation.accumulator_labels(self.cs_degree);
         for (argument_index, logup_argument) in self.cs.lookups.iter().enumerate() {
-            for j in 0..logup_argument.num_chunks(self.cs_degree) {
+            for j in 0..logup_argument.num_chunks(self.cs.lookup_chunk_bound()) {
                 labels.push(PolynomialLabel::LogupHelper(argument_index, j));
             }
         }
@@ -667,7 +667,7 @@ where
             vk.cs
                 .lookups
                 .iter()
-                .map(|l| l.chunk_by_degree(vk.cs_degree))
+                .map(|l| l.chunk_by_degree(vk.cs.lookup_chunk_bound()))
                 .enumerate()
                 .flat_map(move |(argument_index, argument)| {
                     argument

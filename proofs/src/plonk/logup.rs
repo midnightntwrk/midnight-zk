@@ -239,7 +239,8 @@ impl<F: Field> BatchedArgument<F> {
         // The dominating factor of the lookup argument is:
         // h(X) * ∏_j(f_j(X) + β) = Σ_j ∏_{k≠j}(f_k(X) + β)
         // which has degree: 1 + lookup_degree * nb_parallel_lookups
-        (max_degree - 1) / lookup_degree
+        // At least one tuple per chunk, even if a single tuple exceeds the bound.
+        ((max_degree - 1) / lookup_degree).max(1)
     }
 
     /// Returns the degree of the helper polynomial constraint after batching.

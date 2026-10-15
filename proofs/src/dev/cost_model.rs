@@ -364,7 +364,7 @@ pub(crate) fn cost_model_options<F: Ord + Field + FromUniformBytes<64>, C: Circu
         cs.lookups()
             .iter()
             .map(|l| Lookup {
-                num_chunks: l.num_chunks(cs.degree()),
+                num_chunks: l.num_chunks(cs.lookup_chunk_bound()),
             })
             .collect::<Vec<_>>()
     };

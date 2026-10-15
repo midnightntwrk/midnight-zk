@@ -56,7 +56,7 @@ fn identity_degrees<F: Field>(cs: &ConstraintSystem<F>) -> Vec<usize> {
     // `h·Πⱼ(fⱼ + β) − Σⱼ Π_{k≠j}(f_k + β)`; the accumulator
     // `(Z(ωX) − Z − s·Σh)·(t + β) + m`.
     for lookup in &cs.lookups {
-        let chunked = lookup.chunk_by_degree(cs.degree());
+        let chunked = lookup.chunk_by_degree(cs.lookup_chunk_bound());
         degrees.push(1);
         for chunk in &chunked.input_expression_chunks {
             degrees.push(1 + chunk.iter().map(|tuple| compressed_degree(tuple)).sum::<usize>());
@@ -112,4 +112,11 @@ pub(crate) fn debug_print_identity_degrees<F: Field>(cs: &ConstraintSystem<F>) {
     eprintln!("[degrees] permutation({n_perm}) {p:?}");
     eprintln!("[degrees] lookups({n_lookup}) {l:?}");
     eprintln!("[degrees] trashcans({n_trash}) {t:?}");
+    let helpers: usize = cs.lookups.iter().map(|l| l.num_chunks(cs.lookup_chunk_bound())).sum();
+    let perm_accs = cs.permutation.num_sets(cs.degree());
+    eprintln!(
+        "[degrees] phase-2 polys: perm {perm_accs} + helpers {helpers} + aggregators {} + trash {n_trash} = {}",
+        cs.lookups.len(),
+        perm_accs + helpers + cs.lookups.len() + n_trash
+    );
 }

@@ -139,7 +139,7 @@ where
          blindings: &[Vec<F>]|
          -> Result<Vec<logup::prover::ComputedMultiplicities<F>>, Error> {
             let logup_args: Vec<_> =
-                pk.vk.cs.lookups.iter().map(|l| l.chunk_by_degree(pk.vk.cs.degree())).collect();
+                pk.vk.cs.lookups.iter().map(|l| l.chunk_by_degree(pk.vk.cs.lookup_chunk_bound())).collect();
             logup_args
                 .par_iter()
                 .enumerate()

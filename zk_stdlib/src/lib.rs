@@ -112,7 +112,7 @@ type Curve25519BaseChip = FieldChip<F, curve25519_mod::Fp, MEP, NG>;
 type Curve25519ScalarChip = FieldChip<F, curve25519_mod::Scalar, MEP, NG>;
 type Curve25519Chip = ForeignEdwardsEccChip<F, Curve25519, MEP, Curve25519ScalarChip, NG>;
 
-const ZKSTD_VERSION: u32 = 2;
+const ZKSTD_VERSION: u32 = 3;
 
 /// Architecture of the standard library. Specifies what chips need to be
 /// configured.
@@ -176,6 +176,11 @@ pub struct ZkStdLibArch {
     ///
     /// Must be strictly smaller than `nb_arith_cols`.
     pub nr_pow2range_cols: u8,
+
+    /// Degree bound for packing lookup inputs into helper columns (see
+    /// `ConstraintSystem::set_lookup_chunk_bound`). `None` keeps the default
+    /// (the degree of the constraint system).
+    pub lookup_chunk_bound: Option<u8>,
 }
 
 impl Default for ZkStdLibArch {
@@ -196,6 +201,7 @@ impl Default for ZkStdLibArch {
             automaton: false,
             nb_arith_cols: 5,
             nr_pow2range_cols: 1,
+            lookup_chunk_bound: None,
         }
     }
 }
@@ -237,6 +243,51 @@ impl From<ZkStdLibArchV1> for ZkStdLibArch {
             automaton: v1.automaton,
             nb_arith_cols: 5,
             nr_pow2range_cols: v1.nr_pow2range_cols,
+            lookup_chunk_bound: None,
+        }
+    }
+}
+
+/// Serialized layout of [`ZkStdLibArch`] with `ZKSTD_VERSION` 2 (before
+/// `lookup_chunk_bound`). Used only for migration.
+#[derive(Decode)]
+struct ZkStdLibArchV2 {
+    jubjub: bool,
+    poseidon: bool,
+    sha2_256: bool,
+    sha2_512: bool,
+    keccak_256: bool,
+    sha3_256: bool,
+    blake2b: bool,
+    secp256k1: bool,
+    p256: bool,
+    bls12_381: bool,
+    curve25519: bool,
+    base64: bool,
+    automaton: bool,
+    nb_arith_cols: u8,
+    nr_pow2range_cols: u8,
+}
+
+impl From<ZkStdLibArchV2> for ZkStdLibArch {
+    fn from(v2: ZkStdLibArchV2) -> Self {
+        ZkStdLibArch {
+            jubjub: v2.jubjub,
+            poseidon: v2.poseidon,
+            sha2_256: v2.sha2_256,
+            sha2_512: v2.sha2_512,
+            keccak_256: v2.keccak_256,
+            sha3_256: v2.sha3_256,
+            blake2b: v2.blake2b,
+            secp256k1: v2.secp256k1,
+            p256: v2.p256,
+            bls12_381: v2.bls12_381,
+            curve25519: v2.curve25519,
+            base64: v2.base64,
+            automaton: v2.automaton,
+            nb_arith_cols: v2.nb_arith_cols,
+            nr_pow2range_cols: v2.nr_pow2range_cols,
+            lookup_chunk_bound: None,
         }
     }
 }
@@ -259,7 +310,10 @@ impl ZkStdLibArch {
             1 => bincode::decode_from_std_read::<ZkStdLibArchV1, _, _>(reader, standard())
                 .map(ZkStdLibArch::from)
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e)),
-            2 => bincode::decode_from_std_read(reader, standard())
+            2 => bincode::decode_from_std_read::<ZkStdLibArchV2, _, _>(reader, standard())
+                .map(ZkStdLibArch::from)
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e)),
+            3 => bincode::decode_from_std_read(reader, standard())
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e)),
             _ => Err(io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -466,6 +520,9 @@ impl ZkStdLib {
         meta: &mut ConstraintSystem<F>,
         (arch, max_bit_len): (ZkStdLibArch, u8),
     ) -> ZkStdLibConfig {
+        if let Some(bound) = arch.lookup_chunk_bound {
+            meta.set_lookup_chunk_bound(bound as usize);
+        }
         let nb_advice_cols = [
             arch.nb_arith_cols as usize,
             arch.nr_pow2range_cols as usize,

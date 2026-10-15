@@ -93,7 +93,9 @@ impl<T: Ivc> FoldingIvcCircuit<T> {
 
     /// The [ZkStdLibArch] of the step circuit (the SNARK-verifier IVC's).
     pub fn arch() -> ZkStdLibArch {
-        IvcCircuit::<T>::arch()
+        // Two degree-1 lookup tuples per helper (bound 3) instead of four:
+        // folding degree 7 instead of 10, for more helper columns.
+        ZkStdLibArch { lookup_chunk_bound: Some(3), ..IvcCircuit::<T>::arch() }
     }
 
     /// `H(state ‖ acc_hash)`, in-circuit analog of the last public input in

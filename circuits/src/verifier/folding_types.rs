@@ -78,7 +78,7 @@ impl FoldingShape {
             log_n: log_n as usize,
             d_total: folding_degree(cs),
             phase1_labels: S::PCS::fixed_base_labels(&phase1_labels(cs)),
-            phase2_labels: S::PCS::fixed_base_labels(&phase2_labels(cs, cs.degree())),
+            phase2_labels: S::PCS::fixed_base_labels(&phase2_labels(cs)),
             instance_lens: instance_lens.to_vec(),
             nb_theta: cs.nb_theta_challenges(),
             nb_trash: cs.max_trash_terms(),

@@ -1553,6 +1553,10 @@ pub struct ConstraintSystem<F: Field> {
     pub(crate) constants: Vec<Column<Fixed>>,
 
     pub(crate) minimum_degree: Option<usize>,
+
+    // Optional degree bound for packing lookup input tuples into helper columns
+    // (defaults to `degree()`); see `set_lookup_chunk_bound`.
+    pub(crate) lookup_chunk_bound: Option<usize>,
 }
 
 /// Represents the minimal parameters that determine a `ConstraintSystem`.
@@ -1640,6 +1644,7 @@ impl<F: Field> Default for ConstraintSystem<F> {
             general_column_annotations: HashMap::new(),
             constants: vec![],
             minimum_degree: None,
+            lookup_chunk_bound: None,
         }
     }
 }
@@ -1888,6 +1893,21 @@ impl<F: Field> ConstraintSystem<F> {
     /// force the permutation argument to involve more columns in the same set.
     pub fn set_minimum_degree(&mut self, degree: usize) {
         self.minimum_degree = Some(degree);
+    }
+
+    /// Sets the degree bound used to pack lookup input tuples into helper
+    /// columns, in place of `degree()`. A smaller bound gives more helper
+    /// columns of lower degree (e.g. 3 packs two degree-1 tuples per helper),
+    /// which lowers the folding degree. Prover, verifier and in-circuit verifier
+    /// all read it from the constraint system, so it must be set in `configure`.
+    pub fn set_lookup_chunk_bound(&mut self, bound: usize) {
+        self.lookup_chunk_bound = Some(bound);
+    }
+
+    /// The degree bound for lookup helper chunking: the one set with
+    /// [`Self::set_lookup_chunk_bound`], or `degree()`.
+    pub fn lookup_chunk_bound(&self) -> usize {
+        self.lookup_chunk_bound.unwrap_or_else(|| self.degree())
     }
 
     /// Creates a new gate.
@@ -2181,9 +2201,9 @@ impl<F: Field> ConstraintSystem<F> {
     /// (`2 + chunks` each), trashcans (one each). Identity `k` is multiplied
     /// by `y[k]`.
     pub fn nb_y_challenges(&self) -> usize {
-        let deg = self.degree();
+        let bound = self.lookup_chunk_bound();
         let gates: usize = self.gates.iter().map(|g| g.polynomials().len()).sum();
-        let lookups: usize = self.lookups.iter().map(|l| 2 + l.num_chunks(deg)).sum();
+        let lookups: usize = self.lookups.iter().map(|l| 2 + l.num_chunks(bound)).sum();
         gates + self.nb_permutation_identities() + lookups + self.trashcans.len()
     }
 
@@ -2217,7 +2237,7 @@ impl<F: Field> ConstraintSystem<F> {
         // witness columns. One blinding factor per helper is enough as each helper is
         // evaluated only once.
         let factors =
-            factors + self.lookups.iter().map(|l| l.num_chunks(self.degree())).sum::<usize>();
+            factors + self.lookups.iter().map(|l| l.num_chunks(self.lookup_chunk_bound())).sum::<usize>();
 
         // Each polynomial is evaluated at most an additional time during
         // multiopen (at x_3 to produce q_evals):
