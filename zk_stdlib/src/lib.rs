@@ -541,8 +541,14 @@ impl ZkStdLib {
         let pow2range_config =
             Pow2RangeChip::configure(meta, &advice_columns[1..=arch.nr_pow2range_cols as usize]);
 
-        let core_decomposition_config =
-            P2RDecompositionChip::configure(meta, &(native_config.clone(), pow2range_config));
+        let core_decomposition_config = P2RDecompositionChip::configure(
+            meta,
+            &(
+                native_config.clone(),
+                pow2range_config,
+                advice_columns[arch.nb_arith_cols as usize..].to_vec(),
+            ),
+        );
 
         let jubjub_config = arch.jubjub.then(|| {
             EccChip::<C>::configure(meta, &advice_columns[..NB_EDWARDS_COLS].try_into().unwrap())

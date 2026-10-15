@@ -430,17 +430,10 @@ where
         });
 
         // Range-check the cells in the range [0, base)
-        let x_cells = (0..P::NB_LIMBS)
+        let x_values = (0..P::NB_LIMBS)
             .map(|i| x.clone().map(|limbs| bigint_to_fe::<F>(&limbs[i as usize])))
-            .zip(well_formed_log2_bounds::<F, K, P>().iter())
-            .map(|(xi_value, log2_bound)| {
-                self.native_gadget.assign_lower_than_fixed(
-                    layouter,
-                    xi_value,
-                    &(BigUint::one() << *log2_bound),
-                )
-            })
-            .collect::<Result<Vec<_>, Error>>()?;
+            .collect::<Vec<_>>();
+        let x_cells = self.assign_well_formed_limbs(layouter, &x_values)?;
 
         Ok(AssignedField::<F, K, P> {
             limb_values: x_cells,
@@ -1342,6 +1335,29 @@ where
     P: FieldEmulationParams<F, K>,
     N: NativeInstructions<F>,
 {
+    /// Assigns limb values range-checked by `well_formed_log2_bounds`, batching
+    /// the limbs that share a bound.
+    fn assign_well_formed_limbs(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        limb_values: &[Value<F>],
+    ) -> Result<Vec<AssignedNative<F>>, Error> {
+        let bounds = well_formed_log2_bounds::<F, K, P>();
+        let mut limbs = Vec::with_capacity(limb_values.len());
+        let mut start = 0;
+        while start < limb_values.len() {
+            let log2_bound = bounds[start];
+            let end = start + bounds[start..].iter().take_while(|b| **b == log2_bound).count();
+            limbs.extend(self.native_gadget.assign_many_lower_than_fixed(
+                layouter,
+                &limb_values[start..end],
+                &(BigUint::one() << log2_bound),
+            )?);
+            start = end;
+        }
+        Ok(limbs)
+    }
+
     /// Given config creates new emulated field chip.
     pub fn new(config: &FieldChipConfig, native_gadget: &N) -> Self {
         Self {
@@ -1437,17 +1453,7 @@ where
             .collect::<Vec<_>>();
 
         // Assign and range-check the z limbs
-        let z_limbs = z_values
-            .iter()
-            .zip(well_formed_log2_bounds::<F, K, P>().iter())
-            .map(|(&z_value, &log2_bound)| {
-                self.native_gadget.assign_lower_than_fixed(
-                    layouter,
-                    z_value,
-                    &(BigUint::one() << log2_bound),
-                )
-            })
-            .collect::<Result<Vec<_>, Error>>()?;
+        let z_limbs = self.assign_well_formed_limbs(layouter, &z_values)?;
 
         let z = AssignedField::<F, K, P> {
             limb_values: z_limbs,

@@ -13,11 +13,12 @@
 
 //! The P2RDecomposition chip perfoming the in-circuit operations
 
-use std::{collections::HashMap, marker::PhantomData};
+use std::{cmp::min, collections::HashMap, marker::PhantomData};
 
 use midnight_proofs::{
     circuit::{Chip, Layouter, Value},
-    plonk::{ConstraintSystem, Error},
+    plonk::{Advice, Column, ConstraintSystem, Constraints, Error, Selector},
+    poly::Rotation,
 };
 use num_traits::Zero;
 
@@ -44,6 +45,21 @@ use crate::{
 pub struct P2RDecompositionConfig {
     pub(crate) native_config: NativeConfig,
     pub(crate) pow2range_config: Pow2RangeConfig,
+    /// Gate packing several range-checks in one row, when the columns allow it.
+    pub(crate) pack_config: Option<PackConfig>,
+}
+
+/// Number of lookup slots per lane of the packing gate.
+pub(crate) const PACK_LANE_WIDTH: usize = 4;
+
+/// Columns of the gate asserting, in parallel lanes of one row, that a result
+/// is the sum of its `PACK_LANE_WIDTH` range-checked pieces.
+#[derive(Clone, Debug)]
+pub struct PackConfig {
+    q_pack: Selector,
+    /// Result columns of the lanes after the first (whose result is the first
+    /// native column).
+    result_cols: Vec<Column<Advice>>,
 }
 
 impl P2RDecompositionConfig {
@@ -69,6 +85,7 @@ impl P2RDecompositionConfig {
         Self {
             native_config: native_config.clone(),
             pow2range_config: pow2range_config.clone(),
+            pack_config: None,
         }
     }
 
@@ -113,7 +130,9 @@ impl<F: CircuitField> Chip<F> for P2RDecompositionChip<F> {
 }
 
 impl<F: CircuitField> ComposableChip<F> for P2RDecompositionChip<F> {
-    type SharedResources = (NativeConfig, Pow2RangeConfig);
+    /// The native and pow2range configs, and the advice columns (beyond the
+    /// native ones) that the packing gate may use for its lane results.
+    type SharedResources = (NativeConfig, Pow2RangeConfig, Vec<Column<Advice>>);
 
     type InstructionDeps = usize;
 
@@ -142,12 +161,14 @@ impl<F: CircuitField> ComposableChip<F> for P2RDecompositionChip<F> {
     }
 
     fn configure(
-        _meta: &mut ConstraintSystem<F>,
+        meta: &mut ConstraintSystem<F>,
         shared_resources: &Self::SharedResources,
     ) -> Self::Config {
+        let (native_config, pow2range_config, extra_cols) = shared_resources;
         Self::Config {
-            native_config: shared_resources.0.clone(),
-            pow2range_config: shared_resources.1.clone(),
+            native_config: native_config.clone(),
+            pow2range_config: pow2range_config.clone(),
+            pack_config: Self::configure_packing(meta, native_config, pow2range_config, extra_cols),
         }
     }
 
@@ -156,6 +177,113 @@ impl<F: CircuitField> ComposableChip<F> for P2RDecompositionChip<F> {
     }
 }
 impl<F: CircuitField> P2RDecompositionChip<F> {
+    /// Configures the packing gate with as many lanes as the lookup columns
+    /// and `extra_cols` allow, or none if fewer than two lanes fit.
+    ///
+    /// Lane `j` holds its pieces in lookup columns `j * PACK_LANE_WIDTH..`,
+    /// their coefficients in the matching native coefficient columns, and
+    /// its result in the first native column (`j = 0`) or `extra_cols[j - 1]`.
+    fn configure_packing(
+        meta: &mut ConstraintSystem<F>,
+        native_config: &NativeConfig,
+        pow2range_config: &Pow2RangeConfig,
+        extra_cols: &[Column<Advice>],
+    ) -> Option<PackConfig> {
+        let val_cols = &pow2range_config.val_cols;
+        let nb_lanes = min(val_cols.len() / PACK_LANE_WIDTH, 1 + extra_cols.len());
+        if nb_lanes < 2 {
+            return None;
+        }
+        let result_cols = extra_cols[..nb_lanes - 1].to_vec();
+        result_cols.iter().for_each(|col| meta.enable_equality(*col));
+        let q_pack = meta.selector();
+
+        meta.create_gate("packed decompositions", |meta| {
+            let results = std::iter::once(native_config.value_cols[0])
+                .chain(result_cols.iter().copied())
+                .map(|col| meta.query_advice(col, Rotation::cur()))
+                .collect::<Vec<_>>();
+            let ids = results
+                .into_iter()
+                .enumerate()
+                .map(|(lane, result)| {
+                    (0..PACK_LANE_WIDTH).fold(-result, |acc, i| {
+                        let slot = lane * PACK_LANE_WIDTH + i;
+                        let piece = meta.query_advice(val_cols[slot], Rotation::cur());
+                        let coeff =
+                            meta.query_fixed(native_config.coeff_cols[slot + 1], Rotation::cur());
+                        acc + coeff * piece
+                    })
+                })
+                .collect::<Vec<_>>();
+            Constraints::with_selector(q_pack, ids)
+        });
+
+        Some(PackConfig {
+            q_pack,
+            result_cols,
+        })
+    }
+
+    /// Assigns up to one value per lane of the packing gate in a single row,
+    /// each decomposed in pieces of the sizes in `sizes` (all equal).
+    fn assign_packed_row(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        values: &[Value<F>],
+        sizes: &[usize],
+        pack: &PackConfig,
+    ) -> Result<Vec<AssignedNative<F>>, Error> {
+        let nb_lanes = 1 + pack.result_cols.len();
+        assert!(values.len() <= nb_lanes);
+        let val_cols = &self.config.pow2range_config.val_cols;
+        let native = &self.config.native_config;
+        let coefficients = variable_limbsize_coefficients::<F>(sizes);
+
+        layouter.assign_region(
+            || "packed decompose",
+            |mut region| {
+                pack.q_pack.enable(&mut region, 0)?;
+                self.pow2range_chip.assert_row_lower_than_2_pow_n(&mut region, sizes[0], 0)?;
+
+                let mut results = Vec::with_capacity(values.len());
+                for lane in 0..nb_lanes {
+                    let value = values.get(lane).copied().unwrap_or(Value::known(F::ZERO));
+                    let result_col = match lane {
+                        0 => native.value_cols[0],
+                        j => pack.result_cols[j - 1],
+                    };
+                    let result =
+                        region.assign_advice(|| "packed value", result_col, 0, || value)?;
+                    let pieces = value
+                        .map(|v| decompose_in_variable_limbsizes(&v, sizes))
+                        .transpose_vec(sizes.len());
+                    for i in 0..PACK_LANE_WIDTH {
+                        let slot = lane * PACK_LANE_WIDTH + i;
+                        let (piece, coeff) = match pieces.get(i).zip(coefficients.get(i)) {
+                            Some((piece, coeff)) => (*piece, *coeff),
+                            None => (Value::known(F::ZERO), F::ZERO),
+                        };
+                        region.assign_advice(|| "piece", val_cols[slot], 0, || piece)?;
+                        region.assign_fixed(
+                            || "piece coeff",
+                            native.coeff_cols[slot + 1],
+                            0,
+                            || Value::known(coeff),
+                        )?;
+                    }
+                    if lane < values.len() {
+                        results.push(result);
+                    }
+                }
+                for col in &val_cols[nb_lanes * PACK_LANE_WIDTH..] {
+                    region.assign_advice(|| "unused slot", *col, 0, || Value::known(F::ZERO))?;
+                }
+                Ok(results)
+            },
+        )
+    }
+
     /// Gives direct access to the NativeChip
     pub fn native_chip(&self) -> &NativeChip<F> {
         &self.native_chip
@@ -425,6 +553,32 @@ impl<F: CircuitField> CoreDecompositionInstructions<F> for P2RDecompositionChip<
         let (y, _) = self.decompose_core(layouter, value, &limb_sizes)?;
 
         Ok(y)
+    }
+
+    /// Packs several values per row when `bit_length` decomposes in one row of
+    /// at most `PACK_LANE_WIDTH` pieces and the packing gate is configured.
+    fn assign_many_less_than_pow2(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        values: &[Value<F>],
+        bit_length: usize,
+    ) -> Result<Vec<AssignedNative<F>>, Error> {
+        let rows = self.opt_limbs.get(&(bit_length as i32)).unwrap();
+        let packable = rows.len() == 1 && rows[0].len() <= PACK_LANE_WIDTH;
+        let Some(pack) = self.config.pack_config.as_ref().filter(|_| packable) else {
+            return values
+                .iter()
+                .map(|value| self.assign_less_than_pow2(layouter, *value, bit_length))
+                .collect();
+        };
+        let sizes = &rows[0];
+        assert!(sizes.iter().all(|size| *size == sizes[0]));
+
+        let mut assigned = Vec::with_capacity(values.len());
+        for chunk in values.chunks(1 + pack.result_cols.len()) {
+            assigned.extend(self.assign_packed_row(layouter, chunk, sizes, pack)?);
+        }
+        Ok(assigned)
     }
 
     fn assign_many_small(

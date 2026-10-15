@@ -271,6 +271,22 @@ where
         Ok(x)
     }
 
+    fn assign_many_lower_than_fixed(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        values: &[Value<F>],
+        bound: &BigUint,
+    ) -> Result<Vec<AssignedNative<F>>, Error> {
+        let k = bound.bits().saturating_sub(1) as usize;
+        if !bound.is_zero() && *bound == BigUint::from(1u8) << k {
+            return self.core_decomposition_chip.assign_many_less_than_pow2(layouter, values, k);
+        }
+        values
+            .iter()
+            .map(|value| self.assign_lower_than_fixed(layouter, *value, bound))
+            .collect()
+    }
+
     fn assert_lower_than_fixed(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -1778,6 +1794,7 @@ impl<F: CircuitField> FromScratch<F> for NativeGadget<F, P2RDecompositionChip<F>
         P2RDecompositionConfig {
             native_config,
             pow2range_config,
+            pack_config: None,
         }
     }
 }

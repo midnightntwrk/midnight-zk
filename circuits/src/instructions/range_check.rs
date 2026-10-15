@@ -51,6 +51,23 @@ where
         bound: &BigUint,
     ) -> Result<Assigned, Error>;
 
+    /// Assigns several elements, each immediately range-checked to be strictly
+    /// lower than the given bound. Implementations may pack the checks.
+    fn assign_many_lower_than_fixed(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        values: &[Value<Assigned::Element>],
+        bound: &BigUint,
+    ) -> Result<Vec<Assigned>, Error>
+    where
+        Assigned::Element: Copy,
+    {
+        values
+            .iter()
+            .map(|value| self.assign_lower_than_fixed(layouter, *value, bound))
+            .collect()
+    }
+
     /// Asserts that the given assigned element is in the range [0, bound).
     ///
     /// This function is potentially more efficient than calling
