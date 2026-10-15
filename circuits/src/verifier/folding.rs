@@ -32,13 +32,18 @@
 //! fflonk chunk) is folded as `A + R` with `R = [γ](F − A)` read from the
 //! folding proof (the prover computes it) and absorbed after `γ`. One check
 //! covers all points: for challenges `ρ_1 = 1, ρ_2, …` squeezed after the
-//! `R_i`, `Σ_i ρ_i (R_i + [γ](A_i − F_i)) = O` in a single MSM, which holds
+//! `R_i`, `Σ_i ρ_i (R_i + [γ](A_i − F_i)) = O`, checked as a single MSM over
+//! all terms but `R_1` that must equal `−R_1`, which holds
 //! for all `i` except with negligible probability (the `R_i` are fixed before
 //! `ρ`). Under `truncated-challenges` every scalar of the MSM has at most 128
 //! bits: `γ, ρ_i` are truncated and `γρ_i` is split with GLV, so one
 //! 128-step ladder serves all points, against one per point for
 //! `[γ](F − A)`. Complete additions handle equal, opposite and identity
-//! points. Points are assigned without subgroup check (out of scope).
+//! points.
+//!
+//! No subgroup check is performed on the `R_i` or on fresh commitments
+//! (project decision): a small-order component could be injected, and is
+//! rejected by the decider's pairing check.
 
 use ff::{Field, PrimeField};
 use midnight_proofs::{
@@ -194,6 +199,11 @@ where
     /// The transcript absorbs `acc_hash` (one element) instead of the
     /// accumulator: it must be the hash that binds `acc`, e.g. the one in the
     /// previous step's public input (the native fold takes it as `acc_hash`).
+    ///
+    /// WARNING: that hash must be a collision-resistant hash of the ENTIRE
+    /// accumulator, computed by the caller (as the IVC does, with Poseidon over
+    /// `accumulator_as_public_input`): the transcript binds only the hash, so
+    /// anything else lets a prover choose the accumulator after seeing `γ`.
     ///
     /// The products are checked (the circuit is unsatisfiable on a wrong
     /// one), unless `discarded` is set: for a caller that throws the result
@@ -353,7 +363,7 @@ where
         let mut bases = vec![];
         let mut folded = vec![];
         for (i, (((a, label), (f, _)), (r, _))) in a.into_iter().zip(f).zip(r).enumerate() {
-            // ρ_1 = 1, so `R_1` is added outside the MSM.
+            // ρ_1 = 1: the term of `R_1` is moved out of the MSM (see below).
             let neg_f = S::negate(layouter, curve, f)?;
             let e = S::add(layouter, curve, a, &neg_f)?; // A − F
             if i == 0 {

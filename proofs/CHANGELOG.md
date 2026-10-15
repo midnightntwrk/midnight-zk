@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+* `Accumulator::fold` and `ProverAccumulator::fold` take `acc_hash: Option<F>`: with `Some(h)` the fold transcript binds only `h`, which must be a collision-resistant hash of the whole accumulator
+* `PolynomialCommitmentScheme::fold_products`, the γ-scaled commitment differences the folding proof carries, written by the prover and checked natively by the verifier
 * `ConstraintSystem::set_lookup_chunk_bound` and `lookup_chunk_bound`, a configurable degree bound for packing lookup inputs into helper columns (default: `degree()`), pinned in the verifying key only when set
 * `VerifyingKey` implements `Default`: a placeholder key of an empty constraint system [#461](https://github.com/midnightntwrk/midnight-zk/pull/461)
 * `ConstraintSystem::fixed_polys_labels` [#547](https://github.com/midnightntwrk/midnight-zk/pull/547)

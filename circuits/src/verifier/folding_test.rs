@@ -206,10 +206,16 @@ impl Native {
     /// The partial proof of step `i` (shifted witness), prover and verifier
     /// views.
     fn step(&self, i: u64) -> (ProverInstance<'_, F, CS>, Fresh) {
-        let circuit = SquareCircuit { start: 3 * i };
+        self.step_with(3 * i, i)
+    }
+
+    /// Like [`Self::step`], for an explicit witness start and blinding seed:
+    /// equal arguments give equal commitments.
+    fn step_with(&self, start: u64, seed: u64) -> (ProverInstance<'_, F, CS>, Fresh) {
+        let circuit = SquareCircuit { start };
         let pi = circuit.public_input();
         let mut transcript = T::init();
-        let rng = ChaCha8Rng::seed_from_u64(i);
+        let rng = ChaCha8Rng::seed_from_u64(seed);
         let prover = commit_instance(
             &self.params,
             &self.pk,
@@ -483,6 +489,35 @@ fn folding_gadget_fold() {
     let c = chain(&native);
     let circuit = FoldingCircuit::fold(&native, &c.acc1, &c.fresh2, &c.folding_proof);
     assert!(circuit.outputs(&c.acc2));
+}
+
+/// Folding an instance into an accumulator holding the very same commitments
+/// (`A_i = F_i`): every product `R_i` is the identity, which the single-MSM
+/// check (`MSM = −R_1` with `R_1 = O`) must accept.
+#[test]
+fn folding_gadget_fold_identity_products() {
+    let native = Native::new();
+    let (pk, vk) = (&native.pk, native.vk());
+    let acc0 = ProverAccumulator::init(pk, native.step(0).0, &mut T::init()).unwrap();
+    let hash0 = acc_hash(acc0.accumulator());
+    let acc0_public = acc0.accumulator().clone();
+
+    // Same witness and blinding as step 0: identical commitments.
+    let (prover, fresh) = native.step_with(0, 0);
+    let mut transcript = T::init();
+    acc0.fold(pk, prover, Some(hash0), &mut transcript).unwrap();
+    let proof = transcript.finalize();
+    let expected = acc0_public
+        .fold(
+            vk,
+            &fresh.public,
+            Some(hash0),
+            &mut T::init_from_bytes(&proof),
+        )
+        .unwrap();
+
+    let circuit = FoldingCircuit::fold(&native, &acc0_public, &fresh, &proof);
+    assert!(circuit.outputs(&expected));
 }
 
 /// A tampered folding message or fresh instance changes `γ` (or the

@@ -123,6 +123,12 @@ where
     /// Prover side of [`Accumulator::fold`]: writes the perturbator `F(X)`
     /// (without its constant term `e`) and `K(X)`, then folds with `γ`.
     /// `acc_hash` as in [`Accumulator::fold`].
+    ///
+    /// WARNING: with `acc_hash = Some(h)` the fold transcript binds only `h`,
+    /// so `h` must be a collision-resistant hash of the ENTIRE accumulator
+    /// computed by the caller (as the IVC does, with Poseidon over
+    /// `accumulator_as_public_input`); anything else lets a prover choose the
+    /// accumulator after seeing `γ`.
     pub fn fold<T>(
         self,
         pk: &ProvingKey<F, CS>,
@@ -138,7 +144,7 @@ where
         let log_n = pk.vk.domain.k() as usize;
         let d = folding_degree(&pk.vk.cs);
 
-        self.public.absorb_bound(acc_hash, transcript)?;
+        self.public.absorb_or_hash(acc_hash, transcript)?;
         fresh.public.absorb_commitments_and_instances(transcript)?;
 
         // F(X) = Σᵢ powᵢ(β⃗ + X·δ⃗)·fᵢ(acc), with F(0) = e.

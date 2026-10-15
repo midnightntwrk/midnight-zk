@@ -100,7 +100,8 @@ impl<T: Ivc> FoldingIvcCircuit<T> {
         // folding degree 7 instead of 10, for more helper columns.
         ZkStdLibArch {
             lookup_chunk_bound: Some(3),
-            // Wider arith/range layout: fewer rows; advice count stays 15 (set by the BLS12-381 ECC chip).
+            // Wider arith/range layout: fewer rows; the advice count stays 15
+            // (set by the BLS12-381 ECC chip).
             nb_arith_cols: 11,
             nr_pow2range_cols: 10,
             ..IvcCircuit::<T>::arch()

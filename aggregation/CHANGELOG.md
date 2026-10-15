@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 
 ## [Unreleased]
 ### Added
+* the folding IVC step circuit runs at `k = 15` (wider arithmetic and range-check layout)
 * `fewer-point-sets` feature [#281](https://github.com/midnightntwrk/midnight-zk/pull/281)
 * Multi-circuit proof aggregation module and example [#311](https://github.com/midnightntwrk/midnight-zk/pull/311)
 * Add `IvcError::InvalidWitness` variant [#311](https://github.com/midnightntwrk/midnight-zk/pull/311)

@@ -118,8 +118,11 @@ pub trait SelfEmulation: Clone + Debug {
     ) -> Result<Self::AssignedPoint, Error>;
 
     /// GLV split of `s·P`: returns `((k1, k2), (P1, P2))` with `s·P = k1·P1 + k2·P2`
-    /// (constrained), where the scalars have at most `⌈|F|/2⌉` bits (enforced
-    /// by a bounded `msm`, not here) and `P1, P2` are `±P, ±φ(P)`.
+    /// (constrained), where `P1, P2` are `±P, ±φ(P)`.
+    ///
+    /// WARNING: the two scalars are NOT range-checked by this function; the
+    /// caller must bound them to `⌈|F|/2⌉` bits (as `msm_by_bounded_scalars`
+    /// does with that bound) for the split to be sound and complete.
     #[allow(clippy::type_complexity)]
     fn glv_split(
         layouter: &mut impl Layouter<Self::F>,

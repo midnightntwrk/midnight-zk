@@ -42,11 +42,10 @@ where
 }
 
 /// The products `γ·(fresh − acc)` of the phase-1 and phase-2 commitments,
-/// which the prover writes after `γ` and the in-circuit verifier checks with
-/// one MSM instead of computing `[γ](fresh − acc)` per point (folded
-/// commitment: `acc + product`). The in-circuit check then squeezes its
-/// batching challenges `ρ`, which have no native counterpart: they come last
-/// in the folding transcript.
+/// which the prover writes after `γ` (folded commitment: `acc + product`).
+/// They are the γ-scaled commitment differences the folding proof carries so
+/// a verifier can check them with a batched equation; its batching challenges
+/// `ρ` have no native counterpart: they come last in the folding transcript.
 pub(crate) fn fold_products<F, CS>(
     acc: &Accumulator<F, CS>,
     fresh: &FoldingInstance<F, CS>,
@@ -161,9 +160,18 @@ where
     /// Folds `fresh` into the accumulator, reading the folding messages (the
     /// perturbator `F` without its constant term, then `K`) from a fresh
     /// folding `transcript`. See the module documentation for the order.
-    /// `acc_hash` is the accumulator's hash if the caller binds it (the
-    /// in-circuit verifier absorbs only that); `None` absorbs the whole
-    /// accumulator.
+    /// `acc_hash` is the accumulator's hash if the caller binds it; `None`
+    /// absorbs the whole accumulator.
+    ///
+    /// WARNING: with `acc_hash = Some(h)` the fold transcript binds only `h`,
+    /// so `h` must be a collision-resistant hash of the ENTIRE accumulator,
+    /// computed by the caller (as the IVC does, with Poseidon over
+    /// `accumulator_as_public_input`). Anything else lets a prover choose the
+    /// accumulator after seeing `γ`.
+    ///
+    /// No subgroup check is performed on the products or on fresh commitments
+    /// (project decision): a small-order component could be injected, and is
+    /// rejected by the decider's pairing check.
     pub fn fold<T>(
         &self,
         vk: &VerifyingKey<F, CS>,
@@ -179,7 +187,7 @@ where
         let log_n = vk.domain.k() as usize;
         let d = folding_degree(&vk.cs);
 
-        self.absorb_bound(acc_hash, transcript)?;
+        self.absorb_or_hash(acc_hash, transcript)?;
         fresh.absorb_commitments_and_instances(transcript)?;
 
         let deltas = squeeze_deltas(transcript, log_n);
@@ -192,8 +200,8 @@ where
         let k_coeffs = (0..d - 1).map(|_| transcript.read()).collect::<Result<Vec<F>, _>>()?;
 
         let gamma = squeeze_fold_challenge(transcript);
-        // The prover's products must be the exact ones (else the in-circuit
-        // check fails).
+        // A prover-consistency assertion: the soundness of the products is
+        // enforced in-circuit, by the ρ-combined MSM of the folding gadget.
         for expected in fold_products(self, fresh, gamma) {
             let labels = CS::commitment_labels(&expected);
             if CS::read_commitment(transcript, &labels)? != expected {

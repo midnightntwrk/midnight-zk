@@ -190,9 +190,9 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
 
     /// The product `gamma·(fresh − acc)` of [`fold_commitments`](Self::fold_commitments),
     /// as a commitment with the labels of `acc`. The folded commitment is
-    /// `acc + product`; the in-circuit folding verifier reads the products
-    /// from the proof and checks them instead of computing the scalar
-    /// multiplications.
+    /// `acc + product`. The products are the γ-scaled commitment differences
+    /// the folding proof carries so a verifier can check them with a batched
+    /// equation.
     fn fold_products(
         acc: &Self::Commitment,
         fresh: &Self::Commitment,

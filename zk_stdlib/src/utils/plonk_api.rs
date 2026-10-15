@@ -290,7 +290,15 @@ fn midnight_srs<PCS: MidnightPCS>(k: u32) -> ParamsKZG<Bls12> {
     let mut srs_path = format!("{srs_dir}/midnight-srs-2p{j}");
     if !Path::new(&srs_path).exists() {
         if let Ok(from) = env::var("MIDNIGHT_SRS_FROM") {
-            srs_path = format!("{srs_dir}/midnight-srs-2p{from}");
+            let from_j: u32 = from
+                .parse()
+                .unwrap_or_else(|_| panic!("MIDNIGHT_SRS_FROM must be an integer, got {from:?}"));
+            assert!(
+                from_j > j,
+                "MIDNIGHT_SRS_FROM={from_j} must be greater than the required SRS size 2^{j}"
+            );
+            srs_path = format!("{srs_dir}/midnight-srs-2p{from_j}");
+            eprintln!("warning: {srs_dir}/midnight-srs-2p{j} not found, downsizing {srs_path}");
         }
     }
 
@@ -298,7 +306,8 @@ fn midnight_srs<PCS: MidnightPCS>(k: u32) -> ParamsKZG<Bls12> {
         panic!(
             "\nSRS file not found at {srs_path}. Download it with:\
              \n\n    curl -L -o {srs_path} \
-             https://srs.midnight.network/midnight-srs-2p{j}\n"
+             https://srs.midnight.network/{}\n",
+            Path::new(&srs_path).file_name().unwrap().to_string_lossy()
         )
     });
 
