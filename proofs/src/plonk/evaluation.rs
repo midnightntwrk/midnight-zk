@@ -918,6 +918,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
         // `for b in 0..BATCH` loops, amortizing opcode dispatch across
         // BATCH elements and exposing independent Fq ops to the CPU's
         // out-of-order pipeline.
+        let t_en = std::time::Instant::now();
         let flat = &self.custom_gates_flat;
         let template = flat.new_values_buffer(&beta, theta, &trash_challenge, y_gates);
         parallelize(&mut values, |values, start| {
@@ -926,6 +927,8 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
             );
         });
 
+        let en_gates = t_en.elapsed().as_secs_f64() * 1e3;
+        let t_en = std::time::Instant::now();
         // Permutations
         if !cs.permutation().columns.is_empty() {
             let blinding_factors = cs.blinding_factors();
@@ -1021,6 +1024,8 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
             });
         }
 
+        let en_perm = t_en.elapsed().as_secs_f64() * 1e3;
+        let t_en = std::time::Instant::now();
         // Pre-compute all lookup cosets in parallel. This trades peak memory
         // for parallelism: the FFTs for different lookups can now overlap.
         let all_lookup_cosets: Vec<_> = cs
@@ -1102,6 +1107,8 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
 
         // Fused lookup + trash constraint evaluation in a single pass
         // over `values`, using flattened evaluators for reduced dispatch.
+        let en_lookup_pre = t_en.elapsed().as_secs_f64() * 1e3;
+        let t_en = std::time::Instant::now();
         parallelize(&mut values, |values, start| {
             // Per-thread flat values buffers for all lookups.
             let mut all_lookup_bufs: Vec<Vec<Vec<F>>> = self
@@ -1213,6 +1220,10 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                 }
             }
         });
+        let en_final = t_en.elapsed().as_secs_f64() * 1e3;
+        eprintln!(
+            "[evaluate_numerator] gates={en_gates:.2} perm={en_perm:.2} lookup_precomp={en_lookup_pre:.2} lookup+trash={en_final:.2}"
+        );
 
         values
     }
