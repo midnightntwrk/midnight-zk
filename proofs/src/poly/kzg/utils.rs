@@ -9,27 +9,15 @@ use ff::Field;
 use crate::poly::{Error, query::PolynomialLabel};
 
 #[derive(Clone, Debug)]
-pub(super) struct CommitmentData<F> {
+pub(super) struct CommitmentData {
     pub(super) label: PolynomialLabel,
     pub(super) set_index: usize,
-    pub(super) point_indices: Vec<usize>,
-    pub(super) evals: Vec<F>,
+    point_indices: Vec<usize>,
 }
 
-impl<F> CommitmentData<F> {
-    fn new(label: PolynomialLabel) -> Self {
-        CommitmentData {
-            label,
-            set_index: 0,
-            point_indices: vec![],
-            evals: vec![],
-        }
-    }
-}
+pub(super) type IntermediateSets<F> = (Vec<CommitmentData>, Vec<Vec<F>>);
 
-pub(super) type IntermediateSets<F> = (Vec<CommitmentData<F>>, Vec<Vec<F>>);
-
-/// Groups a list of `(label, point, eval)` queries into per-polynomial data and
+/// Groups a list of `(label, point)` queries into per-polynomial data and
 /// point sets for multi-open batching.
 ///
 /// Queries are grouped by their [`PolynomialLabel`] (each label identifies a
@@ -38,11 +26,11 @@ pub(super) type IntermediateSets<F> = (Vec<CommitmentData<F>>, Vec<Vec<F>>);
 /// Returns [`Error::DuplicatedQuery`] if the same `(label, point)` pair appears
 /// more than once.
 pub fn construct_intermediate_sets<F: Field + Hash + Ord>(
-    queries: &[(PolynomialLabel, F, F)],
+    queries: &[(PolynomialLabel, F)],
 ) -> Result<IntermediateSets<F>, Error> {
     // Construct sets of unique commitments and corresponding information about
     // their queries.
-    let mut commitment_map: Vec<CommitmentData<F>> = vec![];
+    let mut commitment_map: Vec<CommitmentData> = vec![];
 
     // Also construct mapping from a unique point to a point_index. This defines
     // an ordering on the points.
@@ -50,7 +38,7 @@ pub fn construct_intermediate_sets<F: Field + Hash + Ord>(
 
     // Iterate over all of the queries, computing the ordering of the points
     // while also creating new commitment data.
-    for (query_label, query_point, _query_eval) in queries {
+    for (query_label, query_point) in queries {
         let num_points = point_index_map.len();
         let point_idx = point_index_map.entry(*query_point).or_insert(num_points);
 
@@ -60,9 +48,11 @@ pub fn construct_intermediate_sets<F: Field + Hash + Ord>(
             }
             commitment_map[pos].point_indices.push(*point_idx);
         } else {
-            let mut tmp = CommitmentData::new(query_label.clone());
-            tmp.point_indices.push(*point_idx);
-            commitment_map.push(tmp);
+            commitment_map.push(CommitmentData {
+                label: query_label.clone(),
+                set_index: 0,
+                point_indices: vec![*point_idx],
+            });
         }
     }
 
@@ -70,55 +60,13 @@ pub fn construct_intermediate_sets<F: Field + Hash + Ord>(
     let inverse_point_index_map: HashMap<_, _> =
         point_index_map.iter().map(|(&p, &i)| (i, p)).collect();
 
-    // Construct map of unique ordered point_idx_sets to their set_idx
+    // Map each unique ordered point_idx_set to its set_idx, and each commitment
+    // to the set_idx of its point_idx_set.
     let mut point_idx_sets: BTreeMap<BTreeSet<usize>, usize> = BTreeMap::new();
-    // Also construct mapping from commitment to point_idx_set
-    let mut commitment_set_map = Vec::with_capacity(commitment_map.len());
-
-    for commitment_data in commitment_map.iter() {
-        let point_index_set: BTreeSet<_> = commitment_data.point_indices.iter().cloned().collect();
-
-        // Push point_index_set to CommitmentData for the relevant commitment
-        commitment_set_map.push((commitment_data.label.clone(), point_index_set.clone()));
-
-        let num_sets = point_idx_sets.len();
-        point_idx_sets.entry(point_index_set).or_insert(num_sets);
-    }
-
-    // Initialise empty evals vec for each unique commitment
     for commitment_data in commitment_map.iter_mut() {
-        let len = commitment_data.point_indices.len();
-        commitment_data.evals = vec![F::default(); len];
-    }
-
-    // Populate set_index, evals and points for each commitment using point_idx_sets
-    for (query_label, query_point, query_eval) in queries {
-        // The index of the point at which the commitment is queried
-        let point_index = point_index_map.get(query_point).unwrap();
-
-        // The point_index_set at which the commitment was queried
-        let point_index_set = commitment_set_map
-            .iter()
-            .find(|(l, _)| l == query_label)
-            .map(|(_, s)| s)
-            .unwrap();
-        assert!(!point_index_set.is_empty());
-
-        // The set_index of the point_index_set
-        let set_index = point_idx_sets.get(point_index_set).unwrap();
-
-        let point_index_set: Vec<usize> = point_index_set.iter().cloned().collect();
-
-        // The offset of the point_index in the point_index_set
-        let point_index_in_set = point_index_set.iter().position(|i| i == point_index).unwrap();
-
-        for commitment_data in commitment_map.iter_mut() {
-            if *query_label == commitment_data.label {
-                commitment_data.set_index = *set_index;
-                // Insert the eval using the ordering of the point_index_set
-                commitment_data.evals[point_index_in_set] = *query_eval;
-            }
-        }
+        let point_index_set: BTreeSet<_> = commitment_data.point_indices.iter().cloned().collect();
+        let num_sets = point_idx_sets.len();
+        commitment_data.set_index = *point_idx_sets.entry(point_index_set).or_insert(num_sets);
     }
 
     // Get actual points in each point set

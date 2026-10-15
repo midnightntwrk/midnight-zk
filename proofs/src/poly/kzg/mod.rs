@@ -295,13 +295,8 @@ where
         let label_to_poly: HashMap<PolynomialLabel, &Polynomial<E::Fr, Coeff>> =
             queries.iter().map(|q| (q.label.clone(), q.poly())).collect();
 
-        // `construct_intermediate_sets` is shared with the verifier, and the
-        // evaluations (the third component of each query) are only read by the
-        // verifier, so the prover passes zeros.
-        // TODO: address this better.
-        let kzg_queries = (queries.iter())
-            .map(|query| (query.label.clone(), query.point, E::Fr::ZERO))
-            .collect::<Vec<_>>();
+        let kzg_queries: Vec<_> =
+            queries.iter().map(|query| (query.label.clone(), query.point)).collect();
         let (poly_map, point_sets) = construct_intermediate_sets(&kzg_queries)?;
 
         let mut q_polys = vec![vec![]; point_sets.len()];
@@ -424,10 +419,10 @@ where
             })
             .collect::<Result<_, Error>>()?;
 
-        let kzg_queries = queries
-            .iter()
-            .map(|query| (query.label.clone(), query.point, query.eval))
-            .collect::<Vec<_>>();
+        let evals: HashMap<(PolynomialLabel, E::Fr), E::Fr> =
+            queries.iter().map(|q| ((q.label.clone(), q.point), q.eval)).collect();
+        let kzg_queries: Vec<_> =
+            queries.iter().map(|query| (query.label.clone(), query.point)).collect();
         let (commitment_map, point_sets) = construct_intermediate_sets(&kzg_queries)?;
 
         let mut q_coms: Vec<_> = vec![vec![]; point_sets.len()];
@@ -435,9 +430,13 @@ where
 
         let mut set_sizes: Vec<_> = point_sets.iter().map(|points| (points.len(), 0)).collect();
         for com_data in commitment_map.into_iter() {
-            q_coms[com_data.set_index].push(label_to_commitment[&com_data.label].clone());
-            q_eval_sets[com_data.set_index].push(com_data.evals);
-            set_sizes[com_data.set_index].1 += usize::from(!com_data.label.is_fixed());
+            let set_index = com_data.set_index;
+            q_coms[set_index].push(label_to_commitment[&com_data.label].clone());
+            let evals: Vec<_> = (point_sets[set_index].iter())
+                .map(|point| evals[&(com_data.label.clone(), *point)])
+                .collect();
+            q_eval_sets[set_index].push(evals);
+            set_sizes[set_index].1 += usize::from(!com_data.label.is_fixed());
         }
 
         let nb_x1_powers = q_coms.iter().map(Vec::len).max().unwrap_or(0);
