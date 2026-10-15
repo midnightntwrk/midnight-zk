@@ -18,7 +18,7 @@ use super::{
         Advice, Any, Assignment, Circuit, Column, ConstraintSystem, Fixed, FloorPlanner, Instance,
         Selector,
     },
-    logup,
+    logup, trash,
 };
 use crate::{
     circuit::Value,
@@ -238,9 +238,10 @@ where
         }
     }
 
-    for (i, trash) in pk.vk.cs.trashcans.iter().enumerate() {
-        let p = trash.compute_trash_poly(
+    for (i, evaluator) in pk.ev.trashcans_flat.iter().enumerate() {
+        let p = trash::prover::compute_trash_poly(
             domain,
+            evaluator,
             trash_challenge,
             phase1_committed.polys_of(&advice_labels),
             &pk.fixed_values,

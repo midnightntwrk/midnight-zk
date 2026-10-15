@@ -19,6 +19,7 @@ use crate::{
             write_instance_evals_to_transcript,
         },
         traces::ProverTrace,
+        trash,
     },
     poly::{
         LagrangeCoeff, Polynomial, PolynomialLabel, Rotation,
@@ -344,9 +345,10 @@ where
             }
         }
 
-        for (i, trash) in pk.vk.cs.trashcans.iter().enumerate() {
-            let p = trash.compute_trash_poly(
+        for (i, evaluator) in pk.ev.trashcans_flat.iter().enumerate() {
+            let p = trash::prover::compute_trash_poly(
                 domain,
+                evaluator,
                 trash_challenge,
                 advice_polys,
                 &pk.fixed_values,
