@@ -71,8 +71,11 @@ fn lagrange_selectors<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentSche
 pub(crate) fn evaluate_rows<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>>(
     pk: &ProvingKey<F, CS>,
     trace: &ProverTrace<'_, F, LagrangeCoeff>,
-    sparse: &SparseGates<F>,
 ) -> Polynomial<F, LagrangeCoeff> {
+    let sparse = pk
+        .ev
+        .sparse_gates
+        .get_or_init(|| SparseGates::new(&pk.vk.cs, &pk.vk.domain, &pk.fixed_values));
     let values = sparse.evaluate(
         &pk.vk.domain,
         trace.phase1_committed.polys_of(&pk.vk.cs.advice_labels()),

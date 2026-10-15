@@ -10,7 +10,6 @@ use super::{
     degree::folding_degree,
     instance::{Accumulator, Challenges, FoldingInstance},
     poly::{inner_product, interpolate, l0, perturbator, pow_vector, vanishing},
-    sparse_gates::SparseGates,
     trace::{evaluate_rows, fold_trace},
     verifier::{fold_public, shift_betas, squeeze_deltas, squeeze_fold_challenge},
 };
@@ -92,8 +91,6 @@ where
 pub struct ProverAccumulator<'a, F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> {
     pub(crate) trace: ProverTrace<'a, F, LagrangeCoeff>,
     pub(crate) public: Accumulator<F, CS>,
-    /// Row-sparse custom-gate evaluator of `pk`, built once.
-    pub(crate) sparse: SparseGates<F>,
 }
 
 impl<'a, F, CS> ProverAccumulator<'a, F, CS>
@@ -117,12 +114,9 @@ where
         F: Hashable<T::Hash> + Sampleable<T::Hash>,
         CS::Commitment: Hashable<T::Hash>,
     {
-        let sparse = SparseGates::new(&pk.vk.cs, &pk.fixed_values);
-        sparse.print_census(pk.vk.domain.n as usize);
         Ok(ProverAccumulator {
             public: Accumulator::init(&pk.vk, fresh.public, transcript)?,
             trace: fresh.trace,
-            sparse,
         })
     }
 
@@ -146,7 +140,7 @@ where
         fresh.public.absorb_commitments_and_instances(transcript)?;
 
         // F(X) = Σᵢ powᵢ(β⃗ + X·δ⃗)·fᵢ(acc), with F(0) = e.
-        let f_acc = evaluate_rows(pk, &self.trace, &self.sparse);
+        let f_acc = evaluate_rows(pk, &self.trace);
         let deltas = squeeze_deltas(transcript, log_n);
         let f_coeffs = perturbator(&f_acc, &self.public.betas, &deltas);
         debug_assert_eq!(f_coeffs[0], self.public.error, "F(0) = e");
@@ -160,7 +154,7 @@ where
 
         // G(x) = Σᵢ powᵢ(β⃗*)·fᵢ(acc + x·(fresh − acc)).
         let g = |x: F| {
-            let rows = evaluate_rows(pk, &fold_trace(&self.trace, &fresh.trace, x), &self.sparse);
+            let rows = evaluate_rows(pk, &fold_trace(&self.trace, &fresh.trace, x));
             inner_product(&pows, &rows)
         };
 
@@ -190,11 +184,7 @@ where
             gamma,
         )?;
         let trace = fold_trace(&self.trace, &fresh.trace, gamma);
-        Ok(ProverAccumulator {
-            trace,
-            public,
-            sparse: self.sparse,
-        })
+        Ok(ProverAccumulator { trace, public })
     }
 }
 
