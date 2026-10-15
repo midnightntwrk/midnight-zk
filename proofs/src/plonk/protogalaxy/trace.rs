@@ -4,6 +4,7 @@
 use std::borrow::Cow;
 
 use ff::WithSmallOrderMulGroup;
+use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
 use super::{instance::fold_scalar, sparse_gates::SparseGates};
 use crate::{
@@ -17,7 +18,7 @@ fn fold_polys<F: WithSmallOrderMulGroup<3>, B: Clone + Send + Sync>(
     x: F,
 ) -> Vec<Polynomial<F, B>> {
     assert_eq!(a.len(), b.len());
-    a.iter().zip(b).map(|(a, b)| a.fold(b, x)).collect()
+    a.par_iter().zip(b).map(|(a, b)| a.fold(b, x)).collect()
 }
 
 /// The trace `acc + x·(fresh − acc)`: witness and public-input polynomials
