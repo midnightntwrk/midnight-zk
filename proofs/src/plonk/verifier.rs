@@ -4,7 +4,7 @@ use std::{
     iter::{self},
 };
 
-use ff::{FromUniformBytes, WithSmallOrderMulGroup};
+use ff::{FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
 
 use super::{Error, VerifyingKey};
 use crate::{
@@ -183,16 +183,8 @@ where
         &y,
     );
 
-    // The commitment to h(X) = h_0(X) + X^{n-1} h_1(X) + ..., scaled by
-    // (1 - x^n) so that it must open to -nu(x) at x, without an inversion.
-    let quotient_commitment = quotient_limb_coms
-        .iter()
-        .zip(iter::successors(Some(F::ONE - xn), |pow| {
-            Some(*pow * splitting_factor)
-        }))
-        .map(|(com, scalar)| com.clone() * scalar)
-        .reduce(|acc, term| acc + term)
-        .expect("at least one quotient limb commitment");
+    let quotient_commitment =
+        scaled_quotient_commitment::<F, CS>(&quotient_limb_coms, splitting_factor, xn);
 
     // Collect queries that are checked in the multi-open argument
     //
@@ -327,4 +319,26 @@ where
         })
         .collect::<Result<Vec<_>, _>>()
         .map_err(Error::from)
+}
+
+/// The commitment to h(X) = h_0(X) + X^{n-1} h_1(X) + ..., scaled by
+/// (1 - x^n) so that it must open to -nu(x) at x, without an inversion.
+/// `splitting_factor` is x^{n-1} and `xn` is x^n.
+pub(crate) fn scaled_quotient_commitment<F, CS>(
+    quotient_limb_coms: &[CS::Commitment],
+    splitting_factor: F,
+    xn: F,
+) -> CS::Commitment
+where
+    F: PrimeField,
+    CS: PolynomialCommitmentScheme<F>,
+{
+    quotient_limb_coms
+        .iter()
+        .zip(iter::successors(Some(F::ONE - xn), |pow| {
+            Some(*pow * splitting_factor)
+        }))
+        .map(|(com, scalar)| com.clone() * scalar)
+        .reduce(|acc, term| acc + term)
+        .expect("at least one quotient limb commitment")
 }

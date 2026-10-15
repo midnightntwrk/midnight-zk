@@ -401,16 +401,7 @@ where
 
     let phase2_evaluated = phase2_committed.evaluate(cs, &x_rotations, transcript)?;
 
-    // h(X) = h_0(X) + x^{n-1} h_1(X) + ..., scaled by (1 - x^n): the
-    // polynomial behind the verifier's quotient commitment, which opens to
-    // -nu(x) at x.
-    let splitting_factor = x.pow_vartime([pk.vk.n() - 1]);
-    let xn = splitting_factor * x;
-    let quotient_poly = iter::successors(Some(xn - F::ONE), |pow| Some(*pow * splitting_factor))
-        .zip(quotient_limbs)
-        .fold(Polynomial::init(0), |acc, (scalar, limb)| {
-            acc.padded_sub(&(limb * scalar))
-        });
+    let quotient_poly = scaled_quotient_poly(quotient_limbs, x, pk.vk.n());
 
     let instance_labels: Vec<_> = (0..nb_committed_instances)
         .map(|i| [PolynomialLabel::CommittedInstance(i)])
@@ -427,6 +418,23 @@ where
     );
 
     CS::multi_open(params, &queries, transcript).map_err(|_| Error::ConstraintSystemFailure)
+}
+
+/// h(X) = h_0(X) + x^{n-1} h_1(X) + ..., scaled by (1 - x^n): the
+/// polynomial behind the verifier's quotient commitment (see
+/// `scaled_quotient_commitment`), which opens to -nu(x) at x.
+pub(crate) fn scaled_quotient_poly<F: PrimeField>(
+    quotient_limbs: Vec<Polynomial<F, Coeff>>,
+    x: F,
+    n: u64,
+) -> Polynomial<F, Coeff> {
+    let splitting_factor = x.pow_vartime([n - 1]);
+    let xn = splitting_factor * x;
+    iter::successors(Some(xn - F::ONE), |pow| Some(*pow * splitting_factor))
+        .zip(quotient_limbs)
+        .fold(Polynomial::init(0), |acc, (scalar, limb)| {
+            acc.padded_sub(&(limb * scalar))
+        })
 }
 
 /// This creates a proof for the provided `circuit` when given the public
