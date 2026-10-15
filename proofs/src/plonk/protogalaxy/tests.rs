@@ -11,7 +11,8 @@ use super::{
     Accumulator, ProverAccumulator, commit_instance, folding_degree,
     poly::{inner_product, pow_vector},
     prove_relaxed_trace, read_instance,
-    trace::{evaluate_rows, fold_trace},
+    sparse_gates::SparseGates,
+    trace::{evaluate_rows, evaluate_rows_dense, fold_trace},
     verify_relaxed_trace,
 };
 use crate::{
@@ -137,6 +138,18 @@ impl Circuit<Fq> for SquareCircuit {
     }
 }
 
+/// The row-sparse evaluation of the custom gates agrees with the dense one.
+fn assert_sparse_matches_dense<CS: PolynomialCommitmentScheme<Fq>>(
+    pk: &ProvingKey<Fq, CS>,
+    trace: &crate::plonk::traces::ProverTrace<'_, Fq, crate::poly::LagrangeCoeff>,
+    sparse: &SparseGates<Fq>,
+) {
+    assert_eq!(
+        &*evaluate_rows(pk, trace, sparse),
+        &*evaluate_rows_dense(pk, trace)
+    );
+}
+
 /// `Σᵢ powᵢ(β⃗)·fᵢ` computed directly from the prover's folded trace.
 fn relaxed_sum<CS: PolynomialCommitmentScheme<Fq>>(
     pk: &ProvingKey<Fq, CS>,
@@ -144,7 +157,7 @@ fn relaxed_sum<CS: PolynomialCommitmentScheme<Fq>>(
 ) -> Fq {
     inner_product(
         &pow_vector(&acc.public.betas),
-        &evaluate_rows(pk, &acc.trace),
+        &evaluate_rows(pk, &acc.trace, &acc.sparse),
     )
 }
 
@@ -172,6 +185,7 @@ where
     let pk = keygen_pk(vk, &circuit(0, false)).unwrap();
     let vk = pk.get_vk();
     let d = folding_degree(vk.cs());
+    let sparse = SparseGates::new(vk.cs(), &pk.fixed_values);
 
     // One step: the partial proof of instance `i` and both views of it.
     let step = |i: u64| {
@@ -189,7 +203,7 @@ where
 
     let (instance, fresh) = step(0);
     if !corrupt_last {
-        assert!(evaluate_rows(&pk, &instance.trace).iter().all(|f| *f == Fq::ZERO));
+        assert!(evaluate_rows(&pk, &instance.trace, &sparse).iter().all(|f| *f == Fq::ZERO));
     }
     let mut acc = ProverAccumulator::init(&pk, instance, &mut T::init()).unwrap();
     let mut acc_v = Accumulator::init(vk, fresh, &mut T::init()).unwrap();
@@ -201,16 +215,20 @@ where
         let (instance, fresh) = step(i);
         timings.commit += start.elapsed();
         if !(corrupt_last && i == NB_FOLDS) {
-            assert!(evaluate_rows(&pk, &instance.trace).iter().all(|f| *f == Fq::ZERO));
+            assert!(evaluate_rows(&pk, &instance.trace, &sparse).iter().all(|f| *f == Fq::ZERO));
         }
 
         let start = Instant::now();
         let folded = fold_trace(&acc.trace, &instance.trace, Fq::from(2));
         timings.fold_trace += start.elapsed();
         let start = Instant::now();
-        evaluate_rows(&pk, &folded);
+        evaluate_rows(&pk, &folded, &sparse);
         timings.evaluate_rows += start.elapsed();
         drop(folded);
+        // Fresh trace, and a trace folded with a random `x` (folded challenges).
+        assert_sparse_matches_dense(&pk, &instance.trace, &sparse);
+        let random_fold = fold_trace(&acc.trace, &instance.trace, Fq::random(OsRng));
+        assert_sparse_matches_dense(&pk, &random_fold, &sparse);
 
         let mut transcript = T::init();
         let start = Instant::now();

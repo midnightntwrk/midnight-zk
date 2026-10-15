@@ -7,7 +7,10 @@ use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterato
 use super::{ConstraintSystem, Expression};
 use crate::{
     plonk::{Any, argument},
-    poly::{FftDomain, Polynomial, PolynomialLabel, PolynomialRepresentation, Rotation},
+    poly::{
+        EvaluationDomain, FftDomain, Polynomial, PolynomialLabel, PolynomialRepresentation,
+        Rotation,
+    },
     utils::arithmetic::parallelize,
 };
 
@@ -890,27 +893,60 @@ impl<F: PrimeField> Evaluator<F> {
         permutation_cosets: &[Polynomial<F, B>],
     ) -> Polynomial<F, B> {
         let domain = fft_domain.domain();
+        let mut values = self.evaluate_custom_gates(
+            domain,
+            cs,
+            advice,
+            instance,
+            fixed,
+            y,
+            beta,
+            theta,
+            trash_challenge,
+        );
+        self.add_non_gate_identities(
+            &mut values,
+            domain,
+            cs,
+            advice,
+            instance,
+            fixed,
+            y,
+            beta,
+            gamma,
+            theta,
+            trash_challenge,
+            phase1_committed,
+            phase2_committed,
+            to_b,
+            l0,
+            l_last,
+            l_active_row,
+            permutation_cosets,
+        );
+        values
+    }
+
+    /// The custom-gate part of the numerator: `Σ_k y[k]·gate_poly_k` at every
+    /// point of `B`.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn evaluate_custom_gates<B: PolynomialRepresentation>(
+        &self,
+        domain: &EvaluationDomain<F>,
+        cs: &ConstraintSystem<F>,
+        advice: &[Polynomial<F, B>],
+        instance: &[Polynomial<F, B>],
+        fixed: &[Polynomial<F, B>],
+        y: &[F],
+        beta: F,
+        theta: &[F],
+        trash_challenge: F,
+    ) -> Polynomial<F, B> {
         let log_scale = B::k(domain) - domain.k();
-        let omega = B::omega(domain);
         let log_n = B::k(domain);
-        let one = F::ONE;
-
-        let p = &cs.permutation;
-
-        // Split `y` into the challenges of each group of identities.
         assert_eq!(y.len(), cs.nb_y_challenges());
         let nb_gate_polys: usize = cs.gates.iter().map(|g| g.polynomials().len()).sum();
-        let (y_gates, y_rest) = y.split_at(nb_gate_polys);
-        let (y_perm, mut y_rest) = y_rest.split_at(cs.nb_permutation_identities());
-        // Per lookup: a boundary, one helper per chunk and an accumulator.
-        let y_lookups: Vec<&[F]> = (self.lookups.iter())
-            .map(|chunks| {
-                let (y_lookup, rest) = y_rest.split_at(2 + chunks.len());
-                y_rest = rest;
-                y_lookup
-            })
-            .collect();
-        let y_trash = y_rest;
+        let y_gates = &y[..nb_gate_polys];
 
         let mut values = B::empty(domain);
 
@@ -926,6 +962,58 @@ impl<F: PrimeField> Evaluator<F> {
                 &template, values, start, fixed, advice, instance, log_scale, log_n,
             );
         });
+        values
+    }
+
+    /// Adds the permutation, lookup and trash identities (those after the
+    /// custom gates in the `y` order) to `values`.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn add_non_gate_identities<
+        'p,
+        B: PolynomialRepresentation + 'p,
+        P: PolynomialRepresentation,
+    >(
+        &self,
+        values: &mut Polynomial<F, B>,
+        domain: &EvaluationDomain<F>,
+        cs: &ConstraintSystem<F>,
+        advice: &[Polynomial<F, B>],
+        instance: &[Polynomial<F, B>],
+        fixed: &[Polynomial<F, B>],
+        y: &[F],
+        beta: F,
+        gamma: F,
+        theta: &[F],
+        trash_challenge: F,
+        phase1_committed: &'p argument::prover::Committed<F, P>,
+        phase2_committed: &'p argument::prover::Committed<F, P>,
+        to_b: impl Fn(&'p Polynomial<F, P>) -> Cow<'p, Polynomial<F, B>> + Sync,
+        l0: &Polynomial<F, B>,
+        l_last: &Polynomial<F, B>,
+        l_active_row: &Polynomial<F, B>,
+        permutation_cosets: &[Polynomial<F, B>],
+    ) {
+        let log_scale = B::k(domain) - domain.k();
+        let omega = B::omega(domain);
+        let log_n = B::k(domain);
+        let one = F::ONE;
+
+        let p = &cs.permutation;
+
+        // Split `y` into the challenges of each group of identities.
+        assert_eq!(y.len(), cs.nb_y_challenges());
+        let nb_gate_polys: usize = cs.gates.iter().map(|g| g.polynomials().len()).sum();
+        let y_rest = &y[nb_gate_polys..];
+        let (y_perm, mut y_rest) = y_rest.split_at(cs.nb_permutation_identities());
+        // Per lookup: a boundary, one helper per chunk and an accumulator.
+        let y_lookups: Vec<&[F]> = (self.lookups.iter())
+            .map(|chunks| {
+                let (y_lookup, rest) = y_rest.split_at(2 + chunks.len());
+                y_rest = rest;
+                y_lookup
+            })
+            .collect();
+        let y_trash = y_rest;
 
         // Permutations
         if !cs.permutation().columns.is_empty() {
@@ -951,7 +1039,7 @@ impl<F: PrimeField> Evaluator<F> {
             let last_set_permutation_product_coset = permutation_product_cosets.last().unwrap();
 
             // Permutation constraints
-            parallelize(&mut values, |values, start| {
+            parallelize(&mut *values, |values, start| {
                 let mut beta_term = omega.pow_vartime([start as u64, 0, 0, 0]);
                 for (i, value) in values.iter_mut().enumerate() {
                     let idx = start + i;
@@ -1103,7 +1191,7 @@ impl<F: PrimeField> Evaluator<F> {
 
         // Fused lookup + trash constraint evaluation in a single pass
         // over `values`, using flattened evaluators for reduced dispatch.
-        parallelize(&mut values, |values, start| {
+        parallelize(values, |values, start| {
             // Per-thread flat values buffers for all lookups.
             let mut all_lookup_bufs: Vec<Vec<Vec<F>>> = self
                 .lookups_flat
@@ -1214,8 +1302,6 @@ impl<F: PrimeField> Evaluator<F> {
                 }
             }
         });
-
-        values
     }
 }
 
@@ -1274,6 +1360,19 @@ impl<F: PrimeField> GraphEvaluator<F> {
                 ValueSource::Intermediate(target)
             }
         }
+    }
+
+    /// The flattened evaluator of the single gate polynomial `poly`, whose
+    /// result is `y[k]·poly`: gate polynomial `k` of the full gate evaluator
+    /// in isolation.
+    pub(crate) fn flat_single_gate(poly: &Expression<F>, k: usize) -> FlatGraphEvaluator<F> {
+        let mut graph = Self::default();
+        let part = graph.add_expression(poly);
+        graph.add_calculation(Calculation::LinearCombination(
+            ValueSource::PreviousValue(),
+            vec![(ValueSource::Y(k), part)],
+        ));
+        graph.flatten()
     }
 
     /// Generates an optimized evaluation for the expression
