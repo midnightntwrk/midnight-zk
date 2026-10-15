@@ -250,8 +250,16 @@ impl<F: CircuitField> P2RDecompositionChip<F> {
             );
         }
 
+        // [DROP] measurement hook: the bits and slot use in the region name.
+        let rc_bits: usize = limb_sizes.iter().sum();
+        let rc_used = limb_sizes.iter().filter(|s| **s > 0).count();
         layouter.assign_region(
-            || "decompose core",
+            || {
+                format!(
+                    "decompose core bits={rc_bits} used={rc_used} slots={}",
+                    limb_sizes.len()
+                )
+            },
             |mut region| {
                 let mut offset = 0;
 
@@ -385,7 +393,7 @@ impl<F: CircuitField> P2RDecompositionChip<F> {
                 continue;
             }
             let cells = layouter.assign_region(
-                || "packed decompose",
+                || format!("packed decompose bits=2x{bit_length}"),
                 |mut region| {
                     q_pack.enable(&mut region, 0)?;
                     self.pow2range_chip.assert_row_lower_than_2_pow_n(&mut region, tag, 0)?;

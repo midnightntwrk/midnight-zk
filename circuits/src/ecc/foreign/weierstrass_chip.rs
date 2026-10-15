@@ -1114,7 +1114,8 @@ where
     /// # Unsatisfiable Circuit
     ///
     /// If `p = -q`.
-    fn incomplete_add(
+    // [DROP] public for the measurement harness.
+    pub fn incomplete_add(
         &self,
         layouter: &mut impl Layouter<F>,
         p: &AssignedForeignPoint<F, C, B>,
