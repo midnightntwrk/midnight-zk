@@ -44,6 +44,12 @@
 //! ranges drive the worst-case bounds on `u` and `vj`, and therefore the
 //! bit-lengths of the range checks at every use site.
 //!
+//! A carry wider than one row of range checks (`nb_parallel_range_checks ·
+//! max_bit_len` bits) is split as `lo + 2^L · hi`, for `L` that row width,
+//! with `hi` in one of the free columns of the selector row. Its `lo` then
+//! takes exactly one row of range checks, and its short `hi` shares a row
+//! with other short values.
+//!
 //! # Purpose
 //!
 //! This gate is the shared backend for several foreign-field ECC identities
@@ -57,7 +63,11 @@
 use std::{cmp, marker::PhantomData, ops::Rem};
 
 use midnight_proofs::{
-    plonk::{Advice, Column, ConstraintSystem, Constraints, Expression, Fixed, Selector},
+    circuit::{Region, Value},
+    plonk::{
+        Advice, Column, ConstraintSystem, Constraints, Error, Expression, Fixed, Selector,
+        VirtualCells,
+    },
     poly::Rotation,
 };
 use num_bigint::{BigInt as BI, ToBigInt};
@@ -74,6 +84,7 @@ use crate::{
             signed_repr, sum_bigints, sum_exprs, urem,
         },
     },
+    types::AssignedNative,
     utils::util::bigint_to_fe,
 };
 
@@ -106,6 +117,9 @@ pub struct UnifiedConfig<C: WeierstrassCurve> {
     pub(super) cond_col: Column<Advice>,
     /// Declared coefficient ranges; enforced at every call site.
     pub(super) coeff_bounds: CoeffBounds,
+    /// The bit length `L` of the low part of split carries, and the column of
+    /// the high part of every carry `[u, v_1, ...]` that is split.
+    carry_split: (u32, Vec<Option<Column<Advice>>>),
     _marker: PhantomData<C>,
 }
 
@@ -158,11 +172,14 @@ impl<C: WeierstrassCurve> UnifiedConfig<C> {
     }
 
     /// Configures the gate. Allocates seven fresh fixed columns for the
-    /// per-row coefficients and installs the constraint polynomial.
+    /// per-row coefficients and installs the constraint polynomial. The high
+    /// parts of split carries take `free_cols`, which must be unused at the
+    /// selector row; a carry is not split if they are not enough.
     pub fn configure<F, P>(
         meta: &mut ConstraintSystem<F>,
         field_chip_config: &FieldChipConfig,
         cond_col: &Column<Advice>,
+        free_cols: &[Column<Advice>],
         coeff_bounds: &CoeffBounds,
         nb_parallel_range_checks: usize,
         max_bit_len: u32,
@@ -179,14 +196,35 @@ impl<C: WeierstrassCurve> UnifiedConfig<C> {
         let ((k_min, u_max), vs_bounds) =
             Self::bounds::<F, P>(coeff_bounds, nb_parallel_range_checks, max_bit_len);
 
+        let lo_bits = nb_parallel_range_checks as u32 * max_bit_len;
+        let carry_bounds =
+            std::iter::once(&u_max).chain(vs_bounds.iter().map(|(_, vj_max)| vj_max));
+        let mut free_cols = free_cols.iter();
+        let hi_cols: Vec<_> = carry_bounds
+            .map(|bound| (bound.bits() > lo_bits as u64 + 1).then(|| free_cols.next()).flatten())
+            .map(|col| col.inspect(|col| meta.enable_equality(**col)).copied())
+            .collect();
+        let two_pow_lo = Expression::Constant(bigint_to_fe::<F>(&(BI::one() << lo_bits)));
+        let carry = |meta: &mut VirtualCells<'_, F>, col: Column<Advice>, i: usize| {
+            let lo = meta.query_advice(col, Rotation::cur());
+            match hi_cols[i] {
+                Some(hi_col) => {
+                    lo + two_pow_lo.clone() * meta.query_advice(hi_col, Rotation::cur())
+                }
+                None => lo,
+            }
+        };
+
         let alpha = curve_alpha::<C>();
         let q_unified = meta.selector();
         let coeff_cols: [Column<Fixed>; 7] = core::array::from_fn(|_| meta.fixed_column());
 
         meta.create_gate("Foreign-field unified", |meta| {
             let cond = meta.query_advice(*cond_col, Rotation::cur());
-            let u = meta.query_advice(field_chip_config.u_col, Rotation::cur());
-            let vs = get_advice_vec(meta, &field_chip_config.v_cols, Rotation::cur());
+            let u = carry(meta, field_chip_config.u_col, 0);
+            let vs: Vec<_> = (field_chip_config.v_cols.iter().enumerate())
+                .map(|(j, col)| carry(meta, *col, j + 1))
+                .collect();
 
             let a_s = get_advice_vec(meta, &field_chip_config.x_cols, Rotation::prev());
             let b_s = get_advice_vec(meta, &field_chip_config.z_cols, Rotation::prev());
@@ -287,8 +325,47 @@ impl<C: WeierstrassCurve> UnifiedConfig<C> {
             vs_bounds,
             cond_col: *cond_col,
             coeff_bounds: coeff_bounds.clone(),
+            carry_split: (lo_bits, hi_cols),
             _marker: PhantomData,
         }
+    }
+
+    /// Assigns the carries `u` and `vs` of the gate instance at `offset`,
+    /// returning the cells to range-check with their (power-of-two) bounds.
+    pub(super) fn assign_carries<F: CircuitField>(
+        &self,
+        region: &mut Region<'_, F>,
+        field_chip_config: &FieldChipConfig,
+        offset: usize,
+        u: &Value<BI>,
+        vs: &[Value<BI>],
+    ) -> Result<Vec<(AssignedNative<F>, BI)>, Error> {
+        let (lo_bits, hi_cols) = &self.carry_split;
+        let cols = std::iter::once(&field_chip_config.u_col).chain(&field_chip_config.v_cols);
+        let bounds = std::iter::once(&self.u_bounds.1).chain(self.vs_bounds.iter().map(|(_, b)| b));
+        let mut checks = vec![];
+        for (((col, hi_col), carry), bound) in
+            cols.zip(hi_cols).zip(std::iter::once(u).chain(vs)).zip(bounds)
+        {
+            let assign = |region: &mut Region<'_, F>, col: Column<Advice>, value: Value<BI>| {
+                region.assign_advice(
+                    || "carry",
+                    col,
+                    offset,
+                    || value.as_ref().map(bigint_to_fe::<F>),
+                )
+            };
+            match hi_col {
+                None => checks.push((assign(region, *col, carry.clone())?, bound.clone())),
+                Some(hi_col) => {
+                    let lo = carry.clone().map(|c| c & ((BI::one() << lo_bits) - 1));
+                    let hi = carry.clone().map(|c| c >> lo_bits);
+                    checks.push((assign(region, *col, lo)?, BI::one() << lo_bits));
+                    checks.push((assign(region, *hi_col, hi)?, bound >> lo_bits));
+                }
+            }
+        }
+        Ok(checks)
     }
 }
 

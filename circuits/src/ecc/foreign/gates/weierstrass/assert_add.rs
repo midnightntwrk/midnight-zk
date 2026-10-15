@@ -30,13 +30,13 @@
 //! The slope(p,r) gate swaps A↔D slots (A=px, D=rx).  The lambda-squared gate
 //! uses `a=1, A=λ` and `b=−1, B=rx` from the dedicated data row (Row 5).
 
-use std::ops::Rem;
+use std::{collections::BTreeMap, ops::Rem};
 
 use midnight_proofs::{
     circuit::{Chip, Layouter},
     plonk::Error,
 };
-use num_bigint::{BigInt as BI, ToBigInt};
+use num_bigint::{BigInt as BI, BigUint, ToBigInt};
 use num_traits::{One, Zero};
 
 use super::{
@@ -53,7 +53,6 @@ use crate::{
     },
     instructions::NativeInstructions,
     types::{AssignedBit, AssignedField, InnerValue},
-    utils::util::bigint_to_fe,
 };
 
 /// If `cond = 1`, asserts that `p + q = r` over the foreign field.
@@ -275,20 +274,7 @@ where
                 &config.coeff_bounds,
                 [&a_a, &b_a, &d_a, &e_a, &ca_a, &cd_a, &BI::zero()],
             )?;
-            let u_a_cell = region.assign_advice(
-                || "u_A",
-                fcc.u_col,
-                1,
-                || u_a.clone().map(|u| bigint_to_fe::<F>(&u)),
-            )?;
-            let vs_a_cells = vs_a
-                .iter()
-                .zip(fcc.v_cols.iter())
-                .map(|(vj, &col)| {
-                    let val = vj.clone().map(|v| bigint_to_fe::<F>(&v));
-                    region.assign_advice(|| "vj_A", col, 1, || val)
-                })
-                .collect::<Result<Vec<_>, _>>()?;
+            let checks_a = config.assign_carries(&mut region, fcc, 1, &u_a, &vs_a)?;
             cond.0.copy_advice(|| "cond", &mut region, config.cond_col, 1)?;
 
             // --- Row 2: shared (gate A next D,E = gate C prev A,B) ---
@@ -305,20 +291,7 @@ where
                 &config.coeff_bounds,
                 [&a_c, &b_c, &d_c, &e_c, &ca_c, &cd_c, &BI::zero()],
             )?;
-            let u_c_cell = region.assign_advice(
-                || "u_C",
-                fcc.u_col,
-                3,
-                || u_c.clone().map(|u| bigint_to_fe::<F>(&u)),
-            )?;
-            let vs_c_cells = vs_c
-                .iter()
-                .zip(fcc.v_cols.iter())
-                .map(|(vj, &col)| {
-                    let val = vj.clone().map(|v| bigint_to_fe::<F>(&v));
-                    region.assign_advice(|| "vj_C", col, 3, || val)
-                })
-                .collect::<Result<Vec<_>, _>>()?;
+            let checks_c = config.assign_carries(&mut region, fcc, 3, &u_c, &vs_c)?;
             cond.0.copy_advice(|| "cond", &mut region, config.cond_col, 3)?;
 
             // --- Row 4: gate C next (D=rx, E=ry) ---
@@ -338,50 +311,22 @@ where
                 &config.coeff_bounds,
                 [&a_b, &b_b, &d_b, &e_b, &ca_b, &cd_b, &BI::zero()],
             )?;
-            let u_b_cell = region.assign_advice(
-                || "u_B",
-                fcc.u_col,
-                6,
-                || u_b.clone().map(|u| bigint_to_fe::<F>(&u)),
-            )?;
-            let vs_b_cells = vs_b
-                .iter()
-                .zip(fcc.v_cols.iter())
-                .map(|(vj, &col)| {
-                    let val = vj.clone().map(|v| bigint_to_fe::<F>(&v));
-                    region.assign_advice(|| "vj_B", col, 6, || val)
-                })
-                .collect::<Result<Vec<_>, _>>()?;
+            let checks_b = config.assign_carries(&mut region, fcc, 6, &u_b, &vs_b)?;
             cond.0.copy_advice(|| "cond", &mut region, config.cond_col, 6)?;
 
             // --- Row 7: gate B next (D=px, E=qx) ---
             copy_limbs(&mut region, px, &fcc.x_cols, 7, "px")?;
             copy_limbs(&mut region, qx, &fcc.z_cols, 7, "qx")?;
 
-            // Collect range checks for all three gates.
-            let checks_a = std::iter::once((u_a_cell, u_max.clone())).chain(
-                vs_a_cells
-                    .into_iter()
-                    .zip(config.vs_bounds.iter().map(|(_, vj_max)| vj_max.clone())),
-            );
-            let checks_c = std::iter::once((u_c_cell, u_max.clone())).chain(
-                vs_c_cells
-                    .into_iter()
-                    .zip(config.vs_bounds.iter().map(|(_, vj_max)| vj_max.clone())),
-            );
-            let checks_b = std::iter::once((u_b_cell, u_max.clone())).chain(
-                vs_b_cells
-                    .into_iter()
-                    .zip(config.vs_bounds.iter().map(|(_, vj_max)| vj_max.clone())),
-            );
-
-            Ok(checks_a.chain(checks_c).chain(checks_b).collect::<Vec<_>>())
+            Ok([checks_a, checks_c, checks_b].concat())
         },
     )?;
 
-    range_checks.iter().try_for_each(|(cell, ubound)| {
-        base_chip
-            .native_gadget
-            .assert_lower_than_fixed(layouter, cell, ubound.magnitude())
+    let mut by_bound = BTreeMap::<BigUint, Vec<_>>::new();
+    for (cell, bound) in range_checks {
+        by_bound.entry(bound.magnitude().clone()).or_default().push(cell);
+    }
+    (by_bound.iter()).try_for_each(|(bound, cells)| {
+        base_chip.native_gadget.assert_many_lower_than_fixed(layouter, cells, bound)
     })
 }

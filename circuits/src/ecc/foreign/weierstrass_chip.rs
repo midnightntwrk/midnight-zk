@@ -1026,6 +1026,7 @@ where
             meta,
             base_field_config,
             &cond_col,
+            &advice_columns[cond_col_idx + 1..],
             &unified_coeff_bounds,
             nb_parallel_range_checks,
             max_bit_len,
