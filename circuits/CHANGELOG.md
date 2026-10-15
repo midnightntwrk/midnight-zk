@@ -24,6 +24,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 
 ### Changed
+* The `multi_select` lookup of the foreign ECC chips no longer takes an advice column for the selected index: table entries encode their index in the fixed tag, as `tag · 2^64 + index`, and a lookup region copies its witnessed index into the next row, taking 2 rows instead of 1. Lookup indices must be below 2^64. This changes the verifying keys of circuits using the chips [#590](https://github.com/midnightntwrk/midnight-zk/pull/590)
 * The in-circuit KZG multi-open orders its point sets with `kzg::point_set_order`, as the off-circuit one does [#583](https://github.com/midnightntwrk/midnight-zk/pull/583)
 * The in-circuit fflonk evaluates a chunk at all the roots of a point at once: one product per polynomial and one linear combination per root, instead of Horner per root, sharing the powers of the root between chunks [#583](https://github.com/midnightntwrk/midnight-zk/pull/583)
 * The in-circuit fflonk splits groups into `fflonk::balanced_chunks`, as off-circuit [#579](https://github.com/midnightntwrk/midnight-zk/pull/579)
