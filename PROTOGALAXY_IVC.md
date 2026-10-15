@@ -265,3 +265,87 @@ IVC circuit (`cs.degree() = 5`; census unchanged from A.3: `nb_theta = 16`, `nb_
   fflonk default of A.2; the cost model does not model fflonk proof sizes). Not touched here.
 - `check_vk_cred_enrollment` / `check_vk_cred_full` skipped (need a `2^20` Filecoin SRS, see A.2).
 - K = 17 instead of 16 (see A.3). IVC example run only with `truncated-challenges` (as in A.1/A.3).
+
+## [B.2] Commit-phases-only prover/verifier helpers
+Commit: this commit   Date: 2026-10-15   Machine: M1 Pro 10c/16GB   Features: truncated-challenges (IVC example)   **Contended** (video calls running)
+
+### What and why
+Phase C's per-step prover never runs `create_proof` (0.4.7): it synthesises the step witness,
+commits phases 1 and 2, derives the challenges and folds. Its native folding verifier reads a
+fresh instance's commitments and challenges without verifying a proof. This step exposes both
+halves on the current phase-group API (re-implementing accordion's `c751601f` / `33267dda`).
+- Prover, `proofs/src/plonk/prover.rs`:
+  `pub(crate) fn commit_phases(params, pk, circuit, [nb_committed_instances,] instances, transcript, rng) -> Result<CommittedTrace<'a, F, CS>, Error>`.
+  It is the former body of `compute_trace` minus the final `into_coeff`: witness, phase-1 commit
+  (advice + logup multiplicities), `theta⃗, beta, gamma, trash`, phase-2 commit (permutation `Z`,
+  logup helpers/aggregator, trash), `y⃗`; the transcript is left right after `y⃗`.
+  `compute_trace` (hence `create_proof`) is now `commit_phases(..)?.trace.into_coeff(domain)`:
+  same operations in the same order, so proof bytes and VKs are unchanged.
+- `proofs/src/plonk/traces.rs`: `ProverTrace<'a, F, B = Coeff>` is generic in the
+  representation of its phase-1/2 polynomials (Lagrange after the commit phases, coefficients
+  for the proof), with `ProverTrace<'a, F, LagrangeCoeff>::into_coeff`. New
+  `pub(crate) struct CommittedTrace<'a, F, CS> { trace: ProverTrace<'a, F, LagrangeCoeff>, phase1_commitment, phase2_commitment }`
+  (the folding prover's fresh instance; Lagrange form, so folding needs no FFT, as in `c751601f`).
+- `argument::prover::Committed::commit` now also returns the commitment it writes
+  (`Result<(Self, CS::Commitment), Error>`; two call sites in `bench/prover.rs` adapted).
+- Verifier: the existing `pub fn parse_trace` (`verifier.rs`) already is the "read commit phases"
+  counterpart and `verify_proof`/`prepare` already go through it, so no refactor was needed. Added
+  `pub fn VerifierTrace::{phase1_commitment, phase2_commitment}(&self) -> &CS::Commitment` and
+  `pub(crate) fn argument::verifier::Committed::commitment`. Challenges are the existing
+  `pub(crate)` fields of `VerifierTrace`. Accordion's per-argument accessors (`33267dda`: logup,
+  permutation, trash `Committed`) have no counterpart: main commits each phase as one labelled
+  group, i.e. one `CS::Commitment` per phase (fflonk: one per chunk inside it).
+
+### How to reproduce
+From the repo root:
+```
+cargo test --release -p midnight-proofs --lib commit_phases
+cargo build --release --workspace --examples
+cargo test --release -p midnight-proofs
+cargo test --release -p midnight-circuits verifier
+cargo test --release -p midnight-zk-stdlib --no-fail-fast
+cd aggregation && cargo run --release --features truncated-challenges --example ivc
+```
+
+### Results
+New tests in `proofs/src/plonk/commit_phases_tests.rs` (circuit `b = a²` on 16 rows, `a` range-
+checked by a lookup, `b₀` copied to a public input; `nb_theta = 1`, `nb_y > 1`), run for KZG and
+for fflonk `T_MAX = 8` (`commit_phases_match_verifier_{kzg,fflonk}`), with and without
+`committed-instances`/`truncated-challenges`. Each checks: re-committing the returned Lagrange
+polynomials gives the returned commitments; `parse_trace` on the same bytes gives equal
+commitments and equal `theta⃗, beta, gamma, trash, y⃗`; one more squeeze from either transcript
+agrees (same transcript state); `create_proof` for the same circuit verifies.
+
+| Test | Result |
+|---|---|
+| workspace build (release, examples) | ok, no warnings |
+| `midnight-proofs` | ok (lib 52 incl. the 2 new, plonk_api 3, adversarial 9, vk_serialization 2, doc 1) |
+| `midnight-circuits verifier` | ok (3) |
+| `midnight-zk-stdlib --no-fail-fast` | lib 4, check_vks 12/14, serialization 8, doc 9 ok; known failures only (see below) |
+| goldenfiles / VKs | no file changed |
+| `examples/ivc`, K = 17, N = 1, truncated-challenges | all 10 steps verify; step 0 prove 92.9 s, steps 1–9 7.8–9.4 s, verify 15–22 ms, peak RSS 2.92 GB (contended) |
+
+### Interpretation
+Pure refactor plus accessors: no new arithmetic, the commit phases and the proof are the same
+operations as before, so `create_proof` costs the same (the `into_coeff` moved, it was not
+duplicated). For Phase C, `commit_phases` is exactly the per-step
+prover's "fresh instance" (C.1), and `parse_trace` + the commitment accessors is the native
+folding verifier's input; neither computes a quotient, opens anything or touches coset FFTs.
+
+### Deviations from the plan, open problems
+- No new verifier function: `parse_trace` already stops after `y⃗` (the quotient commitments are
+  read in `verify_algebraic_constraints`), so the "read commit phases" helper is `parse_trace`
+  plus two accessors.
+- `CommittedTrace::{phase1,phase2}_commitment` carry `#[allow(dead_code)]` until C.1 reads them
+  (only the test reads them now). `commit_phases` is `pub(crate)`: the IVC code in `aggregation/`
+  will call the C.1 folding API in `proofs/`, not this helper; make it `pub` then if needed.
+- `bench/prover.rs` keeps its own instrumented copy of the commit phases (as before; it mirrors
+  `create_proof`); it was only adapted to the new `commit` return type.
+- Known issue found while running B.1 tests: `zk_stdlib/tests/public_inputs.rs::public_inputs_test`
+  fails since A.2 (cost-model proof size 4,096 vs actual 4,448 bytes).
+  `proofs/src/dev/cost_model.rs::circuit_model_with` models a KZG/SHPLONK proof layout (one
+  commitment per quotient limb, multiopen = 2 commitments + one scalar per point set), not
+  fflonk's. The A.2 run did not reveal it because cargo stopped after the failing `check_vks`
+  binary. Consequence: cost-model `size` (goldenfiles, A.3's 4,432 bytes) is not the real fflonk
+  proof size; C.4 measures real proof bytes. Not fixed on this branch.
+- `check_vk_cred_enrollment` / `check_vk_cred_full` fail as before (need a `2^20` Filecoin SRS, A.2).

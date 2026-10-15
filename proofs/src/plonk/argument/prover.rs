@@ -74,13 +74,14 @@ impl<F: PrimeField, B: PolynomialRepresentation> Committed<F, B> {
 
 impl<F: PrimeField, B: PolynomialRepresentation> Committed<F, B> {
     /// Commits to the polynomials of `polys_map` in the representation given by
-    /// `encode`. The group keeps them as given.
+    /// `encode` and writes the commitment to the transcript. The group keeps
+    /// the polynomials as given; the commitment is returned alongside.
     pub fn commit<PCS, T, E>(
         params: &PCS::Parameters,
         polys_map: BTreeMap<PolynomialLabel, Polynomial<F, B>>,
         encode: impl Fn(&Polynomial<F, B>) -> Polynomial<F, E> + Send + Sync,
         transcript: &mut T,
-    ) -> Result<Self, Error>
+    ) -> Result<(Self, PCS::Commitment), Error>
     where
         PCS: PolynomialCommitmentScheme<F>,
         PCS::Commitment: Hashable<T::Hash>,
@@ -94,7 +95,7 @@ impl<F: PrimeField, B: PolynomialRepresentation> Committed<F, B> {
 
         PCS::write_commitment(transcript, &commitment)?;
 
-        Ok(group)
+        Ok((group, commitment))
     }
 }
 
