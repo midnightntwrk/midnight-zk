@@ -17,7 +17,8 @@ use std::{collections::HashMap, marker::PhantomData};
 
 use midnight_proofs::{
     circuit::{Chip, Layouter, Value},
-    plonk::{ConstraintSystem, Error},
+    plonk::{Advice, Column, ConstraintSystem, Constraints, Error, Selector},
+    poly::Rotation,
 };
 use num_traits::Zero;
 
@@ -44,6 +45,9 @@ use crate::{
 pub struct P2RDecompositionConfig {
     pub(crate) native_config: NativeConfig,
     pub(crate) pow2range_config: Pow2RangeConfig,
+    /// When set, the selector and the second output column of the packed
+    /// decomposition gate, which range-checks two values in one row.
+    pub(crate) pack: Option<(Selector, Column<Advice>)>,
 }
 
 impl P2RDecompositionConfig {
@@ -69,6 +73,7 @@ impl P2RDecompositionConfig {
         Self {
             native_config: native_config.clone(),
             pow2range_config: pow2range_config.clone(),
+            pack: None,
         }
     }
 
@@ -148,6 +153,7 @@ impl<F: CircuitField> ComposableChip<F> for P2RDecompositionChip<F> {
         Self::Config {
             native_config: shared_resources.0.clone(),
             pow2range_config: shared_resources.1.clone(),
+            pack: None,
         }
     }
 
@@ -299,6 +305,123 @@ impl<F: CircuitField> P2RDecompositionChip<F> {
     }
 }
 
+impl<F: CircuitField> P2RDecompositionChip<F> {
+    /// Configures the packed decomposition gate, which range-checks two values
+    /// in one row: each takes half of the range-check columns, and the gate
+    /// recombines the first half into the native chip's first column and the
+    /// second half into `second_output`.
+    ///
+    /// # Panics
+    ///
+    /// If the number of range-check columns is odd.
+    pub fn configure_packing(
+        meta: &mut ConstraintSystem<F>,
+        config: &mut P2RDecompositionConfig,
+        second_output: Column<Advice>,
+    ) {
+        let nb_cols = config.pow2range_config.val_cols.len();
+        assert!(
+            nb_cols.is_multiple_of(2),
+            "packing needs an even number of range-check columns"
+        );
+        let half = nb_cols / 2;
+        meta.enable_equality(second_output);
+        let q_pack = meta.selector();
+        let value_cols = config.native_config.value_cols.clone();
+        let coeff_cols = config.native_config.coeff_cols.clone();
+        meta.create_gate("packed decomposition", |meta| {
+            let sum =
+                |range: std::ops::Range<usize>,
+                 meta: &mut midnight_proofs::plonk::VirtualCells<'_, F>| {
+                    range
+                        .map(|i| {
+                            meta.query_fixed(coeff_cols[i], Rotation::cur())
+                                * meta.query_advice(value_cols[i], Rotation::cur())
+                        })
+                        .reduce(|acc, term| acc + term)
+                        .unwrap()
+                };
+            let first = sum(1..1 + half, meta) - meta.query_advice(value_cols[0], Rotation::cur());
+            let second = sum(1 + half..1 + nb_cols, meta)
+                - meta.query_advice(second_output, Rotation::cur());
+            Constraints::with_selector(q_pack, vec![first, second])
+        });
+        config.pack = Some((q_pack, second_output));
+    }
+
+    /// Assigns the given values, each range-checked in `[0, 2^bit_length)`.
+    /// Two values share a row when packing is configured and the optimal limb
+    /// split of `bit_length` fits in half a row.
+    fn assign_many_packed(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        values: &[Value<F>],
+        bit_length: usize,
+    ) -> Result<Vec<AssignedNative<F>>, Error> {
+        let nb_cols = self.pow2range_chip.config().val_cols.len();
+        let half = nb_cols / 2;
+        let split = self.opt_limbs.get(&(bit_length as i32)).unwrap();
+        let packable = self.config.pack.is_some()
+            && split.len() == 1
+            && split[0].iter().filter(|s| **s > 0).count() <= half;
+        if !packable {
+            return values
+                .iter()
+                .map(|v| self.assign_less_than_pow2(layouter, *v, bit_length))
+                .collect();
+        }
+        let (q_pack, second_output) = self.config.pack.unwrap();
+        let mut sizes: Vec<usize> = split[0].iter().copied().filter(|s| *s > 0).collect();
+        let tag = sizes[0];
+        sizes.resize(half, 0);
+        let coeffs = variable_limbsize_coefficients::<F>(&sizes);
+        let value_cols = &self.config.native_config.value_cols;
+        let coeff_cols = &self.config.native_config.coeff_cols;
+
+        let mut assigned = Vec::with_capacity(values.len());
+        for pair in values.chunks(2) {
+            if pair.len() == 1 {
+                assigned.push(self.assign_less_than_pow2(layouter, pair[0], bit_length)?);
+                continue;
+            }
+            let cells = layouter.assign_region(
+                || "packed decompose",
+                |mut region| {
+                    q_pack.enable(&mut region, 0)?;
+                    self.pow2range_chip.assert_row_lower_than_2_pow_n(&mut region, tag, 0)?;
+                    let mut cells = Vec::with_capacity(2);
+                    for (h, (value, out_col)) in
+                        pair.iter().zip([value_cols[0], second_output]).enumerate()
+                    {
+                        let limbs = value
+                            .map(|v| decompose_in_variable_limbsizes::<F, F>(&v, &sizes))
+                            .transpose_vec(half);
+                        for (i, (limb, coeff)) in limbs.iter().zip(coeffs.iter()).enumerate() {
+                            let col = 1 + h * half + i;
+                            region.assign_advice(|| "packed limb", value_cols[col], 0, || *limb)?;
+                            region.assign_fixed(
+                                || "packed coeff",
+                                coeff_cols[col],
+                                0,
+                                || Value::known(*coeff),
+                            )?;
+                        }
+                        cells.push(region.assign_advice(
+                            || "packed value",
+                            out_col,
+                            0,
+                            || *value,
+                        )?);
+                    }
+                    Ok(cells)
+                },
+            )?;
+            assigned.extend(cells);
+        }
+        Ok(assigned)
+    }
+}
+
 impl<F: CircuitField> CoreDecompositionInstructions<F> for P2RDecompositionChip<F> {
     // TODO: This can be further optimized by parallelizing lookups for the
     // decomposed limbs. Perhaps using a function for optimal decomposing
@@ -425,6 +548,15 @@ impl<F: CircuitField> CoreDecompositionInstructions<F> for P2RDecompositionChip<
         let (y, _) = self.decompose_core(layouter, value, &limb_sizes)?;
 
         Ok(y)
+    }
+
+    fn assign_many_less_than_pow2(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        values: &[Value<F>],
+        bit_length: usize,
+    ) -> Result<Vec<AssignedNative<F>>, Error> {
+        self.assign_many_packed(layouter, values, bit_length)
     }
 
     fn assign_many_small(

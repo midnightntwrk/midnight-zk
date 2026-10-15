@@ -429,18 +429,28 @@ where
             bi_to_limbs(P::NB_LIMBS, &base, &bi)
         });
 
-        // Range-check the cells in the range [0, base)
-        let x_cells = (0..P::NB_LIMBS)
+        // Range-check the cells in the range [0, base), all limbs of the same
+        // bound at once so that their range checks may share rows.
+        let log2_bounds = well_formed_log2_bounds::<F, K, P>();
+        let limb_values: Vec<Value<F>> = (0..P::NB_LIMBS)
             .map(|i| x.clone().map(|limbs| bigint_to_fe::<F>(&limbs[i as usize])))
-            .zip(well_formed_log2_bounds::<F, K, P>().iter())
-            .map(|(xi_value, log2_bound)| {
-                self.native_gadget.assign_lower_than_fixed(
-                    layouter,
-                    xi_value,
-                    &(BigUint::one() << *log2_bound),
-                )
-            })
-            .collect::<Result<Vec<_>, Error>>()?;
+            .collect();
+        let mut x_cells: Vec<Option<AssignedNative<F>>> = vec![None; limb_values.len()];
+        let mut distinct_bounds = log2_bounds.clone();
+        distinct_bounds.sort();
+        distinct_bounds.dedup();
+        for log2_bound in distinct_bounds {
+            let idx: Vec<usize> =
+                (0..log2_bounds.len()).filter(|i| log2_bounds[*i] == log2_bound).collect();
+            let values: Vec<_> = idx.iter().map(|i| limb_values[*i]).collect();
+            let cells = self.native_gadget.assign_many_lower_than_fixed(
+                layouter,
+                &values,
+                &(BigUint::one() << log2_bound),
+            )?;
+            idx.into_iter().zip(cells).for_each(|(i, c)| x_cells[i] = Some(c));
+        }
+        let x_cells: Vec<AssignedNative<F>> = x_cells.into_iter().map(Option::unwrap).collect();
 
         Ok(AssignedField::<F, K, P> {
             limb_values: x_cells,

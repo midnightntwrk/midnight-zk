@@ -359,3 +359,136 @@ fn test_decomposition_less_than_pow2() {
     run_decomposition_less_than_pow2_test::<3>();
     run_decomposition_less_than_pow2_test::<4>();
 }
+
+/// How a packed range-check row is tampered with, if at all.
+#[derive(Clone, Copy, Debug)]
+enum PackedTamper {
+    None,
+    FirstOutput,
+    SecondOutput,
+    FirstLimbOutOfRange,
+    SecondLimbOutOfRange,
+}
+
+/// Range-checks two 16-bit values in one packed row (4 range-check columns of
+/// 8 bits, two per value), honestly or tampered with as `tamper` says.
+#[derive(Clone, Debug)]
+struct TestPackedCircuit {
+    values: [u64; 2],
+    tamper: PackedTamper,
+}
+
+impl Circuit<Fp> for TestPackedCircuit {
+    type Config = P2RDecompositionConfig;
+    type FloorPlanner = SimpleFloorPlanner;
+    type Params = ();
+
+    fn without_witnesses(&self) -> Self {
+        unimplemented!()
+    }
+
+    fn configure(meta: &mut ConstraintSystem<Fp>) -> Self::Config {
+        let instance_columns = [meta.instance_column(), meta.instance_column()];
+        let mut advice_columns = vec![];
+        let mut fixed_columns = vec![];
+        let native_config = NativeChip::configure_from_scratch(
+            meta,
+            &mut advice_columns,
+            &mut fixed_columns,
+            &instance_columns,
+        );
+        let pow2range_config = Pow2RangeChip::configure(meta, &advice_columns[1..=4]);
+        let mut config = P2RDecompositionConfig::new(&native_config, &pow2range_config);
+        let second_output = meta.advice_column();
+        P2RDecompositionChip::configure_packing(meta, &mut config, second_output);
+        config
+    }
+
+    fn synthesize(
+        &self,
+        config: Self::Config,
+        mut layouter: impl Layouter<Fp>,
+    ) -> Result<(), Error> {
+        let decomposition_chip = P2RDecompositionChip::new(&config, &8);
+        let values = self.values.map(|v| Value::known(Fp::from(v)));
+
+        if let PackedTamper::None = self.tamper {
+            decomposition_chip.assign_many_less_than_pow2(&mut layouter, &values, 16)?;
+            return decomposition_chip.load(&mut layouter);
+        }
+
+        // The packed row laid out by hand: limbs (low, high) of 8 bits each.
+        let (q_pack, second_output) = config.pack.unwrap();
+        let value_cols = &config.native_config.value_cols;
+        let coeff_cols = &config.native_config.coeff_cols;
+        let mut limbs = self.values.map(|v| [v & 0xff, v >> 8]);
+        let mut outputs = self.values;
+        match self.tamper {
+            PackedTamper::FirstOutput => outputs[0] += 1,
+            PackedTamper::SecondOutput => outputs[1] += 1,
+            // Out-of-range low limb, compensated in the high one so that the
+            // recombination still holds.
+            PackedTamper::FirstLimbOutOfRange => limbs[0] = [limbs[0][0] + 256, limbs[0][1] - 1],
+            PackedTamper::SecondLimbOutOfRange => limbs[1] = [limbs[1][0] + 256, limbs[1][1] - 1],
+            PackedTamper::None => unreachable!(),
+        }
+        layouter.assign_region(
+            || "tampered packed decompose",
+            |mut region| {
+                q_pack.enable(&mut region, 0)?;
+                decomposition_chip.pow2range_chip().assert_row_lower_than_2_pow_n(
+                    &mut region,
+                    8,
+                    0,
+                )?;
+                for (h, out_col) in [value_cols[0], second_output].into_iter().enumerate() {
+                    for (i, coeff) in [1u64, 256].into_iter().enumerate() {
+                        let col = 1 + 2 * h + i;
+                        region.assign_advice(
+                            || "limb",
+                            value_cols[col],
+                            0,
+                            || Value::known(Fp::from(limbs[h][i])),
+                        )?;
+                        region.assign_fixed(
+                            || "coeff",
+                            coeff_cols[col],
+                            0,
+                            || Value::known(Fp::from(coeff)),
+                        )?;
+                    }
+                    region.assign_advice(
+                        || "value",
+                        out_col,
+                        0,
+                        || Value::known(Fp::from(outputs[h])),
+                    )?;
+                }
+                Ok(())
+            },
+        )?;
+        decomposition_chip.load(&mut layouter)
+    }
+}
+
+#[test]
+fn test_packed_decomposition() {
+    let run = |tamper| {
+        let circuit = TestPackedCircuit {
+            values: [0x1234, 0xabcd],
+            tamper,
+        };
+        MockProver::run(&circuit, vec![vec![], vec![]])
+            .expect("Failed to run mock prover")
+            .verify()
+    };
+    assert!(run(PackedTamper::None).is_ok());
+    for tamper in [
+        PackedTamper::FirstOutput,
+        PackedTamper::SecondOutput,
+        PackedTamper::FirstLimbOutOfRange,
+        PackedTamper::SecondLimbOutOfRange,
+    ] {
+        assert!(run(tamper).is_err(), "{tamper:?} was not rejected");
+    }
+}
