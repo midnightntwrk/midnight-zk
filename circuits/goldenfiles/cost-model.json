@@ -2158,7 +2158,7 @@
       "max_deg": "5",
       "permutations": "18",
       "point_sets": "4",
-      "rows": "15166",
+      "rows": "14870",
       "table_rows": "417"
     },
     "assign_without_subgroup_check": {
@@ -2213,7 +2213,7 @@
       "max_deg": "5",
       "permutations": "18",
       "point_sets": "4",
-      "rows": "87",
+      "rows": "85",
       "table_rows": "417"
     },
     "is_equal": {
@@ -2279,7 +2279,7 @@
       "max_deg": "5",
       "permutations": "18",
       "point_sets": "4",
-      "rows": "39385",
+      "rows": "38833",
       "table_rows": "417"
     },
     "msm_by_bounded_scalars_3": {
@@ -2290,7 +2290,7 @@
       "max_deg": "5",
       "permutations": "18",
       "point_sets": "4",
-      "rows": "30206",
+      "rows": "29749",
       "table_rows": "417"
     },
     "mul_by_constant": {
@@ -2301,7 +2301,7 @@
       "max_deg": "5",
       "permutations": "18",
       "point_sets": "4",
-      "rows": "30896",
+      "rows": "30296",
       "table_rows": "417"
     },
     "neg": {
@@ -2323,7 +2323,7 @@
       "max_deg": "5",
       "permutations": "18",
       "point_sets": "4",
-      "rows": "15170",
+      "rows": "14874",
       "table_rows": "417"
     },
     "select": {
@@ -2391,7 +2391,7 @@
       "max_deg": "5",
       "permutations": "12",
       "point_sets": "4",
-      "rows": "63",
+      "rows": "62",
       "table_rows": "449"
     },
     "assert_non_zero": {
@@ -2479,7 +2479,7 @@
       "max_deg": "5",
       "permutations": "12",
       "point_sets": "4",
-      "rows": "54",
+      "rows": "52",
       "table_rows": "481"
     },
     "is_equal": {
@@ -2545,7 +2545,7 @@
       "max_deg": "5",
       "permutations": "12",
       "point_sets": "4",
-      "rows": "25183",
+      "rows": "24631",
       "table_rows": "481"
     },
     "msm_by_bounded_scalars_3": {
@@ -2556,7 +2556,7 @@
       "max_deg": "5",
       "permutations": "12",
       "point_sets": "4",
-      "rows": "19159",
+      "rows": "18702",
       "table_rows": "481"
     },
     "mul_by_constant": {
@@ -2567,7 +2567,7 @@
       "max_deg": "5",
       "permutations": "12",
       "point_sets": "4",
-      "rows": "19296",
+      "rows": "18696",
       "table_rows": "481"
     },
     "neg": {
@@ -2657,7 +2657,7 @@
       "max_deg": "5",
       "permutations": "12",
       "point_sets": "4",
-      "rows": "63",
+      "rows": "62",
       "table_rows": "449"
     },
     "assert_non_zero": {
@@ -2745,7 +2745,7 @@
       "max_deg": "5",
       "permutations": "12",
       "point_sets": "4",
-      "rows": "78",
+      "rows": "76",
       "table_rows": "481"
     },
     "is_equal": {
@@ -2811,7 +2811,7 @@
       "max_deg": "5",
       "permutations": "12",
       "point_sets": "4",
-      "rows": "41094",
+      "rows": "40333",
       "table_rows": "481"
     },
     "msm_by_bounded_scalars_3": {
@@ -2822,7 +2822,7 @@
       "max_deg": "5",
       "permutations": "12",
       "point_sets": "4",
-      "rows": "41070",
+      "rows": "40309",
       "table_rows": "481"
     },
     "mul_by_constant": {
@@ -2833,7 +2833,7 @@
       "max_deg": "5",
       "permutations": "12",
       "point_sets": "4",
-      "rows": "27572",
+      "rows": "26972",
       "table_rows": "481"
     },
     "neg": {
