@@ -861,7 +861,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
     /// TODO: drop the `previous_value` plumbing — the parameter on
     /// `FlatGraphEvaluator::evaluate` / `Calculation::evaluate`, the
     /// `ValueSource::PreviousValue` variant, the `previous_value_idx` slot,
-    /// and the `Horner(PreviousValue, parts, Y)` start. With single-proof
+    /// and the `LinearCombination(PreviousValue, ..)` start. With single-proof
     /// processing, `previous_value` is always `F::ZERO` and the leading
     /// `Add(prev, 0)` flat op is dead.
     #[allow(clippy::too_many_arguments)]

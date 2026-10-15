@@ -84,16 +84,16 @@ pub(crate) fn eval_expression<S: SelfEmulation>(
     }
 }
 
-pub(crate) fn compress_expressions<S: SelfEmulation>(
+/// Evaluates every expression in `expressions`.
+fn eval_expressions<S: SelfEmulation>(
     layouter: &mut impl Layouter<S::F>,
     scalar_chip: &S::ScalarChip,
     advice_evals: &[AssignedNative<S::F>],
     fixed_evals: &[AssignedNative<S::F>],
     instance_evals: &[AssignedNative<S::F>],
-    r: &AssignedNative<S::F>,
     expressions: &[Expression<S::F>],
-) -> Result<AssignedNative<S::F>, Error> {
-    let evaluated_expressions = expressions
+) -> Result<Vec<AssignedNative<S::F>>, Error> {
+    expressions
         .iter()
         .map(|expression| {
             eval_expression::<S>(
@@ -105,10 +105,56 @@ pub(crate) fn compress_expressions<S: SelfEmulation>(
                 expression,
             )
         })
-        .collect::<Result<Vec<_>, Error>>()?;
+        .collect()
+}
+
+pub(crate) fn compress_expressions<S: SelfEmulation>(
+    layouter: &mut impl Layouter<S::F>,
+    scalar_chip: &S::ScalarChip,
+    advice_evals: &[AssignedNative<S::F>],
+    fixed_evals: &[AssignedNative<S::F>],
+    instance_evals: &[AssignedNative<S::F>],
+    r: &AssignedNative<S::F>,
+    expressions: &[Expression<S::F>],
+) -> Result<AssignedNative<S::F>, Error> {
+    let evaluated_expressions = eval_expressions::<S>(
+        layouter,
+        scalar_chip,
+        advice_evals,
+        fixed_evals,
+        instance_evals,
+        expressions,
+    )?;
 
     try_reduce(evaluated_expressions, |acc, eval| {
         // acc := acc * r + eval
         mul_add(layouter, scalar_chip, &acc, r, &eval)
+    })
+}
+
+/// Compresses `(e_0, …, e_{l-1})` into `Σᵢ r[i]·eᵢ`, one operation per term.
+pub(crate) fn compress_expressions_indexed<S: SelfEmulation>(
+    layouter: &mut impl Layouter<S::F>,
+    scalar_chip: &S::ScalarChip,
+    advice_evals: &[AssignedNative<S::F>],
+    fixed_evals: &[AssignedNative<S::F>],
+    instance_evals: &[AssignedNative<S::F>],
+    r: &[AssignedNative<S::F>],
+    expressions: &[Expression<S::F>],
+) -> Result<AssignedNative<S::F>, Error> {
+    assert!(!expressions.is_empty() && expressions.len() <= r.len());
+    let evals = eval_expressions::<S>(
+        layouter,
+        scalar_chip,
+        advice_evals,
+        fixed_evals,
+        instance_evals,
+        expressions,
+    )?;
+
+    let first = scalar_chip.mul(layouter, &r[0], &evals[0], None)?;
+    evals.iter().zip(r).skip(1).try_fold(first, |acc, (eval, r)| {
+        // acc := r * eval + acc
+        mul_add(layouter, scalar_chip, r, eval, &acc)
     })
 }

@@ -31,7 +31,7 @@ use crate::{
     verifier::{
         SelfEmulation,
         argument::Evaluation,
-        expressions::{compress_expressions, eval_at, eval_expression},
+        expressions::{compress_expressions_indexed, eval_at, eval_expression},
     },
 };
 
@@ -51,7 +51,7 @@ pub(crate) fn lookup_expressions<S: SelfEmulation>(
     l_0: &AssignedNative<S::F>,
     l_last: &AssignedNative<S::F>,
     l_blind: &AssignedNative<S::F>,
-    theta: &AssignedNative<S::F>,
+    theta: &[AssignedNative<S::F>],
     beta: &AssignedNative<S::F>,
 ) -> Result<Vec<AssignedNative<S::F>>, Error> {
     let multiplicities_eval = eval_at::<S>(
@@ -81,7 +81,7 @@ pub(crate) fn lookup_expressions<S: SelfEmulation>(
         selector_expression,
     )?;
 
-    let compressed_table = compress_expressions::<S>(
+    let compressed_table = compress_expressions_indexed::<S>(
         layouter,
         scalar_chip,
         advice_evals,
@@ -109,7 +109,7 @@ pub(crate) fn lookup_expressions<S: SelfEmulation>(
         let compressed_inputs_with_beta = input_expressions
             .iter()
             .map(|input| {
-                let compressed = compress_expressions::<S>(
+                let compressed = compress_expressions_indexed::<S>(
                     layouter,
                     scalar_chip,
                     advice_evals,
