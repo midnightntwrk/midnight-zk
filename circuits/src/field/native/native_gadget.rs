@@ -72,6 +72,7 @@ where
     /// The underlying native field arithmetic chip.
     pub native_chip: NativeArith,
     constrained_cells: Rc<RefCell<HashMap<AssignedNative<F>, BigUint>>>,
+    negated_bits: Rc<RefCell<HashMap<AssignedNative<F>, AssignedBit<F>>>>,
     _marker: PhantomData<F>,
 }
 
@@ -87,6 +88,7 @@ where
             core_decomposition_chip,
             native_chip,
             constrained_cells: Rc::new(RefCell::new(HashMap::new())),
+            negated_bits: Rc::new(RefCell::new(HashMap::new())),
             _marker: PhantomData,
         }
     }
@@ -1480,7 +1482,12 @@ where
         layouter: &mut impl Layouter<F>,
         b: &AssignedBit<F>,
     ) -> Result<AssignedBit<F>, Error> {
-        self.native_chip.not(layouter, b)
+        if let Some(not_b) = self.negated_bits.borrow().get(&b.0) {
+            return Ok(not_b.clone());
+        }
+        let not_b = self.native_chip.not(layouter, b)?;
+        self.negated_bits.borrow_mut().insert(b.0.clone(), not_b.clone());
+        Ok(not_b)
     }
 }
 
