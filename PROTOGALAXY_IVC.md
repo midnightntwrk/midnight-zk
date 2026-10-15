@@ -720,3 +720,134 @@ Comparison with C.0 (`T_MAX = 8`, truncated γ):
 - Open for C.3: genesis select (`init` vs `fold` in one circuit: compute both and select, or select the
   inputs); which encoding of the accumulator to hash (`as_public_input` is ready); how the ZkStdLib step
   circuit's committed-instance column is handled (folding does not support committed instances, C.1).
+
+## [C.3] Folding-IVC example
+Commits: `b92b29b3` ([C.3a], `ZkStdLib::folding`), `a37ecf89` ([C.3b], Poseidon-chain transition shared by
+the IVC examples), `95bea42b` ([C.3c], `ivc_folding` module), this commit ([C.3], example + doc)
+Date: 2026-10-15   Machine: M1 Pro 10c/16GB   Features: truncated-challenges   **Contended** (load average 13–21)
+
+### What and why
+The IVC of `examples/ivc.rs` (Poseidon chain, `N = 1`, 10 steps) with the SNARK verifier replaced by the
+C.2 folding verifier: a step never produces a proof, only the commit phases of its circuit (partial
+proof); the previous step's instance is folded into the running accumulator natively (C.1) and in-circuit
+(C.2); the only full proof is the decider of the final accumulator. Code (`midnight_aggregation::ivc_folding`,
+generic over the existing `ivc::Ivc` transitions, reuses `IvcError` and `IvcCircuit::arch`):
+
+| File | Content |
+|---|---|
+| `circuit.rs` | `FoldingIvcCircuit<T>` (`Relation`): transition, previous-instance replay, `init`/`fold`, genesis selection, PI |
+| `setup.rs` | `setup(params, k, ctx) → (FoldingIvcKeys, FoldingIvcVerifier)`; well-formed dummy witness parts |
+| `prover.rs` | `FoldingIvcProver::{new, prove_step, finalize}` (+ hidden `prove_step_claiming`, negative tests) |
+| `verifier.rs` | `FoldingIvcVerifier::verify(instance, proof)` |
+| `types.rs` | `FoldingIvcInstance` (state, accumulator), `FoldingIvcProof` (partial, folding, decider proof), PI encoding, timings |
+
+Example `aggregation/examples/ivc_folding.rs` (`K = 16`, Midnight SRS `2^19`, fflonk `T_MAX = 8`).
+Shared-path changes: `ZkStdLib::folding(shape)` ([C.3a]), `FoldingShape::nb_phase_points` ([C.3c]).
+
+**Public inputs** (4 scalars, as few as the SNARK IVC allows): step `i` has
+`[vk_repr (3), H(sᵢ₊₁ ‖ hᵢ₊₁)]`, `H` = Poseidon, `hᵢ₊₁ = H(accumulator_as_public_input(accᵢ₊₁))`
+(5 points + 90 scalars), or `0` for the default accumulator. The nested hash makes "default accumulator"
+a single scalar comparison. The step circuit witnesses `sᵢ`, `accᵢ`, the previous partial proof and the
+folding messages; it recomputes the previous instance's PI `[vk_repr, H(sᵢ ‖ hᵢ)]` and replays that
+instance's transcript on the partial proof (`FoldingGadget::read_instance`), so the folded instance is
+bound to the witnessed previous state and accumulator.
+
+**Genesis** (fixed circuit shape, both `init` and `fold` always computed, results selected):
+- step 0 (`s₀` = genesis, bit computed in-circuit with `Ivc::circuit_is_genesis`): no previous instance;
+  output `h₁ = 0` (default accumulator). The previous partial proof, folding messages and accumulator are
+  well-formed dummies (generator points with the right count per phase, zero scalars, a dummy accumulator
+  = `init` of the dummy instance); the gadget's complete additions make `fold` on them satisfiable.
+- step 1 (witness bit `is_first`): `acc₂ = init(instance₀)`, the previous instance's PI uses `h = 0`.
+- steps `i ≥ 2`: `accᵢ₊₁ = fold(accᵢ, instanceᵢ₋₁)`.
+`is_first` is a free witness bit; soundness: set, the previous instance's PI has `h = 0`, which only a
+genesis step outputs (every other step outputs a Poseidon hash), so `init` only ever starts from the
+instance of a genesis step; unset, `h = H(accᵢ)`, which is not `0` (preimage). Natively there is no default
+accumulator value (`FoldingIvcInstance::acc = None`); the final verifier `init`s instead of folding then.
+
+**Committed instances**: ZkStdLib always configures a committed-instance column; here it is an empty
+plain instance column (no commitment, no PI), exactly as `zk_stdlib::prove` treats relations without
+committed instance, and both `commit_instance` and the gadget pass `[[], pi]`. No arch change needed.
+
+**Prover per step** (`prove_step`): fold the latest instance natively (`ProverAccumulator::{init, fold}`,
+nothing at genesis), then synthesise the step circuit and run `commit_instance` (phases 1–2 only); never
+`create_proof`. **Final verifier**: read the last instance for the PI computed from the claimed `(s, acc)`
+(this is the check that the last step's PI hash matches the instance), fold it (or `init`), verify the
+decider proof (`verify_relaxed_trace` + PCS guard). No subgroup checks (out of scope).
+
+### How to reproduce
+```
+cd aggregation
+/usr/bin/time -l cargo run --release --features truncated-challenges --example ivc_folding
+TAMPER_STEP=5 cargo run --release --features truncated-challenges --example ivc_folding   # must be rejected
+TAMPER_STEP=9 cargo run --release --features truncated-challenges --example ivc_folding   # must be rejected
+```
+Suite (repo root): `cargo build --release --workspace --examples`; `cargo test --release -p midnight-proofs`;
+`cargo test --release -p midnight-circuits [--features truncated-challenges] verifier`;
+`cargo test --release -p midnight-zk-stdlib --no-fail-fast`; `cd aggregation && cargo run --release
+--features truncated-challenges --example ivc`.
+
+### Results
+Single run, **contended** (load average 21 at start; preview only, C.4 re-measures on a quiet machine).
+
+| | Folding IVC (this) | SNARK-verifier IVC (A.3 / C.1) |
+|---|---|---|
+| `k` / rows / table rows (cost model) | **16 / 47,954** / 61,459 | 17 / 71,546 / 122,899 |
+| SRS | Midnight `2^19` | Midnight `2^20` |
+| setup (keygen) | 124.3 s | 203.1 s |
+| step 0 (one-off: fflonk residue bases) | 57.2 s | 95.8–100.5 s |
+| step 1 (`init`) | 1.79 s (fold 0.3 ms + commit 1.79 s) | – |
+| per step, steps 2–9 | **8.61 s** mean (7.39–10.93) | 9.10 s mean (full proof) |
+| — native fold | 6.63 s mean (5.60–9.12) | – |
+| — synthesis + commit phases (steps 1–9) | 1.96 s mean (1.64–2.68) | – |
+| finalize: last fold / decider prove | 6.97 s / **12.61 s** | – |
+| final verify (fold + decider) | 24.5 ms | ≈16.6 ms per step |
+| peak RSS | **1.05 GB** | 3.04–3.14 GB |
+
+Sizes in real bytes (serialised; not the cost model):
+
+| | bytes |
+|---|---|
+| accumulator (5 compressed points + 90 scalars: PI 4, θ⃗ 16, β γ trash 3, y⃗ 50, β⃗ 16, e 1) | 3,120 |
+| partial proof of a step (2 group prefixes of 4 B + 5 points) | 248 |
+| folding proof (`F_1..F_16` + `K_0..K_11`, `d_total = 13`) | 896 |
+| decider proof | 4,832 |
+| final proof (partial + folding + decider) | 5,976 |
+
+Negative checks: `TAMPER_STEP=5` and `TAMPER_STEP=9` (that step claims the state after two transitions:
+its committed circuit is unsatisfied; later steps are honest) → `Final verify: Err(InvalidProof)`
+(the decider rejects), "rejected as expected". Suite: workspace examples build ok; `midnight-proofs` ok (75 passed, 1 ignored);
+`midnight-circuits verifier` ok with and without `truncated-challenges` (6 passed, 1 ignored); `midnight-zk-stdlib`
+known failures only (`check_vk_cred_enrollment`, `check_vk_cred_full`, `public_inputs_test`), no VK/goldenfile
+changed; `examples/ivc` (truncated-challenges) all 10 steps verify.
+
+### Interpretation
+- **The circuit fits `k = 16`** with 17.6k rows of margin: 47,954 rows, 33% fewer than the SNARK-verifier
+  step (71,546) and below the C.2 projection (57–59k). The C.2 rows were measured in the verifier-gadget
+  test configuration (5 arithmetic columns); ZkStdLib's arch (9 arithmetic columns, 8 pow2range columns)
+  packs the foreign-field ECC arithmetic into fewer rows. The extra C.3 terms (second accumulator hash, `init`,
+  95 selects, vk, transition) are small; a cost-model ablation per term is C.4.
+- **The per-step prover is not faster yet** (8.6 s vs 9.1 s, both contended): committing is cheap (≈2 s,
+  ≈4.6× less than a full proof), but the native fold costs ≈6.6 s. The fold evaluates all 50 identities on
+  `2^16` rows `d_total = 13` times (plus 13 trace folds and the perturbator), single-threaded parts
+  included; C.1 measured ≈1.5× the commit cost on a tiny circuit, here it is ≈3.4×. This is the line to
+  attack in C.4/Phase D (vector trash challenge: `d_total` 13 → 10; drop permutation identities from `G`;
+  parallel row evaluation).
+- One-off costs: decider 12.6 s (≈1.4 SNARK steps: one quotient on a domain one degree larger plus the
+  fflonk multi-open), verification 24.5 ms. Peak RSS is ≈3× lower than the SNARK IVC (smaller `k`,
+  no quotient per step).
+- Sizes: what a verifier receives (instance accumulator 3,120 B + proof 5,976 B ≈ 9.1 KB) is larger than a
+  SNARK-IVC step proof (cost model 4,432 B, A.3; real size to be measured in C.4), mostly the 90 accumulator
+  scalars (θ⃗, y⃗, β⃗) that the folding verifier needs in the clear.
+
+### Deviations from the plan, open problems
+- PI `[vk_repr, H(s ‖ H(acc))]` instead of `[vk_repr, H(s ‖ acc)]`: the nested hash makes the default
+  accumulator test one comparison (`h = 0`); same binding.
+- Genesis uses a free `is_first` witness bit and dummy witness parts (argued sound above); no native
+  default accumulator value (`None`).
+- Negative test is a flag in the example (`TAMPER_STEP`, via the hidden `prove_step_claiming`), not a unit
+  test: a `k = 16` chain needs minutes.
+- Committed-instance column kept as an empty plain instance column (no arch change).
+- The final verifier trusts the accumulator's points as given (no subgroup check, out of scope).
+- Timings are a single contended run; per-step fold times vary 5.6–9.1 s with load. C.4: quiet re-run,
+  with and without `truncated-challenges` (this example requires it, like `ivc`), cost-model ablation of
+  the step circuit, real SNARK-IVC proof size.
