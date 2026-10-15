@@ -17,7 +17,7 @@ use crate::{
     circuit::Value,
     dev::cost_model::cost_model_options,
     poly::{
-        EvaluationDomain, ExtendedLagrangeCoeff, batch_invert_rational,
+        CommitPoly, EvaluationDomain, ExtendedLagrangeCoeff, batch_invert_rational,
         commitment::PolynomialCommitmentScheme,
     },
     utils::{arithmetic::parallelize, rational::Rational},
@@ -275,7 +275,8 @@ where
 
     let permutations = assembly.permutation.into_permutations::<F>(&domain, &cs.permutation);
 
-    let fixed_polys: Vec<_> = fixed.iter().chain(permutations.iter()).collect();
+    let fixed_polys: Vec<_> =
+        fixed.iter().chain(permutations.iter()).map(CommitPoly::new).collect();
     let phase0_commitment = CS::commit_many(params, &fixed_polys, &cs.fixed_polys_labels());
 
     Ok(VerifyingKey::from_parts(domain, phase0_commitment, cs))
