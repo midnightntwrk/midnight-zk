@@ -1,10 +1,10 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, sync::OnceLock};
 
 use ff::{PrimeField, WithSmallOrderMulGroup};
 use group::ff::Field;
 use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
-use super::{ConstraintSystem, Expression};
+use super::{ConstraintSystem, Expression, protogalaxy::sparse_gates::SparseGates};
 use crate::{
     plonk::{Any, argument},
     poly::{EvaluationDomain, Polynomial, PolynomialLabel, PolynomialRepresentation, Rotation},
@@ -63,9 +63,6 @@ pub enum Calculation {
     Double(ValueSource),
     /// This is a negation
     Negate(ValueSource),
-    /// This is Horner's rule: `val = a; val = val * c + b[]`
-    #[allow(dead_code)]
-    Horner(ValueSource, Vec<ValueSource>, ValueSource),
     /// This is a linear combination: `val = a + Σᵢ cᵢ * bᵢ` over `(cᵢ, bᵢ)`
     LinearCombination(ValueSource, Vec<(ValueSource, ValueSource)>),
     /// This is a simple assignment
@@ -81,7 +78,6 @@ impl Calculation {
             | Calculation::Double(a)
             | Calculation::Negate(a)
             | Calculation::Store(a) => vec![a],
-            Calculation::Horner(s, parts, f) => [s, f].into_iter().chain(parts).collect(),
             Calculation::LinearCombination(s, terms) => {
                 std::iter::once(s).chain(terms.iter().flat_map(|(c, t)| [c, t])).collect()
             }
@@ -121,6 +117,9 @@ pub struct Evaluator<F: PrimeField> {
     pub trashcans: Vec<GraphEvaluator<F>>,
     /// Flattened trash evaluators (parallel to `trashcans`).
     pub trashcans_flat: Vec<FlatGraphEvaluator<F>>,
+    /// Row-sparse custom-gate evaluator of the folding prover, built on first
+    /// use (a clone starts with an empty cell).
+    pub(crate) sparse_gates: OnceLock<SparseGates<F>>,
 }
 
 /// GraphEvaluator
@@ -160,8 +159,8 @@ pub enum FlatOpKind {
     Square,
     Double,
     Negate,
-    /// Fused multiply-add: `dst = a * b + c`. Used for Horner steps and
-    /// linear combinations.
+    /// Fused multiply-add: `dst = a * b + c`. Used for linear
+    /// combinations.
     MulAdd,
 }
 
@@ -423,30 +422,6 @@ impl<F: PrimeField> GraphEvaluator<F> {
                             a: src,
                             b: 0, // Constant(0) = F::ZERO, add identity.
                             c: 0,
-                        });
-                    }
-                }
-                Calculation::Horner(start, parts, factor) => {
-                    let start_idx = resolve(start);
-                    let factor_idx = resolve(factor);
-                    // First: dst = start_value.
-                    if dst != start_idx {
-                        ops.push(FlatOp {
-                            kind: FlatOpKind::Add,
-                            dst,
-                            a: start_idx,
-                            b: 0,
-                            c: 0,
-                        });
-                    }
-                    // Then: dst = dst * factor + part[i].
-                    for part in parts {
-                        ops.push(FlatOp {
-                            kind: FlatOpKind::MulAdd,
-                            dst,
-                            a: dst,
-                            b: factor_idx,
-                            c: resolve(part),
                         });
                     }
                 }
@@ -735,6 +710,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
             lookups_flat: Vec::new(),
             trashcans: Vec::new(),
             trashcans_flat: Vec::new(),
+            sparse_gates: OnceLock::new(),
         };
 
         // Custom gates: gate polynomial `k` is multiplied by `y[k]`.
@@ -912,7 +888,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
             trash_powers,
         );
         let en_gates = t_en.elapsed().as_secs_f64() * 1e3;
-        let [en_perm, en_lookup_pre, en_final] = self.add_non_gate_identities(
+        self.add_non_gate_identities(
             &mut values,
             domain,
             cs,
@@ -932,9 +908,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
             l_active_row,
             permutation_cosets,
         );
-        eprintln!(
-            "[evaluate_numerator] gates={en_gates:.2} perm={en_perm:.2} lookup_precomp={en_lookup_pre:.2} lookup+trash={en_final:.2}"
-        );
+        eprintln!("[evaluate_numerator] gates={en_gates:.2}");
         values
     }
 
@@ -977,8 +951,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
     }
 
     /// Adds the permutation, lookup and trash identities (those after the
-    /// custom gates in the `y` order) to `values`. Returns the timings of
-    /// (permutation, lookup precomputation, lookup + trash) in ms.
+    /// custom gates in the `y` order) to `values`.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn add_non_gate_identities<
         'p,
@@ -1004,7 +977,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
         l_last: &Polynomial<F, B>,
         l_active_row: &Polynomial<F, B>,
         permutation_cosets: &[Polynomial<F, B>],
-    ) -> [f64; 3] {
+    ) {
         let log_scale = B::k(domain) - domain.k();
         let omega = B::omega(domain);
         let log_n = B::k(domain);
@@ -1320,7 +1293,9 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
             }
         });
         let en_final = t_en.elapsed().as_secs_f64() * 1e3;
-        [en_perm, en_lookup_pre, en_final]
+        eprintln!(
+            "[evaluate_numerator] perm={en_perm:.2} lookup_precomp={en_lookup_pre:.2} lookup+trash={en_final:.2}"
+        );
     }
 }
 
@@ -1381,15 +1356,14 @@ impl<F: PrimeField> GraphEvaluator<F> {
         }
     }
 
-    /// The flattened evaluator of the single gate polynomial `poly`, whose
-    /// result is `y[k]·poly`: gate polynomial `k` of the full gate evaluator
-    /// in isolation.
-    pub(crate) fn flat_single_gate(poly: &Expression<F>, k: usize) -> FlatGraphEvaluator<F> {
+    /// Flattened evaluator of the single gate polynomial `poly`, returning
+    /// `y[k]·poly` for the challenge `k` given as `Y(0)`.
+    pub(crate) fn flat_single_gate(poly: &Expression<F>) -> FlatGraphEvaluator<F> {
         let mut graph = Self::default();
         let part = graph.add_expression(poly);
         graph.add_calculation(Calculation::LinearCombination(
             ValueSource::PreviousValue(),
-            vec![(ValueSource::Y(k), part)],
+            vec![(ValueSource::Y(0), part)],
         ));
         graph.flatten()
     }
@@ -1557,7 +1531,7 @@ mod tests {
     }
 
     // Note: We need this instead of Expression::evaluate to test for
-    // Horner and Store as well.
+    // Store as well.
     /// Reference evaluator for `GraphEvaluator` without flattening.
     #[allow(clippy::too_many_arguments)]
     fn ref_evaluate(
@@ -1594,14 +1568,6 @@ mod tests {
                 Calculation::Double(v) => r(v, &im).double(),
                 Calculation::Negate(v) => -r(v, &im),
                 Calculation::Store(v) => r(v, &im),
-                Calculation::Horner(s, parts, f) => {
-                    let fv = r(f, &im);
-                    let mut acc = r(s, &im);
-                    for p in parts {
-                        acc = acc * fv + r(p, &im);
-                    }
-                    acc
-                }
                 Calculation::LinearCombination(s, terms) => {
                     let mut acc = r(s, &im);
                     for (c, t) in terms {
@@ -1746,11 +1712,10 @@ mod tests {
         // Constant as a Calculation operand.
         let with_const = g.add_calculation(Calculation::Add(neg, ValueSource::Constant(2)));
 
-        // Horner calculation on challenge Y(2) of previous calculations.
-        let horner = g.add_calculation(Calculation::Horner(
+        // Linear combination on challenge Y(2) of previous calculations.
+        let lc2 = g.add_calculation(Calculation::LinearCombination(
             ValueSource::Constant(0),
-            vec![sq, dbl, neg, wc, with_const],
-            ValueSource::Y(2),
+            [sq, dbl, neg, wc, with_const].into_iter().map(|t| (ValueSource::Y(2), t)).collect(),
         ));
 
         // Linear combination with indexed challenges of previous calculations.
@@ -1759,7 +1724,7 @@ mod tests {
             vec![
                 (ValueSource::Y(0), sq),
                 (ValueSource::Theta(2), dbl),
-                (ValueSource::Y(1), horner),
+                (ValueSource::Y(1), lc2),
                 (with_const, wc),
             ],
         ));

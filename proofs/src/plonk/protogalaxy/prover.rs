@@ -10,7 +10,6 @@ use super::{
     degree::folding_degree,
     instance::{Accumulator, Challenges, FoldingInstance},
     poly::{inner_product, interpolate, l0, perturbator, pow_vector, vanishing},
-    sparse_gates::SparseGates,
     trace::{evaluate_rows, fold_trace},
     verifier::{fold_public, shift_betas, squeeze_deltas, squeeze_fold_challenge},
 };
@@ -92,8 +91,6 @@ where
 pub struct ProverAccumulator<'a, F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> {
     pub(crate) trace: ProverTrace<'a, F, LagrangeCoeff>,
     pub(crate) public: Accumulator<F, CS>,
-    /// Row-sparse custom-gate evaluator of `pk`, built once.
-    pub(crate) sparse: SparseGates<F>,
 }
 
 impl<'a, F, CS> ProverAccumulator<'a, F, CS>
@@ -117,12 +114,9 @@ where
         F: Hashable<T::Hash> + Sampleable<T::Hash>,
         CS::Commitment: Hashable<T::Hash>,
     {
-        let sparse = SparseGates::new(&pk.vk.cs, &pk.fixed_values);
-        sparse.print_census(pk.vk.domain.n as usize);
         Ok(ProverAccumulator {
             public: Accumulator::init(&pk.vk, fresh.public, transcript)?,
             trace: fresh.trace,
-            sparse,
         })
     }
 
@@ -150,7 +144,7 @@ where
 
         // F(X) = Σᵢ powᵢ(β⃗ + X·δ⃗)·fᵢ(acc), with F(0) = e.
         let t = std::time::Instant::now();
-        let f_acc = evaluate_rows(pk, &self.trace, &self.sparse);
+        let f_acc = evaluate_rows(pk, &self.trace);
         let t_feval = ms(t);
         let deltas = squeeze_deltas(transcript, log_n);
         let t = std::time::Instant::now();
@@ -174,7 +168,7 @@ where
             let ft = fold_trace(&self.trace, &fresh.trace, x);
             let a = ms(t);
             let t = std::time::Instant::now();
-            let rows = evaluate_rows(pk, &ft, &self.sparse);
+            let rows = evaluate_rows(pk, &ft);
             let b = ms(t);
             pt_times.borrow_mut().push((a, b));
             inner_product(&pows, &rows)
@@ -230,7 +224,6 @@ where
         Ok(ProverAccumulator {
             trace,
             public,
-            sparse: self.sparse,
         })
     }
 }

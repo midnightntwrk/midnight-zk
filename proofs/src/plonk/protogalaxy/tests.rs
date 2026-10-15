@@ -11,18 +11,18 @@ use super::{
     Accumulator, ProverAccumulator, commit_instance, folding_degree,
     poly::{inner_product, pow_vector},
     prove_relaxed_trace, read_instance,
-    sparse_gates::SparseGates,
     trace::{evaluate_rows, evaluate_rows_dense, fold_trace},
     verify_relaxed_trace,
 };
 use crate::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
     plonk::{
-        Advice, Circuit, Column, ConstraintSystem, Constraints, Error, Expression, Instance,
-        ProvingKey, Selector, TableColumn, keygen_pk, keygen_vk_with_k,
+        Advice, Circuit, Column, ConstraintSystem, Constraints, Error, Expression, Fixed,
+        Instance, ProvingKey, Selector, TableColumn, keygen_pk, keygen_vk_with_k,
+        traces::ProverTrace,
     },
     poly::{
-        Rotation,
+        LagrangeCoeff, Rotation,
         commitment::{Guard, PolynomialCommitmentScheme},
         fflonk::Fflonk,
         kzg::KZGCommitmentScheme,
@@ -138,16 +138,101 @@ impl Circuit<Fq> for SquareCircuit {
     }
 }
 
+/// Gates of every shape the sparse evaluator treats differently:
+/// a fixed query at a nonzero rotation as gating factor, a polynomial whose
+/// top node is a `Sum` (ungated), and a product of two selectors.
+#[derive(Clone, Copy)]
+struct GateMixCircuit {
+    start: u64,
+}
+
+#[derive(Clone, Debug)]
+struct GateMixConfig {
+    s1: Selector,
+    s2: Selector,
+    q: Column<Fixed>,
+    a: Column<Advice>,
+    b: Column<Advice>,
+    c: Column<Advice>,
+}
+
+impl Circuit<Fq> for GateMixCircuit {
+    type Config = GateMixConfig;
+    type FloorPlanner = SimpleFloorPlanner;
+    #[cfg(feature = "circuit-params")]
+    type Params = ();
+
+    fn without_witnesses(&self) -> Self {
+        *self
+    }
+
+    fn configure(meta: &mut ConstraintSystem<Fq>) -> GateMixConfig {
+        let config = GateMixConfig {
+            s1: meta.complex_selector(),
+            s2: meta.complex_selector(),
+            q: meta.fixed_column(),
+            a: meta.advice_column(),
+            b: meta.advice_column(),
+            c: meta.advice_column(),
+        };
+        meta.create_gate("mix", |meta| {
+            let s1 = meta.query_selector(config.s1);
+            let s2 = meta.query_selector(config.s2);
+            let q_next = meta.query_fixed(config.q, Rotation::next());
+            let q_prev = meta.query_fixed(config.q, Rotation::prev());
+            let a = meta.query_advice(config.a, Rotation::cur());
+            let b = meta.query_advice(config.b, Rotation::cur());
+            let c = meta.query_advice(config.c, Rotation::cur());
+            Constraints::without_selector(vec![
+                // Gated by a fixed query at a shifted rotation.
+                q_next * (a.clone() - b.clone()),
+                q_prev * s1 * (a.clone() * b.clone() - c.clone()),
+                // Top node is a `Sum`: active on every row.
+                a.clone() + b.clone() - c.clone(),
+                // Product of two selectors.
+                s2.clone() * meta.query_selector(config.s1) * (a * b - c),
+            ])
+        });
+        config
+    }
+
+    fn synthesize(
+        &self,
+        config: GateMixConfig,
+        mut layouter: impl Layouter<Fq>,
+    ) -> Result<(), Error> {
+        layouter.assign_region(
+            || "mix",
+            |mut region| {
+                for row in 0..ROWS as usize {
+                    // Different supports for each selector and for `q`.
+                    if row % 2 == 0 {
+                        config.s1.enable(&mut region, row)?;
+                    }
+                    if row % 3 == 0 {
+                        config.s2.enable(&mut region, row)?;
+                    }
+                    if row % 5 != 4 {
+                        region.assign_fixed(|| "q", config.q, row, || Value::known(Fq::ONE))?;
+                    }
+                    let a = Fq::from(self.start + row as u64 + 1);
+                    let b = Fq::from(2 * self.start + 3 * row as u64 + 1);
+                    region.assign_advice(|| "a", config.a, row, || Value::known(a))?;
+                    region.assign_advice(|| "b", config.b, row, || Value::known(b))?;
+                    region.assign_advice(|| "c", config.c, row, || Value::known(a * b))?;
+                }
+                Ok(())
+            },
+        )
+    }
+}
+
 /// The row-sparse evaluation of the custom gates agrees with the dense one.
 fn assert_sparse_matches_dense<CS: PolynomialCommitmentScheme<Fq>>(
     pk: &ProvingKey<Fq, CS>,
-    trace: &crate::plonk::traces::ProverTrace<'_, Fq, crate::poly::LagrangeCoeff>,
-    sparse: &SparseGates<Fq>,
+    trace: &ProverTrace<'_, Fq, LagrangeCoeff>,
 ) {
-    assert_eq!(
-        &*evaluate_rows(pk, trace, sparse),
-        &*evaluate_rows_dense(pk, trace)
-    );
+    assert_eq!(&*evaluate_rows(pk, trace), &*evaluate_rows_dense(pk, trace));
 }
 
 /// `Σᵢ powᵢ(β⃗)·fᵢ` computed directly from the prover's folded trace.
@@ -157,7 +242,7 @@ fn relaxed_sum<CS: PolynomialCommitmentScheme<Fq>>(
 ) -> Fq {
     inner_product(
         &pow_vector(&acc.public.betas),
-        &evaluate_rows(pk, &acc.trace, &acc.sparse),
+        &evaluate_rows(pk, &acc.trace),
     )
 }
 
@@ -185,7 +270,6 @@ where
     let pk = keygen_pk(vk, &circuit(0, false)).unwrap();
     let vk = pk.get_vk();
     let d = folding_degree(vk.cs());
-    let sparse = SparseGates::new(vk.cs(), &pk.fixed_values);
 
     // One step: the partial proof of instance `i` and both views of it.
     let step = |i: u64| {
@@ -203,7 +287,7 @@ where
 
     let (instance, fresh) = step(0);
     if !corrupt_last {
-        assert!(evaluate_rows(&pk, &instance.trace, &sparse).iter().all(|f| *f == Fq::ZERO));
+        assert!(evaluate_rows(&pk, &instance.trace).iter().all(|f| *f == Fq::ZERO));
     }
     let mut acc = ProverAccumulator::init(&pk, instance, &mut T::init()).unwrap();
     let mut acc_v = Accumulator::init(vk, fresh, &mut T::init()).unwrap();
@@ -215,20 +299,20 @@ where
         let (instance, fresh) = step(i);
         timings.commit += start.elapsed();
         if !(corrupt_last && i == NB_FOLDS) {
-            assert!(evaluate_rows(&pk, &instance.trace, &sparse).iter().all(|f| *f == Fq::ZERO));
+            assert!(evaluate_rows(&pk, &instance.trace).iter().all(|f| *f == Fq::ZERO));
         }
 
         let start = Instant::now();
         let folded = fold_trace(&acc.trace, &instance.trace, Fq::from(2));
         timings.fold_trace += start.elapsed();
         let start = Instant::now();
-        evaluate_rows(&pk, &folded, &sparse);
+        evaluate_rows(&pk, &folded);
         timings.evaluate_rows += start.elapsed();
         drop(folded);
         // Fresh trace, and a trace folded with a random `x` (folded challenges).
-        assert_sparse_matches_dense(&pk, &instance.trace, &sparse);
+        assert_sparse_matches_dense(&pk, &instance.trace);
         let random_fold = fold_trace(&acc.trace, &instance.trace, Fq::random(OsRng));
-        assert_sparse_matches_dense(&pk, &random_fold, &sparse);
+        assert_sparse_matches_dense(&pk, &random_fold);
 
         let mut transcript = T::init();
         let start = Instant::now();
@@ -279,6 +363,23 @@ where
 
 type Kzg = KZGCommitmentScheme<Bls12>;
 type FflonkKzg = Fflonk<KZGCommitmentScheme<Bls12>, 3>;
+
+#[test]
+fn sparse_gates_match_dense_on_gate_mix() {
+    let k = K;
+    let params = Kzg::gen_params(k);
+    let circuit = |start| GateMixCircuit { start };
+    let vk = keygen_vk_with_k::<_, Kzg, _>(&params, &circuit(0), k).unwrap();
+    let pk = keygen_pk(vk, &circuit(0)).unwrap();
+    let instances: &[&[Fq]] = &[];
+    let commit = |start| {
+        commit_instance(&params, &pk, &circuit(start), instances, &mut T::init(), OsRng).unwrap()
+    };
+    let (t0, t1) = (commit(0), commit(7));
+    assert_sparse_matches_dense(&pk, &t0.trace);
+    let folded = fold_trace(&t0.trace, &t1.trace, Fq::random(OsRng));
+    assert_sparse_matches_dense(&pk, &folded);
+}
 
 #[test]
 fn fold_chain_and_decider_kzg() {

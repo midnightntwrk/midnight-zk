@@ -5,6 +5,11 @@
 //! the polynomials whose gating factors are all nonzero on row `i`. The
 //! coset quotient of a plain proof cannot use this; the fold evaluates on
 //! `H` itself, where the fixed columns keep their assigned values.
+//!
+//! [`SparseGates`] is built lazily and cached in the [`Evaluator`] of the
+//! proving key it was built from.
+//!
+//! [`Evaluator`]: crate::plonk::evaluation::Evaluator
 
 use ff::WithSmallOrderMulGroup;
 use rayon::{iter::ParallelIterator, slice::ParallelSlice};
@@ -38,22 +43,25 @@ fn gating_factors<F>(expr: &Expression<F>, out: &mut Vec<(usize, i32)>) {
 /// One evaluator per gate polynomial, plus for each row the list of
 /// polynomials that can be nonzero there (CSR: the polynomials of row `i`
 /// are `polys[offsets[i]..offsets[i + 1]]`).
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct SparseGates<F> {
     evaluators: Vec<FlatGraphEvaluator<F>>,
-    /// Number of gating factors of each polynomial (for the census).
-    factor_counts: Vec<usize>,
-    offsets: Vec<u32>,
+    offsets: Vec<usize>,
     polys: Vec<u32>,
 }
 
 impl<F: WithSmallOrderMulGroup<3>> SparseGates<F> {
-    pub(crate) fn new(cs: &ConstraintSystem<F>, fixed: &[Polynomial<F, LagrangeCoeff>]) -> Self {
+    /// The tables of the gates of `cs` over `domain`, for the fixed columns
+    /// `fixed`.
+    pub(crate) fn new(
+        cs: &ConstraintSystem<F>,
+        domain: &EvaluationDomain<F>,
+        fixed: &[Polynomial<F, LagrangeCoeff>],
+    ) -> Self {
         let exprs: Vec<&Expression<F>> = cs.gates.iter().flat_map(|g| g.polynomials()).collect();
         let evaluators: Vec<_> = exprs
             .iter()
-            .enumerate()
-            .map(|(k, e)| GraphEvaluator::flat_single_gate(e, k))
+            .map(|e| GraphEvaluator::flat_single_gate(e))
             .collect();
         let factors: Vec<Vec<(usize, i32)>> = exprs
             .iter()
@@ -64,7 +72,8 @@ impl<F: WithSmallOrderMulGroup<3>> SparseGates<F> {
             })
             .collect();
 
-        let n = fixed.first().map_or(0, |c| c.len());
+        let n = domain.n as usize;
+        assert!(fixed.iter().all(|c| c.len() == n), "fixed column of unexpected length");
         let active = |k: usize, i: usize| {
             factors[k].iter().all(|&(col, rot)| {
                 let row = (i as isize + rot as isize).rem_euclid(n as isize) as usize;
@@ -87,28 +96,28 @@ impl<F: WithSmallOrderMulGroup<3>> SparseGates<F> {
 
         let mut offsets = Vec::with_capacity(n + 1);
         let mut polys = Vec::new();
-        offsets.push(0u32);
+        offsets.push(0);
         for (c, p) in chunks {
             for count in c {
-                offsets.push(offsets.last().unwrap() + count);
+                offsets.push(offsets.last().unwrap() + count as usize);
             }
             polys.extend(p);
         }
-        let factor_counts = factors.iter().map(Vec::len).collect();
         SparseGates {
             evaluators,
-            factor_counts,
             offsets,
             polys,
         }
     }
 
+    /// Indices of the gate polynomials that can be nonzero on `row`.
     fn active_on(&self, row: usize) -> &[u32] {
-        &self.polys[self.offsets[row] as usize..self.offsets[row + 1] as usize]
+        &self.polys[self.offsets[row]..self.offsets[row + 1]]
     }
 
     /// `Σ_{k active on i} y[k]·poly_k` at every row `i` of `H`. `y` holds (at
-    /// least) the gate challenges, first.
+    /// least) the gate challenges, first. `domain` and `fixed` are those of
+    /// [`SparseGates::new`].
     pub(crate) fn evaluate(
         &self,
         domain: &EvaluationDomain<F>,
@@ -120,10 +129,8 @@ impl<F: WithSmallOrderMulGroup<3>> SparseGates<F> {
         let log_n = domain.k();
         let mut values = domain.empty_lagrange();
         parallelize(&mut values, |values, start| {
-            let mut bufs: Vec<Vec<F>> = self
-                .evaluators
-                .iter()
-                .map(|e| e.new_values_buffer(&F::ZERO, &[], &[], y))
+            let mut bufs: Vec<Vec<F>> = (self.evaluators.iter().enumerate())
+                .map(|(k, e)| e.new_values_buffer(&F::ZERO, &[], &[], &y[k..k + 1]))
                 .collect();
             let mut rots = Vec::new();
             for (j, value) in values.iter_mut().enumerate() {
@@ -146,28 +153,5 @@ impl<F: WithSmallOrderMulGroup<3>> SparseGates<F> {
             }
         });
         values
-    }
-
-    /// Prints the activity of each gate polynomial and the overall density.
-    pub(crate) fn print_census(&self, n: usize) {
-        let mut per_poly = vec![0usize; self.evaluators.len()];
-        for &k in &self.polys {
-            per_poly[k as usize] += 1;
-        }
-        let empty = (0..n).filter(|&i| self.active_on(i).is_empty()).count();
-        let total: usize = per_poly.iter().sum();
-        eprintln!(
-            "[sparse] {} gate polys, n={n}: density={:.2}%, rows with no active poly={:.2}%",
-            per_poly.len(),
-            100.0 * total as f64 / (per_poly.len() * n).max(1) as f64,
-            100.0 * empty as f64 / n as f64
-        );
-        for (k, c) in per_poly.iter().enumerate() {
-            eprintln!(
-                "[sparse]   poly {k}: {} gating factors, active {c} rows ({:.2}%)",
-                self.factor_counts[k],
-                100.0 * *c as f64 / n as f64
-            );
-        }
     }
 }

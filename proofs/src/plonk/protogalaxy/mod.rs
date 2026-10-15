@@ -50,7 +50,7 @@ mod degree;
 mod instance;
 mod poly;
 mod prover;
-mod sparse_gates;
+pub(crate) mod sparse_gates;
 mod trace;
 mod verifier;
 
