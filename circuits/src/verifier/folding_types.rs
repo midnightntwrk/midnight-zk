@@ -86,6 +86,12 @@ impl FoldingShape {
     pub fn nb_points(&self) -> usize {
         self.phase1_labels.len() + self.phase2_labels.len()
     }
+
+    /// The number of curve points of the phase-1 and of the phase-2
+    /// commitment (one per chunk).
+    pub fn nb_phase_points(&self) -> [usize; 2] {
+        [self.phase1_labels.len(), self.phase2_labels.len()]
+    }
 }
 
 /// In-circuit [`Challenges`]: `θ⃗, β, γ, trash, y⃗`.
