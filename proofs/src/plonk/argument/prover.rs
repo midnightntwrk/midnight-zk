@@ -16,7 +16,7 @@ use crate::{
         PolynomialRepresentation, ProverQuery, Rotation, commitment::PolynomialCommitmentScheme,
     },
     transcript::{Hashable, Transcript},
-    utils::arithmetic::eval_polynomial,
+    utils::arithmetic::eval_polynomial_seq,
 };
 
 #[derive(Debug)]
@@ -205,8 +205,8 @@ pub(crate) struct Evaluated<'a, F: PrimeField> {
 
 impl<F: PrimeField> Committed<F, Coeff> {
     /// Evaluates every polynomial of the group at each of its evaluation
-    /// points and writes the evaluations to the proof, in the labels' `Ord`
-    /// order.
+    /// points, in parallel over the polynomials, and writes the evaluations to
+    /// the proof, in the labels' `Ord` order.
     ///
     /// Borrows the group rather than consuming it.
     pub(crate) fn evaluate<T>(
@@ -219,23 +219,16 @@ impl<F: PrimeField> Committed<F, Coeff> {
         F: Hashable<T::Hash> + WithSmallOrderMulGroup<3>,
         T: Transcript,
     {
-        let evaluate = |poly: &Polynomial<F, Coeff>, x: F| -> Evaluation<F> {
-            Evaluation {
-                point: x,
-                eval: eval_polynomial(poly, x),
-            }
-        };
-
         let evals_map: BTreeMap<PolynomialLabel, Vec<Evaluation<F>>> = self
-            .labels
-            .iter()
-            .zip(self.polys.iter())
+            .par_polys()
             .map(|(label, poly)| {
-                let eval_points = argument::eval_points(cs, label, x_rotations);
-                (
-                    label.clone(),
-                    eval_points.into_iter().map(|point| evaluate(poly, point)).collect(),
-                )
+                let evals = (argument::eval_points(cs, label, x_rotations).into_iter())
+                    .map(|point| Evaluation {
+                        point,
+                        eval: eval_polynomial_seq(poly, point),
+                    })
+                    .collect();
+                (label.clone(), evals)
             })
             .collect();
 
