@@ -236,7 +236,6 @@ where
 
     fn multi_prepare<'com, T: Transcript>(
         queries: &[VerifierQuery<'com, F, Self>],
-        k: u32,
         transcript: &mut T,
     ) -> Result<Self::VerificationGuard, Error>
     where
@@ -289,7 +288,7 @@ where
             }
         }
 
-        PCS::multi_prepare(&inner_queries, k, transcript)
+        PCS::multi_prepare(&inner_queries, transcript)
     }
 }
 
@@ -359,7 +358,7 @@ mod tests {
                 VerifierQuery::new(p, &commitment, labels[0].clone(), evals[0]),
                 VerifierQuery::new(q, &commitment, labels[1].clone(), evals[1]),
             ];
-            let guard = CS::multi_prepare(&queries, k, &mut transcript).unwrap();
+            let guard = CS::multi_prepare(&queries, &mut transcript).unwrap();
             transcript.assert_empty().unwrap();
             guard.verify(&params.verifier_params()).unwrap();
         }
