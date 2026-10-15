@@ -141,6 +141,16 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
         self.sponge_chip.squeeze(layouter, state)
     }
 
+    /// Derives `n` scalar challenges from the current transcript, one after
+    /// the other.
+    pub fn squeeze_challenges(
+        &mut self,
+        layouter: &mut impl Layouter<S::F>,
+        n: usize,
+    ) -> Result<Vec<AssignedNative<S::F>>, Error> {
+        (0..n).map(|_| self.squeeze_challenge(layouter)).collect()
+    }
+
     /// Reads `labels.len()` curve points from the prover transcript (one per
     /// polynomial held by the commitment), absorbs them into the running hash
     /// state, and tags each polynomial with its label.

@@ -163,8 +163,8 @@ where
         transcript,
     )?;
 
-    // Sample theta challenge for keeping lookup columns linearly independent
-    let theta: F = transcript.squeeze_challenge();
+    // Sample theta challenges for keeping lookup columns linearly independent
+    let theta: Vec<F> = transcript.squeeze_challenges(pk.vk.cs.nb_theta_challenges());
 
     // Sample beta challenge
     let beta: F = transcript.squeeze_challenge();
@@ -205,7 +205,7 @@ where
     let logup_polys_maps = logup_multiplicities
         .into_par_iter()
         .zip(logup_blindings.into_par_iter())
-        .map(|(lookup, blindings)| lookup.compute_logderivative(pk, theta, beta, blindings))
+        .map(|(lookup, blindings)| lookup.compute_logderivative(pk, &theta, beta, blindings))
         .collect::<Result<Vec<_>, Error>>()?
         .into_par_iter()
         .map(|c| {
@@ -260,8 +260,8 @@ where
         transcript,
     )?;
 
-    // Obtain challenge for keeping all separate gates linearly independent
-    let y: F = transcript.squeeze_challenge();
+    // Obtain challenges for keeping all identities linearly independent
+    let y: Vec<F> = transcript.squeeze_challenges(pk.vk.cs.nb_y_challenges());
 
     let InstanceSingle {
         instance_polys,
@@ -599,10 +599,10 @@ pub(super) fn compute_nu_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommit
         &advice_cosets,
         &instance_cosets,
         &pk.fixed_cosets,
-        *y,
+        y,
         *beta,
         *gamma,
-        *theta,
+        theta,
         *trash_challenge,
         phase1_committed,
         phase2_committed,

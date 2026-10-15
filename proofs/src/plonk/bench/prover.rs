@@ -219,8 +219,8 @@ where
         (multiplicities, committed)
     };
 
-    // Sample theta challenge for keeping lookup columns linearly independent
-    let theta: F = transcript.squeeze_challenge();
+    // Sample theta challenges for keeping lookup columns linearly independent
+    let theta: Vec<F> = transcript.squeeze_challenges(pk.vk.cs.nb_theta_challenges());
 
     // Sample beta challenge
     let beta: F = transcript.squeeze_challenge();
@@ -277,7 +277,7 @@ where
         Ok(multiplicities
             .into_par_iter()
             .zip(blindings.into_par_iter())
-            .map(|(lookup, blinds)| lookup.compute_logderivative(pk, theta, beta, blinds))
+            .map(|(lookup, blinds)| lookup.compute_logderivative(pk, &theta, beta, blinds))
             .collect::<Result<Vec<_>, Error>>()?
             .into_par_iter()
             .map(|c| {
@@ -405,8 +405,8 @@ where
         )?
     };
 
-    // Obtain challenge for keeping all separate gates linearly independent
-    let y: F = transcript.squeeze_challenge();
+    // Obtain challenges for keeping all identities linearly independent
+    let y: Vec<F> = transcript.squeeze_challenges(pk.vk.cs.nb_y_challenges());
 
     let instance_polys = instance.instance_polys;
     let instance_values = instance.instance_values;

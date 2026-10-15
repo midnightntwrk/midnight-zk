@@ -135,7 +135,8 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ComputedMultiplicities<F> {
     /// write to the transcript or convert to coefficient form. The caller
     /// handles transcript ordering and can batch the FFTs.
     ///
-    /// The input and table expressions are compressed with `theta` here.
+    /// The input and table expressions are compressed with `theta` here:
+    /// position `i` of every tuple is multiplied by `theta[i]`.
     ///
     /// `blinding_values` must contain exactly `blinding_factors` random field
     /// elements. They are provided externally so the caller can pre-generate
@@ -143,7 +144,7 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ComputedMultiplicities<F> {
     pub(crate) fn compute_logderivative<CS: PolynomialCommitmentScheme<F>>(
         self,
         pk: &ProvingKey<F, CS>,
-        theta: F,
+        theta: &[F],
         beta: F,
         blinding_values: Vec<F>,
     ) -> Result<ComputedLogderivative<F>, Error>
@@ -156,7 +157,16 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ComputedMultiplicities<F> {
         let n = domain.n as usize;
 
         let compress = |evals: &[Polynomial<F, LagrangeCoeff>]| {
-            evals.iter().fold(domain.empty_lagrange(), |acc, eval| acc * theta + eval)
+            assert!(evals.len() <= theta.len());
+            let mut acc = domain.empty_lagrange();
+            for (eval, theta) in evals.iter().zip(theta) {
+                parallelize(&mut acc, |acc, start| {
+                    for (a, e) in acc.iter_mut().zip(&eval.values[start..]) {
+                        *a += *theta * e;
+                    }
+                });
+            }
+            acc
         };
         let compressed_table_expression = compress(&self.table_evals);
         let chunked_compressed_inputs: Vec<Vec<Polynomial<F, LagrangeCoeff>>> = self
