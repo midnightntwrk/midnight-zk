@@ -5,7 +5,7 @@ use std::borrow::Cow;
 
 use ff::WithSmallOrderMulGroup;
 
-use super::instance::fold_scalar;
+use super::{instance::fold_scalar, sparse_gates::SparseGates};
 use crate::{
     plonk::{ProvingKey, traces::ProverTrace},
     poly::{LagrangeCoeff, Polynomial, commitment::PolynomialCommitmentScheme},
@@ -66,13 +66,63 @@ fn lagrange_selectors<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentSche
 
 /// `fᵢ = Σ_k y_k·id_k(row i)` for every row `i` of `H`, with the trace's own
 /// (possibly folded) challenges, public inputs and witness. Lagrange form
-/// throughout: no FFT.
+/// throughout: no FFT. The custom gates are evaluated only on the rows where
+/// they are active.
 pub(crate) fn evaluate_rows<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>>(
     pk: &ProvingKey<F, CS>,
     trace: &ProverTrace<'_, F, LagrangeCoeff>,
+    sparse: &SparseGates<F>,
 ) -> Polynomial<F, LagrangeCoeff> {
+    let t = std::time::Instant::now();
+    let values = sparse.evaluate(
+        &pk.vk.domain,
+        trace.phase1_committed.polys_of(&pk.vk.cs.advice_labels()),
+        &trace.instance_values,
+        &pk.fixed_values,
+        &trace.y,
+    );
+    let gates = t.elapsed().as_secs_f64() * 1e3;
+    let (values, [perm, pre, fin]) = add_non_gate_rows(pk, trace, values);
+    eprintln!(
+        "[evaluate_numerator] gates={gates:.2} perm={perm:.2} lookup_precomp={pre:.2} lookup+trash={fin:.2}"
+    );
+    values
+}
+
+/// [`evaluate_rows`] with every gate evaluated on every row (the evaluator
+/// of the plain prover); reference for [`evaluate_rows`].
+#[cfg(test)]
+pub(crate) fn evaluate_rows_dense<
+    F: WithSmallOrderMulGroup<3>,
+    CS: PolynomialCommitmentScheme<F>,
+>(
+    pk: &ProvingKey<F, CS>,
+    trace: &ProverTrace<'_, F, LagrangeCoeff>,
+) -> Polynomial<F, LagrangeCoeff> {
+    let values = pk.ev.evaluate_custom_gates::<LagrangeCoeff>(
+        &pk.vk.domain,
+        &pk.vk.cs,
+        trace.phase1_committed.polys_of(&pk.vk.cs.advice_labels()),
+        &trace.instance_values,
+        &pk.fixed_values,
+        &trace.y,
+        trace.beta,
+        &trace.theta,
+        trace.trash_challenge,
+    );
+    add_non_gate_rows(pk, trace, values).0
+}
+
+/// Adds the permutation, lookup and trash identities to the custom-gate
+/// `values`; also returns the timings of the three parts in ms.
+fn add_non_gate_rows<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>>(
+    pk: &ProvingKey<F, CS>,
+    trace: &ProverTrace<'_, F, LagrangeCoeff>,
+    mut values: Polynomial<F, LagrangeCoeff>,
+) -> (Polynomial<F, LagrangeCoeff>, [f64; 3]) {
     let [l0, l_last, l_active_row] = lagrange_selectors(pk);
-    pk.ev.evaluate_numerator::<LagrangeCoeff, LagrangeCoeff>(
+    let times = pk.ev.add_non_gate_identities::<LagrangeCoeff, LagrangeCoeff>(
+        &mut values,
         &pk.vk.domain,
         &pk.vk.cs,
         trace.phase1_committed.polys_of(&pk.vk.cs.advice_labels()),
@@ -90,5 +140,6 @@ pub(crate) fn evaluate_rows<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitme
         &l_last,
         &l_active_row,
         &pk.sigmas.values,
-    )
+    );
+    (values, times)
 }

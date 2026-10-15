@@ -162,7 +162,7 @@ where
     acc.public.absorb(transcript)?;
 
     // Grand sum S over H, committed after β⃗ and e are fixed.
-    let f = evaluate_rows(pk, &acc.trace);
+    let f = evaluate_rows(pk, &acc.trace, &acc.sparse);
     let w = domain.lagrange_from_vec(pow_vector(&acc.public.betas));
     let s = domain.lagrange_to_coeff(grand_sum(domain, &w, &f));
     transcript.write(&CS::commit(params, &s, grand_sum_label()))?;
