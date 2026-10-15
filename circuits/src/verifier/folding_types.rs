@@ -150,7 +150,11 @@ pub(crate) fn trash_powers<S: SelfEmulation>(
     }
     let mut powers = vec![scalar_chip.assign_fixed(layouter, S::F::ONE)?];
     for i in 1..m {
-        let next = if i == 1 { c.clone() } else { scalar_chip.mul(layouter, &powers[i - 1], c, None)? };
+        let next = if i == 1 {
+            c.clone()
+        } else {
+            scalar_chip.mul(layouter, &powers[i - 1], c, None)?
+        };
         powers.push(next);
     }
     Ok(powers)

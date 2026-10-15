@@ -219,14 +219,16 @@ impl<F: Field> Debug for ChunkedArgument<F> {
 }
 
 impl<F: Field> BatchedArgument<F> {
-    /// Computes how many parallel lookups fit within the constraint system
-    /// degree.
+    /// Computes how many parallel lookups fit within the chunk bound (the
+    /// constraint system degree by default, see
+    /// [`lookup_chunk_bound`](crate::plonk::ConstraintSystem::lookup_chunk_bound)).
     ///
     /// The helper constraint `h(X) · ∏ⱼ(fⱼ(X) + β) = Σⱼ ∏_{k≠j}(fₖ(X) + β)` has
     /// degree `1 + lookup_degree × num_parallel_lookups`. This method returns
-    /// the maximum number of parallel lookups before exceeding `cs_degree`.
-    pub(crate) fn nb_parallel_lookups_per_chunk(&self, cs_degree: usize) -> usize {
-        let max_degree = (cs_degree - 1).next_power_of_two() + 1;
+    /// the maximum number of parallel lookups before exceeding `chunk_bound`
+    /// (rounded up to `2^k + 1`).
+    pub(crate) fn nb_parallel_lookups_per_chunk(&self, chunk_bound: usize) -> usize {
+        let max_degree = (chunk_bound - 1).next_power_of_two() + 1;
 
         // Find the maximum degree across all input expressions
         let lookup_degree = self
@@ -319,8 +321,8 @@ impl<F: Field> BatchedArgument<F> {
     /// Returns the number of degree-bounded chunks of parallel lookups.
     ///
     /// Each chunk gets its own committed helper polynomial.
-    pub fn num_chunks(&self, cs_degree: usize) -> usize {
-        let nb = self.nb_parallel_lookups_per_chunk(cs_degree);
+    pub fn num_chunks(&self, chunk_bound: usize) -> usize {
+        let nb = self.nb_parallel_lookups_per_chunk(chunk_bound);
         self.input_expressions.chunks(nb).count()
     }
 
@@ -329,8 +331,8 @@ impl<F: Field> BatchedArgument<F> {
     ///
     /// Each chunk contains at most [`Self::nb_parallel_lookups_per_chunk`]
     /// entries and corresponds to one committed helper polynomial `hᵢ(X)`.
-    pub fn chunk_by_degree(&self, cs_degree: usize) -> ChunkedArgument<F> {
-        let nb = self.nb_parallel_lookups_per_chunk(cs_degree);
+    pub fn chunk_by_degree(&self, chunk_bound: usize) -> ChunkedArgument<F> {
+        let nb = self.nb_parallel_lookups_per_chunk(chunk_bound);
         let input_expression_chunks =
             self.input_expressions.chunks(nb).map(|chunk| chunk.to_vec()).collect();
 

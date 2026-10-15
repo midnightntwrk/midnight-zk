@@ -138,8 +138,9 @@ where
          instance_values: &[Polynomial<F, LagrangeCoeff>],
          blindings: &[Vec<F>]|
          -> Result<Vec<logup::prover::ComputedMultiplicities<F>>, Error> {
+            let chunk_bound = pk.vk.cs.lookup_chunk_bound();
             let logup_args: Vec<_> =
-                pk.vk.cs.lookups.iter().map(|l| l.chunk_by_degree(pk.vk.cs.lookup_chunk_bound())).collect();
+                pk.vk.cs.lookups.iter().map(|l| l.chunk_by_degree(chunk_bound)).collect();
             logup_args
                 .par_iter()
                 .enumerate()
@@ -230,7 +231,7 @@ where
 
     // Sample the trash challenge after the advices have been committed to
     let trash_challenge: F = transcript.squeeze_challenge();
-    let trash_powers = crate::plonk::trash::trash_powers(trash_challenge, pk.vk.cs.max_trash_terms());
+    let trash_powers = crate::plonk::trash::powers_of(trash_challenge, pk.vk.cs.max_trash_terms());
 
     // Pre-generate permutation blindings for the per-iteration compute.
     let blinding_factors = pk.vk.cs.blinding_factors();

@@ -20,7 +20,7 @@ use super::{
         Selector,
     },
     logup,
-    trash::trash_powers,
+    trash::powers_of,
 };
 use crate::{
     circuit::Value,
@@ -124,9 +124,10 @@ where
 
     // Compute the multiplicities columns in parallel. They are committed to
     // below, as the phase1 argument group.
+    let chunk_bound = pk.vk.cs.lookup_chunk_bound();
     let logup_multiplicities: Vec<logup::prover::ComputedMultiplicities<F>> = {
         let logup_args: Vec<_> =
-            pk.vk.cs.lookups.iter().map(|l| l.chunk_by_degree(pk.vk.cs.lookup_chunk_bound())).collect();
+            pk.vk.cs.lookups.iter().map(|l| l.chunk_by_degree(chunk_bound)).collect();
         logup_args
             .par_iter()
             .enumerate()
@@ -182,7 +183,7 @@ where
 
     // Sample the trash challenge after the advices have been committed to
     let trash_challenge: F = transcript.squeeze_challenge();
-    let trash_powers = trash_powers(trash_challenge, pk.vk.cs.max_trash_terms());
+    let trash_powers = powers_of(trash_challenge, pk.vk.cs.max_trash_terms());
 
     let blinding_factors = pk.vk.cs.blinding_factors();
     let num_perm_sets = pk.vk.cs.permutation.num_sets(pk.vk.cs_degree);

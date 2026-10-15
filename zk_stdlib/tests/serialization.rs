@@ -72,7 +72,7 @@ impl Relation for DummyCircuit {
 }
 
 // Some different architectures to be tested.
-const ARCHITECTURES: [ZkStdLibArch; 4] = [
+const ARCHITECTURES: [ZkStdLibArch; 5] = [
     ZkStdLibArch {
         jubjub: true,
         poseidon: true,
@@ -86,10 +86,10 @@ const ARCHITECTURES: [ZkStdLibArch; 4] = [
         bls12_381: true,
         curve25519: true,
         base64: false,
+        automaton: false,
         nb_arith_cols: 5,
         nr_pow2range_cols: 4,
         lookup_chunk_bound: None,
-        automaton: false,
     },
     ZkStdLibArch {
         jubjub: true,
@@ -104,10 +104,10 @@ const ARCHITECTURES: [ZkStdLibArch; 4] = [
         bls12_381: false,
         curve25519: false,
         base64: false,
+        automaton: false,
         nb_arith_cols: 5,
         nr_pow2range_cols: 4,
         lookup_chunk_bound: None,
-        automaton: false,
     },
     ZkStdLibArch {
         jubjub: false,
@@ -122,10 +122,10 @@ const ARCHITECTURES: [ZkStdLibArch; 4] = [
         bls12_381: true,
         curve25519: true,
         base64: false,
+        automaton: false,
         nb_arith_cols: 5,
         nr_pow2range_cols: 4,
         lookup_chunk_bound: None,
-        automaton: false,
     },
     ZkStdLibArch {
         jubjub: false,
@@ -140,12 +140,59 @@ const ARCHITECTURES: [ZkStdLibArch; 4] = [
         bls12_381: false,
         curve25519: true,
         base64: true,
+        automaton: false,
         nb_arith_cols: 5,
         nr_pow2range_cols: 4,
         lookup_chunk_bound: None,
+    },
+    ZkStdLibArch {
+        jubjub: true,
+        poseidon: true,
+        sha2_256: false,
+        sha2_512: false,
+        sha3_256: false,
+        keccak_256: false,
+        blake2b: false,
+        secp256k1: false,
+        p256: false,
+        bls12_381: false,
+        curve25519: false,
+        base64: false,
         automaton: false,
+        nb_arith_cols: 5,
+        nr_pow2range_cols: 4,
+        lookup_chunk_bound: Some(3),
     },
 ];
+
+#[test]
+fn arch_with_lookup_chunk_bound_roundtrips() {
+    let arch = ZkStdLibArch { lookup_chunk_bound: Some(3), ..ZkStdLibArch::default() };
+    let mut buffer = Vec::new();
+    arch.write(&mut buffer).unwrap();
+    assert_eq!(ZkStdLibArch::read(&mut buffer.as_slice()).unwrap(), arch);
+}
+
+/// A `ZKSTD_VERSION` 2 architecture (no `lookup_chunk_bound`) decodes with
+/// `None`. The bytes are the version and the bincode fields of the V2 layout:
+/// thirteen flags, then `nb_arith_cols` and `nr_pow2range_cols`.
+#[test]
+fn v2_arch_decodes_without_lookup_chunk_bound() {
+    let mut bytes = 2u32.to_le_bytes().to_vec();
+    // jubjub and poseidon enabled, the other eleven flags disabled.
+    bytes.extend([1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    bytes.extend([7, 4]);
+    let arch = ZkStdLibArch::read(&mut bytes.as_slice()).unwrap();
+    let expected = ZkStdLibArch {
+        jubjub: true,
+        poseidon: true,
+        nb_arith_cols: 7,
+        nr_pow2range_cols: 4,
+        ..ZkStdLibArch::default()
+    };
+    assert_eq!(arch, expected);
+    assert_eq!(arch.lookup_chunk_bound, None);
+}
 
 fn vk_serde_test(architecture: ZkStdLibArch, write_format: SerdeFormat, read_format: SerdeFormat) {
     let relation = DummyCircuit { architecture };

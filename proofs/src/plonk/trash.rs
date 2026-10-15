@@ -9,7 +9,7 @@ pub(crate) mod prover;
 
 /// `(1, c, ..., c^{m-1})`: the powers of the trash challenge `c` that the
 /// trashcans of a circuit read (`m = cs.max_trash_terms()`).
-pub(crate) fn trash_powers<F: Field>(c: F, m: usize) -> Vec<F> {
+pub(crate) fn powers_of<F: Field>(c: F, m: usize) -> Vec<F> {
     std::iter::successors(Some(F::ONE), |p| Some(*p * c)).take(m).collect()
 }
 

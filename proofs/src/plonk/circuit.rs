@@ -1575,6 +1575,7 @@ pub struct PinnedConstraintSystem<'a, F: Field> {
     trashcans: &'a Vec<trash::Argument<F>>,
     constants: &'a Vec<Column<Fixed>>,
     minimum_degree: &'a Option<usize>,
+    lookup_chunk_bound: &'a Option<usize>,
 }
 
 impl<F: Field> std::fmt::Debug for PinnedConstraintSystem<'_, F> {
@@ -1593,6 +1594,7 @@ impl<F: Field> std::fmt::Debug for PinnedConstraintSystem<'_, F> {
             trashcans,
             constants,
             minimum_degree,
+            lookup_chunk_bound,
         } = &self;
         let mut debug_struct = f.debug_struct("PinnedConstraintSystem");
         debug_struct
@@ -1611,6 +1613,10 @@ impl<F: Field> std::fmt::Debug for PinnedConstraintSystem<'_, F> {
         debug_struct
             .field("constants", constants)
             .field("minimum_degree", minimum_degree);
+        // Omitted by default, so the pinned form of existing circuits is unchanged.
+        if lookup_chunk_bound.is_some() {
+            debug_struct.field("lookup_chunk_bound", lookup_chunk_bound);
+        }
         debug_struct.finish()
     }
 }
@@ -1668,6 +1674,7 @@ impl<F: Field> ConstraintSystem<F> {
             trashcans: &self.trashcans,
             constants: &self.constants,
             minimum_degree: &self.minimum_degree,
+            lookup_chunk_bound: &self.lookup_chunk_bound,
         }
     }
 
@@ -1896,18 +1903,36 @@ impl<F: Field> ConstraintSystem<F> {
     }
 
     /// Sets the degree bound used to pack lookup input tuples into helper
-    /// columns, in place of `degree()`. A smaller bound gives more helper
-    /// columns of lower degree (e.g. 3 packs two degree-1 tuples per helper),
-    /// which lowers the folding degree. Prover, verifier and in-circuit verifier
-    /// all read it from the constraint system, so it must be set in `configure`.
+    /// columns, in place of [`Self::degree`]. A smaller bound gives more
+    /// helper columns of lower degree (e.g. 3 packs two degree-1 tuples per
+    /// helper), which lowers the folding degree. The effective bound is
+    /// rounded up to `2^k + 1`, and a single tuple whose degree exceeds it
+    /// still gets its own chunk. Prover, verifier and in-circuit verifier all
+    /// read it from the constraint system, so it must be set in `configure`.
+    /// It is checked in [`Self::lookup_chunk_bound`].
     pub fn set_lookup_chunk_bound(&mut self, bound: usize) {
         self.lookup_chunk_bound = Some(bound);
     }
 
     /// The degree bound for lookup helper chunking: the one set with
-    /// [`Self::set_lookup_chunk_bound`], or `degree()`.
+    /// [`Self::set_lookup_chunk_bound`], or [`Self::degree`].
+    ///
+    /// # Panics
+    ///
+    /// If the bound set is below 2 or above [`Self::degree`] (checked here
+    /// since gates may still be added after it is set).
     pub fn lookup_chunk_bound(&self) -> usize {
-        self.lookup_chunk_bound.unwrap_or_else(|| self.degree())
+        let degree = self.degree();
+        match self.lookup_chunk_bound {
+            None => degree,
+            Some(bound) => {
+                assert!(
+                    (2..=degree).contains(&bound),
+                    "lookup chunk bound {bound} must be in 2..={degree} (the degree of the circuit)"
+                );
+                bound
+            }
+        }
     }
 
     /// Creates a new gate.
@@ -2191,7 +2216,8 @@ impl<F: Field> ConstraintSystem<F> {
 
     /// Largest number of constraint expressions in a trashcan (0 if none). A
     /// trashcan with `m` expressions reads `c^0, ..., c^{m-1}` of the trash
-    /// challenge `c`.
+    /// challenge `c`. The plain prover and verifier still squeeze one scalar
+    /// `c`; the vector of powers is only the folding relation's carrier.
     pub fn max_trash_terms(&self) -> usize {
         self.trashcans.iter().map(|t| t.constraint_expressions().len()).max().unwrap_or(0)
     }
@@ -2236,8 +2262,8 @@ impl<F: Field> ConstraintSystem<F> {
         // To account for this, we can increase the number of blinding factors of
         // witness columns. One blinding factor per helper is enough as each helper is
         // evaluated only once.
-        let factors =
-            factors + self.lookups.iter().map(|l| l.num_chunks(self.lookup_chunk_bound())).sum::<usize>();
+        let bound = self.lookup_chunk_bound();
+        let factors = factors + self.lookups.iter().map(|l| l.num_chunks(bound)).sum::<usize>();
 
         // Each polynomial is evaluated at most an additional time during
         // multiopen (at x_3 to produce q_evals):

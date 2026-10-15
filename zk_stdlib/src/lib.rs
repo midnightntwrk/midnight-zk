@@ -248,8 +248,9 @@ impl From<ZkStdLibArchV1> for ZkStdLibArch {
     }
 }
 
-/// Serialized layout of [`ZkStdLibArch`] with `ZKSTD_VERSION` 2 (before
-/// `lookup_chunk_bound`). Used only for migration.
+/// Serialized layout of [`ZkStdLibArch`] as of `ZKSTD_VERSION` 2 (before
+/// `lookup_chunk_bound` was added in version 3). Used only for migration when
+/// reading version-2 serialized verifying keys.
 #[derive(Decode)]
 struct ZkStdLibArchV2 {
     jubjub: bool,

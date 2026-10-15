@@ -302,7 +302,8 @@ fn folding_gadget_costs() {
         "test relation (SquareCircuit, k = 6)",
         &Native::new().shape(),
     );
-    let ivc = |c| FoldingShape::synthetic(16, 13, c, &[2], (16, 50));
+    // `d_total` 7: the IVC step circuit, whose lookup chunk bound is 3.
+    let ivc = |c| FoldingShape::synthetic(16, 7, c, &[2], (16, 50));
     report("IVC shape, T_MAX = 8 (synthetic)", &ivc((3, 2)));
     report("IVC shape, T_MAX = 16 (synthetic)", &ivc((2, 1)));
 }
@@ -324,7 +325,8 @@ impl FoldingShape {
             phase2_labels: labels(2, c2).collect(),
             instance_lens: instance_lens.to_vec(),
             nb_theta,
-            nb_trash: 8, // the Poseidon partial-round trashcan
+            // Stands in for `cs.max_trash_terms()`: the Poseidon partial-round trashcan.
+            nb_trash: 8,
             nb_y,
         }
     }
