@@ -48,6 +48,7 @@ use std::{
 };
 
 use ff::PrimeField;
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 pub use utils::{balanced_chunks, roots};
 use utils::{cached_roots, compute_g};
 
@@ -59,10 +60,7 @@ use crate::{
         commitment::{InterleavedCommit, PolynomialCommitmentScheme},
     },
     transcript::{Hashable, Sampleable, Transcript, TranscriptField},
-    utils::{
-        arithmetic::{eval_polynomial, eval_polynomial_seq},
-        helpers::SerdeFormat,
-    },
+    utils::{arithmetic::eval_polynomial_seq, helpers::SerdeFormat},
 };
 
 /// fflonk over the polynomial commitment scheme `PCS`.
@@ -190,15 +188,22 @@ where
                 return Err(Error::DuplicatedQuery);
             }
         }
+        let mut missing = Vec::new();
         for (labels, (polys, points)) in &chunks_info {
             for point in points {
                 for (label, poly) in labels.iter().zip(polys.iter()) {
                     if !queried.contains(&(label.clone(), *point)) {
-                        let eval = eval_polynomial(poly, *point);
-                        transcript.write(&eval).map_err(|_| Error::OpeningError)?;
+                        missing.push((*poly, *point));
                     }
                 }
             }
+        }
+        let evals: Vec<F> = missing
+            .par_iter()
+            .map(|(poly, point)| eval_polynomial_seq(poly, *point))
+            .collect();
+        for eval in &evals {
+            transcript.write(eval).map_err(|_| Error::OpeningError)?;
         }
 
         // Compute g for every chunk as in `commit_many`. This step needs to be
