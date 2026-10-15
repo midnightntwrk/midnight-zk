@@ -7,7 +7,7 @@
 
 use std::{
     borrow::Borrow,
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fmt::Debug,
     io,
     sync::{Arc, RwLock},
@@ -17,6 +17,7 @@ use midnight_curves::{
     pairing::{Engine, MultiMillerLoop},
     serde::SerdeObject,
 };
+use rayon::prelude::*;
 
 use crate::{
     poly::{
@@ -260,8 +261,20 @@ impl<E: KZGEngine, const LOG2_T_MAX: u32> InterleavedCommit<E::Fr, LOG2_T_MAX>
         );
         PolynomialLabel::assert_distinct(labels);
 
+        // Build each missing residue basis once, before the chunks ask for it
+        // concurrently.
+        let residues: HashSet<_> = (chunks.iter())
+            .flat_map(|chunk| {
+                let (t, n) = (chunk.len().next_power_of_two(), chunk[0].len());
+                (0..chunk.len()).map(move |i| (t, n, i))
+            })
+            .collect();
+        residues.par_iter().for_each(|&(t, n, i)| {
+            params.residue_bases::<B>(t, n, i);
+        });
+
         KZGMultiCommitment(
-            (chunks.iter().zip(labels))
+            (chunks.par_iter().zip(labels.par_iter()))
                 .map(|(chunk, label)| {
                     KZGCommitment::Simple(commit_chunk(params, chunk), label.clone())
                 })
@@ -271,7 +284,8 @@ impl<E: KZGEngine, const LOG2_T_MAX: u32> InterleavedCommit<E::Fr, LOG2_T_MAX>
 }
 
 /// Commitment to `Σ_i X^i f_i(X^t)`, for `chunk` the polynomials `f_i` and
-/// `t` the next power of two of their number.
+/// `t` the next power of two of their number: one MSM of the values of every
+/// `f_i` against the bases of its residue.
 fn commit_chunk<E, B, const LOG2_T_MAX: u32>(
     params: &ParamsFflonkKZG<E, LOG2_T_MAX>,
     chunk: &[&Polynomial<E::Fr, B>],
@@ -287,7 +301,15 @@ where
         chunk.iter().all(|poly| poly.len() == n),
         "the polynomials of a chunk have different lengths"
     );
-    (chunk.iter().enumerate())
-        .map(|(i, poly)| commit_msm(&poly.values, &params.residue_bases::<B>(t, n, i)))
-        .sum()
+    let (scalars, points): (Vec<E::Fr>, Vec<E::G1Affine>) = (chunk.par_iter().enumerate())
+        .map(|(i, poly)| {
+            let bases = params.residue_bases::<B>(t, n, i);
+            (poly.values.to_vec(), bases.to_vec())
+        })
+        .reduce(Default::default, |(mut scalars, mut points), (s, p)| {
+            scalars.extend(s);
+            points.extend(p);
+            (scalars, points)
+        });
+    commit_msm(&scalars, &points)
 }

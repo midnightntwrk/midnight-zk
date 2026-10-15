@@ -131,7 +131,7 @@ impl<E: KZGEngine> PolynomialCommitmentScheme<E::Fr> for KZGCommitmentScheme<E> 
 
         let bases = params.bases::<B>();
         KZGMultiCommitment(
-            (polynomials.iter().zip(labels))
+            (polynomials.par_iter().zip(labels.par_iter()))
                 .map(|(polynomial, label)| {
                     let size = polynomial.values.len();
                     assert!(bases.len() >= size);
