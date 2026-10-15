@@ -51,9 +51,9 @@ use utils::{cached_roots, compute_g};
 
 use crate::{
     poly::{
-        Error, Polynomial, PolynomialLabel,
+        CommitPoly, Error, PolynomialLabel,
         PolynomialLabel::Collection,
-        PolynomialRepresentation, ProverQuery, VerifierQuery,
+        ProverQuery, VerifierQuery,
         commitment::{InterleavedCommit, PolynomialCommitmentScheme},
     },
     transcript::{Hashable, Sampleable, Transcript},
@@ -105,9 +105,9 @@ where
         PCS::get_verifier_params(params)
     }
 
-    fn commit_many<B: PolynomialRepresentation>(
+    fn commit_many(
         params: &Self::Parameters,
-        polynomials: &[&Polynomial<F, B>],
+        polynomials: &[CommitPoly<F>],
         labels: &[PolynomialLabel],
     ) -> Self::Commitment {
         PolynomialLabel::assert_distinct(labels);
@@ -308,7 +308,7 @@ mod tests {
     use super::Fflonk;
     use crate::{
         poly::{
-            EvaluationDomain, PolynomialLabel, ProverQuery, VerifierQuery,
+            CommitPoly, EvaluationDomain, PolynomialLabel, ProverQuery, VerifierQuery,
             commitment::{Guard, PolynomialCommitmentScheme},
             kzg::{KZGCommitmentScheme, params::ParamsKZG},
         },
@@ -332,7 +332,11 @@ mod tests {
         let polys: Vec<_> = (0..2)
             .map(|_| domain.coeff_from_vec((0..1 << k).map(|_| Fq::random(OsRng)).collect()))
             .collect();
-        let commitment = CS::commit_many(&params, &polys.iter().collect::<Vec<_>>(), &labels);
+        let commitment = CS::commit_many(
+            &params,
+            &polys.iter().map(CommitPoly::new).collect::<Vec<_>>(),
+            &labels,
+        );
 
         let (mut seen_lt, mut seen_gt) = (false, false);
         while !(seen_lt && seen_gt) {
@@ -369,8 +373,8 @@ mod tests {
     }
 
     /// Commits to `nb_polys` sparse polynomials of `2^k` rows, given in
-    /// Lagrange form, in its delta forms and in coefficient form, and checks
-    /// that the commitments agree.
+    /// Lagrange form, in its delta forms, in coefficient form and in a mix of
+    /// them, and checks that the commitments agree.
     fn assert_lagrange_matches_coeff(params: &ParamsKZG<Bls12>, k: u32, nb_polys: usize) {
         type CS = Fflonk<Kzg, 2>;
         let domain = EvaluationDomain::<Fq>::new(1, k);
@@ -392,19 +396,29 @@ mod tests {
         let delta: Vec<_> = lagrange.iter().map(|p| p.to_delta()).collect();
         let double_delta: Vec<_> = lagrange.iter().map(|p| p.to_double_delta()).collect();
         let labels: Vec<_> = (0..nb_polys).map(PolynomialLabel::Advice).collect();
-        let expected = CS::commit_many(params, &coeff.iter().collect::<Vec<_>>(), &labels);
+        let commit_all = |polys: Vec<CommitPoly<Fq>>| CS::commit_many(params, &polys, &labels);
+        let expected = commit_all(coeff.iter().map(CommitPoly::new).collect());
         assert_eq!(
-            CS::commit_many(params, &lagrange.iter().collect::<Vec<_>>(), &labels),
+            commit_all(lagrange.iter().map(CommitPoly::new).collect()),
             expected
         );
         assert_eq!(
-            CS::commit_many(params, &delta.iter().collect::<Vec<_>>(), &labels),
+            commit_all(delta.iter().map(CommitPoly::new).collect()),
             expected
         );
         assert_eq!(
-            CS::commit_many(params, &double_delta.iter().collect::<Vec<_>>(), &labels),
+            commit_all(double_delta.iter().map(CommitPoly::new).collect()),
             expected
         );
+        let mixed = (0..nb_polys)
+            .map(|i| match i % 4 {
+                0 => CommitPoly::new(&coeff[i]),
+                1 => CommitPoly::new(&lagrange[i]),
+                2 => CommitPoly::new(&delta[i]),
+                _ => CommitPoly::new(&double_delta[i]),
+            })
+            .collect();
+        assert_eq!(commit_all(mixed), expected);
     }
 
     #[test]
