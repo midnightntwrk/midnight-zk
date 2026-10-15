@@ -1005,6 +1005,22 @@ pub(crate) mod tests {
             S::negate(layouter, curve_chip, p)
         }
 
+        #[allow(clippy::type_complexity)]
+        fn glv_split(
+            layouter: &mut impl Layouter<F>,
+            curve_chip: &Self::CurveChip,
+            scalar: &AssignedNative<F>,
+            base: &Self::AssignedPoint,
+        ) -> Result<
+            (
+                (AssignedNative<F>, AssignedNative<F>),
+                (Self::AssignedPoint, Self::AssignedPoint),
+            ),
+            Error,
+        > {
+            S::glv_split(layouter, curve_chip, scalar, base)
+        }
+
         fn constrain_scalar_as_committed_public_input(
             layouter: &mut impl Layouter<F>,
             scalar_chip: &Self::ScalarChip,

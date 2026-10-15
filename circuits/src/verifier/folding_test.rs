@@ -373,7 +373,7 @@ impl Circuit<F> for FoldingCircuit {
             Step::Init => gadget.init(&mut layouter, fresh)?,
             Step::Fold { acc, folding_proof } => {
                 let acc = gadget.assign_accumulator(&mut layouter, acc.as_ref())?;
-                gadget.fold(&mut layouter, &acc, &fresh, folding_proof.clone())?
+                gadget.fold(&mut layouter, &acc, &fresh, folding_proof.clone(), None)?
             }
         };
         for x in next.as_public_input(&mut layouter, &chips.curve)? {
@@ -461,10 +461,10 @@ fn folding_gadget_fold() {
     assert!(circuit.outputs(&c.acc2));
 }
 
-/// The folding verifier cannot reject (soundness comes from the decider), so
-/// a tampered input must make the gadget output *the native verifier's
-/// output on the tampered data* (circuit satisfied with it), which differs
-/// from the honest accumulator (circuit unsatisfied with that one).
+/// A tampered folding message or fresh instance changes `γ` (or the
+/// differences `fresh − acc`), so the products `R_i` the honest prover wrote
+/// no longer match: the native verifier rejects them and the circuit is
+/// unsatisfiable (with the honest output, the only one known).
 #[test]
 fn folding_gadget_tampered() {
     let native = Native::new();
@@ -476,6 +476,16 @@ fn folding_gadget_tampered() {
         t.write(&F::ONE).unwrap();
         t.finalize().len()
     };
+    let generator = <S as SelfEmulation>::G1Affine::generator();
+    let point = GroupEncoding::to_bytes(&generator);
+    let point = point.as_ref();
+
+    let rejected = |fresh: &Fresh, proof: &[u8]| {
+        let native_fold = acc1.fold(vk, &fresh.public, &mut T::init_from_bytes(proof));
+        assert!(native_fold.is_err());
+        let circuit = FoldingCircuit::fold(&native, acc1, fresh, proof);
+        assert!(!circuit.outputs(&c.acc2));
+    };
 
     // A tampered perturbator coefficient F_1 (the first folding message).
     let mut proof = c.folding_proof.clone();
@@ -483,37 +493,21 @@ fn folding_gadget_tampered() {
     let mut t = T::init();
     t.write(&(f1 + F::ONE)).unwrap();
     proof[..scalar_len].copy_from_slice(&t.finalize());
-    let tampered = acc1.fold(vk, &c.fresh2.public, &mut T::init_from_bytes(&proof)).unwrap();
-    assert_ne!(tampered, c.acc2);
-    let circuit = FoldingCircuit::fold(&native, acc1, &c.fresh2, &proof);
-    assert!(circuit.outputs(&tampered));
-    assert!(!circuit.outputs(&c.acc2));
-
-    // A tampered K_0 (the first coefficient after the log n F's).
-    let mut proof = c.folding_proof.clone();
-    let offset = native.shape().log_n * scalar_len;
-    let k0: F = T::init_from_bytes(&proof[offset..]).read().unwrap();
-    let mut t = T::init();
-    t.write(&(k0 + F::ONE)).unwrap();
-    proof[offset..offset + scalar_len].copy_from_slice(&t.finalize());
-    let tampered = acc1.fold(vk, &c.fresh2.public, &mut T::init_from_bytes(&proof)).unwrap();
-    assert_ne!(tampered, c.acc2);
-    let circuit = FoldingCircuit::fold(&native, acc1, &c.fresh2, &proof);
-    assert!(circuit.outputs(&tampered));
-    assert!(!circuit.outputs(&c.acc2));
+    rejected(&c.fresh2, &proof);
 
     // A tampered fresh phase-1 commitment: its first point (after the 4-byte
     // polynomial count) replaced by the generator.
     let mut fresh = c.fresh2.clone();
-    let generator = <S as SelfEmulation>::G1Affine::generator();
-    let point = GroupEncoding::to_bytes(&generator);
-    let point = point.as_ref();
     fresh.proof[4..4 + point.len()].copy_from_slice(point);
     fresh.public =
         read_instance(vk, &[&[fresh.pi]], &mut T::init_from_bytes(&fresh.proof)).unwrap();
-    let tampered = acc1.fold(vk, &fresh.public, &mut T::init_from_bytes(&c.folding_proof)).unwrap();
-    assert_ne!(tampered, c.acc2);
-    let circuit = FoldingCircuit::fold(&native, acc1, &fresh, &c.folding_proof);
-    assert!(circuit.outputs(&tampered));
-    assert!(!circuit.outputs(&c.acc2));
+    rejected(&fresh, &c.folding_proof);
+
+    // A wrong product: R_2, the second point of the phase-1 products, which
+    // follow the log n + d − 1 scalars and a 4-byte polynomial count.
+    let mut proof = c.folding_proof.clone();
+    let offset = (native.shape().log_n + native.shape().d_total - 1) * scalar_len;
+    let r2 = offset + 4 + point.len();
+    proof[r2..r2 + point.len()].copy_from_slice(point);
+    rejected(&c.fresh2, &proof);
 }

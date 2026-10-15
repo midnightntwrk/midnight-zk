@@ -208,22 +208,15 @@ where
         fresh: &Self::Commitment,
         gamma: E::Fr,
     ) -> Self::Commitment {
-        assert_eq!(
-            acc.0.len(),
-            fresh.0.len(),
-            "folding commitments of different groups"
-        );
-        KZGMultiCommitment(
-            (acc.0.iter().zip(fresh.0.iter()))
-                .map(|(a, f)| match (a, f) {
-                    (KZGCommitment::Simple(a, label), KZGCommitment::Simple(f, f_label)) => {
-                        assert_eq!(label, f_label, "folding commitments of different labels");
-                        KZGCommitment::Simple(*a + (*f - *a) * gamma, label.clone())
-                    }
-                    _ => panic!("only evaluated (simple) commitments can be folded"),
-                })
-                .collect(),
-        )
+        map_folded(acc, fresh, |a, f| *a + (*f - *a) * gamma)
+    }
+
+    fn fold_products(
+        acc: &Self::Commitment,
+        fresh: &Self::Commitment,
+        gamma: E::Fr,
+    ) -> Self::Commitment {
+        map_folded(acc, fresh, |a, f| (*f - *a) * gamma)
     }
 
     fn commitment_byte_length(n: usize) -> usize {
@@ -592,6 +585,31 @@ where
                 .collect(),
         )
     }
+}
+
+/// Applies `op` to every pair of points of two evaluated commitments to the
+/// same group of polynomials, keeping the labels.
+fn map_folded<E: MultiMillerLoop>(
+    acc: &KZGMultiCommitment<E>,
+    fresh: &KZGMultiCommitment<E>,
+    op: impl Fn(&E::G1, &E::G1) -> E::G1,
+) -> KZGMultiCommitment<E> {
+    assert_eq!(
+        acc.0.len(),
+        fresh.0.len(),
+        "folding commitments of different groups"
+    );
+    KZGMultiCommitment(
+        (acc.0.iter().zip(fresh.0.iter()))
+            .map(|(a, f)| match (a, f) {
+                (KZGCommitment::Simple(a, label), KZGCommitment::Simple(f, f_label)) => {
+                    assert_eq!(label, f_label, "folding commitments of different labels");
+                    KZGCommitment::Simple(op(a, f), label.clone())
+                }
+                _ => panic!("only evaluated (simple) commitments can be folded"),
+            })
+            .collect(),
+    )
 }
 
 /// Commitment to `Σ_i X^i f_i(X^t)`, for `chunk` the polynomials `f_i` and

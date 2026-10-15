@@ -240,6 +240,14 @@ where
         PCS::fold_commitments(acc, fresh, gamma)
     }
 
+    fn fold_products(
+        acc: &Self::Commitment,
+        fresh: &Self::Commitment,
+        gamma: F,
+    ) -> Self::Commitment {
+        PCS::fold_products(acc, fresh, gamma)
+    }
+
     fn commitment_byte_length(n: usize) -> usize {
         PCS::commitment_byte_length(n.div_ceil(Self::T_MAX))
     }

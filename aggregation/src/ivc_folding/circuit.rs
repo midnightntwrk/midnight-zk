@@ -6,7 +6,10 @@
 
 use ff::Field;
 use midnight_circuits::{
-    instructions::{AssignmentInstructions, ControlFlowInstructions, PublicInputInstructions},
+    instructions::{
+        AssignmentInstructions, BinaryInstructions, ControlFlowInstructions,
+        PublicInputInstructions,
+    },
     types::{AssignedBit, AssignedNative},
     verifier::{AssignedVk, FoldingShape},
 };
@@ -95,7 +98,10 @@ impl<T: Ivc> FoldingIvcCircuit<T> {
     pub fn arch() -> ZkStdLibArch {
         // Two degree-1 lookup tuples per helper (bound 3) instead of four:
         // folding degree 7 instead of 10, for more helper columns.
-        ZkStdLibArch { lookup_chunk_bound: Some(3), ..IvcCircuit::<T>::arch() }
+        ZkStdLibArch {
+            lookup_chunk_bound: Some(3),
+            ..IvcCircuit::<T>::arch()
+        }
     }
 
     /// `H(state ‖ acc_hash)`, in-circuit analog of the last public input in
@@ -184,11 +190,16 @@ impl<T: Ivc> Relation for FoldingIvcCircuit<T> {
         // Next accumulator: init (previous accumulator is the default one) or
         // fold; both are computed and the result is selected.
         let init_acc = folding.init(layouter, fresh.clone())?;
+        // The fold is discarded at the first step (the init is selected) and at
+        // genesis (the default accumulator): there the dummy folding proof need
+        // not carry the right commitment products.
+        let discarded = std_lib.or(layouter, &[is_first.clone(), is_genesis.clone()])?;
         let fold_acc = folding.fold(
             layouter,
             &prev_acc,
             &fresh,
             witness.map(|w| w.folding_proof),
+            Some(&discarded),
         )?;
         let init_pi = init_acc.as_public_input(layouter, curve_chip)?;
         let fold_pi = fold_acc.as_public_input(layouter, curve_chip)?;

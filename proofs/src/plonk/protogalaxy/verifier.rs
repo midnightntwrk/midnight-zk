@@ -41,6 +41,28 @@ where
     gamma
 }
 
+/// The products `γ·(fresh − acc)` of the phase-1 and phase-2 commitments,
+/// which the prover writes after `γ` and the in-circuit verifier checks with
+/// one MSM instead of computing `[γ](fresh − acc)` per point (folded
+/// commitment: `acc + product`). The in-circuit check then squeezes its
+/// batching challenges `ρ`, which have no native counterpart: they come last
+/// in the folding transcript.
+pub(crate) fn fold_products<F, CS>(
+    acc: &Accumulator<F, CS>,
+    fresh: &FoldingInstance<F, CS>,
+    gamma: F,
+) -> [CS::Commitment; 2]
+where
+    F: ff::PrimeField,
+    CS: PolynomialCommitmentScheme<F>,
+{
+    let (a, f) = (&acc.instance, fresh);
+    [
+        CS::fold_products(&a.phase1_commitment, &f.phase1_commitment, gamma),
+        CS::fold_products(&a.phase2_commitment, &f.phase2_commitment, gamma),
+    ]
+}
+
 /// `β⃗ + α·δ⃗`.
 pub(crate) fn shift_betas<F: ff::Field>(betas: &[F], alpha: F, deltas: &[F]) -> Vec<F> {
     betas.iter().zip(deltas).map(|(b, d)| *b + alpha * d).collect()
@@ -166,6 +188,14 @@ where
         let k_coeffs = (0..d - 1).map(|_| transcript.read()).collect::<Result<Vec<F>, _>>()?;
 
         let gamma = squeeze_fold_challenge(transcript);
+        // The prover's products must be the exact ones (else the in-circuit
+        // check fails).
+        for expected in fold_products(self, fresh, gamma) {
+            let labels = CS::commitment_labels(&expected);
+            if CS::read_commitment(transcript, &labels)? != expected {
+                return Err(Error::InvalidInstances);
+            }
+        }
         fold_public(self, fresh, &deltas, &f_coeffs, alpha, &k_coeffs, gamma)
     }
 }

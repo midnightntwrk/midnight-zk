@@ -42,8 +42,8 @@ use crate::{
     field::{AssignedNative, NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip},
     hash::poseidon::{PoseidonChip, PoseidonState},
     instructions::{
-        AssignmentInstructions, HashInstructions, PublicInputInstructions, SpongeInstructions,
-        ecc::EccInstructions, public_input::CommittedInstanceInstructions,
+        AssignmentInstructions, ControlFlowInstructions, HashInstructions, PublicInputInstructions,
+        SpongeInstructions, ecc::EccInstructions, public_input::CommittedInstanceInstructions,
     },
     types::{AssignedForeignPoint, InnerValue, Instantiable},
     verifier::{InCircuitFflonk, InCircuitKZG, InCircuitPCS},
@@ -75,6 +75,7 @@ pub trait SelfEmulation: Clone + Debug {
     /// A chip implementing assignment operations for [Self::AssignedPoint].
     type CurveChip: Clone
         + AssignmentInstructions<Self::F, Self::AssignedPoint>
+        + ControlFlowInstructions<Self::F, Self::AssignedPoint>
         + PublicInputInstructions<Self::F, Self::AssignedPoint>;
 
     /// A chip implementing sponge operations over the native field.
@@ -115,6 +116,23 @@ pub trait SelfEmulation: Clone + Debug {
         scalars: &[(AssignedNative<Self::F>, usize)],
         bases: &[Self::AssignedPoint],
     ) -> Result<Self::AssignedPoint, Error>;
+
+    /// GLV split of `s·P`: returns `((k1, k2), (P1, P2))` with `s·P = k1·P1 + k2·P2`
+    /// (constrained), where the scalars have at most `⌈|F|/2⌉` bits (enforced
+    /// by a bounded `msm`, not here) and `P1, P2` are `±P, ±φ(P)`.
+    #[allow(clippy::type_complexity)]
+    fn glv_split(
+        layouter: &mut impl Layouter<Self::F>,
+        curve_chip: &Self::CurveChip,
+        scalar: &AssignedNative<Self::F>,
+        base: &Self::AssignedPoint,
+    ) -> Result<
+        (
+            (AssignedNative<Self::F>, AssignedNative<Self::F>),
+            (Self::AssignedPoint, Self::AssignedPoint),
+        ),
+        Error,
+    >;
 
     /// Complete point addition `p + q` (any of them may be the identity, and
     /// they may be equal or opposite).
@@ -183,6 +201,21 @@ impl SelfEmulation for BlstrsEmulation {
         curve_chip.msm_by_bounded_scalars(layouter, scalars, bases)
     }
 
+    fn glv_split(
+        layouter: &mut impl Layouter<Self::F>,
+        curve_chip: &Self::CurveChip,
+        scalar: &AssignedNative<Self::F>,
+        base: &Self::AssignedPoint,
+    ) -> Result<
+        (
+            (AssignedNative<Self::F>, AssignedNative<Self::F>),
+            (Self::AssignedPoint, Self::AssignedPoint),
+        ),
+        Error,
+    > {
+        curve_chip.glv_split(layouter, scalar, base)
+    }
+
     fn add(
         layouter: &mut impl Layouter<Self::F>,
         curve_chip: &Self::CurveChip,
@@ -247,6 +280,21 @@ impl SelfEmulation for BnEmulation {
         bases: &[Self::AssignedPoint],
     ) -> Result<Self::AssignedPoint, Error> {
         curve_chip.msm_by_bounded_scalars(layouter, scalars, bases)
+    }
+
+    fn glv_split(
+        layouter: &mut impl Layouter<Self::F>,
+        curve_chip: &Self::CurveChip,
+        scalar: &AssignedNative<Self::F>,
+        base: &Self::AssignedPoint,
+    ) -> Result<
+        (
+            (AssignedNative<Self::F>, AssignedNative<Self::F>),
+            (Self::AssignedPoint, Self::AssignedPoint),
+        ),
+        Error,
+    > {
+        curve_chip.glv_split(layouter, scalar, base)
     }
 
     fn add(

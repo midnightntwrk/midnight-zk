@@ -188,6 +188,17 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
         gamma: F,
     ) -> Self::Commitment;
 
+    /// The product `gamma·(fresh − acc)` of [`fold_commitments`](Self::fold_commitments),
+    /// as a commitment with the labels of `acc`. The folded commitment is
+    /// `acc + product`; the in-circuit folding verifier reads the products
+    /// from the proof and checks them instead of computing the scalar
+    /// multiplications.
+    fn fold_products(
+        acc: &Self::Commitment,
+        fresh: &Self::Commitment,
+        gamma: F,
+    ) -> Self::Commitment;
+
     /// Total byte length when committing to `n` polynomials, which is 0 when
     /// `n` is 0.
     ///

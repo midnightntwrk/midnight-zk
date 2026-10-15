@@ -23,8 +23,6 @@
 //! cannot build here (the IVC step circuit) can be measured from their
 //! counts alone.
 
-use ff::{Field, PrimeField};
-use group::Group;
 use midnight_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
     dev::cost_model::circuit_model,
@@ -34,26 +32,17 @@ use midnight_proofs::{
 
 use super::folding_test::{Chips, ChipsConfig, F, Native, S, chips, configure_chips};
 use crate::{
-    instructions::{
-        ArithInstructions, AssertionInstructions, AssignmentInstructions, PublicInputInstructions,
-        hash::HashInstructions,
-    },
+    instructions::{AssignmentInstructions, PublicInputInstructions, hash::HashInstructions},
     types::ComposableChip,
     utils::circuit_modeling::{cost_measure_end, cost_measure_start},
     verifier::{
-        AssignedKZGCommitment, AssignedKZGMultiCommitment, FoldingGadget, FoldingShape,
-        InCircuitPCS, SelfEmulation,
-        folding_types::{
-            AssignedChallenges, AssignedFoldingAccumulator, AssignedFoldingInstance, points,
-            trash_powers,
-        },
+        FoldingGadget, FoldingShape, InCircuitPCS, SelfEmulation,
+        folding_types::{AssignedChallenges, AssignedFoldingInstance, trash_powers},
         transcript_gadget::TranscriptGadget,
-        utils::AssignedBoundedScalar,
     },
 };
 
 type CS = <<S as SelfEmulation>::PCS as InCircuitPCS<S>>::OffCircuitPCS;
-type C = <S as SelfEmulation>::C;
 
 /// The part of the circuit whose rows are reported.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -68,7 +57,7 @@ enum Window {
     Init,
     /// `fold` without the commitment folding.
     FoldScalars,
-    /// The commitment folding of `fold` (naive or optimistic).
+    /// The commitment folding of `fold` .
     FoldCommitments,
     /// Hashing the output accumulator once (Poseidon).
     Hash,
@@ -79,16 +68,14 @@ struct CostCircuit {
     shape: FoldingShape,
     window: Window,
     init: bool,
-    optimistic: bool,
 }
 
 impl CostCircuit {
-    fn rows(shape: &FoldingShape, window: Window, init: bool, optimistic: bool) -> (usize, u32) {
+    fn rows(shape: &FoldingShape, window: Window, init: bool) -> (usize, u32) {
         let circuit = CostCircuit {
             shape: shape.clone(),
             window,
             init,
-            optimistic,
         };
         let model = circuit_model::<F, CS>(&circuit, 0);
         (model.rows, model.k)
@@ -119,7 +106,12 @@ fn replay(
     let phase1 = transcript.read_commitment(layouter, &shape.phase1_labels)?;
     let mut challenges = transcript.squeeze_challenges(layouter, shape.nb_theta + 2)?;
     let trash = transcript.squeeze_challenge(layouter)?;
-    challenges.extend(trash_powers::<S>(layouter, &chips.scalar, &trash, shape.nb_trash)?);
+    challenges.extend(trash_powers::<S>(
+        layouter,
+        &chips.scalar,
+        &trash,
+        shape.nb_trash,
+    )?);
     let phase2 = transcript.read_commitment(layouter, &shape.phase2_labels)?;
     challenges.extend(transcript.squeeze_challenges(layouter, shape.nb_y)?);
     Ok(AssignedFoldingInstance {
@@ -128,55 +120,6 @@ fn replay(
         instances,
         challenges: AssignedChallenges::from_scalars(shape, challenges.into_iter()),
     })
-}
-
-/// Plan 5.5 (ablation, not the protocol): witness `A_i = [γ](C_i − acc_i)`,
-/// absorb them, squeeze `ρ_i` (`ρ_1 = 1`), check
-/// `Σ ρ_i A_i − Σ (γρ_i) D_i = 0` with one MSM, and set `acc_i' = acc_i + A_i`.
-fn fold_commitments_optimistic(
-    layouter: &mut impl Layouter<F>,
-    chips: &Chips,
-    acc: &AssignedFoldingAccumulator<S>,
-    fresh: &AssignedFoldingInstance<S>,
-    gamma: &AssignedBoundedScalar<F>,
-) -> Result<Vec<<S as SelfEmulation>::AssignedPoint>, Error> {
-    let curve = &chips.curve;
-    let acc_points = points(&acc.instance.phase1)?.into_iter().chain(points(&acc.instance.phase2)?);
-    let fresh_points = points(&fresh.phase1)?.into_iter().chain(points(&fresh.phase2)?);
-    let mut transcript = TranscriptGadget::<S>::new(&chips.scalar, curve, &chips.sponge);
-    transcript.init_with_proof(layouter, Value::unknown())?;
-
-    let (mut scalars, mut bases, mut out) = (Vec::new(), Vec::new(), Vec::new());
-    for (i, ((a, label), (c, _))) in acc_points.zip(fresh_points).enumerate() {
-        let witness = S::assign_without_subgroup_check(layouter, curve, Value::unknown())?;
-        let com = AssignedKZGMultiCommitment(vec![AssignedKZGCommitment::simple(
-            witness.clone(),
-            label.clone(),
-        )]);
-        transcript.common_commitment(layouter, &com)?;
-        let rho = if i == 0 {
-            AssignedBoundedScalar::one(layouter, &chips.scalar)?
-        } else {
-            let rho = transcript.squeeze_challenge(layouter)?;
-            #[cfg(feature = "truncated-challenges")]
-            let rho = crate::verifier::utils::truncate::<F>(layouter, &chips.scalar, &rho)?;
-            #[cfg(not(feature = "truncated-challenges"))]
-            let rho = AssignedBoundedScalar::new(&rho, None);
-            rho
-        };
-        let minus_a = S::negate(layouter, curve, a)?;
-        let diff = S::add(layouter, curve, c, &minus_a)?;
-        let minus_gamma_rho =
-            chips.scalar.mul(layouter, &gamma.scalar, &rho.scalar, Some(-F::ONE))?;
-        scalars.push((rho.scalar.clone(), rho.bound.bits() as usize));
-        bases.push(witness.clone());
-        scalars.push((minus_gamma_rho, F::NUM_BITS as usize));
-        bases.push(diff);
-        out.push(S::add(layouter, curve, a, &witness)?);
-    }
-    let check = S::msm(layouter, curve, &scalars, &bases)?;
-    curve.assert_equal_to_fixed(layouter, &check, C::identity())?;
-    Ok(out)
 }
 
 impl Circuit<F> for CostCircuit {
@@ -231,20 +174,19 @@ impl Circuit<F> for CostCircuit {
             end(Window::AssignAcc, layouter);
 
             start(Window::FoldScalars, layouter);
-            let (mut next, gamma) =
+            let (mut next, gamma, mut transcript) =
                 gadget.fold_scalars(layouter, &acc, &fresh, Value::unknown())?;
             end(Window::FoldScalars, layouter);
 
             start(Window::FoldCommitments, layouter);
-            if self.optimistic {
-                fold_commitments_optimistic(layouter, &chips, &acc, &fresh, &gamma)?;
-            } else {
-                let (a, f) = (&acc.instance, &fresh);
-                next.instance.phase1 =
-                    gadget.fold_commitment(layouter, &a.phase1, &f.phase1, &gamma)?;
-                next.instance.phase2 =
-                    gadget.fold_commitment(layouter, &a.phase2, &f.phase2, &gamma)?;
-            }
+            (next.instance.phase1, next.instance.phase2) = gadget.fold_commitments(
+                layouter,
+                &acc.instance,
+                &fresh,
+                &gamma,
+                &mut transcript,
+                None,
+            )?;
             end(Window::FoldCommitments, layouter);
             next
         };
@@ -260,10 +202,10 @@ impl Circuit<F> for CostCircuit {
 
 /// Prints the row counts of one `init` and one `fold` for `shape`.
 fn report(name: &str, shape: &FoldingShape) {
-    let rows = |w, init, optimistic| CostCircuit::rows(shape, w, init, optimistic).0;
-    let (fold_total, k) = CostCircuit::rows(shape, Window::All, false, false);
-    let (init_total, init_k) = CostCircuit::rows(shape, Window::All, true, false);
-    let commitments = rows(Window::FoldCommitments, false, false);
+    let rows = |w, init| CostCircuit::rows(shape, w, init).0;
+    let (fold_total, k) = CostCircuit::rows(shape, Window::All, false);
+    let (init_total, init_k) = CostCircuit::rows(shape, Window::All, true);
+    let commitments = rows(Window::FoldCommitments, false);
     let c = shape.nb_points();
     println!(
         "{name}: log n {}, d_total {}, c_var {c}, |PI| {}, nb_theta {}, nb_y {}",
@@ -279,17 +221,16 @@ fn report(name: &str, shape: &FoldingShape) {
     println!(
         "  replay fresh {}; assign acc {}; init {}; fold scalars {}; fold commitments {commitments} \
          ({} per point); hash output {}",
-        rows(Window::Replay, false, false),
-        rows(Window::AssignAcc, false, false),
-        rows(Window::Init, true, false),
-        rows(Window::FoldScalars, false, false),
+        rows(Window::Replay, false),
+        rows(Window::AssignAcc, false),
+        rows(Window::Init, true),
+        rows(Window::FoldScalars, false),
         commitments / c,
-        rows(Window::Hash, false, false),
+        rows(Window::Hash, false),
     );
     println!(
-        "  fold circuit without commitment folding {}; optimistic commitment folding {}",
-        fold_total - commitments,
-        rows(Window::FoldCommitments, false, true),
+        "  fold circuit without commitment folding {}",
+        fold_total - commitments
     );
 }
 

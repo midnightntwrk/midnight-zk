@@ -11,7 +11,7 @@ use super::{
     instance::{Accumulator, Challenges, FoldingInstance},
     poly::{inner_product, interpolate, l0, perturbator, pow_vector, vanishing},
     trace::{evaluate_rows, fold_trace},
-    verifier::{fold_public, shift_betas, squeeze_deltas, squeeze_fold_challenge},
+    verifier::{fold_products, fold_public, shift_betas, squeeze_deltas, squeeze_fold_challenge},
 };
 use crate::{
     plonk::{Circuit, Error, ProvingKey, prover::commit_phases, traces::ProverTrace},
@@ -176,6 +176,9 @@ where
         }
 
         let gamma = squeeze_fold_challenge(transcript);
+        for product in fold_products(&self.public, &fresh.public, gamma) {
+            CS::write_commitment(transcript, &product)?;
+        }
         let public = fold_public(
             &self.public,
             &fresh.public,

@@ -1952,7 +1952,7 @@ where
     /// enforced with constraints here, so they can be decomposed into
     /// C::ScalarField::NUM_BITS / 2 bits without completeness errors.
     #[allow(clippy::type_complexity)]
-    fn glv_split(
+    pub fn glv_split(
         &self,
         layouter: &mut impl Layouter<F>,
         scalar: &S::Scalar,
