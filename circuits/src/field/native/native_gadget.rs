@@ -306,17 +306,7 @@ where
                 pending.push(x.clone());
             }
         }
-        let values: Vec<_> = pending.iter().map(|x| x.value().copied()).collect();
-        let ys = self.core_decomposition_chip.assign_many_less_than_pow2(layouter, &values, k)?;
-        layouter.assign_region(
-            || "copy",
-            |mut region| {
-                pending
-                    .iter()
-                    .zip(ys.iter())
-                    .try_for_each(|(x, y)| region.constrain_equal(x.cell(), y.cell()))
-            },
-        )?;
+        self.core_decomposition_chip.assert_many_less_than_pow2(layouter, &pending, k)?;
         pending.iter().for_each(|x| self.update_bound(x, bound.clone()));
         Ok(())
     }
