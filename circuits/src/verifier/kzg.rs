@@ -471,8 +471,8 @@ pub(crate) fn multi_prepare_kzg<S: SelfEmulation>(
     layouter: &mut impl Layouter<S::F>,
     #[cfg(feature = "truncated-challenges")] curve_chip: &S::CurveChip,
     scalar_chip: &S::ScalarChip,
-    transcript_gadget: &mut TranscriptGadget<S>,
     queries: &[VerifierQuery<S, InCircuitKZG<S>>],
+    transcript_gadget: &mut TranscriptGadget<S>,
 ) -> Result<AssignedAccumulator<S>, Error> {
     let one = AssignedBoundedScalar::one(layouter, scalar_chip)?;
 
@@ -690,14 +690,6 @@ impl<S: SelfEmulation> InCircuitPCS<S> for InCircuitKZG<S> {
         labels.to_vec()
     }
 
-    fn read_commitment(
-        transcript: &mut TranscriptGadget<S>,
-        layouter: &mut impl Layouter<S::F>,
-        labels: &[PolynomialLabel],
-    ) -> Result<Self::AssignedCommitment, Error> {
-        transcript.read_commitment(layouter, labels)
-    }
-
     fn assign_commitment(
         layouter: &mut impl Layouter<S::F>,
         curve_chip: &S::CurveChip,
@@ -707,6 +699,14 @@ impl<S: SelfEmulation> InCircuitPCS<S> for InCircuitKZG<S> {
         Ok(AssignedKZGMultiCommitment(vec![
             AssignedKZGCommitment::assign(layouter, curve_chip, value, label)?,
         ]))
+    }
+
+    fn read_commitment(
+        transcript: &mut TranscriptGadget<S>,
+        layouter: &mut impl Layouter<S::F>,
+        labels: &[PolynomialLabel],
+    ) -> Result<Self::AssignedCommitment, Error> {
+        transcript.read_commitment(layouter, labels)
     }
 
     fn common_commitment(
@@ -730,16 +730,16 @@ impl<S: SelfEmulation> InCircuitPCS<S> for InCircuitKZG<S> {
         layouter: &mut impl Layouter<S::F>,
         _curve_chip: &S::CurveChip,
         scalar_chip: &S::ScalarChip,
-        transcript: &mut TranscriptGadget<S>,
         queries: &[VerifierQuery<'_, S, Self>],
+        transcript: &mut TranscriptGadget<S>,
     ) -> Result<AssignedAccumulator<S>, Error> {
         multi_prepare_kzg(
             layouter,
             #[cfg(feature = "truncated-challenges")]
             _curve_chip,
             scalar_chip,
-            transcript,
             queries,
+            transcript,
         )
     }
 }

@@ -170,10 +170,6 @@ pub trait InCircuitPCS<S: SelfEmulation>: Sized + Clone + Debug {
         commitment: &Self::AssignedCommitment,
     ) -> Result<(), Error>;
 
-    /// The labels `commitment` tags its polynomials with. Mirrors
-    /// [`midnight_proofs::poly::commitment::PolynomialCommitmentScheme::commitment_labels`].
-    fn commitment_labels(commitment: &Self::AssignedCommitment) -> Vec<PolynomialLabel>;
-
     /// Squeezes the point at which the protocol opens its committed
     /// polynomials; the default squeezes a plain challenge. Mirrors
     /// [`midnight_proofs::poly::commitment::PolynomialCommitmentScheme::squeeze_evaluation_point`].
@@ -185,13 +181,17 @@ pub trait InCircuitPCS<S: SelfEmulation>: Sized + Clone + Debug {
         transcript.squeeze_challenge(layouter)
     }
 
+    /// The labels `commitment` tags its polynomials with. Mirrors
+    /// [`midnight_proofs::poly::commitment::PolynomialCommitmentScheme::commitment_labels`].
+    fn commitment_labels(commitment: &Self::AssignedCommitment) -> Vec<PolynomialLabel>;
+
     /// In-circuit multi-open verification; produces an accumulator.
     fn multi_prepare(
         layouter: &mut impl Layouter<S::F>,
         curve_chip: &S::CurveChip,
         scalar_chip: &S::ScalarChip,
-        transcript: &mut TranscriptGadget<S>,
         queries: &[VerifierQuery<'_, S, Self>],
+        transcript: &mut TranscriptGadget<S>,
     ) -> Result<AssignedAccumulator<S>, Error>;
 }
 
