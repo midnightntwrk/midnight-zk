@@ -6,7 +6,9 @@
 
 use ff::Field;
 use midnight_circuits::{
-    instructions::{AssignmentInstructions, ControlFlowInstructions, PublicInputInstructions},
+    instructions::{
+        AssignmentInstructions, BinaryInstructions, ControlFlowInstructions, PublicInputInstructions,
+    },
     types::{AssignedBit, AssignedNative},
     verifier::{AssignedVk, FoldingShape},
 };
@@ -185,11 +187,16 @@ impl<T: Ivc> Relation for FoldingIvcCircuit<T> {
         // Next accumulator: init (previous accumulator is the default one) or
         // fold; both are computed and the result is selected.
         let init_acc = folding.init(layouter, fresh.clone())?;
+        // The fold is discarded at the first step (the init is selected) and at
+        // genesis (the default accumulator): there the dummy folding proof need
+        // not carry the right commitment products.
+        let discarded = std_lib.or(layouter, &[is_first.clone(), is_genesis.clone()])?;
         let fold_acc = folding.fold(
             layouter,
             &prev_acc,
             &fresh,
             witness.map(|w| w.folding_proof),
+            Some(&discarded),
         )?;
         let init_pi = init_acc.as_public_input(layouter, curve_chip)?;
         let fold_pi = fold_acc.as_public_input(layouter, curve_chip)?;

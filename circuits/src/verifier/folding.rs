@@ -28,17 +28,22 @@
 //! where that binding is absent.
 //!
 //! # Commitment folding
-//! Every curve point of the phase-1 and phase-2 commitments (one per fflonk
-//! chunk) is folded as `acc + [γ](C − acc)`: one complete addition for the
-//! difference, one in-circuit scalar multiplication by `γ` (a 128-bit
-//! truncated scalar, one GLV base)
-//! and one complete addition. Complete additions handle `C = acc` and the
-//! identity, and the scalar multiplication accepts an identity base.
-//! Points are assigned without subgroup check (subgroup checks out of scope).
+//! Every curve point `A` of the phase-1 and phase-2 commitments (one per
+//! fflonk chunk) is folded as `A + R` with `R = [γ](F − A)` read from the
+//! folding proof (the prover computes it) and absorbed after `γ`. One check
+//! covers all points: for challenges `ρ_1 = 1, ρ_2, …` squeezed after the
+//! `R_i`, `Σ_i ρ_i (R_i + [γ](A_i − F_i)) = O` in a single MSM, which holds
+//! for all `i` except with negligible probability (the `R_i` are fixed before
+//! `ρ`). Every scalar of the MSM has at most 128 bits: `γ, ρ_i` are truncated
+//! and `γρ_i` is split with GLV, so one 128-step ladder serves all points,
+//! against one per point for `[γ](F − A)`. Complete additions handle equal,
+//! opposite and identity points. Points are assigned without subgroup check
+//! (out of scope).
 
 use std::marker::PhantomData;
 
-use ff::Field;
+use ff::{Field, PrimeField};
+use group::Group;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
@@ -49,8 +54,10 @@ use crate::{
     field::AssignedNative,
     hash::poseidon::{PoseidonChip, PoseidonState},
     instructions::{
-        ArithInstructions, AssertionInstructions, AssignmentInstructions, ecc::EccInstructions,
+        ArithInstructions, AssertionInstructions, AssignmentInstructions, ControlFlowInstructions,
+        ecc::EccInstructions,
     },
+    types::AssignedBit,
     verifier::{
         AssignedKZGCommitment, AssignedKZGMultiCommitment, AssignedVk, CommitmentBases, CurveChip,
         InCircuitPCS, InCircuitTranscript, PoseidonTranscriptGadget, ScalarChip, VerifierGadget,
@@ -205,26 +212,41 @@ where
         acc: &AssignedFoldingAccumulator<E>,
         fresh: &AssignedFoldingInstance<E>,
         folding_proof: Value<Vec<u8>>,
+        discarded: Option<&AssignedBit<E::Fr>>,
     ) -> Result<AssignedFoldingAccumulator<E>, Error> {
-        let (mut next, gamma) = self.fold_scalars(layouter, acc, fresh, folding_proof)?;
-        let inst = &acc.instance;
-        next.instance.phase1 =
-            self.fold_commitment(layouter, &inst.phase1, &fresh.phase1, &gamma)?;
-        next.instance.phase2 =
-            self.fold_commitment(layouter, &inst.phase2, &fresh.phase2, &gamma)?;
+        let (mut next, gamma, mut transcript) =
+            self.fold_scalars(layouter, acc, fresh, folding_proof)?;
+        let (phase1, phase2) = self.fold_commitments(
+            layouter,
+            &acc.instance,
+            fresh,
+            &gamma,
+            &mut transcript,
+            discarded,
+        )?;
+        next.instance.phase1 = phase1;
+        next.instance.phase2 = phase2;
         Ok(next)
     }
 
     /// [`Self::fold`] without the commitment folding: replays the folding
     /// transcript and folds every scalar. Returns the next accumulator with
-    /// `acc`'s (unfolded) commitments, and the folding challenge `γ`.
+    /// `acc`'s (unfolded) commitments, the folding challenge `γ` and the
+    /// transcript, to continue with [`Self::fold_commitments`].
     pub(crate) fn fold_scalars(
         &self,
         layouter: &mut impl Layouter<E::Fr>,
         acc: &AssignedFoldingAccumulator<E>,
         fresh: &AssignedFoldingInstance<E>,
         folding_proof: Value<Vec<u8>>,
-    ) -> Result<(AssignedFoldingAccumulator<E>, AssignedBoundedScalar<E::Fr>), Error> {
+    ) -> Result<
+        (
+            AssignedFoldingAccumulator<E>,
+            AssignedBoundedScalar<E::Fr>,
+            PoseidonTranscriptGadget<E::Fr>,
+        ),
+        Error,
+    > {
         let chip = &self.scalar_chip;
         let mut transcript = self.new_transcript(layouter, folding_proof)?;
         acc.absorb(
@@ -256,8 +278,7 @@ where
             .map(|_| transcript.read::<AssignedNative<E::Fr>>(layouter, &self.scalar_chip, &()))
             .collect::<Result<Vec<_>, Error>>()?;
 
-        let gamma = transcript.squeeze_challenge(layouter)?;
-        let gamma = crate::verifier::utils::truncate::<E::Fr>(layouter, chip, &gamma)?;
+        let gamma = self.squeeze_fold_challenge(layouter, &mut transcript)?;
         let g = &gamma.scalar;
 
         // β⃗* = β⃗ + α·δ⃗.
@@ -299,39 +320,87 @@ where
             betas,
             error,
         };
-        Ok((next, gamma))
+        Ok((next, gamma, transcript))
     }
 
-    /// `acc + [γ](fresh − acc)`, point by point.
-    pub(crate) fn fold_commitment(
+    /// A truncated folding challenge, as natively (`squeeze_fold_challenge`).
+    fn squeeze_fold_challenge(
         &self,
         layouter: &mut impl Layouter<E::Fr>,
-        acc: &AssignedKZGMultiCommitment<E>,
-        fresh: &AssignedKZGMultiCommitment<E>,
+        transcript: &mut PoseidonTranscriptGadget<E::Fr>,
+    ) -> Result<AssignedBoundedScalar<E::Fr>, Error> {
+        let x = transcript.squeeze_challenge(layouter)?;
+        crate::verifier::utils::truncate::<E::Fr>(layouter, &self.scalar_chip, &x)
+    }
+
+    /// The folded commitments `acc + [γ](fresh − acc)`, point by point (see
+    /// the module documentation): reads the products `R_i` from the
+    /// transcript, squeezes the `ρ_i` and checks them with one MSM. The check
+    /// is waived when `discarded` is set.
+    pub(crate) fn fold_commitments(
+        &self,
+        layouter: &mut impl Layouter<E::Fr>,
+        acc: &AssignedFoldingInstance<E>,
+        fresh: &AssignedFoldingInstance<E>,
         gamma: &AssignedBoundedScalar<E::Fr>,
-    ) -> Result<AssignedKZGMultiCommitment<E>, Error> {
-        let (acc, fresh) = (points(acc)?, points(fresh)?);
-        assert_eq!(
-            acc.len(),
-            fresh.len(),
-            "folding commitments of different groups"
-        );
-        let scalar = (gamma.scalar.clone(), gamma.bound.bits() as usize);
-        let curve_chip = &self.curve_chip;
-        let inners = (acc.into_iter().zip(fresh))
-            .map(|((a, label), (f, _))| {
-                let minus_a = curve_chip.negate(layouter, a)?;
-                let diff = curve_chip.add(layouter, f, &minus_a)?;
-                let scaled = curve_chip.msm_by_bounded_scalars(
-                    layouter,
-                    std::slice::from_ref(&scalar),
-                    &[diff],
-                )?;
-                let folded = curve_chip.add(layouter, a, &scaled)?;
-                Ok(AssignedKZGCommitment::simple(folded, label.clone()))
-            })
-            .collect::<Result<_, Error>>()?;
-        Ok(AssignedKZGMultiCommitment(inners))
+        transcript: &mut PoseidonTranscriptGadget<E::Fr>,
+        discarded: Option<&AssignedBit<E::Fr>>,
+    ) -> Result<(AssignedKZGMultiCommitment<E>, AssignedKZGMultiCommitment<E>), Error> {
+        let products = [
+            transcript.read::<AssignedKZGMultiCommitment<E>>(
+                layouter,
+                &self.curve_chip,
+                &self.shape.phase1_labels,
+            )?,
+            transcript.read::<AssignedKZGMultiCommitment<E>>(
+                layouter,
+                &self.curve_chip,
+                &self.shape.phase2_labels,
+            )?,
+        ];
+        let r = products.iter().map(points).collect::<Result<Vec<_>, _>>()?.concat();
+        let a = [&acc.phase1, &acc.phase2].map(points).into_iter().collect::<Result<Vec<_>, _>>()?;
+        let f = [&fresh.phase1, &fresh.phase2]
+            .map(points)
+            .into_iter()
+            .collect::<Result<Vec<_>, _>>()?;
+        let (a, f) = (a.concat(), f.concat());
+        assert_eq!(a.len(), f.len(), "folding commitments of different groups");
+        assert_eq!(a.len(), r.len(), "folding products of an unexpected shape");
+
+        let (chip, curve) = (&self.scalar_chip, &self.curve_chip);
+        let mut scalars = vec![];
+        let mut bases = vec![];
+        let mut folded = vec![];
+        for (i, (((a, label), (f, _)), (r, _))) in a.into_iter().zip(f).zip(r).enumerate() {
+            // ρ_1 = 1, so `R_1` is added outside the MSM.
+            let neg_f = curve.negate(layouter, f)?;
+            let e = curve.add(layouter, a, &neg_f)?; // A − F
+            if i == 0 {
+                scalars.push((gamma.scalar.clone(), gamma.bound.bits() as usize));
+                bases.push(e);
+            } else {
+                let rho = self.squeeze_fold_challenge(layouter, transcript)?;
+                let rho_bits = rho.bound.bits() as usize;
+                let gamma_rho = chip.mul(layouter, &gamma.scalar, &rho.scalar, None)?;
+                let ((k1, k2), (e1, e2)) = curve.glv_split(layouter, &gamma_rho, &e)?;
+                let half = (E::Fr::NUM_BITS as usize).div_ceil(2);
+                scalars.extend([(k1, half), (k2, half), (rho.scalar, rho_bits)]);
+                bases.extend([e1, e2, r.clone()]);
+            }
+            folded.push(AssignedKZGCommitment::simple(curve.add(layouter, a, r)?, label.clone()));
+        }
+        let msm = curve.msm_by_bounded_scalars(layouter, &scalars, &bases)?;
+        let mut check = curve.add(layouter, &msm, points(&products[0])?[0].0)?;
+        if let Some(discarded) = discarded {
+            let identity = curve.assign_fixed(layouter, E::G1::identity())?;
+            check = curve.select(layouter, discarded, &identity, &check)?;
+        }
+        curve.assert_equal_to_fixed(layouter, &check, E::G1::identity())?;
+
+        let split = self.shape.phase1_labels.len();
+        let phase2 = folded.split_off(split);
+        Ok((AssignedKZGMultiCommitment(folded), AssignedKZGMultiCommitment(phase2)))
     }
 
     /// `a + x·(b − a)` for every pair.
