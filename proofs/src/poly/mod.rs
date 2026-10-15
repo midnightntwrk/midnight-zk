@@ -468,30 +468,6 @@ impl<F: PrimeField, B> Polynomial<F, B> {
     }
 }
 
-impl<F: Field> Polynomial<F, Coeff> {
-    /// Subtracts two coefficient-form polynomials that may have different
-    /// lengths, zero-extending the shorter one. Returns a polynomial whose
-    /// length is `max(self.len(), rhs.len())`.
-    ///
-    /// This is only meaningful for coefficient-form (`Coeff`) polynomials,
-    /// where trailing zeros do not change the represented polynomial. In
-    /// Lagrange or ExtendedLagrange representations the length is tied to the
-    /// evaluation domain, so mixing lengths would be semantically wrong.
-    pub(crate) fn padded_sub(mut self, rhs: &Self) -> Self {
-        if self.values.len() < rhs.values.len() {
-            self.values.resize(rhs.values.len(), F::ZERO);
-        }
-        parallelize(&mut self.values, |lhs, start| {
-            if let Some(rhs_slice) = rhs.values.get(start..) {
-                for (lhs, rhs) in lhs.iter_mut().zip(rhs_slice.iter()) {
-                    *lhs -= *rhs;
-                }
-            }
-        });
-        self
-    }
-}
-
 impl<F, B> Index<usize> for Polynomial<F, B> {
     type Output = F;
 
@@ -696,8 +672,6 @@ impl<F: Field, B: PolynomialRepresentation> Add<Polynomial<F, B>> for Polynomial
 ///
 /// Both operands must have been created over the same domain (or with the same
 /// number of coefficients). This invariant is enforced by a runtime assertion.
-/// For coefficient-form polynomials of different lengths see
-/// `Polynomial::padded_sub`.
 impl<'a, F: Field, B: PolynomialRepresentation> Sub<&'a Polynomial<F, B>> for Polynomial<F, B> {
     type Output = Polynomial<F, B>;
 

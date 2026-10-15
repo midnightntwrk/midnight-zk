@@ -23,6 +23,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 
 ### Changed
+* The verifier gadget reads the `cs_degree` quotient limbs as one group and opens them one by one, deriving the first limb's evaluation, rather than opening the combination of their commitments, scaled by full-width scalars [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 * `AssignedMsm::assign`, and so `AssignedAccumulator::assign` and `VerifierGadget::assign_collapsed_accumulator`, assign a collapsed MSM: its variable-base points get the constant scalar 1 instead of a witnessed one, so accumulating it keeps its scalars as short as the accumulation challenge [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 * `verifier::fixed_bases` reads the labels carried by the verifying-key commitment, rather than assuming one commitment per fixed polynomial, and `fixed_base_labels` takes the constraint system and lets the new `InCircuitPCS::fixed_base_labels` group its fixed polynomials, returning the labels in the same order [#570](https://github.com/midnightntwrk/midnight-zk/pull/570)
 * BREAKING: `SelfEmulation::PCS` declares the in-circuit PCS of the verified proofs; `AssignedVk` and the `VerifierGadget` methods drop their PCS generic [#570](https://github.com/midnightntwrk/midnight-zk/pull/570)
