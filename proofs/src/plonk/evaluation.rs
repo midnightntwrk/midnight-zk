@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use ff::PrimeField;
 use group::ff::Field;
 use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
@@ -5,7 +7,7 @@ use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterato
 use super::{ConstraintSystem, Expression};
 use crate::{
     plonk::{Any, argument},
-    poly::{Coeff, FftDomain, Polynomial, PolynomialLabel, PolynomialRepresentation, Rotation},
+    poly::{FftDomain, Polynomial, PolynomialLabel, PolynomialRepresentation, Rotation},
     utils::arithmetic::parallelize,
 };
 
@@ -863,7 +865,11 @@ impl<F: PrimeField> Evaluator<F> {
     /// processing, `previous_value` is always `F::ZERO` and the leading
     /// `Add(prev, 0)` flat op is dead.
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn evaluate_numerator<B: PolynomialRepresentation>(
+    pub(crate) fn evaluate_numerator<
+        'p,
+        B: PolynomialRepresentation + 'p,
+        P: PolynomialRepresentation,
+    >(
         &self,
         fft_domain: &FftDomain<F>,
         cs: &ConstraintSystem<F>,
@@ -875,8 +881,9 @@ impl<F: PrimeField> Evaluator<F> {
         gamma: F,
         theta: &[F],
         trash_challenge: F,
-        phase1_committed: &argument::prover::Committed<F, Coeff>,
-        phase2_committed: &argument::prover::Committed<F, Coeff>,
+        phase1_committed: &'p argument::prover::Committed<F, P>,
+        phase2_committed: &'p argument::prover::Committed<F, P>,
+        to_b: impl Fn(&'p Polynomial<F, P>) -> Cow<'p, Polynomial<F, B>> + Sync,
         l0: &Polynomial<F, B>,
         l_last: &Polynomial<F, B>,
         l_active_row: &Polynomial<F, B>,
@@ -929,14 +936,14 @@ impl<F: PrimeField> Evaluator<F> {
 
             let num_sets = cs.permutation().num_sets(cs.degree());
 
-            let permutation_product_cosets: Vec<Polynomial<F, B>> = (0..num_sets)
+            let permutation_product_cosets: Vec<Cow<'p, Polynomial<F, B>>> = (0..num_sets)
                 .into_par_iter()
                 .map(|i| {
                     let poly =
                         phase2_committed.poly(&PolynomialLabel::PermutationAccumulator(i)).expect(
                             "the phase-2 group has no polynomial for a permutation accumulator",
                         );
-                    B::coeff_to_self(fft_domain, poly.clone())
+                    to_b(poly)
                 })
                 .collect();
 
@@ -1043,15 +1050,11 @@ impl<F: PrimeField> Evaluator<F> {
 
                 // Compute cosets
 
-                let multiplicities_coset =
-                    B::coeff_to_self(fft_domain, multiplicities_poly.clone());
+                let multiplicities_coset = to_b(multiplicities_poly);
 
-                let helper_cosets: Vec<_> = helper_polys
-                    .into_iter()
-                    .map(|h| B::coeff_to_self(fft_domain, h.clone()))
-                    .collect();
+                let helper_cosets: Vec<_> = helper_polys.into_iter().map(&to_b).collect();
 
-                let aggregator_poly = B::coeff_to_self(fft_domain, aggregator_poly.clone());
+                let aggregator_poly = to_b(aggregator_poly);
 
                 (helper_cosets, aggregator_poly, multiplicities_coset)
             })
@@ -1062,7 +1065,7 @@ impl<F: PrimeField> Evaluator<F> {
         let trash_cosets: Vec<_> = phase2_committed
             .par_polys()
             .filter_map(|(label, trash_poly)| match label {
-                PolynomialLabel::Trash(_) => Some(B::coeff_to_self(fft_domain, trash_poly.clone())),
+                PolynomialLabel::Trash(_) => Some(to_b(trash_poly)),
                 _ => None,
             })
             .collect();

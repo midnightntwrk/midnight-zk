@@ -1,4 +1,5 @@
 use std::{
+    borrow::Cow,
     collections::{BTreeMap, HashSet},
     iter::{self},
     ops::RangeTo,
@@ -622,7 +623,7 @@ pub(super) fn compute_nu_poly<F: PrimeField, PCS: PolynomialCommitmentScheme<F>>
     // Evaluate the numerator polynomial nu(X) of the quotient polynomial
     // h(X) = nu(X) / (X^n-1): nu(X) is a random linear combination of all
     // independent identities
-    pk.ev.evaluate_numerator::<ExtendedLagrangeCoeff>(
+    pk.ev.evaluate_numerator::<ExtendedLagrangeCoeff, Coeff>(
         fft_domain,
         &pk.vk.cs,
         &advice_cosets,
@@ -635,6 +636,7 @@ pub(super) fn compute_nu_poly<F: PrimeField, PCS: PolynomialCommitmentScheme<F>>
         *trash_challenge,
         phase1_committed,
         phase2_committed,
+        |poly| Cow::Owned(fft_domain.coeff_to_extended(poly.clone())),
         &pk.l0,
         &pk.l_last,
         &pk.l_active_row,

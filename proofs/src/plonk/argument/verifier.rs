@@ -28,6 +28,15 @@ impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> Committed<F, PCS> {
     }
 
     /// The commitment to the group's polynomials.
+    /// A group of polynomials labelled `labels` committed to by `commitment`,
+    /// known to the verifier without reading it (e.g. a folded commitment).
+    pub(crate) fn new(labels: Vec<PolynomialLabel>, commitment: PCS::Commitment) -> Self {
+        Committed {
+            commitment,
+            polynomial_labels: labels,
+        }
+    }
+
     pub(crate) fn commitment(&self) -> &PCS::Commitment {
         &self.commitment
     }

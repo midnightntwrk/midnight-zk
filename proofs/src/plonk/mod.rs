@@ -487,7 +487,7 @@ where
             ));
         }
         let fft_domain = FftDomain::new(&vk.domain);
-        let [l0, l_last, l_active_row] = compute_lagrange_polys(&vk, &fft_domain, &vk.cs);
+        let [l0, l_last, l_active_row] = compute_lagrange_polys(&fft_domain, &vk.cs);
         let fixed_values: Vec<_> = read_polynomial_vec(reader, format)?;
         let permutations: Vec<_> = read_polynomial_vec(reader, format)?;
         if permutations.len() != vk.cs.permutation.columns.len() {

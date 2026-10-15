@@ -55,6 +55,26 @@ impl<F: PrimeField, B: PolynomialRepresentation> Committed<F, B> {
         &self.polys[start..end]
     }
 
+    /// The group `self + x·(other − self)`, polynomial by polynomial (the
+    /// Protogalaxy fold `L₀(x)·self + L₁(x)·other` on the domain `{0, 1}`).
+    ///
+    /// # Panics
+    ///
+    /// Panics if the groups do not hold the same labels.
+    pub(crate) fn fold(&self, other: &Self, x: F) -> Self {
+        assert_eq!(
+            self.labels, other.labels,
+            "folding groups of different labels"
+        );
+        let polys = (self.polys.par_iter().zip(other.polys.par_iter()))
+            .map(|(a, b)| a.fold(b, x))
+            .collect();
+        Committed {
+            labels: self.labels.clone(),
+            polys,
+        }
+    }
+
     /// The group's labeled polynomials, in parallel.
     pub(crate) fn par_polys(
         &self,
