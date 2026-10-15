@@ -875,7 +875,6 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
         l_active_row: &Polynomial<F, B>,
         permutation_cosets: &[Polynomial<F, B>],
     ) -> Polynomial<F, B> {
-        let t_en = std::time::Instant::now();
         let mut values = self.evaluate_custom_gates(
             domain,
             cs,
@@ -887,7 +886,6 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
             theta,
             trash_powers,
         );
-        let en_gates = t_en.elapsed().as_secs_f64() * 1e3;
         self.add_non_gate_identities(
             &mut values,
             domain,
@@ -908,7 +906,6 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
             l_active_row,
             permutation_cosets,
         );
-        eprintln!("[evaluate_numerator] gates={en_gates:.2}");
         values
     }
 
@@ -1000,7 +997,6 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
             .collect();
         let y_trash = y_rest;
 
-        let t_en = std::time::Instant::now();
         // Permutations
         if !cs.permutation().columns.is_empty() {
             let blinding_factors = cs.blinding_factors();
@@ -1096,8 +1092,6 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
             });
         }
 
-        let en_perm = t_en.elapsed().as_secs_f64() * 1e3;
-        let t_en = std::time::Instant::now();
         // Pre-compute all lookup cosets in parallel. This trades peak memory
         // for parallelism: the FFTs for different lookups can now overlap.
         let all_lookup_cosets: Vec<_> = cs
@@ -1179,8 +1173,6 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
 
         // Fused lookup + trash constraint evaluation in a single pass
         // over `values`, using flattened evaluators for reduced dispatch.
-        let en_lookup_pre = t_en.elapsed().as_secs_f64() * 1e3;
-        let t_en = std::time::Instant::now();
         parallelize(values, |values, start| {
             // Per-thread flat values buffers for all lookups.
             let mut all_lookup_bufs: Vec<Vec<Vec<F>>> = self
@@ -1292,10 +1284,6 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                 }
             }
         });
-        let en_final = t_en.elapsed().as_secs_f64() * 1e3;
-        eprintln!(
-            "[evaluate_numerator] perm={en_perm:.2} lookup_precomp={en_lookup_pre:.2} lookup+trash={en_final:.2}"
-        );
     }
 }
 

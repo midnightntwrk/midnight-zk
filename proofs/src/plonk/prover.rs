@@ -99,12 +99,6 @@ where
         return Err(Error::InvalidInstances);
     }
 
-    let t_cp = std::time::Instant::now();
-    let mut t_lap = std::time::Instant::now();
-    let mut lap = |name: &str| {
-        eprintln!("[commit_phases] {name}: {:.2} ms", t_lap.elapsed().as_secs_f64() * 1e3);
-        t_lap = std::time::Instant::now();
-    };
     // Hash verification key into transcript
     let vk_absorbed = pk.vk.absorb_into(transcript)?;
     let phase0_committed = pk.phase0_polys.committed(&vk_absorbed);
@@ -113,9 +107,7 @@ where
 
     let instance = compute_instances(params, pk, instances, nb_committed_instances, transcript)?;
 
-    lap("vk absorb + compute_instances");
     let advice_polys = parse_advices(pk, circuit, instances, &mut rng)?;
-    lap("synthesis / parse_advices (witness gen)");
 
     // Helper: sample `num_sets` blinding vectors, each of length `inner_len`.
     // Used to pre-generate every blinding the parallel compute sections below
@@ -152,7 +144,6 @@ where
             .collect::<Result<Vec<_>, Error>>()?
     };
 
-    lap("logup multiplicities");
     let logup_multiplicities_len = logup_multiplicities.len();
     // The advice columns and the multiplicities form the phase1 group.
     // TODO: Check the multiplicities clone - see if we can remove it.
@@ -180,7 +171,6 @@ where
         transcript,
     )?;
 
-    lap("phase-1 commit (advice MSMs)");
     // Sample theta challenges for keeping lookup columns linearly independent
     let theta: Vec<F> = transcript.squeeze_challenges(pk.vk.cs.nb_theta_challenges());
 
@@ -212,7 +202,6 @@ where
         perm_blindings,
     );
 
-    lap("phase-2 perm grand product");
     for (i, poly) in perm_z_polys.into_iter().enumerate() {
         if phase2_polys_map
             .insert(PolynomialLabel::PermutationAccumulator(i), poly)
@@ -251,7 +240,6 @@ where
         })
         .collect::<Vec<_>>();
 
-    lap("phase-2 logup helpers/aggregator");
     for polys_map in logup_polys_maps {
         for (label, p) in polys_map {
             if phase2_polys_map.insert(label, p).is_some() {
@@ -274,7 +262,6 @@ where
         }
     }
 
-    lap("phase-2 trash polys");
     let (phase2_committed, phase2_commitment) = argument::prover::Committed::commit::<CS, T, _>(
         params,
         phase2_polys_map,
@@ -282,7 +269,6 @@ where
         transcript,
     )?;
 
-    lap("phase-2 commit (MSMs)");
     // Obtain challenges for keeping all identities linearly independent
     let y: Vec<F> = transcript.squeeze_challenges(pk.vk.cs.nb_y_challenges());
 
@@ -291,8 +277,6 @@ where
         instance_values,
     } = instance;
 
-    lap("tail (y, destructure)");
-    eprintln!("[commit_phases] TOTAL: {:.2} ms", t_cp.elapsed().as_secs_f64() * 1e3);
     Ok(CommittedTrace {
         trace: ProverTrace {
             instance_polys,

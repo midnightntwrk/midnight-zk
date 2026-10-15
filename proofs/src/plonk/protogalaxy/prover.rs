@@ -133,23 +133,16 @@ where
         F: Hashable<T::Hash> + Sampleable<T::Hash>,
         CS::Commitment: Hashable<T::Hash>,
     {
-        let t_fold = std::time::Instant::now();
-        let ms = |t: std::time::Instant| t.elapsed().as_secs_f64() * 1e3;
         let log_n = pk.vk.domain.k() as usize;
         let d = folding_degree(&pk.vk.cs);
-        super::degree::debug_print_identity_degrees(&pk.vk.cs);
 
         self.public.absorb(transcript)?;
         fresh.public.absorb_commitments_and_instances(transcript)?;
 
         // F(X) = Σᵢ powᵢ(β⃗ + X·δ⃗)·fᵢ(acc), with F(0) = e.
-        let t = std::time::Instant::now();
         let f_acc = evaluate_rows(pk, &self.trace);
-        let t_feval = ms(t);
         let deltas = squeeze_deltas(transcript, log_n);
-        let t = std::time::Instant::now();
         let f_coeffs = perturbator(&f_acc, &self.public.betas, &deltas);
-        let t_pert = ms(t);
         debug_assert_eq!(f_coeffs[0], self.public.error, "F(0) = e");
         for coeff in &f_coeffs[1..] {
             transcript.write(coeff)?;
@@ -157,21 +150,14 @@ where
 
         let alpha: F = transcript.squeeze_challenge();
         let f_alpha = eval_polynomial(&f_coeffs, alpha);
-        let t = std::time::Instant::now();
         let pows = pow_vector(&shift_betas(&self.public.betas, alpha, &deltas));
-        let t_pow = ms(t);
-        let pt_times = std::cell::RefCell::new(Vec::<(f64, f64)>::new());
 
         // G(x) = Σᵢ powᵢ(β⃗*)·fᵢ(acc + x·(fresh − acc)).
         let g = |x: F| {
-            let t = std::time::Instant::now();
-            let ft = fold_trace(&self.trace, &fresh.trace, x);
-            let a = ms(t);
-            let t = std::time::Instant::now();
-            let rows = evaluate_rows(pk, &ft);
-            let b = ms(t);
-            pt_times.borrow_mut().push((a, b));
-            inner_product(&pows, &rows)
+            inner_product(
+                &pows,
+                &evaluate_rows(pk, &fold_trace(&self.trace, &fresh.trace, x)),
+            )
         };
 
         // K = (G − F(α)·L₀)/Z has degree d − 2: interpolate it on 2..=d. With
@@ -181,9 +167,7 @@ where
         let k_evals: Vec<F> = (points.iter())
             .map(|x| (g(*x) - f_alpha * l0(*x)) * vanishing(*x).invert().unwrap())
             .collect();
-        let t = std::time::Instant::now();
         let k_coeffs = interpolate(&points, &k_evals);
-        let t_interp = ms(t);
         if cfg!(debug_assertions) {
             check_degree(d, &g, f_alpha, &f_acc, &pows);
         }
@@ -192,7 +176,6 @@ where
         }
 
         let gamma = squeeze_fold_challenge(transcript);
-        let t = std::time::Instant::now();
         let public = fold_public(
             &self.public,
             &fresh.public,
@@ -202,29 +185,8 @@ where
             &k_coeffs,
             gamma,
         )?;
-        let t_fpub = ms(t);
-        let t = std::time::Instant::now();
         let trace = fold_trace(&self.trace, &fresh.trace, gamma);
-        let t_final = ms(t);
-        {
-            let v = pt_times.borrow();
-            let sf: f64 = v.iter().map(|p| p.0).sum();
-            let se: f64 = v.iter().map(|p| p.1).sum();
-            eprintln!("[fold] d={d} points={}", points.len());
-            eprintln!("[fold] F_eval={t_feval:.2} perturbator={t_pert:.2} pow_vector={t_pow:.2}");
-            for (x, (a, b)) in points.iter().zip(v.iter()) {
-                eprintln!("[fold]   point {x:?}: fold_trace={a:.2} evaluate_rows={b:.2}");
-            }
-            eprintln!("[fold] sum_fold_trace={sf:.2} sum_evaluate_rows={se:.2}");
-            eprintln!(
-                "[fold] interpolate={t_interp:.2} fold_public={t_fpub:.2} final_fold_trace={t_final:.2} TOTAL={:.2}",
-                ms(t_fold)
-            );
-        }
-        Ok(ProverAccumulator {
-            trace,
-            public,
-        })
+        Ok(ProverAccumulator { trace, public })
     }
 }
 
