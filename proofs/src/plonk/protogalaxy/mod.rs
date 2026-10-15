@@ -21,7 +21,9 @@
 //!
 //! # Folding round ([`Accumulator::fold`], fresh transcript per round)
 //! 1. Absorb the accumulator: phase-1 commitment, phase-2 commitment, public
-//!    inputs (column by column), `θ⃗`, `β`, `γ`, `trash`, `y⃗`, then `β⃗`, `e`.
+//!    inputs (column by column), `θ⃗`, `β`, `γ`, `trash`, `y⃗`, then `β⃗`, `e`;
+//!    or only its hash, when the caller supplies one (the hash binds the
+//!    accumulator, which the caller must hold to it, e.g. in a public input).
 //! 2. Absorb the fresh instance: phase-1 commitment, phase-2 commitment, public
 //!    inputs (column by column). Its challenges are not absorbed: they are
 //!    derived from its own transcript (verifying key, public inputs,

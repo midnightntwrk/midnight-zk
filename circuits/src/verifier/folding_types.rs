@@ -371,21 +371,3 @@ impl<E: FoldingEngine> AssignedFoldingInstance<E> {
             .try_for_each(|pi| transcript.common(layouter, scalar_chip, pi))
     }
 }
-
-impl<E: FoldingEngine> AssignedFoldingAccumulator<E> {
-    /// Absorbs the whole accumulator: the instance (see
-    /// [`AssignedFoldingInstance::absorb`]), `θ⃗, β, γ, trash⃗, y⃗`, `β⃗`, `e`.
-    pub(crate) fn absorb(
-        &self,
-        layouter: &mut impl Layouter<E::Fr>,
-        curve_chip: &CurveChip<E>,
-        scalar_chip: &ScalarChip<E::Fr>,
-        transcript: &mut PoseidonTranscriptGadget<E::Fr>,
-    ) -> Result<(), Error> {
-        self.instance.absorb(layouter, curve_chip, scalar_chip, transcript)?;
-        (self.instance.challenges.scalars())
-            .chain(&self.betas)
-            .chain([&self.error])
-            .try_for_each(|s| transcript.common(layouter, scalar_chip, s))
-    }
-}
