@@ -13,6 +13,8 @@
 
 //! Unit tests on serialization of Midnight keys.
 
+use std::io::ErrorKind;
+
 use midnight_circuits::instructions::{
     ArithInstructions, AssertionInstructions, AssignmentInstructions, PublicInputInstructions,
 };
@@ -260,4 +262,45 @@ fn pk_write_raw_then_read_processed() {
         SerdeFormat::RawBytes,
         SerdeFormat::Processed,
     );
+}
+
+// `k` is read from untrusted key bytes; 0 underflowed `k - 1`, and a `k` above
+// the field's two-adicity cannot index an evaluation domain.
+#[test]
+#[serial]
+fn keys_with_out_of_range_k_are_rejected() {
+    let architecture = ZkStdLibArch::default();
+    let relation = DummyCircuit { architecture };
+    let srs = srs_for_test(&relation, None);
+    let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
+    let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
+
+    let mut vk_bytes = Vec::new();
+    vk.write(&mut vk_bytes, SerdeFormat::Processed).unwrap();
+    let mut pk_bytes = Vec::new();
+    pk.write(&mut pk_bytes, SerdeFormat::Processed).unwrap();
+
+    let mut arch_bytes = Vec::new();
+    architecture.write(&mut arch_bytes).unwrap();
+    let vk_k_offset = arch_bytes.len();
+
+    for k in [0, 33, u8::MAX] {
+        let mut bytes = vk_bytes.clone();
+        bytes[vk_k_offset] = k;
+        let err = MidnightVK::read(&mut &bytes[..], SerdeFormat::Processed).err();
+        assert_eq!(
+            err.map(|e| e.kind()),
+            Some(ErrorKind::InvalidData),
+            "vk k = {k}"
+        );
+
+        let mut bytes = pk_bytes.clone();
+        bytes[0] = k;
+        let err = MidnightPK::<DummyCircuit>::read(&mut &bytes[..], SerdeFormat::Processed).err();
+        assert_eq!(
+            err.map(|e| e.kind()),
+            Some(ErrorKind::InvalidData),
+            "pk k = {k}"
+        );
+    }
 }
