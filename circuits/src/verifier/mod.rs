@@ -50,7 +50,7 @@ pub use pcs::{AssignedCommitment, CommitmentBases, InCircuitHomomorphicCommitmen
 #[cfg(feature = "dev-curves")]
 pub use types::BnEmulation;
 pub use types::{BlstrsEmulation, SelfEmulation};
-pub use verifier_gadget::VerifierGadget;
+pub use verifier_gadget::{UnboundVk, VerifierGadget, vk_hash};
 
 /// The polynomial commitment scheme of Midnight proofs, verified in-circuit by
 /// [`BlstrsEmulation`].
@@ -81,16 +81,20 @@ struct AssignedEvaluationDomain<S: SelfEmulation> {
 /// Only the transcript representation and the evaluation domain are assigned
 /// in-circuit; the constraint system is kept off-circuit.
 ///
-/// The fixed and permutation commitments are not assigned either: they are
-/// placeholders (the `Fixed` variant of [AssignedKZGCommitment]) that only
-/// carry their label. The verifier only uses them as MSM bases, so
-/// [VerifierGadget::prepare] records their scalars in the accumulator, and
-/// the decider supplies the actual points off-circuit, via
-/// [Accumulator::resolve_fixed_bases]. They are still bound to the proof, as
-/// `transcript_repr` commits to them.
+/// The fixed and permutation commitments are either:
+///  - placeholders (the `Fixed` variant of [AssignedKZGCommitment]) that only
+///    carry their label, for keys assigned with
+///    [VerifierGadget::assign_vk_as_public_input] or
+///    [VerifierGadget::assign_fixed_vk]. The verifier only uses them as MSM
+///    bases, so [VerifierGadget::prepare] records their scalars in the
+///    accumulator, and the decider supplies the actual points off-circuit, via
+///    [Accumulator::resolve_fixed_bases]. They are still bound to the proof, as
+///    `transcript_repr` commits to them.
+///  - witnessed points, for keys obtained from an [UnboundVk]. They are bound
+///    by the hash the key is bound to.
 ///
-/// The only entry points are [VerifierGadget::assign_vk_as_public_input] and
-/// [VerifierGadget::assign_fixed_vk].
+/// The only entry points are [VerifierGadget::assign_vk_as_public_input],
+/// [VerifierGadget::assign_fixed_vk] and the binding functions of [UnboundVk].
 #[derive(Clone, Debug)]
 pub struct AssignedVk<S: SelfEmulation> {
     domain: AssignedEvaluationDomain<S>,

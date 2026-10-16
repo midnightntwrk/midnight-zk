@@ -47,7 +47,6 @@ use crate::ivc::F;
 mod aggregator;
 mod circuit;
 mod claims;
-mod utils;
 
 pub use aggregator::{AggregationWitness, Aggregator, Verifier};
 pub use circuit::{InnerCircuitsContext, ProofAggregation, State};

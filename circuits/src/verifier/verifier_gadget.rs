@@ -43,6 +43,10 @@ use crate::{
     },
 };
 
+mod unbound_vk;
+
+pub use unbound_vk::{UnboundVk, vk_hash};
+
 /// A gadget for KZG-based in-circuit proof verification.
 #[derive(Clone, Debug)]
 #[doc(hidden)] // A bug in rustc prevents us from documenting the verifier gadget.
@@ -283,7 +287,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
 
     /// Completes the assigned domain by deriving `omega_inv` and `n = 2^k` from
     /// assigned `k` and `omega` cells (in-circuit).
-    fn derive_domain(
+    pub(super) fn derive_domain(
         &self,
         layouter: &mut impl Layouter<S::F>,
         k: AssignedNative<S::F>,
@@ -300,13 +304,13 @@ impl<S: SelfEmulation> VerifierGadget<S> {
     }
 
     /// Builds the `AssignedVk`.
-    fn assemble_vk(
+    pub(super) fn assemble_vk(
         &self,
         cs: &ConstraintSystem<S::F>,
         domain: AssignedEvaluationDomain<S>,
         transcript_repr: AssignedNative<S::F>,
     ) -> Result<AssignedVk<S>, Error> {
-        if cs.num_selectors() != 0 {
+        if cs.num_selectors() > 0 {
             return Err(Error::Synthesis(
                 "the constraint system has selectors, it must be finalized".into(),
             ));
