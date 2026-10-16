@@ -2,7 +2,10 @@ use std::{borrow::Cow, sync::OnceLock};
 
 use ff::{PrimeField, WithSmallOrderMulGroup};
 use group::ff::Field;
-use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
+use rayon::{
+    iter::{IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator},
+    slice::ParallelSliceMut,
+};
 
 use super::{
     ConstraintSystem, Expression, logup::table::TableSide, protogalaxy::sparse_gates::SparseGates,
@@ -1502,6 +1505,9 @@ impl<F: PrimeField> GraphEvaluator<F> {
     }
 }
 
+/// Rows per task in [`evaluate`]
+const EVAL_CHUNK: usize = 512;
+
 /// Simple evaluation of an expression
 pub fn evaluate<F: Field, B: PolynomialRepresentation>(
     expression: &Expression<F>,
@@ -1513,9 +1519,11 @@ pub fn evaluate<F: Field, B: PolynomialRepresentation>(
 ) -> Vec<F> {
     let mut values = vec![F::ZERO; size];
     let log_n = size.ilog2();
-    parallelize(&mut values, |values, start| {
+    // Small chunks: callers nest this under other parallel loops, which
+    // balance better with work stealing than with one chunk per thread.
+    values.par_chunks_mut(EVAL_CHUNK).enumerate().for_each(|(c, values)| {
         for (i, value) in values.iter_mut().enumerate() {
-            let idx = start + i;
+            let idx = c * EVAL_CHUNK + i;
             *value = expression.evaluate(
                 &|scalar| scalar,
                 &|_| panic!("virtual selectors are removed during optimization"),

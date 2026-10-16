@@ -108,7 +108,7 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ChunkedArgument<F> {
         let eval_expressions =
             |expressions: &[Expression<F>]| -> Vec<Polynomial<F, LagrangeCoeff>> {
                 expressions
-                    .iter()
+                    .par_iter()
                     .map(|expression| {
                         pk.vk.domain.lagrange_from_vec(evaluate(
                             expression,
@@ -125,8 +125,8 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ChunkedArgument<F> {
         let t_mu = std::time::Instant::now();
         let chunked_input_evals: Vec<Vec<Vec<Polynomial<F, LagrangeCoeff>>>> = self
             .input_expression_chunks
-            .iter()
-            .map(|chunk| chunk.iter().map(|exprs| eval_expressions(exprs)).collect())
+            .par_iter()
+            .map(|chunk| chunk.par_iter().map(|exprs| eval_expressions(exprs)).collect())
             .collect();
 
         let selector = eval_expressions(std::slice::from_ref(&self.selector)).swap_remove(0);
