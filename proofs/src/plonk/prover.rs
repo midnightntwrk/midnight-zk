@@ -33,7 +33,10 @@ use crate::{
         ProverQuery, Rotation, batch_invert_rational, commitment::PolynomialCommitmentScheme,
     },
     transcript::{Hashable, Sampleable, Transcript},
-    utils::{arithmetic::eval_polynomial_seq, rational::Rational},
+    utils::{
+        arithmetic::{eval_polynomial, eval_polynomial_seq},
+        rational::Rational,
+    },
 };
 
 #[cfg(feature = "committed-instances")]
@@ -369,9 +372,9 @@ where
 
     let nu_poly = compute_nu_poly(pk, &trace);
 
-    // Construct the quotient polynomial h(X) = nu(X)/(X^n-1), split it into
-    // limbs, and commit to each limb separately
-    let quotient_limbs =
+    // Construct the quotient polynomial h(X) = nu(X)/(X^n-1), split it into limbs,
+    // and commit to the limbs as one group
+    let quotient_committed =
         compute_h_poly::<F, CS, T>(params, pk.get_vk().get_domain(), nu_poly, transcript)?;
 
     let ProverTrace {
@@ -405,7 +408,15 @@ where
 
     let phase2_evaluated = phase2_committed.evaluate(cs, &x_rotations, transcript)?;
 
-    let quotient_poly = scaled_quotient_poly(quotient_limbs, x, pk.vk.n());
+    let mut quotient_evaluated = quotient_committed.evaluate(cs, &x_rotations, transcript)?;
+
+    // h_0(x) is not written to the proof, the verifier derives it.
+    let h0 = PolynomialLabel::QuotientPiece(0);
+    let h0_eval = eval_polynomial(
+        quotient_committed.poly(&h0).expect("a quotient limb h_0"),
+        x,
+    );
+    quotient_evaluated.insert(h0, x, h0_eval);
 
     let instance_labels: Vec<_> = (0..nb_committed_instances)
         .map(|i| [PolynomialLabel::CommittedInstance(i)])
@@ -417,28 +428,11 @@ where
         &phase0_evaluated,
         &phase1_evaluated,
         &phase2_evaluated,
+        &quotient_evaluated,
         &x_rotations,
-        &quotient_poly,
     );
 
     CS::multi_open(params, &queries, transcript).map_err(|_| Error::ConstraintSystemFailure)
-}
-
-/// h(X) = h_0(X) + x^{n-1} h_1(X) + ..., scaled by (1 - x^n): the
-/// polynomial behind the verifier's quotient commitment (see
-/// `scaled_quotient_commitment`), which opens to -nu(x) at x.
-pub(crate) fn scaled_quotient_poly<F: PrimeField>(
-    quotient_limbs: Vec<Polynomial<F, Coeff>>,
-    x: F,
-    n: u64,
-) -> Polynomial<F, Coeff> {
-    let splitting_factor = x.pow_vartime([n - 1]);
-    let xn = splitting_factor * x;
-    iter::successors(Some(xn - F::ONE), |pow| Some(*pow * splitting_factor))
-        .zip(quotient_limbs)
-        .fold(Polynomial::init(0), |acc, (scalar, limb)| {
-            acc.padded_sub(&(limb * scalar))
-        })
 }
 
 /// This creates a proof for the provided `circuit` when given the public
@@ -676,14 +670,17 @@ pub(super) fn compute_nu_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommit
 }
 
 /// Computes the quotient polynomial `h(X) = nu(X) / (X^n - 1)` and commits to
-/// it, writing the commitment(s) to the transcript.
+/// it, writing the commitment to the transcript.
 ///
-/// `h(X)` is split into `quotient_poly_degree` limbs of degree `n-2` each, so
-/// that each can be committed with an SRS of size `n` after 1 term for
-/// blinding. Each limb is independently blinded and committed, and all
-/// `quotient_poly_degree` commitments are written to the transcript. The
-/// returned `Vec` contains the `quotient_poly_degree` limb polynomials in
-/// coefficient form.
+/// `h(X)` is split into `quotient_poly_degree + 1` limbs `h_k(X)` of `n-2`
+/// coefficients, with `h(X) = Σ_k X^{k(n-2)} h_k(X)`, so that each can be
+/// committed with an SRS of size `n` after 2 terms for blinding. The blinded
+/// limbs are committed to as one group, labeled `QuotientPiece(0)`,
+/// `QuotientPiece(1)`, ..., which is returned in coefficient form.
+///
+/// # Panics
+///
+/// If `n < quotient_poly_degree + 2`, as the limbs could not hold `h(X)`.
 pub(crate) fn compute_h_poly<
     F: WithSmallOrderMulGroup<3> + Hashable<T::Hash>,
     CS: PolynomialCommitmentScheme<F>,
@@ -693,7 +690,7 @@ pub(crate) fn compute_h_poly<
     domain: &EvaluationDomain<F>,
     nu_poly: Polynomial<F, ExtendedLagrangeCoeff>,
     transcript: &mut T,
-) -> Result<Vec<Polynomial<F, Coeff>>, Error>
+) -> Result<argument::prover::Committed<F, Coeff>, Error>
 where
     CS::Commitment: Hashable<T::Hash>,
 {
@@ -710,42 +707,49 @@ where
     h_poly.truncate((domain.n - 1) as usize * domain.get_quotient_poly_degree());
 
     // Split h(X) up into limbs and add inter-limb blinding so that
-    // individual limb commitments do not leak information about h(X).
-    let h_poly_iter = h_poly.chunks_exact((domain.n - 1) as usize);
-    assert_eq!(h_poly_iter.remainder().len(), 0);
-    let mut h_limbs = h_poly_iter.map(|v| v.to_vec()).collect::<Vec<_>>();
+    // individual limb commitments and evaluations do not leak information
+    // about h(X).
+    let limb_len = (domain.n - 2) as usize;
+    let nb_limbs = domain.get_quotient_poly_degree() + 1;
+    assert!(
+        nb_limbs * limb_len >= h_poly.len(),
+        "the domain is too small to split the quotient into {nb_limbs} limbs"
+    );
+    h_poly.resize(nb_limbs * limb_len, F::ZERO);
+    let mut h_limbs = h_poly.chunks_exact(limb_len).map(|v| v.to_vec()).collect::<Vec<_>>();
     drop(h_poly);
 
     blind_quotient_limbs(&mut h_limbs);
 
-    let h_limbs: Vec<_> = h_limbs.into_iter().map(|h_limb| domain.coeff_from_vec(h_limb)).collect();
-
-    // Compute commitment to each limb (parallel MSMs).
-    let h_commitments: Vec<_> = h_limbs
-        .par_iter()
-        .enumerate()
-        .map(|(i, h_piece)| CS::commit(params, h_piece, PolynomialLabel::QuotientPiece(i)))
+    let h_limbs = (h_limbs.into_iter().enumerate())
+        .map(|(i, h_limb)| {
+            (
+                PolynomialLabel::QuotientPiece(i),
+                domain.coeff_from_vec(h_limb),
+            )
+        })
         .collect();
 
-    // Write each limb commitment to the transcript in order.
-    for c in h_commitments {
-        transcript.write(&c)?;
-    }
-
-    Ok(h_limbs)
+    argument::prover::Committed::commit::<CS, T, _>(params, h_limbs, Polynomial::clone, transcript)
+        .map(|(limbs, _)| limbs)
 }
 
+/// Blinds the limbs `h_k(X)` of `h(X) = Σ_k X^{k(n-2)} h_k(X)`, of `n-2`
+/// coefficients each, without changing `h(X)`: each boundary between two limbs
+/// gets two random `t`, `t'`, added as `t X^{n-2} + t' X^{n-1}` to the lower
+/// limb and subtracted as `t + t' X` from the upper one.
 fn blind_quotient_limbs<F: PrimeField>(quotient_limbs: &mut [Vec<F>]) {
     let nr_limbs = quotient_limbs.len();
     assert!(nr_limbs >= 2);
 
     for i in 1..nr_limbs {
-        let t = F::random(OsRng);
-        quotient_limbs[i - 1].push(t);
+        let (t, t_prime) = (F::random(OsRng), F::random(OsRng));
+        quotient_limbs[i - 1].extend([t, t_prime]);
         quotient_limbs[i][0] -= t;
+        quotient_limbs[i][1] -= t_prime;
     }
 
-    quotient_limbs[nr_limbs - 1].push(F::ZERO);
+    quotient_limbs[nr_limbs - 1].extend([F::ZERO; 2]);
 }
 
 pub(super) fn write_instance_evals_to_transcript<F, CS, T>(
@@ -793,8 +797,8 @@ pub(super) fn compute_queries<
     phase0_evals: &'a argument::prover::Evaluated<'a, F>,
     phase1_evals: &'a argument::prover::Evaluated<'a, F>,
     phase2_evals: &'a argument::prover::Evaluated<'a, F>,
+    quotient_evals: &'a argument::prover::Evaluated<'a, F>,
     x_rotations: &'a BTreeMap<Rotation, F>,
-    quotient_poly: &'a Polynomial<F, Coeff>,
 ) -> Vec<ProverQuery<'a, F>> {
     // The multi-open scales the first commitment by 1, which is best spent on
     // one read from the proof: the phase-0 commitments are known in advance and
@@ -816,12 +820,7 @@ pub(super) fn compute_queries<
                 })
             }),
         )
-        .chain(iter::once(ProverQuery::new(
-            &[PolynomialLabel::Quotient],
-            slice::from_ref(quotient_poly),
-            x_rotations[&Rotation::cur()],
-            PolynomialLabel::Quotient,
-        )))
+        .chain(quotient_evals.open())
         .collect()
 }
 

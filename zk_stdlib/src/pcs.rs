@@ -13,15 +13,13 @@
 
 //! The polynomial commitment schemes of zk_stdlib.
 
+pub use midnight_circuits::verifier::DefaultPCS;
 use midnight_curves::{Bls12, Fq};
 use midnight_proofs::poly::{
     commitment::PolynomialCommitmentScheme,
     fflonk::Fflonk,
     kzg::{KZGCommitmentScheme, params::ParamsKZG},
 };
-
-/// The polynomial commitment scheme of zk_stdlib.
-pub type DefaultPCS = Fflonk<KZGCommitmentScheme<Bls12>, 4>;
 
 /// The catalog of polynomial commitment schemes supported by zk_stdlib: KZG
 /// and fflonk over KZG, for any `LOG2_T_MAX`. Their parameters are a KZG SRS

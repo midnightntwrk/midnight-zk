@@ -599,8 +599,19 @@ impl ZkStdLib {
         let pow2range_config =
             Pow2RangeChip::configure(meta, &advice_columns[1..=arch.nr_pow2range_cols as usize]);
 
-        let core_decomposition_config =
+        let mut core_decomposition_config =
             P2RDecompositionChip::configure(meta, &(native_config.clone(), pow2range_config));
+        // Range-check two values per row when there is an advice column to spare
+        // for the second one.
+        if advice_columns.len() > arch.nb_arith_cols as usize
+            && (arch.nr_pow2range_cols as usize).is_multiple_of(2)
+        {
+            P2RDecompositionChip::configure_packing(
+                meta,
+                &mut core_decomposition_config,
+                advice_columns[arch.nb_arith_cols as usize],
+            );
+        }
 
         let jubjub_config = arch.jubjub.then(|| {
             EccChip::<C>::configure(meta, &advice_columns[..NB_EDWARDS_COLS].try_into().unwrap())

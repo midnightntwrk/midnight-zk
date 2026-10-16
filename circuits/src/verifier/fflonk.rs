@@ -14,9 +14,9 @@
 //! In-circuit fflonk over a generic in-circuit PCS.
 //!
 //! In-circuit analog of [`midnight_proofs::poly::fflonk`]: the polynomials of
-//! a group are committed in chunks of at most `T_MAX`, each chunk under the
-//! label `Collection(chunk)`, and opening a chunk at `x` amounts to opening it
-//! with the inner PCS at the `t`-th roots of `x`.
+//! a group are committed in the [`balanced_chunks`] of at most `T_MAX`, each
+//! chunk under the label `Collection(chunk)`, and opening a chunk at `x`
+//! amounts to opening it with the inner PCS at the `t`-th roots of `x`.
 
 use std::{
     collections::{BTreeMap, HashMap, hash_map::Entry},
@@ -29,7 +29,7 @@ use midnight_proofs::{
     poly::{
         PolynomialLabel::{self, Collection},
         commitment::InterleavedCommit,
-        fflonk::Fflonk,
+        fflonk::{Fflonk, balanced_chunks},
     },
 };
 
@@ -40,7 +40,7 @@ use crate::{
         AssignedAccumulator, SelfEmulation,
         pcs::{InCircuitPCS, VerifierQuery},
         transcript_gadget::TranscriptGadget,
-        utils::{RootsCache, cached_roots, eval_polynomial},
+        utils::{PowersCache, RootsCache, cached_roots, eval_polynomial_on_roots},
     },
 };
 
@@ -57,7 +57,7 @@ impl<PCS, const LOG2_T_MAX: u32> InCircuitFflonk<PCS, LOG2_T_MAX> {
     /// The labels of the inner commitments to the group `labels`.
     fn chunk_labels(labels: &[PolynomialLabel]) -> Vec<PolynomialLabel> {
         PolynomialLabel::assert_distinct(labels);
-        labels.chunks(Self::T_MAX).map(|l| Collection(l.to_vec())).collect()
+        balanced_chunks(labels, Self::T_MAX).map(|l| Collection(l.to_vec())).collect()
     }
 }
 
@@ -102,6 +102,15 @@ where
         PCS::common_commitment(transcript, layouter, commitment)
     }
 
+    fn squeeze_evaluation_point(
+        layouter: &mut impl Layouter<S::F>,
+        scalar_chip: &S::ScalarChip,
+        transcript: &mut TranscriptGadget<S>,
+    ) -> Result<AssignedNative<S::F>, Error> {
+        let x = PCS::squeeze_evaluation_point(layouter, scalar_chip, transcript)?;
+        scalar_chip.pow(layouter, &x, Self::T_MAX as u64)
+    }
+
     fn commitment_labels(commitment: &Self::AssignedCommitment) -> Vec<PolynomialLabel> {
         PCS::commitment_labels(commitment)
             .into_iter()
@@ -110,15 +119,6 @@ where
                 label => panic!("fflonk commitment tagged with {label}, not a collection"),
             })
             .collect()
-    }
-
-    fn squeeze_evaluation_point(
-        layouter: &mut impl Layouter<S::F>,
-        scalar_chip: &S::ScalarChip,
-        transcript: &mut TranscriptGadget<S>,
-    ) -> Result<AssignedNative<S::F>, Error> {
-        let x = PCS::squeeze_evaluation_point(layouter, scalar_chip, transcript)?;
-        scalar_chip.pow(layouter, &x, Self::T_MAX as u64)
     }
 
     fn multi_prepare(
@@ -132,7 +132,7 @@ where
         // its polynomials are queried at, in query order: `labels -> (commitment,
         // points)`.
         let chunks_info = queries.iter().fold(BTreeMap::new(), |mut chunks_info, q| {
-            let labels = (Self::commitment_labels(q.commitment).chunks(Self::T_MAX))
+            let labels = balanced_chunks(&Self::commitment_labels(q.commitment), Self::T_MAX)
                 .find(|labels| labels.contains(&q.label))
                 .map_or_else(|| vec![q.label.clone()], <[_]>::to_vec);
             let (_, points) = chunks_info.entry(labels).or_insert((q.commitment, Vec::new()));
@@ -164,13 +164,22 @@ where
         // coefficients `f_i(x)`.
         let mut inner_queries = Vec::new();
         let mut roots_cache = RootsCache::new();
+        let mut powers_cache = PowersCache::new();
         for (labels, (commitment, points)) in &chunks_info {
             let t = labels.len().next_power_of_two();
             for x in points {
                 let f_evals: Vec<_> =
                     labels.iter().map(|l| &evals[&(l.clone(), x.clone())]).collect();
-                for root in cached_roots(layouter, scalar_chip, &mut roots_cache, x, t)? {
-                    let eval = eval_polynomial(layouter, scalar_chip, &f_evals, root)?;
+                let roots = cached_roots(layouter, scalar_chip, &mut roots_cache, x, t)?;
+                let root_evals = eval_polynomial_on_roots(
+                    layouter,
+                    scalar_chip,
+                    &mut powers_cache,
+                    &f_evals,
+                    &roots[0],
+                    t,
+                )?;
+                for (root, eval) in roots.iter().zip(root_evals) {
                     let label = Collection(labels.clone());
                     let query = VerifierQuery::<S, PCS>::new(root, *commitment, label, &eval);
                     inner_queries.push(query.with_root_of(x, t));

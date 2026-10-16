@@ -9,7 +9,7 @@ CircuitModel {
     lookups: 1,
     trashcans: 1,
     permutations: 8,
-    column_queries: 35,
+    column_queries: 39,
     point_sets: 3,
-    size: 2144,
+    size: 2932,
 }

@@ -21,8 +21,9 @@
 //! plonk proof of the same circuit.
 //!
 //! Transcript: verifying key, accumulator (as in folding), `[S]`, `ζ`,
-//! quotient limbs, `x`, phase-0/1/2 evaluations, `S(x)`, `S(ωx)`,
-//! multi-open. The decider is not zero-knowledge (`S` is not blinded).
+//! quotient limbs (one group), `x`, phase-0/1/2 evaluations, the limb
+//! evaluations but `h_0(x)`, `S(x)`, `S(ωx)`, multi-open. The decider is not
+//! zero-knowledge (`S` is not blinded).
 
 use std::{borrow::Cow, hash::Hash, slice};
 
@@ -34,7 +35,7 @@ use crate::{
     plonk::{
         Error, ProvingKey, argument,
         keygen::compute_lagrange_polys,
-        prover::{compute_h_poly, compute_queries, scaled_quotient_poly},
+        prover::{compute_h_poly, compute_queries},
         traces::ProverTrace,
     },
     poly::{
@@ -173,7 +174,7 @@ where
     let trace = acc.trace.into_coeff(domain);
     let dd = EvaluationDomain::new(cs.degree() as u32 + 1, domain.k());
     let numerator = relaxed_numerator(pk, &dd, &trace, w, &s, zeta, e);
-    let quotient_limbs = compute_h_poly::<F, CS, T>(params, &dd, numerator, transcript)?;
+    let quotient_committed = compute_h_poly::<F, CS, T>(params, &dd, numerator, transcript)?;
 
     let x: F = CS::squeeze_evaluation_point(transcript);
     let x_rotations = argument::rotations(cs)
@@ -183,11 +184,18 @@ where
     let phase0_evaluated = trace.phase0_committed.evaluate(cs, &x_rotations, transcript)?;
     let phase1_evaluated = trace.phase1_committed.evaluate(cs, &x_rotations, transcript)?;
     let phase2_evaluated = trace.phase2_committed.evaluate(cs, &x_rotations, transcript)?;
+    let mut quotient_evaluated = quotient_committed.evaluate(cs, &x_rotations, transcript)?;
     let x_next = domain.rotate_omega(x, Rotation::next());
     transcript.write(&eval_polynomial(&s, x))?;
     transcript.write(&eval_polynomial(&s, x_next))?;
 
-    let quotient_poly = scaled_quotient_poly(quotient_limbs, x, vk.n());
+    // h_0(x) is not written to the proof, the verifier derives it.
+    let h0 = PolynomialLabel::QuotientPiece(0);
+    let h0_eval = eval_polynomial(
+        quotient_committed.poly(&h0).expect("a quotient limb h_0"),
+        x,
+    );
+    quotient_evaluated.insert(h0, x, h0_eval);
     let s_labels = [grand_sum_label()];
     let mut queries = compute_queries(
         pk,
@@ -196,8 +204,8 @@ where
         &phase0_evaluated,
         &phase1_evaluated,
         &phase2_evaluated,
+        &quotient_evaluated,
         &x_rotations,
-        &quotient_poly,
     );
     queries.extend(
         [x, x_next].map(|point| {

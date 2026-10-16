@@ -105,7 +105,7 @@ pub struct NativeConfig {
     q_12_minus_34: Selector,
     q_par_add: Selector,
     pub(crate) value_cols: Vec<Column<Advice>>,
-    coeff_cols: Vec<Column<Fixed>>,
+    pub(crate) coeff_cols: Vec<Column<Fixed>>,
     q_next_col: Column<Fixed>,
     mul_ab_col: Column<Fixed>,
     mul_ac_col: Column<Fixed>,

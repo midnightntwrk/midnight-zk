@@ -250,6 +250,21 @@ where
     P::NB_LIMBS as usize + max(P::NB_LIMBS as usize, 1 + P::moduli().len())
 }
 
+/// The limbs of `x` in the well-formed representation, `x = 1 + Σ_i base^i
+/// x_i`.
+fn well_formed_limb_values<F, K, P>(x: Value<K>) -> Vec<Value<F>>
+where
+    F: CircuitField,
+    K: CircuitField,
+    P: FieldEmulationParams<F, K>,
+{
+    let base = BI::from(2).pow(P::LOG2_BASE);
+    let limbs = x.map(|v| bi_to_limbs(P::NB_LIMBS, &base, &(v - K::ONE).to_biguint().into()));
+    (0..P::NB_LIMBS as usize)
+        .map(|i| limbs.clone().map(|limbs| bigint_to_fe::<F>(&limbs[i])))
+        .collect()
+}
+
 /// Creates a vector of upper-bounds (one per limb), specifiying the maximum
 /// size (log2) that each limb should take for the emulated field element to be
 /// considered well-formed.
@@ -424,32 +439,24 @@ where
         layouter: &mut impl Layouter<F>,
         x: Value<K>,
     ) -> Result<AssignedField<F, K, P>, Error> {
-        let base = BI::from(2).pow(P::LOG2_BASE);
-        // We shift the value of x by 1, remember that limbs {xi}_i represent integer
-        //   1 + sum_i base^i xi
-        let x = x.map(|v| {
-            let bi = (v - K::ONE).to_biguint().into();
-            bi_to_limbs(P::NB_LIMBS, &base, &bi)
-        });
+        Ok(self.assign_many(layouter, &[x])?.remove(0))
+    }
 
-        // Range-check the cells in the range [0, base)
-        let x_cells = (0..P::NB_LIMBS)
-            .map(|i| x.clone().map(|limbs| bigint_to_fe::<F>(&limbs[i as usize])))
-            .zip(well_formed_log2_bounds::<F, K, P>().iter())
-            .map(|(xi_value, log2_bound)| {
-                self.native_gadget.assign_lower_than_fixed(
-                    layouter,
-                    xi_value,
-                    &(BigUint::one() << *log2_bound),
-                )
+    fn assign_many(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        xs: &[Value<K>],
+    ) -> Result<Vec<AssignedField<F, K, P>>, Error> {
+        let limb_values: Vec<Value<F>> =
+            (xs.iter()).flat_map(|x| well_formed_limb_values::<F, K, P>(*x)).collect();
+        let limbs = self.assign_limbs(layouter, &limb_values)?;
+        Ok((limbs.chunks(P::NB_LIMBS as usize))
+            .map(|limbs| AssignedField::<F, K, P> {
+                limb_values: limbs.to_vec(),
+                limb_bounds: well_formed_bounds::<F, K, P>(),
+                _marker: PhantomData,
             })
-            .collect::<Result<Vec<_>, Error>>()?;
-
-        Ok(AssignedField::<F, K, P> {
-            limb_values: x_cells,
-            limb_bounds: well_formed_bounds::<F, K, P>(),
-            _marker: PhantomData,
-        })
+            .collect())
     }
 
     fn assign_fixed(
@@ -1441,17 +1448,7 @@ where
             .collect::<Vec<_>>();
 
         // Assign and range-check the z limbs
-        let z_limbs = z_values
-            .iter()
-            .zip(well_formed_log2_bounds::<F, K, P>().iter())
-            .map(|(&z_value, &log2_bound)| {
-                self.native_gadget.assign_lower_than_fixed(
-                    layouter,
-                    z_value,
-                    &(BigUint::one() << log2_bound),
-                )
-            })
-            .collect::<Result<Vec<_>, Error>>()?;
+        let z_limbs = self.assign_limbs(layouter, &z_values)?;
 
         let z = AssignedField::<F, K, P> {
             limb_values: z_limbs,
@@ -1565,7 +1562,8 @@ where
 
     /// Normalizes the given assigned field element, but only if its bounds
     /// exceed the limits of the well-formed bounds.
-    pub(crate) fn normalize(
+    // [DROP] public for the measurement harness.
+    pub fn normalize(
         &self,
         layouter: &mut impl Layouter<F>,
         x: &AssignedField<F, K, P>,
@@ -1597,6 +1595,35 @@ where
 
     /// Converts the given assigned field element into an equivalent one
     /// represented in canonical form, through the normalization procedure.
+    /// Assigns the limbs of field elements, as `well_formed_limb_values`
+    /// lays them out, range-checking each against its well-formed bound. The
+    /// limbs of equal bound are range-checked together, so that they may share
+    /// rows.
+    fn assign_limbs(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        limb_values: &[Value<F>],
+    ) -> Result<Vec<AssignedNative<F>>, Error> {
+        let log2_bounds = well_formed_log2_bounds::<F, K, P>();
+        let bound_of = |i: usize| log2_bounds[i % log2_bounds.len()];
+        let mut distinct_bounds = log2_bounds.clone();
+        distinct_bounds.sort();
+        distinct_bounds.dedup();
+        let mut cells: Vec<Option<AssignedNative<F>>> = vec![None; limb_values.len()];
+        for log2_bound in distinct_bounds {
+            let idx: Vec<usize> =
+                (0..limb_values.len()).filter(|&i| bound_of(i) == log2_bound).collect();
+            let values: Vec<_> = idx.iter().map(|&i| limb_values[i]).collect();
+            let assigned = self.native_gadget.assign_many_lower_than_fixed(
+                layouter,
+                &values,
+                &(BigUint::one() << log2_bound),
+            )?;
+            idx.into_iter().zip(assigned).for_each(|(i, cell)| cells[i] = Some(cell));
+        }
+        Ok(cells.into_iter().map(|cell| cell.expect("every limb is assigned")).collect())
+    }
+
     fn make_canonical(
         &self,
         layouter: &mut impl Layouter<F>,

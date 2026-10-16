@@ -16,7 +16,12 @@
 use std::collections::BTreeMap;
 
 use group::Group;
-use midnight_proofs::{circuit::Value, plonk, plonk::ConstraintSystem, poly::PolynomialLabel};
+use midnight_proofs::{
+    circuit::Value,
+    plonk,
+    plonk::ConstraintSystem,
+    poly::{PolynomialLabel, fflonk::Fflonk, kzg::KZGCommitmentScheme},
+};
 
 use crate::{
     field::AssignedNative,
@@ -57,6 +62,10 @@ pub use pcs::{AssignedCommitment, CommitmentBases, InCircuitHomomorphicCommitmen
 pub use types::BnEmulation;
 pub use types::{BlstrsEmulation, SelfEmulation};
 pub use verifier_gadget::VerifierGadget;
+
+/// The polynomial commitment scheme of Midnight proofs, verified in-circuit by
+/// [`BlstrsEmulation`].
+pub type DefaultPCS = Fflonk<KZGCommitmentScheme<midnight_curves::Bls12>, 4>;
 
 /// The off-circuit verifying key of the proofs that `S` verifies in-circuit.
 type VerifyingKey<S> = plonk::VerifyingKey<

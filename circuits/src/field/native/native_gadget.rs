@@ -72,6 +72,7 @@ where
     /// The underlying native field arithmetic chip.
     pub native_chip: NativeArith,
     constrained_cells: Rc<RefCell<HashMap<AssignedNative<F>, BigUint>>>,
+    negated_bits: Rc<RefCell<HashMap<AssignedNative<F>, AssignedBit<F>>>>,
     _marker: PhantomData<F>,
 }
 
@@ -87,6 +88,7 @@ where
             core_decomposition_chip,
             native_chip,
             constrained_cells: Rc::new(RefCell::new(HashMap::new())),
+            negated_bits: Rc::new(RefCell::new(HashMap::new())),
             _marker: PhantomData,
         }
     }
@@ -269,6 +271,44 @@ where
         let x = self.assign(layouter, value)?;
         self.assert_lower_than_fixed(layouter, &x, bound)?;
         Ok(x)
+    }
+
+    fn assign_many_lower_than_fixed(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        values: &[Value<F>],
+        bound: &BigUint,
+    ) -> Result<Vec<AssignedNative<F>>, Error> {
+        let k = bound.bits().saturating_sub(1) as usize;
+        if bound.is_zero() || *bound != BigUint::from(1u8) << k {
+            return (values.iter())
+                .map(|v| self.assign_lower_than_fixed(layouter, *v, bound))
+                .collect();
+        }
+        self.core_decomposition_chip.assign_many_less_than_pow2(layouter, values, k)
+    }
+
+    fn assert_many_lower_than_fixed(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        xs: &[AssignedNative<F>],
+        bound: &BigUint,
+    ) -> Result<(), Error> {
+        let k = bound.bits().saturating_sub(1) as usize;
+        if bound.is_zero() || *bound != BigUint::from(1u8) << k {
+            return xs.iter().try_for_each(|x| self.assert_lower_than_fixed(layouter, x, bound));
+        }
+        // The cells not already known to be in range, each once.
+        let mut pending: Vec<AssignedNative<F>> = Vec::with_capacity(xs.len());
+        for x in xs {
+            let bounded = matches!(self.constrained_cells.borrow().get(x), Some(b) if b <= bound);
+            if !bounded && !pending.contains(x) {
+                pending.push(x.clone());
+            }
+        }
+        self.core_decomposition_chip.assert_many_less_than_pow2(layouter, &pending, k)?;
+        pending.iter().for_each(|x| self.update_bound(x, bound.clone()));
+        Ok(())
     }
 
     fn assert_lower_than_fixed(
@@ -1432,7 +1472,12 @@ where
         layouter: &mut impl Layouter<F>,
         b: &AssignedBit<F>,
     ) -> Result<AssignedBit<F>, Error> {
-        self.native_chip.not(layouter, b)
+        if let Some(not_b) = self.negated_bits.borrow().get(&b.0) {
+            return Ok(not_b.clone());
+        }
+        let not_b = self.native_chip.not(layouter, b)?;
+        self.negated_bits.borrow_mut().insert(b.0.clone(), not_b.clone());
+        Ok(not_b)
     }
 }
 
@@ -1778,6 +1823,7 @@ impl<F: CircuitField> FromScratch<F> for NativeGadget<F, P2RDecompositionChip<F>
         P2RDecompositionConfig {
             native_config,
             pow2range_config,
+            pack: None,
         }
     }
 }

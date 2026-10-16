@@ -52,6 +52,19 @@ pub trait CoreDecompositionInstructions<F: CircuitField>: Clone + Debug {
         bit_length: usize,
     ) -> Result<AssignedNative<F>, Error>;
 
+    /// Assigns several values, guaranteeing that each is strictly lower than
+    /// 2^{bit_length}, possibly range-checking several of them in one row.
+    fn assign_many_less_than_pow2(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        values: &[Value<F>],
+        bit_length: usize,
+    ) -> Result<Vec<AssignedNative<F>>, Error> {
+        (values.iter())
+            .map(|v| self.assign_less_than_pow2(layouter, *v, bit_length))
+            .collect()
+    }
+
     /// Function that guarantees that x < 2^{bit_length}
     fn assert_less_than_pow2(
         &self,
@@ -66,12 +79,32 @@ pub trait CoreDecompositionInstructions<F: CircuitField>: Clone + Debug {
         )
     }
 
+    /// Asserts that each of the given cells is strictly lower than
+    /// 2^{bit_length}, possibly deferring the range checks so that several
+    /// cells share a row.
+    fn assert_many_less_than_pow2(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        xs: &[AssignedNative<F>],
+        bit_length: usize,
+    ) -> Result<(), Error> {
+        let values: Vec<_> = xs.iter().map(|x| x.value().copied()).collect();
+        let ys = self.assign_many_less_than_pow2(layouter, &values, bit_length)?;
+        layouter.assign_region(
+            || "copy",
+            |mut region| {
+                (xs.iter().zip(&ys))
+                    .try_for_each(|(x, y)| region.constrain_equal(x.cell(), y.cell()))
+            },
+        )
+    }
+
     /// Assigns several values and asserts that they are all strictly lower than
-    /// 2^{bit_length}.
+    /// 2^{bit_length}, sharing rows.
     ///
     /// # Panics
     ///
-    /// If bit_length > 8.
+    /// If bit_length exceeds the maximum bit length of the lookup.
     fn assign_many_small(
         &self,
         layouter: &mut impl Layouter<F>,

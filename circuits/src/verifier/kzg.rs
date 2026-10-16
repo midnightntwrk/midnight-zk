@@ -28,6 +28,8 @@ use std::{
 
 use ff::Field;
 use midnight_curves::pairing::MultiMillerLoop;
+#[cfg(feature = "truncated-challenges")]
+use midnight_proofs::poly::kzg::COLLAPSE_THRESHOLD;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
@@ -36,6 +38,7 @@ use midnight_proofs::{
         kzg::{
             KZGCommitmentScheme,
             commitment::{KZGCommitment, KZGMultiCommitment},
+            point_set_order,
         },
     },
 };
@@ -516,6 +519,7 @@ pub(crate) fn multi_prepare_kzg<S: SelfEmulation>(
 
     let mut q_coms: Vec<_> = vec![vec![]; point_sets.len()];
     let mut q_eval_sets = vec![vec![]; point_sets.len()];
+    let mut set_sizes: Vec<_> = point_sets.iter().map(|points| (points.len(), 0)).collect();
 
     for com_data in commitment_map.into_iter() {
         let mut msm = AssignedMsm::empty();
@@ -527,6 +531,7 @@ pub(crate) fn multi_prepare_kzg<S: SelfEmulation>(
         }
         q_coms[com_data.set_index].push(msm);
         q_eval_sets[com_data.set_index].push(com_data.evals);
+        set_sizes[com_data.set_index].1 += usize::from(!com_data.label.is_fixed());
     }
 
     let truncated_x1_powers = {
@@ -545,11 +550,8 @@ pub(crate) fn multi_prepare_kzg<S: SelfEmulation>(
         .map(|evals| evals_inner_product(layouter, scalar_chip, evals, &truncated_x1_powers))
         .collect::<Result<Vec<_>, Error>>()?;
 
-    // Sort point sets by ascending cardinality. The (len, i) key provides a
-    // deterministic total order even when two sets share the same cardinality.
     let (q_coms, q_eval_sets, point_sets) = {
-        let mut order: Vec<usize> = (0..point_sets.len()).collect();
-        order.sort_by_key(|&i| (point_sets[i].len(), i));
+        let order = point_set_order(&set_sizes);
         let q_coms: Vec<_> = order.iter().map(|&i| q_coms[i].clone()).collect();
         let q_eval_sets: Vec<_> = order.iter().map(|&i| q_eval_sets[i].clone()).collect();
         let point_sets: Vec<_> = order.iter().map(|&i| point_sets[i].clone()).collect();
@@ -609,13 +611,16 @@ pub(crate) fn multi_prepare_kzg<S: SelfEmulation>(
     let final_com = {
         let mut coms = q_coms;
 
-        // We collapse all AssignedMsm at this point to later leverage the fact that x4
-        // powers are truncated. Exceptionally, the first one is not collapsed,
-        // as the first x4 power is 1.
+        // We collapse every AssignedMsm of at least `COLLAPSE_THRESHOLD` variable
+        // bases at this point to later leverage the fact that x4 powers are
+        // truncated. Exceptionally, the first one is not collapsed, as the first x4
+        // power is 1.
         #[cfg(feature = "truncated-challenges")]
-        coms.iter_mut().skip(1).try_for_each(|com| {
-            com.collapse(layouter, curve_chip, scalar_chip, PolynomialLabel::NoLabel)
-        })?;
+        (coms.iter_mut().skip(1))
+            .filter(|com| com.nb_variable_bases() >= COLLAPSE_THRESHOLD)
+            .try_for_each(|com| {
+                com.collapse(layouter, curve_chip, scalar_chip, PolynomialLabel::NoLabel)
+            })?;
         coms.push(f_com.into_msm(layouter, scalar_chip)?);
 
         msm_inner_product(layouter, scalar_chip, &coms, &truncated_x4_powers)?
@@ -690,14 +695,6 @@ impl<S: SelfEmulation> InCircuitPCS<S> for InCircuitKZG<S> {
         labels.to_vec()
     }
 
-    fn read_commitment(
-        transcript: &mut TranscriptGadget<S>,
-        layouter: &mut impl Layouter<S::F>,
-        labels: &[PolynomialLabel],
-    ) -> Result<Self::AssignedCommitment, Error> {
-        transcript.read_commitment(layouter, labels)
-    }
-
     fn assign_commitment(
         layouter: &mut impl Layouter<S::F>,
         curve_chip: &S::CurveChip,
@@ -707,6 +704,14 @@ impl<S: SelfEmulation> InCircuitPCS<S> for InCircuitKZG<S> {
         Ok(AssignedKZGMultiCommitment(vec![
             AssignedKZGCommitment::assign(layouter, curve_chip, value, label)?,
         ]))
+    }
+
+    fn read_commitment(
+        transcript: &mut TranscriptGadget<S>,
+        layouter: &mut impl Layouter<S::F>,
+        labels: &[PolynomialLabel],
+    ) -> Result<Self::AssignedCommitment, Error> {
+        transcript.read_commitment(layouter, labels)
     }
 
     fn common_commitment(

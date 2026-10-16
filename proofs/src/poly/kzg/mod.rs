@@ -58,6 +58,23 @@ use crate::{
     },
 };
 
+/// With truncated challenges, the multi-open collapses the combined commitment
+/// of a point set (but the first) into one point before scaling it by its `x4`
+/// power only if it has at least this many variable-base terms. A set with
+/// fewer keeps its terms, scaled by `x4` one by one.
+pub const COLLAPSE_THRESHOLD: usize = 4;
+
+/// The order in which the multi-open argument takes its point sets, given the
+/// number of points and of variable-base polynomials of every set: the sets
+/// with more variable-base polynomials first, then by ascending number of
+/// points and by index. The first set is scaled by the unit power of `x4`, so
+/// its variable bases keep the scalars of a single truncated challenge.
+pub fn point_set_order(sets: &[(usize, usize)]) -> Vec<usize> {
+    let mut order: Vec<usize> = (0..sets.len()).collect();
+    order.sort_by_key(|&i| (std::cmp::Reverse(sets[i].1), sets[i].0, i));
+    order
+}
+
 #[derive(Clone, Debug)]
 /// KZG verifier
 pub struct KZGCommitmentScheme<E: Engine> {
@@ -305,9 +322,11 @@ where
         let (poly_map, point_sets) = construct_intermediate_sets(&kzg_queries)?;
 
         let mut q_polys = vec![vec![]; point_sets.len()];
+        let mut set_sizes: Vec<_> = point_sets.iter().map(|points| (points.len(), 0)).collect();
 
         for com_data in poly_map.iter() {
             q_polys[com_data.set_index].push(label_to_poly[&com_data.label]);
+            set_sizes[com_data.set_index].1 += usize::from(!com_data.label.is_fixed());
         }
 
         let q_polys: Vec<_> = q_polys
@@ -323,12 +342,9 @@ where
             })
             .collect();
 
-        // Sort point sets by ascending cardinality, as the verifier does. The (len, i)
-        // key provides a deterministic total order even when two sets share the same
-        // cardinality.
+        // Order the point sets as the verifier does.
         let (q_polys, point_sets) = {
-            let mut order: Vec<usize> = (0..point_sets.len()).collect();
-            order.sort_by_key(|&i| (point_sets[i].len(), i));
+            let order = point_set_order(&set_sizes);
             let q_polys: Vec<_> = order.iter().map(|&i| &q_polys[i]).collect();
             let point_sets: Vec<_> = order.iter().map(|&i| point_sets[i].clone()).collect();
             (q_polys, point_sets)
@@ -396,7 +412,6 @@ where
 
     fn multi_prepare<'com, T: Transcript>(
         queries: &[VerifierQuery<'com, E::Fr, KZGCommitmentScheme<E>>],
-        _k: u32,
         transcript: &mut T,
     ) -> Result<DualMSM<E>, Error>
     where
@@ -444,9 +459,11 @@ where
         let mut q_coms: Vec<_> = vec![vec![]; point_sets.len()];
         let mut q_eval_sets = vec![vec![]; point_sets.len()];
 
+        let mut set_sizes: Vec<_> = point_sets.iter().map(|points| (points.len(), 0)).collect();
         for com_data in commitment_map.into_iter() {
             q_coms[com_data.set_index].push(label_to_commitment[&com_data.label].clone());
             q_eval_sets[com_data.set_index].push(com_data.evals);
+            set_sizes[com_data.set_index].1 += usize::from(!com_data.label.is_fixed());
         }
 
         let nb_x1_powers = q_coms.iter().map(Vec::len).max().unwrap_or(0);
@@ -468,11 +485,8 @@ where
             .map(|evals| evals_inner_product(evals, &powers_x1))
             .collect::<Vec<_>>();
 
-        // Sort point sets by ascending cardinality. The (len, i) key provides a
-        // deterministic total order even when two sets share the same cardinality.
         let (q_coms, q_eval_sets, point_sets) = {
-            let mut order: Vec<usize> = (0..point_sets.len()).collect();
-            order.sort_by_key(|&i| (point_sets[i].len(), i));
+            let order = point_set_order(&set_sizes);
             let q_coms: Vec<_> = order.iter().map(|&i| q_coms[i].clone()).collect();
             let q_eval_sets: Vec<_> = order.iter().map(|&i| q_eval_sets[i].clone()).collect();
             let point_sets: Vec<_> = order.iter().map(|&i| point_sets[i].clone()).collect();
@@ -516,10 +530,16 @@ where
             let size = q_coms.len() + 1;
             let mut coms = q_coms;
 
-            // Collapse all MSMs before combining with x4 powers, to match the
-            // in-circuit verifier. Skip the first one since its x4 power is 1.
+            // Collapse the MSMs of at least `COLLAPSE_THRESHOLD` variable-base
+            // terms before combining with x4 powers, to match the in-circuit
+            // verifier. Skip the first one since its x4 power is 1.
             #[cfg(feature = "truncated-challenges")]
-            coms.iter_mut().skip(1).for_each(|c| c.collapse(PolynomialLabel::NoLabel));
+            (coms.iter_mut().skip(1))
+                .filter(|c| {
+                    matches!(c, KZGCommitment::Linear(_, _, labels)
+                        if labels.iter().filter(|l| !l.is_fixed()).count() >= COLLAPSE_THRESHOLD)
+                })
+                .for_each(|c| c.collapse(PolynomialLabel::NoLabel));
             coms.push(f_com);
 
             #[cfg(feature = "truncated-challenges")]
@@ -667,9 +687,9 @@ mod tests {
         let proof = create_proof::<_, CircuitTranscript<Blake2bState>>(&params);
 
         let verifier_params = params.verifier_params();
-        verify::<Bls12, CircuitTranscript<Blake2bState>>(&verifier_params, &proof[..], K, false);
+        verify::<Bls12, CircuitTranscript<Blake2bState>>(&verifier_params, &proof[..], false);
 
-        verify::<Bls12, CircuitTranscript<Blake2bState>>(&verifier_params, &proof[..], K, true);
+        verify::<Bls12, CircuitTranscript<Blake2bState>>(&verifier_params, &proof[..], true);
     }
 
     #[test]
@@ -719,12 +739,12 @@ mod tests {
         // input: the verifier rejects it rather than panicking.
         let mut transcript = CircuitTranscript::<Blake2bState>::init();
         assert!(matches!(
-            KZGCommitmentScheme::<Bls12>::multi_prepare(&[query], 4, &mut transcript),
+            KZGCommitmentScheme::<Bls12>::multi_prepare(&[query], &mut transcript),
             Err(crate::poly::Error::OpeningError)
         ));
     }
 
-    fn verify<E, T>(verifier_params: &ParamsVerifierKZG<E>, proof: &[u8], k: u32, should_fail: bool)
+    fn verify<E, T>(verifier_params: &ParamsVerifierKZG<E>, proof: &[u8], should_fail: bool)
     where
         E: MultiMillerLoop,
         T: Transcript,
@@ -806,7 +826,7 @@ mod tests {
         };
 
         let result =
-            KZGCommitmentScheme::multi_prepare(&queries.collect::<Vec<_>>(), k, &mut transcript)
+            KZGCommitmentScheme::multi_prepare(&queries.collect::<Vec<_>>(), &mut transcript)
                 .unwrap();
 
         if should_fail {

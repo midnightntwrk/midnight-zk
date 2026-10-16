@@ -114,6 +114,10 @@ fn eval_points<S: SelfEmulation>(
         PolynomialLabel::LogupHelper(_, _) => vec![at(Rotation::cur())],
         PolynomialLabel::LogupAggregator(_) => vec![at(Rotation::cur()), at(Rotation::next())],
         PolynomialLabel::Trash(_) => vec![at(Rotation::cur())],
+        // The verifier derives h_0(x) from nu(x) rather than reading it; see
+        // the `insert` of each `Evaluated`.
+        PolynomialLabel::QuotientPiece(0) => vec![],
+        PolynomialLabel::QuotientPiece(_) => vec![at(Rotation::cur())],
         _ => unreachable!(),
     }
 }
@@ -224,6 +228,17 @@ impl<S: SelfEmulation> Committed<S> {
 // "expressions" are implemented in our `expressions/` directory.
 
 impl<'a, S: SelfEmulation> Evaluated<S> {
+    /// Adds the evaluation `eval` at `point` of the group's polynomial `label`,
+    /// one derived rather than read from the proof.
+    pub(crate) fn insert(
+        &mut self,
+        label: PolynomialLabel,
+        point: AssignedNative<S::F>,
+        eval: AssignedNative<S::F>,
+    ) {
+        self.evals_map.insert(label, vec![Evaluation { point, eval }]);
+    }
+
     /// The queries that the multi-open argument checks for this group.
     pub(crate) fn queries(&'a self) -> Vec<VerifierQuery<'a, S>> {
         self.evals_map

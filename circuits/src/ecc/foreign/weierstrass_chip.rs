@@ -33,7 +33,7 @@ use midnight_proofs::{
     circuit::{Chip, Layouter, Value},
     plonk::{Advice, Column, ConstraintSystem, Error, Fixed, Selector},
 };
-use num_bigint::BigUint;
+use num_bigint::{BigInt, BigUint};
 use num_traits::One;
 use rand::rngs::OsRng;
 #[cfg(any(test, feature = "testing"))]
@@ -43,21 +43,16 @@ use {
 };
 
 use super::gates::weierstrass::{
-    lambda_squared,
-    lambda_squared::LambdaSquaredConfig,
-    on_curve,
-    on_curve::OnCurveConfig,
-    slope::{self, SlopeConfig},
-    tangent,
-    tangent::TangentConfig,
+    assert_add, assert_double, unified,
+    unified::{CoeffBounds, UnifiedConfig},
 };
 use crate::{
     CircuitField,
     ecc::{
         curves::WeierstrassCurve,
         foreign::common::{
-            add_1bit_scalar_bases, configure_multi_select_lookup, fill_dynamic_lookup_row,
-            msm_preprocess,
+            MultiSelectRow, add_1bit_scalar_bases, configure_multi_select_lookup,
+            fill_dynamic_lookup_row, msm_preprocess,
         },
     },
     field::foreign::{
@@ -80,13 +75,9 @@ where
     C: WeierstrassCurve,
 {
     base_field_config: FieldChipConfig,
-    on_curve_config: on_curve::OnCurveConfig<C>,
-    slope_config: slope::SlopeConfig<C>,
-    tangent_config: tangent::TangentConfig<C>,
-    lambda_squared_config: lambda_squared::LambdaSquaredConfig<C>,
+    unified_config: unified::UnifiedConfig<C>,
     // columns for the dynamic lookup
     q_multi_select: Selector,
-    idx_col_multi_select: Column<Advice>,
     tag_col_multi_select: Column<Fixed>,
 }
 
@@ -100,9 +91,7 @@ where
     // The scalar field is treated as a gadget. Here we only account for the columns
     // that this chip requires for its own custom gates.
     // The 2 in `2 + |moduli|` corresponds to `u_col` + `cond_col`.
-    // The outer `+ 1` corresponds to the advice column for the index of
-    // `multi_select`.
-    B::NB_LIMBS as usize + max(B::NB_LIMBS as usize, 2 + B::moduli().len()) + 1
+    B::NB_LIMBS as usize + max(B::NB_LIMBS as usize, 2 + B::moduli().len())
 }
 
 /// Shared MSM randomness for the windowed double-and-add algorithm.
@@ -762,15 +751,13 @@ where
         p: &AssignedForeignPoint<F, C, B>,
     ) -> Result<AssignedForeignPoint<F, C, B>, Error> {
         let r_curve = p.value().map(|p| p + p);
-        let r = self.assign_point_unchecked(layouter, r_curve)?;
-
-        // (There are no points of order 2 by assumption.)
-        self.native_gadget.assert_equal(layouter, &p.is_id, &r.is_id)?;
+        // r = id iff p = id, since there are no points of order 2 by assumption.
+        let r = self.assign_point_with_id_unchecked(layouter, r_curve, p.is_id.clone())?;
 
         // If `p` is not the identity, make sure the double relation is satisfied.
         // Note that the following call to [assert_double] satisfies the required
-        // preconditions because we set cond := (p != id) and we have asserted that
-        // p = id <=> r = id, so both preconditions of [assert_double] are guaranteed.
+        // preconditions because we set cond := (p != id) and r takes the identity
+        // flag of p, so both preconditions of [assert_double] are guaranteed.
         let cond = self.native_gadget.not(layouter, &p.is_id)?;
         self.assert_double(layouter, p, &r, &cond)?;
 
@@ -916,28 +903,21 @@ where
         y: &AssignedField<F, C::Base, B>,
     ) -> Result<Self::Point, Error> {
         let is_id = self.native_gadget.assign_fixed(layouter, false)?;
-        let cond = self.native_gadget.assign_fixed(layouter, true)?;
-        on_curve::assert_is_on_curve::<F, C, B, N>(
-            layouter,
-            &cond,
-            x,
-            y,
-            self.base_field_chip(),
-            &self.config.on_curve_config,
-        )?;
         // If from_xy fails, we give the identity as a default value, but note that
-        // the above constraints will make the circuit unsatisfiable.
+        // the constraints below will make the circuit unsatisfiable.
         // This is intentional.
         let point = x
             .value()
             .zip(y.value())
             .map(|(x, y)| C::from_xy(x, y).unwrap_or(C::identity()).into_subgroup());
-        Ok(AssignedForeignPoint::<F, C, B> {
+        let p = AssignedForeignPoint::<F, C, B> {
             point,
             is_id,
             x: x.clone(),
             y: y.clone(),
-        })
+        };
+        self.assert_on_curve(layouter, &p)?;
+        Ok(p)
     }
 
     fn assign_without_subgroup_check(
@@ -946,15 +926,7 @@ where
         value: Value<C::CryptographicGroup>,
     ) -> Result<Self::Point, Error> {
         let p = self.assign_point_unchecked(layouter, value)?;
-        let is_not_id = self.native_gadget.not(layouter, &p.is_id)?;
-        on_curve::assert_is_on_curve::<F, C, B, N>(
-            layouter,
-            &is_not_id,
-            &p.x,
-            &p.y,
-            self.base_field_chip(),
-            &self.config.on_curve_config,
-        )?;
+        self.assert_on_curve(layouter, &p)?;
         Ok(p)
     }
 
@@ -1036,49 +1008,37 @@ where
         let cond_col = advice_columns[cond_col_idx];
         meta.enable_equality(cond_col);
 
-        let on_curve_config = OnCurveConfig::<C>::configure::<F, B>(
+        // Coefficient ranges covering all gate instantiations:
+        //   slope:           a=0, b∈{−1,+1}, d=0,  e=1,  ca=1, cd=−1, k=0
+        //   lambda-sq (add): a=1, b=−1,      d=−1, e=−1, ca=0, cd=0,  k=0
+        //   lambda-sq (dbl): a=1, b=−2,      d=−1, e=0,  ca=0, cd=0,  k=0
+        //   tangent:         a=3, b=0,       d=0,  e=0,  ca=0, cd=−2, k=1
+        let unified_coeff_bounds = CoeffBounds {
+            a: (BigInt::from(0), BigInt::from(3)),
+            b: (BigInt::from(-2), BigInt::from(1)),
+            d: (BigInt::from(-1), BigInt::from(0)),
+            e: (BigInt::from(-1), BigInt::from(1)),
+            ca: (BigInt::from(0), BigInt::from(1)),
+            cd: (BigInt::from(-2), BigInt::from(0)),
+            k: (BigInt::from(0), BigInt::from(1)),
+        };
+        let unified_config = UnifiedConfig::<C>::configure::<F, B>(
             meta,
             base_field_config,
             &cond_col,
+            &advice_columns[cond_col_idx + 1..],
+            &unified_coeff_bounds,
             nb_parallel_range_checks,
             max_bit_len,
         );
 
-        let slope_config = SlopeConfig::<C>::configure::<F, B>(
-            meta,
-            base_field_config,
-            &cond_col,
-            nb_parallel_range_checks,
-            max_bit_len,
-        );
-
-        let tangent_config = TangentConfig::<C>::configure::<F, B>(
-            meta,
-            base_field_config,
-            &cond_col,
-            nb_parallel_range_checks,
-            max_bit_len,
-        );
-
-        let lambda_squared_config = LambdaSquaredConfig::<C>::configure::<F, B>(
-            meta,
-            base_field_config,
-            &cond_col,
-            nb_parallel_range_checks,
-            max_bit_len,
-        );
-
-        let (q_multi_select, idx_col_multi_select, tag_col_multi_select) =
+        let (q_multi_select, tag_col_multi_select) =
             configure_multi_select_lookup(meta, advice_columns, base_field_config);
 
         ForeignWeierstrassEccConfig {
             base_field_config: base_field_config.clone(),
-            on_curve_config,
-            slope_config,
-            tangent_config,
-            lambda_squared_config,
+            unified_config,
             q_multi_select,
-            idx_col_multi_select,
             tag_col_multi_select,
         }
     }
@@ -1092,25 +1052,59 @@ where
         layouter: &mut impl Layouter<F>,
         p: Value<C::CryptographicGroup>,
     ) -> Result<AssignedForeignPoint<F, C, B>, Error> {
-        let values = p.map(|p| {
+        let is_id = (self.native_gadget).assign(
+            layouter,
+            p.map(|p| C::CryptographicGroup::is_identity(&p).into()),
+        )?;
+        self.assign_point_with_id_unchecked(layouter, p, is_id)
+    }
+
+    /// Like [Self::assign_point_unchecked], with the given `is_id` as the
+    /// identity flag of the point.
+    fn assign_point_with_id_unchecked(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        p: Value<C::CryptographicGroup>,
+        is_id: AssignedBit<F>,
+    ) -> Result<AssignedForeignPoint<F, C, B>, Error> {
+        let coordinates = p.map(|p| {
             if C::CryptographicGroup::is_identity(&p).into() {
-                (C::Base::ZERO, C::Base::ZERO, true)
+                (C::Base::ZERO, C::Base::ZERO)
             } else {
-                let coordinates =
-                    p.into().coordinates().expect("assign_point_unchecked: invalid point given");
-                (coordinates.0, coordinates.1, false)
+                p.into().coordinates().expect("assign_point_unchecked: invalid point given")
             }
         });
-        let x = self.base_field_chip().assign(layouter, values.map(|v| v.0))?;
-        let y = self.base_field_chip().assign(layouter, values.map(|v| v.1))?;
-        let is_id = self.native_gadget.assign(layouter, values.map(|v| v.2))?;
-        let p = AssignedForeignPoint::<F, C, B> {
+        let mut xy = (self.base_field_chip()).assign_many(
+            layouter,
+            &[coordinates.map(|c| c.0), coordinates.map(|c| c.1)],
+        )?;
+        let (x, y) = (xy.remove(0), xy.remove(0));
+        Ok(AssignedForeignPoint {
             point: p,
             is_id,
             x,
             y,
+        })
+    }
+
+    /// Asserts that the given point satisfies the Weierstrass curve equation
+    /// y^2 = x^3 + ax + b.
+    fn assert_on_curve(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        p: &AssignedForeignPoint<F, C, B>,
+    ) -> Result<(), Error> {
+        // We compare y^2 (lhs) to x^3 + ax + b (rhs) if the point is not the identity.
+        let lhs = self.base_field_chip.mul(layouter, &p.y, &p.y, None)?;
+        let rhs = {
+            let x2 = self.base_field_chip.mul(layouter, &p.x, &p.x, None)?;
+            let x2_plus_a = self.base_field_chip.add_constant(layouter, &x2, C::A)?;
+            let x3_plus_ax = self.base_field_chip.mul(layouter, &x2_plus_a, &p.x, None)?;
+            self.base_field_chip.add_constant(layouter, &x3_plus_ax, C::B)?
         };
-        Ok(p)
+
+        let is_not_id = self.native_gadget.not(layouter, &p.is_id)?;
+        self.base_field_chip.cond_assert_equal(layouter, &is_not_id, &lhs, &rhs)
     }
 
     /// Given `p` and `q`, returns `p + q`.
@@ -1133,21 +1127,19 @@ where
     /// # Unsatisfiable Circuit
     ///
     /// If `p = -q`.
-    fn incomplete_add(
+    // [DROP] public for the measurement harness.
+    pub fn incomplete_add(
         &self,
         layouter: &mut impl Layouter<F>,
         p: &AssignedForeignPoint<F, C, B>,
         q: &AssignedForeignPoint<F, C, B>,
     ) -> Result<AssignedForeignPoint<F, C, B>, Error> {
         let r_curve = p.value().zip(q.value()).map(|(p, q)| p + q);
-        let r = self.assign_point_unchecked(layouter, r_curve)?;
+        // r is not the identity, since it takes the identity flag of p.
+        let r = self.assign_point_with_id_unchecked(layouter, r_curve, p.is_id.clone())?;
 
-        // Assert that r is not the identity.
-        self.native_gadget.assert_equal(layouter, &p.is_id, &r.is_id)?;
-
-        // The preconditions of [incomplete_add] (and the previous assertion
-        // that r != id) guarantee that the following call satisfies all the
-        // preconditions of [assert_add].
+        // The preconditions of [incomplete_add] (and r != id) guarantee that the
+        // following call satisfies all the preconditions of [assert_add].
         // Note that the following call to [assert_add] will make the circuit
         // unsatisfiable if `p = -q`, but that is the intended behavior of
         // [incomplete_add].
@@ -1190,37 +1182,23 @@ where
             self.base_field_chip().assign(layouter, lambda_value)?
         };
 
-        // Assert that λ is the correct slope of the tangent at p.
-        tangent::assert_tangent::<F, C, B, N>(
+        // Assert tangent, λ² = 2px+rx, and slope(p,r,negate) in a single fused region.
+        //
+        // The slope instance (between p and -r) only constrains r.y if p.x != r.x.
+        // This is guaranteed because r.x has been constrained to be correct by the
+        // λ-squared instance, based on a λ that has been constrained to be correct
+        // by the tangent instance. Given our assumption that there do not exist
+        // order-3 points (and our precondition that p != id) we have that 2p != ±p,
+        // thus r.x != p.x, as desired.
+        assert_double::assert_double::<F, C, B, N>(
             layouter,
             cond,
             (&p.x, &p.y),
+            (&r.x, &r.y),
             &lambda,
             self.base_field_chip(),
-            &self.config.tangent_config,
+            &self.config.unified_config,
         )?;
-
-        // Assert that the value of r.x is correct.
-        lambda_squared::assert_lambda_squared(
-            layouter,
-            cond,
-            (&p.x, &p.x, &r.x),
-            &lambda,
-            self.base_field_chip(),
-            &self.config.lambda_squared_config,
-        )?;
-
-        // Assert that the slope between p and r is λ (thus r.y is correct).
-        //
-        // The preconditions of [assert_double] guarantee that the following call
-        // satisfies the two first preconditions of [assert_slope].
-        // The third precondition of [assert_slope], i.e. p.x != r.x, is also
-        // guaranteed because r.x has been constrained to be correct with
-        // [assert_lambda_squared], based on a λ that has been constrained to be correct
-        // with [assert_tangent]. Given our assumption that there do not exist order-3
-        // points (and our precondition that p != id) we have that 2p != ±p, thus
-        // r.x != p.x, as desired.
-        self.assert_slope(layouter, cond, p, r, true, &lambda)?;
 
         Ok(())
     }
@@ -1278,87 +1256,36 @@ where
             self.base_field_chip().assign(layouter, lambda_value)?
         };
 
-        // Assert that λ is the correct slope between p and q.
-        // The preconditions of [assert_add] guarantee that the following call
-        // satisfies all the preconditions of [assert_slope]. Indeed, we have:
-        //  - `p != id` or `cond = 0`
-        //  - `q != id` or `cond = 0`
-        //  - `p != q` or `cond = 0`, so precondition (3) of [assert_slope] may be
-        //    violated, but only with `cond = 1` and `p = -q`, in which case the call to
-        //    [assert_slope] will make the circuit unsatisfiable. This is exactly the
-        //    expected behavior of [assert_add].
-        self.assert_slope(layouter, cond, p, q, false, &lambda)?;
-
-        // Assert that the value of r.x is correct.
-        lambda_squared::assert_lambda_squared(
-            layouter,
-            cond,
-            (&p.x, &q.x, &r.x),
-            &lambda,
-            self.base_field_chip(),
-            &self.config.lambda_squared_config,
-        )?;
-
-        // Assert that the slope between p and -r is λ (thus r.y is correct).
+        // Assert slope(p,q), λ² = px+qx+rx, and slope(p,r,negate) in a single
+        // fused region that shares one row between the two slope gates.
         //
-        // The preconditions of [assert_add] guarantee that the following call
-        // satisfies the two first preconditions of [assert_slope].
-        // In general, we will additionally have p.x != r.x, so the third
-        // precondition would also be satisfied.
+        // The preconditions of [assert_add] guarantee that `p != id`, `q != id` and
+        // `p != q`, or `cond = 0`. Hence the slope instance between p and q may only
+        // see p.x = q.x with `cond = 1` and `p = -q`, in which case it makes the
+        // circuit unsatisfiable. This is exactly the expected behavior of
+        // [assert_add].
         //
-        // Let us carefully analyze the case p.x = r.x.
-        // Since r.x has been constrained to be correct with [assert_lambda_squared],
-        // based on a λ that has been constrained to be correct with [assert_slope]
-        // (between p and q), r.x can be trusted to be the correct value of `(p + q).x`.
-        // If p.x = r.x we must thus have p + q = ±p, but the + case is not possible
-        // because q != id. Thus we must have p + q = -p (i.e. r = -p).
-        // The following call to [assert_slope] would violate the third precondition,
-        // which means that -r (mind the minus, since argument negate_q is enabled)
-        // will be constrained to equal p, but this is exactly what we needed.
-        self.assert_slope(layouter, cond, p, r, true, &lambda)?;
-
-        Ok(())
-    }
-
-    /// If `cond = 1`, it asserts that `lambda` is the slope between `p` & `q`:
-    ///   `lambda = (qy - py) / (qx - px)`.
-    ///
-    /// If `cond = 0`, it asserts nothing.
-    ///
-    /// If `negate_q` is set to `true`, the check is on the slope between
-    /// `p` and `-q` instead.
-    ///
-    /// # Preconditions
-    ///
-    ///   (1) `p != id` or `cond = 0`
-    ///   (2) `q != id` or `cond = 0`
-    ///   (3) `p.x != q.x` or `cond = 0`  (non-strict)
-    ///
-    /// It is the responsibility of the caller to guarantee that preconditions
-    /// (1) and (2) are met, this function *does not* become unsatisfiable if
-    /// they are violated.
-    ///
-    /// On the other hand, if precondition (3) is violated, the circuit will
-    /// become unsatisfiable unless `p = q` (respectively `p = -q` in case
-    /// `negate_q` is enabled).
-    fn assert_slope(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        cond: &AssignedBit<F>,
-        p: &AssignedForeignPoint<F, C, B>,
-        q: &AssignedForeignPoint<F, C, B>,
-        negate_q: bool,
-        lambda: &AssignedField<F, C::Base, B>,
-    ) -> Result<(), Error> {
-        slope::assert_slope::<F, C, B, N>(
+        // The slope instance between p and -r only constrains r.y if p.x != r.x,
+        // which holds in general. Let us carefully analyze the case p.x = r.x.
+        // Since r.x has been constrained to be correct by the λ-squared instance,
+        // based on a λ that has been constrained to be correct by the slope
+        // instance between p and q, r.x can be trusted to be the correct value of
+        // `(p + q).x`. If p.x = r.x we must thus have p + q = ±p, but the + case is
+        // not possible because q != id. Thus we must have p + q = -p (i.e. r = -p).
+        // The slope instance between p and -r then constrains -r to equal p, which
+        // is exactly what we needed.
+        assert_add::assert_add::<F, C, B, N>(
             layouter,
             cond,
             (&p.x, &p.y),
-            (&q.x, &q.y, negate_q),
-            lambda,
+            (&q.x, &q.y),
+            (&r.x, &r.y),
+            &lambda,
             self.base_field_chip(),
-            &self.config.slope_config,
-        )
+            &self.config.unified_config,
+        )?;
+
+        Ok(())
     }
 
     /// Assigns a region with only 1 row with the limbs of point.x, point.y the
@@ -1370,22 +1297,19 @@ where
         &self,
         layouter: &mut impl Layouter<F>,
         point: &AssignedForeignPoint<F, C, B>,
-        index: &AssignedNative<F>,
+        row: MultiSelectRow<'_, F>,
         table_tag: F,
-        enable_lookup: bool,
     ) -> Result<(Vec<AssignedNative<F>>, Vec<AssignedNative<F>>), Error> {
         fill_dynamic_lookup_row(
             layouter,
             &point.x.limb_values(),
             &point.y.limb_values(),
-            index,
+            row,
             &self.config.base_field_config.x_cols,
             &self.config.base_field_config.z_cols, // z_cols used for y (y_cols == x_cols)
-            self.config.idx_col_multi_select,
             self.config.tag_col_multi_select,
             self.config.q_multi_select,
             table_tag,
-            enable_lookup,
         )
     }
 
@@ -1407,8 +1331,7 @@ where
         table_tag: F,
     ) -> Result<(), Error> {
         for (i, point) in point_table.iter().enumerate() {
-            let index = self.native_gadget.assign_fixed(layouter, F::from(i as u64))?;
-            self.fill_dynamic_lookup_row(layouter, point, &index, table_tag, false)?;
+            self.fill_dynamic_lookup_row(layouter, point, MultiSelectRow::Table(i), table_tag)?;
         }
         Ok(())
     }
@@ -1457,8 +1380,12 @@ where
         // Make sure that the limbs of `selected` appear in the lookup for this table.
         // Only one point can appear next to `selector`, this ensures `selected` is
         // correct.
-        let (xs, ys) =
-            self.fill_dynamic_lookup_row(layouter, &selected, selector, table_tag, true)?;
+        let (xs, ys) = self.fill_dynamic_lookup_row(
+            layouter,
+            &selected,
+            MultiSelectRow::Lookup(selector),
+            table_tag,
+        )?;
         let x = AssignedField::<F, C::Base, B>::from_limbs_unsafe(xs);
         let y = AssignedField::<F, C::Base, B>::from_limbs_unsafe(ys);
         let is_id = self.native_gadget.assign_fixed(layouter, false)?;
@@ -1500,8 +1427,8 @@ where
         let k = selected.len();
         assert!(k <= n);
 
-        // Just to make sure, although we would have RAM issues otherwise.
-        assert!((n as u128) < (1 << (F::NUM_BITS / 2)));
+        // Keeps every selected index below `MULTI_SELECT_INDEX_SHIFT`, see below.
+        assert!(n < (1 << 31));
 
         // Assert that the table points are not the identity.
         table.iter().try_for_each(|point| self.assert_non_zero(layouter, point))?;
@@ -1545,6 +1472,11 @@ where
         // or equal to `n` for completeness, that prevents wrap-arounds.
         // Choosing `l` as a power of 2 will make range-checks slightly more efficient.
         let l = BigUint::one() << BigUint::from(n).bits();
+        // Bounding the first index bounds them all (by `(k + 1) * l`), which the
+        // lookup needs to tell the tables apart.
+        if let Some(first_idx) = assigned_selected_idxs.first() {
+            self.native_gadget.assert_lower_than_fixed(layouter, first_idx, &l)?;
+        }
         assigned_selected_idxs
             .iter()
             .zip(assigned_selected_idxs.iter().skip(1))
@@ -1569,9 +1501,8 @@ where
                 let (xs, ys) = self.fill_dynamic_lookup_row(
                     layouter,
                     &table[*i],
-                    selected_idx,
+                    MultiSelectRow::Lookup(selected_idx),
                     F::from(tag_cnt),
-                    true,
                 )?;
                 let x = AssignedField::<F, C::Base, B>::from_limbs_unsafe(xs);
                 let y = AssignedField::<F, C::Base, B>::from_limbs_unsafe(ys);

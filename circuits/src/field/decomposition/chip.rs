@@ -13,11 +13,17 @@
 
 //! The P2RDecomposition chip perfoming the in-circuit operations
 
-use std::{collections::HashMap, marker::PhantomData};
+use std::{
+    cell::{Cell, RefCell},
+    collections::{BTreeMap, HashMap},
+    marker::PhantomData,
+    rc::Rc,
+};
 
 use midnight_proofs::{
     circuit::{Chip, Layouter, Value},
-    plonk::{ConstraintSystem, Error},
+    plonk::{Advice, Column, ConstraintSystem, Constraints, Error, Selector},
+    poly::Rotation,
 };
 use num_traits::Zero;
 
@@ -44,6 +50,9 @@ use crate::{
 pub struct P2RDecompositionConfig {
     pub(crate) native_config: NativeConfig,
     pub(crate) pow2range_config: Pow2RangeConfig,
+    /// When set, the selector and the second output column of the packed
+    /// decomposition gate, which range-checks two values in one row.
+    pub(crate) pack: Option<(Selector, Column<Advice>)>,
 }
 
 impl P2RDecompositionConfig {
@@ -69,6 +78,7 @@ impl P2RDecompositionConfig {
         Self {
             native_config: native_config.clone(),
             pow2range_config: pow2range_config.clone(),
+            pack: None,
         }
     }
 
@@ -96,6 +106,10 @@ pub struct P2RDecompositionChip<F: CircuitField> {
     max_bit_len: usize,
     native_chip: NativeChip<F>,
     pow2range_chip: Pow2RangeChip<F>,
+    // The cells whose range checks are deferred to [Self::load], by bit length.
+    deferred: Rc<RefCell<BTreeMap<usize, Vec<AssignedNative<F>>>>>,
+    // Whether [Self::load] has run, after which range checks are not deferred.
+    loaded: Rc<Cell<bool>>,
     _marker: PhantomData<F>,
 }
 
@@ -137,6 +151,8 @@ impl<F: CircuitField> ComposableChip<F> for P2RDecompositionChip<F> {
             max_bit_len,
             native_chip: NativeChip::new(&config.native_config, &()),
             pow2range_chip: Pow2RangeChip::new(&config.pow2range_config, max_bit_len),
+            deferred: Rc::new(RefCell::new(BTreeMap::new())),
+            loaded: Rc::new(Cell::new(false)),
             _marker: PhantomData,
         }
     }
@@ -148,10 +164,17 @@ impl<F: CircuitField> ComposableChip<F> for P2RDecompositionChip<F> {
         Self::Config {
             native_config: shared_resources.0.clone(),
             pow2range_config: shared_resources.1.clone(),
+            pack: None,
         }
     }
 
+    /// Lays out the deferred range checks, the cells of equal bit length
+    /// sharing rows, and loads the lookup table.
     fn load(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
+        self.loaded.set(true);
+        for (bit_length, xs) in self.deferred.take() {
+            self.assert_many_less_than_pow2(layouter, &xs, bit_length)?;
+        }
         self.pow2range_chip.load_table(layouter)
     }
 }
@@ -244,8 +267,16 @@ impl<F: CircuitField> P2RDecompositionChip<F> {
             );
         }
 
+        // [DROP] measurement hook: the bits and slot use in the region name.
+        let rc_bits: usize = limb_sizes.iter().sum();
+        let rc_used = limb_sizes.iter().filter(|s| **s > 0).count();
         layouter.assign_region(
-            || "decompose core",
+            || {
+                format!(
+                    "decompose core bits={rc_bits} used={rc_used} slots={}",
+                    limb_sizes.len()
+                )
+            },
             |mut region| {
                 let mut offset = 0;
 
@@ -296,6 +327,123 @@ impl<F: CircuitField> P2RDecompositionChip<F> {
                 Ok((assigned_result, limbs))
             },
         )
+    }
+}
+
+impl<F: CircuitField> P2RDecompositionChip<F> {
+    /// Configures the packed decomposition gate, which range-checks two values
+    /// in one row: each takes half of the range-check columns, and the gate
+    /// recombines the first half into the native chip's first column and the
+    /// second half into `second_output`.
+    ///
+    /// # Panics
+    ///
+    /// If the number of range-check columns is odd.
+    pub fn configure_packing(
+        meta: &mut ConstraintSystem<F>,
+        config: &mut P2RDecompositionConfig,
+        second_output: Column<Advice>,
+    ) {
+        let nb_cols = config.pow2range_config.val_cols.len();
+        assert!(
+            nb_cols.is_multiple_of(2),
+            "packing needs an even number of range-check columns"
+        );
+        let half = nb_cols / 2;
+        meta.enable_equality(second_output);
+        let q_pack = meta.selector();
+        let value_cols = config.native_config.value_cols.clone();
+        let coeff_cols = config.native_config.coeff_cols.clone();
+        meta.create_gate("packed decomposition", |meta| {
+            let sum =
+                |range: std::ops::Range<usize>,
+                 meta: &mut midnight_proofs::plonk::VirtualCells<'_, F>| {
+                    range
+                        .map(|i| {
+                            meta.query_fixed(coeff_cols[i], Rotation::cur())
+                                * meta.query_advice(value_cols[i], Rotation::cur())
+                        })
+                        .reduce(|acc, term| acc + term)
+                        .unwrap()
+                };
+            let first = sum(1..1 + half, meta) - meta.query_advice(value_cols[0], Rotation::cur());
+            let second = sum(1 + half..1 + nb_cols, meta)
+                - meta.query_advice(second_output, Rotation::cur());
+            Constraints::with_selector(q_pack, vec![first, second])
+        });
+        config.pack = Some((q_pack, second_output));
+    }
+
+    /// Assigns the given values, each range-checked in `[0, 2^bit_length)`.
+    /// Two values share a row when packing is configured and the optimal limb
+    /// split of `bit_length` fits in half a row.
+    fn assign_many_packed(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        values: &[Value<F>],
+        bit_length: usize,
+    ) -> Result<Vec<AssignedNative<F>>, Error> {
+        let nb_cols = self.pow2range_chip.config().val_cols.len();
+        let half = nb_cols / 2;
+        let split = self.opt_limbs.get(&(bit_length as i32)).unwrap();
+        let packable = self.config.pack.is_some()
+            && split.len() == 1
+            && split[0].iter().filter(|s| **s > 0).count() <= half;
+        if !packable {
+            return values
+                .iter()
+                .map(|v| self.assign_less_than_pow2(layouter, *v, bit_length))
+                .collect();
+        }
+        let (q_pack, second_output) = self.config.pack.unwrap();
+        let mut sizes: Vec<usize> = split[0].iter().copied().filter(|s| *s > 0).collect();
+        let tag = sizes[0];
+        sizes.resize(half, 0);
+        let coeffs = variable_limbsize_coefficients::<F>(&sizes);
+        let value_cols = &self.config.native_config.value_cols;
+        let coeff_cols = &self.config.native_config.coeff_cols;
+
+        let mut assigned = Vec::with_capacity(values.len());
+        for pair in values.chunks(2) {
+            if pair.len() == 1 {
+                assigned.push(self.assign_less_than_pow2(layouter, pair[0], bit_length)?);
+                continue;
+            }
+            let cells = layouter.assign_region(
+                || format!("packed decompose bits=2x{bit_length}"),
+                |mut region| {
+                    q_pack.enable(&mut region, 0)?;
+                    self.pow2range_chip.assert_row_lower_than_2_pow_n(&mut region, tag, 0)?;
+                    let mut cells = Vec::with_capacity(2);
+                    for (h, (value, out_col)) in
+                        pair.iter().zip([value_cols[0], second_output]).enumerate()
+                    {
+                        let limbs = value
+                            .map(|v| decompose_in_variable_limbsizes::<F, F>(&v, &sizes))
+                            .transpose_vec(half);
+                        for (i, (limb, coeff)) in limbs.iter().zip(coeffs.iter()).enumerate() {
+                            let col = 1 + h * half + i;
+                            region.assign_advice(|| "packed limb", value_cols[col], 0, || *limb)?;
+                            region.assign_fixed(
+                                || "packed coeff",
+                                coeff_cols[col],
+                                0,
+                                || Value::known(*coeff),
+                            )?;
+                        }
+                        cells.push(region.assign_advice(
+                            || "packed value",
+                            out_col,
+                            0,
+                            || *value,
+                        )?);
+                    }
+                    Ok(cells)
+                },
+            )?;
+            assigned.extend(cells);
+        }
+        Ok(assigned)
     }
 }
 
@@ -427,16 +575,49 @@ impl<F: CircuitField> CoreDecompositionInstructions<F> for P2RDecompositionChip<
         Ok(y)
     }
 
+    fn assign_many_less_than_pow2(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        values: &[Value<F>],
+        bit_length: usize,
+    ) -> Result<Vec<AssignedNative<F>>, Error> {
+        self.assign_many_packed(layouter, values, bit_length)
+    }
+
+    fn assert_many_less_than_pow2(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        xs: &[AssignedNative<F>],
+        bit_length: usize,
+    ) -> Result<(), Error> {
+        let values: Vec<_> = xs.iter().map(|x| x.value().copied()).collect();
+        let ys = if bit_length > self.max_bit_len || bit_length == 0 {
+            self.assign_many_less_than_pow2(layouter, &values, bit_length)?
+        } else if !self.loaded.get() {
+            self.deferred.borrow_mut().entry(bit_length).or_default().extend_from_slice(xs);
+            return Ok(());
+        } else {
+            self.assign_many_small(layouter, &values, bit_length)?
+        };
+        layouter.assign_region(
+            || "copy",
+            |mut region| {
+                (xs.iter().zip(&ys))
+                    .try_for_each(|(x, y)| region.constrain_equal(x.cell(), y.cell()))
+            },
+        )
+    }
+
     fn assign_many_small(
         &self,
         layouter: &mut impl Layouter<F>,
         values: &[Value<F>],
         bit_length: usize,
     ) -> Result<Vec<AssignedNative<F>>, Error> {
-        assert!(8 < F::NUM_BITS);
         assert!(
-            bit_length <= 8,
-            "assign_many_small expects a bit_length <= 8"
+            bit_length <= self.max_bit_len,
+            "assign_many_small expects a bit_length <= {}",
+            self.max_bit_len
         );
 
         let mut assigned_values = Vec::with_capacity(values.len());

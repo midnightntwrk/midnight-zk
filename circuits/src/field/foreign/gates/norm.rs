@@ -223,7 +223,7 @@ where
     P: FieldEmulationParams<F, K>,
     RangeGadget: RangeCheckInstructions<F, AssignedNative<F>>,
 {
-    let (mut range_checks, z_cells) = layouter.assign_region(
+    let (range_checks, z_cells) = layouter.assign_region(
         || "Foreign norm",
         |mut region| {
             let mut offset = 0;
@@ -338,8 +338,14 @@ where
         },
     )?;
 
-    range_checks.try_for_each(|(cell, ubound)| {
-        range_gadget.assert_lower_than_fixed(layouter, &cell, ubound.magnitude())
+    // The cells of equal bound are range-checked together, so that they may
+    // share rows.
+    let mut by_bound = std::collections::BTreeMap::<_, Vec<_>>::new();
+    range_checks.for_each(|(cell, ubound)| {
+        by_bound.entry(ubound.magnitude().clone()).or_default().push(cell)
+    });
+    by_bound.iter().try_for_each(|(bound, cells)| {
+        range_gadget.assert_many_lower_than_fixed(layouter, cells, bound)
     })?;
 
     Ok(z_cells)

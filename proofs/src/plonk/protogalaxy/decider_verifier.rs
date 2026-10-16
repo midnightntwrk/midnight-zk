@@ -9,10 +9,7 @@ use ff::{BatchInvert, FromUniformBytes, WithSmallOrderMulGroup};
 
 use super::{decider_prover::grand_sum_label, instance::Accumulator, poly::pow_vector};
 use crate::{
-    plonk::{
-        Error, VerifyingKey, argument, evaluate_identities,
-        verifier::{instance_evals, scaled_quotient_commitment},
-    },
+    plonk::{Error, VerifyingKey, argument, evaluate_identities, verifier::instance_evals},
     poly::{
         EvaluationDomain, PolynomialLabel, Rotation, VerifierQuery,
         commitment::PolynomialCommitmentScheme,
@@ -66,15 +63,15 @@ where
     let s_commitment = CS::read_commitment(transcript, &[grand_sum_label()])?;
     let zeta: F = transcript.squeeze_challenge();
 
-    // `cs.degree()` limbs: one more than a plonk proof (the vk's domain was
-    // built for `cs.degree()`, the decider's for `cs.degree() + 1`).
-    let quotient_limb_coms = (0..cs.degree())
-        .map(|i| CS::read_commitment(transcript, &[PolynomialLabel::QuotientPiece(i)]))
-        .collect::<Result<Vec<_>, _>>()?;
+    // `cs.degree() + 1` limbs: one more than a plonk proof (the vk's domain
+    // was built for `cs.degree()`, the decider's for `cs.degree() + 1`).
+    let quotient_labels: Vec<_> =
+        (0..cs.degree() + 1).map(PolynomialLabel::QuotientPiece).collect();
+    let quotient_committed = argument::verifier::Committed::read(&quotient_labels, transcript)?;
 
     let x: F = CS::squeeze_evaluation_point(transcript);
-    let splitting_factor = x.pow_vartime([vk.n() - 1]);
-    let xn = splitting_factor * x;
+    let splitting_factor = x.pow_vartime([vk.n() - 2]);
+    let xn = splitting_factor * x.square();
 
     let instances: Vec<&[F]> = acc.instance.instances.iter().map(Vec::as_slice).collect();
     let instance_evals = instance_evals(vk, 0, &instances, x, xn, transcript)?;
@@ -94,6 +91,7 @@ where
     let phase0_evaluated = phase0_committed.evaluate(cs, &x_rotations, transcript)?;
     let phase1_evaluated = phase1_committed.evaluate(cs, &x_rotations, transcript)?;
     let phase2_evaluated = phase2_committed.evaluate(cs, &x_rotations, transcript)?;
+    let mut quotient_evaluated = quotient_committed.evaluate(cs, &x_rotations, transcript)?;
     let x_next = domain.rotate_omega(x, Rotation::next());
     let s_eval: F = transcript.read()?;
     let s_next_eval: F = transcript.read()?;
@@ -120,24 +118,26 @@ where
     let numerator = lagrange[0] * s_eval
         + zeta * (s_next_eval - s_eval - w_eval * f_eval + acc.error * lagrange[n - 1]);
 
-    let quotient_commitment =
-        scaled_quotient_commitment::<F, CS>(&quotient_limb_coms, splitting_factor, xn);
+    // h_0(x) from N(x) = (x^n - 1) h(x), as in a plonk proof.
+    let higher_limbs = (quotient_evaluated.evals_map.values().skip(1).rev())
+        .fold(F::ZERO, |acc, evals| {
+            (acc + evals[0].eval()) * splitting_factor
+        });
+    let vanishing_inv =
+        Option::<F>::from((xn - F::ONE).invert()).ok_or(Error::ConstraintSystemFailure)?;
+    let h0_eval = numerator * vanishing_inv - higher_limbs;
+    quotient_evaluated.insert(PolynomialLabel::QuotientPiece(0), x, h0_eval);
 
     let queries =
         iter::empty()
             .chain(phase1_evaluated.queries())
             .chain(phase2_evaluated.queries())
             .chain(phase0_evaluated.queries())
-            .chain(iter::once(VerifierQuery::new(
-                x,
-                &quotient_commitment,
-                PolynomialLabel::Quotient,
-                -numerator,
-            )))
+            .chain(quotient_evaluated.queries())
             .chain([(x, s_eval), (x_next, s_next_eval)].map(|(point, eval)| {
                 VerifierQuery::new(point, &s_commitment, grand_sum_label(), eval)
             }))
             .collect::<Vec<_>>();
 
-    CS::multi_prepare(&queries, domain.k(), transcript).map_err(|_| Error::Opening)
+    CS::multi_prepare(&queries, transcript).map_err(|_| Error::Opening)
 }

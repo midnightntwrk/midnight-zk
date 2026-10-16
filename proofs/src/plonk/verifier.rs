@@ -4,7 +4,7 @@ use std::{
     iter::{self},
 };
 
-use ff::{FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
+use ff::{FromUniformBytes, WithSmallOrderMulGroup};
 
 use super::{Error, VerifyingKey, trash::powers_of};
 use crate::{
@@ -135,19 +135,20 @@ where
         y,
     } = trace;
 
-    // Read commitment(s) to the quotient polynomial h(X) = nu(X)/(X^n-1) from
-    // the transcript. The prover splits h(X) into `quotient_poly_degree` limbs.
-    let nb_quotient_coms = vk.domain.get_quotient_poly_degree();
-    let quotient_limb_coms = (0..nb_quotient_coms)
-        .map(|i| CS::read_commitment(transcript, &[PolynomialLabel::QuotientPiece(i)]))
-        .collect::<Result<Vec<_>, _>>()?;
+    // Read the commitment to the quotient polynomial h(X) = nu(X)/(X^n-1) from
+    // the transcript. The prover splits h(X) into `quotient_poly_degree + 1`
+    // limbs, committed to as one group.
+    let quotient_labels: Vec<_> = (0..vk.domain.get_quotient_poly_degree() + 1)
+        .map(PolynomialLabel::QuotientPiece)
+        .collect();
+    let quotient_committed = argument::verifier::Committed::read(&quotient_labels, transcript)?;
 
     // Sample x challenge, which is used to ensure the circuit is
     // satisfied with high probability.
     let x: F = CS::squeeze_evaluation_point(transcript);
 
-    let splitting_factor = x.pow_vartime([vk.n() - 1]);
-    let xn = splitting_factor * x;
+    let splitting_factor = x.pow_vartime([vk.n() - 2]);
+    let xn = splitting_factor * x.square();
 
     let instance_evals = instance_evals(vk, nb_committed_instances, instances, x, xn, transcript)?;
 
@@ -163,6 +164,7 @@ where
 
     let phase1_evaluated = phase1_committed.evaluate(cs, &x_rotations, transcript)?;
     let phase2_evaluated = phase2_committed.evaluate(cs, &x_rotations, transcript)?;
+    let mut quotient_evaluated = quotient_committed.evaluate(cs, &x_rotations, transcript)?;
 
     let phase0_evals = &phase0_evaluated.evals_map;
     let phase1_evals = &phase1_evaluated.evals_map;
@@ -184,8 +186,17 @@ where
         &y,
     );
 
-    let quotient_commitment =
-        scaled_quotient_commitment::<F, CS>(&quotient_limb_coms, splitting_factor, xn);
+    // h_0(x) is derived from nu(x) = (x^n - 1) h(x), for
+    // h(x) = h_0(x) + x^{n-2} h_1(x) + ..., so that opening h_0 at it checks
+    // the identities.
+    let higher_limbs = (quotient_evaluated.evals_map.values().skip(1).rev())
+        .fold(F::ZERO, |acc, evals| {
+            (acc + evals[0].eval()) * splitting_factor
+        });
+    let vanishing_inv =
+        Option::<F>::from((xn - F::ONE).invert()).ok_or(Error::ConstraintSystemFailure)?;
+    let h0_eval = nu_eval * vanishing_inv - higher_limbs;
+    quotient_evaluated.insert(PolynomialLabel::QuotientPiece(0), x, h0_eval);
 
     // Collect queries that are checked in the multi-open argument
     //
@@ -210,18 +221,13 @@ where
                 }
             },
         ))
-        .chain(iter::once(VerifierQuery::new(
-            x,
-            &quotient_commitment,
-            PolynomialLabel::Quotient,
-            -nu_eval,
-        )))
+        .chain(quotient_evaluated.queries())
         .collect::<Vec<_>>();
 
     // We are now convinced the circuit is satisfied so long as the
     // polynomial commitments open to the correct values, which is true as long
     // as the following accumulator passes the invariant.
-    CS::multi_prepare(&queries, vk.domain.k(), transcript).map_err(|_| Error::Opening)
+    CS::multi_prepare(&queries, transcript).map_err(|_| Error::Opening)
 }
 
 /// Prepares a plonk proof into a PCS instance that can be finalized or
@@ -320,26 +326,4 @@ where
         })
         .collect::<Result<Vec<_>, _>>()
         .map_err(Error::from)
-}
-
-/// The commitment to h(X) = h_0(X) + X^{n-1} h_1(X) + ..., scaled by
-/// (1 - x^n) so that it must open to -nu(x) at x, without an inversion.
-/// `splitting_factor` is x^{n-1} and `xn` is x^n.
-pub(crate) fn scaled_quotient_commitment<F, CS>(
-    quotient_limb_coms: &[CS::Commitment],
-    splitting_factor: F,
-    xn: F,
-) -> CS::Commitment
-where
-    F: PrimeField,
-    CS: PolynomialCommitmentScheme<F>,
-{
-    quotient_limb_coms
-        .iter()
-        .zip(iter::successors(Some(F::ONE - xn), |pow| {
-            Some(*pow * splitting_factor)
-        }))
-        .map(|(com, scalar)| com.clone() * scalar)
-        .reduce(|acc, term| acc + term)
-        .expect("at least one quotient limb commitment")
 }
