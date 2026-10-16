@@ -42,8 +42,12 @@ impl<F: PrimeField + Hash + Eq> TableSide<F> {
                 class
             })
             .collect();
-        let class_size_inv =
-            class_size.into_iter().map(|t| F::from(t).invert().unwrap()).collect();
+        // Most classes have a single row: invert each distinct size once.
+        let mut inverses = FxHashMap::<u64, F>::default();
+        let class_size_inv = class_size
+            .into_iter()
+            .map(|t| *inverses.entry(t).or_insert_with(|| F::from(t).invert().unwrap()))
+            .collect();
 
         Self {
             evals: Arc::new(evals),
