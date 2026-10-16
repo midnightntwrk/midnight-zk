@@ -80,7 +80,6 @@ impl<'a, T: Ivc> FoldingIvcProver<'a, T> {
         let start = Instant::now();
         let prev_acc = (self.acc.as_ref()).map_or(&keys.dummy.acc, |acc| acc.accumulator()).clone();
         let folded = self.fold_last()?;
-        let (folded_is_first, folded_had_acc) = (folded.is_first, folded.acc.is_some());
         let fold = start.elapsed();
 
         let start = Instant::now();
@@ -115,24 +114,6 @@ impl<'a, T: Ivc> FoldingIvcProver<'a, T> {
             OsRng,
         )?;
         let commit = start.elapsed();
-        if std::env::var("IVC_PLONK").is_ok() && !folded_is_first && folded_had_acc {
-            static ONCE: std::sync::Once = std::sync::Once::new();
-            ONCE.call_once(|| {
-                let t = Instant::now();
-                let mut tr = Tr::init();
-                midnight_proofs::plonk::create_proof(
-                    &keys.params,
-                    pk,
-                    &circuit,
-                    0,
-                    &[&[], &pi],
-                    &mut tr,
-                    OsRng,
-                )
-                .expect("plain create_proof failed");
-                eprintln!("[ivc_folding] plain create_proof: {:.2} ms", t.elapsed().as_secs_f64() * 1e3);
-            });
-        }
 
         self.state = claimed_next;
         self.acc = folded.acc;

@@ -145,24 +145,16 @@ where
         F: Hashable<T::Hash> + Sampleable<T::Hash>,
         CS::Commitment: Hashable<T::Hash>,
     {
-        let t_fold = std::time::Instant::now();
-        let c_fold = crate::utils::perf2_cpu_ms();
-        let ms = |t: std::time::Instant| t.elapsed().as_secs_f64() * 1e3;
         let log_n = pk.vk.domain.k() as usize;
         let d = folding_degree(&pk.vk.cs);
-        super::degree::debug_print_identity_degrees(&pk.vk.cs);
 
         self.public.absorb_or_hash(acc_hash, transcript)?;
         fresh.public.absorb_commitments_and_instances(transcript)?;
 
         // F(X) = Σᵢ powᵢ(β⃗ + X·δ⃗)·fᵢ(acc), with F(0) = e.
-        let t = std::time::Instant::now();
         let f_acc = &self.f_acc;
-        let t_feval = ms(t);
         let deltas = squeeze_deltas(transcript, log_n);
-        let t = std::time::Instant::now();
         let f_coeffs = perturbator(f_acc, &self.public.betas, &deltas);
-        let t_pert = ms(t);
         debug_assert_eq!(f_coeffs[0], self.public.error, "F(0) = e");
         for coeff in &f_coeffs[1..] {
             transcript.write(coeff)?;
@@ -170,22 +162,10 @@ where
 
         let alpha: F = transcript.squeeze_challenge();
         let f_alpha = eval_polynomial(&f_coeffs, alpha);
-        let t = std::time::Instant::now();
         let pows = pow_vector(&shift_betas(&self.public.betas, alpha, &deltas));
-        let t_pow = ms(t);
-        let pt_times = std::cell::RefCell::new(Vec::<(f64, f64)>::new());
 
         // fᵢ(acc + x·(fresh − acc)) for every row i.
-        let rows_at = |x: F| {
-            let t = std::time::Instant::now();
-            let ft = fold_trace(&self.trace, &fresh.trace, x);
-            let a = ms(t);
-            let t = std::time::Instant::now();
-            let rows = evaluate_rows(pk, &ft);
-            let b = ms(t);
-            pt_times.borrow_mut().push((a, b));
-            rows
-        };
+        let rows_at = |x: F| evaluate_rows(pk, &fold_trace(&self.trace, &fresh.trace, x));
         // G(x) = Σᵢ powᵢ(β⃗*)·fᵢ(acc + x·(fresh − acc)).
         let g = |x: F| inner_product(&pows, &rows_at(x));
 
@@ -199,9 +179,7 @@ where
                 (inner_product(&pows, rows) - f_alpha * l0(*x)) * vanishing(*x).invert().unwrap()
             })
             .collect();
-        let t = std::time::Instant::now();
         let k_coeffs = interpolate(&points, &k_evals);
-        let t_interp = ms(t);
         if cfg!(debug_assertions) {
             check_degree(d, &g, f_alpha, f_acc, &pows);
         }
@@ -213,7 +191,6 @@ where
         for product in fold_products(&self.public, &fresh.public, gamma) {
             CS::write_commitment(transcript, &product)?;
         }
-        let t = std::time::Instant::now();
         let public = fold_public(
             &self.public,
             &fresh.public,
@@ -223,38 +200,17 @@ where
             &k_coeffs,
             gamma,
         )?;
-        let t_fpub = ms(t);
-        let t = std::time::Instant::now();
         let trace = fold_trace(&self.trace, &fresh.trace, gamma);
-        let t_final = ms(t);
         // The identity on the folded trace, per row, is a polynomial of degree ≤ d
         // in `x`: known at 0 (acc), at 1 (zero: the fresh trace satisfies it) and at
         // 2..=d (the points above). Evaluate it at γ instead of on `trace`.
-        let t = std::time::Instant::now();
         let f_acc = interpolate_rows(f_acc, &rows, gamma);
-        let t_rows = ms(t);
         // (an unsatisfied fresh instance breaks the `pᵢ(1) = 0` assumption, and is
         // caught by the decider)
         if cfg!(debug_assertions)
             && evaluate_rows(pk, &fresh.trace).iter().all(|f| bool::from(f.is_zero()))
         {
             assert_eq!(f_acc.values, evaluate_rows(pk, &trace).values, "interpolated f_acc");
-        }
-        {
-            let v = pt_times.borrow();
-            let sf: f64 = v.iter().map(|p| p.0).sum();
-            let se: f64 = v.iter().map(|p| p.1).sum();
-            eprintln!("[fold] d={d} points={}", points.len());
-            eprintln!("[fold] F_eval={t_feval:.2} perturbator={t_pert:.2} pow_vector={t_pow:.2}");
-            for (x, (a, b)) in points.iter().zip(v.iter()) {
-                eprintln!("[fold]   point {x:?}: fold_trace={a:.2} evaluate_rows={b:.2}");
-            }
-            eprintln!("[fold] sum_fold_trace={sf:.2} sum_evaluate_rows={se:.2}");
-            eprintln!("[fold] interpolate_rows={t_rows:.2}");
-            eprintln!(
-                "[fold] interpolate={t_interp:.2} fold_public={t_fpub:.2} final_fold_trace={t_final:.2} TOTAL={:.2} cpu={:.2}",
-                ms(t_fold), crate::utils::perf2_cpu_ms() - c_fold
-            );
         }
         Ok(ProverAccumulator {
             trace,

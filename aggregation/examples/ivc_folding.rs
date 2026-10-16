@@ -55,14 +55,12 @@ fn main() {
     let mut prover = FoldingIvcProver::new(&keys);
     for i in 0..STEPS {
         let start = Instant::now();
-        let c0 = midnight_proofs::utils::perf2_cpu_ms();
         let timings = if tamper_step == Some(i) {
             let skipped = T::transition(&(), &T::transition(&(), prover.state(), ()), ());
             prover.prove_step_claiming((), skipped).unwrap()
         } else {
             prover.prove_step(()).unwrap()
         };
-        eprintln!("[perf2] step {i}: wall={:.0} ms cpu={:.0} ms (x{:.2})", start.elapsed().as_secs_f64()*1e3, midnight_proofs::utils::perf2_cpu_ms()-c0, (midnight_proofs::utils::perf2_cpu_ms()-c0)/(start.elapsed().as_secs_f64()*1e3));
         println!(
             "Step {i}: total {:.2?} (native fold {:.2?}, synthesis + commit {:.2?})",
             start.elapsed(),

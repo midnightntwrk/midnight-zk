@@ -122,7 +122,6 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ChunkedArgument<F> {
                     .collect()
             };
 
-        let t_mu = std::time::Instant::now();
         let chunked_input_evals: Vec<Vec<Vec<Polynomial<F, LagrangeCoeff>>>> = self
             .input_expression_chunks
             .par_iter()
@@ -149,8 +148,6 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ChunkedArgument<F> {
                 &uncached
             }
         };
-        let w_eval = t_mu.elapsed().as_secs_f64() * 1e3;
-        let t_mu = std::time::Instant::now();
         let multiplicities = table.multiplicities(
             &selector,
             &chunked_input_evals.iter().flatten().map(Vec::as_slice).collect::<Vec<_>>(),
@@ -158,7 +155,6 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ChunkedArgument<F> {
             blinding_values,
         );
 
-        eprintln!("[perf2] multiplicities arg {argument_index}: eval_exprs={w_eval:.2} ms hashing={:.2} ms", t_mu.elapsed().as_secs_f64() * 1e3);
         let multiplicities = pk.vk.domain.lagrange_from_vec(multiplicities);
 
         Ok(ComputedMultiplicities {
