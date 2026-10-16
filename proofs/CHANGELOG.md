@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+* `kzg::point_set_order`, the order in which the KZG multi-open takes its point sets [#583](https://github.com/midnightntwrk/midnight-zk/pull/583)
 * `fflonk::balanced_chunks`, the split of a group into the fewest chunks of at most `T_MAX`, of balanced sizes [#579](https://github.com/midnightntwrk/midnight-zk/pull/579)
 * `kzg::COLLAPSE_THRESHOLD`, the number of variable-base terms from which the KZG multi-open collapses a point set's combined commitment [#579](https://github.com/midnightntwrk/midnight-zk/pull/579)
 * `VerifyingKey` implements `Default`: a placeholder key of an empty constraint system [#461](https://github.com/midnightntwrk/midnight-zk/pull/461)
@@ -51,6 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Fix cost-model [#435](https://github.com/midnightntwrk/midnight-zk/pull/435)
 
 ### Changed
+* The KZG multi-open takes first the point set with the most variable-base polynomials, then the others by cardinality, so that fewer scalars are products of two truncated challenges. This changes the proof [#583](https://github.com/midnightntwrk/midnight-zk/pull/583)
 * fflonk splits the polynomials of a `commit_many` call into the same number of chunks as before, of balanced sizes (e.g. 6, 6, 5 rather than 8, 8, 1), instead of chunks of `T_MAX` and a remainder. This changes fflonk verifying keys and proofs [#579](https://github.com/midnightntwrk/midnight-zk/pull/579)
 * With truncated challenges, the KZG multi-open collapses the combined commitment of a point set only if it has at least `COLLAPSE_THRESHOLD` variable-base terms; a set with fewer keeps its terms, scaled by `x4` one by one [#579](https://github.com/midnightntwrk/midnight-zk/pull/579)
 * Remove the linearization: the simple selectors are committed, evaluated and opened in the phase-0 group like any other fixed column, and the verifier checks that the quotient commitment, scaled by `1 - x^n`, opens to `-nu(x)` at `x`. Proofs grow by one scalar per simple selector, and every verifying key and its `transcript_repr` change. `create_gate` no longer requires the polynomials of a gate to be multiples of one simple selector [#566](https://github.com/midnightntwrk/midnight-zk/pull/566)
