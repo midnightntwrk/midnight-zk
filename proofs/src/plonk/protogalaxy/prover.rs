@@ -15,9 +15,9 @@ use super::{
 };
 use crate::{
     plonk::{Circuit, Error, ProvingKey, prover::commit_phases, traces::ProverTrace},
-    poly::{LagrangeCoeff, commitment::PolynomialCommitmentScheme},
+    poly::{LagrangeCoeff, Polynomial, commitment::PolynomialCommitmentScheme},
     transcript::{Hashable, Sampleable, Transcript},
-    utils::arithmetic::eval_polynomial,
+    utils::arithmetic::{eval_polynomial, parallelize},
 };
 
 /// A fresh instance, prover side: the Lagrange-form trace after the commit
@@ -91,6 +91,10 @@ where
 pub struct ProverAccumulator<'a, F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> {
     pub(crate) trace: ProverTrace<'a, F, LagrangeCoeff>,
     pub(crate) public: Accumulator<F, CS>,
+    /// `fᵢ` of every row on `trace`, as [`evaluate_rows`] computes them.
+    /// Carried across folds so that the next one does not evaluate the
+    /// identity again.
+    pub(crate) f_acc: Polynomial<F, LagrangeCoeff>,
 }
 
 impl<'a, F, CS> ProverAccumulator<'a, F, CS>
@@ -116,6 +120,7 @@ where
     {
         Ok(ProverAccumulator {
             public: Accumulator::init(&pk.vk, fresh.public, transcript)?,
+            f_acc: evaluate_rows(pk, &fresh.trace),
             trace: fresh.trace,
         })
     }
@@ -140,9 +145,9 @@ where
         fresh.public.absorb_commitments_and_instances(transcript)?;
 
         // F(X) = Σᵢ powᵢ(β⃗ + X·δ⃗)·fᵢ(acc), with F(0) = e.
-        let f_acc = evaluate_rows(pk, &self.trace);
+        let f_acc = &self.f_acc;
         let deltas = squeeze_deltas(transcript, log_n);
-        let f_coeffs = perturbator(&f_acc, &self.public.betas, &deltas);
+        let f_coeffs = perturbator(f_acc, &self.public.betas, &deltas);
         debug_assert_eq!(f_coeffs[0], self.public.error, "F(0) = e");
         for coeff in &f_coeffs[1..] {
             transcript.write(coeff)?;
@@ -152,22 +157,24 @@ where
         let f_alpha = eval_polynomial(&f_coeffs, alpha);
         let pows = pow_vector(&shift_betas(&self.public.betas, alpha, &deltas));
 
+        // fᵢ(acc + x·(fresh − acc)) for every row i.
+        let rows_at = |x: F| evaluate_rows(pk, &fold_trace(&self.trace, &fresh.trace, x));
         // G(x) = Σᵢ powᵢ(β⃗*)·fᵢ(acc + x·(fresh − acc)).
-        let g = |x: F| {
-            let rows = evaluate_rows(pk, &fold_trace(&self.trace, &fresh.trace, x));
-            inner_product(&pows, &rows)
-        };
+        let g = |x: F| inner_product(&pows, &rows_at(x));
 
         // K = (G − F(α)·L₀)/Z has degree d − 2: interpolate it on 2..=d. With
         // G(0) = F(α) and G(1) = 0 (honest fresh instance), these are the
         // d + 1 points that determine G.
         let points: Vec<F> = (2..=d as u64).map(F::from).collect();
-        let k_evals: Vec<F> = (points.iter())
-            .map(|x| (g(*x) - f_alpha * l0(*x)) * vanishing(*x).invert().unwrap())
+        let rows: Vec<Polynomial<F, LagrangeCoeff>> = points.iter().map(|x| rows_at(*x)).collect();
+        let k_evals: Vec<F> = (points.iter().zip(&rows))
+            .map(|(x, rows)| {
+                (inner_product(&pows, rows) - f_alpha * l0(*x)) * vanishing(*x).invert().unwrap()
+            })
             .collect();
         let k_coeffs = interpolate(&points, &k_evals);
         if cfg!(debug_assertions) {
-            check_degree(d, &g, f_alpha, &f_acc, &pows);
+            check_degree(d, &g, f_alpha, f_acc, &pows);
         }
         for coeff in &k_coeffs {
             transcript.write(coeff)?;
@@ -184,8 +191,59 @@ where
             gamma,
         )?;
         let trace = fold_trace(&self.trace, &fresh.trace, gamma);
-        Ok(ProverAccumulator { trace, public })
+        // The identity on the folded trace, per row, is a polynomial of degree ≤ d
+        // in `x`: known at 0 (acc), at 1 (zero: the fresh trace satisfies it) and at
+        // 2..=d (the points above). Evaluate it at γ instead of on `trace`.
+        let f_acc = interpolate_rows(f_acc, &rows, gamma);
+        // (an unsatisfied fresh instance breaks the `pᵢ(1) = 0` assumption, and is
+        // caught by the decider)
+        if cfg!(debug_assertions)
+            && evaluate_rows(pk, &fresh.trace).iter().all(|f| bool::from(f.is_zero()))
+        {
+            assert_eq!(
+                f_acc.values,
+                evaluate_rows(pk, &trace).values,
+                "interpolated f_acc"
+            );
+        }
+        Ok(ProverAccumulator {
+            trace,
+            public,
+            f_acc,
+        })
     }
+}
+
+/// `pᵢ(γ)` for every row `i`, for the degree-`d` polynomials `pᵢ` with
+/// `pᵢ(0) = acc[i]`, `pᵢ(1) = 0` and `pᵢ(x) = rows[x − 2][i]` for `x = 2..=d`:
+/// Lagrange interpolation on the nodes `0..=d`, whose basis `ℓⱼ(γ)` is shared
+/// by all rows.
+fn interpolate_rows<F: WithSmallOrderMulGroup<3>>(
+    acc: &Polynomial<F, LagrangeCoeff>,
+    rows: &[Polynomial<F, LagrangeCoeff>],
+    gamma: F,
+) -> Polynomial<F, LagrangeCoeff> {
+    let nodes: Vec<F> = (0..rows.len() as u64 + 2).map(F::from).collect();
+    let basis: Vec<F> = (0..nodes.len())
+        .map(|j| {
+            let (num, den) = (nodes.iter().enumerate())
+                .filter(|(m, _)| *m != j)
+                .fold((F::ONE, F::ONE), |(num, den), (_, xm)| {
+                    (num * (gamma - xm), den * (nodes[j] - xm))
+                });
+            num * den.invert().unwrap()
+        })
+        .collect();
+
+    let mut values = acc.clone();
+    parallelize(&mut values.values, |values, start| {
+        for (i, value) in values.iter_mut().enumerate() {
+            // Node 1 contributes nothing: the fresh trace satisfies the identity.
+            *value = *value * basis[0]
+                + rows.iter().zip(&basis[2..]).map(|(r, l)| r[start + i] * l).sum::<F>();
+        }
+    });
+    values
 }
 
 /// Checks that `d` bounds the degree of `G`: the interpolant of `G` on
