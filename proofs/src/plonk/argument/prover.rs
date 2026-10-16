@@ -196,6 +196,12 @@ impl<F: PrimeField> Committed<F, Coeff> {
 }
 
 impl<F: PrimeField> Evaluated<'_, F> {
+    /// Adds the evaluation `eval` at `point` of the group's polynomial `label`,
+    /// one the verifier derives rather than reads from the proof.
+    pub(crate) fn insert(&mut self, label: PolynomialLabel, point: F, eval: F) {
+        self.evals_map.insert(label, vec![Evaluation { point, eval }]);
+    }
+
     pub(crate) fn open(&self) -> impl Iterator<Item = ProverQuery<'_, F>> + Clone {
         self.evals_map.iter().flat_map(|(label, evaluations)| {
             evaluations.iter().map(|evaluation| {
