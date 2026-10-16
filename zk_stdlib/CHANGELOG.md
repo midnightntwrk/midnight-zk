@@ -22,6 +22,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 * Fix cost model proof size check to account for committed instance columns [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
+* `MidnightVK::read` and `MidnightPK::read` reject a `k` outside `1..=F::S` instead of underflowing on `k = 0` [#581](https://github.com/midnightntwrk/midnight-zk/pull/581)
 
 ### Changed
 * `prove` passes the committed-instance column of a relation without a committed instance as an empty instance column, so it is neither committed to nor opened and the proof shrinks by one scalar. `verify` and `batch_verify` take it the same way when given no committed instance [#569](https://github.com/midnightntwrk/midnight-zk/pull/569)
