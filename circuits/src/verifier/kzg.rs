@@ -48,12 +48,12 @@ use crate::{
     verifier::{
         AssignedAccumulator, SelfEmulation,
         msm::{AssignedMsm, AssignedPoint},
-        pcs::{CommitmentBases, InCircuitHomomorphicCommitment, InCircuitPCS, VerifierQuery},
+        pcs::{CommitmentBases, InCircuitPCS, VerifierQuery},
         transcript_gadget::TranscriptGadget,
         utils::{
             AssignedBoundedScalar, Coset, evaluate_interpolation_quotient,
-            evaluate_interpolation_quotient_on_cosets, inner_product, mul_add, mul_bounded_scalars,
-            truncate, truncated_powers,
+            evaluate_interpolation_quotient_on_cosets, inner_product, mul_add, truncate,
+            truncated_powers,
         },
     },
 };
@@ -147,54 +147,6 @@ impl<S: SelfEmulation> AssignedKZGCommitment<S> {
     }
 }
 
-impl<S: SelfEmulation> AssignedKZGCommitment<S> {
-    /// Scales this commitment by a scalar.
-    ///
-    /// `Simple(p, l)` becomes `Linear([p], [scalar], [l])`.
-    /// For `Linear`, all existing scalars are multiplied by `scalar`.
-    fn mul(
-        self,
-        layouter: &mut impl Layouter<S::F>,
-        scalar_chip: &S::ScalarChip,
-        scalar: &AssignedNative<S::F>,
-    ) -> Result<Self, Error> {
-        let scalar = AssignedBoundedScalar::new(scalar, None);
-        match self {
-            Self::Simple(p, label) => Ok(Self::Linear(vec![p], vec![scalar], vec![label])),
-            Self::Linear(points, scalars, labels) => Ok(Self::Linear(
-                points,
-                scalars
-                    .iter()
-                    .map(|s| mul_bounded_scalars(layouter, scalar_chip, s, &scalar))
-                    .collect::<Result<Vec<_>, _>>()?,
-                labels,
-            )),
-        }
-    }
-
-    /// Adds two commitments, merging them into a `Linear` combination.
-    fn add(
-        self,
-        layouter: &mut impl Layouter<S::F>,
-        scalar_chip: &S::ScalarChip,
-        other: Self,
-    ) -> Result<Self, Error> {
-        let one = AssignedBoundedScalar::one(layouter, scalar_chip)?;
-        let (mut points, mut scalars, mut labels) = match self {
-            Self::Simple(p, label) => (vec![p], vec![one.clone()], vec![label]),
-            Self::Linear(points, scalars, labels) => (points, scalars, labels),
-        };
-        let (other_points, other_scalars, other_labels) = match other {
-            Self::Simple(p, label) => (vec![p], vec![one], vec![label]),
-            Self::Linear(points, scalars, labels) => (points, scalars, labels),
-        };
-        points.extend(other_points);
-        scalars.extend(other_scalars);
-        labels.extend(other_labels);
-        Ok(Self::Linear(points, scalars, labels))
-    }
-}
-
 /// In-circuit analog of
 /// [`KZGMultiCommitment`](midnight_proofs::poly::kzg::commitment::KZGMultiCommitment):
 /// a commitment to one or more polynomials.
@@ -223,35 +175,6 @@ impl<S: SelfEmulation> InnerValue for AssignedKZGMultiCommitment<S> {
 
     fn value(&self) -> Value<Self::Element> {
         Value::from_iter(self.0.iter().map(|c| c.value())).map(KZGMultiCommitment)
-    }
-}
-
-impl<S: SelfEmulation> InCircuitHomomorphicCommitment<S> for AssignedKZGMultiCommitment<S> {
-    fn mul(
-        self,
-        layouter: &mut impl Layouter<S::F>,
-        scalar_chip: &S::ScalarChip,
-        scalar: &AssignedNative<S::F>,
-    ) -> Result<Self, Error> {
-        self.assert_single();
-        let inner = self.0.into_iter().next().unwrap().mul(layouter, scalar_chip, scalar)?;
-        Ok(Self(vec![inner]))
-    }
-
-    fn add(
-        self,
-        layouter: &mut impl Layouter<S::F>,
-        scalar_chip: &S::ScalarChip,
-        other: Self,
-    ) -> Result<Self, Error> {
-        self.assert_single();
-        other.assert_single();
-        let inner = self.0.into_iter().next().unwrap().add(
-            layouter,
-            scalar_chip,
-            other.0.into_iter().next().unwrap(),
-        )?;
-        Ok(Self(vec![inner]))
     }
 }
 

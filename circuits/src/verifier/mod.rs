@@ -46,7 +46,7 @@ pub use accumulator::{Accumulator, AssignedAccumulator};
 pub use fflonk::InCircuitFflonk;
 pub use kzg::{AssignedKZGCommitment, AssignedKZGMultiCommitment, InCircuitKZG};
 pub use msm::{AssignedMsm, AssignedPoint, Msm, Point};
-pub use pcs::{AssignedCommitment, CommitmentBases, InCircuitHomomorphicCommitment, InCircuitPCS};
+pub use pcs::{AssignedCommitment, CommitmentBases, InCircuitPCS};
 #[cfg(feature = "dev-curves")]
 pub use types::BnEmulation;
 pub use types::{BlstrsEmulation, SelfEmulation};
