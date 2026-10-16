@@ -58,6 +58,12 @@ use crate::{
     },
 };
 
+/// With truncated challenges, the multi-open collapses the combined commitment
+/// of a point set (but the first) into one point before scaling it by its `x4`
+/// power only if it has at least this many variable-base terms. A set with
+/// fewer keeps its terms, scaled by `x4` one by one.
+pub const COLLAPSE_THRESHOLD: usize = 4;
+
 #[derive(Clone, Debug)]
 /// KZG verifier
 pub struct KZGCommitmentScheme<E: Engine> {
@@ -499,10 +505,16 @@ where
             let size = q_coms.len() + 1;
             let mut coms = q_coms;
 
-            // Collapse all MSMs before combining with x4 powers, to match the
-            // in-circuit verifier. Skip the first one since its x4 power is 1.
+            // Collapse the MSMs of at least `COLLAPSE_THRESHOLD` variable-base
+            // terms before combining with x4 powers, to match the in-circuit
+            // verifier. Skip the first one since its x4 power is 1.
             #[cfg(feature = "truncated-challenges")]
-            coms.iter_mut().skip(1).for_each(|c| c.collapse(PolynomialLabel::NoLabel));
+            (coms.iter_mut().skip(1))
+                .filter(|c| {
+                    matches!(c, KZGCommitment::Linear(_, _, labels)
+                        if labels.iter().filter(|l| !l.is_fixed()).count() >= COLLAPSE_THRESHOLD)
+                })
+                .for_each(|c| c.collapse(PolynomialLabel::NoLabel));
             coms.push(f_com);
 
             #[cfg(feature = "truncated-challenges")]

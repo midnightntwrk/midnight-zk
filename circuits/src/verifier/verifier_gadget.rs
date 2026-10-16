@@ -15,11 +15,7 @@
 //!
 //! We assume the CS of the verified circuit defines exactly one instance
 //! column. (This is the norm throughout our whole codebase anyway.)
-use std::{
-    collections::{BTreeMap, HashSet},
-    fmt::Debug,
-    iter,
-};
+use std::{collections::BTreeMap, fmt::Debug, iter};
 
 use ff::Field;
 use midnight_proofs::{
@@ -34,8 +30,8 @@ use crate::{
         ArithInstructions, PublicInputInstructions, assignments::AssignmentInstructions,
     },
     verifier::{
-        Accumulator, AssignedAccumulator, AssignedEvaluationDomain, AssignedVk, SelfEmulation,
-        VerifyingKey, argument,
+        Accumulator, AssignedAccumulator, AssignedEvaluationDomain, AssignedMsm, AssignedVk,
+        SelfEmulation, VerifyingKey, argument,
         expressions::{
             eval_expression, lookup::lookup_expressions, permutation::permutation_expressions,
             trash::trash_expressions,
@@ -178,7 +174,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
 
     /// Witnesses the "collapsed" form of a KZG accumulator.
     ///
-    /// The expected shape is:
+    /// The expected shape is, as [`AssignedMsm::assign_collapsed`] assigns:
     /// * LHS: exactly one `Variable` entry labeled `NoLabel`.
     /// * RHS: one `Fixed` entry per label in `fixed_base_labels` plus one
     ///   `Variable` entry labeled `NoLabel`.
@@ -195,18 +191,17 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         fixed_base_labels: &[PolynomialLabel],
         value: Value<Accumulator<S>>,
     ) -> Result<AssignedAccumulator<S>, Error> {
-        let acc = AssignedAccumulator::assign(
-            layouter,
-            &self.curve_chip,
-            &self.scalar_chip,
-            &[PolynomialLabel::NoLabel],
-            &[fixed_base_labels, &[PolynomialLabel::NoLabel]].concat(),
-            &HashSet::new(),
-            &fixed_base_labels.iter().cloned().collect(),
-            value,
-        )?;
-
-        Ok(acc)
+        let (lhs, rhs) = value.map(|acc| (acc.lhs(), acc.rhs())).unzip();
+        Ok(AssignedAccumulator::new(
+            AssignedMsm::assign_collapsed(layouter, &self.curve_chip, &self.scalar_chip, &[], lhs)?,
+            AssignedMsm::assign_collapsed(
+                layouter,
+                &self.curve_chip,
+                &self.scalar_chip,
+                fixed_base_labels,
+                rhs,
+            )?,
+        ))
     }
 
     /// Accumulates several accumulators together. The resulting acc will
