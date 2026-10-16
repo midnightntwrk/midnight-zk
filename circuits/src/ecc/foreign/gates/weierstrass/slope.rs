@@ -272,8 +272,8 @@ where
 {
     let m = &C::Base::modulus().to_bigint().unwrap();
     let moduli = P::moduli();
-    let bs = P::base_powers();
-    let bs2 = P::double_base_powers();
+    let powers = &base_chip.config().witness_powers;
+    let (bs, bs2) = (&powers.bs, &powers.bs2);
     let base_chip_config = base_chip.config();
 
     let px = &base_chip.normalize(layouter, p.0)?;
@@ -325,10 +325,10 @@ where
                 + lpxs.clone().map(|v| sum_bigints(&bs2, &v));
             let u = expr.map(|e| compute_u(m, &e, (&k_min, &u_max), cond.value()));
 
-            let vs_values =
-                moduli.iter().zip(slope_config.vs_bounds.iter()).map(|(mj, vj_bounds)| {
-                    let bs_mj = bs.iter().map(|b| b.rem(mj)).collect::<Vec<_>>();
-                    let bs2_mj = bs2.iter().map(|b| b.rem(mj)).collect::<Vec<_>>();
+            let vs_values = moduli.iter().zip(slope_config.vs_bounds.iter()).enumerate().map(
+                |(j, (mj, vj_bounds))| {
+                    let bs_mj = &powers.bs_mj[j];
+                    let bs2_mj = &powers.bs2_mj[j];
                     let (lj_min, vj_max) = vj_bounds.clone();
 
                     // sign - 1 + sign * sum_qy_mj - sum_py_mj
@@ -347,7 +347,8 @@ where
                     expr_mj.zip(u.clone()).map(|(e, u)| {
                         compute_vj(m, mj, &e, &u, &k_min, (&lj_min, &vj_max), cond.value())
                     })
-                });
+                },
+            );
 
             let px_limbs = px.limb_values();
             let qx_limbs = qx.limb_values();

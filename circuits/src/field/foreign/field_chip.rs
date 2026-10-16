@@ -20,6 +20,7 @@ use std::{
     fmt::Debug,
     hash::{Hash, Hasher},
     marker::PhantomData,
+    sync::Arc,
 };
 
 use midnight_proofs::{
@@ -43,7 +44,7 @@ use super::gates::{
 use crate::{
     CircuitField,
     field::foreign::{
-        params::{FieldEmulationParams, check_params},
+        params::{FieldEmulationParams, WitnessPowers, check_params},
         util::{bi_from_limbs, bi_to_limbs},
     },
     instructions::{
@@ -293,6 +294,8 @@ pub struct FieldChipConfig {
     pub u_col: Column<Advice>,
     /// Column for auxiliary values vj (quotients by the auxiliary moduli)
     pub v_cols: Vec<Column<Advice>>,
+    /// Power tables used by the witness computation of the emulated gates.
+    pub(crate) witness_powers: Arc<WitnessPowers>,
 }
 
 /// ['FieldChip'] for operations on field K emulated over native field F.
@@ -1397,6 +1400,7 @@ where
             z_cols,
             u_col,
             v_cols,
+            witness_powers: Arc::new(WitnessPowers::new::<F, K, P>()),
         }
     }
 
@@ -1464,6 +1468,7 @@ where
             &y,
             r,
             &self.config.mul_config,
+            &self.config.witness_powers,
             &self.native_gadget,
         )?;
 
@@ -1614,6 +1619,7 @@ where
             layouter,
             x,
             &self.config.norm_config,
+            &self.config.witness_powers,
             &self.native_gadget,
         )?;
         let z = AssignedField::<F, K, P> {

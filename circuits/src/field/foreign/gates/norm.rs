@@ -24,7 +24,7 @@ use num_traits::One;
 use crate::{
     CircuitField,
     field::foreign::{
-        params::FieldEmulationParams,
+        params::{FieldEmulationParams, WitnessPowers},
         util::{
             bi_to_limbs, compute_u, compute_vj, get_advice_vec, get_identity_auxiliary_bounds,
             sum_bigints, sum_exprs, urem,
@@ -214,6 +214,7 @@ pub fn normalize<F, K, P, RangeGadget>(
     layouter: &mut impl Layouter<F>,
     x: &AssignedField<F, K, P>,
     norm_config: &NormConfig,
+    powers: &WitnessPowers,
     range_gadget: &RangeGadget,
 ) -> Result<Vec<AssignedNative<F>>, Error>
 where
@@ -231,7 +232,7 @@ where
             let base = BI::from(2).pow(P::LOG2_BASE);
             let nb_limbs = P::NB_LIMBS;
             let moduli = P::moduli();
-            let base_powers = P::base_powers();
+            let base_powers = &powers.bs;
             let max_limb_bound = P::max_limb_bound();
 
             let shift = max_limb_bound.clone();
@@ -240,8 +241,8 @@ where
                 .map(|limbs| limbs.iter().map(|xi| shift.clone() + xi).collect::<Vec<_>>());
             // Convert to BigInt in order to normalize, then back to limbs
             let shifts = vec![max_limb_bound; nb_limbs as usize];
-            let sum_shifted_x = xs_shifted.clone().map(|v| sum_bigints(&base_powers, &v));
-            let sum_shifts = sum_bigints(&base_powers, &shifts);
+            let sum_shifted_x = xs_shifted.clone().map(|v| sum_bigints(base_powers, &v));
+            let sum_shifts = sum_bigints(base_powers, &shifts);
             // The shift of +1 on x (for the unique representation of 0) has not been added,
             // but this will cancel out if we do not shift zv either in the call to
             // `bi_to_libms`.
@@ -250,7 +251,7 @@ where
             let z_values =
                 (0..nb_limbs).map(|i| zs.clone().map(|zs| bigint_to_fe::<F>(&zs[i as usize])));
 
-            let sum_z = zs.clone().map(|v| sum_bigints(&base_powers, &v));
+            let sum_z = zs.clone().map(|v| sum_bigints(base_powers, &v));
 
             let (k_min, u_max) = norm_config.u_bounds.clone();
             let expr = &sum_shifted_x - &sum_z - Value::known(sum_shifts.clone());
@@ -261,11 +262,12 @@ where
             let vs_values = moduli
                 .iter()
                 .zip(norm_config.vs_bounds.iter())
-                .map(|(mj, vj_bounds)| {
-                    let base_powers_mj = base_powers.iter().map(|b| b.rem(mj)).collect::<Vec<_>>();
+                .enumerate()
+                .map(|(j, (mj, vj_bounds))| {
+                    let base_powers_mj = &powers.bs_mj[j];
                     let sum_shifted_x_mj =
-                        xs_shifted.clone().map(|v| sum_bigints(&base_powers_mj, &v));
-                    let sum_z_mj = zs.clone().map(|v| sum_bigints(&base_powers_mj, &v));
+                        xs_shifted.clone().map(|v| sum_bigints(base_powers_mj, &v));
+                    let sum_z_mj = zs.clone().map(|v| sum_bigints(base_powers_mj, &v));
                     let (lj_min, vj_max) = vj_bounds.clone();
 
                     let expr_mj =
