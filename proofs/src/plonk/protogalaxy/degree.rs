@@ -85,3 +85,38 @@ fn identity_degrees<F: Field>(cs: &ConstraintSystem<F>) -> Vec<usize> {
 pub fn folding_degree<F: Field>(cs: &ConstraintSystem<F>) -> usize {
     identity_degrees(cs).into_iter().map(|d| d + 1).max().unwrap_or(0).max(2)
 }
+
+/// Temporary profiling helper: prints `identity_degrees` grouped by origin.
+pub(crate) fn debug_print_identity_degrees<F: Field>(cs: &ConstraintSystem<F>) {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    let mut first = false;
+    ONCE.call_once(|| first = true);
+    if !first {
+        return;
+    }
+    let degs = identity_degrees(cs);
+    let n_gate: usize = cs.gates.iter().map(|g| g.polynomials().len()).sum();
+    let num_sets = cs.permutation.num_sets(cs.degree());
+    let n_perm = if num_sets > 0 { 2 + (num_sets - 1) + cs.permutation.columns.chunks(cs.degree() - 2).count() } else { 0 };
+    let n_trash = cs.trashcans.len();
+    let n_lookup = degs.len() - n_gate - n_perm - n_trash;
+    let hist = |s: &[usize]| {
+        let mut m = std::collections::BTreeMap::new();
+        for d in s { *m.entry(*d).or_insert(0usize) += 1; }
+        format!("{m:?}")
+    };
+    let (g, rest) = degs.split_at(n_gate);
+    let (p, rest) = rest.split_at(n_perm);
+    let (l, t) = rest.split_at(n_lookup);
+    eprintln!("[degrees] cs.degree={} gates({n_gate}) deg:count {} max {:?}", cs.degree(), hist(g), g.iter().max());
+    eprintln!("[degrees] permutation({n_perm}) {p:?}");
+    eprintln!("[degrees] lookups({n_lookup}) {l:?}");
+    eprintln!("[degrees] trashcans({n_trash}) {t:?}");
+    let helpers: usize = cs.lookups.iter().map(|l| l.num_chunks(cs.lookup_chunk_bound())).sum();
+    let perm_accs = cs.permutation.num_sets(cs.degree());
+    eprintln!(
+        "[degrees] phase-2 polys: perm {perm_accs} + helpers {helpers} + aggregators {} + trash {n_trash} = {}",
+        cs.lookups.len(),
+        perm_accs + helpers + cs.lookups.len() + n_trash
+    );
+}

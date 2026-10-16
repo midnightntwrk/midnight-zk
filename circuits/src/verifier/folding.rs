@@ -220,6 +220,7 @@ where
     ) -> Result<AssignedFoldingAccumulator<S>, Error> {
         let (mut next, gamma, mut transcript) =
             self.fold_scalars(layouter, acc, acc_hash, fresh, folding_proof)?;
+        let perf2_t = (std::time::Instant::now(), midnight_proofs::utils::perf2_cpu_ms());
         let (phase1, phase2) = self.fold_commitments(
             layouter,
             &acc.instance,
@@ -228,6 +229,7 @@ where
             &mut transcript,
             discarded,
         )?;
+        eprintln!("[perf2-fold] fold_commitments {:.2} ms cpu={:.2}", perf2_t.0.elapsed().as_secs_f64()*1e3, midnight_proofs::utils::perf2_cpu_ms()-perf2_t.1);
         next.instance.phase1 = phase1;
         next.instance.phase2 = phase2;
         Ok(next)
@@ -253,6 +255,7 @@ where
         Error,
     > {
         let chip = &self.scalar_chip;
+        let perf2_t0 = (std::time::Instant::now(), midnight_proofs::utils::perf2_cpu_ms());
         let mut transcript = self.new_transcript(layouter, folding_proof)?;
         transcript.common_scalar(layouter, acc_hash)?;
         fresh.absorb(layouter, &mut transcript)?;
@@ -271,6 +274,8 @@ where
 
         let gamma = self.squeeze_fold_challenge(layouter, &mut transcript)?;
         let g = &gamma.scalar;
+        eprintln!("[perf2-fold] scalars: transcript(absorb/squeeze/read) {:.2} ms cpu={:.2}", perf2_t0.0.elapsed().as_secs_f64()*1e3, midnight_proofs::utils::perf2_cpu_ms()-perf2_t0.1);
+        let perf2_t1 = (std::time::Instant::now(), midnight_proofs::utils::perf2_cpu_ms());
 
         // β⃗* = β⃗ + α·δ⃗.
         let betas = (acc.betas.iter().zip(&deltas))
@@ -311,6 +316,7 @@ where
             betas,
             error,
         };
+        eprintln!("[perf2-fold] scalars: arithmetic {:.2} ms cpu={:.2}", perf2_t1.0.elapsed().as_secs_f64()*1e3, midnight_proofs::utils::perf2_cpu_ms()-perf2_t1.1);
         Ok((next, gamma, transcript))
     }
 
@@ -359,13 +365,20 @@ where
         assert_eq!(a.len(), r.len(), "folding products of an unexpected shape");
 
         let (chip, curve) = (&self.scalar_chip, &self.curve_chip);
+        let perf2_n = a.len();
+        let perf2_a = std::time::Instant::now();
+        let (mut perf2_neg, mut perf2_addae, mut perf2_glv, mut perf2_addar) = (0f64,0f64,0f64,0f64);
         let mut scalars = vec![];
         let mut bases = vec![];
         let mut folded = vec![];
         for (i, (((a, label), (f, _)), (r, _))) in a.into_iter().zip(f).zip(r).enumerate() {
             // ρ_1 = 1: the term of `R_1` is moved out of the MSM (see below).
+            let t_ = std::time::Instant::now();
             let neg_f = S::negate(layouter, curve, f)?;
+            perf2_neg += t_.elapsed().as_secs_f64()*1e3;
+            let t_ = std::time::Instant::now();
             let e = S::add(layouter, curve, a, &neg_f)?; // A − F
+            perf2_addae += t_.elapsed().as_secs_f64()*1e3;
             if i == 0 {
                 scalars.push((gamma.scalar.clone(), gamma.bound.bits() as usize));
                 bases.push(e);
@@ -373,18 +386,25 @@ where
                 let rho = self.squeeze_fold_challenge(layouter, transcript)?;
                 let rho_bits = rho.bound.bits() as usize;
                 let gamma_rho = chip.mul(layouter, &gamma.scalar, &rho.scalar, None)?;
+                let t_ = std::time::Instant::now();
                 let ((k1, k2), (e1, e2)) = S::glv_split(layouter, curve, &gamma_rho, &e)?;
+                perf2_glv += t_.elapsed().as_secs_f64()*1e3;
                 let half = (S::F::NUM_BITS as usize).div_ceil(2);
                 scalars.extend([(k1, half), (k2, half), (rho.scalar, rho_bits)]);
                 bases.extend([e1, e2, r.clone()]);
             }
+            let t_ = std::time::Instant::now();
             folded.push(AssignedKZGCommitment::simple(
                 S::add(layouter, curve, a, r)?,
                 label.clone(),
             ));
+            perf2_addar += t_.elapsed().as_secs_f64()*1e3;
         }
+        eprintln!("[perf2-fold] commitments n={perf2_n}: loop={:.2} (negate={perf2_neg:.2} A-F={perf2_addae:.2} glv_split={perf2_glv:.2} A+R={perf2_addar:.2})", perf2_a.elapsed().as_secs_f64()*1e3);
+        let perf2_m = std::time::Instant::now();
         // The MSM covers all terms but `R_1` (`ρ_1 = 1`): it must equal `−R_1`.
         let mut lhs = S::msm(layouter, curve, &scalars, &bases)?;
+        eprintln!("[perf2-fold] commitments msm ({} terms) {:.2} ms", scalars.len(), perf2_m.elapsed().as_secs_f64()*1e3);
         let neg_r1 = S::negate(layouter, curve, points(&products[0])?[0].0)?;
         if let Some(discarded) = discarded {
             lhs = curve.select(layouter, discarded, &neg_r1, &lhs)?;

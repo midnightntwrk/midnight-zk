@@ -869,6 +869,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
         l_active_row: &Polynomial<F, B>,
         permutation_cosets: &[Polynomial<F, B>],
     ) -> Polynomial<F, B> {
+        let t_en = std::time::Instant::now();
         let mut values = self.evaluate_custom_gates(
             domain,
             cs,
@@ -880,6 +881,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
             theta,
             trash_powers,
         );
+        let en_gates = t_en.elapsed().as_secs_f64() * 1e3;
         self.add_non_gate_identities(
             &mut values,
             domain,
@@ -900,6 +902,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
             l_active_row,
             permutation_cosets,
         );
+        eprintln!("[evaluate_numerator] gates={en_gates:.2}");
         values
     }
 
@@ -991,6 +994,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
             .collect();
         let y_trash = y_rest;
 
+        let t_en = std::time::Instant::now();
         // Permutations
         if !cs.permutation().columns.is_empty() {
             let blinding_factors = cs.blinding_factors();
@@ -1086,6 +1090,8 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
             });
         }
 
+        let en_perm = t_en.elapsed().as_secs_f64() * 1e3;
+        let t_en = std::time::Instant::now();
         // Pre-compute all lookup cosets in parallel. This trades peak memory
         // for parallelism: the FFTs for different lookups can now overlap.
         let all_lookup_cosets: Vec<_> = cs
@@ -1167,6 +1173,9 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
 
         // Fused lookup + trash constraint evaluation in a single pass
         // over `values`, using flattened evaluators for reduced dispatch.
+        let en_lookup_pre = t_en.elapsed().as_secs_f64() * 1e3;
+        let t_en = std::time::Instant::now();
+        let run_block = |values: &mut Polynomial<F, B>, do_l: bool, do_t: bool| {
         parallelize(values, |values, start| {
             // Per-thread flat values buffers for all lookups.
             let mut all_lookup_bufs: Vec<Vec<Vec<F>>> = self
@@ -1204,7 +1213,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                 let r_next = get_rotation_idx(idx, 1, log_scale, log_n);
 
                 // --- Lookup constraints ---
-                for (n, (helper_cosets, aggregator_coset, multiplicities_coset)) in
+                if do_l { for (n, (helper_cosets, aggregator_coset, multiplicities_coset)) in
                     all_lookup_cosets.iter().enumerate()
                 {
                     let mut y = y_lookups[n].iter();
@@ -1258,8 +1267,9 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                             + multiplicities_coset[idx]);
                 }
 
+                } // end do_l
                 // --- Trash constraints ---
-                for (n, trash_poly) in trash_cosets.iter().enumerate() {
+                if do_t { for (n, trash_poly) in trash_cosets.iter().enumerate() {
                     let flat = &self.trashcans_flat[n];
                     for (ri, rot) in flat.rotations.iter().enumerate() {
                         rot_indices[ri] = get_rotation_idx(idx, *rot, log_scale, log_n);
@@ -1275,9 +1285,34 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
 
                     let q = fixed[trash_selector_cols[n]][idx];
                     *value += y_trash[n] * (compressed_expression - (one - q) * trash_poly[idx]);
-                }
+                } }
             }
         });
+        };
+        let diag = std::env::var("PERF2_DIAG").is_ok();
+        let (mut v_l, mut v_t) = if diag { (values.clone(), values.clone()) } else { (values.clone(), values.clone()) };
+        run_block(values, true, true);
+        let en_final = t_en.elapsed().as_secs_f64() * 1e3;
+        if diag {        let t_x = std::time::Instant::now();
+        run_block(&mut v_l, true, false);
+        let only_l = t_x.elapsed().as_secs_f64() * 1e3;
+        let t_x = std::time::Instant::now();
+        run_block(&mut v_t, false, true);
+        let only_t = t_x.elapsed().as_secs_f64() * 1e3;
+        eprintln!("[perf2] lookup+trash block: both={en_final:.2} lookup_only={only_l:.2} trash_only={only_t:.2}");
+        }
+        {
+            static ONCE: std::sync::Once = std::sync::Once::new();
+            ONCE.call_once(|| {
+                let nl = cs.lookups.len();
+                let nb: usize = self.lookups_flat.iter().map(|b| b.len()).sum();
+                let widths: Vec<usize> = cs.lookups.iter().map(|l| l.table_expressions().len()).collect();
+                eprintln!("[perf2] lookups={nl} flat_batches(helpers)={nb} table_widths={widths:?} trashcans={} perm_sets={} perm_cols={} cs.degree={}", cs.trashcans.len(), cs.permutation().num_sets(cs.degree()), cs.permutation().columns.len(), cs.degree());
+            });
+        }
+        eprintln!(
+            "[evaluate_numerator] perm={en_perm:.2} lookup_precomp={en_lookup_pre:.2} lookup+trash={en_final:.2}"
+        );
     }
 }
 
