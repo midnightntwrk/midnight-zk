@@ -11,24 +11,31 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! A privately assigned verifying key, which must be bound to a trusted value
-//! before it can be used.
+//! A privately assigned verifying key, which must be bound to a hash before it
+//! can be used.
+//!
+//! # WARNING
+//!
+//! Binding only guarantees that the key matches the given hash. It is the
+//! responsibility of the caller to guarantee the integrity of that hash (e.g.
+//! by making it a public input or a constant). Binding to an unconstrained
+//! witness lets a malicious prover use any verifying key.
 
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::{ConstraintSystem, Error},
 };
 
-use super::{
-    AssignedVk, SelfEmulation, VerifierGadget, VerifyingKey,
-    pcs::{AssignedCommitment, InCircuitPCS},
-};
 use crate::{
     field::AssignedNative,
     instructions::{
         AssertionInstructions, AssignmentInstructions, HashInstructions, hash::HashCPU,
     },
     types::Instantiable,
+    verifier::{
+        AssignedVk, SelfEmulation, VerifierGadget, VerifyingKey,
+        pcs::{AssignedCommitment, InCircuitPCS},
+    },
 };
 
 /// A privately assigned verifying key that has not yet been bound to anything.
@@ -37,6 +44,11 @@ use crate::{
 /// being on the curve. The only way to use it is to bind it to a trusted hash,
 /// through [`VerifierGadget::bind_vk_to_hash`], which returns the usable
 /// [`AssignedVk`].
+///
+/// Its commitments are witnessed, so they enter the accumulator as variable
+/// bases. Keys whose commitments should be fixed bases (resolved by the
+/// decider) must be assigned with [`VerifierGadget::assign_vk_as_public_input`]
+/// or [`VerifierGadget::assign_fixed_vk`] instead.
 #[derive(Clone, Debug)]
 pub struct UnboundVk<S: SelfEmulation>(AssignedVk<S>);
 
@@ -66,19 +78,20 @@ impl<S: SelfEmulation> VerifierGadget<S> {
     ///
     /// `cs` must be finalized, i.e. its selectors must have been converted to
     /// fixed columns, as in the constraint system of a verifying key.
-    pub fn assign_private_vk(
+    pub fn assign_unbound_vk(
         &self,
         layouter: &mut impl Layouter<S::F>,
-        cs: &ConstraintSystem<S::F>,
         vk: Value<&VerifyingKey<S>>,
+        cs: &ConstraintSystem<S::F>,
     ) -> Result<UnboundVk<S>, Error> {
-        let domain = vk.map(|vk| vk.get_domain());
         let transcript_repr: AssignedNative<S::F> =
             self.scalar_chip.assign(layouter, vk.map(|vk| vk.transcript_repr()))?;
-        let k: AssignedNative<S::F> =
-            self.scalar_chip.assign(layouter, domain.map(|d| S::F::from(d.k() as u64)))?;
+        let k: AssignedNative<S::F> = self.scalar_chip.assign(
+            layouter,
+            vk.map(|vk| S::F::from(vk.get_domain().k() as u64)),
+        )?;
         let omega: AssignedNative<S::F> =
-            self.scalar_chip.assign(layouter, domain.map(|d| d.get_omega()))?;
+            self.scalar_chip.assign(layouter, vk.map(|vk| vk.get_domain().get_omega()))?;
         let phase0_commitment = S::PCS::assign_commitment(
             layouter,
             &self.curve_chip,
@@ -98,9 +111,12 @@ impl<S: SelfEmulation> VerifierGadget<S> {
     /// Binds the given verifying key by asserting that its [`vk_hash`] equals
     /// `expected`.
     ///
-    /// `expected` must be trusted, e.g. a public input, a constant, part of a
-    /// public set, or a witness bound by other means (e.g. added to a hash
-    /// chain that the verifier recomputes).
+    /// # WARNING
+    ///
+    /// It is the responsibility of the caller to guarantee the integrity of
+    /// `expected`, e.g. by making it a public input, a constant, a member of a
+    /// public set, or a witness bound by other means (such as a hash chain that
+    /// the verifier recomputes).
     pub fn bind_vk_to_hash(
         &self,
         layouter: &mut impl Layouter<S::F>,
@@ -162,7 +178,7 @@ mod tests {
     type E = <S as SelfEmulation>::Engine;
 
     #[derive(Clone, Debug)]
-    struct PrivateVkCircuit {
+    struct UnboundVkCircuit {
         inner_cs: ConstraintSystem<F>,
         inner_vk: Value<VerifyingKey<S>>,
         inner_instances: Value<[F; 1]>,
@@ -171,7 +187,7 @@ mod tests {
         expected_hash: Value<F>,
     }
 
-    impl Circuit<F> for PrivateVkCircuit {
+    impl Circuit<F> for UnboundVkCircuit {
         type Config = <TestCircuit as Circuit<F>>::Config;
         type FloorPlanner = SimpleFloorPlanner;
         type Params = ();
@@ -198,10 +214,10 @@ mod tests {
             let verifier_chip =
                 VerifierGadget::<S>::new(&curve_chip, &native_gadget, &poseidon_chip);
 
-            let unbound_vk: UnboundVk<S> = verifier_chip.assign_private_vk(
+            let unbound_vk: UnboundVk<S> = verifier_chip.assign_unbound_vk(
                 &mut layouter,
-                &self.inner_cs,
                 self.inner_vk.as_ref(),
+                &self.inner_cs,
             )?;
 
             let expected_hash =
@@ -279,8 +295,8 @@ mod tests {
 
         // The private key's commitments are variable bases in-circuit, so only
         // `-G` stays fixed.
-        let neg_g = BTreeMap::from([(PolynomialLabel::Custom("-G".into()), -C::generator())]);
-        let mut acc = Accumulator::<S>::from_dual_msm(dual_msm, &neg_g);
+        let fixed_bases = BTreeMap::from([(PolynomialLabel::Custom("-G".into()), -C::generator())]);
+        let mut acc = Accumulator::<S>::from_dual_msm(dual_msm, &fixed_bases);
         acc.collapse();
         let acc_pi = AssignedAccumulator::as_public_input(&acc);
 
@@ -294,7 +310,7 @@ mod tests {
     }
 
     fn run(setup: &Setup, expected_hash: F) -> Result<(), ()> {
-        let circuit = PrivateVkCircuit {
+        let circuit = UnboundVkCircuit {
             inner_cs: setup.vk.cs().clone(),
             inner_vk: Value::known(setup.vk.clone()),
             inner_instances: Value::known([setup.output]),

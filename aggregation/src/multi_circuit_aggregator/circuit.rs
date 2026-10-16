@@ -268,10 +268,11 @@ impl IvcTransition for ProofAggregation {
 
             // The inner VK is private in-circuit, so its commitments are variable
             // bases. Only `-G` is a fixed base, resolved after collapsing.
-            let neg_g = BTreeMap::from([(PolynomialLabel::Custom("-G".into()), -C::generator())]);
-            let mut acc = Accumulator::from_dual_msm(dual_msm, &neg_g);
+            let fixed_bases =
+                BTreeMap::from([(PolynomialLabel::Custom("-G".into()), -C::generator())]);
+            let mut acc = Accumulator::from_dual_msm(dual_msm, &fixed_bases);
             acc.collapse();
-            acc.resolve_fixed_bases(&neg_g);
+            acc.resolve_fixed_bases(&fixed_bases);
             acc
         };
 
@@ -309,10 +310,10 @@ impl IvcTransition for ProofAggregation {
 
         // 1. Witness the VK and the statement, bind the VK to its witnessed hash, and
         //    add both to the hash chain (checked by the decider).
-        let unbound_vk: UnboundVk<S> = verifier.assign_private_vk(
+        let unbound_vk: UnboundVk<S> = verifier.assign_unbound_vk(
             layouter,
-            &self.inner_ctx.cs,
             witness.as_ref().map(|w| w.claim.vk.vk()),
+            &self.inner_ctx.cs,
         )?;
         let statement: AssignedNative<F> = self.std_lib.assign(
             layouter,

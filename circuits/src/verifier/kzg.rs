@@ -181,8 +181,6 @@ impl<S: SelfEmulation> InnerValue for AssignedKZGMultiCommitment<S> {
 }
 
 impl<S: SelfEmulation> Instantiable<S::F> for AssignedKZGMultiCommitment<S> {
-    /// The public inputs of every committed point, in order.
-    ///
     /// # Panics
     ///
     /// Panics if `com` contains a linear combination of commitments.
@@ -191,7 +189,7 @@ impl<S: SelfEmulation> Instantiable<S::F> for AssignedKZGMultiCommitment<S> {
             .flat_map(|c| match c {
                 KZGCommitment::Simple(point, _) => S::AssignedPoint::as_public_input(point),
                 KZGCommitment::Linear(..) => {
-                    panic!("only commitments to points can be public inputs")
+                    panic!("linear combinations of commitments cannot be public inputs")
                 }
             })
             .collect()
