@@ -532,13 +532,7 @@ impl<F: Field> Assignment<F> for DevAssembly<F> {
     }
 
     fn exit_region(&mut self) {
-        let region = self.current_region.take().unwrap();
-        // [DROP] measurement hook: dump the measured regions.
-        if region.is_measured && std::env::var("COST_REGIONS").is_ok() {
-            let rows = region.rows.map_or(0, |(start, end)| end - start + 1);
-            eprintln!("REGION\t{}\t{}", region.name, rows);
-        }
-        self.regions.push(region);
+        self.regions.push(self.current_region.take().unwrap());
     }
 
     fn enable_selector<A, AR>(&mut self, _: A, selector: &Selector, row: usize) -> Result<(), Error>

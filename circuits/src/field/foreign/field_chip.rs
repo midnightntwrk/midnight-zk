@@ -1562,8 +1562,7 @@ where
 
     /// Normalizes the given assigned field element, but only if its bounds
     /// exceed the limits of the well-formed bounds.
-    // [DROP] public for the measurement harness.
-    pub fn normalize(
+    pub(crate) fn normalize(
         &self,
         layouter: &mut impl Layouter<F>,
         x: &AssignedField<F, K, P>,
