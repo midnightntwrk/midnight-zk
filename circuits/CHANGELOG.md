@@ -23,6 +23,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 
 ### Changed
+* The in-circuit KZG multi-open collapses the combined commitment of a point set only if it has at least `COLLAPSE_THRESHOLD` variable bases, as the off-circuit verifier does [#579](https://github.com/midnightntwrk/midnight-zk/pull/579)
 * BREAKING: `AssignedMsm::assign` is replaced by `AssignedMsm::assign_collapsed`, which assigns a collapsed MSM: fixed-base terms and a single variable-base point with the constant scalar 1, instead of a witnessed one, so accumulating it keeps its scalars as short as the accumulation challenge. `AssignedAccumulator::assign` is removed; `VerifierGadget::assign_collapsed_accumulator` assigns both sides with `assign_collapsed` [#579](https://github.com/midnightntwrk/midnight-zk/pull/579)
 * `verifier::fixed_bases` reads the labels carried by the verifying-key commitment, rather than assuming one commitment per fixed polynomial, and `fixed_base_labels` takes the constraint system and lets the new `InCircuitPCS::fixed_base_labels` group its fixed polynomials, returning the labels in the same order [#570](https://github.com/midnightntwrk/midnight-zk/pull/570)
 * BREAKING: `SelfEmulation::PCS` declares the in-circuit PCS of the verified proofs; `AssignedVk` and the `VerifierGadget` methods drop their PCS generic [#570](https://github.com/midnightntwrk/midnight-zk/pull/570)

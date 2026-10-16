@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+* `kzg::COLLAPSE_THRESHOLD`, the number of variable-base terms from which the KZG multi-open collapses a point set's combined commitment [#579](https://github.com/midnightntwrk/midnight-zk/pull/579)
 * `VerifyingKey` implements `Default`: a placeholder key of an empty constraint system [#461](https://github.com/midnightntwrk/midnight-zk/pull/461)
 * `ConstraintSystem::fixed_polys_labels` [#547](https://github.com/midnightntwrk/midnight-zk/pull/547)
 * `Rotation` derives `PartialOrd` and `Ord` [#543](https://github.com/midnightntwrk/midnight-zk/pull/543)
@@ -49,6 +50,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Fix cost-model [#435](https://github.com/midnightntwrk/midnight-zk/pull/435)
 
 ### Changed
+* With truncated challenges, the KZG multi-open collapses the combined commitment of a point set only if it has at least `COLLAPSE_THRESHOLD` variable-base terms; a set with fewer keeps its terms, scaled by `x4` one by one [#579](https://github.com/midnightntwrk/midnight-zk/pull/579)
 * Remove the linearization: the simple selectors are committed, evaluated and opened in the phase-0 group like any other fixed column, and the verifier checks that the quotient commitment, scaled by `1 - x^n`, opens to `-nu(x)` at `x`. Proofs grow by one scalar per simple selector, and every verifying key and its `transcript_repr` change. `create_gate` no longer requires the polynomials of a gate to be multiples of one simple selector [#566](https://github.com/midnightntwrk/midnight-zk/pull/566)
 * `ConstraintSystem::create_gate` panics on a gate whose polynomials are not all multiples of the same simple selector, or that queries a simple selector none of its polynomials is a multiple of. The verifier takes the evaluation of a simple selector as 1, which relies on that shape [#547](https://github.com/midnightntwrk/midnight-zk/pull/547)
 * The verifying key commits to every fixed column but the simple selectors as one group, together with the fixed permutation polynomials, in the phase-0 group exposed as `VerifyingKey::phase0_commitment`, and to each simple selector on its own, as `VerifyingKey::simple_selector_commitments`. The serialized key changes to that layout, so every verifying key and its `transcript_repr` change [#547](https://github.com/midnightntwrk/midnight-zk/pull/547)

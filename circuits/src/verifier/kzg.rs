@@ -28,6 +28,8 @@ use std::{
 
 use ff::Field;
 use midnight_curves::pairing::MultiMillerLoop;
+#[cfg(feature = "truncated-challenges")]
+use midnight_proofs::poly::kzg::COLLAPSE_THRESHOLD;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
@@ -609,13 +611,16 @@ pub(crate) fn multi_prepare_kzg<S: SelfEmulation>(
     let final_com = {
         let mut coms = q_coms;
 
-        // We collapse all AssignedMsm at this point to later leverage the fact that x4
-        // powers are truncated. Exceptionally, the first one is not collapsed,
-        // as the first x4 power is 1.
+        // We collapse every AssignedMsm of at least `COLLAPSE_THRESHOLD` variable
+        // bases at this point to later leverage the fact that x4 powers are
+        // truncated. Exceptionally, the first one is not collapsed, as the first x4
+        // power is 1.
         #[cfg(feature = "truncated-challenges")]
-        coms.iter_mut().skip(1).try_for_each(|com| {
-            com.collapse(layouter, curve_chip, scalar_chip, PolynomialLabel::NoLabel)
-        })?;
+        (coms.iter_mut().skip(1))
+            .filter(|com| com.nb_variable_bases() >= COLLAPSE_THRESHOLD)
+            .try_for_each(|com| {
+                com.collapse(layouter, curve_chip, scalar_chip, PolynomialLabel::NoLabel)
+            })?;
         coms.push(f_com.into_msm(layouter, scalar_chip)?);
 
         msm_inner_product(layouter, scalar_chip, &coms, &truncated_x4_powers)?
