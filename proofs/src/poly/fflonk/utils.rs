@@ -1,5 +1,5 @@
-//! Helpers of the fflonk scheme: the combination `g` of a chunk and the roots
-//! it is opened at.
+//! Helpers of the fflonk scheme: the split of a group into chunks, the
+//! combination `g` of a chunk and the roots it is opened at.
 
 use std::{
     collections::{HashMap, hash_map::Entry},
@@ -11,6 +11,22 @@ use std::{
 use ff::PrimeField;
 
 use crate::poly::{Coeff, Polynomial};
+
+/// The chunks of a group of `items`: the fewest chunks of at most `t_max`
+/// items, `⌈items.len() / t_max⌉`, of sizes that differ by at most one, the
+/// larger ones first, each a run of consecutive items.
+pub fn balanced_chunks<T>(items: &[T], t_max: usize) -> impl Iterator<Item = &[T]> {
+    let nb_chunks = items.len().div_ceil(t_max);
+    let (size, nb_larger) = match nb_chunks {
+        0 => (0, 0),
+        _ => (items.len() / nb_chunks, items.len() % nb_chunks),
+    };
+    (0..nb_chunks).scan(items, move |rest, i| {
+        let (chunk, tail) = rest.split_at(size + usize::from(i < nb_larger));
+        *rest = tail;
+        Some(chunk)
+    })
+}
 
 /// `g(X) = Σ_i X^i f_i(X^t)`, for `polys` the polynomials `f_0, ..., f_{k-1}`
 /// in coefficient form and `t` the next power of two of `k`: the coefficients
@@ -68,4 +84,33 @@ pub(super) fn cached_roots<F: PrimeField + Hash>(
         Entry::Occupied(entry) => entry.into_mut(),
         Entry::Vacant(entry) => entry.insert(roots(x, t)?),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::balanced_chunks;
+
+    #[test]
+    fn test_balanced_chunks() {
+        let sizes = |len: usize, t_max: usize| {
+            let items: Vec<usize> = (0..len).collect();
+            let chunks: Vec<_> = balanced_chunks(&items, t_max).collect();
+            assert_eq!(chunks.concat(), items);
+            chunks.iter().map(|chunk| chunk.len()).collect::<Vec<_>>()
+        };
+        assert_eq!(sizes(17, 8), [6, 6, 5]);
+        assert_eq!(sizes(49, 8), [7; 7]);
+        assert_eq!(sizes(12, 8), [6, 6]);
+        assert_eq!(sizes(5, 8), [5]);
+        assert_eq!(sizes(8, 4), [4, 4]);
+        assert_eq!(sizes(0, 8), Vec::<usize>::new());
+        for len in 0..100 {
+            for t_max in [1, 2, 4, 8, 16] {
+                let sizes = sizes(len, t_max);
+                assert_eq!(sizes.len(), len.div_ceil(t_max));
+                assert!(sizes.iter().all(|&size| 0 < size && size <= t_max));
+                assert!(sizes.windows(2).all(|w| w[0] >= w[1] && w[0] - w[1] <= 1));
+            }
+        }
+    }
 }

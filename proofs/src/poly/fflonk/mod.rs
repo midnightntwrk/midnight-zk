@@ -31,8 +31,9 @@
 //!   dummy polynomials up to the next power of two `t`.
 //!
 //! - The degree of `g` grows with `t`, so `t` is bounded by `T_MAX`: the
-//!   polynomials of a `commit_many` call are split into chunks of at most
-//!   `T_MAX` polynomials.
+//!   polynomials of a `commit_many` call are split into the fewest chunks of at
+//!   most `T_MAX` polynomials, of balanced sizes; see
+//!   [`balanced_chunks`](crate::poly::fflonk::balanced_chunks).
 
 mod utils;
 
@@ -45,7 +46,7 @@ use std::{
 };
 
 use ff::WithSmallOrderMulGroup;
-pub use utils::roots;
+pub use utils::{balanced_chunks, roots};
 use utils::{cached_roots, compute_g};
 
 use crate::{
@@ -64,8 +65,8 @@ use crate::{
 
 /// fflonk over the polynomial commitment scheme `PCS`.
 ///
-/// The polynomials of a `commit_many` call are combined in chunks of at most
-/// `T_MAX = 2^LOG2_T_MAX`.
+/// The polynomials of a `commit_many` call are combined in the
+/// [`balanced_chunks`] of at most `T_MAX = 2^LOG2_T_MAX`.
 #[derive(Clone, Debug)]
 pub struct Fflonk<PCS, const LOG2_T_MAX: u32>(PhantomData<PCS>);
 
@@ -110,8 +111,9 @@ where
         labels: &[PolynomialLabel],
     ) -> Self::Commitment {
         PolynomialLabel::assert_distinct(labels);
-        let g_labels: Vec<_> = labels.chunks(Self::T_MAX).map(|l| Collection(l.to_vec())).collect();
-        let chunks: Vec<_> = polynomials.chunks(Self::T_MAX).collect();
+        let g_labels: Vec<_> =
+            balanced_chunks(labels, Self::T_MAX).map(|l| Collection(l.to_vec())).collect();
+        let chunks: Vec<_> = balanced_chunks(polynomials, Self::T_MAX).collect();
         PCS::commit_interleaved(params, &chunks, &g_labels)
     }
 
@@ -123,7 +125,8 @@ where
         Self::Commitment: Hashable<T::Hash>,
     {
         PolynomialLabel::assert_distinct(labels);
-        let g_labels: Vec<_> = labels.chunks(Self::T_MAX).map(|l| Collection(l.to_vec())).collect();
+        let g_labels: Vec<_> =
+            balanced_chunks(labels, Self::T_MAX).map(|l| Collection(l.to_vec())).collect();
         PCS::read_commitment(transcript, &g_labels)
     }
 
@@ -143,7 +146,8 @@ where
         labels: &[PolynomialLabel],
     ) -> io::Result<Self::Commitment> {
         PolynomialLabel::assert_distinct(labels);
-        let g_labels: Vec<_> = labels.chunks(Self::T_MAX).map(|l| Collection(l.to_vec())).collect();
+        let g_labels: Vec<_> =
+            balanced_chunks(labels, Self::T_MAX).map(|l| Collection(l.to_vec())).collect();
         PCS::deserialize_commitment(reader, format, &g_labels)
     }
 
@@ -166,10 +170,10 @@ where
         // Maps the labels of every queried chunk to its polynomials and the
         // points they are queried at, in query order: `labels -> (polys, points)`.
         let chunks_info = queries.iter().fold(BTreeMap::new(), |mut chunks_info, q| {
-            let (labels, polys) =
-                (q.group_labels.chunks(Self::T_MAX).zip(q.group_polys.chunks(Self::T_MAX)))
-                    .find(|(labels, _)| labels.contains(&q.label))
-                    .expect("the queried group has no polynomial under the query label");
+            let (labels, polys) = (balanced_chunks(q.group_labels, Self::T_MAX)
+                .zip(balanced_chunks(q.group_polys, Self::T_MAX)))
+            .find(|(labels, _)| labels.contains(&q.label))
+            .expect("the queried group has no polynomial under the query label");
             let (_, points) = (chunks_info.entry(labels))
                 .or_insert_with(|| (polys.iter().collect::<Vec<_>>(), Vec::new()));
             if !points.contains(&q.point) {
@@ -246,7 +250,7 @@ where
         // its polynomials are queried at, in query order: `labels -> (commitment,
         // points)`.
         let chunks_info = queries.iter().fold(BTreeMap::new(), |mut chunks_info, q| {
-            let labels = (Self::commitment_labels(q.commitment).chunks(Self::T_MAX))
+            let labels = balanced_chunks(&Self::commitment_labels(q.commitment), Self::T_MAX)
                 .find(|labels| labels.contains(&q.label))
                 .map_or_else(|| vec![q.label.clone()], <[_]>::to_vec);
             let (_, points) = chunks_info.entry(labels).or_insert((q.commitment, Vec::new()));
