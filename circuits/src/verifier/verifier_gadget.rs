@@ -43,13 +43,17 @@ use crate::{
     },
 };
 
+mod unbound_vk;
+
+pub use unbound_vk::{UnboundVk, vk_hash};
+
 /// A gadget for KZG-based in-circuit proof verification.
 #[derive(Clone, Debug)]
 #[doc(hidden)] // A bug in rustc prevents us from documenting the verifier gadget.
 pub struct VerifierGadget<S: SelfEmulation> {
-    pub(super) curve_chip: S::CurveChip,
-    pub(super) scalar_chip: S::ScalarChip,
-    pub(super) sponge_chip: S::SpongeChip,
+    curve_chip: S::CurveChip,
+    scalar_chip: S::ScalarChip,
+    sponge_chip: S::SpongeChip,
 }
 
 impl<S: SelfEmulation> Chip<S::F> for VerifierGadget<S> {
@@ -306,7 +310,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         domain: AssignedEvaluationDomain<S>,
         transcript_repr: AssignedNative<S::F>,
     ) -> Result<AssignedVk<S>, Error> {
-        if cs.num_selectors() != 0 {
+        if cs.num_selectors() > 0 {
             return Err(Error::Synthesis(
                 "the constraint system has selectors, it must be finalized".into(),
             ));

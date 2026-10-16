@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 * Add `IvcError::InvalidWitness` variant [#311](https://github.com/midnightntwrk/midnight-zk/pull/311)
 * Add `assign_without_subgroup_check` to `SelfEmulation` trait [#284](https://github.com/midnightntwrk/midnight-zk/pull/284)
 ### Changed
-* The multi-circuit aggregator witnesses the inner verifying keys privately, with `VerifierGadget::assign_private_vk` and binds each of them to its hash with `bind_vk_to_hash`: the aggregator state no longer exposes the last inner verifying key [#572](https://github.com/midnightntwrk/midnight-zk/pull/572)
+* The multi-circuit aggregator witnesses the inner verifying keys privately, with `VerifierGadget::assign_unbound_vk` and binds each of them to its hash with `bind_vk_to_hash`: the aggregator state no longer exposes the last inner verifying key [#572](https://github.com/midnightntwrk/midnight-zk/pull/572)
 * The multi-circuit aggregator supports inner circuits of different sizes: their `k` and `omega` are public inputs, and `InnerCircuitsContext::new` takes the inner circuits' `max_bit_len` instead of `k` [#461](https://github.com/midnightntwrk/midnight-zk/pull/461)
 * `IvcInstance` no longer carries the verifying key's public inputs: `IvcVerifier::verify` derives them from its own key, and `IvcError::VkMismatch` is removed [#461](https://github.com/midnightntwrk/midnight-zk/pull/461)
 * BREAKING: The IVC and aggregation circuits verify proofs of zk_stdlib's `DefaultPCS` instead of KZG proofs [#575](https://github.com/midnightntwrk/midnight-zk/pull/575)
