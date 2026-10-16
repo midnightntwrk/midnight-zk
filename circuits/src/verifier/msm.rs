@@ -534,7 +534,6 @@ impl<S: SelfEmulation> AssignedMsm<S> {
     }
 
     /// The number of variable-base terms of this MSM.
-    #[cfg(feature = "truncated-challenges")]
     pub(crate) fn nb_variable_bases(&self) -> usize {
         self.bases.iter().filter(|b| matches!(b, AssignedPoint::Variable(_))).count()
     }

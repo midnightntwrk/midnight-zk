@@ -28,22 +28,18 @@ use std::{
 
 use ff::Field;
 use midnight_curves::pairing::MultiMillerLoop;
-#[cfg(feature = "truncated-challenges")]
-use midnight_proofs::poly::kzg::COLLAPSE_THRESHOLD;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
     poly::{
         PolynomialLabel,
         kzg::{
-            KZGCommitmentScheme,
+            COLLAPSE_THRESHOLD, KZGCommitmentScheme,
             commitment::{KZGCommitment, KZGMultiCommitment},
         },
     },
 };
 
-#[cfg(feature = "truncated-challenges")]
-use crate::verifier::utils::truncate;
 use crate::{
     CircuitField,
     field::AssignedNative,
@@ -57,7 +53,7 @@ use crate::{
         utils::{
             AssignedBoundedScalar, Coset, evaluate_interpolation_quotient,
             evaluate_interpolation_quotient_on_cosets, inner_product, mul_add, mul_bounded_scalars,
-            truncated_powers,
+            truncate, truncated_powers,
         },
     },
 };
@@ -471,7 +467,7 @@ fn evals_inner_product<F: CircuitField>(
 /// The resulting accumulator satisfies the invariant iff all queries are valid.
 pub(crate) fn multi_prepare_kzg<S: SelfEmulation>(
     layouter: &mut impl Layouter<S::F>,
-    #[cfg(feature = "truncated-challenges")] curve_chip: &S::CurveChip,
+    curve_chip: &S::CurveChip,
     scalar_chip: &S::ScalarChip,
     queries: &[VerifierQuery<S, InCircuitKZG<S>>],
     transcript_gadget: &mut TranscriptGadget<S>,
@@ -563,10 +559,7 @@ pub(crate) fn multi_prepare_kzg<S: SelfEmulation>(
         .into_single();
 
     let x3 = transcript_gadget.squeeze_challenge(layouter)?;
-    #[cfg(feature = "truncated-challenges")]
     let x3 = truncate::<S::F>(layouter, scalar_chip, &x3)?;
-    #[cfg(not(feature = "truncated-challenges"))]
-    let x3 = AssignedBoundedScalar::new(&x3, None);
 
     let mut q_evals_on_x3 = Vec::with_capacity(q_eval_sets.len());
     for _ in 0..q_eval_sets.len() {
@@ -615,7 +608,6 @@ pub(crate) fn multi_prepare_kzg<S: SelfEmulation>(
         // bases at this point to later leverage the fact that x4 powers are
         // truncated. Exceptionally, the first one is not collapsed, as the first x4
         // power is 1.
-        #[cfg(feature = "truncated-challenges")]
         (coms.iter_mut().skip(1))
             .filter(|com| com.nb_variable_bases() >= COLLAPSE_THRESHOLD)
             .try_for_each(|com| {
@@ -733,18 +725,11 @@ impl<S: SelfEmulation> InCircuitPCS<S> for InCircuitKZG<S> {
 
     fn multi_prepare(
         layouter: &mut impl Layouter<S::F>,
-        _curve_chip: &S::CurveChip,
+        curve_chip: &S::CurveChip,
         scalar_chip: &S::ScalarChip,
         queries: &[VerifierQuery<'_, S, Self>],
         transcript: &mut TranscriptGadget<S>,
     ) -> Result<AssignedAccumulator<S>, Error> {
-        multi_prepare_kzg(
-            layouter,
-            #[cfg(feature = "truncated-challenges")]
-            _curve_chip,
-            scalar_chip,
-            queries,
-            transcript,
-        )
+        multi_prepare_kzg(layouter, curve_chip, scalar_chip, queries, transcript)
     }
 }

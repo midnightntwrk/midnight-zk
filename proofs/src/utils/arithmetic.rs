@@ -299,7 +299,6 @@ pub fn lagrange_interpolate<F: Field + Ord>(points: &[F], evals: &[F]) -> Vec<F>
     }
 }
 
-#[cfg(feature = "truncated-challenges")]
 use num_bigint::BigUint;
 
 /// Truncates a scalar field element to half its byte size.
@@ -317,7 +316,6 @@ use num_bigint::BigUint;
 /// 128 bits may not be enough entropy depending on the application. For
 /// example, it makes a collision attack feasible with 2^64 memory and ~2^64
 /// operations.
-#[cfg(feature = "truncated-challenges")]
 pub(crate) fn truncate<F: PrimeField>(scalar: F) -> F {
     let nb_bytes = F::NUM_BITS.div_ceil(8).div_ceil(2) as usize;
     let bytes = scalar.to_repr().as_ref()[..nb_bytes].to_vec();
@@ -325,7 +323,6 @@ pub(crate) fn truncate<F: PrimeField>(scalar: F) -> F {
     F::from_str_vartime(&BigUint::to_string(&bi)).unwrap()
 }
 
-#[cfg(feature = "truncated-challenges")]
 pub(crate) fn truncated_powers<F: PrimeField>(base: F) -> impl Iterator<Item = F> {
     powers(base).map(truncate)
 }

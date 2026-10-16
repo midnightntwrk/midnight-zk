@@ -34,8 +34,6 @@ use group::Group;
 use midnight_curves::{pairing::MultiMillerLoop, serde::SerdeObject};
 use rand_core::OsRng;
 
-#[cfg(feature = "truncated-challenges")]
-use crate::utils::arithmetic::{truncate, truncated_powers};
 use crate::{
     poly::{
         Coeff, Error, Polynomial, PolynomialRepresentation, ProverQuery,
@@ -52,16 +50,17 @@ use crate::{
     utils::{
         arithmetic::{
             CurveAffine, CurveExt, divide_by_roots, eval_interpolant, eval_polynomial,
-            evals_inner_product, inner_product, kate_division, parallelize, powers,
+            evals_inner_product, inner_product, kate_division, parallelize, powers, truncate,
+            truncated_powers,
         },
         helpers::{ProcessedSerdeObject, SerdeFormat},
     },
 };
 
-/// With truncated challenges, the multi-open collapses the combined commitment
-/// of a point set (but the first) into one point before scaling it by its `x4`
-/// power only if it has at least this many variable-base terms. A set with
-/// fewer keeps its terms, scaled by `x4` one by one.
+/// The multi-open collapses the combined commitment of a point set (but the
+/// first) into one point before scaling it by its `x4` power only if it has at
+/// least this many variable-base terms. A set with fewer keeps its terms,
+/// scaled by `x4` one by one.
 pub const COLLAPSE_THRESHOLD: usize = 4;
 
 #[derive(Clone, Debug)]
@@ -303,11 +302,7 @@ where
         let q_polys: Vec<_> = q_polys
             .par_iter()
             .map(|polys| {
-                #[cfg(feature = "truncated-challenges")]
                 let x1 = truncated_powers(x1);
-
-                #[cfg(not(feature = "truncated-challenges"))]
-                let x1 = powers(x1);
 
                 poly_inner_product(polys, x1)
             })
@@ -344,7 +339,6 @@ where
         transcript.write(&f_com).map_err(|_| Error::OpeningError)?;
 
         let x3: E::Fr = transcript.squeeze_challenge();
-        #[cfg(feature = "truncated-challenges")]
         let x3 = truncate(x3);
 
         // Evaluate all q_polys at x3 in parallel, then write sequentially.
@@ -359,11 +353,7 @@ where
         let final_poly = {
             let mut polys = q_polys;
             polys.push(&f_poly);
-            #[cfg(feature = "truncated-challenges")]
             let powers = truncated_powers(x4);
-
-            #[cfg(not(feature = "truncated-challenges"))]
-            let powers = powers(x4);
 
             poly_inner_product(&polys, powers)
         };
@@ -441,11 +431,7 @@ where
         let nb_x1_powers = q_coms.iter().map(Vec::len).max().unwrap_or(0);
         assert!(nb_x1_powers >= q_eval_sets.iter().map(Vec::len).max().unwrap_or(0));
 
-        #[cfg(feature = "truncated-challenges")]
         let powers_x1 = truncated_powers(x1).take(nb_x1_powers).collect::<Vec<_>>();
-
-        #[cfg(not(feature = "truncated-challenges"))]
-        let powers_x1 = powers(x1).take(nb_x1_powers).collect::<Vec<_>>();
 
         let q_coms = q_coms
             .into_iter()
@@ -478,7 +464,6 @@ where
         // Sample a challenge x_3 for checking that f(X) was committed to
         // correctly.
         let x3: E::Fr = transcript.squeeze_challenge();
-        #[cfg(feature = "truncated-challenges")]
         let x3 = truncate(x3);
 
         let mut q_evals_on_x3 = Vec::<E::Fr>::with_capacity(q_eval_sets.len());
@@ -508,7 +493,6 @@ where
             // Collapse the MSMs of at least `COLLAPSE_THRESHOLD` variable-base
             // terms before combining with x4 powers, to match the in-circuit
             // verifier. Skip the first one since its x4 power is 1.
-            #[cfg(feature = "truncated-challenges")]
             (coms.iter_mut().skip(1))
                 .filter(|c| {
                     matches!(c, KZGCommitment::Linear(_, _, labels)
@@ -517,11 +501,7 @@ where
                 .for_each(|c| c.collapse(PolynomialLabel::NoLabel));
             coms.push(f_com);
 
-            #[cfg(feature = "truncated-challenges")]
             let powers = truncated_powers(x4);
-
-            #[cfg(not(feature = "truncated-challenges"))]
-            let powers = powers(x4);
 
             inner_product(&coms, powers.take(size))
         };
@@ -530,11 +510,7 @@ where
             let mut evals = q_evals_on_x3;
             evals.push(f_eval);
 
-            #[cfg(feature = "truncated-challenges")]
             let powers = truncated_powers(x4);
-
-            #[cfg(not(feature = "truncated-challenges"))]
-            let powers = powers(x4);
 
             inner_product(&evals, powers)
         };

@@ -29,10 +29,6 @@ use midnight_proofs::{
     transcript::{Hashable, TranscriptHash},
 };
 
-#[cfg(not(feature = "truncated-challenges"))]
-use crate::instructions::FieldInstructions;
-#[cfg(feature = "truncated-challenges")]
-use crate::instructions::NativeInstructions;
 use crate::{
     CircuitField,
     ecc::{
@@ -42,8 +38,8 @@ use crate::{
     field::{AssignedNative, NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip},
     hash::poseidon::{PoseidonChip, PoseidonState},
     instructions::{
-        AssignmentInstructions, HashInstructions, PublicInputInstructions, SpongeInstructions,
-        ecc::EccInstructions, public_input::CommittedInstanceInstructions,
+        AssignmentInstructions, HashInstructions, NativeInstructions, PublicInputInstructions,
+        SpongeInstructions, ecc::EccInstructions, public_input::CommittedInstanceInstructions,
     },
     types::{AssignedForeignPoint, InnerValue, Instantiable},
     verifier::{InCircuitKZG, InCircuitPCS},
@@ -65,12 +61,8 @@ pub trait SelfEmulation: Clone + Debug {
     /// A type for the Fiat-Shamir hashing.
     type Hash: TranscriptHash;
 
-    #[cfg(feature = "truncated-challenges")]
     /// A chip implementing native field arithmetic operations.
     type ScalarChip: NativeInstructions<Self::F>;
-    #[cfg(not(feature = "truncated-challenges"))]
-    /// A chip implementing native field arithmetic operations.
-    type ScalarChip: FieldInstructions<Self::F, AssignedNative<Self::F>>;
 
     /// A chip implementing assignment operations for [Self::AssignedPoint].
     type CurveChip: Clone
