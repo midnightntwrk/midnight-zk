@@ -71,9 +71,6 @@ default = ["committed-instances"]
 circuit-params = []
 dev-curves = ["midnight-curves/dev-curves"]
 
-# This feature truncates challenges to half the size of the scalar field.
-truncated-challenges = []
-
 # This feature adds a new argument to prover and verifier functions, which
 # represents instances in committed form (e.g. in the form of a polynomial
 # commitment instead of a vector of scalars).

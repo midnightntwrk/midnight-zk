@@ -56,6 +56,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 * `CircuitField` refactor [#201](https://github.com/midnightntwrk/midnight-zk/pull/201)
 
 ### Removed
+* `truncated-challenges` feature, which the examples no longer require; challenges are always truncated [#580](https://github.com/midnightntwrk/midnight-zk/pull/580)
 * `single-h-commitment` feature [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
 * `IvcCircuit::cs_degree` [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
 * `fewer-point-sets` feature [#554](https://github.com/midnightntwrk/midnight-zk/pull/554)

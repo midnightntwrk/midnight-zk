@@ -45,17 +45,13 @@ use midnight_proofs::{
 use num_bigint::BigUint;
 use num_traits::One;
 
-#[cfg(not(feature = "truncated-challenges"))]
-use crate::verifier::utils::powers;
-#[cfg(feature = "truncated-challenges")]
-use crate::verifier::utils::{truncate_off_circuit, truncated_powers};
 use crate::{
     instructions::{HashInstructions, PublicInputInstructions, hash::HashCPU},
     types::{AssignedBit, InnerValue, Instantiable},
     verifier::{
         SelfEmulation,
         msm::{AssignedMsm, Msm, Point},
-        utils::AssignedBoundedScalar,
+        utils::{AssignedBoundedScalar, truncate_off_circuit, truncated_powers},
     },
 };
 
@@ -184,7 +180,6 @@ impl<S: SelfEmulation> Accumulator<S> {
 
         let r = <S::SpongeChip as HashCPU<S::F, S::F>>::hash(&hash_input);
         let rs = (0..accs.len()).map(|i| r.pow([i as u64]));
-        #[cfg(feature = "truncated-challenges")]
         let rs = rs.map(truncate_off_circuit).collect::<Vec<_>>();
 
         let mut acc = accs[0].clone();
@@ -325,13 +320,7 @@ impl<S: SelfEmulation> AssignedAccumulator<S> {
             .collect::<Vec<_>>();
 
         let r = sponge_chip.hash(layouter, &hash_input)?;
-        #[cfg(feature = "truncated-challenges")]
         let rs = truncated_powers::<S::F>(layouter, scalar_chip, &r, accs.len())?;
-        #[cfg(not(feature = "truncated-challenges"))]
-        let rs = powers::<S::F>(layouter, scalar_chip, &r, accs.len())?
-            .iter()
-            .map(|ri| AssignedBoundedScalar::new(ri, None))
-            .collect::<Vec<_>>();
 
         let mut acc = accs[0].clone();
         for (other, ri) in accs.iter().zip(rs).skip(1) {

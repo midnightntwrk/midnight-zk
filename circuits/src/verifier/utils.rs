@@ -25,12 +25,12 @@ use midnight_proofs::{
 use num_bigint::BigUint;
 use num_traits::One;
 
-#[cfg(feature = "truncated-challenges")]
-use crate::instructions::NativeInstructions;
 use crate::{
     CircuitField,
     field::AssignedNative,
-    instructions::{ArithInstructions, AssignmentInstructions, FieldInstructions},
+    instructions::{
+        ArithInstructions, AssignmentInstructions, FieldInstructions, NativeInstructions,
+    },
 };
 
 /// An assigned scalar known to be bounded in the range [0, bound].
@@ -110,10 +110,8 @@ pub fn mul_bounded_scalars<F: CircuitField>(
     })
 }
 
-/// Truncates a field element by removing its most-significative half.
-/// This function is supposed to perform the exact same truncation that
-/// halo2 does when `feature = "truncated-challenges"` is enabled.
-#[cfg(feature = "truncated-challenges")]
+/// Truncates a field element by removing its most-significative half, as the
+/// off-circuit verifier does with its challenges.
 pub(crate) fn truncate_off_circuit<F: CircuitField>(scalar: F) -> F {
     let nb_bytes = F::NUM_BITS.div_ceil(8).div_ceil(2) as usize;
     let bytes = scalar.to_bytes_le();
@@ -123,7 +121,6 @@ pub(crate) fn truncate_off_circuit<F: CircuitField>(scalar: F) -> F {
 }
 
 /// In-circuit analog of [truncate].
-#[cfg(feature = "truncated-challenges")]
 pub(crate) fn truncate<F: CircuitField>(
     layouter: &mut impl Layouter<F>,
     scalar_chip: &impl NativeInstructions<F>,
@@ -415,11 +412,7 @@ pub(crate) fn powers<F: CircuitField>(
 /// The powers are then truncated by removing their most-significative half.
 pub(crate) fn truncated_powers<F: CircuitField>(
     layouter: &mut impl Layouter<F>,
-    #[cfg(feature = "truncated-challenges")] scalar_chip: &impl NativeInstructions<F>,
-    #[cfg(not(feature = "truncated-challenges"))] scalar_chip: &impl FieldInstructions<
-        F,
-        AssignedNative<F>,
-    >,
+    scalar_chip: &impl NativeInstructions<F>,
     x: &AssignedNative<F>,
     n: usize,
 ) -> Result<Vec<AssignedBoundedScalar<F>>, Error> {
@@ -432,10 +425,7 @@ pub(crate) fn truncated_powers<F: CircuitField>(
                 scalar_chip.assert_equal_to_fixed(layouter, p, F::ONE)?;
                 return Ok(AssignedBoundedScalar::new(p, Some(BigUint::one())));
             }
-            #[cfg(feature = "truncated-challenges")]
-            return truncate::<F>(layouter, scalar_chip, p);
-            #[cfg(not(feature = "truncated-challenges"))]
-            return Ok(AssignedBoundedScalar::new(p, None));
+            truncate::<F>(layouter, scalar_chip, p)
         })
         .collect()
 }

@@ -65,6 +65,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * `VerifierGadget::assign_vk_as_public_input` and `VerifierGadget::assign_fixed_vk` take a finalized constraint system (e.g. `vk.cs()` or `ConstraintSystem::into_finalized`) and return `Error::Synthesis` if it has selectors. `assign_vk_as_public_input` no longer converts the selectors itself [#546](https://github.com/midnightntwrk/midnight-zk/pull/546)
 
 ### Removed
+* BREAKING: `truncated-challenges` feature. The verifier gadget always truncates the challenges, and `SelfEmulation::ScalarChip` always implements `NativeInstructions` [#580](https://github.com/midnightntwrk/midnight-zk/pull/580)
 * `AssignedKZGMultiCommitment::commitment_to_zero`. An empty committed instance can be passed as an empty instance column instead, which is neither committed to nor opened [#569](https://github.com/midnightntwrk/midnight-zk/pull/569)
 * `single-h-commitment` feature in the verifier gadget [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
 * `fewer-point-sets` feature in the verifier gadget [#554](https://github.com/midnightntwrk/midnight-zk/pull/554)
