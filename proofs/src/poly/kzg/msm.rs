@@ -311,7 +311,7 @@ where
 #[cfg(test)]
 mod tests {
     use ff::Field;
-    use group::{Curve, Group};
+    use group::{Curve, Group, prime::PrimeCurveAffine};
     use midnight_curves::{Bls12, CurveAffine, Fq, G1Affine, G1Projective, G2Affine};
     use rand_core::OsRng;
 
@@ -436,5 +436,46 @@ mod tests {
     #[test]
     fn g2_agrees_with_naive() {
         agrees_with_naive::<G2Affine>();
+    }
+
+    /// Run with `--ignored --nocapture`: Rust Pippenger vs blst on dense G1 MSMs.
+    #[test]
+    #[ignore]
+    fn bench_g1_rust_vs_blst() {
+        use std::time::Instant;
+        let median = |mut v: Vec<f64>| {
+            v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            v[v.len() / 2]
+        };
+        for log_n in [15, 16] {
+            let n = 1usize << log_n;
+            let coeffs: Vec<Fq> = (0..n).map(|_| Fq::random(OsRng)).collect();
+            let bases: Vec<G1Affine> = {
+                let g = G1Projective::random(OsRng);
+                let proj: Vec<_> = (1..=n as u64).map(|i| g * Fq::from(i)).collect();
+                let mut aff = vec![G1Affine::identity(); n];
+                G1Projective::batch_normalize(&proj, &mut aff);
+                aff
+            };
+            let (mut rust, mut blst, mut dz) = (vec![], vec![], vec![]);
+            for _ in 0..5 {
+                let t = Instant::now();
+                let a = G1Affine::msm(&coeffs, &bases);
+                rust.push(t.elapsed().as_secs_f64() * 1e3);
+                let t = Instant::now();
+                let b = G1Affine::multi_exp_affine(&bases, &coeffs);
+                blst.push(t.elapsed().as_secs_f64() * 1e3);
+                assert_eq!(a, b);
+                let t = Instant::now();
+                let _ = super::drop_zeros(&coeffs, &bases);
+                dz.push(t.elapsed().as_secs_f64() * 1e3);
+            }
+            println!(
+                "n=2^{log_n}: rust {:.2} ms, blst {:.2} ms, drop_zeros {:.2} ms",
+                median(rust),
+                median(blst),
+                median(dz)
+            );
+        }
     }
 }
