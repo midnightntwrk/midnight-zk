@@ -325,6 +325,8 @@ where
         timings.fold_verify += start.elapsed();
         assert_eq!(&acc_v, acc.accumulator());
         if !corrupt_last {
+            // The carried identity values are those of the folded trace.
+            assert_eq!(acc.f_acc.values, evaluate_rows(&pk, &acc.trace).values);
             // e' is the relaxed sum of the folded trace at β⃗*.
             assert_eq!(relaxed_sum(&pk, &acc), acc.public.error);
         }
