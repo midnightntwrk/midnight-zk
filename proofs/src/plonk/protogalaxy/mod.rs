@@ -52,6 +52,7 @@
 mod poly;
 
 mod instance;
+pub(crate) mod sparse_gates;
 
 pub use instance::{Accumulator, Challenges, FoldingInstance};
 

@@ -16,18 +16,20 @@ use super::{
     folding_degree,
     poly::{inner_product, interpolate, lagrange_basis, pow_vector},
     prove_relaxed_trace, read_instance,
-    trace::{evaluate_rows, linear_combination},
+    trace::{evaluate_rows, evaluate_rows_dense, linear_combination},
     verify_relaxed_trace,
 };
 use crate::{
+    circuit::{Layouter, SimpleFloorPlanner, Value},
     plonk::{
-        Error, ProvingKey,
+        Advice, Circuit, Column, ConstraintSystem, Constraints, Error, Fixed, ProvingKey, Selector,
         argument::prover::Committed,
         keygen_pk, keygen_vk_with_k,
         test_circuit::{K, SquareCircuit},
+        traces::ProverTrace,
     },
     poly::{
-        Polynomial,
+        LagrangeCoeff, Polynomial, Rotation,
         commitment::{Guard, PolynomialCommitmentScheme},
         fflonk::Fflonk,
         kzg::KZGCommitmentScheme,
@@ -331,6 +333,166 @@ where
         Committed::commit::<CS, _, _>(&params, polys, Polynomial::to_delta, &mut T::init())
             .unwrap();
     assert!(combined.phase1_commitment() == &commitment);
+}
+
+/// Rows used by [`GateMixCircuit`].
+const MIX_ROWS: usize = 16;
+
+/// Gates of every shape the sparse evaluator treats differently: a fixed
+/// query at a nonzero rotation as gating factor, a polynomial whose top node
+/// is a `Sum` (ungated), and a product of two selectors.
+#[derive(Clone, Copy, Default)]
+struct GateMixCircuit {
+    start: u64,
+}
+
+#[derive(Clone, Debug)]
+struct GateMixConfig {
+    s1: Selector,
+    s2: Selector,
+    q: Column<Fixed>,
+    a: Column<Advice>,
+    b: Column<Advice>,
+    c: Column<Advice>,
+}
+
+impl Circuit<Fq> for GateMixCircuit {
+    type Config = GateMixConfig;
+    type FloorPlanner = SimpleFloorPlanner;
+    #[cfg(feature = "circuit-params")]
+    type Params = ();
+
+    fn without_witnesses(&self) -> Self {
+        *self
+    }
+
+    fn configure(meta: &mut ConstraintSystem<Fq>) -> GateMixConfig {
+        let config = GateMixConfig {
+            s1: meta.complex_selector(),
+            s2: meta.complex_selector(),
+            q: meta.fixed_column(),
+            a: meta.advice_column(),
+            b: meta.advice_column(),
+            c: meta.advice_column(),
+        };
+        meta.create_gate("mix", |meta| {
+            let s1 = meta.query_selector(config.s1);
+            let s2 = meta.query_selector(config.s2);
+            let q_next = meta.query_fixed(config.q, Rotation::next());
+            let q_prev = meta.query_fixed(config.q, Rotation::prev());
+            let a = meta.query_advice(config.a, Rotation::cur());
+            let b = meta.query_advice(config.b, Rotation::cur());
+            let c = meta.query_advice(config.c, Rotation::cur());
+            Constraints::without_selector(vec![
+                // Gated by a fixed query at a shifted rotation.
+                q_next * (a.clone() - b.clone()),
+                q_prev * s1 * (a.clone() * b.clone() - c.clone()),
+                // Top node is a `Sum`: active on every row.
+                a.clone() + b.clone() - c.clone(),
+                // Product of two selectors.
+                s2 * meta.query_selector(config.s1) * (a * b - c),
+            ])
+        });
+        config
+    }
+
+    fn synthesize(
+        &self,
+        config: GateMixConfig,
+        mut layouter: impl Layouter<Fq>,
+    ) -> Result<(), Error> {
+        layouter.assign_region(
+            || "mix",
+            |mut region| {
+                for row in 0..MIX_ROWS {
+                    // Different supports for each selector and for `q`.
+                    if row % 2 == 0 {
+                        config.s1.enable(&mut region, row)?;
+                    }
+                    if row % 3 == 0 {
+                        config.s2.enable(&mut region, row)?;
+                    }
+                    if row % 5 != 4 {
+                        region.assign_fixed(|| "q", config.q, row, || Value::known(Fq::ONE))?;
+                    }
+                    let a = Fq::from(self.start + row as u64 + 1);
+                    let b = Fq::from(2 * self.start + 3 * row as u64 + 1);
+                    region.assign_advice(|| "a", config.a, row, || Value::known(a))?;
+                    region.assign_advice(|| "b", config.b, row, || Value::known(b))?;
+                    region.assign_advice(|| "c", config.c, row, || Value::known(a * b))?;
+                }
+                Ok(())
+            },
+        )
+    }
+}
+
+/// Commit phases of `circuit` (with the given public inputs) as a fresh
+/// instance; returns its trace.
+fn trace_of<'a, CS: PolynomialCommitmentScheme<Fq>, C: Circuit<Fq>>(
+    params: &CS::Parameters,
+    pk: &'a ProvingKey<Fq, CS>,
+    circuit: &C,
+    instances: &[&[Fq]],
+) -> ProverTrace<'a, Fq, LagrangeCoeff>
+where
+    CS::Commitment: Hashable<State>,
+{
+    commit_instance(params, pk, circuit, instances, &mut T::init(), OsRng)
+        .unwrap()
+        .trace
+}
+
+/// The row-sparse evaluation agrees with the dense one, row by row. Returns
+/// whether some row is nonzero.
+fn assert_sparse_matches_dense<CS: PolynomialCommitmentScheme<Fq>>(
+    pk: &ProvingKey<Fq, CS>,
+    trace: &ProverTrace<'_, Fq, LagrangeCoeff>,
+) -> bool {
+    let sparse = evaluate_rows(pk, trace);
+    let dense = evaluate_rows_dense(pk, trace);
+    assert_eq!(sparse.len(), dense.len());
+    for (row, (s, d)) in sparse.iter().zip(dense.iter()).enumerate() {
+        assert_eq!(s, d, "sparse and dense evaluations differ on row {row}");
+    }
+    sparse.iter().any(|v| *v != Fq::ZERO)
+}
+
+fn check_sparse_matches_dense<CS: PolynomialCommitmentScheme<Fq>>()
+where
+    CS::Commitment: Hashable<State>,
+{
+    let params = CS::gen_params(K);
+    let weights = [Fq::random(OsRng), Fq::random(OsRng)];
+
+    // SquareCircuit: honest, corrupted and linearly combined traces.
+    let (_, pk) = setup::<CS>();
+    let square = |start, corrupt| SquareCircuit { start, corrupt };
+    let trace = |c: SquareCircuit| trace_of(&params, &pk, &c, &[&[c.public_input()]]);
+    let (a, b) = (trace(square(0, false)), trace(square(3, false)));
+    assert!(!assert_sparse_matches_dense(&pk, &a));
+    assert!(assert_sparse_matches_dense(&pk, &trace(square(0, true))));
+    let combined = linear_combination(&[&a, &b], &weights);
+    assert!(assert_sparse_matches_dense(&pk, &combined));
+
+    // GateMixCircuit.
+    let vk = keygen_vk_with_k::<_, CS, _>(&params, &GateMixCircuit::default(), K).unwrap();
+    let pk = keygen_pk(vk, &GateMixCircuit::default()).unwrap();
+    let mix = |start| trace_of(&params, &pk, &GateMixCircuit { start }, &[]);
+    let (a, b) = (mix(0), mix(5));
+    assert_sparse_matches_dense(&pk, &a);
+    let combined = linear_combination(&[&a, &b], &weights);
+    assert!(assert_sparse_matches_dense(&pk, &combined));
+}
+
+#[test]
+fn sparse_matches_dense_kzg() {
+    check_sparse_matches_dense::<KZGCommitmentScheme<Bls12>>();
+}
+
+#[test]
+fn sparse_matches_dense_fflonk() {
+    check_sparse_matches_dense::<Fflonk<KZGCommitmentScheme<Bls12>, 3>>();
 }
 
 #[test]
