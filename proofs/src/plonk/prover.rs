@@ -167,8 +167,8 @@ where
         transcript,
     )?;
 
-    // Sample theta challenge for keeping lookup columns linearly independent
-    let theta: F = transcript.squeeze_challenge();
+    // Sample theta challenges for keeping lookup columns linearly independent
+    let theta: Vec<F> = transcript.squeeze_challenges(pk.vk.cs.nb_theta_challenges());
 
     // Sample beta challenge
     let beta: F = transcript.squeeze_challenge();
@@ -176,8 +176,8 @@ where
     // Sample gamma challenge
     let gamma: F = transcript.squeeze_challenge();
 
-    // Sample the trash challenge after the advices have been committed to
-    let trash_challenge: F = transcript.squeeze_challenge();
+    // Sample the trash challenges after the advices have been committed to
+    let trash_challenges: Vec<F> = transcript.squeeze_challenges(pk.vk.cs.nb_trash_challenges());
 
     let blinding_factors = pk.vk.cs.blinding_factors();
     let num_perm_sets = pk.vk.cs.permutation.num_sets(pk.vk.cs_degree);
@@ -209,7 +209,7 @@ where
     let logup_polys_maps = logup_multiplicities
         .into_par_iter()
         .zip(logup_blindings.into_par_iter())
-        .map(|(lookup, blindings)| lookup.compute_logderivative(pk, theta, beta, blindings))
+        .map(|(lookup, blindings)| lookup.compute_logderivative(pk, &theta, beta, blindings))
         .collect::<Result<Vec<_>, Error>>()?
         .into_par_iter()
         .map(|c| {
@@ -247,7 +247,7 @@ where
         let p = compute_trash_poly(
             flat,
             domain,
-            trash_challenge,
+            &trash_challenges,
             phase1_committed.polys_of(&advice_labels),
             &pk.fixed_values,
             &instance.instance_values,
@@ -265,8 +265,8 @@ where
         transcript,
     )?;
 
-    // Obtain challenge for keeping all separate gates linearly independent
-    let y: F = transcript.squeeze_challenge();
+    // Obtain challenges for keeping all identities linearly independent
+    let y: Vec<F> = transcript.squeeze_challenges(pk.vk.cs.nb_y_challenges());
 
     let InstanceSingle {
         instance_polys,
@@ -287,7 +287,7 @@ where
         beta,
         gamma,
         theta,
-        trash_challenge,
+        trash_challenges,
         y,
     })
 }
@@ -578,7 +578,7 @@ pub(super) fn compute_nu_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommit
         beta,
         gamma,
         theta,
-        trash_challenge,
+        trash_challenges,
         y,
         ..
     } = &trace;
@@ -603,11 +603,11 @@ pub(super) fn compute_nu_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommit
         &advice_cosets,
         &instance_cosets,
         &pk.fixed_cosets,
-        *y,
+        y,
         *beta,
         *gamma,
-        *theta,
-        *trash_challenge,
+        theta,
+        trash_challenges,
         phase1_committed,
         phase2_committed,
         &pk.l0,

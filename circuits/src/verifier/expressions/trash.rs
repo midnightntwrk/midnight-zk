@@ -45,7 +45,7 @@ pub(crate) fn trash_expressions<S: SelfEmulation>(
     advice_evals: &[AssignedNative<S::F>],
     fixed_evals: &[AssignedNative<S::F>],
     instance_evals: &[AssignedNative<S::F>],
-    trash_challenge: &AssignedNative<S::F>,
+    trash_challenges: &[AssignedNative<S::F>],
 ) -> Result<Vec<AssignedNative<S::F>>, Error> {
     let trash_label = PolynomialLabel::Trash(argument_index);
     let trash_eval = evals_map
@@ -61,7 +61,7 @@ pub(crate) fn trash_expressions<S: SelfEmulation>(
             advice_evals,
             fixed_evals,
             instance_evals,
-            trash_challenge,
+            trash_challenges,
             constraint_expressions,
         )?;
 

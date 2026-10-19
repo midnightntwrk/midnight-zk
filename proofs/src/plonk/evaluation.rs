@@ -39,12 +39,12 @@ pub enum ValueSource {
     Instance(usize, usize),
     /// beta
     Beta(),
-    /// theta
-    Theta(),
-    /// trash challenge
-    TrashChallenge(),
-    /// y
-    Y(),
+    /// theta\[i\]
+    Theta(usize),
+    /// trash_challenges\[i\]
+    TrashChallenge(usize),
+    /// y\[i\]
+    Y(usize),
     /// Previous value
     PreviousValue(),
 }
@@ -70,10 +70,26 @@ pub enum Calculation {
     Double(ValueSource),
     /// This is a negation
     Negate(ValueSource),
-    /// This is Horner's rule: `val = a; val = val * c + b[]`
-    Horner(ValueSource, Vec<ValueSource>, ValueSource),
+    /// This is a linear combination: `val = a + Σᵢ cᵢ * bᵢ` over `(cᵢ, bᵢ)`
+    LinearCombination(ValueSource, Vec<(ValueSource, ValueSource)>),
     /// This is a simple assignment
     Store(ValueSource),
+}
+
+impl Calculation {
+    /// Every value source this calculation reads.
+    fn sources(&self) -> Vec<&ValueSource> {
+        match self {
+            Calculation::Add(a, b) | Calculation::Sub(a, b) | Calculation::Mul(a, b) => vec![a, b],
+            Calculation::Square(a)
+            | Calculation::Double(a)
+            | Calculation::Negate(a)
+            | Calculation::Store(a) => vec![a],
+            Calculation::LinearCombination(s, terms) => {
+                std::iter::once(s).chain(terms.iter().flat_map(|(c, t)| [c, t])).collect()
+            }
+        }
+    }
 }
 
 /// Wraps a `GraphEvaluator` for lookups with named handles to the evaluator
@@ -151,7 +167,7 @@ pub enum FlatOpKind {
     Square,
     Double,
     Negate,
-    /// Fused multiply-add: `dst = a * b + c`. Used for Horner steps.
+    /// Fused multiply-add: `dst = a * b + c`. Used for linear combinations.
     MulAdd,
 }
 
@@ -170,9 +186,9 @@ pub struct FlatOp {
     pub c: u32,
 }
 
-/// Number of named global slots in the values buffer
-/// (beta, theta, trash_challenge, y, previous_value).
-const NUM_CHALLENGE_SLOTS: usize = 5;
+/// Number of scalar named slots in the values buffer (beta, previous_value).
+/// The `theta`, `trash_challenges` and `y` slots follow.
+const NUM_SCALAR_SLOTS: usize = 2;
 
 /// Tag values for [`ColumnRead::col_type`].
 const COL_TYPE_FIXED: u8 = 0;
@@ -196,13 +212,17 @@ pub struct ColumnRead {
 /// Pre-flattened graph for fast evaluation. Built from a [`GraphEvaluator`]
 /// at keygen time via [`GraphEvaluator::flatten`].
 ///
-/// The values buffer layout (with `S = NUM_CHALLENGE_SLOTS`):
+/// The values buffer layout (with `S = NUM_SCALAR_SLOTS + n_theta + n_trash
+/// + n_y`):
 /// ```text
 /// [0 .. C)                   constants (static)
-/// [C .. C+S)                 beta, theta, trash_challenge, y, previous_value
+/// [C .. C+S)                 beta, previous_value, theta[0..n_theta],
+///                            trash_challenges[0..n_trash], y[0..n_y]
 /// [C+S .. C+S+R)             column read results (loaded per element)
 /// [C+S+R .. C+S+R+I)         intermediates (computed per element)
 /// ```
+/// `n_theta` (resp. `n_trash`, `n_y`) is one more than the largest `Theta(i)`
+/// (resp. `TrashChallenge(i)`, `Y(i)`) the graph reads.
 #[derive(Clone, Debug)]
 pub struct FlatGraphEvaluator<F> {
     /// Pre-loaded constants (copied into values buffer once per prove).
@@ -217,10 +237,19 @@ pub struct FlatGraphEvaluator<F> {
     pub values_len: usize,
     /// Index offsets for named slots.
     pub beta_idx: u32,
-    pub theta_idx: u32,
-    pub trash_challenge_idx: u32,
-    pub y_idx: u32,
     pub previous_value_idx: u32,
+    /// Index of `theta[0]`, followed by the other `n_theta - 1` slots.
+    pub theta_idx: u32,
+    pub n_theta: usize,
+    /// Index of `trash_challenges[0]`, followed by the other `n_trash - 1`
+    /// slots.
+    pub trash_challenge_idx: u32,
+    pub n_trash: usize,
+    /// Index of `y[0]`, followed by the other `n_y - 1` slots.
+    pub y_idx: u32,
+    pub n_y: usize,
+    /// Index of the first intermediate.
+    pub intermediates_offset: usize,
     /// Index of the final result.
     pub result_idx: u32,
 }
@@ -228,15 +257,28 @@ pub struct FlatGraphEvaluator<F> {
 impl<F: PrimeField> GraphEvaluator<F> {
     /// Convert this graph into a flattened evaluator for faster evaluation.
     pub fn flatten(&self) -> FlatGraphEvaluator<F> {
-        let num_constants = self.constants.len();
-        let challenge_offset = num_constants;
+        let challenge_offset = self.constants.len();
         let beta_idx = challenge_offset as u32;
-        let theta_idx = (challenge_offset + 1) as u32;
-        let trash_challenge_idx = (challenge_offset + 2) as u32;
-        let y_idx = (challenge_offset + 3) as u32;
-        let previous_value_idx = (challenge_offset + 4) as u32;
+        let previous_value_idx = (challenge_offset + 1) as u32;
 
-        let column_read_offset = challenge_offset + NUM_CHALLENGE_SLOTS;
+        // Number of `theta`/`trash_challenges`/`y` slots: one past the largest
+        // index read.
+        let (mut n_theta, mut n_trash, mut n_y) = (0, 0, 0);
+        for calc_info in &self.calculations {
+            for vs in calc_info.calculation.sources() {
+                match *vs {
+                    ValueSource::Theta(i) => n_theta = n_theta.max(i + 1),
+                    ValueSource::TrashChallenge(i) => n_trash = n_trash.max(i + 1),
+                    ValueSource::Y(i) => n_y = n_y.max(i + 1),
+                    _ => (),
+                }
+            }
+        }
+        let theta_idx = (challenge_offset + NUM_SCALAR_SLOTS) as u32;
+        let trash_challenge_idx = theta_idx + n_theta as u32;
+        let y_idx = trash_challenge_idx + n_trash as u32;
+
+        let column_read_offset = challenge_offset + NUM_SCALAR_SLOTS + n_theta + n_trash + n_y;
 
         // First pass: collect column reads and assign their buffer indices.
         let mut column_reads = Vec::new();
@@ -264,7 +306,7 @@ impl<F: PrimeField> GraphEvaluator<F> {
             column_reads: &mut Vec<ColumnRead>,
             base_offset: usize,
         ) {
-            let mut check = |vs: &ValueSource| {
+            let check = |vs: &ValueSource| {
                 if matches!(
                     vs,
                     ValueSource::Fixed(..) | ValueSource::Advice(..) | ValueSource::Instance(..)
@@ -297,25 +339,7 @@ impl<F: PrimeField> GraphEvaluator<F> {
                 }
             };
 
-            match calc {
-                Calculation::Add(a, b) | Calculation::Sub(a, b) | Calculation::Mul(a, b) => {
-                    check(a);
-                    check(b);
-                }
-                Calculation::Square(a)
-                | Calculation::Double(a)
-                | Calculation::Negate(a)
-                | Calculation::Store(a) => {
-                    check(a);
-                }
-                Calculation::Horner(s, parts, f) => {
-                    check(s);
-                    check(f);
-                    for p in parts {
-                        check(p);
-                    }
-                }
-            }
+            calc.sources().into_iter().for_each(check);
         }
 
         for calc_info in &self.calculations {
@@ -336,9 +360,9 @@ impl<F: PrimeField> GraphEvaluator<F> {
                 ValueSource::Constant(idx) => idx as u32,
                 ValueSource::Intermediate(idx) => (intermediates_offset + idx) as u32,
                 ValueSource::Beta() => beta_idx,
-                ValueSource::Theta() => theta_idx,
-                ValueSource::TrashChallenge() => trash_challenge_idx,
-                ValueSource::Y() => y_idx,
+                ValueSource::Theta(i) => theta_idx + i as u32,
+                ValueSource::TrashChallenge(i) => trash_challenge_idx + i as u32,
+                ValueSource::Y(i) => y_idx + i as u32,
                 ValueSource::PreviousValue() => previous_value_idx,
                 ValueSource::Fixed(..) | ValueSource::Advice(..) | ValueSource::Instance(..) => {
                     column_read_map.iter().find(|(v, _)| *v == *vs).unwrap().1
@@ -411,9 +435,8 @@ impl<F: PrimeField> GraphEvaluator<F> {
                         });
                     }
                 }
-                Calculation::Horner(start, parts, factor) => {
+                Calculation::LinearCombination(start, terms) => {
                     let start_idx = resolve(start);
-                    let factor_idx = resolve(factor);
                     // First: dst = start_value.
                     if dst != start_idx {
                         ops.push(FlatOp {
@@ -424,14 +447,14 @@ impl<F: PrimeField> GraphEvaluator<F> {
                             c: 0,
                         });
                     }
-                    // Then: dst = dst * factor + part[i].
-                    for part in parts {
+                    // Then: dst = coeff[i] * term[i] + dst.
+                    for (coeff, term) in terms {
                         ops.push(FlatOp {
                             kind: FlatOpKind::MulAdd,
                             dst,
-                            a: dst,
-                            b: factor_idx,
-                            c: resolve(part),
+                            a: resolve(coeff),
+                            b: resolve(term),
+                            c: dst,
                         });
                     }
                 }
@@ -448,10 +471,14 @@ impl<F: PrimeField> GraphEvaluator<F> {
             ops,
             values_len,
             beta_idx,
-            theta_idx,
-            trash_challenge_idx,
-            y_idx,
             previous_value_idx,
+            theta_idx,
+            n_theta,
+            trash_challenge_idx,
+            n_trash,
+            y_idx,
+            n_y,
+            intermediates_offset,
             result_idx,
         }
     }
@@ -463,23 +490,31 @@ impl<F: PrimeField> FlatGraphEvaluator<F> {
     /// from the values buffer after evaluation.
     pub fn resolve_idx(&self, vs: ValueSource) -> usize {
         match vs {
-            ValueSource::Intermediate(idx) => {
-                let intermediates_offset =
-                    self.constants.len() + NUM_CHALLENGE_SLOTS + self.column_reads.len();
-                intermediates_offset + idx
-            }
+            ValueSource::Intermediate(idx) => self.intermediates_offset + idx,
             _ => panic!("resolve_idx only supports Intermediate, got {vs:?}"),
         }
     }
 
-    /// Create a fresh values buffer, pre-filled with constants.
-    pub fn new_values_buffer(&self, beta: &F, theta: &F, trash_challenge: &F, y: &F) -> Vec<F> {
+    /// Create a fresh values buffer, pre-filled with constants and challenges.
+    /// Only the first `n_theta` (resp. `n_trash`, `n_y`) elements of `theta`
+    /// (resp. `trash_challenges`, `y`) are read by the graph.
+    pub fn new_values_buffer(
+        &self,
+        beta: &F,
+        theta: &[F],
+        trash_challenges: &[F],
+        y: &[F],
+    ) -> Vec<F> {
         let mut values = vec![F::ZERO; self.values_len];
         values[..self.constants.len()].copy_from_slice(&self.constants);
         values[self.beta_idx as usize] = *beta;
-        values[self.theta_idx as usize] = *theta;
-        values[self.trash_challenge_idx as usize] = *trash_challenge;
-        values[self.y_idx as usize] = *y;
+        let theta_idx = self.theta_idx as usize;
+        values[theta_idx..theta_idx + self.n_theta].copy_from_slice(&theta[..self.n_theta]);
+        let trash_idx = self.trash_challenge_idx as usize;
+        values[trash_idx..trash_idx + self.n_trash]
+            .copy_from_slice(&trash_challenges[..self.n_trash]);
+        let y_idx = self.y_idx as usize;
+        values[y_idx..y_idx + self.n_y].copy_from_slice(&y[..self.n_y]);
         values
     }
 
@@ -674,10 +709,14 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
             ops: Vec::new(),
             values_len: 0,
             beta_idx: 0,
-            theta_idx: 0,
-            trash_challenge_idx: 0,
-            y_idx: 0,
             previous_value_idx: 0,
+            theta_idx: 0,
+            n_theta: 0,
+            trash_challenge_idx: 0,
+            n_trash: 0,
+            y_idx: 0,
+            n_y: 0,
+            intermediates_offset: 0,
             result_idx: 0,
         };
         let mut ev = Evaluator {
@@ -690,19 +729,29 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
             logup_tables: cs.lookups.iter().map(|_| OnceLock::new()).collect(),
         };
 
-        // Custom gates
-        let mut parts = Vec::new();
+        // Custom gates: gate polynomial `k` is multiplied by `y[k]`.
+        let mut terms = Vec::new();
         for gate in cs.gates.iter() {
-            parts
-                .extend(gate.polynomials().iter().map(|poly| ev.custom_gates.add_expression(poly)));
+            for poly in gate.polynomials() {
+                let part = ev.custom_gates.add_expression(poly);
+                terms.push((ValueSource::Y(terms.len()), part));
+            }
         }
-        ev.custom_gates.add_calculation(Calculation::Horner(
+        ev.custom_gates.add_calculation(Calculation::LinearCombination(
             ValueSource::PreviousValue(),
-            parts,
-            ValueSource::Y(),
+            terms,
         ));
 
-        // Lookups
+        // Lookups: a tuple `(e_0, …, e_{l-1})` is compressed as `Σᵢ θᵢ·eᵢ`.
+        let compress = |graph: &mut GraphEvaluator<F>, expressions: &[Expression<F>]| {
+            let terms = (expressions.iter().enumerate())
+                .map(|(i, expr)| (ValueSource::Theta(i), graph.add_expression(expr)))
+                .collect();
+            graph.add_calculation(Calculation::LinearCombination(
+                ValueSource::Constant(0),
+                terms,
+            ))
+        };
         for lookup in cs.lookups.iter() {
             let lookup = lookup.chunk_by_degree(cs.degree());
             let flat_evals = lookup
@@ -715,28 +764,12 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                     let compressed_inputs_cosets: Vec<_> = chunk
                         .iter()
                         .map(|expressions| {
-                            let parts =
-                                expressions.iter().map(|expr| graph.add_expression(expr)).collect();
-                            let compressed = graph.add_calculation(Calculation::Horner(
-                                ValueSource::Constant(0),
-                                parts,
-                                ValueSource::Theta(),
-                            ));
-
+                            let compressed = compress(&mut graph, expressions);
                             graph.add_calculation(Calculation::Add(compressed, ValueSource::Beta()))
                         })
                         .collect();
 
-                    let table_parts: Vec<_> = lookup
-                        .table_expressions()
-                        .iter()
-                        .map(|expr| graph.add_expression(expr))
-                        .collect();
-                    let compressed_table_coset = graph.add_calculation(Calculation::Horner(
-                        ValueSource::Constant(0),
-                        table_parts,
-                        ValueSource::Theta(),
-                    ));
+                    let compressed_table_coset = compress(&mut graph, lookup.table_expressions());
 
                     let partial_products = (0..compressed_inputs_cosets.len())
                         .map(|i| {
@@ -806,12 +839,14 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
     /// `h(X) = nu(X) / (X^n-1)`.
     ///
     /// Folds the proof's `(advice, instance, lookups, trashcans, permutation)`
-    /// data into a `values` accumulator via the verifier challenge `y`.
+    /// identities into a `values` accumulator: identity `k` is multiplied by
+    /// the verifier challenge `y[k]`, in the order of
+    /// [`ConstraintSystem::nb_y_challenges`].
     ///
     /// TODO: drop the `previous_value` plumbing — the parameter on
     /// `FlatGraphEvaluator::evaluate` / `Calculation::evaluate`, the
     /// `ValueSource::PreviousValue` variant, the `previous_value_idx` slot,
-    /// and the `Horner(PreviousValue, parts, Y)` start. With single-proof
+    /// and the `LinearCombination(PreviousValue, ..)` start. With single-proof
     /// processing, `previous_value` is always `F::ZERO` and the leading
     /// `Add(prev, 0)` flat op is dead.
     #[allow(clippy::too_many_arguments)]
@@ -822,11 +857,11 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
         advice: &[Polynomial<F, B>],
         instance: &[Polynomial<F, B>],
         fixed: &[Polynomial<F, B>],
-        y: F,
+        y: &[F],
         beta: F,
         gamma: F,
-        theta: F,
-        trash_challenge: F,
+        theta: &[F],
+        trash_challenges: &[F],
         phase1_committed: &argument::prover::Committed<F, Coeff>,
         phase2_committed: &argument::prover::Committed<F, Coeff>,
         l0: &Polynomial<F, B>,
@@ -841,6 +876,21 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
 
         let p = &cs.permutation;
 
+        // Split `y` into the challenges of each group of identities.
+        assert_eq!(y.len(), cs.nb_y_challenges());
+        let nb_gate_polys: usize = cs.gates.iter().map(|g| g.polynomials().len()).sum();
+        let (y_gates, y_rest) = y.split_at(nb_gate_polys);
+        let (y_perm, mut y_rest) = y_rest.split_at(cs.nb_permutation_identities());
+        // Per lookup: a boundary, one helper per chunk and an accumulator.
+        let y_lookups: Vec<&[F]> = (self.lookups.iter())
+            .map(|chunks| {
+                let (y_lookup, rest) = y_rest.split_at(2 + chunks.len());
+                y_rest = rest;
+                y_lookup
+            })
+            .collect();
+        let y_trash = y_rest;
+
         let mut values = B::empty(domain);
 
         // Custom gates — flattened evaluator with const-generic batch size.
@@ -849,7 +899,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
         // BATCH elements and exposing independent Fq ops to the CPU's
         // out-of-order pipeline.
         let flat = &self.custom_gates_flat;
-        let template = flat.new_values_buffer(&beta, &theta, &trash_challenge, &y);
+        let template = flat.new_values_buffer(&beta, theta, trash_challenges, y_gates);
         parallelize(&mut values, |values, start| {
             flat.evaluate_chunk::<4, B>(
                 &template, values, start, fixed, advice, instance, log_scale, log_n,
@@ -886,26 +936,28 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                     let idx = start + i;
                     let r_next = get_rotation_idx(idx, 1, log_scale, log_n);
                     let r_last = get_rotation_idx(idx, last_rotation.0, log_scale, log_n);
+                    let mut y = y_perm.iter();
 
                     // Enforce only for the first set.
                     // l_0(X) * (1 - z_0(X)) = 0
-                    *value =
-                        *value * y + (one - first_set_permutation_product_coset[idx]) * l0[idx];
+                    *value += *y.next().unwrap()
+                        * (one - first_set_permutation_product_coset[idx])
+                        * l0[idx];
                     // Enforce only for the last set.
                     // l_last(X) * (z_l(X)^2 - z_l(X)) = 0
-                    *value = *value * y
-                        + (last_set_permutation_product_coset[idx]
+                    *value += *y.next().unwrap()
+                        * (last_set_permutation_product_coset[idx]
                             * last_set_permutation_product_coset[idx]
                             - last_set_permutation_product_coset[idx])
-                            * l_last[idx];
+                        * l_last[idx];
                     // Except for the first set, enforce.
                     // l_0(X) * (z_i(X) - z_{i-1}(\omega^(last) X)) = 0
                     for set_idx in 0..num_sets {
                         if set_idx != 0 {
-                            *value = *value * y
-                                + (permutation_product_cosets[set_idx][idx]
+                            *value += *y.next().unwrap()
+                                * (permutation_product_cosets[set_idx][idx]
                                     - permutation_product_cosets[set_idx - 1][r_last])
-                                    * l0[idx];
+                                * l0[idx];
                         }
                     }
                     // And for all the sets we enforce:
@@ -942,7 +994,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                             current_delta *= &F::DELTA;
                         }
 
-                        *value = *value * y + (left - right) * l_active_row[idx];
+                        *value += *y.next().unwrap() * (left - right) * l_active_row[idx];
                     }
                     beta_term *= &omega;
                 }
@@ -1039,7 +1091,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                 .map(|batch| {
                     batch
                         .iter()
-                        .map(|flat| flat.new_values_buffer(&beta, &theta, &trash_challenge, &y))
+                        .map(|flat| flat.new_values_buffer(&beta, theta, trash_challenges, y))
                         .collect()
                 })
                 .collect();
@@ -1047,7 +1099,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
             let mut trash_bufs: Vec<Vec<F>> = self
                 .trashcans_flat
                 .iter()
-                .map(|flat| flat.new_values_buffer(&beta, &theta, &trash_challenge, &y))
+                .map(|flat| flat.new_values_buffer(&beta, theta, trash_challenges, y))
                 .collect();
 
             let mut rot_indices = vec![
@@ -1071,7 +1123,8 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                 for (n, (helper_cosets, aggregator_coset, multiplicities_coset)) in
                     all_lookup_cosets.iter().enumerate()
                 {
-                    *value = *value * y + aggregator_coset[idx] * (l0[idx] + l_last[idx]);
+                    let mut y = y_lookups[n].iter();
+                    *value += *y.next().unwrap() * aggregator_coset[idx] * (l0[idx] + l_last[idx]);
 
                     let mut sum_helpers = F::ZERO;
                     let mut table_value = F::ZERO;
@@ -1104,21 +1157,21 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                         }
 
                         // Helper constraint: h(X) · ∏ⱼ(fⱼ(X) + β) = Σⱼ ∏_{k≠j}(fₖ(X) + β)
-                        *value =
-                            *value * y + helper_cosets[fi][idx] * product - sum_partial_products;
+                        *value += *y.next().unwrap()
+                            * (helper_cosets[fi][idx] * product - sum_partial_products);
 
                         sum_helpers += helper_cosets[fi][idx];
                     }
 
                     // Accumulator constraint:
                     // (Z(ωX) - Z(X)- s·Σᵢhᵢ(X))·(t(X) + β) + m(X) = 0
-                    *value = *value * y
-                        + l_active_row[idx]
-                            * ((aggregator_coset[r_next]
-                                - aggregator_coset[idx]
-                                - selector * sum_helpers)
-                                * table_value
-                                + multiplicities_coset[idx]);
+                    *value += *y.next().unwrap()
+                        * l_active_row[idx]
+                        * ((aggregator_coset[r_next]
+                            - aggregator_coset[idx]
+                            - selector * sum_helpers)
+                            * table_value
+                            + multiplicities_coset[idx]);
                 }
 
                 // --- Trash constraints ---
@@ -1137,7 +1190,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
                     );
 
                     let q = fixed[trash_selector_cols[n]][idx];
-                    *value = *value * y + (compressed_expression - (one - q) * trash_poly[idx]);
+                    *value += y_trash[n] * (compressed_expression - (one - q) * trash_poly[idx]);
                 }
             }
         });
@@ -1303,20 +1356,17 @@ impl<F: PrimeField> GraphEvaluator<F> {
         }
     }
 
-    /// Graph of `Σ_j c^{m-1-j} · e_j` over the constraint expressions of a
-    /// trashcan, with `c` read from the `TrashChallenge` slot.
+    /// Graph of `Σ_j c_j · e_j` over the constraint expressions `e_j` of a
+    /// trashcan, with `c_j` read from the `TrashChallenge(j)` slot.
     pub(crate) fn for_trash(trash: &trash::Argument<F>) -> Self {
         let mut graph = Self::default();
-        let parts = trash
-            .constraint_expressions()
-            .iter()
-            .map(|expr| graph.add_expression(expr))
+        let terms = (trash.constraint_expressions().iter().enumerate())
+            .map(|(j, expr)| (ValueSource::TrashChallenge(j), graph.add_expression(expr)))
             .collect();
 
-        graph.add_calculation(Calculation::Horner(
+        graph.add_calculation(Calculation::LinearCombination(
             ValueSource::Constant(0),
-            parts,
-            ValueSource::TrashChallenge(),
+            terms,
         ));
         graph
     }
@@ -1389,7 +1439,7 @@ mod tests {
     }
 
     // Note: We need this instead of Expression::evaluate to test for
-    // Horner and Store as well.
+    // LinearCombination and Store as well.
     /// Reference evaluator for `GraphEvaluator` without flattening.
     #[allow(clippy::too_many_arguments)]
     fn ref_evaluate(
@@ -1399,9 +1449,9 @@ mod tests {
         instance: &[Polynomial<Fq, LagrangeCoeff>],
         rots: &[usize],
         beta: Fq,
-        theta: Fq,
-        tc: Fq,
-        y: Fq,
+        theta: &[Fq],
+        tc: &[Fq],
+        y: &[Fq],
         prev: Fq,
     ) -> Fq {
         let mut im = vec![Fq::ZERO; graph.num_intermediates];
@@ -1412,9 +1462,9 @@ mod tests {
             ValueSource::Advice(c, k) => advice[c][rots[k]],
             ValueSource::Instance(c, k) => instance[c][rots[k]],
             ValueSource::Beta() => beta,
-            ValueSource::Theta() => theta,
-            ValueSource::TrashChallenge() => tc,
-            ValueSource::Y() => y,
+            ValueSource::Theta(i) => theta[i],
+            ValueSource::TrashChallenge(i) => tc[i],
+            ValueSource::Y(i) => y[i],
             ValueSource::PreviousValue() => prev,
         };
         for ci in &graph.calculations {
@@ -1426,11 +1476,10 @@ mod tests {
                 Calculation::Double(v) => r(v, &im).double(),
                 Calculation::Negate(v) => -r(v, &im),
                 Calculation::Store(v) => r(v, &im),
-                Calculation::Horner(s, parts, f) => {
-                    let fv = r(f, &im);
+                Calculation::LinearCombination(s, terms) => {
                     let mut acc = r(s, &im);
-                    for p in parts {
-                        acc = acc * fv + r(p, &im);
+                    for (c, t) in terms {
+                        acc += r(c, &im) * r(t, &im);
                     }
                     acc
                 }
@@ -1454,12 +1503,9 @@ mod tests {
 
         let prev: Vec<_> = (0..n).map(|_| Fq::random(&mut rng)).collect();
 
-        let (beta, theta, tc, y) = (
-            Fq::random(&mut rng),
-            Fq::random(&mut rng),
-            Fq::random(&mut rng),
-            Fq::random(&mut rng),
-        );
+        let beta = Fq::random(&mut rng);
+        let mut challenges = || (0..3).map(|_| Fq::random(&mut rng)).collect::<Vec<_>>();
+        let (theta, tc, y) = (challenges(), challenges(), challenges());
 
         let flat = graph.flatten();
         let challenges = flat.new_values_buffer(&beta, &theta, &tc, &y);
@@ -1480,9 +1526,9 @@ mod tests {
                     &instance,
                     &rots(idx),
                     beta,
-                    theta,
-                    tc,
-                    y,
+                    &theta,
+                    &tc,
+                    &y,
                     prev[idx],
                 )
             })
@@ -1567,18 +1613,23 @@ mod tests {
         let dbl = g.add_calculation(Calculation::Double(f1));
         let neg = g.add_calculation(Calculation::Negate(mul));
         let wb = g.add_calculation(Calculation::Mul(add, ValueSource::Beta()));
-        let wt = g.add_calculation(Calculation::Add(wb, ValueSource::Theta()));
-        let wc = g.add_calculation(Calculation::Sub(wt, ValueSource::TrashChallenge()));
+        let wt = g.add_calculation(Calculation::Add(wb, ValueSource::Theta(1)));
+        let wc = g.add_calculation(Calculation::Sub(wt, ValueSource::TrashChallenge(2)));
 
         // Constant as a Calculation operand.
         let with_const = g.add_calculation(Calculation::Add(neg, ValueSource::Constant(2)));
 
-        // Horner calculation to compute linear combination on challenge Y of previous
-        // calculations.
-        g.add_calculation(Calculation::Horner(
+        // Linear combination of previous calculations, with indexed challenges
+        // and a non-challenge coefficient.
+        g.add_calculation(Calculation::LinearCombination(
             ValueSource::PreviousValue(),
-            vec![sq, dbl, neg, wc, with_const],
-            ValueSource::Y(),
+            vec![
+                (ValueSource::Y(0), sq),
+                (ValueSource::Theta(2), dbl),
+                (ValueSource::TrashChallenge(0), neg),
+                (ValueSource::Y(2), wc),
+                (with_const, wb),
+            ],
         ));
         check_graph(&g, 16, 0xCAFE);
 
@@ -1617,7 +1668,8 @@ mod tests {
     }
 
     /// The flat, single-pass trash polynomial equals the per-expression
-    /// closure evaluation followed by a Horner fold in the challenge.
+    /// closure evaluation followed by the linear combination with the
+    /// challenges.
     #[test]
     fn trash_poly_matches_closure_evaluation() {
         let mut rng = ChaCha20Rng::seed_from_u64(0x7A5);
@@ -1658,16 +1710,18 @@ mod tests {
         let fixed: Vec<_> = (0..3).map(|_| rand_poly(&mut rng, n)).collect();
         let advice: Vec<_> = (0..3).map(|_| rand_poly(&mut rng, n)).collect();
         let instance: Vec<_> = (0..2).map(|_| rand_poly(&mut rng, n)).collect();
-        let c = Fq::random(&mut rng);
+        let c: Vec<Fq> = (0..trash.constraint_expressions().len())
+            .map(|_| Fq::random(&mut rng))
+            .collect();
 
-        let expected = trash
-            .constraint_expressions()
-            .iter()
-            .map(|e| domain.lagrange_from_vec(evaluate(e, n, 0, &fixed, &advice, &instance)))
-            .fold(domain.empty_lagrange(), |acc, e| acc * c + &e);
+        let expected = (trash.constraint_expressions().iter().zip(&c))
+            .map(|(e, c)| {
+                domain.lagrange_from_vec(evaluate(e, n, 0, &fixed, &advice, &instance)) * *c
+            })
+            .fold(domain.empty_lagrange(), |acc, e| acc + &e);
 
         let flat = GraphEvaluator::for_trash(&trash).flatten();
-        let got = trash::prover::compute_trash_poly(&flat, &domain, c, &advice, &fixed, &instance);
+        let got = trash::prover::compute_trash_poly(&flat, &domain, &c, &advice, &fixed, &instance);
         assert_eq!(expected.values, got.values);
     }
 

@@ -386,13 +386,13 @@ impl<S: SelfEmulation> VerifierGadget<S> {
 
         let phase1_committed = argument::read_committed(&phase1_labels, layouter, &mut transcript)?;
 
-        // Sample theta challenge for keeping lookup columns linearly independent
-        let theta = transcript.squeeze_challenge(layouter)?;
+        // Sample theta challenges for keeping lookup columns linearly independent
+        let theta = transcript.squeeze_challenges(layouter, cs.nb_theta_challenges())?;
 
         let beta = transcript.squeeze_challenge(layouter)?;
         let gamma = transcript.squeeze_challenge(layouter)?;
 
-        let trash_challenge = transcript.squeeze_challenge(layouter)?;
+        let trash_challenges = transcript.squeeze_challenges(layouter, cs.nb_trash_challenges())?;
 
         let mut phase2_labels = cs.permutation().accumulator_labels(cs.degree());
 
@@ -412,8 +412,8 @@ impl<S: SelfEmulation> VerifierGadget<S> {
 
         let phase2_committed = argument::read_committed(&phase2_labels, layouter, &mut transcript)?;
 
-        // Sample y challenge, which keeps the gates linearly independent
-        let y = transcript.squeeze_challenge(layouter)?;
+        // Sample y challenges, which keep the identities linearly independent
+        let y = transcript.squeeze_challenges(layouter, cs.nb_y_challenges())?;
 
         Ok((
             VerifierTrace {
@@ -423,7 +423,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                 beta,
                 gamma,
                 theta,
-                trash_challenge,
+                trash_challenges,
                 y,
             },
             transcript,
@@ -457,7 +457,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
             beta,
             gamma,
             theta,
-            trash_challenge,
+            trash_challenges,
             y,
         } = trace;
 
@@ -685,7 +685,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                     &advice_evals,
                     &fixed_evals,
                     &instance_evals,
-                    &trash_challenge,
+                    &trash_challenges,
                 )
             })
             .collect::<Result<Vec<Vec<_>>, Error>>()?
@@ -696,17 +696,18 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         let x_squared = self.scalar_chip.mul(layouter, &x, &x, None)?;
         let splitting_factor = self.scalar_chip.div(layouter, &xn, &x_squared)?;
 
-        // -nu(x): the identities batched with y by Horner's rule, negated.
+        // -nu(x): the identities batched with y (identity k times y[k]), negated.
+        assert_eq!(expressions.len(), y.len());
         let zero: AssignedNative<S::F> = self.scalar_chip.assign_fixed(layouter, S::F::ZERO)?;
-        let neg_nu_eval = expressions.iter().try_fold(zero, |acc, id| {
+        let neg_nu_eval = expressions.iter().zip(y.iter()).try_fold(zero, |acc, (id, y)| {
             self.scalar_chip.add_and_mul(
                 layouter,
-                (S::F::ZERO, &acc),
-                (S::F::ZERO, &y),
-                (-S::F::ONE, id),
+                (S::F::ZERO, y),
+                (S::F::ZERO, id),
+                (S::F::ONE, &acc),
                 S::F::ZERO,
-                S::F::ONE,
-            ) // acc * y - id
+                -S::F::ONE,
+            ) // acc - y * id
         })?;
 
         // h_0(x) is derived from -nu(x) = (1 - x^n) h(x), for

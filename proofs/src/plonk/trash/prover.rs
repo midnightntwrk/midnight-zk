@@ -6,14 +6,14 @@ use crate::{
     utils::arithmetic::parallelize,
 };
 
-/// Computes `Σ_j c^{m-1-j} · e_j` over the rows, for the constraint
-/// expressions `e_j` of a trashcan and the trash challenge `c`. `flat` is the
+/// Computes `Σ_j c_j · e_j` over the rows, for the constraint expressions
+/// `e_j` of a trashcan and the trash challenges `c_j`. `flat` is the
 /// flattened graph of
 /// [`GraphEvaluator::for_trash`](crate::plonk::evaluation::GraphEvaluator::for_trash).
 pub(crate) fn compute_trash_poly<F: WithSmallOrderMulGroup<3>>(
     flat: &FlatGraphEvaluator<F>,
     domain: &EvaluationDomain<F>,
-    trash_challenge: F,
+    trash_challenges: &[F],
     advice_values: &[Polynomial<F, LagrangeCoeff>],
     fixed_values: &[Polynomial<F, LagrangeCoeff>],
     instance_values: &[Polynomial<F, LagrangeCoeff>],
@@ -22,7 +22,7 @@ pub(crate) fn compute_trash_poly<F: WithSmallOrderMulGroup<3>>(
     let mut poly = domain.empty_lagrange();
 
     parallelize(&mut poly, |values, start| {
-        let mut buf = flat.new_values_buffer(&F::ZERO, &F::ZERO, &trash_challenge, &F::ZERO);
+        let mut buf = flat.new_values_buffer(&F::ZERO, &[], trash_challenges, &[]);
         let mut rots = vec![0usize; flat.rotations.len()];
         for (i, value) in values.iter_mut().enumerate() {
             for (r, rot) in rots.iter_mut().zip(&flat.rotations) {

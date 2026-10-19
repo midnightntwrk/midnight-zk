@@ -22,11 +22,7 @@ use midnight_proofs::{
 use crate::{
     field::AssignedNative,
     instructions::{ArithInstructions, AssignmentInstructions},
-    verifier::{
-        SelfEmulation,
-        argument::Evaluation,
-        utils::{mul_add, try_reduce},
-    },
+    verifier::{SelfEmulation, argument::Evaluation, utils::mul_add},
 };
 
 pub(crate) mod lookup;
@@ -84,16 +80,18 @@ pub(crate) fn eval_expression<S: SelfEmulation>(
     }
 }
 
+/// Compresses `(e_0, …, e_{l-1})` into `Σᵢ r[i]·eᵢ`, one operation per term.
 pub(crate) fn compress_expressions<S: SelfEmulation>(
     layouter: &mut impl Layouter<S::F>,
     scalar_chip: &S::ScalarChip,
     advice_evals: &[AssignedNative<S::F>],
     fixed_evals: &[AssignedNative<S::F>],
     instance_evals: &[AssignedNative<S::F>],
-    r: &AssignedNative<S::F>,
+    r: &[AssignedNative<S::F>],
     expressions: &[Expression<S::F>],
 ) -> Result<AssignedNative<S::F>, Error> {
-    let evaluated_expressions = expressions
+    assert!(!expressions.is_empty() && expressions.len() <= r.len());
+    let evals = expressions
         .iter()
         .map(|expression| {
             eval_expression::<S>(
@@ -107,8 +105,9 @@ pub(crate) fn compress_expressions<S: SelfEmulation>(
         })
         .collect::<Result<Vec<_>, Error>>()?;
 
-    try_reduce(evaluated_expressions, |acc, eval| {
-        // acc := acc * r + eval
-        mul_add(layouter, scalar_chip, &acc, r, &eval)
+    let first = scalar_chip.mul(layouter, &r[0], &evals[0], None)?;
+    evals.iter().zip(r).skip(1).try_fold(first, |acc, (eval, r)| {
+        // acc := r * eval + acc
+        mul_add(layouter, scalar_chip, r, eval, &acc)
     })
 }

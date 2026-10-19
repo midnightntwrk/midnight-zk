@@ -51,7 +51,7 @@ pub(crate) fn lookup_expressions<S: SelfEmulation>(
     l_0: &AssignedNative<S::F>,
     l_last: &AssignedNative<S::F>,
     l_blind: &AssignedNative<S::F>,
-    theta: &AssignedNative<S::F>,
+    theta: &[AssignedNative<S::F>],
     beta: &AssignedNative<S::F>,
 ) -> Result<Vec<AssignedNative<S::F>>, Error> {
     let multiplicities_eval = eval_at::<S>(

@@ -19,9 +19,9 @@ pub struct ProverTrace<'a, F: PrimeField> {
     pub(crate) phase2_committed: argument::prover::Committed<F, Coeff>,
     pub(crate) beta: F,
     pub(crate) gamma: F,
-    pub(crate) theta: F,
-    pub(crate) trash_challenge: F,
-    pub(crate) y: F,
+    pub(crate) theta: Vec<F>,
+    pub(crate) trash_challenges: Vec<F>,
+    pub(crate) y: Vec<F>,
 }
 
 /// Verifier's trace of a proof.
@@ -32,7 +32,7 @@ pub struct VerifierTrace<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> {
     pub(crate) phase2_committed: argument::verifier::Committed<F, PCS>,
     pub(crate) beta: F,
     pub(crate) gamma: F,
-    pub(crate) theta: F,
-    pub(crate) trash_challenge: F,
-    pub(crate) y: F,
+    pub(crate) theta: Vec<F>,
+    pub(crate) trash_challenges: Vec<F>,
+    pub(crate) y: Vec<F>,
 }

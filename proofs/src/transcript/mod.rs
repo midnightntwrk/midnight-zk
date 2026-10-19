@@ -61,6 +61,11 @@ pub trait Transcript: Clone {
     /// with the corresponding hash function.
     fn squeeze_challenge<T: Sampleable<Self::Hash>>(&mut self) -> T;
 
+    /// Squeeze `n` challenges of type `T`, one after the other.
+    fn squeeze_challenges<T: Sampleable<Self::Hash>>(&mut self, n: usize) -> Vec<T> {
+        (0..n).map(|_| self.squeeze_challenge()).collect()
+    }
+
     /// Writing a hashable element `T` to the transcript without writing it to
     /// the proof, treating it as a common commitment.
     fn common<T: Hashable<Self::Hash>>(&mut self, input: &T) -> io::Result<()>;

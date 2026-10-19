@@ -386,10 +386,10 @@ impl<F: PrimeField> ChunkedArgument<F> {
     #[allow(clippy::too_many_arguments)]
     /// Computes the constraint expressions.
     ///
-    /// When a lookup involves multiple columns, `theta` is used as a random
-    /// challenge to compress them into a single value via a random linear
-    /// combination. That is, given expressions `(e₁, ..., eₗ)`, the compressed
-    /// value is `e₁·θˡ⁻¹ + e₂·θˡ⁻² + ... + eₗ`. Both the input values `fⱼ`
+    /// The random challenges `theta` compress the expressions of a lookup into
+    /// a single value via a random linear combination. That is, given
+    /// expressions `(e₀, ..., eₗ₋₁)`, the compressed value is
+    /// `θ₀·e₀ + θ₁·e₁ + ... + θₗ₋₁·eₗ₋₁`. Both the input values `fⱼ`
     /// and the table value `t` are compressed this way before being
     /// substituted into the LogUp identities.
     ///
@@ -408,7 +408,7 @@ impl<F: PrimeField> ChunkedArgument<F> {
         l_0: F,
         l_last: F,
         l_blind: F,
-        theta: F,
+        theta: &'a [F],
         beta: F,
         advice_evals: &[F],
         fixed_evals: &[F],
@@ -436,9 +436,9 @@ impl<F: PrimeField> ChunkedArgument<F> {
                 .collect::<Vec<_>>()
         };
         let compress_expressions = |expressions: &[Expression<F>]| {
-            evaluate_expressions(expressions)
-                .iter()
-                .fold(F::ZERO, |acc, eval| acc * theta + eval)
+            let evals = evaluate_expressions(expressions);
+            assert!(evals.len() <= theta.len());
+            evals.iter().zip(theta).map(|(eval, theta)| *theta * eval).sum::<F>()
         };
 
         let compressed_table = compress_expressions(&self.table_expressions);

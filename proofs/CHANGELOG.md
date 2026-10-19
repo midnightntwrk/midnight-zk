@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+* `Transcript::squeeze_challenges`, and `ConstraintSystem::{nb_theta_challenges, nb_trash_challenges, nb_y_challenges}`, the number of challenges of each kind a proof squeezes
 * `kzg::point_set_order`, the order in which the KZG multi-open takes its point sets [#583](https://github.com/midnightntwrk/midnight-zk/pull/583)
 * `fflonk::balanced_chunks`, the split of a group into the fewest chunks of at most `T_MAX`, of balanced sizes [#579](https://github.com/midnightntwrk/midnight-zk/pull/579)
 * `kzg::COLLAPSE_THRESHOLD`, the number of variable-base terms from which the KZG multi-open collapses a point set's combined commitment [#579](https://github.com/midnightntwrk/midnight-zk/pull/579)
@@ -52,6 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Fix cost-model [#435](https://github.com/midnightntwrk/midnight-zk/pull/435)
 
 ### Changed
+* BREAKING: the identities are batched with one squeezed challenge `y[k]` per identity, the lookup tuples compressed with one `theta[i]` per tuple position and the trashcan expressions with one trash challenge per expression, instead of powers of a single `y`, `theta` and trash challenge. Proofs do not verify against the previous verifier; their size is unchanged
 * The LogUp prover evaluates the input expressions of a lookup in parallel, `evaluate` splits the rows into small work-stealing tasks so that it balances when nested, and the table side inverts each distinct class size once rather than once per class. The multiplicities are unchanged
 * The table side of a LogUp lookup (its evaluations and its classes of equal tuples) is built once and cached in the `Evaluator` of the proving key when the table expressions read fixed columns only, instead of at every proof; input tuples are looked up with a reused buffer. The multiplicities are unchanged
 * The trash polynomials are computed in one parallel pass with the flattened trashcan evaluator, instead of one allocating evaluation per constraint expression; same polynomials

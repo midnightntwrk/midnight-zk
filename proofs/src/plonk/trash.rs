@@ -53,7 +53,7 @@ impl<F: PrimeField> Argument<F> {
     pub(crate) fn expressions(
         &self,
         evals_map: &BTreeMap<PolynomialLabel, Vec<argument::Evaluation<F>>>,
-        trash_challenge: F,
+        trash_challenges: &[F],
         advice_evals: &[F],
         fixed_evals: &[F],
         instance_evals: &[F],
@@ -75,9 +75,12 @@ impl<F: PrimeField> Argument<F> {
             )
         };
 
+        // Σ_j c_j · e_j, for the trash challenges `c_j`.
+        assert!(self.constraint_expressions.len() <= trash_challenges.len());
         let compressed_expressions = (self.constraint_expressions.iter())
-            .map(evaluate_expression)
-            .fold(F::ZERO, |acc, eval| acc * &trash_challenge + &eval);
+            .zip(trash_challenges)
+            .map(|(expr, c)| *c * evaluate_expression(expr))
+            .sum::<F>();
 
         let q = evaluate_expression(self.selector());
         vec![compressed_expressions - (F::ONE - q) * trash_eval].into_iter()

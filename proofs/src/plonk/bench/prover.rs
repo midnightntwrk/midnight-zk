@@ -220,8 +220,8 @@ where
         (multiplicities, committed)
     };
 
-    // Sample theta challenge for keeping lookup columns linearly independent
-    let theta: F = transcript.squeeze_challenge();
+    // Sample theta challenges for keeping lookup columns linearly independent
+    let theta: Vec<F> = transcript.squeeze_challenges(pk.vk.cs.nb_theta_challenges());
 
     // Sample beta challenge
     let beta: F = transcript.squeeze_challenge();
@@ -229,8 +229,8 @@ where
     // Sample gamma challenge
     let gamma: F = transcript.squeeze_challenge();
 
-    // Sample the trash challenge after the advices have been committed to
-    let trash_challenge: F = transcript.squeeze_challenge();
+    // Sample the trash challenges after the advices have been committed to
+    let trash_challenges: Vec<F> = transcript.squeeze_challenges(pk.vk.cs.nb_trash_challenges());
 
     // Pre-generate permutation blindings for the per-iteration compute.
     let blinding_factors = pk.vk.cs.blinding_factors();
@@ -278,7 +278,7 @@ where
         Ok(multiplicities
             .into_par_iter()
             .zip(blindings.into_par_iter())
-            .map(|(lookup, blinds)| lookup.compute_logderivative(pk, theta, beta, blinds))
+            .map(|(lookup, blinds)| lookup.compute_logderivative(pk, &theta, beta, blinds))
             .collect::<Result<Vec<_>, Error>>()?
             .into_par_iter()
             .map(|c| {
@@ -350,7 +350,7 @@ where
             let p = crate::plonk::trash::prover::compute_trash_poly(
                 flat,
                 domain,
-                trash_challenge,
+                &trash_challenges,
                 advice_polys,
                 &pk.fixed_values,
                 instance_values,
@@ -407,8 +407,8 @@ where
         )?
     };
 
-    // Obtain challenge for keeping all separate gates linearly independent
-    let y: F = transcript.squeeze_challenge();
+    // Obtain challenges for keeping all identities linearly independent
+    let y: Vec<F> = transcript.squeeze_challenges(pk.vk.cs.nb_y_challenges());
 
     let instance_polys = instance.instance_polys;
     let instance_values = instance.instance_values;
@@ -425,7 +425,7 @@ where
         beta,
         gamma,
         theta,
-        trash_challenge,
+        trash_challenges,
         y,
     })
 }

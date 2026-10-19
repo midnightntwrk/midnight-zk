@@ -63,8 +63,8 @@ where
 
     let phase1_committed = argument::verifier::Committed::read(&vk.phase1_labels(), transcript)?;
 
-    // Sample theta challenge for keeping lookup columns linearly independent
-    let theta: F = transcript.squeeze_challenge();
+    // Sample theta challenges for keeping lookup columns linearly independent
+    let theta: Vec<F> = transcript.squeeze_challenges(vk.cs.nb_theta_challenges());
 
     // Sample beta challenge
     let beta: F = transcript.squeeze_challenge();
@@ -72,13 +72,13 @@ where
     // Sample gamma challenge
     let gamma: F = transcript.squeeze_challenge();
 
-    // Sample the trash challenge after the advices have been committed to
-    let trash_challenge: F = transcript.squeeze_challenge();
+    // Sample the trash challenges after the advices have been committed to
+    let trash_challenges: Vec<F> = transcript.squeeze_challenges(vk.cs.nb_trash_challenges());
 
     let phase2_committed = argument::verifier::Committed::read(&vk.phase2_labels(), transcript)?;
 
-    // Sample y challenge, which keeps the gates linearly independent.
-    let y: F = transcript.squeeze_challenge();
+    // Sample y challenges, which keep the identities linearly independent.
+    let y: Vec<F> = transcript.squeeze_challenges(vk.cs.nb_y_challenges());
 
     Ok(VerifierTrace {
         phase0_committed,
@@ -87,7 +87,7 @@ where
         beta,
         gamma,
         theta,
-        trash_challenge,
+        trash_challenges,
         y,
     })
 }
@@ -130,7 +130,7 @@ where
         beta,
         gamma,
         theta,
-        trash_challenge,
+        trash_challenges,
         y,
     } = trace;
 
@@ -217,9 +217,9 @@ where
         xn,
         beta,
         gamma,
-        theta,
-        trash_challenge,
-        y,
+        &theta,
+        &trash_challenges,
+        &y,
     );
 
     // h_0(x) is derived from nu(x) = (x^n - 1) h(x), for

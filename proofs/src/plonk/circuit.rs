@@ -2163,6 +2163,42 @@ impl<F: Field> ConstraintSystem<F> {
         *[degree_without_lookup, degree].iter().max().unwrap()
     }
 
+    /// Number of `theta` challenges: one per position of the widest lookup
+    /// tuple. Position `i` of every lookup tuple is multiplied by `theta[i]`.
+    pub fn nb_theta_challenges(&self) -> usize {
+        self.lookups.iter().map(|l| l.table_expressions().len()).max().unwrap_or(0)
+    }
+
+    /// Number of trash challenges: one per constraint expression of the
+    /// largest trashcan. Expression `j` of every trashcan is multiplied by
+    /// `trash_challenges[j]`.
+    pub fn nb_trash_challenges(&self) -> usize {
+        self.trashcans
+            .iter()
+            .map(|t| t.constraint_expressions().len())
+            .max()
+            .unwrap_or(0)
+    }
+
+    /// Number of `y` challenges: one per identity of the constraint system, in
+    /// this order: gate polynomials, permutation (`2·sets + 1`), lookups
+    /// (`2 + chunks` each), trashcans (one each). Identity `k` is multiplied
+    /// by `y[k]`.
+    pub fn nb_y_challenges(&self) -> usize {
+        let degree = self.degree();
+        let gates: usize = self.gates.iter().map(|g| g.polynomials().len()).sum();
+        let lookups: usize = self.lookups.iter().map(|l| 2 + l.num_chunks(degree)).sum();
+        gates + self.nb_permutation_identities() + lookups + self.trashcans.len()
+    }
+
+    /// Number of permutation identities: `2·sets + 1`, or 0 without columns.
+    pub(crate) fn nb_permutation_identities(&self) -> usize {
+        match self.permutation.num_sets(self.degree()) {
+            0 => 0,
+            sets => 2 * sets + 1,
+        }
+    }
+
     /// Compute the number of blinding factors necessary to perfectly blind
     /// each of the prover's witness polynomials.
     pub fn blinding_factors(&self) -> usize {
