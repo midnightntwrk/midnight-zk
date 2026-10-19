@@ -14,7 +14,7 @@ use crate::{
     plonk::{Error, VerifyingKey, parse_trace},
     poly::commitment::PolynomialCommitmentScheme,
     transcript::{Hashable, Sampleable, Transcript},
-    utils::arithmetic::eval_polynomial,
+    utils::arithmetic::{eval_polynomial, truncate},
 };
 
 /// Reads the commit phases of a fresh instance (the partial proof written by
@@ -119,7 +119,7 @@ where
         }
         let alpha = transcript.squeeze_challenge();
         let k_coeffs = (0..d * k - k).map(|_| transcript.read()).collect::<Result<Vec<F>, _>>()?;
-        let gamma = transcript.squeeze_challenge();
+        let gamma = truncate(transcript.squeeze_challenge());
 
         next_accumulator(self, fresh, &deltas, &f_coeffs, alpha, &k_coeffs, gamma)
     }

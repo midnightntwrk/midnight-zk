@@ -40,7 +40,8 @@
 //! 3. read `F₁, …, F_t`: the perturbator is `F = (e, F₁, …, F_t)`;
 //! 4. squeeze `α`, `β⃗* = β⃗ + α·δ⃗`;
 //! 5. read the `d·k − k` coefficients of `K`, constant term first;
-//! 6. squeeze `γ`;
+//! 6. squeeze `γ` (truncated to 128 bits: it scales the commitments, which an
+//!    in-circuit verifier folds with one scalar multiplication each);
 //! 7. `ω* = Σⱼ Lⱼ(γ)·ωⱼ` and `e* = F(α)·L₀(γ) + Z(γ)·K(γ)`; the new accumulator
 //!    is `(ω*, β⃗*, e*)`.
 //!

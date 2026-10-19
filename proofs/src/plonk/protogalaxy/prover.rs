@@ -19,7 +19,7 @@ use crate::{
     plonk::{Circuit, Error, ProvingKey, prover::commit_phases, traces::ProverTrace},
     poly::{LagrangeCoeff, Polynomial, commitment::PolynomialCommitmentScheme},
     transcript::{Hashable, Sampleable, Transcript},
-    utils::arithmetic::{eval_polynomial, parallelize},
+    utils::arithmetic::{eval_polynomial, parallelize, truncate},
 };
 
 /// A fresh instance, prover side: the Lagrange-form trace after the commit
@@ -207,7 +207,7 @@ where
         }
 
         // 6. Squeeze γ.
-        let gamma = transcript.squeeze_challenge();
+        let gamma = truncate(transcript.squeeze_challenge());
 
         // 7. The new accumulator and its folded trace.
         let public = next_accumulator(
