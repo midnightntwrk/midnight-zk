@@ -17,9 +17,9 @@ use super::{
 };
 use crate::{
     plonk::{Circuit, Error, ProvingKey, prover::commit_phases, traces::ProverTrace},
-    poly::{LagrangeCoeff, commitment::PolynomialCommitmentScheme},
+    poly::{LagrangeCoeff, Polynomial, commitment::PolynomialCommitmentScheme},
     transcript::{Hashable, Sampleable, Transcript},
-    utils::arithmetic::eval_polynomial,
+    utils::arithmetic::{eval_polynomial, parallelize},
 };
 
 /// A fresh instance, prover side: the Lagrange-form trace after the commit
@@ -89,13 +89,20 @@ where
     Ok(ProverInstance { trace, public })
 }
 
-/// The running accumulator, prover side: the folded trace (Lagrange form)
-/// and the public accumulator. The trace's challenges and public inputs are
-/// those of `public` (both are folded with the same weights).
+/// The running accumulator, prover side: the folded trace (Lagrange form),
+/// the public accumulator and the value of the identity on every row of the
+/// trace. The trace's challenges and public inputs are those of `public` (both
+/// are folded with the same weights). Memory: the trace plus one field element
+/// per row (`rows`), which saves evaluating the identity on the accumulator at
+/// each fold.
 #[derive(Debug)]
 pub struct ProverAccumulator<'a, F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> {
     pub(crate) public: Accumulator<F, CS>,
     pub(crate) trace: ProverTrace<'a, F, LagrangeCoeff>,
+    /// `fᵢ` of every row of `trace`, as [`evaluate_rows`] computes them;
+    /// carried across folds so that the next one does not evaluate them
+    /// again.
+    pub(crate) rows: Polynomial<F, LagrangeCoeff>,
 }
 
 impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> ProverAccumulator<'_, F, CS> {
@@ -131,6 +138,7 @@ where
     {
         Ok(ProverAccumulator {
             public: Accumulator::init(&pk.vk, fresh.public, transcript)?,
+            rows: evaluate_rows(pk, &fresh.trace),
             trace: fresh.trace,
         })
     }
@@ -169,8 +177,8 @@ where
         let deltas = squares(transcript.squeeze_challenge(), t);
 
         // 3. Write F₁, …, F_t (F₀ = e is known to the verifier).
-        let f = evaluate_rows(pk, &self.trace);
-        let f_coeffs = perturbator(&f, &self.public.betas, &deltas);
+        let f = &self.rows;
+        let f_coeffs = perturbator(f, &self.public.betas, &deltas);
         for coeff in &f_coeffs[1..] {
             transcript.write(coeff)?;
         }
@@ -180,17 +188,17 @@ where
         let betas = self.public.betas.iter().zip(&deltas).map(|(b, delta)| *b + alpha * delta);
         let pows = pow_vector(&betas.collect::<Vec<_>>());
 
-        // 5. Write K, interpolated from (G − F(α)·L₀)/Z on k+1, …, d·k.
-        let g = |x: F| {
-            let folded = linear_combination(&traces, &lagrange_basis(k, x));
-            inner_product(&pows, &evaluate_rows(pk, &folded))
-        };
+        // 5. Write K, interpolated from (G − F(α)·L₀)/Z on k+1, …, d·k. The rows
+        // at these points are kept to interpolate the new accumulator's rows.
         let f_alpha = eval_polynomial(&f_coeffs, alpha);
         let points: Vec<F> = (k + 1..=d * k).map(|x| F::from(x as u64)).collect();
-        let k_evals: Vec<F> = (points.iter())
-            .map(|x| {
+        let point_rows: Vec<Polynomial<F, LagrangeCoeff>> = (points.iter())
+            .map(|x| evaluate_rows(pk, &linear_combination(&traces, &lagrange_basis(k, *x))))
+            .collect();
+        let k_evals: Vec<F> = (points.iter().zip(&point_rows))
+            .map(|(x, rows)| {
                 let z_inv = vanishing(k, *x).invert().expect("x is outside the domain");
-                (g(*x) - f_alpha * lagrange_basis(k, *x)[0]) * z_inv
+                (inner_product(&pows, rows) - f_alpha * lagrange_basis(k, *x)[0]) * z_inv
             })
             .collect();
         let k_coeffs = interpolate(&points, &k_evals);
@@ -212,6 +220,62 @@ where
             gamma,
         )?;
         let trace = linear_combination(&traces, &lagrange_basis(k, gamma));
-        Ok(ProverAccumulator { public, trace })
+        let rows = interpolate_rows(f, k, &point_rows, gamma);
+        if cfg!(debug_assertions)
+            && fresh_traces
+                .iter()
+                .all(|t| evaluate_rows(pk, t).iter().all(|f| bool::from(f.is_zero())))
+        {
+            assert_eq!(
+                rows.values,
+                evaluate_rows(pk, &trace).values,
+                "interpolated rows"
+            );
+        }
+        Ok(ProverAccumulator {
+            public,
+            trace,
+            rows,
+        })
     }
+}
+
+/// `pᵢ(γ)` for every row `i`, where `pᵢ(x)` is the identity on the row `i` of
+/// `linear_combination(traces, lagrange_basis(k, x))`, a polynomial of degree
+/// at most `d·k` in `x`. It is determined by its values on the nodes
+/// `0..=d·k`: `acc_rows[i]` at node 0, `0` at nodes `1..=k` and
+/// `rows_from_k_plus_1[x − k − 1][i]` at nodes `x = k+1..=d·k`. The Lagrange
+/// basis on the nodes at γ is computed once and shared by all rows.
+///
+/// Nodes `1..=k` are the fresh traces, which satisfy the identity if honest,
+/// and then contribute nothing. A dishonest fresh instance makes the returned
+/// rows wrong; the decider, which re-evaluates the trace, catches it.
+fn interpolate_rows<F: WithSmallOrderMulGroup<3>>(
+    acc_rows: &Polynomial<F, LagrangeCoeff>,
+    k: usize,
+    rows_from_k_plus_1: &[Polynomial<F, LagrangeCoeff>],
+    gamma: F,
+) -> Polynomial<F, LagrangeCoeff> {
+    let nodes: Vec<F> = (0..(k + rows_from_k_plus_1.len() + 1) as u64).map(F::from).collect();
+    let basis: Vec<F> = (0..nodes.len())
+        .map(|j| {
+            let (num, den) = (nodes.iter().enumerate())
+                .filter(|(m, _)| *m != j)
+                .fold((F::ONE, F::ONE), |(num, den), (_, xm)| {
+                    (num * (gamma - xm), den * (nodes[j] - xm))
+                });
+            num * den.invert().expect("nodes are distinct")
+        })
+        .collect();
+
+    let mut values = acc_rows.clone();
+    parallelize(&mut values.values, |values, start| {
+        for (i, value) in values.iter_mut().enumerate() {
+            *value = *value * basis[0]
+                + (rows_from_k_plus_1.iter().zip(&basis[k + 1..]))
+                    .map(|(r, l)| r[start + i] * l)
+                    .sum::<F>();
+        }
+    });
+    values
 }

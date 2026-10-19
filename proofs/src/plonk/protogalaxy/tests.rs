@@ -147,6 +147,9 @@ where
         acc_v = acc_v.fold(pk.get_vk(), &reads, &mut T::init_from_bytes(&bytes)).unwrap();
 
         assert_eq!(&acc_v, acc.accumulator());
+        if corrupt.is_none() {
+            assert_eq!(acc.rows.values, evaluate_rows(pk, &acc.trace).values);
+        }
         holds.push(acc.is_satisfied(pk));
         if !holds[holds.len() - 1] {
             break;
