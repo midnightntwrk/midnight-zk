@@ -912,6 +912,17 @@ impl ZkStdLib {
             .unwrap_or_else(|| panic!("ZkStdLibArch must enable bls12_381 & poseidon"))
     }
 
+    /// Gadget for in-circuit verification of fflonk proofs (T_MAX = 16), e.g.
+    /// to assign their verifying keys; [`Self::verifier`] is the KZG
+    /// counterpart.
+    pub fn fflonk_verifier(&self) -> VerifierGadget<BlstrsFflonkEmulation> {
+        *self.used_bls12_381.borrow_mut() = true;
+        let msg = "ZkStdLibArch must enable bls12_381 & poseidon";
+        let curve_chip = self.bls12_381_chip.as_ref().unwrap_or_else(|| panic!("{msg}"));
+        let sponge_chip = self.poseidon_gadget.as_ref().unwrap_or_else(|| panic!("{msg}"));
+        VerifierGadget::new(curve_chip, &self.native_gadget, sponge_chip)
+    }
+
     /// Gadget for in-circuit Protogalaxy folding of instances of the given
     /// shape (fflonk proofs, with Poseidon as the Fiat-Shamir transcript hash).
     pub fn folding(&self, shape: FoldingShape) -> FoldingGadget<BlstrsFflonkEmulation> {

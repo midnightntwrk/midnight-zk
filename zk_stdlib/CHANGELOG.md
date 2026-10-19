@@ -9,6 +9,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 ### Added
 * `ZkStdLib::folding`: in-circuit Protogalaxy folding verifier (fflonk, T_MAX = 16)
+* `ZkStdLib::fflonk_verifier`: in-circuit verifier gadget for fflonk proofs (T_MAX = 16).
 * `ZkStdLibArch::lookup_chunk_bound`, the degree bound for packing lookup inputs into helper columns (`None` keeps the default)
 * Improved SRS loading for tests [#276](https://github.com/midnightntwrk/midnight-zk/pull/276)
 * Expose the Merkle Mountain Range gadget through `ZkStdLib::mmr` [#509](https://github.com/midnightntwrk/midnight-zk/pull/509)

@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 
 ## [Unreleased]
 ### Added
+* `ivc_folding`: an IVC whose step circuit verifies a Protogalaxy fold instead of a proof (fflonk, T_MAX = 16), with a final decider proof; `ivc_folding` example.
 * `folding` example: Protogalaxy folding of several instances per round, without the final proof.
 * `fewer-point-sets` feature [#281](https://github.com/midnightntwrk/midnight-zk/pull/281)
 * Multi-circuit proof aggregation module and example [#311](https://github.com/midnightntwrk/midnight-zk/pull/311)

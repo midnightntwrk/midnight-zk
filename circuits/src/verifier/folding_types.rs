@@ -93,6 +93,11 @@ impl FoldingShape {
         self.phase1_labels.len() + self.phase2_labels.len()
     }
 
+    /// The number of curve points of the phase-1 and phase-2 commitments.
+    pub fn nb_phase_points(&self) -> [usize; 2] {
+        [self.phase1_labels.len(), self.phase2_labels.len()]
+    }
+
     /// The number of challenges: `θ⃗, β, γ, trash⃗, y⃗`.
     fn nb_challenges(&self) -> usize {
         self.nb_theta + 2 + self.nb_trash + self.nb_y
