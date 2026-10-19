@@ -1,7 +1,9 @@
 //! Fresh instances: the prover's commit phases and the verifier's read agree,
 //! and the commitments of instances combine like their polynomials. Folding:
 //! prover and verifier agree, the relaxed relation holds, and the folding
-//! degree bounds the degree of `G`.
+//! degree bounds the degree of `G`. Decider: the relaxed-trace proof of the
+//! prover's accumulator verifies against the verifier's, and not against one
+//! with a wrong error term.
 
 use blake2b_simd::State;
 use ff::Field;
@@ -13,8 +15,9 @@ use super::{
     Accumulator, FoldingInstance, ProverAccumulator, ProverInstance, commit_instance,
     folding_degree,
     poly::{inner_product, interpolate, lagrange_basis, pow_vector},
-    read_instance,
+    prove_relaxed_trace, read_instance,
     trace::{evaluate_rows, linear_combination},
+    verify_relaxed_trace,
 };
 use crate::{
     plonk::{
@@ -24,7 +27,9 @@ use crate::{
         test_circuit::{K, SquareCircuit},
     },
     poly::{
-        Polynomial, commitment::PolynomialCommitmentScheme, fflonk::Fflonk,
+        Polynomial,
+        commitment::{Guard, PolynomialCommitmentScheme},
+        fflonk::Fflonk,
         kzg::KZGCommitmentScheme,
     },
     transcript::{CircuitTranscript, Hashable, Transcript},
@@ -103,10 +108,28 @@ where
     CS::Commitment: Hashable<State>,
 {
     let (params, pk) = setup::<CS>();
-    let fresh = |i| fresh_instance(&params, &pk, i, corrupt == Some(i));
+    run_chain(&params, &pk, rounds, corrupt).2
+}
+
+/// The fold loop of [`fold_chain`] on the given parameters and key; returns
+/// the final prover and verifier accumulators, and the per-round results.
+fn run_chain<'a, CS: PolynomialCommitmentScheme<Fq>>(
+    params: &CS::Parameters,
+    pk: &'a ProvingKey<Fq, CS>,
+    rounds: &[usize],
+    corrupt: Option<usize>,
+) -> (
+    ProverAccumulator<'a, Fq, CS>,
+    Accumulator<Fq, CS>,
+    Vec<bool>,
+)
+where
+    CS::Commitment: Hashable<State>,
+{
+    let fresh = |i| fresh_instance(params, pk, i, corrupt == Some(i));
 
     let (instance, read) = fresh(0);
-    let mut acc = ProverAccumulator::init(&pk, instance, &mut T::init()).unwrap();
+    let mut acc = ProverAccumulator::init(pk, instance, &mut T::init()).unwrap();
     let mut acc_v = Accumulator::init(pk.get_vk(), read, &mut T::init()).unwrap();
     assert_eq!(&acc_v, acc.accumulator());
 
@@ -117,17 +140,17 @@ where
         next += k;
 
         let mut transcript = T::init();
-        acc = acc.fold(&pk, instances, &mut transcript).unwrap();
+        acc = acc.fold(pk, instances, &mut transcript).unwrap();
         let bytes = transcript.finalize();
         acc_v = acc_v.fold(pk.get_vk(), &reads, &mut T::init_from_bytes(&bytes)).unwrap();
 
         assert_eq!(&acc_v, acc.accumulator());
-        holds.push(acc.is_satisfied(&pk));
+        holds.push(acc.is_satisfied(pk));
         if !holds[holds.len() - 1] {
             break;
         }
     }
-    holds
+    (acc, acc_v, holds)
 }
 
 fn check_honest_chains<CS: PolynomialCommitmentScheme<Fq>>()
@@ -154,6 +177,59 @@ where
         let holds = fold_chain::<CS>(rounds, Some(corrupt));
         assert_eq!(holds, expected, "rounds {rounds:?}, corrupted {corrupt}");
     }
+}
+
+/// Proves the decider on `acc`, then checks the proof against `acc_v` (must
+/// verify) and against a copy with a wrong error term (must not).
+fn check_decider_accepts<CS: PolynomialCommitmentScheme<Fq>>(
+    params: &CS::Parameters,
+    pk: &ProvingKey<Fq, CS>,
+    acc: ProverAccumulator<'_, Fq, CS>,
+    acc_v: &Accumulator<Fq, CS>,
+) where
+    CS::Commitment: Hashable<State>,
+{
+    let mut transcript = T::init();
+    prove_relaxed_trace(params, pk, acc, &mut transcript).unwrap();
+    let proof = transcript.finalize();
+
+    let verify = |acc_v: &Accumulator<Fq, CS>| {
+        verify_relaxed_trace(pk.get_vk(), acc_v, &mut T::init_from_bytes(&proof))
+            .and_then(|guard| {
+                guard.verify(&CS::get_verifier_params(params)).map_err(|_| Error::Opening)
+            })
+            .is_ok()
+    };
+    assert!(verify(acc_v), "honest accumulator rejected");
+    let mut wrong = acc_v.clone();
+    wrong.error += Fq::ONE;
+    assert!(!verify(&wrong), "wrong error term accepted");
+}
+
+/// The decider accepts the final accumulator of honest chains, and rejects
+/// the same proof against a wrong error term.
+fn check_decider<CS: PolynomialCommitmentScheme<Fq>>()
+where
+    CS::Commitment: Hashable<State>,
+{
+    let (params, pk) = setup::<CS>();
+    for rounds in [&[1, 1][..], &[2]] {
+        let (acc, acc_v, holds) = run_chain(&params, &pk, rounds, None);
+        assert_eq!(holds, vec![true; rounds.len()], "rounds {rounds:?}");
+        check_decider_accepts(&params, &pk, acc, &acc_v);
+    }
+}
+
+/// The decider on a fresh accumulator (no fold) accepts.
+fn check_decider_init<CS: PolynomialCommitmentScheme<Fq>>()
+where
+    CS::Commitment: Hashable<State>,
+{
+    let (params, pk) = setup::<CS>();
+    let (instance, read) = fresh_instance(&params, &pk, 0, false);
+    let acc = ProverAccumulator::init(&pk, instance, &mut T::init()).unwrap();
+    let acc_v = Accumulator::init(pk.get_vk(), read, &mut T::init()).unwrap();
+    check_decider_accepts(&params, &pk, acc, &acc_v);
 }
 
 /// `G(X) = Σᵢ powᵢ(β⃗*)·fᵢ(Σⱼ Lⱼ(X)·ωⱼ)` of 3 honest traces, with `k = 2`,
@@ -315,4 +391,24 @@ fn empty_fresh_is_an_error_kzg() {
 #[test]
 fn empty_fresh_is_an_error_fflonk() {
     check_empty_fresh::<Fflonk<KZGCommitmentScheme<Bls12>, 3>>();
+}
+
+#[test]
+fn decider_kzg() {
+    check_decider::<KZGCommitmentScheme<Bls12>>();
+}
+
+#[test]
+fn decider_fflonk() {
+    check_decider::<Fflonk<KZGCommitmentScheme<Bls12>, 3>>();
+}
+
+#[test]
+fn decider_init_kzg() {
+    check_decider_init::<KZGCommitmentScheme<Bls12>>();
+}
+
+#[test]
+fn decider_init_fflonk() {
+    check_decider_init::<Fflonk<KZGCommitmentScheme<Bls12>, 3>>();
 }

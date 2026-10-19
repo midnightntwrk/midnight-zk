@@ -760,7 +760,7 @@ where
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn compute_queries<
+pub(crate) fn compute_queries<
     'a,
     F: WithSmallOrderMulGroup<3>,
     CS: PolynomialCommitmentScheme<F>,

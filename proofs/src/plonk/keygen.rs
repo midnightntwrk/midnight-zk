@@ -326,7 +326,7 @@ where
     let (phase0_polys, fixed_cosets, sigmas) =
         super::build_phase0_polys(&vk.domain, &cs, vk.transcript_repr, &fixed, permutations);
 
-    let [l0, l_last, l_active_row] = compute_lagrange_polys(&vk, &cs);
+    let [l0, l_last, l_active_row] = compute_lagrange_polys(&vk.domain, &cs);
     // Compute the optimized evaluation data structure
     let ev = Evaluator::new(&vk.cs);
     Ok(ProvingKey {
@@ -343,41 +343,40 @@ where
     })
 }
 
-pub(crate) fn compute_lagrange_polys<F, CS>(
-    vk: &VerifyingKey<F, CS>,
+pub(crate) fn compute_lagrange_polys<F>(
+    domain: &EvaluationDomain<F>,
     cs: &ConstraintSystem<F>,
 ) -> [Polynomial<F, ExtendedLagrangeCoeff>; 3]
 where
     F: WithSmallOrderMulGroup<3>,
-    CS: PolynomialCommitmentScheme<F>,
 {
     // Compute l_0(X)
     // TODO: this can be done more efficiently
-    let mut l0 = vk.domain.empty_lagrange();
+    let mut l0 = domain.empty_lagrange();
     l0[0] = F::ONE;
-    let l0 = vk.domain.lagrange_to_coeff(l0);
-    let l0 = vk.domain.coeff_to_extended(l0);
+    let l0 = domain.lagrange_to_coeff(l0);
+    let l0 = domain.coeff_to_extended(l0);
 
     // Compute l_blind(X) which evaluates to 1 for each blinding factor row
     // and 0 otherwise over the domain.
-    let mut l_blind = vk.domain.empty_lagrange();
+    let mut l_blind = domain.empty_lagrange();
     for evaluation in l_blind[..].iter_mut().rev().take(cs.blinding_factors()) {
         *evaluation = F::ONE;
     }
-    let l_blind = vk.domain.lagrange_to_coeff(l_blind);
-    let l_blind = vk.domain.coeff_to_extended(l_blind);
+    let l_blind = domain.lagrange_to_coeff(l_blind);
+    let l_blind = domain.coeff_to_extended(l_blind);
 
     // Compute l_last(X) which evaluates to 1 on the first inactive row (just
     // before the blinding factors) and 0 otherwise over the domain
-    let mut l_last = vk.domain.empty_lagrange();
-    let n = vk.domain.n as usize;
+    let mut l_last = domain.empty_lagrange();
+    let n = domain.n as usize;
     l_last[n - cs.blinding_factors() - 1] = F::ONE;
-    let l_last = vk.domain.lagrange_to_coeff(l_last);
-    let l_last = vk.domain.coeff_to_extended(l_last);
+    let l_last = domain.lagrange_to_coeff(l_last);
+    let l_last = domain.coeff_to_extended(l_last);
 
     // Compute l_active_row(X)
     let one = F::ONE;
-    let mut l_active_row = vk.domain.empty_extended();
+    let mut l_active_row = domain.empty_extended();
     parallelize(&mut l_active_row, |values, start| {
         for (i, value) in values.iter_mut().enumerate() {
             let idx = i + start;

@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `plonk::protogalaxy` building blocks for Protogalaxy folding: fresh instances (`commit_instance`, `read_instance`), `FoldingInstance`, `Accumulator`, `folding_degree`; `PolynomialCommitmentScheme::combine_commitments`
 * Protogalaxy folding: `Accumulator::{init, fold}` and `ProverAccumulator::{init, fold}`, folding k fresh instances per round.
 * `ProverAccumulator::is_satisfied`: checks the relaxed relation of a folded trace in the clear.
+* Protogalaxy decider: `prove_relaxed_trace` and `verify_relaxed_trace`, a proof that a folded accumulator satisfies its relaxed relation (grand sum of the weighted identity rows).
 * `Transcript::squeeze_challenges`, and `ConstraintSystem::{nb_theta_challenges, nb_trash_challenges, nb_y_challenges}`, the number of challenges of each kind a proof squeezes
 * `kzg::point_set_order`, the order in which the KZG multi-open takes its point sets [#583](https://github.com/midnightntwrk/midnight-zk/pull/583)
 * `fflonk::balanced_chunks`, the split of a group into the fewest chunks of at most `T_MAX`, of balanced sizes [#579](https://github.com/midnightntwrk/midnight-zk/pull/579)

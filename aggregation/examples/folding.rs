@@ -1,4 +1,4 @@
-//! Protogalaxy folding of plonk instances, without a final proof.
+//! Protogalaxy folding of plonk instances, with a final decider proof.
 //!
 //! Several instances of a circuit (knowledge of a Poseidon preimage, one
 //! random preimage per instance) are folded into a running accumulator:
@@ -9,8 +9,9 @@
 //! - the verifier reads the instances from the partial proofs, replays the
 //!   rounds from the folding proofs, and must obtain the prover's accumulators.
 //!
-//! The decider (proof that the final accumulator is satisfied) is not part of
-//! this example yet: the prover checks the accumulator in the clear.
+//! Finally, the prover proves that the final accumulator satisfies its relaxed
+//! relation (the decider proof), which the verifier checks against its own
+//! accumulator.
 //!
 //! Run with `cd aggregation && cargo run --release --example folding`.
 
@@ -28,10 +29,13 @@ use midnight_proofs::{
         Error, ProvingKey, keygen_pk, keygen_vk_with_k,
         protogalaxy::{
             Accumulator, FoldingInstance, ProverAccumulator, ProverInstance, commit_instance,
-            read_instance,
+            prove_relaxed_trace, read_instance, verify_relaxed_trace,
         },
     },
-    poly::kzg::params::ParamsKZG,
+    poly::{
+        commitment::{Guard, PolynomialCommitmentScheme},
+        kzg::params::ParamsKZG,
+    },
     transcript::{CircuitTranscript, Transcript},
 };
 use midnight_zk_stdlib::{
@@ -197,4 +201,21 @@ fn main() {
             proof.len()
         );
     }
+
+    // Decider: the final accumulator satisfies its relaxed relation.
+    let start = Instant::now();
+    let mut transcript = T::init();
+    prove_relaxed_trace(&srs, &pk, prover, &mut transcript).expect("decider prover failed");
+    let decider = transcript.finalize();
+    let prover_time = start.elapsed();
+    let start = Instant::now();
+    verify_relaxed_trace(vk, &verifier, &mut T::init_from_bytes(&decider))
+        .expect("decider verifier failed")
+        .verify(&DefaultPCS::get_verifier_params(&srs))
+        .expect("decider proof rejected");
+    let verifier_time = start.elapsed();
+    println!(
+        "decider: proof {} B, prover {prover_time:.2?}, verifier {verifier_time:.2?}",
+        decider.len()
+    );
 }

@@ -60,9 +60,13 @@ mod trace;
 
 pub use degree::folding_degree;
 
+mod decider_prover;
+mod decider_verifier;
 mod prover;
 mod verifier;
 
+pub use decider_prover::prove_relaxed_trace;
+pub use decider_verifier::verify_relaxed_trace;
 pub use prover::{ProverAccumulator, ProverInstance, commit_instance};
 pub use verifier::read_instance;
 

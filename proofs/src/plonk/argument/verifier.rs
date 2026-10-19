@@ -27,6 +27,15 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> Committed<F, CS> {
         }
     }
 
+    /// Builds a group from an already known commitment, for instance one
+    /// carried by a folded instance.
+    pub(crate) fn new(labels: Vec<PolynomialLabel>, commitment: CS::Commitment) -> Self {
+        Committed {
+            commitment,
+            polynomial_labels: labels,
+        }
+    }
+
     /// The commitment to the group's polynomials.
     pub(crate) fn commitment(&self) -> &CS::Commitment {
         &self.commitment

@@ -149,44 +149,7 @@ where
     let splitting_factor = x.pow_vartime([vk.n() - 2]);
     let xn = splitting_factor * x.square();
 
-    let instance_evals: Vec<F> = {
-        let (min_rotation, max_rotation) =
-            vk.cs.instance_queries.iter().fold((0, 0), |(min, max), (_, rotation)| {
-                if rotation.0 < min {
-                    (rotation.0, max)
-                } else if rotation.0 > max {
-                    (min, rotation.0)
-                } else {
-                    (min, max)
-                }
-            });
-        let max_instance_len = instances
-            .iter()
-            .map(|instance| instance.len())
-            .max_by(Ord::cmp)
-            .unwrap_or_default();
-        let l_i_s = &vk.domain.l_i_range(
-            x,
-            xn,
-            -max_rotation..max_instance_len as i32 + min_rotation.abs(),
-        );
-        vk.cs
-            .instance_queries
-            .iter()
-            .map(|(column, rotation)| {
-                if column.index() < nb_committed_instances {
-                    transcript.read()
-                } else {
-                    let instance = instances[column.index() - nb_committed_instances];
-                    let offset = (max_rotation - rotation.0) as usize;
-                    Ok(compute_inner_product(
-                        instance,
-                        &l_i_s[offset..offset + instance.len()],
-                    ))
-                }
-            })
-            .collect::<Result<Vec<_>, _>>()?
-    };
+    let instance_evals = instance_evals(vk, nb_committed_instances, instances, x, xn, transcript)?;
 
     let domain = vk.get_domain();
     let cs = vk.cs();
@@ -254,6 +217,61 @@ where
     // polynomial commitments open to the correct values, which is true as long
     // as the following accumulator passes the invariant.
     CS::multi_prepare(&queries, transcript).map_err(|_| Error::Opening)
+}
+
+/// The evaluations at `x` of the instance queries of `vk`: read from the
+/// transcript for the first `nb_committed_instances` columns, computed from
+/// `instances` (the non-committed columns) for the others. `xn` is `x^n`.
+pub(crate) fn instance_evals<F, CS, T>(
+    vk: &VerifyingKey<F, CS>,
+    nb_committed_instances: usize,
+    instances: &[&[F]],
+    x: F,
+    xn: F,
+    transcript: &mut T,
+) -> Result<Vec<F>, Error>
+where
+    F: WithSmallOrderMulGroup<3> + Hashable<T::Hash>,
+    CS: PolynomialCommitmentScheme<F>,
+    T: Transcript,
+{
+    let (min_rotation, max_rotation) =
+        vk.cs.instance_queries.iter().fold((0, 0), |(min, max), (_, rotation)| {
+            if rotation.0 < min {
+                (rotation.0, max)
+            } else if rotation.0 > max {
+                (min, rotation.0)
+            } else {
+                (min, max)
+            }
+        });
+    let max_instance_len = instances
+        .iter()
+        .map(|instance| instance.len())
+        .max_by(Ord::cmp)
+        .unwrap_or_default();
+    let l_i_s = &vk.domain.l_i_range(
+        x,
+        xn,
+        -max_rotation..max_instance_len as i32 + min_rotation.abs(),
+    );
+    vk.cs
+        .instance_queries
+        .iter()
+        .map(|(column, rotation)| {
+            if column.index() < nb_committed_instances {
+                transcript.read()
+            } else {
+                let instance = instances[column.index() - nb_committed_instances];
+                let offset = (max_rotation - rotation.0) as usize;
+                Ok(compute_inner_product(
+                    instance,
+                    &l_i_s[offset..offset + instance.len()],
+                ))
+            }
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(Error::from)
 }
 
 /// Adds the evaluation of the quotient limb `h_0` at `x` to
