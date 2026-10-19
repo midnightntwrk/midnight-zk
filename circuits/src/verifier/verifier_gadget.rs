@@ -808,8 +808,11 @@ pub(crate) mod tests {
         circuit::SimpleFloorPlanner,
         dev::MockProver,
         plonk::{Circuit, Constraints, Error, create_proof, keygen_pk, keygen_vk_with_k, prepare},
-        poly::commitment::PolynomialCommitmentScheme,
-        transcript::{CircuitTranscript, Transcript},
+        poly::{
+            commitment::PolynomialCommitmentScheme,
+            kzg::{msm::DualMSM, params::ParamsVerifierKZG},
+        },
+        transcript::{CircuitTranscript, Hashable, Transcript},
     };
     use rand::SeedableRng;
     use rand_chacha::ChaCha8Rng;
@@ -841,18 +844,44 @@ pub(crate) mod tests {
         },
         testing_utils::FromScratch,
         types::{ComposableChip, Instantiable},
-        verifier::{BlstrsEmulation, DefaultPCS, accumulator::Accumulator},
+        verifier::{BlstrsEmulation, BlstrsFflonkEmulation, accumulator::Accumulator},
     };
 
-    type S = BlstrsEmulation;
-
-    type F = <S as SelfEmulation>::F;
-    type C = <S as SelfEmulation>::C;
+    type F = <BlstrsEmulation as SelfEmulation>::F;
+    type C = <BlstrsEmulation as SelfEmulation>::C;
     type CBase = <C as CircuitCurve>::Base;
 
     type NG = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
 
     const NB_INNER_INSTANCES: usize = 1;
+
+    /// The off-circuit scheme of the proofs that `S` verifies in-circuit.
+    type OffCircuitPCS<S> = <<S as SelfEmulation>::PCS as InCircuitPCS<S>>::OffCircuitPCS;
+
+    /// A self-emulation over the chips of the tests.
+    pub trait TestEmulation:
+        SelfEmulation<
+            F = F,
+            C = C,
+            Hash = PoseidonState<F>,
+            ScalarChip = NG,
+            CurveChip = ForeignWeierstrassEccChip<F, C, C, NG, NG>,
+            SpongeChip = PoseidonChip<F>,
+        >
+    {
+    }
+
+    impl<S> TestEmulation for S where
+        S: SelfEmulation<
+                F = F,
+                C = C,
+                Hash = PoseidonState<F>,
+                ScalarChip = NG,
+                CurveChip = ForeignWeierstrassEccChip<F, C, C, NG, NG>,
+                SpongeChip = PoseidonChip<F>,
+            >
+    {
+    }
 
     #[derive(Clone, Debug, Default)]
     pub struct InnerCircuit {
@@ -918,14 +947,14 @@ pub(crate) mod tests {
     }
 
     #[derive(Clone, Debug)]
-    pub struct TestCircuit {
+    pub struct TestCircuit<S: TestEmulation> {
         // (cs, vk)
         inner_vk: (ConstraintSystem<F>, Value<VerifyingKey<S>>),
         inner_instances: Value<[F; NB_INNER_INSTANCES]>,
         inner_proof: Value<Vec<u8>>,
     }
 
-    impl Circuit<F> for TestCircuit {
+    impl<S: TestEmulation> Circuit<F> for TestCircuit<S> {
         type Config = (
             NativeConfig,
             P2RDecompositionConfig,
@@ -1041,10 +1070,29 @@ pub(crate) mod tests {
 
     #[test]
     fn test_verify_proof() {
+        check_verify_proof::<BlstrsEmulation>();
+    }
+
+    #[test]
+    fn test_verify_proof_fflonk() {
+        check_verify_proof::<BlstrsFflonkEmulation>();
+    }
+
+    /// Verifies an inner proof in-circuit, and checks the circuit with the
+    /// mock prover. The proof is made with the off-circuit scheme of `S`.
+    fn check_verify_proof<S: TestEmulation>()
+    where
+        OffCircuitPCS<S>: PolynomialCommitmentScheme<
+                F,
+                VerifierParameters = ParamsVerifierKZG<S::Engine>,
+                VerificationGuard = DualMSM<S::Engine>,
+                Commitment: Hashable<PoseidonState<F>>,
+            >,
+    {
         let mut rng = ChaCha8Rng::from_seed([0u8; 32]);
 
         let inner_k = 10;
-        let inner_params = DefaultPCS::gen_params(inner_k);
+        let inner_params = OffCircuitPCS::<S>::gen_params(inner_k);
 
         let inner_vk = keygen_vk_with_k(&inner_params, &InnerCircuit::default(), inner_k).unwrap();
         let inner_pk = keygen_pk(inner_vk.clone(), &InnerCircuit::default()).unwrap();
@@ -1055,7 +1103,7 @@ pub(crate) mod tests {
 
         let inner_proof = {
             let mut transcript = CircuitTranscript::<PoseidonState<F>>::init();
-            create_proof::<F, DefaultPCS, CircuitTranscript<PoseidonState<F>>, InnerCircuit>(
+            create_proof::<F, OffCircuitPCS<S>, CircuitTranscript<PoseidonState<F>>, InnerCircuit>(
                 &inner_params,
                 &inner_pk,
                 &InnerCircuit::from_witness(preimage),
@@ -1071,7 +1119,7 @@ pub(crate) mod tests {
         let inner_dual_msm = {
             let mut transcript =
                 CircuitTranscript::<PoseidonState<F>>::init_from_bytes(&inner_proof);
-            prepare::<F, DefaultPCS, CircuitTranscript<PoseidonState<F>>>(
+            prepare::<F, OffCircuitPCS<S>, CircuitTranscript<PoseidonState<F>>>(
                 &inner_vk,
                 &[],
                 &[&[], &inner_public_inputs],
@@ -1088,7 +1136,7 @@ pub(crate) mod tests {
 
         let mut inner_acc = Accumulator::<S>::from_dual_msm(inner_dual_msm.clone(), &fixed_bases);
 
-        let inner_verifier_params = inner_params.verifier_params();
+        let inner_verifier_params = OffCircuitPCS::<S>::get_verifier_params(&inner_params);
         assert!(inner_dual_msm.check(&inner_verifier_params));
         assert!(inner_acc.check(&inner_verifier_params, &fixed_bases));
 
@@ -1100,7 +1148,7 @@ pub(crate) mod tests {
         let mut public_inputs = AssignedVk::<S>::as_public_input(&inner_vk);
         public_inputs.extend(AssignedAccumulator::as_public_input(&inner_acc));
 
-        let circuit = TestCircuit {
+        let circuit = TestCircuit::<S> {
             inner_vk: (inner_vk.cs().clone(), Value::known(inner_vk.clone())),
             inner_instances: Value::known([output]),
             inner_proof: Value::known(inner_proof),

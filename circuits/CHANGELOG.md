@@ -8,6 +8,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 ### Added
+* `verifier::BlstrsFflonkEmulation`: BLS12-381 self-emulation verifying fflonk proofs (T_MAX = 16).
 * `InCircuitPCS::squeeze_evaluation_point`, mirroring `PolynomialCommitmentScheme::squeeze_evaluation_point`, and `InCircuitPCS::OffCircuitPCS`, the off-circuit scheme of the proofs the gadget verifies [#570](https://github.com/midnightntwrk/midnight-zk/pull/570)
 * `CommitmentBases`, the labelled points of an off-circuit commitment [#570](https://github.com/midnightntwrk/midnight-zk/pull/570)
 * in-circuit verifier and dependency of the whole library on DefaultPCS [#575](https://github.com/midnightntwrk/midnight-zk/pull/575)

@@ -42,7 +42,7 @@ use crate::{
         SpongeInstructions, ecc::EccInstructions, public_input::CommittedInstanceInstructions,
     },
     types::{AssignedForeignPoint, InnerValue, Instantiable},
-    verifier::{InCircuitKZG, InCircuitPCS},
+    verifier::{InCircuitFflonk, InCircuitKZG, InCircuitPCS},
 };
 
 /// A trait for parametrizing the VerifierGadget.
@@ -149,6 +149,56 @@ impl SelfEmulation for BlstrsEmulation {
     type Engine = midnight_curves::Bls12;
 
     type PCS = InCircuitKZG<Self>;
+
+    fn msm(
+        layouter: &mut impl Layouter<Self::F>,
+        curve_chip: &Self::CurveChip,
+        scalars: &[(AssignedNative<Self::F>, usize)],
+        bases: &[Self::AssignedPoint],
+    ) -> Result<Self::AssignedPoint, Error> {
+        curve_chip.msm_by_bounded_scalars(layouter, scalars, bases)
+    }
+
+    fn constrain_scalar_as_committed_public_input(
+        layouter: &mut impl Layouter<Self::F>,
+        scalar_chip: &Self::ScalarChip,
+        assigned_scalar: &AssignedNative<Self::F>,
+    ) -> Result<(), Error> {
+        scalar_chip.constrain_as_committed_public_input(layouter, assigned_scalar)
+    }
+
+    fn assign_without_subgroup_check(
+        layouter: &mut impl Layouter<Self::F>,
+        curve_chip: &Self::CurveChip,
+        base: Value<Self::C>,
+    ) -> Result<Self::AssignedPoint, Error> {
+        curve_chip.assign_without_subgroup_check(layouter, base)
+    }
+}
+
+/// Implementation of the SelfEmulation trait for blstrs, verifying fflonk
+/// proofs. It has the same chips and curve as [`BlstrsEmulation`], but verifies
+/// proofs committed with `Fflonk<KZGCommitmentScheme<Bls12>, 4>` (`T_MAX =
+/// 16`).
+#[derive(Clone, Debug)]
+pub struct BlstrsFflonkEmulation {}
+
+impl SelfEmulation for BlstrsFflonkEmulation {
+    type F = midnight_curves::Fq;
+    type C = midnight_curves::G1Projective;
+    type AssignedPoint = AssignedForeignPoint<Self::F, Self::C, Self::C>;
+    type Hash = PoseidonState<Self::F>;
+
+    type ScalarChip = NativeGadget<Self::F, P2RDecompositionChip<Self::F>, NativeChip<Self::F>>;
+    type CurveChip =
+        ForeignWeierstrassEccChip<Self::F, Self::C, Self::C, Self::ScalarChip, Self::ScalarChip>;
+    type SpongeChip = PoseidonChip<Self::F>;
+
+    type G1Affine = midnight_curves::G1Affine;
+    type G2Affine = midnight_curves::G2Affine;
+    type Engine = midnight_curves::Bls12;
+
+    type PCS = InCircuitFflonk<InCircuitKZG<Self>, 4>;
 
     fn msm(
         layouter: &mut impl Layouter<Self::F>,

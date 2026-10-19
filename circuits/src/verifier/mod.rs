@@ -49,7 +49,7 @@ pub use msm::{AssignedMsm, AssignedPoint, Msm, Point};
 pub use pcs::{AssignedCommitment, CommitmentBases, InCircuitPCS};
 #[cfg(feature = "dev-curves")]
 pub use types::BnEmulation;
-pub use types::{BlstrsEmulation, SelfEmulation};
+pub use types::{BlstrsEmulation, BlstrsFflonkEmulation, SelfEmulation};
 pub use verifier_gadget::VerifierGadget;
 
 /// The polynomial commitment scheme of Midnight proofs, verified in-circuit by
