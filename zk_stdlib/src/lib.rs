@@ -73,7 +73,9 @@ use midnight_circuits::{
     },
     types::{AssignedBit, AssignedByte, AssignedNative, AssignedNativePoint, ComposableChip},
     vec::{AssignedVector, vector_gadget::VectorGadget},
-    verifier::{BlstrsEmulation, VerifierGadget},
+    verifier::{
+        BlstrsEmulation, BlstrsFflonkEmulation, FoldingGadget, FoldingShape, VerifierGadget,
+    },
 };
 use midnight_curves::{
     Fq,
@@ -908,6 +910,16 @@ impl ZkStdLib {
         self.verifier_gadget
             .as_ref()
             .unwrap_or_else(|| panic!("ZkStdLibArch must enable bls12_381 & poseidon"))
+    }
+
+    /// Gadget for in-circuit Protogalaxy folding of instances of the given
+    /// shape (fflonk proofs, with Poseidon as the Fiat-Shamir transcript hash).
+    pub fn folding(&self, shape: FoldingShape) -> FoldingGadget<BlstrsFflonkEmulation> {
+        *self.used_bls12_381.borrow_mut() = true;
+        let msg = "ZkStdLibArch must enable bls12_381 & poseidon";
+        let curve_chip = self.bls12_381_chip.as_ref().unwrap_or_else(|| panic!("{msg}"));
+        let sponge_chip = self.poseidon_gadget.as_ref().unwrap_or_else(|| panic!("{msg}"));
+        FoldingGadget::new(curve_chip, &self.native_gadget, sponge_chip, shape)
     }
 
     /// Assert that a given assigned bit is true.

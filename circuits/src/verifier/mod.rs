@@ -33,6 +33,10 @@ mod accumulator;
 mod argument;
 mod expressions;
 mod fflonk;
+mod folding;
+#[cfg(test)]
+mod folding_test;
+mod folding_types;
 mod kzg;
 mod msm;
 pub(crate) mod pcs;
@@ -44,6 +48,11 @@ mod verifier_gadget;
 
 pub use accumulator::{Accumulator, AssignedAccumulator};
 pub use fflonk::InCircuitFflonk;
+pub use folding::FoldingGadget;
+pub use folding_types::{
+    AssignedChallenges, AssignedFoldingAccumulator, AssignedFoldingInstance, FoldingShape,
+    NativeAccumulator, accumulator_as_public_input,
+};
 pub use kzg::{AssignedKZGCommitment, AssignedKZGMultiCommitment, InCircuitKZG};
 pub use msm::{AssignedMsm, AssignedPoint, Msm, Point};
 pub use pcs::{AssignedCommitment, CommitmentBases, InCircuitPCS};

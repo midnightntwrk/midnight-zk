@@ -183,6 +183,11 @@ pub(crate) struct Evaluated<S: SelfEmulation> {
 }
 
 impl<S: SelfEmulation> Committed<S> {
+    /// The commitment to the group's polynomials.
+    pub(crate) fn commitment(&self) -> &AssignedCommitment<S> {
+        &self.commitment
+    }
+
     /// Reads the evaluation of every polynomial of the group at each of its
     /// evaluation points.
     pub(crate) fn evaluate(
