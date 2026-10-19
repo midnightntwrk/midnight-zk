@@ -63,6 +63,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Optimize the vector gadget's `padding_flag` to only check `A`-aligned chunk boundaries [#462](https://github.com/midnightntwrk/midnight-zk/pull/462)
 * Replace string-based VK-name keys with `PolynomialLabel`-keyed `fixed_bases` maps throughout the verifier gadget [#430](https://github.com/midnightntwrk/midnight-zk/pull/430)
 * `VerifierGadget::assign_vk_as_public_input` and `VerifierGadget::assign_fixed_vk` take a finalized constraint system (e.g. `vk.cs()` or `ConstraintSystem::into_finalized`) and return `Error::Synthesis` if it has selectors. `assign_vk_as_public_input` no longer converts the selectors itself [#546](https://github.com/midnightntwrk/midnight-zk/pull/546)
+* Limb-size DP (`compute_optimal_limb_sizes`) compares candidates by length and clones only the winner; same limbs, same VKs. Cuts the serial configure path (runs in keygen and prove) [#532](https://github.com/midnightntwrk/midnight-zk/pull/532)
 
 ### Removed
 * BREAKING: `truncated-challenges` feature. The verifier gadget always truncates the challenges, and `SelfEmulation::ScalarChip` always implements `NativeInstructions` [#580](https://github.com/midnightntwrk/midnight-zk/pull/580)

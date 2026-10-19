@@ -144,43 +144,50 @@ pub(crate) fn compute_optimal_limb_sizes(
     // which could result in a negative number (although such cases are filtered)
     bound: i32,
 ) -> Vec<Vec<usize>> {
-    // solution already computed
-    #[allow(clippy::map_entry)]
+    fill_optimal_limb_sizes(solutions, max_parallel_lookups, max_bit_length, bound);
+    solutions[&bound].clone()
+}
+
+/// Memoises the optimal solution for `bound` (and every sub-bound it needs)
+/// into `solutions`. Only the winning candidate is cloned (candidates are
+/// compared by length); the first strict minimum wins, so ties resolve as
+/// they always have - the chosen limbs shape the circuit, and hence the VK.
+fn fill_optimal_limb_sizes(
+    solutions: &mut HashMap<i32, Vec<Vec<usize>>>,
+    max_parallel_lookups: usize,
+    max_bit_length: usize,
+    // we use an i32 type because of the operation `bound - (bit_length * parallel_lookups)`
+    // which could result in a negative number (although such cases are filtered)
+    bound: i32,
+) {
     if solutions.contains_key(&bound) {
-        solutions.get(&bound).unwrap().to_vec()
+        return;
     }
-    // trivial bound
-    else if bound == 0 {
-        solutions.insert(bound, vec![]);
-        vec![]
-    } else {
-        let (mut opt_solution, mut opt_value) = (Vec::new(), usize::MAX);
-        // iterate over all possibile pairs
-        for parallel_lookups in 1..=max_parallel_lookups {
-            for bit_length in (1..=max_bit_length).rev() {
-                let next_bound = bound - (bit_length * parallel_lookups) as i32;
-                if next_bound >= 0 {
-                    // compute the optimal solution of the next problem
-                    let mut sol = compute_optimal_limb_sizes(
-                        solutions,
-                        max_parallel_lookups,
-                        max_bit_length,
-                        next_bound,
-                    );
-                    // add one vector for what is left
-                    sol.push(vec![bit_length; parallel_lookups]);
-                    // if the solution is shorter than the current best, update the optimial
-                    // solution and its value
-                    if sol.len() < opt_value {
-                        opt_value = sol.len();
-                        opt_solution = sol;
-                    }
-                }
+    let mut best: Option<(usize, i32, usize, usize)> = None;
+    for parallel_lookups in 1..=max_parallel_lookups {
+        for bit_length in (1..=max_bit_length).rev() {
+            let next_bound = bound - (bit_length * parallel_lookups) as i32;
+            if next_bound < 0 {
+                continue;
+            }
+            fill_optimal_limb_sizes(solutions, max_parallel_lookups, max_bit_length, next_bound);
+            let len = solutions[&next_bound].len() + 1;
+            if best.is_none_or(|(l, ..)| len < l) {
+                best = Some((len, next_bound, bit_length, parallel_lookups));
             }
         }
-        solutions.insert(bound, opt_solution.clone());
-        opt_solution
     }
+    let solution = match best {
+        // Only bound == 0: (1 bit, 1 lookup) always fits any positive bound.
+        None => vec![],
+        Some((len, next_bound, bit_length, parallel_lookups)) => {
+            let mut sol = Vec::with_capacity(len);
+            sol.extend_from_slice(&solutions[&next_bound]);
+            sol.push(vec![bit_length; parallel_lookups]);
+            sol
+        }
+    };
+    solutions.insert(bound, solution);
 }
 
 #[cfg(test)]
@@ -249,6 +256,66 @@ mod tests {
                 max_bit_length,
                 opt
             ));
+        }
+    }
+
+    /// The pre-optimisation solver, kept verbatim as an oracle: the chosen
+    /// limbs shape the circuit, so any change to them changes the VK.
+    fn reference(
+        solutions: &mut HashMap<i32, Vec<Vec<usize>>>,
+        max_parallel_lookups: usize,
+        max_bit_length: usize,
+        bound: i32,
+    ) -> Vec<Vec<usize>> {
+        #[allow(clippy::map_entry)]
+        if solutions.contains_key(&bound) {
+            solutions.get(&bound).unwrap().to_vec()
+        } else if bound == 0 {
+            solutions.insert(bound, vec![]);
+            vec![]
+        } else {
+            let (mut opt_solution, mut opt_value) = (Vec::new(), usize::MAX);
+            for parallel_lookups in 1..=max_parallel_lookups {
+                for bit_length in (1..=max_bit_length).rev() {
+                    let next_bound = bound - (bit_length * parallel_lookups) as i32;
+                    if next_bound >= 0 {
+                        let mut sol =
+                            reference(solutions, max_parallel_lookups, max_bit_length, next_bound);
+                        sol.push(vec![bit_length; parallel_lookups]);
+                        if sol.len() < opt_value {
+                            opt_value = sol.len();
+                            opt_solution = sol;
+                        }
+                    }
+                }
+            }
+            solutions.insert(bound, opt_solution.clone());
+            opt_solution
+        }
+    }
+
+    /// Same limbs as [`reference`], tie-breaks included, over the parameter
+    /// ranges the chips use (and then some), queried in both directions so
+    /// the memo is exercised warm and cold.
+    #[test]
+    fn test_limb_sizes_match_reference() {
+        for max_parallel_lookups in 1..=5 {
+            for max_bit_length in 1..=10 {
+                let (mut got, mut want) = (HashMap::new(), HashMap::new());
+                for bound in (0..=300).chain((0..=300).rev()) {
+                    assert_eq!(
+                        compute_optimal_limb_sizes(
+                            &mut got,
+                            max_parallel_lookups,
+                            max_bit_length,
+                            bound
+                        ),
+                        reference(&mut want, max_parallel_lookups, max_bit_length, bound),
+                        "lookups={max_parallel_lookups} bits={max_bit_length} bound={bound}"
+                    );
+                }
+                assert_eq!(got, want);
+            }
         }
     }
 }
