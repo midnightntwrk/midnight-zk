@@ -145,11 +145,21 @@ where
 
     /// Prover side of [`Accumulator::fold`]: folds the `k = fresh.len() ≥ 1`
     /// fresh instances into `self`, writing the proof to a fresh `transcript`
-    /// (steps 1-8 of "Folding" in the module documentation).
+    /// (steps 1-8 of "Folding" in the module documentation). Step 1 absorbs
+    /// `acc_hash` instead of the accumulator if it is `Some`.
+    ///
+    /// # Warning
+    ///
+    /// With `acc_hash = Some(h)` the round binds only `h`, not the
+    /// accumulator: `h` must be a collision-resistant hash of the ENTIRE
+    /// accumulator, computed and bound by the caller (e.g. an IVC that also
+    /// exposes it as a public input). Anything else lets a prover choose the
+    /// accumulator after seeing `γ`.
     pub fn fold<T>(
         self,
         pk: &ProvingKey<F, CS>,
         fresh: Vec<ProverInstance<'a, F, CS>>,
+        acc_hash: Option<F>,
         transcript: &mut T,
     ) -> Result<Self, Error>
     where
@@ -168,7 +178,7 @@ where
         let traces: Vec<_> = once(&self.trace).chain(&fresh_traces).collect();
 
         // 1. Absorb the accumulator, then the fresh instances.
-        self.public.absorb(transcript)?;
+        self.public.absorb_or_hash(acc_hash, transcript)?;
         for instance in &fresh_public {
             instance.absorb_commitments_and_instances(transcript)?;
         }

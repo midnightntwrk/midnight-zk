@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 * `plonk::protogalaxy` building blocks for Protogalaxy folding: fresh instances (`commit_instance`, `read_instance`), `FoldingInstance`, `Accumulator`, `folding_degree`; `PolynomialCommitmentScheme::combine_commitments`
 * Protogalaxy folding: `Accumulator::{init, fold}` and `ProverAccumulator::{init, fold}`, folding k fresh instances per round.
+* Protogalaxy: `fold` can absorb a caller-provided hash of the accumulator instead of the accumulator.
 * `ProverAccumulator::is_satisfied`: checks the relaxed relation of a folded trace in the clear.
 * Protogalaxy decider: `prove_relaxed_trace` and `verify_relaxed_trace`, a proof that a folded accumulator satisfies its relaxed relation (grand sum of the weighted identity rows).
 * Protogalaxy one-shot folding: `prove_one_shot` and `verify_one_shot` fold k fresh instances in one round and prove the result with the decider, in one proof.

@@ -142,9 +142,9 @@ where
         next += k;
 
         let mut transcript = T::init();
-        acc = acc.fold(pk, instances, &mut transcript).unwrap();
+        acc = acc.fold(pk, instances, None, &mut transcript).unwrap();
         let bytes = transcript.finalize();
-        acc_v = acc_v.fold(pk.get_vk(), &reads, &mut T::init_from_bytes(&bytes)).unwrap();
+        acc_v = acc_v.fold(pk.get_vk(), &reads, None, &mut T::init_from_bytes(&bytes)).unwrap();
 
         assert_eq!(&acc_v, acc.accumulator());
         if corrupt.is_none() {
@@ -277,10 +277,49 @@ where
     let acc = ProverAccumulator::init(&pk, instance, &mut T::init()).unwrap();
     let acc_v = Accumulator::init(pk.get_vk(), read, &mut T::init()).unwrap();
 
-    let folded = acc_v.fold(pk.get_vk(), &[], &mut T::init_from_bytes(&[]));
+    let folded = acc_v.fold(pk.get_vk(), &[], None, &mut T::init_from_bytes(&[]));
     assert!(matches!(folded, Err(Error::InvalidInstances)));
-    let folded = acc.fold(&pk, vec![], &mut T::init());
+    let folded = acc.fold(&pk, vec![], None, &mut T::init());
     assert!(matches!(folded, Err(Error::InvalidInstances)));
+}
+
+/// Rounds absorbing a caller-provided hash instead of the accumulator: the
+/// verifier agrees with the prover when passing the same hash, and rejects
+/// (another `γ`, so the products do not match) when passing another one.
+fn check_acc_hash<CS: PolynomialCommitmentScheme<Fq>>()
+where
+    CS::Commitment: Hashable<State>,
+{
+    let (params, pk) = setup::<CS>();
+    let vk = pk.get_vk();
+    let (instance, read) = fresh_instance(&params, &pk, 0, false);
+    let mut acc = ProverAccumulator::init(&pk, instance, &mut T::init()).unwrap();
+    let mut acc_v = Accumulator::init(vk, read, &mut T::init()).unwrap();
+
+    for round in 1..=2 {
+        let (instance, read) = fresh_instance(&params, &pk, round, false);
+        let hash = Some(Fq::from(round as u64));
+
+        let mut transcript = T::init();
+        acc = acc.fold(&pk, vec![instance], hash, &mut transcript).unwrap();
+        let bytes = transcript.finalize();
+
+        let verify = |hash| {
+            acc_v.fold(
+                vk,
+                std::slice::from_ref(&read),
+                hash,
+                &mut T::init_from_bytes(&bytes),
+            )
+        };
+        assert!(matches!(
+            verify(Some(Fq::from(100))),
+            Err(Error::InvalidInstances)
+        ));
+        acc_v = verify(hash).unwrap();
+        assert_eq!(&acc_v, acc.accumulator());
+        assert!(acc.is_satisfied(&pk));
+    }
 }
 
 fn check_round_trip<CS: PolynomialCommitmentScheme<Fq>>()
@@ -556,6 +595,16 @@ fn empty_fresh_is_an_error_kzg() {
 #[test]
 fn empty_fresh_is_an_error_fflonk() {
     check_empty_fresh::<Fflonk<KZGCommitmentScheme<Bls12>, 3>>();
+}
+
+#[test]
+fn acc_hash_kzg() {
+    check_acc_hash::<KZGCommitmentScheme<Bls12>>();
+}
+
+#[test]
+fn acc_hash_fflonk() {
+    check_acc_hash::<Fflonk<KZGCommitmentScheme<Bls12>, 3>>();
 }
 
 #[test]

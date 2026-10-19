@@ -55,7 +55,7 @@ use crate::{
         NB_POSEIDON_ADVICE_COLS, NB_POSEIDON_FIXED_COLS, PoseidonChip, PoseidonConfig,
         PoseidonState,
     },
-    instructions::{AssignmentInstructions, PublicInputInstructions},
+    instructions::{AssignmentInstructions, PublicInputInstructions, hash::HashCPU},
     types::{AssignedBit, ComposableChip},
     verifier::{
         BlstrsFflonkEmulation, FoldingGadget, FoldingShape, InCircuitPCS, NativeAccumulator,
@@ -236,8 +236,14 @@ impl Native {
         folding_proof: &[u8],
     ) -> NativeAccumulator<S> {
         let transcript = &mut T::init_from_bytes(folding_proof);
-        acc.fold(self.vk(), std::slice::from_ref(&fresh.public), transcript).unwrap()
+        let fresh = std::slice::from_ref(&fresh.public);
+        acc.fold(self.vk(), fresh, Some(acc_hash(acc)), transcript).unwrap()
     }
+}
+
+/// The hash binding an accumulator: Poseidon over its public input.
+fn acc_hash(acc: &NativeAccumulator<S>) -> F {
+    <PoseidonChip<F> as HashCPU<F, F>>::hash(&accumulator_as_public_input::<S>(acc))
 }
 
 // ---------------------------------------------------------------------------
@@ -328,6 +334,8 @@ enum Step {
     Init,
     Fold {
         acc: Value<NativeAccumulator<S>>,
+        /// The hash of `acc` the fold absorbs, assigned as a witness.
+        acc_hash: Value<F>,
         folding_proof: Value<Vec<u8>>,
     },
 }
@@ -390,11 +398,17 @@ impl Circuit<F> for FoldingCircuit {
             .transpose()?;
         let next = match &self.step {
             Step::Init => gadget.init(&mut layouter, fresh)?,
-            Step::Fold { acc, folding_proof } => {
+            Step::Fold {
+                acc,
+                acc_hash,
+                folding_proof,
+            } => {
                 let acc = gadget.assign_accumulator(&mut layouter, acc.as_ref())?;
+                let acc_hash = chips.scalar.assign(&mut layouter, *acc_hash)?;
                 gadget.fold(
                     &mut layouter,
                     &acc,
+                    &acc_hash,
                     &fresh,
                     folding_proof.clone(),
                     discarded.as_ref(),
@@ -426,9 +440,26 @@ impl FoldingCircuit {
     fn fold(native: &Native, acc: &NativeAccumulator<S>, fresh: &Fresh, proof: &[u8]) -> Self {
         let step = Step::Fold {
             acc: Value::known(acc.clone()),
+            acc_hash: Value::known(acc_hash(acc)),
             folding_proof: Value::known(proof.to_vec()),
         };
         Self::new(native, fresh, step)
+    }
+
+    /// The same circuit of a fold, given `hash` as the hash of the accumulator.
+    fn with_acc_hash(self, hash: F) -> Self {
+        let Step::Fold {
+            acc, folding_proof, ..
+        } = self.step.clone()
+        else {
+            panic!("not a fold step");
+        };
+        let step = Step::Fold {
+            acc,
+            acc_hash: Value::known(hash),
+            folding_proof,
+        };
+        FoldingCircuit { step, ..self }
     }
 
     /// The same circuit, folding with `discarded` assigned to `bit`.
@@ -486,7 +517,9 @@ fn fold_round<'a>(
 ) -> (ProverAccumulator<'a, F, CS>, Round) {
     let acc = prover_acc.accumulator().clone();
     let mut transcript = T::init();
-    let prover_acc = prover_acc.fold(&native.pk, vec![prover_fresh], &mut transcript).unwrap();
+    let hash = Some(acc_hash(&acc));
+    let prover_acc =
+        prover_acc.fold(&native.pk, vec![prover_fresh], hash, &mut transcript).unwrap();
     let folding_proof = transcript.finalize();
     let next = native.verify_fold(&acc, &fresh, &folding_proof);
     assert_eq!(&next, prover_acc.accumulator());
@@ -595,7 +628,12 @@ fn folding_gadget_tampered() {
     // rejected natively and in circuit.
     let check = |fresh: &Fresh, proof: &[u8]| {
         let transcript = &mut T::init_from_bytes(proof);
-        let tampered = round.acc.fold(native.vk(), std::slice::from_ref(&fresh.public), transcript);
+        let tampered = round.acc.fold(
+            native.vk(),
+            std::slice::from_ref(&fresh.public),
+            Some(acc_hash(&round.acc)),
+            transcript,
+        );
         assert!(tampered.is_err());
         let circuit = FoldingCircuit::fold(&native, &round.acc, fresh, proof);
         assert!(!circuit.outputs(&round.next));
@@ -647,10 +685,29 @@ fn folding_gadget_rejects_wrong_product() {
         let proof = shift_product(&shape, &round.folding_proof, index);
         let transcript = &mut T::init_from_bytes(&proof);
         let fresh = std::slice::from_ref(&round.fresh.public);
-        assert!(round.acc.fold(native.vk(), fresh, transcript).is_err());
+        let hash = Some(acc_hash(&round.acc));
+        assert!(round.acc.fold(native.vk(), fresh, hash, transcript).is_err());
         let circuit = FoldingCircuit::fold(&native, &round.acc, &round.fresh, &proof);
         assert!(!circuit.satisfied(), "wrong product {index} accepted");
     }
+}
+
+/// The fold absorbs the hash of the accumulator it is given: a circuit given a
+/// hash other than the one the prover used derives other challenges, so its
+/// products are wrong and it is unsatisfiable (as the native verifier rejects).
+#[test]
+fn folding_gadget_rejects_wrong_acc_hash() {
+    let native = Native::new();
+    let round = &chain(&native, 1)[0];
+    let wrong = acc_hash(&round.acc) + F::ONE;
+
+    let transcript = &mut T::init_from_bytes(&round.folding_proof);
+    let fresh = std::slice::from_ref(&round.fresh.public);
+    assert!(round.acc.fold(native.vk(), fresh, Some(wrong), transcript).is_err());
+
+    let honest = round.circuit(&native);
+    assert!(honest.satisfied());
+    assert!(!honest.with_acc_hash(wrong).satisfied());
 }
 
 /// `discarded = 1` waives the product check, `discarded = 0` does not.

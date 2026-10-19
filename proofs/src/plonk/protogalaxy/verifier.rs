@@ -89,11 +89,21 @@ where
 
     /// Folds the `k = fresh.len() ≥ 1` fresh instances into `self`, reading
     /// the proof from a fresh `transcript` (steps 1-8 of "Folding" in the
-    /// module documentation).
+    /// module documentation). Step 1 absorbs `acc_hash` instead of the
+    /// accumulator if it is `Some`.
+    ///
+    /// # Warning
+    ///
+    /// With `acc_hash = Some(h)` the round binds only `h`, not the
+    /// accumulator: `h` must be a collision-resistant hash of the ENTIRE
+    /// accumulator, computed and bound by the caller (e.g. an IVC that also
+    /// exposes it as a public input). Anything else lets a prover choose the
+    /// accumulator after seeing `γ`.
     pub fn fold<T>(
         &self,
         vk: &VerifyingKey<F, CS>,
         fresh: &[FoldingInstance<F, CS>],
+        acc_hash: Option<F>,
         transcript: &mut T,
     ) -> Result<Self, Error>
     where
@@ -108,7 +118,7 @@ where
         let k = fresh.len();
         let d = folding_degree(&vk.cs);
 
-        self.absorb(transcript)?;
+        self.absorb_or_hash(acc_hash, transcript)?;
         for instance in fresh {
             instance.absorb_commitments_and_instances(transcript)?;
         }

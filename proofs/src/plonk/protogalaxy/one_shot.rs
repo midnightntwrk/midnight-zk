@@ -60,7 +60,7 @@ where
 
     let mut acc = ProverAccumulator::init(pk, first, transcript)?;
     if !rest.is_empty() {
-        acc = acc.fold(pk, rest, transcript)?;
+        acc = acc.fold(pk, rest, None, transcript)?;
     }
     prove_relaxed_trace(params, pk, acc, transcript)
 }
@@ -95,7 +95,7 @@ where
 
     let mut acc = Accumulator::init(vk, first, transcript)?;
     if !rest.is_empty() {
-        acc = acc.fold(vk, &rest, transcript)?;
+        acc = acc.fold(vk, &rest, None, transcript)?;
     }
     verify_relaxed_trace(vk, &acc, transcript)
 }

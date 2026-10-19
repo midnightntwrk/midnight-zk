@@ -35,7 +35,8 @@
 //!
 //! One round, [`Accumulator::fold`], with the accumulator `(ω₀, β⃗, e)` and
 //! the fresh instances `ω₁, …, ω_k`:
-//! 1. absorb the accumulator, then `ω₁, …, ω_k` (commitments, public inputs);
+//! 1. absorb the accumulator (or, if the caller supplies one, only its hash),
+//!    then `ω₁, …, ω_k` (commitments, public inputs);
 //! 2. squeeze `δ`, `δ⃗ = (δ, δ², δ⁴, …)`;
 //! 3. read `F₁, …, F_t`: the perturbator is `F = (e, F₁, …, F_t)`;
 //! 4. squeeze `α`, `β⃗* = β⃗ + α·δ⃗`;

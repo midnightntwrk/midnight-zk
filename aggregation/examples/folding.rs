@@ -178,7 +178,7 @@ fn main() {
     for fresh in provers {
         let (n, start) = (fresh.len(), Instant::now());
         let mut transcript = T::init();
-        prover = prover.fold(&pk, fresh, &mut transcript).expect("fold failed");
+        prover = prover.fold(&pk, fresh, None, &mut transcript).expect("fold failed");
         rounds.push((n, transcript.finalize(), start.elapsed()));
         accumulators.push(prover.accumulator().clone());
     }
@@ -202,7 +202,9 @@ fn main() {
     for (round, ((n, proof, prover_time), group)) in (1..).zip(rounds.iter().zip(&published)) {
         let start = Instant::now();
         let mut transcript = T::init_from_bytes(proof);
-        verifier = verifier.fold(vk, &read(group), &mut transcript).expect("verifier fold failed");
+        verifier = verifier
+            .fold(vk, &read(group), None, &mut transcript)
+            .expect("verifier fold failed");
         let verifier_time = start.elapsed();
         assert!(
             verifier == accumulators[round],

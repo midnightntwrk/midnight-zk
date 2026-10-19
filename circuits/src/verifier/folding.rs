@@ -28,6 +28,18 @@
 //! [`AssignedFoldingAccumulator::as_public_input`]). Do not use this gadget
 //! where that binding is absent.
 //!
+//! # Accumulator hash
+//! Step 1 absorbs one element, a hash of the accumulator provided by the
+//! caller, instead of the whole accumulator (the native `acc_hash =
+//! Some(h)`; an IVC step circuit has hashed the accumulator already, for its
+//! public input).
+//!
+//! **Warning**: the round then binds only that hash, not the accumulator.
+//! The caller must bind it to the ENTIRE accumulator, with a
+//! collision-resistant hash it computes in circuit, or a prover can choose the
+//! accumulator after seeing `γ`. At the genesis step a dummy hash is fine
+//! only because the fold is discarded.
+//!
 //! # `k = 1`
 //! The folding domain is `{0, 1}`: `L₀(γ) = 1 − γ`, `L₁(γ) = γ`,
 //! `Z(γ) = γ(γ − 1)`, and `K` has `d − 1` coefficients. Everything linear
@@ -193,7 +205,9 @@ where
     /// Folds `fresh` into `acc` (`Accumulator::fold` with one fresh instance),
     /// reading the folding messages (`F₁ … F_{log n}`, then `K₀ … K_{d−2}`)
     /// and the commitment products (phase 1, then phase 2) from
-    /// `folding_proof`.
+    /// `folding_proof`. The transcript absorbs `acc_hash`, one element, instead
+    /// of `acc` (see the module documentation: the caller must bind it to the
+    /// entire `acc`).
     ///
     /// The products are checked (the circuit is unsatisfiable on a wrong one),
     /// unless `discarded` is a bit set to 1: for a caller that throws the
@@ -203,6 +217,7 @@ where
         &self,
         layouter: &mut impl Layouter<S::F>,
         acc: &AssignedFoldingAccumulator<S>,
+        acc_hash: &AssignedNative<S::F>,
         fresh: &AssignedFoldingInstance<S>,
         folding_proof: Value<Vec<u8>>,
         discarded: Option<&AssignedBit<S::F>>,
@@ -212,7 +227,7 @@ where
         assert_eq!(acc.betas.len(), self.shape.log_n);
 
         let mut transcript = self.new_transcript(layouter, folding_proof)?;
-        acc.absorb(layouter, &mut transcript)?;
+        transcript.common_scalar(layouter, acc_hash)?;
         fresh.absorb_commitments_and_instances(layouter, &mut transcript)?;
 
         let delta = transcript.squeeze_challenge(layouter)?;
