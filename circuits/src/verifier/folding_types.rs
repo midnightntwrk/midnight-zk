@@ -347,7 +347,7 @@ impl<S: SelfEmulation> AssignedFoldingInstance<S> {
     /// Absorbs the commitments and the public inputs: phase-1 commitment,
     /// phase-2 commitment, then every public input, column by column. Mirrors
     /// the native `FoldingInstance::absorb_commitments_and_instances`.
-    pub fn absorb_commitments_and_instances(
+    pub(crate) fn absorb_commitments_and_instances(
         &self,
         layouter: &mut impl Layouter<S::F>,
         transcript: &mut TranscriptGadget<S>,

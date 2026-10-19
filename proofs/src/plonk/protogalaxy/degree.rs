@@ -1,11 +1,15 @@
-//! The degree `d_total` of the folded identity polynomial.
+//! The degree `d` of the folded identity `fᵢ`.
 //!
-//! Folding interpolates every witness value, public input and challenge
-//! linearly in the folding variable `X` (`L₀(X)·acc + L₁(X)·fresh`), so the
-//! degree in `X` of `f_i(L₀(X)ω + L₁(X)ω')` is the total degree of the
-//! `y⃗`-combined identity in all folded variables: advice and instance values
-//! and the challenges `θ⃗, β, γ, trash⃗, y⃗`. Fixed columns (and selectors,
-//! which become fixed columns) are constants.
+//! A round folds the accumulator `ω₀` and the `k` fresh instances `ω₁, …, ω_k`
+//! into `Σⱼ Lⱼ(X)·ωⱼ`, every witness value, public input and challenge
+//! weighted by the Lagrange basis `Lⱼ` of `{0, …, k}` (degree `k`). With `d`
+//! the total degree of the `y⃗`-combined identity `fᵢ` in all folded
+//! variables (advice and instance values and the challenges
+//! `θ⃗, β, γ, trash⃗, y⃗`; fixed columns, and selectors, which become fixed
+//! columns, are constants), `fᵢ(Σⱼ Lⱼ(X)·ωⱼ)` has degree `d·k` in `X`. So
+//! `G(X) = Σᵢ powᵢ(β⃗*)·fᵢ(Σⱼ Lⱼ(X)·ωⱼ)` has degree `d·k`, and
+//! `K = (G − F(α)·L₀)/Z`, with `Z` of degree `k + 1`, has degree
+//! `d·k − k − 1`: the folding proof carries its `d·k − k` coefficients.
 
 use ff::Field;
 
@@ -78,10 +82,11 @@ fn identity_degrees<F: Field>(cs: &ConstraintSystem<F>) -> Vec<usize> {
     degrees
 }
 
-/// `d_total`: the degree in the folding variable of `G(X) = Σᵢ powᵢ(β*)·
-/// fᵢ(L₀(X)ω + L₁(X)ω')`, i.e. the maximum over the identities of their
-/// degree in the folded variables plus one (the `y⃗` factor). At least 2, so
-/// that `K = (G − F(α)·L₀)/Z` is well defined (an upper bound is enough).
+/// `d`: the degree of `fᵢ` in the folded witness values, public inputs and
+/// challenges, i.e. the maximum over the identities of their degree in the
+/// folded variables plus one (the `y⃗` factor). Folding `k` fresh instances,
+/// `G` has degree `d·k` and `K` has degree `d·k − k − 1`. At least 2 (an upper
+/// bound is enough).
 pub fn folding_degree<F: Field>(cs: &ConstraintSystem<F>) -> usize {
     identity_degrees(cs).into_iter().map(|d| d + 1).max().unwrap_or(0).max(2)
 }

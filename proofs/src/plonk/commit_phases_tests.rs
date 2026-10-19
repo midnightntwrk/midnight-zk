@@ -5,14 +5,17 @@ use blake2b_simd::State;
 use ff::Field;
 use midnight_curves::{Bls12, Fq};
 use rand_core::OsRng;
+use rayon::iter::ParallelIterator;
 
 use super::{
+    argument::prover::Committed,
     create_proof, keygen_pk, keygen_vk_with_k, parse_trace, prepare,
     prover::commit_phases,
     test_circuit::{K, SquareCircuit},
 };
 use crate::{
     poly::{
+        Polynomial, PolynomialLabel, PolynomialRepresentation,
         commitment::{Guard, PolynomialCommitmentScheme},
         fflonk::Fflonk,
         kzg::KZGCommitmentScheme,
@@ -21,6 +24,22 @@ use crate::{
 };
 
 type T = CircuitTranscript<State>;
+
+/// Commits to the polynomials of `group` as the prover does.
+fn recommit<CS, B, E>(
+    params: &CS::Parameters,
+    group: &Committed<Fq, B>,
+    encode: impl Fn(&Polynomial<Fq, B>) -> Polynomial<Fq, E> + Send + Sync,
+) -> CS::Commitment
+where
+    CS: PolynomialCommitmentScheme<Fq>,
+    B: PolynomialRepresentation,
+    E: PolynomialRepresentation,
+{
+    let (labels, polys): (Vec<PolynomialLabel>, Vec<_>) =
+        group.par_polys().map(|(label, poly)| (label.clone(), encode(poly))).unzip();
+    CS::commit_many(params, &polys.iter().collect::<Vec<_>>(), &labels)
+}
 
 fn check_commit_phases<CS: PolynomialCommitmentScheme<Fq>>()
 where
@@ -35,7 +54,7 @@ where
 
     // Prover: commit phases only.
     let mut prover_transcript = T::init();
-    let (trace, _) = commit_phases(
+    let (trace, [phase1_commitment, phase2_commitment]) = commit_phases(
         &params,
         &pk,
         &SquareCircuit::default(),
@@ -47,6 +66,16 @@ where
     )
     .unwrap();
     assert!(!trace.theta.is_empty() && trace.y.len() > 1);
+
+    // The returned Lagrange polynomials are the committed ones.
+    let phase1 = recommit::<CS, _, _>(&params, &trace.phase1_committed, Polynomial::to_delta);
+    let phase2 = recommit::<CS, _, _>(
+        &params,
+        &trace.phase2_committed,
+        Polynomial::to_double_delta,
+    );
+    assert_eq!(phase1, phase1_commitment);
+    assert_eq!(phase2, phase2_commitment);
 
     // Verifier: read the commit phases from the same bytes.
     let prover_next: Fq = prover_transcript.squeeze_challenge();

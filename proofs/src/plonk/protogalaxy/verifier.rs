@@ -99,6 +99,10 @@ where
     /// accumulator, computed and bound by the caller (e.g. an IVC that also
     /// exposes it as a public input). Anything else lets a prover choose the
     /// accumulator after seeing `γ`.
+    ///
+    /// No subgroup check is performed on the products or on fresh commitments
+    /// (project decision): a small-order component could be injected, and is
+    /// rejected by the decider's pairing check.
     pub fn fold<T>(
         &self,
         vk: &VerifyingKey<F, CS>,
@@ -132,6 +136,9 @@ where
         let gamma = truncate(transcript.squeeze_challenge());
 
         let next = next_accumulator(self, fresh, &deltas, &f_coeffs, alpha, &k_coeffs, gamma)?;
+        // Natively this is only a prover-consistency check: the soundness of
+        // the products is enforced in-circuit by the ρ-combined MSM of the
+        // folding gadget.
         for expected in fold_products(self, fresh, gamma) {
             let labels = CS::commitment_labels(&expected);
             if CS::read_commitment(transcript, &labels)? != expected {
