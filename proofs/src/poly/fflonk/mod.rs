@@ -234,6 +234,12 @@ where
             .collect()
     }
 
+    fn combine_commitments(terms: &[(F, &Self::Commitment)]) -> Self::Commitment {
+        // Chunk by chunk: the commitment to a chunk `Σᵢ Xⁱ·fᵢ(X^t)` is linear
+        // in its polynomials `fᵢ`.
+        PCS::combine_commitments(terms)
+    }
+
     fn commitment_byte_length(n: usize) -> usize {
         PCS::commitment_byte_length(n.div_ceil(Self::T_MAX))
     }

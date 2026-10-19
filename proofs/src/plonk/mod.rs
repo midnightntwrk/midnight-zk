@@ -33,6 +33,7 @@ pub(crate) mod evaluation;
 mod keygen;
 pub(crate) mod logup;
 pub mod permutation;
+pub mod protogalaxy;
 #[cfg(test)]
 mod test_circuit;
 pub(crate) mod traces;

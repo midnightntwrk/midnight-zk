@@ -219,6 +219,25 @@ where
             .collect()
     }
 
+    fn combine_commitments(terms: &[(E::Fr, &Self::Commitment)]) -> Self::Commitment {
+        let (weights, commitments): (Vec<E::Fr>, Vec<_>) = terms.iter().copied().unzip();
+        let labels = Self::commitment_labels(commitments[0]);
+        assert!(
+            (commitments.iter()).all(|c| Self::commitment_labels(c) == labels),
+            "combining commitments of different labels"
+        );
+        // One MSM of `terms.len()` points per committed polynomial.
+        KZGMultiCommitment(
+            (labels.into_iter().enumerate())
+                .map(|(i, label)| {
+                    let points: Vec<E::G1Affine> =
+                        commitments.iter().map(|c| (*c.0[i].as_point()).into()).collect();
+                    KZGCommitment::Simple(msm_specific(&weights, &points), label)
+                })
+                .collect(),
+        )
+    }
+
     fn commitment_byte_length(n: usize) -> usize {
         // A non-empty group of `n` polynomials travels through the transcript
         // as one length-prefixed message: the prefix, then one point per

@@ -468,6 +468,32 @@ impl<F: PrimeField, B> Polynomial<F, B> {
     }
 }
 
+impl<F: Field, B: Send + Sync> Polynomial<F, B> {
+    /// `Σⱼ weights[j]·polys[j]`, value by value.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `polys` is empty or not as long as `weights`, or if the
+    /// polynomials have different lengths.
+    pub(crate) fn linear_combination(polys: &[&Self], weights: &[F]) -> Self {
+        assert_eq!(polys.len(), weights.len());
+        let len = polys[0].values.len();
+        assert!(polys.iter().all(|p| p.values.len() == len));
+        let mut values = vec![F::ZERO; len];
+        parallelize(&mut values, |chunk, start| {
+            for (poly, weight) in polys.iter().zip(weights) {
+                for (v, p) in chunk.iter_mut().zip(&poly.values[start..]) {
+                    *v += *weight * p;
+                }
+            }
+        });
+        Polynomial {
+            values,
+            _marker: PhantomData,
+        }
+    }
+}
+
 impl<F, B> Index<usize> for Polynomial<F, B> {
     type Output = F;
 

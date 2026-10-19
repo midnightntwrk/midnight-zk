@@ -1,4 +1,5 @@
 use std::{
+    borrow::Cow,
     collections::{BTreeMap, HashSet},
     hash::Hash,
     iter::{self},
@@ -64,7 +65,10 @@ where
 ///
 /// The transcript is left right after the y challenges. The returned trace
 /// holds the phase-1 and phase-2 polynomials in Lagrange form; it can be
-/// converted with [`ProverTrace::into_coeff`] and finalised into a proof.
+/// converted with [`ProverTrace::into_coeff`] and finalised into a proof. The
+/// phase-1 and phase-2 commitments written to the transcript are returned
+/// alongside.
+#[allow(clippy::type_complexity)]
 pub(crate) fn commit_phases<
     'a,
     F,
@@ -82,7 +86,7 @@ pub(crate) fn commit_phases<
     instances: &[&[F]],
     transcript: &mut T,
     mut rng: impl RngCore + CryptoRng,
-) -> Result<ProverTrace<'a, F, LagrangeCoeff>, Error>
+) -> Result<(ProverTrace<'a, F, LagrangeCoeff>, [CS::Commitment; 2]), Error>
 where
     CS::Commitment: Hashable<T::Hash>,
     F: WithSmallOrderMulGroup<3>
@@ -165,7 +169,7 @@ where
         }
     }
 
-    let phase1_committed = argument::prover::Committed::commit::<CS, T, _>(
+    let (phase1_committed, phase1_commitment) = argument::prover::Committed::commit::<CS, T, _>(
         params,
         phase1_polys_map,
         Polynomial::to_delta,
@@ -263,7 +267,7 @@ where
         }
     }
 
-    let phase2_committed = argument::prover::Committed::commit::<CS, T, _>(
+    let (phase2_committed, phase2_commitment) = argument::prover::Committed::commit::<CS, T, _>(
         params,
         phase2_polys_map,
         Polynomial::to_double_delta,
@@ -278,7 +282,7 @@ where
         instance_values,
     } = instance;
 
-    Ok(ProverTrace {
+    let trace = ProverTrace {
         instance_polys,
         instance_values,
         phase0_committed,
@@ -289,7 +293,8 @@ where
         theta,
         trash_challenges,
         y,
-    })
+    };
+    Ok((trace, [phase1_commitment, phase2_commitment]))
 }
 
 /// This takes the computed trace of a set of witnesses and creates a proof
@@ -408,7 +413,7 @@ where
         + Ord
         + FromUniformBytes<64>,
 {
-    let trace = commit_phases(
+    let (trace, _) = commit_phases(
         params,
         pk,
         circuit,
@@ -417,8 +422,8 @@ where
         instances,
         transcript,
         &mut rng,
-    )?
-    .into_coeff(pk.vk.get_domain());
+    )?;
+    let trace = trace.into_coeff(pk.vk.get_domain());
     finalise_proof(
         params,
         pk,
@@ -592,7 +597,7 @@ pub(super) fn compute_nu_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommit
     // Evaluate the numerator polynomial nu(X) of the quotient polynomial
     // h(X) = nu(X) / (X^n-1): nu(X) is a random linear combination of all
     // independent identities
-    pk.ev.evaluate_numerator::<ExtendedLagrangeCoeff>(
+    pk.ev.evaluate_numerator::<ExtendedLagrangeCoeff, Coeff>(
         &pk.vk.domain,
         &pk.vk.cs,
         &advice_cosets,
@@ -605,6 +610,7 @@ pub(super) fn compute_nu_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommit
         trash_challenges,
         phase1_committed,
         phase2_committed,
+        |poly| Cow::Owned(pk.vk.domain.coeff_to_extended(poly.clone())),
         &pk.l0,
         &pk.l_last,
         &pk.l_active_row,
@@ -673,7 +679,13 @@ where
         })
         .collect();
 
-    argument::prover::Committed::commit::<CS, T, _>(params, h_limbs, Polynomial::clone, transcript)
+    let (quotient_committed, _) = argument::prover::Committed::commit::<CS, T, _>(
+        params,
+        h_limbs,
+        Polynomial::clone,
+        transcript,
+    )?;
+    Ok(quotient_committed)
 }
 
 /// Blinds the limbs `h_k(X)` of `h(X) = Σ_k X^{k(n-2)} h_k(X)`, of `n-2`

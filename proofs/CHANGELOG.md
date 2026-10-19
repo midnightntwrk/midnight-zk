@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+* `plonk::protogalaxy` building blocks for Protogalaxy folding: fresh instances (`commit_instance`, `read_instance`), `FoldingInstance`, `Accumulator`, `folding_degree`; `PolynomialCommitmentScheme::combine_commitments`
 * `Transcript::squeeze_challenges`, and `ConstraintSystem::{nb_theta_challenges, nb_trash_challenges, nb_y_challenges}`, the number of challenges of each kind a proof squeezes
 * `kzg::point_set_order`, the order in which the KZG multi-open takes its point sets [#583](https://github.com/midnightntwrk/midnight-zk/pull/583)
 * `fflonk::balanced_chunks`, the split of a group into the fewest chunks of at most `T_MAX`, of balanced sizes [#579](https://github.com/midnightntwrk/midnight-zk/pull/579)

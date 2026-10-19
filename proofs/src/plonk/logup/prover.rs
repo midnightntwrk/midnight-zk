@@ -634,8 +634,8 @@ mod tests {
 
         type CS = KZGCommitmentScheme<Bls12>;
         let params = <CS as PolynomialCommitmentScheme<Fq>>::gen_params(K);
-        let vk = keygen_vk_with_k::<_, CS, _>(&params, &SquareCircuit, K).unwrap();
-        let pk = keygen_pk(vk, &SquareCircuit).unwrap();
+        let vk = keygen_vk_with_k::<_, CS, _>(&params, &SquareCircuit::default(), K).unwrap();
+        let pk = keygen_pk(vk, &SquareCircuit::default()).unwrap();
 
         let n = 1usize << K;
         let a = (0..n as u64).map(|row| Fq::from(row % TABLE_SIZE + 1)).collect();

@@ -19,9 +19,24 @@ pub(crate) const TABLE_SIZE: u64 = 16;
 
 /// `b = a²` on enabled rows (gate), `a ∈ {1..16}` (lookup), `b` of row 0 is
 /// public (copy constraint to the instance column). It exercises every
-/// argument of the prover: gates, permutation, lookup.
-#[derive(Clone, Copy)]
-pub(crate) struct SquareCircuit;
+/// argument of the prover: gates, permutation, lookup. `start` shifts the
+/// witness; `corrupt` breaks the gate on row 5.
+#[derive(Clone, Copy, Default)]
+pub(crate) struct SquareCircuit {
+    pub(crate) start: u64,
+    pub(crate) corrupt: bool,
+}
+
+impl SquareCircuit {
+    fn a(&self, row: u64) -> Fq {
+        Fq::from((self.start + row) % TABLE_SIZE + 1)
+    }
+
+    /// The public input, `b` of row 0.
+    pub(crate) fn public_input(&self) -> Fq {
+        self.a(0).square()
+    }
+}
 
 #[derive(Clone, Debug)]
 pub(crate) struct SquareConfig {
@@ -91,14 +106,11 @@ impl Circuit<Fq> for SquareCircuit {
                 let mut first_b = None;
                 for row in 0..TABLE_SIZE {
                     config.s.enable(&mut region, row as usize)?;
-                    let a = Fq::from(row + 1);
+                    let a = self.a(row);
+                    let b = a.square() + Fq::from((self.corrupt && row == 5) as u64);
                     region.assign_advice(|| "a", config.a, row as usize, || Value::known(a))?;
-                    let b = region.assign_advice(
-                        || "b",
-                        config.b,
-                        row as usize,
-                        || Value::known(a.square()),
-                    )?;
+                    let b =
+                        region.assign_advice(|| "b", config.b, row as usize, || Value::known(b))?;
                     first_b.get_or_insert(b.cell());
                 }
                 Ok(first_b.unwrap())

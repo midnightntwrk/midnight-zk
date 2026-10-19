@@ -55,6 +55,28 @@ impl<F: PrimeField, B: PolynomialRepresentation> Committed<F, B> {
         &self.polys[start..end]
     }
 
+    /// The group `Σⱼ weights[j]·groups[j]`, polynomial by polynomial.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `groups` is empty or not as long as `weights`, or if the
+    /// groups do not hold the same labels.
+    pub(crate) fn linear_combination(groups: &[&Self], weights: &[F]) -> Self {
+        let labels = groups[0].labels.clone();
+        assert!(
+            groups.iter().all(|g| g.labels == labels),
+            "combining groups of different labels"
+        );
+        let polys = (0..labels.len())
+            .into_par_iter()
+            .map(|i| {
+                let polys: Vec<_> = groups.iter().map(|g| &g.polys[i]).collect();
+                Polynomial::linear_combination(&polys, weights)
+            })
+            .collect();
+        Committed { labels, polys }
+    }
+
     /// The group's labeled polynomials, in parallel.
     pub(crate) fn par_polys(
         &self,
@@ -74,13 +96,14 @@ impl<F: WithSmallOrderMulGroup<3>, B: PolynomialRepresentation> Committed<F, B> 
 
 impl<F: PrimeField, B: PolynomialRepresentation> Committed<F, B> {
     /// Commits to the polynomials of `polys_map` in the representation given by
-    /// `encode`. The group keeps them as given.
+    /// `encode` and writes the commitment to the transcript. The group keeps
+    /// the polynomials as given; the commitment is returned alongside.
     pub fn commit<CS, T, E>(
         params: &CS::Parameters,
         polys_map: BTreeMap<PolynomialLabel, Polynomial<F, B>>,
         encode: impl Fn(&Polynomial<F, B>) -> Polynomial<F, E> + Send + Sync,
         transcript: &mut T,
-    ) -> Result<Self, Error>
+    ) -> Result<(Self, CS::Commitment), Error>
     where
         CS: PolynomialCommitmentScheme<F>,
         CS::Commitment: Hashable<T::Hash>,
@@ -94,7 +117,7 @@ impl<F: PrimeField, B: PolynomialRepresentation> Committed<F, B> {
 
         CS::write_commitment(transcript, &commitment)?;
 
-        Ok(group)
+        Ok((group, commitment))
     }
 }
 

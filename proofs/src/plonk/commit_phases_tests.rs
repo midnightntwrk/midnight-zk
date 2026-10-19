@@ -27,18 +27,18 @@ where
     CS::Commitment: Hashable<State>,
 {
     let params = CS::gen_params(K);
-    let vk = keygen_vk_with_k::<_, CS, _>(&params, &SquareCircuit, K).unwrap();
-    let pk = keygen_pk(vk, &SquareCircuit).unwrap();
+    let vk = keygen_vk_with_k::<_, CS, _>(&params, &SquareCircuit::default(), K).unwrap();
+    let pk = keygen_pk(vk, &SquareCircuit::default()).unwrap();
     let vk = pk.get_vk();
     let instance = [Fq::ONE];
     let instances: &[&[Fq]] = &[&instance];
 
     // Prover: commit phases only.
     let mut prover_transcript = T::init();
-    let trace = commit_phases(
+    let (trace, _) = commit_phases(
         &params,
         &pk,
-        &SquareCircuit,
+        &SquareCircuit::default(),
         #[cfg(feature = "committed-instances")]
         0,
         instances,
@@ -76,7 +76,7 @@ where
     create_proof::<_, CS, _, _>(
         &params,
         &pk,
-        &SquareCircuit,
+        &SquareCircuit::default(),
         #[cfg(feature = "committed-instances")]
         0,
         instances,

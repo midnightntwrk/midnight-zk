@@ -166,6 +166,15 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
     /// The labels `commitment` tags its polynomials with.
     fn commitment_labels(commitment: &Self::Commitment) -> Vec<PolynomialLabel>;
 
+    /// The commitment to `Σⱼ wⱼ·pⱼ` from the `terms` `(wⱼ, Cⱼ)`, where `Cⱼ` is
+    /// the commitment of [`commit_many`](Self::commit_many) to the group `pⱼ`
+    /// and all groups have the same labels. Used by Protogalaxy folding.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `terms` is empty or its commitments have different labels.
+    fn combine_commitments(terms: &[(F, &Self::Commitment)]) -> Self::Commitment;
+
     /// Total byte length when committing to `n` polynomials, which is 0 when
     /// `n` is 0.
     ///
