@@ -108,6 +108,22 @@ pub trait SelfEmulation: Clone + Debug {
         bases: &[Self::AssignedPoint],
     ) -> Result<Self::AssignedPoint, Error>;
 
+    /// Complete point addition `p + q` (any of them may be the identity, and
+    /// they may be equal or opposite).
+    fn add(
+        layouter: &mut impl Layouter<Self::F>,
+        curve_chip: &Self::CurveChip,
+        p: &Self::AssignedPoint,
+        q: &Self::AssignedPoint,
+    ) -> Result<Self::AssignedPoint, Error>;
+
+    /// Point negation `-p`.
+    fn negate(
+        layouter: &mut impl Layouter<Self::F>,
+        curve_chip: &Self::CurveChip,
+        p: &Self::AssignedPoint,
+    ) -> Result<Self::AssignedPoint, Error>;
+
     /// Constrains the given scalar as a committed public input.
     fn constrain_scalar_as_committed_public_input(
         layouter: &mut impl Layouter<Self::F>,
@@ -157,6 +173,23 @@ impl SelfEmulation for BlstrsEmulation {
         bases: &[Self::AssignedPoint],
     ) -> Result<Self::AssignedPoint, Error> {
         curve_chip.msm_by_bounded_scalars(layouter, scalars, bases)
+    }
+
+    fn add(
+        layouter: &mut impl Layouter<Self::F>,
+        curve_chip: &Self::CurveChip,
+        p: &Self::AssignedPoint,
+        q: &Self::AssignedPoint,
+    ) -> Result<Self::AssignedPoint, Error> {
+        curve_chip.add(layouter, p, q)
+    }
+
+    fn negate(
+        layouter: &mut impl Layouter<Self::F>,
+        curve_chip: &Self::CurveChip,
+        p: &Self::AssignedPoint,
+    ) -> Result<Self::AssignedPoint, Error> {
+        curve_chip.negate(layouter, p)
     }
 
     fn constrain_scalar_as_committed_public_input(
@@ -209,6 +242,23 @@ impl SelfEmulation for BlstrsFflonkEmulation {
         curve_chip.msm_by_bounded_scalars(layouter, scalars, bases)
     }
 
+    fn add(
+        layouter: &mut impl Layouter<Self::F>,
+        curve_chip: &Self::CurveChip,
+        p: &Self::AssignedPoint,
+        q: &Self::AssignedPoint,
+    ) -> Result<Self::AssignedPoint, Error> {
+        curve_chip.add(layouter, p, q)
+    }
+
+    fn negate(
+        layouter: &mut impl Layouter<Self::F>,
+        curve_chip: &Self::CurveChip,
+        p: &Self::AssignedPoint,
+    ) -> Result<Self::AssignedPoint, Error> {
+        curve_chip.negate(layouter, p)
+    }
+
     fn constrain_scalar_as_committed_public_input(
         layouter: &mut impl Layouter<Self::F>,
         scalar_chip: &Self::ScalarChip,
@@ -256,6 +306,23 @@ impl SelfEmulation for BnEmulation {
         bases: &[Self::AssignedPoint],
     ) -> Result<Self::AssignedPoint, Error> {
         curve_chip.msm_by_bounded_scalars(layouter, scalars, bases)
+    }
+
+    fn add(
+        layouter: &mut impl Layouter<Self::F>,
+        curve_chip: &Self::CurveChip,
+        p: &Self::AssignedPoint,
+        q: &Self::AssignedPoint,
+    ) -> Result<Self::AssignedPoint, Error> {
+        curve_chip.add(layouter, p, q)
+    }
+
+    fn negate(
+        layouter: &mut impl Layouter<Self::F>,
+        curve_chip: &Self::CurveChip,
+        p: &Self::AssignedPoint,
+    ) -> Result<Self::AssignedPoint, Error> {
+        curve_chip.negate(layouter, p)
     }
 
     fn constrain_scalar_as_committed_public_input(
