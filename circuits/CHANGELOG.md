@@ -25,6 +25,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 
 ### Changed
+* `FoldingGadget::fold` compares the batched MSM with −P₁ instead of checking a sum against the identity (fewer rows).
 * `FoldingGadget::fold` absorbs a hash of the accumulator, provided by the caller, instead of the accumulator.
 * `FoldingGadget::fold` checks the commitment fold with one MSM over the products written by the prover, and takes `discarded` to waive that check for a fold whose result is discarded. BREAKING: `SelfEmulation` gains `glv_split`, and its `CurveChip` must implement `ControlFlowInstructions`
 * The in-circuit verifier chunks the lookups with `ConstraintSystem::lookup_chunk_bound` (the degree of the constraint system unless set)

@@ -53,7 +53,9 @@
 //! module). The `P_i` are absorbed as they are read, and the in-circuit check
 //! covers all of them with a single MSM: for challenges `ρ_1 = 1, ρ_2, …`
 //! squeezed (and truncated to 128 bits, like `γ`) after the `P_i`,
-//! `Σ_i ρ_i·(P_i + [γ]·(A_i − F_i)) = O`.
+//! `Σ_i ρ_i·(P_i + [γ]·(A_i − F_i)) = O`. The circuit compares the MSM over
+//! all terms but `P_1` with `−P_1` (one negation and one equality), instead of
+//! adding `P_1` and checking against the identity.
 //!
 //! Soundness: the `P_i` are fixed before the `ρ_i` are known, so if some `P_i`
 //! is wrong, the sum is a nonzero combination of the (nonzero) errors with
@@ -66,7 +68,6 @@
 //! assigned without subgroup check (out of scope).
 
 use ff::{Field, PrimeField};
-use group::Group;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
@@ -397,13 +398,13 @@ where
             folded.push(AssignedKZGCommitment::simple(sum, label.clone()));
         }
 
-        let msm = S::msm(layouter, curve, &scalars, &bases)?;
-        let mut check = S::add(layouter, curve, &msm, first_product)?;
+        // The MSM covers all terms but `P_1` (`ρ_1 = 1`): it must equal `−P_1`.
+        let mut lhs = S::msm(layouter, curve, &scalars, &bases)?;
+        let neg_first = S::negate(layouter, curve, first_product)?;
         if let Some(discarded) = discarded {
-            let identity = curve.assign_fixed(layouter, S::C::identity())?;
-            check = curve.select(layouter, discarded, &identity, &check)?;
+            lhs = curve.select(layouter, discarded, &neg_first, &lhs)?;
         }
-        curve.assert_equal_to_fixed(layouter, &check, S::C::identity())?;
+        curve.assert_equal(layouter, &lhs, &neg_first)?;
 
         let phase2 = folded.split_off(self.shape.phase1_labels.len());
         Ok((
