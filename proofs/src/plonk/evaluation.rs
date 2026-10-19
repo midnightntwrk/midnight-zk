@@ -2,7 +2,12 @@ use std::sync::OnceLock;
 
 use ff::{PrimeField, WithSmallOrderMulGroup};
 use group::ff::Field;
-use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
+use rayon::{
+    iter::{
+        IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
+    },
+    slice::ParallelSliceMut,
+};
 
 use super::{ConstraintSystem, Expression, logup::table::TableSide, trash};
 use crate::{
@@ -1317,6 +1322,9 @@ impl<F: PrimeField> GraphEvaluator<F> {
     }
 }
 
+/// Rows per task in [`evaluate`]
+const EVAL_CHUNK: usize = 512;
+
 /// Simple evaluation of an expression
 pub fn evaluate<F: Field, B: PolynomialRepresentation>(
     expression: &Expression<F>,
@@ -1328,9 +1336,11 @@ pub fn evaluate<F: Field, B: PolynomialRepresentation>(
 ) -> Vec<F> {
     let mut values = vec![F::ZERO; size];
     let log_n = size.ilog2();
-    parallelize(&mut values, |values, start| {
+    // Small chunks: callers nest this under other parallel loops, which
+    // balance better with work stealing than with one chunk per thread.
+    values.par_chunks_mut(EVAL_CHUNK).enumerate().for_each(|(c, values)| {
         for (i, value) in values.iter_mut().enumerate() {
-            let idx = start + i;
+            let idx = c * EVAL_CHUNK + i;
             *value = expression.evaluate(
                 &|scalar| scalar,
                 &|_| panic!("virtual selectors are removed during optimization"),
@@ -1659,5 +1669,33 @@ mod tests {
         let flat = GraphEvaluator::for_trash(&trash).flatten();
         let got = trash::prover::compute_trash_poly(&flat, &domain, c, &advice, &fixed, &instance);
         assert_eq!(expected.values, got.values);
+    }
+
+    /// `evaluate` splits the rows into chunks of `EVAL_CHUNK`: the row index of
+    /// each value, and its rotations, are the global ones.
+    #[test]
+    fn evaluate_over_several_chunks() {
+        let mut rng = ChaCha20Rng::seed_from_u64(0xC4);
+        let n = 4 * EVAL_CHUNK;
+        let col = |index| FixedQuery {
+            index: Some(index),
+            column_index: index,
+            rotation: Rotation(0),
+        };
+        let f0 = Expression::<Fq>::Fixed(col(0));
+        let a1 = Expression::Advice(AdviceQuery {
+            index: Some(0),
+            column_index: 0,
+            rotation: Rotation(1),
+        });
+        let expr = f0 * a1 + Expression::Constant(Fq::from(3u64));
+
+        let fixed = [rand_poly(&mut rng, n)];
+        let advice = [rand_poly(&mut rng, n)];
+        let got = evaluate(&expr, n, 0, &fixed, &advice, &[]);
+
+        let expected: Vec<_> =
+            (0..n).map(|i| fixed[0][i] * advice[0][(i + 1) % n] + Fq::from(3u64)).collect();
+        assert_eq!(expected, got);
     }
 }
