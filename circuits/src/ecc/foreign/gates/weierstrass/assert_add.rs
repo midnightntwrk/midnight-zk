@@ -30,7 +30,7 @@
 //! The slope(p,r) gate swaps A↔D slots (A=px, D=rx).  The lambda-squared gate
 //! uses `a=1, A=λ` and `b=−1, B=rx` from the dedicated data row (Row 5).
 
-use std::{collections::BTreeMap, ops::Rem};
+use std::collections::BTreeMap;
 
 use midnight_proofs::{
     circuit::{Chip, Layouter},
@@ -77,8 +77,8 @@ where
 {
     let m = &C::Base::modulus().to_bigint().unwrap();
     let moduli = P::moduli();
-    let bs = P::base_powers();
-    let bs2 = P::double_base_powers();
+    let powers = &base_chip.config().witness_powers;
+    let (bs, bs2) = (&powers.bs, &powers.bs2);
     let fcc = base_chip.config();
 
     let (px, py) = p;
@@ -168,27 +168,28 @@ where
     // ---------------------------------------------------------------------------
     // Witness: u and vj for gate A.
     // ---------------------------------------------------------------------------
-    let expr_a = qxl.clone().map(|v| &csa_a * sum_bigints(&bs, &v) + &const_a)
-        + qyl.clone().map(|v| &b_a * sum_bigints(&bs, &v))
-        + pxl.clone().map(|v| &csd_a * sum_bigints(&bs, &v))
-        + pyl.clone().map(|v| &e_a * sum_bigints(&bs, &v))
-        + lmb_qx.clone().map(|v| &ca_a * sum_bigints(&bs2, &v))
-        + lmb_px_ca.clone().map(|v| &cd_a * sum_bigints(&bs2, &v));
+    let expr_a = qxl.clone().map(|v| &csa_a * sum_bigints(bs, &v) + &const_a)
+        + qyl.clone().map(|v| &b_a * sum_bigints(bs, &v))
+        + pxl.clone().map(|v| &csd_a * sum_bigints(bs, &v))
+        + pyl.clone().map(|v| &e_a * sum_bigints(bs, &v))
+        + lmb_qx.clone().map(|v| &ca_a * sum_bigints(bs2, &v))
+        + lmb_px_ca.clone().map(|v| &cd_a * sum_bigints(bs2, &v));
     let u_a = expr_a.map(|e| compute_u(m, &e, (&k_min, &u_max), cond.value()));
 
     let vs_a: Vec<_> = moduli
         .iter()
         .zip(config.vs_bounds.iter())
-        .map(|(mj, vj_bounds)| {
-            let bs_mj: Vec<_> = bs.iter().map(|b| b.rem(mj)).collect();
-            let bs2_mj: Vec<_> = bs2.iter().map(|b| b.rem(mj)).collect();
+        .enumerate()
+        .map(|(j, (mj, vj_bounds))| {
+            let bs_mj = &powers.bs_mj[j];
+            let bs2_mj = &powers.bs2_mj[j];
             let (lj_min, vj_max) = vj_bounds.clone();
-            let expr_mj = qxl.clone().map(|v| &csa_a * sum_bigints(&bs_mj, &v) + &const_a)
-                + qyl.clone().map(|v| &b_a * sum_bigints(&bs_mj, &v))
-                + pxl.clone().map(|v| &csd_a * sum_bigints(&bs_mj, &v))
-                + pyl.clone().map(|v| &e_a * sum_bigints(&bs_mj, &v))
-                + lmb_qx.clone().map(|v| &ca_a * sum_bigints(&bs2_mj, &v))
-                + lmb_px_ca.clone().map(|v| &cd_a * sum_bigints(&bs2_mj, &v));
+            let expr_mj = qxl.clone().map(|v| &csa_a * sum_bigints(bs_mj, &v) + &const_a)
+                + qyl.clone().map(|v| &b_a * sum_bigints(bs_mj, &v))
+                + pxl.clone().map(|v| &csd_a * sum_bigints(bs_mj, &v))
+                + pyl.clone().map(|v| &e_a * sum_bigints(bs_mj, &v))
+                + lmb_qx.clone().map(|v| &ca_a * sum_bigints(bs2_mj, &v))
+                + lmb_px_ca.clone().map(|v| &cd_a * sum_bigints(bs2_mj, &v));
             expr_mj
                 .zip(u_a.clone())
                 .map(|(e, u)| compute_vj(m, mj, &e, &u, &k_min, (&lj_min, &vj_max), cond.value()))
@@ -198,27 +199,28 @@ where
     // ---------------------------------------------------------------------------
     // Witness: u and vj for gate C (swapped slope p,r).
     // ---------------------------------------------------------------------------
-    let expr_c = pxl.clone().map(|v| &csa_c * sum_bigints(&bs, &v) + &const_c)
-        + pyl.clone().map(|v| &b_c * sum_bigints(&bs, &v))
-        + rxl.clone().map(|v| &csd_c * sum_bigints(&bs, &v))
-        + ryl.clone().map(|v| &e_c * sum_bigints(&bs, &v))
-        + lmb_px_ca.clone().map(|v| &ca_c * sum_bigints(&bs2, &v))
-        + lmb_rx.clone().map(|v| &cd_c * sum_bigints(&bs2, &v));
+    let expr_c = pxl.clone().map(|v| &csa_c * sum_bigints(bs, &v) + &const_c)
+        + pyl.clone().map(|v| &b_c * sum_bigints(bs, &v))
+        + rxl.clone().map(|v| &csd_c * sum_bigints(bs, &v))
+        + ryl.clone().map(|v| &e_c * sum_bigints(bs, &v))
+        + lmb_px_ca.clone().map(|v| &ca_c * sum_bigints(bs2, &v))
+        + lmb_rx.clone().map(|v| &cd_c * sum_bigints(bs2, &v));
     let u_c = expr_c.map(|e| compute_u(m, &e, (&k_min, &u_max), cond.value()));
 
     let vs_c: Vec<_> = moduli
         .iter()
         .zip(config.vs_bounds.iter())
-        .map(|(mj, vj_bounds)| {
-            let bs_mj: Vec<_> = bs.iter().map(|b| b.rem(mj)).collect();
-            let bs2_mj: Vec<_> = bs2.iter().map(|b| b.rem(mj)).collect();
+        .enumerate()
+        .map(|(j, (mj, vj_bounds))| {
+            let bs_mj = &powers.bs_mj[j];
+            let bs2_mj = &powers.bs2_mj[j];
             let (lj_min, vj_max) = vj_bounds.clone();
-            let expr_mj = pxl.clone().map(|v| &csa_c * sum_bigints(&bs_mj, &v) + &const_c)
-                + pyl.clone().map(|v| &b_c * sum_bigints(&bs_mj, &v))
-                + rxl.clone().map(|v| &csd_c * sum_bigints(&bs_mj, &v))
-                + ryl.clone().map(|v| &e_c * sum_bigints(&bs_mj, &v))
-                + lmb_px_ca.clone().map(|v| &ca_c * sum_bigints(&bs2_mj, &v))
-                + lmb_rx.clone().map(|v| &cd_c * sum_bigints(&bs2_mj, &v));
+            let expr_mj = pxl.clone().map(|v| &csa_c * sum_bigints(bs_mj, &v) + &const_c)
+                + pyl.clone().map(|v| &b_c * sum_bigints(bs_mj, &v))
+                + rxl.clone().map(|v| &csd_c * sum_bigints(bs_mj, &v))
+                + ryl.clone().map(|v| &e_c * sum_bigints(bs_mj, &v))
+                + lmb_px_ca.clone().map(|v| &ca_c * sum_bigints(bs2_mj, &v))
+                + lmb_rx.clone().map(|v| &cd_c * sum_bigints(bs2_mj, &v));
             expr_mj
                 .zip(u_c.clone())
                 .map(|(e, u)| compute_vj(m, mj, &e, &u, &k_min, (&lj_min, &vj_max), cond.value()))
@@ -229,25 +231,26 @@ where
     // Witness: u and vj for gate B (lambda_squared).
     // expr = 2·Σλ + Σλ² − Σpx − Σqx − Σrx − 2
     // ---------------------------------------------------------------------------
-    let expr_b = lmb.clone().map(|v| BI::from(2) * sum_bigints(&bs, &v) - BI::from(2))
-        + lmb2.clone().map(|v| sum_bigints(&bs2, &v))
-        - pxl.clone().map(|v| sum_bigints(&bs, &v))
-        - qxl.clone().map(|v| sum_bigints(&bs, &v))
-        - rxl.clone().map(|v| sum_bigints(&bs, &v));
+    let expr_b = lmb.clone().map(|v| BI::from(2) * sum_bigints(bs, &v) - BI::from(2))
+        + lmb2.clone().map(|v| sum_bigints(bs2, &v))
+        - pxl.clone().map(|v| sum_bigints(bs, &v))
+        - qxl.clone().map(|v| sum_bigints(bs, &v))
+        - rxl.clone().map(|v| sum_bigints(bs, &v));
     let u_b = expr_b.map(|e| compute_u(m, &e, (&k_min, &u_max), cond.value()));
 
     let vs_b: Vec<_> = moduli
         .iter()
         .zip(config.vs_bounds.iter())
-        .map(|(mj, vj_bounds)| {
-            let bs_mj: Vec<_> = bs.iter().map(|b| b.rem(mj)).collect();
-            let bs2_mj: Vec<_> = bs2.iter().map(|b| b.rem(mj)).collect();
+        .enumerate()
+        .map(|(j, (mj, vj_bounds))| {
+            let bs_mj = &powers.bs_mj[j];
+            let bs2_mj = &powers.bs2_mj[j];
             let (lj_min, vj_max) = vj_bounds.clone();
-            let expr_mj = lmb.clone().map(|v| BI::from(2) * sum_bigints(&bs_mj, &v) - BI::from(2))
-                + lmb2.clone().map(|v| sum_bigints(&bs2_mj, &v))
-                - pxl.clone().map(|v| sum_bigints(&bs_mj, &v))
-                - qxl.clone().map(|v| sum_bigints(&bs_mj, &v))
-                - rxl.clone().map(|v| sum_bigints(&bs_mj, &v));
+            let expr_mj = lmb.clone().map(|v| BI::from(2) * sum_bigints(bs_mj, &v) - BI::from(2))
+                + lmb2.clone().map(|v| sum_bigints(bs2_mj, &v))
+                - pxl.clone().map(|v| sum_bigints(bs_mj, &v))
+                - qxl.clone().map(|v| sum_bigints(bs_mj, &v))
+                - rxl.clone().map(|v| sum_bigints(bs_mj, &v));
             expr_mj
                 .zip(u_b.clone())
                 .map(|(e, u)| compute_vj(m, mj, &e, &u, &k_min, (&lj_min, &vj_max), cond.value()))

@@ -78,12 +78,10 @@ fn from_u64_le_digits<F: CircuitField>(digits: &[u64]) -> F {
         return F::ZERO;
     }
 
+    let two_64 = F::from_u128(1u128 << 64);
     let mut acc = F::from(*digits.last().unwrap());
     for digit in digits.iter().rev().skip(1) {
-        for _ in 0..64 {
-            acc = acc.double();
-        }
-        acc += F::from(*digit)
+        acc = acc * two_64 + F::from(*digit)
     }
     acc
 }
@@ -207,4 +205,64 @@ pub trait FromScratch<F: CircuitField> {
     ) -> Self::Config;
 
     fn load_from_scratch(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error>;
+}
+
+#[cfg(test)]
+mod tests {
+    use rand::SeedableRng;
+    use rand_chacha::ChaCha8Rng;
+
+    use super::*;
+
+    /// Original implementation of [bigint_to_fe] (bit-by-bit doubling).
+    fn bigint_to_fe_reference<F: CircuitField>(value: &BI) -> F {
+        let (sign, digits) = value.to_u64_digits();
+        let mut acc = F::ZERO;
+        if let Some(last) = digits.last() {
+            acc = F::from(*last);
+            for digit in digits.iter().rev().skip(1) {
+                for _ in 0..64 {
+                    acc = acc.double();
+                }
+                acc += F::from(*digit)
+            }
+        }
+        if sign == Sign::Minus { -acc } else { acc }
+    }
+
+    fn check_bigint_to_fe<F: CircuitField>() {
+        let mut rng = ChaCha8Rng::seed_from_u64(0xb16);
+        let p = BI::from(F::modulus());
+        let mut values = vec![
+            BI::zero(),
+            BI::one(),
+            BI::from(u64::MAX),
+            BI::from(u64::MAX) + 1,
+            &p - 1,
+            p.clone(),
+            &p + 1,
+            &p * &p,
+            BI::one() << (64 * 7),
+        ];
+        // Multi-digit values, much larger than the modulus.
+        values.extend((0..50).map(|_| BI::from(F::random(&mut rng).to_biguint()) * &p + 12345));
+        values.extend((0..50).map(|_| BI::from(F::random(&mut rng).to_biguint())));
+
+        for v in values {
+            for x in [v.clone(), -v] {
+                assert_eq!(
+                    bigint_to_fe::<F>(&x),
+                    bigint_to_fe_reference::<F>(&x),
+                    "{x}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn bigint_to_fe_matches_reference() {
+        check_bigint_to_fe::<midnight_curves::Fq>();
+        check_bigint_to_fe::<midnight_curves::Fp>();
+        check_bigint_to_fe::<midnight_curves::k256::Fp>();
+    }
 }

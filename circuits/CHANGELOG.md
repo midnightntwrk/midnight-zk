@@ -23,6 +23,8 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 
 ### Changed
+* Faster witness computation of the foreign-field chips; constraints and verifying keys are unchanged. The decomposition into variable limbs reads the canonical little-endian bytes of the value instead of shifting and masking a `BigInt`, `bigint_to_fe` multiplies by `2^64` per digit, and the (double) base powers and their reductions modulo the auxiliary moduli are computed once per `FieldChip` configuration, instead of at every gate assignment. Limb sizes above 64 bits are rejected for decomposition
+* The range-check cost of the foreign-field gate bounds (`next_cheapest_power_of_two`) is read from one table of minimal row counts, instead of rebuilding the limb-size DP for each bound; same bounds, faster `configure`
 * The in-circuit KZG multi-open orders its point sets with `kzg::point_set_order`, as the off-circuit one does [#583](https://github.com/midnightntwrk/midnight-zk/pull/583)
 * The in-circuit fflonk evaluates a chunk at all the roots of a point at once: one product per polynomial and one linear combination per root, instead of Horner per root, sharing the powers of the root between chunks [#583](https://github.com/midnightntwrk/midnight-zk/pull/583)
 * The in-circuit fflonk splits groups into `fflonk::balanced_chunks`, as off-circuit [#579](https://github.com/midnightntwrk/midnight-zk/pull/579)

@@ -65,7 +65,9 @@ pub trait CircuitField: PrimeField {
 
     /// Converts the field element to little-endian bytes.
     ///
-    /// The output length is Self::NUM_BYTES.
+    /// The output length is Self::NUM_BYTES, and it is the canonical encoding
+    /// of the reduced value, i.e. the little-endian bytes of
+    /// [CircuitField::to_biguint].
     fn to_bytes_le(&self) -> Self::Bytes;
 
     /// Converts the field element to big-endian bytes.
@@ -393,6 +395,38 @@ mod tests {
             assert_eq!(bytes.len(), 32);
             let recovered = F::from_bytes_be(&bytes).unwrap();
             assert_eq!(fe, recovered);
+        }
+    }
+
+    /// `to_bytes_le` is the canonical little-endian encoding of the reduced
+    /// value, for every implementor.
+    fn check_bytes_le_canonical<F: CircuitField>() {
+        let mut rng = ChaCha8Rng::seed_from_u64(0xB17E);
+        let mut values = vec![F::ZERO, F::ONE, -F::ONE, -F::from(2)];
+        values.extend((0..20).map(|_| F::random(&mut rng)));
+        for x in values {
+            let mut expected = x.to_biguint().to_bytes_le();
+            expected.resize(F::NUM_BYTES, 0);
+            assert_eq!(x.to_bytes_le().as_ref(), expected.as_slice());
+        }
+    }
+
+    #[test]
+    fn test_bytes_le_canonical() {
+        use midnight_curves::{curve25519, k256, p256};
+        check_bytes_le_canonical::<midnight_curves::Fr>();
+        check_bytes_le_canonical::<midnight_curves::Fq>();
+        check_bytes_le_canonical::<midnight_curves::Fp>();
+        check_bytes_le_canonical::<k256::Fp>();
+        check_bytes_le_canonical::<k256::Fq>();
+        check_bytes_le_canonical::<p256::Fp>();
+        check_bytes_le_canonical::<p256::Fq>();
+        check_bytes_le_canonical::<curve25519::Fp>();
+        check_bytes_le_canonical::<curve25519::Scalar>();
+        #[cfg(feature = "dev-curves")]
+        {
+            check_bytes_le_canonical::<midnight_curves::bn256::Fq>();
+            check_bytes_le_canonical::<midnight_curves::bn256::Fr>();
         }
     }
 }

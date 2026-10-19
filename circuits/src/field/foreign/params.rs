@@ -91,6 +91,49 @@ pub trait FieldEmulationParams<F: CircuitField, K: CircuitField>:
     const RC_LIMB_SIZE: u32;
 }
 
+/// The (double) base powers of a parameter set `P`, and their reductions
+/// modulo every auxiliary modulus. They are used by the witness computation of
+/// the emulated gates, and computed once per chip configuration.
+///
+/// `bs_mj` and `bs2_mj` are indexed `[j][i]`: the `i`-th (double) base power
+/// reduced modulo the `j`-th auxiliary modulus.
+#[derive(Clone, Debug)]
+pub(crate) struct WitnessPowers {
+    /// [FieldEmulationParams::base_powers].
+    pub(crate) bs: Vec<BI>,
+    /// [FieldEmulationParams::double_base_powers].
+    pub(crate) bs2: Vec<BI>,
+    /// `bs` reduced modulo each of [FieldEmulationParams::moduli], `[j][i]`.
+    pub(crate) bs_mj: Vec<Vec<BI>>,
+    /// `bs2` reduced modulo each of [FieldEmulationParams::moduli], `[j][i]`.
+    pub(crate) bs2_mj: Vec<Vec<BI>>,
+}
+
+impl WitnessPowers {
+    /// Computes the [WitnessPowers] of the parameter set `P`.
+    pub(crate) fn new<F, K, P>() -> Self
+    where
+        F: CircuitField,
+        K: CircuitField,
+        P: FieldEmulationParams<F, K>,
+    {
+        let (bs, bs2) = (P::base_powers(), P::double_base_powers());
+        let reduce_all = |powers: &[BI]| {
+            P::moduli()
+                .iter()
+                .map(|mj| powers.iter().map(|b| b.rem(mj)).collect::<Vec<_>>())
+                .collect::<Vec<_>>()
+        };
+        let (bs_mj, bs2_mj) = (reduce_all(&bs), reduce_all(&bs2));
+        Self {
+            bs,
+            bs2,
+            bs_mj,
+            bs2_mj,
+        }
+    }
+}
+
 /// Sanity checks on the parameters for the FieldChip to be sound.
 pub(crate) fn check_params<F, K, P>()
 where
@@ -378,4 +421,64 @@ impl FieldEmulationParams<midnight_curves::Fq, midnight_curves::curve25519::Scal
         vec![BigInt::from(2).pow(146)]
     }
     const RC_LIMB_SIZE: u32 = 17;
+}
+
+#[cfg(test)]
+mod tests {
+    use midnight_curves::curve25519;
+
+    use super::*;
+
+    /// Checks that [WitnessPowers] match the powers recomputed from scratch,
+    /// both through the trait methods and from their closed form.
+    fn check_witness_powers<F: CircuitField, K: CircuitField, P: FieldEmulationParams<F, K>>() {
+        let powers = WitnessPowers::new::<F, K, P>();
+        let (bs, bs2) = (P::base_powers(), P::double_base_powers());
+        let nb_limbs = P::NB_LIMBS;
+        let m = BI::from(K::modulus());
+        let two = BI::from(2);
+
+        assert_eq!(powers.bs, bs);
+        assert_eq!(powers.bs2, bs2);
+        (0..nb_limbs).for_each(|i| {
+            assert_eq!(bs[i as usize], two.pow(P::LOG2_BASE * i).rem(&m));
+            (0..nb_limbs).for_each(|j| {
+                let expected = two.pow(P::LOG2_BASE * (i + j)).rem(&m);
+                assert_eq!(bs2[(i * nb_limbs + j) as usize], expected);
+            })
+        });
+
+        let moduli = P::moduli();
+        assert_eq!(powers.bs_mj.len(), moduli.len());
+        assert_eq!(powers.bs2_mj.len(), moduli.len());
+        moduli.iter().enumerate().for_each(|(j, mj)| {
+            let expected = bs.iter().map(|b| b.rem(mj)).collect::<Vec<_>>();
+            assert_eq!(powers.bs_mj[j], expected);
+            let expected = bs2.iter().map(|b| b.rem(mj)).collect::<Vec<_>>();
+            assert_eq!(powers.bs2_mj[j], expected);
+        });
+    }
+
+    #[test]
+    fn witness_powers_match_recomputation() {
+        type F = midnight_curves::Fq;
+        type M = MultiEmulationParams;
+
+        check_witness_powers::<F, k256::Fp, M>();
+        check_witness_powers::<F, k256::Fq, M>();
+        check_witness_powers::<F, p256::Fp, M>();
+        check_witness_powers::<F, p256::Fq, M>();
+        check_witness_powers::<F, midnight_curves::Fp, M>();
+        check_witness_powers::<F, midnight_curves::Fq, M>();
+        check_witness_powers::<F, curve25519::Fp, M>();
+        check_witness_powers::<F, curve25519::Scalar, M>();
+
+        #[cfg(feature = "dev-curves")]
+        {
+            check_witness_powers::<bn256::Fr, k256::Fp, M>();
+            check_witness_powers::<bn256::Fr, k256::Fq, M>();
+            check_witness_powers::<F, bn256::Fq, M>();
+            check_witness_powers::<bn256::Fr, bn256::Fq, M>();
+        }
+    }
 }
