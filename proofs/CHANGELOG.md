@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+* `kzg::point_set_order`, the order in which the KZG multi-open takes its point sets [#583](https://github.com/midnightntwrk/midnight-zk/pull/583)
 * `fflonk::balanced_chunks`, the split of a group into the fewest chunks of at most `T_MAX`, of balanced sizes [#579](https://github.com/midnightntwrk/midnight-zk/pull/579)
 * `kzg::COLLAPSE_THRESHOLD`, the number of variable-base terms from which the KZG multi-open collapses a point set's combined commitment [#579](https://github.com/midnightntwrk/midnight-zk/pull/579)
 * `VerifyingKey` implements `Default`: a placeholder key of an empty constraint system [#461](https://github.com/midnightntwrk/midnight-zk/pull/461)
@@ -52,6 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 * BREAKING: `PolynomialCommitmentScheme::Commitment` no longer requires `Add` and `Mul<F>`: no generic code combines commitments, so a scheme need not be homomorphic [#582](https://github.com/midnightntwrk/midnight-zk/pull/582)
+* The KZG multi-open takes first the point set with the most variable-base polynomials, then the others by cardinality, so that fewer scalars are products of two truncated challenges. This changes the proof [#583](https://github.com/midnightntwrk/midnight-zk/pull/583)
 * fflonk splits the polynomials of a `commit_many` call into the same number of chunks as before, of balanced sizes (e.g. 6, 6, 5 rather than 8, 8, 1), instead of chunks of `T_MAX` and a remainder. This changes fflonk verifying keys and proofs [#579](https://github.com/midnightntwrk/midnight-zk/pull/579)
 * With truncated challenges, the KZG multi-open collapses the combined commitment of a point set only if it has at least `COLLAPSE_THRESHOLD` variable-base terms; a set with fewer keeps its terms, scaled by `x4` one by one [#579](https://github.com/midnightntwrk/midnight-zk/pull/579)
 * The quotient is split into `quotient_poly_degree + 1` limbs of `n - 2` coefficients, with two blinders per boundary between limbs, committed to as one group and opened one by one at `x`, rather than through the combination of their commitments. The proof carries the evaluations of all limbs but the first, which the verifier derives from the identities. This changes the proof [#582](https://github.com/midnightntwrk/midnight-zk/pull/582)
