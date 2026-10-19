@@ -2,7 +2,7 @@ use ff::{PrimeField, WithSmallOrderMulGroup};
 use group::ff::Field;
 use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
-use super::{ConstraintSystem, Expression};
+use super::{ConstraintSystem, Expression, trash};
 use crate::{
     plonk::{Any, argument},
     poly::{
@@ -776,21 +776,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
 
         // Trashcans
         for trash in cs.trashcans.iter() {
-            let mut graph = GraphEvaluator::default();
-
-            let parts = trash
-                .constraint_expressions()
-                .iter()
-                .map(|expr| graph.add_expression(expr))
-                .collect();
-
-            graph.add_calculation(Calculation::Horner(
-                ValueSource::Constant(0),
-                parts,
-                ValueSource::TrashChallenge(),
-            ));
-
-            ev.trashcans.push(graph);
+            ev.trashcans.push(GraphEvaluator::for_trash(trash));
         }
 
         // Flatten all graphs for faster evaluation.
@@ -1304,6 +1290,24 @@ impl<F: PrimeField> GraphEvaluator<F> {
             }
         }
     }
+
+    /// Graph of `Σ_j c^{m-1-j} · e_j` over the constraint expressions of a
+    /// trashcan, with `c` read from the `TrashChallenge` slot.
+    pub(crate) fn for_trash(trash: &trash::Argument<F>) -> Self {
+        let mut graph = Self::default();
+        let parts = trash
+            .constraint_expressions()
+            .iter()
+            .map(|expr| graph.add_expression(expr))
+            .collect();
+
+        graph.add_calculation(Calculation::Horner(
+            ValueSource::Constant(0),
+            parts,
+            ValueSource::TrashChallenge(),
+        ));
+        graph
+    }
 }
 
 /// Simple evaluation of an expression
@@ -1593,5 +1597,60 @@ mod tests {
         let mut g = GraphEvaluator::default();
         let _ = g.add_expression(&expr);
         check_graph(&g, 16, 0xBEEF);
+    }
+
+    /// The flat, single-pass trash polynomial equals the per-expression
+    /// closure evaluation followed by a Horner fold in the challenge.
+    #[test]
+    fn trash_poly_matches_closure_evaluation() {
+        let mut rng = ChaCha20Rng::seed_from_u64(0x7A5);
+        let (k, n) = (5u32, 32usize);
+        let domain = crate::poly::EvaluationDomain::<Fq>::new(3, k);
+
+        let q = |col, rot| {
+            let (index, column_index, rotation) = (Some(col), col, Rotation(rot));
+            (
+                Expression::<Fq>::Fixed(FixedQuery {
+                    index,
+                    column_index,
+                    rotation,
+                }),
+                Expression::<Fq>::Advice(AdviceQuery {
+                    index,
+                    column_index,
+                    rotation,
+                }),
+                Expression::<Fq>::Instance(InstanceQuery {
+                    index,
+                    column_index,
+                    rotation,
+                }),
+            )
+        };
+        let (f0, a0, i0) = q(0, 0);
+        let (_, a1, _) = q(1, 1);
+        let (_, a2, _) = q(2, -1);
+        let exprs = vec![
+            f0.clone() * (a0.clone() * a1.clone() - a2.clone()),
+            a0.clone() + Expression::Scaled(Box::new(i0), Fq::from(7u64)),
+            a1 * a2 - f0,
+            a0,
+        ];
+        let trash = trash::Argument::new(0, Expression::Constant(Fq::ONE), exprs);
+
+        let fixed: Vec<_> = (0..3).map(|_| rand_poly(&mut rng, n)).collect();
+        let advice: Vec<_> = (0..3).map(|_| rand_poly(&mut rng, n)).collect();
+        let instance: Vec<_> = (0..2).map(|_| rand_poly(&mut rng, n)).collect();
+        let c = Fq::random(&mut rng);
+
+        let expected = trash
+            .constraint_expressions()
+            .iter()
+            .map(|e| domain.lagrange_from_vec(evaluate(e, n, 0, &fixed, &advice, &instance)))
+            .fold(domain.empty_lagrange(), |acc, e| acc * c + &e);
+
+        let flat = GraphEvaluator::for_trash(&trash).flatten();
+        let got = trash::prover::compute_trash_poly(&flat, &domain, c, &advice, &fixed, &instance);
+        assert_eq!(expected.values, got.values);
     }
 }

@@ -1,35 +1,42 @@
 use ff::WithSmallOrderMulGroup;
 
-use super::Argument;
 use crate::{
-    plonk::evaluation::evaluate,
+    plonk::evaluation::{FlatGraphEvaluator, get_rotation_idx},
     poly::{EvaluationDomain, LagrangeCoeff, Polynomial},
+    utils::arithmetic::parallelize,
 };
 
-impl<F: WithSmallOrderMulGroup<3>> Argument<F> {
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn compute_trash_poly<'a>(
-        &self,
-        domain: &EvaluationDomain<F>,
-        trash_challenge: F,
-        advice_values: &'a [Polynomial<F, LagrangeCoeff>],
-        fixed_values: &'a [Polynomial<F, LagrangeCoeff>],
-        instance_values: &'a [Polynomial<F, LagrangeCoeff>],
-    ) -> Polynomial<F, LagrangeCoeff> {
-        self.constraint_expressions
-            .iter()
-            .map(|expression| {
-                domain.lagrange_from_vec(evaluate(
-                    expression,
-                    domain.n as usize,
-                    0,
-                    fixed_values,
-                    advice_values,
-                    instance_values,
-                ))
-            })
-            .fold(domain.empty_lagrange(), |acc, expression| {
-                acc * trash_challenge + &expression
-            })
-    }
+/// Computes `Σ_j c^{m-1-j} · e_j` over the rows, for the constraint
+/// expressions `e_j` of a trashcan and the trash challenge `c`. `flat` is the
+/// flattened graph of
+/// [`GraphEvaluator::for_trash`](crate::plonk::evaluation::GraphEvaluator::for_trash).
+pub(crate) fn compute_trash_poly<F: WithSmallOrderMulGroup<3>>(
+    flat: &FlatGraphEvaluator<F>,
+    domain: &EvaluationDomain<F>,
+    trash_challenge: F,
+    advice_values: &[Polynomial<F, LagrangeCoeff>],
+    fixed_values: &[Polynomial<F, LagrangeCoeff>],
+    instance_values: &[Polynomial<F, LagrangeCoeff>],
+) -> Polynomial<F, LagrangeCoeff> {
+    let log_n = domain.n.ilog2();
+    let mut poly = domain.empty_lagrange();
+
+    parallelize(&mut poly, |values, start| {
+        let mut buf = flat.new_values_buffer(&F::ZERO, &F::ZERO, &trash_challenge, &F::ZERO);
+        let mut rots = vec![0usize; flat.rotations.len()];
+        for (i, value) in values.iter_mut().enumerate() {
+            for (r, rot) in rots.iter_mut().zip(&flat.rotations) {
+                *r = get_rotation_idx(start + i, *rot, 0, log_n);
+            }
+            *value = flat.evaluate::<LagrangeCoeff>(
+                &mut buf,
+                fixed_values,
+                advice_values,
+                instance_values,
+                &rots,
+                &F::ZERO,
+            );
+        }
+    });
+    poly
 }

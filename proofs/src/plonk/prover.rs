@@ -19,6 +19,7 @@ use super::{
         Selector,
     },
     logup,
+    trash::prover::compute_trash_poly,
 };
 use crate::{
     circuit::Value,
@@ -242,8 +243,9 @@ where
         }
     }
 
-    for (i, trash) in pk.vk.cs.trashcans.iter().enumerate() {
-        let p = trash.compute_trash_poly(
+    for (i, flat) in pk.ev.trashcans_flat.iter().enumerate() {
+        let p = compute_trash_poly(
+            flat,
             domain,
             trash_challenge,
             phase1_committed.polys_of(&advice_labels),
