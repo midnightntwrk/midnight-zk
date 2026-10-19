@@ -13,7 +13,7 @@ use super::{
         inner_product, interpolate, lagrange_basis, perturbator, pow_vector, squares, vanishing,
     },
     trace::{evaluate_rows, linear_combination},
-    verifier::next_accumulator,
+    verifier::{fold_products, next_accumulator},
 };
 use crate::{
     plonk::{Circuit, Error, ProvingKey, prover::commit_phases, traces::ProverTrace},
@@ -145,7 +145,7 @@ where
 
     /// Prover side of [`Accumulator::fold`]: folds the `k = fresh.len() ≥ 1`
     /// fresh instances into `self`, writing the proof to a fresh `transcript`
-    /// (steps 1-7 of "Folding" in the module documentation).
+    /// (steps 1-8 of "Folding" in the module documentation).
     pub fn fold<T>(
         self,
         pk: &ProvingKey<F, CS>,
@@ -231,6 +231,11 @@ where
                 evaluate_rows(pk, &trace).values,
                 "interpolated rows"
             );
+        }
+
+        // 8. Write the products of the commitment fold.
+        for product in fold_products(&self.public, &fresh_public, gamma) {
+            CS::write_commitment(transcript, &product)?;
         }
         Ok(ProverAccumulator {
             public,

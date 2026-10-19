@@ -60,6 +60,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 * Protogalaxy: the folding challenge γ is truncated to 128 bits.
+* Protogalaxy: each fold round ends with the products Lⱼ(γ)·(Cⱼ − C₀) of the commitment fold (folding-proof format change).
 * BREAKING: the identities are batched with one squeezed challenge `y[k]` per identity, the lookup tuples compressed with one `theta[i]` per tuple position and the trashcan expressions with one trash challenge per expression, instead of powers of a single `y`, `theta` and trash challenge. Proofs do not verify against the previous verifier; their size is unchanged
 * The LogUp prover evaluates the input expressions of a lookup in parallel, `evaluate` splits the rows into small work-stealing tasks so that it balances when nested, and the table side inverts each distinct class size once rather than once per class. The multiplicities are unchanged
 * The table side of a LogUp lookup (its evaluations and its classes of equal tuples) is built once and cached in the `Evaluator` of the proving key when the table expressions read fixed columns only, instead of at every proof; input tuples are looked up with a reused buffer. The multiplicities are unchanged

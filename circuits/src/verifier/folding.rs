@@ -34,22 +34,39 @@
 //! (public inputs, challenges, commitments) folds as `acc + γ·(fresh − acc)`.
 //!
 //! # Commitment folding
-//! Every curve point of the phase-1 and phase-2 commitments (one per fflonk
-//! chunk) is folded as `acc + [γ](C − acc)`: one negation, two complete
-//! additions and one in-circuit scalar multiplication by the truncated
-//! (128-bit) `γ`, as the native verifier truncates it. Complete additions
-//! handle `C = acc` and the identity. Points are assigned without subgroup
-//! check (subgroup checks are out of scope).
+//! Every curve point `A_i` of the phase-1 and phase-2 commitments (one per
+//! fflonk chunk) is folded as `A_i + P_i`, with the product
+//! `P_i = [γ](F_i − A_i)` of the fresh point `F_i` read from the folding proof
+//! (the prover computes it, after `γ`; see step 8 of the folding in the native
+//! module). The `P_i` are absorbed as they are read, and the in-circuit check
+//! covers all of them with a single MSM: for challenges `ρ_1 = 1, ρ_2, …`
+//! squeezed (and truncated to 128 bits, like `γ`) after the `P_i`,
+//! `Σ_i ρ_i·(P_i + [γ]·(A_i − F_i)) = O`.
+//!
+//! Soundness: the `P_i` are fixed before the `ρ_i` are known, so if some `P_i`
+//! is wrong, the sum is a nonzero combination of the (nonzero) errors with
+//! uniformly random coefficients, and vanishes with probability at most
+//! `2⁻¹²⁸` per round. All scalars of the MSM are short: `ρ_i` has 128 bits and
+//! `γ·ρ_i`, full width, is split by GLV into two half-width scalars (over
+//! `±(A_i − F_i)` and `±φ(A_i − F_i)`), so one ladder serves all points,
+//! against one scalar multiplication per point for `[γ](F_i − A_i)`.
+//! Complete additions handle equal, opposite and identity points. Points are
+//! assigned without subgroup check (out of scope).
 
-use ff::Field;
+use ff::{Field, PrimeField};
+use group::Group;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
+    poly::PolynomialLabel,
 };
 
 use crate::{
     field::AssignedNative,
-    instructions::{ArithInstructions, AssertionInstructions, AssignmentInstructions},
+    instructions::{
+        ArithInstructions, AssertionInstructions, AssignmentInstructions, ControlFlowInstructions,
+    },
+    types::AssignedBit,
     verifier::{
         AssignedKZGCommitment, AssignedKZGMultiCommitment, AssignedVk, InCircuitPCS, SelfEmulation,
         folding_types::{
@@ -175,13 +192,20 @@ where
 
     /// Folds `fresh` into `acc` (`Accumulator::fold` with one fresh instance),
     /// reading the folding messages (`F₁ … F_{log n}`, then `K₀ … K_{d−2}`)
-    /// from `folding_proof`.
+    /// and the commitment products (phase 1, then phase 2) from
+    /// `folding_proof`.
+    ///
+    /// The products are checked (the circuit is unsatisfiable on a wrong one),
+    /// unless `discarded` is a bit set to 1: for a caller that throws the
+    /// result away in some cases (e.g. the first step of a chain, which folds
+    /// a dummy proof), it waives the check there.
     pub fn fold(
         &self,
         layouter: &mut impl Layouter<S::F>,
         acc: &AssignedFoldingAccumulator<S>,
         fresh: &AssignedFoldingInstance<S>,
         folding_proof: Value<Vec<u8>>,
+        discarded: Option<&AssignedBit<S::F>>,
     ) -> Result<AssignedFoldingAccumulator<S>, Error> {
         self.assert_shape(&acc.instance);
         self.assert_shape(fresh);
@@ -201,8 +225,7 @@ where
         let k_coeffs = (0..self.shape.degree - 1)
             .map(|_| transcript.read_scalar(layouter))
             .collect::<Result<Vec<_>, Error>>()?;
-        let gamma = transcript.squeeze_challenge(layouter)?;
-        let gamma = truncate::<S::F>(layouter, &self.scalar_chip, &gamma)?;
+        let gamma = self.squeeze_truncated(layouter, &mut transcript)?;
 
         // β⃗* = β⃗ + α·δ⃗.
         let betas = (acc.betas.iter().zip(&deltas))
@@ -226,20 +249,12 @@ where
             trash: self.fold_all(layouter, &ac.trash, &fc.trash, g)?,
             y: self.fold_all(layouter, &ac.y, &fc.y, g)?,
         };
+        let (phase1_commitment, phase2_commitment) =
+            self.fold_commitments(layouter, a, f, &gamma, &mut transcript, discarded)?;
         Ok(AssignedFoldingAccumulator {
             instance: AssignedFoldingInstance {
-                phase1_commitment: self.fold_commitment(
-                    layouter,
-                    &a.phase1_commitment,
-                    &f.phase1_commitment,
-                    &gamma,
-                )?,
-                phase2_commitment: self.fold_commitment(
-                    layouter,
-                    &a.phase2_commitment,
-                    &f.phase2_commitment,
-                    &gamma,
-                )?,
+                phase1_commitment,
+                phase2_commitment,
                 instances,
                 challenges,
             },
@@ -306,33 +321,80 @@ where
         mul_add(layouter, chip, &z, k_gamma, &f_l0)
     }
 
-    /// `acc + [γ](fresh − acc)`, point by point.
-    fn fold_commitment(
+    /// A challenge truncated to 128 bits, as the native verifier does for the
+    /// folding challenges.
+    fn squeeze_truncated(
         &self,
         layouter: &mut impl Layouter<S::F>,
-        acc: &AssignedKZGMultiCommitment<S>,
-        fresh: &AssignedKZGMultiCommitment<S>,
+        transcript: &mut TranscriptGadget<S>,
+    ) -> Result<AssignedBoundedScalar<S::F>, Error> {
+        let x = transcript.squeeze_challenge(layouter)?;
+        truncate::<S::F>(layouter, &self.scalar_chip, &x)
+    }
+
+    /// The folded commitments `acc + [γ](fresh − acc)` of phase 1 and phase 2,
+    /// point by point (see the module documentation): reads the products `P_i`
+    /// from the transcript, checks them with one MSM and returns `A_i + P_i`.
+    fn fold_commitments(
+        &self,
+        layouter: &mut impl Layouter<S::F>,
+        acc: &AssignedFoldingInstance<S>,
+        fresh: &AssignedFoldingInstance<S>,
         gamma: &AssignedBoundedScalar<S::F>,
-    ) -> Result<AssignedKZGMultiCommitment<S>, Error> {
-        let (acc, fresh) = (points::<S>(acc)?, points::<S>(fresh)?);
-        assert_eq!(
-            acc.len(),
-            fresh.len(),
-            "folding commitments of different groups"
-        );
-        let scalar = [(gamma.scalar.clone(), gamma.bound.bits() as usize)];
-        let curve_chip = &self.curve_chip;
-        let inners = (acc.into_iter().zip(fresh))
-            .map(|((a, label), (f, f_label))| {
-                assert_eq!(label, f_label, "folding commitments of different labels");
-                let minus_a = S::negate(layouter, curve_chip, a)?;
-                let diff = S::add(layouter, curve_chip, f, &minus_a)?;
-                let scaled = S::msm(layouter, curve_chip, &scalar, &[diff])?;
-                let folded = S::add(layouter, curve_chip, a, &scaled)?;
-                Ok(AssignedKZGCommitment::simple(folded, label.clone()))
-            })
-            .collect::<Result<_, Error>>()?;
-        Ok(AssignedKZGMultiCommitment(inners))
+        transcript: &mut TranscriptGadget<S>,
+        discarded: Option<&AssignedBit<S::F>>,
+    ) -> Result<(AssignedKZGMultiCommitment<S>, AssignedKZGMultiCommitment<S>), Error> {
+        let products = [
+            transcript.read_commitment(layouter, &self.shape.phase1_labels)?,
+            transcript.read_commitment(layouter, &self.shape.phase2_labels)?,
+        ];
+        let p = both_phases::<S>(&products[0], &products[1])?;
+        let a = both_phases::<S>(&acc.phase1_commitment, &acc.phase2_commitment)?;
+        let f = both_phases::<S>(&fresh.phase1_commitment, &fresh.phase2_commitment)?;
+        assert_eq!(a.len(), f.len(), "folding commitments of different groups");
+        assert_eq!(a.len(), p.len(), "folding products of an unexpected shape");
+        assert!(!a.is_empty(), "folding needs at least one commitment");
+
+        let (chip, curve) = (&self.scalar_chip, &self.curve_chip);
+        let half_width = (S::F::NUM_BITS as usize).div_ceil(2);
+        let first_product = p[0].0;
+        let (mut scalars, mut bases, mut folded) = (vec![], vec![], vec![]);
+        for (i, (((a, label), (f, f_label)), (p, _))) in a.into_iter().zip(f).zip(p).enumerate() {
+            assert_eq!(label, f_label, "folding commitments of different labels");
+            let neg_f = S::negate(layouter, curve, f)?;
+            let diff = S::add(layouter, curve, a, &neg_f)?; // A − F
+            if i == 0 {
+                // ρ_1 = 1: `P_1` is added outside the MSM, and `γ` is short.
+                scalars.push((gamma.scalar.clone(), gamma.bound.bits() as usize));
+                bases.push(diff);
+            } else {
+                let rho = self.squeeze_truncated(layouter, transcript)?;
+                let gamma_rho = chip.mul(layouter, &gamma.scalar, &rho.scalar, None)?;
+                let ((k1, k2), (d1, d2)) = S::glv_split(layouter, curve, &gamma_rho, &diff)?;
+                scalars.extend([
+                    (k1, half_width),
+                    (k2, half_width),
+                    (rho.scalar, rho.bound.bits() as usize),
+                ]);
+                bases.extend([d1, d2, p.clone()]);
+            }
+            let sum = S::add(layouter, curve, a, p)?;
+            folded.push(AssignedKZGCommitment::simple(sum, label.clone()));
+        }
+
+        let msm = S::msm(layouter, curve, &scalars, &bases)?;
+        let mut check = S::add(layouter, curve, &msm, first_product)?;
+        if let Some(discarded) = discarded {
+            let identity = curve.assign_fixed(layouter, S::C::identity())?;
+            check = curve.select(layouter, discarded, &identity, &check)?;
+        }
+        curve.assert_equal_to_fixed(layouter, &check, S::C::identity())?;
+
+        let phase2 = folded.split_off(self.shape.phase1_labels.len());
+        Ok((
+            AssignedKZGMultiCommitment(folded),
+            AssignedKZGMultiCommitment(phase2),
+        ))
     }
 
     /// `a + x·(b − a)`.
@@ -392,4 +454,13 @@ where
             mul_add(layouter, &self.scalar_chip, &acc, x, c)
         })
     }
+}
+
+/// The points (and labels) of a phase-1 commitment followed by those of the
+/// phase-2 one.
+fn both_phases<'a, S: SelfEmulation>(
+    phase1: &'a AssignedKZGMultiCommitment<S>,
+    phase2: &'a AssignedKZGMultiCommitment<S>,
+) -> Result<Vec<(&'a S::AssignedPoint, &'a PolynomialLabel)>, Error> {
+    Ok(points::<S>(phase1)?.into_iter().chain(points::<S>(phase2)?).collect())
 }

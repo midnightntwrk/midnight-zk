@@ -25,6 +25,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 
 ### Changed
+* `FoldingGadget::fold` checks the commitment fold with one MSM over the products written by the prover, and takes `discarded` to waive that check for a fold whose result is discarded. BREAKING: `SelfEmulation` gains `glv_split`, and its `CurveChip` must implement `ControlFlowInstructions`
 * The in-circuit verifier chunks the lookups with `ConstraintSystem::lookup_chunk_bound` (the degree of the constraint system unless set)
 * BREAKING: the verifier gadget squeezes one `y` challenge per identity, one `theta` per lookup tuple position and one trash challenge per trashcan expression, as the off-circuit verifier now does, instead of using powers of single challenges. It no longer accepts proofs of the previous prover
 * Faster witness computation of the foreign-field chips; constraints and verifying keys are unchanged. The decomposition into variable limbs reads the canonical little-endian bytes of the value instead of shifting and masking a `BigInt`, `bigint_to_fe` multiplies by `2^64` per digit, and the (double) base powers and their reductions modulo the auxiliary moduli are computed once per `FieldChip` configuration, instead of at every gate assignment. Limb sizes above 64 bits are rejected for decomposition

@@ -88,7 +88,7 @@ where
     }
 
     /// Folds the `k = fresh.len() ≥ 1` fresh instances into `self`, reading
-    /// the proof from a fresh `transcript` (steps 1-7 of "Folding" in the
+    /// the proof from a fresh `transcript` (steps 1-8 of "Folding" in the
     /// module documentation).
     pub fn fold<T>(
         &self,
@@ -121,8 +121,40 @@ where
         let k_coeffs = (0..d * k - k).map(|_| transcript.read()).collect::<Result<Vec<F>, _>>()?;
         let gamma = truncate(transcript.squeeze_challenge());
 
-        next_accumulator(self, fresh, &deltas, &f_coeffs, alpha, &k_coeffs, gamma)
+        let next = next_accumulator(self, fresh, &deltas, &f_coeffs, alpha, &k_coeffs, gamma)?;
+        for expected in fold_products(self, fresh, gamma) {
+            let labels = CS::commitment_labels(&expected);
+            if CS::read_commitment(transcript, &labels)? != expected {
+                return Err(Error::InvalidInstances);
+            }
+        }
+        Ok(next)
     }
+}
+
+/// Step 8 of the fold, shared by prover and verifier: the products
+/// `Pⱼ = Lⱼ(γ)·(Cⱼ − C₀)` for `j = 1, …, k`, `P₁` of phase 1, `P₁` of phase 2,
+/// `P₂` of phase 1, …, with `C₀` the commitment of `acc` and `Cⱼ` that of
+/// `fresh[j - 1]`.
+pub(crate) fn fold_products<F, CS>(
+    acc: &Accumulator<F, CS>,
+    fresh: &[FoldingInstance<F, CS>],
+    gamma: F,
+) -> Vec<CS::Commitment>
+where
+    F: PrimeField,
+    CS: PolynomialCommitmentScheme<F>,
+{
+    let weights = lagrange_basis(fresh.len(), gamma);
+    fresh
+        .iter()
+        .zip(&weights[1..])
+        .flat_map(|(instance, w)| {
+            let phase1 = (&instance.phase1_commitment, &acc.instance.phase1_commitment);
+            let phase2 = (&instance.phase2_commitment, &acc.instance.phase2_commitment);
+            [phase1, phase2].map(|(c, c0)| CS::combine_commitments(&[(*w, c), (-*w, c0)]))
+        })
+        .collect()
 }
 
 /// Step 7 of the fold, shared by prover and verifier: the accumulator

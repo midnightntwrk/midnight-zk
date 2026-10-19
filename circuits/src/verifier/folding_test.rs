@@ -17,7 +17,7 @@
 //! constrained as public input of a MockProver run.
 
 use ff::Field;
-use group::{GroupEncoding, prime::PrimeCurveAffine};
+use group::{Curve, GroupEncoding, prime::PrimeCurveAffine};
 use midnight_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
     dev::MockProver,
@@ -56,7 +56,7 @@ use crate::{
         PoseidonState,
     },
     instructions::{AssignmentInstructions, PublicInputInstructions},
-    types::ComposableChip,
+    types::{AssignedBit, ComposableChip},
     verifier::{
         BlstrsFflonkEmulation, FoldingGadget, FoldingShape, InCircuitPCS, NativeAccumulator,
         SelfEmulation, VerifierGadget, VerifyingKey, accumulator_as_public_input,
@@ -66,6 +66,7 @@ use crate::{
 type S = BlstrsFflonkEmulation;
 type F = <S as SelfEmulation>::F;
 type C = <S as SelfEmulation>::C;
+type G1Affine = <S as SelfEmulation>::G1Affine;
 type CBase = <C as CircuitCurve>::Base;
 type NG = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
 type CS = <<S as SelfEmulation>::PCS as InCircuitPCS<S>>::OffCircuitPCS;
@@ -341,6 +342,10 @@ struct FoldingCircuit {
     fresh_pi: Value<F>,
     partial_proof: Value<Vec<u8>>,
     step: Step,
+    /// The `discarded` bit given to the fold, if any.
+    discarded: Option<bool>,
+    /// Whether the resulting accumulator is constrained as public input.
+    check_output: bool,
 }
 
 impl Circuit<F> for FoldingCircuit {
@@ -380,15 +385,26 @@ impl Circuit<F> for FoldingCircuit {
         let fresh =
             gadget.read_instance(&mut layouter, &vk, &[&[pi]], self.partial_proof.clone())?;
 
+        let discarded: Option<AssignedBit<F>> = (self.discarded)
+            .map(|bit| chips.scalar.assign(&mut layouter, Value::known(bit)))
+            .transpose()?;
         let next = match &self.step {
             Step::Init => gadget.init(&mut layouter, fresh)?,
             Step::Fold { acc, folding_proof } => {
                 let acc = gadget.assign_accumulator(&mut layouter, acc.as_ref())?;
-                gadget.fold(&mut layouter, &acc, &fresh, folding_proof.clone())?
+                gadget.fold(
+                    &mut layouter,
+                    &acc,
+                    &fresh,
+                    folding_proof.clone(),
+                    discarded.as_ref(),
+                )?
             }
         };
         for x in next.as_public_input(&mut layouter, &chips.curve)? {
-            chips.scalar.constrain_as_public_input(&mut layouter, &x)?;
+            if self.check_output {
+                chips.scalar.constrain_as_public_input(&mut layouter, &x)?;
+            }
         }
         chips.core_decomp.load(&mut layouter)
     }
@@ -402,6 +418,8 @@ impl FoldingCircuit {
             fresh_pi: Value::known(fresh.pi),
             partial_proof: Value::known(fresh.proof.clone()),
             step,
+            discarded: None,
+            check_output: true,
         }
     }
 
@@ -411,6 +429,25 @@ impl FoldingCircuit {
             folding_proof: Value::known(proof.to_vec()),
         };
         Self::new(native, fresh, step)
+    }
+
+    /// The same circuit, folding with `discarded` assigned to `bit`.
+    fn discarded(self, bit: bool) -> Self {
+        FoldingCircuit {
+            discarded: Some(bit),
+            ..self
+        }
+    }
+
+    /// Whether the circuit is satisfied, whatever its output: the output is not
+    /// constrained.
+    fn satisfied(&self) -> bool {
+        let circuit = FoldingCircuit {
+            check_output: false,
+            ..self.clone()
+        };
+        let prover = MockProver::run(&circuit, vec![vec![], vec![]]).expect("MockProver failed");
+        prover.verify().is_ok()
     }
 
     /// Whether the circuit is satisfied with `expected` as public output.
@@ -440,32 +477,91 @@ impl Round {
     }
 }
 
-/// `Accumulator::init` on step 0, then `rounds` folds of steps `1..=rounds`,
-/// proving them (`ProverAccumulator`) and verifying them (`Accumulator`)
-/// natively.
+/// Folds the fresh instance `step` into `prover_acc`, proving the fold
+/// (`ProverAccumulator`) and verifying it (`Accumulator`) natively.
+fn fold_round<'a>(
+    native: &'a Native,
+    prover_acc: ProverAccumulator<'a, F, CS>,
+    (prover_fresh, fresh): (ProverInstance<'a, F, CS>, Fresh),
+) -> (ProverAccumulator<'a, F, CS>, Round) {
+    let acc = prover_acc.accumulator().clone();
+    let mut transcript = T::init();
+    let prover_acc = prover_acc.fold(&native.pk, vec![prover_fresh], &mut transcript).unwrap();
+    let folding_proof = transcript.finalize();
+    let next = native.verify_fold(&acc, &fresh, &folding_proof);
+    assert_eq!(&next, prover_acc.accumulator());
+    assert!(prover_acc.is_satisfied(&native.pk));
+    let round = Round {
+        acc,
+        fresh,
+        folding_proof,
+        next,
+    };
+    (prover_acc, round)
+}
+
+/// `Accumulator::init` on step 0, then `rounds` folds of steps `1..=rounds`.
 fn chain(native: &Native, rounds: u64) -> Vec<Round> {
-    let (pk, vk) = (&native.pk, native.vk());
-    let mut prover_acc = ProverAccumulator::init(pk, native.step(0).0, &mut T::init()).unwrap();
+    let mut prover_acc =
+        ProverAccumulator::init(&native.pk, native.step(0).0, &mut T::init()).unwrap();
     let mut out = Vec::new();
     for i in 1..=rounds {
-        let acc = prover_acc.accumulator().clone();
-        let (prover_fresh, fresh) = native.step(i);
-        let mut transcript = T::init();
-        prover_acc = prover_acc.fold(pk, vec![prover_fresh], &mut transcript).unwrap();
-        let folding_proof = transcript.finalize();
-        let next = native.verify_fold(&acc, &fresh, &folding_proof);
-        assert_eq!(&next, prover_acc.accumulator());
-        assert!(prover_acc.is_satisfied(pk));
-        assert_ne!(next.error(), F::ZERO, "e' should be non-trivial");
-        assert_eq!(vk.get_domain().k(), INNER_K);
-        out.push(Round {
-            acc,
-            fresh,
-            folding_proof,
-            next,
-        });
+        let (next_acc, round) = fold_round(native, prover_acc, native.step(i));
+        prover_acc = next_acc;
+        assert_ne!(round.next.error(), F::ZERO, "e' should be non-trivial");
+        assert_eq!(native.vk().get_domain().k(), INNER_K);
+        out.push(round);
     }
     out
+}
+
+// ---------------------------------------------------------------------------
+// Folding proof layout: `F_1 … F_{log n}`, `K_0 … K_{d-2}`, then the commitment
+// products, phase 1 then phase 2, each group prefixed by its 4-byte point
+// count.
+// ---------------------------------------------------------------------------
+
+/// Byte length of a scalar in a proof.
+fn scalar_len() -> usize {
+    let mut t = T::init();
+    t.write(&F::ONE).unwrap();
+    t.finalize().len()
+}
+
+/// Byte length of a curve point in a proof.
+fn point_len() -> usize {
+    GroupEncoding::to_bytes(&G1Affine::generator()).as_ref().len()
+}
+
+/// Offsets of the commitment products in the folding proof `proof`.
+fn product_offsets(shape: &FoldingShape, proof: &[u8]) -> Vec<usize> {
+    const COUNT_LEN: usize = 4;
+    let mut offset = (shape.log_n + shape.degree - 1) * scalar_len();
+    let mut offsets = vec![];
+    for n in [shape.phase1_labels.len(), shape.phase2_labels.len()] {
+        offset += COUNT_LEN;
+        offsets.extend((0..n).map(|i| offset + i * point_len()));
+        offset += n * point_len();
+    }
+    assert_eq!(offset, proof.len(), "unexpected folding proof layout");
+    offsets
+}
+
+fn read_point(proof: &[u8], offset: usize) -> G1Affine {
+    let mut repr = <G1Affine as GroupEncoding>::Repr::default();
+    repr.as_mut().copy_from_slice(&proof[offset..offset + point_len()]);
+    Option::from(G1Affine::from_bytes(&repr)).expect("a valid point")
+}
+
+/// The folding proof `proof` with its `index`-th commitment product replaced
+/// by that product plus the generator: another valid point.
+fn shift_product(shape: &FoldingShape, proof: &[u8], index: usize) -> Vec<u8> {
+    let offset = product_offsets(shape, proof)[index];
+    let shifted = read_point(proof, offset).to_curve() + G1Affine::generator().to_curve();
+    let mut proof = proof.to_vec();
+    let point = GroupEncoding::to_bytes(&shifted.to_affine());
+    proof[offset..offset + point_len()].copy_from_slice(point.as_ref());
+    proof
 }
 
 #[test]
@@ -486,27 +582,22 @@ fn folding_gadget_fold() {
     }
 }
 
-/// The folding verifier cannot reject (soundness comes from the decider), so
-/// a tampered input must make the gadget output *the native verifier's
-/// output on the tampered data* (circuit satisfied with it), which differs
-/// from the honest accumulator (circuit unsatisfied with that one).
+/// The folding messages and the fresh commitments are bound to `γ`, hence to
+/// the commitment products of the proof: any tampering makes the products
+/// wrong, so the native verifier rejects and the circuit is unsatisfiable.
 #[test]
 fn folding_gadget_tampered() {
     let native = Native::new();
     let round = &chain(&native, 1)[0];
-    let scalar_len = {
-        let mut t = T::init();
-        t.write(&F::ONE).unwrap();
-        t.finalize().len()
-    };
+    let scalar_len = scalar_len();
 
-    // Checks the circuit on (acc, fresh, proof), a tampered version of the
-    // round.
+    // Checks that (acc, fresh, proof), a tampered version of the round, is
+    // rejected natively and in circuit.
     let check = |fresh: &Fresh, proof: &[u8]| {
-        let tampered = native.verify_fold(&round.acc, fresh, proof);
-        assert_ne!(tampered, round.next);
+        let transcript = &mut T::init_from_bytes(proof);
+        let tampered = round.acc.fold(native.vk(), std::slice::from_ref(&fresh.public), transcript);
+        assert!(tampered.is_err());
         let circuit = FoldingCircuit::fold(&native, &round.acc, fresh, proof);
-        assert!(circuit.outputs(&tampered));
         assert!(!circuit.outputs(&round.next));
     };
 
@@ -529,7 +620,7 @@ fn folding_gadget_tampered() {
     // A tampered fresh phase-1 commitment: its first point (after the 4-byte
     // polynomial count) replaced by the generator.
     let mut fresh = round.fresh.clone();
-    let generator = GroupEncoding::to_bytes(&<S as SelfEmulation>::G1Affine::generator());
+    let generator = GroupEncoding::to_bytes(&G1Affine::generator());
     let point = generator.as_ref();
     fresh.proof[4..4 + point.len()].copy_from_slice(point);
     fresh.public = read_instance(
@@ -539,4 +630,63 @@ fn folding_gadget_tampered() {
     )
     .unwrap();
     check(&fresh, &round.folding_proof);
+}
+
+/// The first product (`ρ = 1`, outside the MSM) and later ones (phase 1 and
+/// phase 2), replaced by another valid point: the native verifier rejects, and
+/// so does the circuit, whatever the accumulator it outputs.
+#[test]
+fn folding_gadget_rejects_wrong_product() {
+    let native = Native::new();
+    let round = &chain(&native, 1)[0];
+    let shape = native.shape();
+    assert!(round.circuit(&native).satisfied());
+
+    let nb_products = product_offsets(&shape, &round.folding_proof).len();
+    for index in [0, 1, nb_products - 1] {
+        let proof = shift_product(&shape, &round.folding_proof, index);
+        let transcript = &mut T::init_from_bytes(&proof);
+        let fresh = std::slice::from_ref(&round.fresh.public);
+        assert!(round.acc.fold(native.vk(), fresh, transcript).is_err());
+        let circuit = FoldingCircuit::fold(&native, &round.acc, &round.fresh, &proof);
+        assert!(!circuit.satisfied(), "wrong product {index} accepted");
+    }
+}
+
+/// `discarded = 1` waives the product check, `discarded = 0` does not.
+#[test]
+fn folding_gadget_discarded_waives_the_check() {
+    let native = Native::new();
+    let round = &chain(&native, 1)[0];
+    let shape = native.shape();
+    let honest = round.circuit(&native);
+    assert!(honest.clone().discarded(false).satisfied());
+    assert!(honest.discarded(true).satisfied());
+
+    let nb_products = product_offsets(&shape, &round.folding_proof).len();
+    for index in [0, nb_products - 1] {
+        let proof = shift_product(&shape, &round.folding_proof, index);
+        let circuit = FoldingCircuit::fold(&native, &round.acc, &round.fresh, &proof);
+        assert!(circuit.clone().discarded(true).satisfied());
+        assert!(!circuit.discarded(false).satisfied());
+    }
+}
+
+/// Folding an instance into an accumulator holding the very same commitments
+/// (`A_i = F_i`): every product is the identity, which the single-MSM check
+/// (`MSM = −P_1` with `P_1 = O`) must accept.
+#[test]
+fn folding_gadget_identity_products() {
+    let native = Native::new();
+    let acc = ProverAccumulator::init(&native.pk, native.step(0).0, &mut T::init()).unwrap();
+    // The same witness and blinding as step 0: identical commitments.
+    let (_, round) = fold_round(&native, acc, native.step(0));
+
+    let offsets = product_offsets(&native.shape(), &round.folding_proof);
+    for offset in offsets {
+        assert!(bool::from(
+            read_point(&round.folding_proof, offset).is_identity()
+        ));
+    }
+    assert!(round.circuit(&native).outputs(&round.next));
 }

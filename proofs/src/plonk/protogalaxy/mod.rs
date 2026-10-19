@@ -43,7 +43,13 @@
 //! 6. squeeze `γ` (truncated to 128 bits: it scales the commitments, which an
 //!    in-circuit verifier folds with one scalar multiplication each);
 //! 7. `ω* = Σⱼ Lⱼ(γ)·ωⱼ` and `e* = F(α)·L₀(γ) + Z(γ)·K(γ)`; the new accumulator
-//!    is `(ω*, β⃗*, e*)`.
+//!    is `(ω*, β⃗*, e*)`;
+//! 8. the prover writes the products `Pⱼ = Lⱼ(γ)·(Cⱼ − C₀)` of each phase
+//!    commitment (`C₀` the accumulator's, `Cⱼ` that of `ωⱼ`), for `j = 1, …,
+//!    k`: `P₁` of phase 1, `P₁` of phase 2, `P₂` of phase 1, …; the verifier
+//!    checks them. Natively redundant: as `Σⱼ Lⱼ = 1`, the folded commitment is
+//!    `C₀ + Σⱼ Pⱼ`, which lets an in-circuit verifier check every commitment
+//!    fold with one MSM.
 //!
 //! For an honest prover, `G(X) = Σᵢ powᵢ(β⃗*)·fᵢ(Σⱼ Lⱼ(X)·ωⱼ)` satisfies
 //! `G(0) = F(α)` and `G(j) = 0` for `j = 1, …, k`, so `K = (G − F(α)·L₀)/Z`
