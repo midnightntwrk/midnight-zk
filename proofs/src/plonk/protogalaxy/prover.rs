@@ -103,6 +103,14 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> ProverAccu
     pub fn accumulator(&self) -> &Accumulator<F, CS> {
         &self.public
     }
+
+    /// Whether the relaxed relation `Σᵢ powᵢ(β⃗)·fᵢ(ω) = e` holds for the
+    /// prover's folded trace. A check in the clear, for tests and examples; a
+    /// verifier needs the decider proof instead.
+    pub fn is_satisfied(&self, pk: &ProvingKey<F, CS>) -> bool {
+        let rows = evaluate_rows(pk, &self.trace);
+        inner_product(&pow_vector(&self.public.betas), &rows) == self.public.error()
+    }
 }
 
 impl<'a, F, CS> ProverAccumulator<'a, F, CS>

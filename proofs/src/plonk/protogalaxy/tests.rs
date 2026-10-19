@@ -87,17 +87,6 @@ where
     (instance, read)
 }
 
-/// `Σᵢ powᵢ(β⃗)·fᵢ` computed directly from the prover's folded trace.
-fn relaxed_sum<CS: PolynomialCommitmentScheme<Fq>>(
-    pk: &ProvingKey<Fq, CS>,
-    acc: &ProverAccumulator<'_, Fq, CS>,
-) -> Fq {
-    inner_product(
-        &pow_vector(&acc.public.betas),
-        &evaluate_rows(pk, &acc.trace),
-    )
-}
-
 /// Initialises with fresh instance 0, then folds `rounds[r]` fresh instances
 /// at once in round `r` (instances are numbered in order; `corrupt` is the
 /// index of the one with a broken gate). After every round, asserts that the
@@ -133,7 +122,7 @@ where
         acc_v = acc_v.fold(pk.get_vk(), &reads, &mut T::init_from_bytes(&bytes)).unwrap();
 
         assert_eq!(&acc_v, acc.accumulator());
-        holds.push(relaxed_sum(&pk, &acc) == acc_v.error());
+        holds.push(acc.is_satisfied(&pk));
         if !holds[holds.len() - 1] {
             break;
         }
