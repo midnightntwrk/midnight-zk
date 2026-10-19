@@ -13,6 +13,9 @@
 //! relation (the decider proof), which the verifier checks against its own
 //! accumulator.
 //!
+//! The one-shot mode instead folds a batch of fresh instances and proves the
+//! result in a single proof, with `prove_one_shot` and `verify_one_shot`.
+//!
 //! Run with `cd aggregation && cargo run --release --example folding`.
 
 use std::time::Instant;
@@ -29,7 +32,8 @@ use midnight_proofs::{
         Error, ProvingKey, keygen_pk, keygen_vk_with_k,
         protogalaxy::{
             Accumulator, FoldingInstance, ProverAccumulator, ProverInstance, commit_instance,
-            prove_relaxed_trace, read_instance, verify_relaxed_trace,
+            prove_one_shot, prove_relaxed_trace, read_instance, verify_one_shot,
+            verify_relaxed_trace,
         },
     },
     poly::{
@@ -97,6 +101,9 @@ impl Relation for PoseidonPreimage {
     }
 }
 
+/// Number of fresh instances folded in the one-shot mode.
+const ONE_SHOT_K: usize = 4;
+
 /// What the verifier gets for a fresh instance.
 struct Published {
     public_inputs: Vec<F>,
@@ -109,12 +116,8 @@ fn columns(public_inputs: &[F]) -> [&[F]; 2] {
     [&[], public_inputs]
 }
 
-/// Commits a fresh instance for a random preimage.
-fn commit<'a>(
-    params: &ParamsKZG<Bls12>,
-    pk: &'a ProvingKey<F, DefaultPCS>,
-    k: u32,
-) -> (ProverInstance<'a, F, DefaultPCS>, Published) {
+/// A circuit for a random preimage, with its public inputs.
+fn random_instance(k: u32) -> (MidnightCircuit<'static, PoseidonPreimage>, Vec<F>) {
     let preimage: [F; 3] = std::array::from_fn(|_| F::random(OsRng));
     let digest = <PoseidonChip<F> as HashCPU<F, F>>::hash(&preimage);
     let public_inputs = PoseidonPreimage::format_instance(&digest).unwrap();
@@ -124,6 +127,16 @@ fn commit<'a>(
         Value::known(preimage),
         Some(k),
     );
+    (circuit, public_inputs)
+}
+
+/// Commits a fresh instance for a random preimage.
+fn commit<'a>(
+    params: &ParamsKZG<Bls12>,
+    pk: &'a ProvingKey<F, DefaultPCS>,
+    k: u32,
+) -> (ProverInstance<'a, F, DefaultPCS>, Published) {
+    let (circuit, public_inputs) = random_instance(k);
     let mut transcript = T::init();
     let instance = commit_instance(
         params,
@@ -217,5 +230,29 @@ fn main() {
     println!(
         "decider: proof {} B, prover {prover_time:.2?}, verifier {verifier_time:.2?}",
         decider.len()
+    );
+
+    // One-shot: fold fresh instances and prove the result in a single proof.
+    let (circuits, public_inputs): (Vec<_>, Vec<_>) =
+        (0..ONE_SHOT_K).map(|_| random_instance(k)).unzip();
+    let columns: Vec<_> = public_inputs.iter().map(|pi| columns(pi)).collect();
+    let instances: Vec<Vec<&[F]>> = columns.iter().map(|c| c.to_vec()).collect();
+    let instances: Vec<&[&[F]]> = instances.iter().map(Vec::as_slice).collect();
+    let start = Instant::now();
+    let mut transcript = T::init();
+    prove_one_shot(&srs, &pk, &circuits, &instances, &mut transcript, OsRng)
+        .expect("one-shot prover failed");
+    let proof = transcript.finalize();
+    let prover_time = start.elapsed();
+    let start = Instant::now();
+    verify_one_shot(vk, &instances, &mut T::init_from_bytes(&proof))
+        .expect("one-shot verifier failed")
+        .verify(&DefaultPCS::get_verifier_params(&srs))
+        .expect("one-shot proof rejected");
+    let verifier_time = start.elapsed();
+    println!(
+        "one-shot: folded {ONE_SHOT_K} instances, proof {} B, prover {prover_time:.2?}, \
+         verifier {verifier_time:.2?}",
+        proof.len()
     );
 }

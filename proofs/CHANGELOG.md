@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Protogalaxy folding: `Accumulator::{init, fold}` and `ProverAccumulator::{init, fold}`, folding k fresh instances per round.
 * `ProverAccumulator::is_satisfied`: checks the relaxed relation of a folded trace in the clear.
 * Protogalaxy decider: `prove_relaxed_trace` and `verify_relaxed_trace`, a proof that a folded accumulator satisfies its relaxed relation (grand sum of the weighted identity rows).
+* Protogalaxy one-shot folding: `prove_one_shot` and `verify_one_shot` fold k fresh instances in one round and prove the result with the decider, in one proof.
 * `ConstraintSystem::set_lookup_chunk_bound` and `lookup_chunk_bound`, a configurable degree bound for packing lookup inputs into helper columns (default: `degree()`), pinned in the verifying key only when set
 * `Transcript::squeeze_challenges`, and `ConstraintSystem::{nb_theta_challenges, nb_trash_challenges, nb_y_challenges}`, the number of challenges of each kind a proof squeezes
 * `kzg::point_set_order`, the order in which the KZG multi-open takes its point sets [#583](https://github.com/midnightntwrk/midnight-zk/pull/583)

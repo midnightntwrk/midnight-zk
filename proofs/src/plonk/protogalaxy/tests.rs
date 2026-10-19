@@ -15,9 +15,9 @@ use super::{
     Accumulator, FoldingInstance, ProverAccumulator, ProverInstance, commit_instance,
     folding_degree,
     poly::{inner_product, interpolate, lagrange_basis, pow_vector},
-    prove_relaxed_trace, read_instance,
+    prove_one_shot, prove_relaxed_trace, read_instance,
     trace::{evaluate_rows, evaluate_rows_dense, linear_combination},
-    verify_relaxed_trace,
+    verify_one_shot, verify_relaxed_trace,
 };
 use crate::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
@@ -576,4 +576,143 @@ fn decider_init_kzg() {
 #[test]
 fn decider_init_fflonk() {
     check_decider_init::<Fflonk<KZGCommitmentScheme<Bls12>, 3>>();
+}
+
+/// Proves `k` circuits one-shot (circuit `i` is the `i`-th of a chain, the
+/// `corrupt`-th has a broken gate) and verifies against the honest public
+/// inputs (or, with `wrong_inputs`, ones with the last altered). `None` if
+/// the prover fails.
+fn one_shot_verifies<CS: PolynomialCommitmentScheme<Fq>>(
+    k: usize,
+    corrupt: Option<usize>,
+    wrong_inputs: bool,
+) -> Option<bool>
+where
+    CS::Commitment: Hashable<State>,
+{
+    let (params, pk) = setup::<CS>();
+    let circuits: Vec<_> = (0..k)
+        .map(|i| SquareCircuit {
+            start: 3 * i as u64,
+            corrupt: corrupt == Some(i),
+        })
+        .collect();
+    let inputs: Vec<[Fq; 1]> = circuits.iter().map(|c| [c.public_input()]).collect();
+    let cols: Vec<[&[Fq]; 1]> = inputs.iter().map(|i| [&i[..]]).collect();
+    let prove_instances: Vec<&[&[Fq]]> = cols.iter().map(|c| &c[..]).collect();
+
+    let mut transcript = T::init();
+    prove_one_shot(
+        &params,
+        &pk,
+        &circuits,
+        &prove_instances,
+        &mut transcript,
+        OsRng,
+    )
+    .ok()?;
+    let proof = transcript.finalize();
+
+    let mut claimed = inputs.clone();
+    if wrong_inputs {
+        claimed[k - 1][0] += Fq::ONE;
+    }
+    let cols: Vec<[&[Fq]; 1]> = claimed.iter().map(|i| [&i[..]]).collect();
+    let verify_instances: Vec<&[&[Fq]]> = cols.iter().map(|c| &c[..]).collect();
+    Some(
+        verify_one_shot(
+            pk.get_vk(),
+            &verify_instances,
+            &mut T::init_from_bytes(&proof),
+        )
+        .and_then(|guard| {
+            guard.verify(&CS::get_verifier_params(&params)).map_err(|_| Error::Opening)
+        })
+        .is_ok(),
+    )
+}
+
+fn check_one_shot_honest<CS: PolynomialCommitmentScheme<Fq>>()
+where
+    CS::Commitment: Hashable<State>,
+{
+    for k in [1, 2, 4] {
+        assert_eq!(
+            one_shot_verifies::<CS>(k, None, false),
+            Some(true),
+            "k = {k}"
+        );
+    }
+}
+
+fn check_one_shot_wrong_inputs<CS: PolynomialCommitmentScheme<Fq>>()
+where
+    CS::Commitment: Hashable<State>,
+{
+    for k in [1, 2] {
+        assert_eq!(
+            one_shot_verifies::<CS>(k, None, true),
+            Some(false),
+            "k = {k}"
+        );
+    }
+}
+
+fn check_one_shot_corrupted<CS: PolynomialCommitmentScheme<Fq>>()
+where
+    CS::Commitment: Hashable<State>,
+{
+    assert_ne!(one_shot_verifies::<CS>(3, Some(1), false), Some(true));
+}
+
+fn check_one_shot_empty<CS: PolynomialCommitmentScheme<Fq>>()
+where
+    CS::Commitment: Hashable<State>,
+{
+    let (params, pk) = setup::<CS>();
+    let result =
+        prove_one_shot::<Fq, CS, T, SquareCircuit>(&params, &pk, &[], &[], &mut T::init(), OsRng);
+    assert!(matches!(result, Err(Error::InvalidInstances)));
+    let result = verify_one_shot::<Fq, CS, T>(pk.get_vk(), &[], &mut T::init_from_bytes(&[]));
+    assert!(matches!(result, Err(Error::InvalidInstances)));
+}
+
+#[test]
+fn one_shot_honest_kzg() {
+    check_one_shot_honest::<KZGCommitmentScheme<Bls12>>();
+}
+
+#[test]
+fn one_shot_honest_fflonk() {
+    check_one_shot_honest::<Fflonk<KZGCommitmentScheme<Bls12>, 3>>();
+}
+
+#[test]
+fn one_shot_wrong_inputs_kzg() {
+    check_one_shot_wrong_inputs::<KZGCommitmentScheme<Bls12>>();
+}
+
+#[test]
+fn one_shot_wrong_inputs_fflonk() {
+    check_one_shot_wrong_inputs::<Fflonk<KZGCommitmentScheme<Bls12>, 3>>();
+}
+
+#[test]
+fn one_shot_corrupted_kzg() {
+    check_one_shot_corrupted::<KZGCommitmentScheme<Bls12>>();
+}
+
+#[test]
+fn one_shot_corrupted_fflonk() {
+    check_one_shot_corrupted::<Fflonk<KZGCommitmentScheme<Bls12>, 3>>();
+}
+
+#[test]
+fn one_shot_empty_kzg() {
+    check_one_shot_empty::<KZGCommitmentScheme<Bls12>>();
+}
+
+#[test]
+fn one_shot_empty_fflonk() {
+    check_one_shot_empty::<Fflonk<KZGCommitmentScheme<Bls12>, 3>>();
 }

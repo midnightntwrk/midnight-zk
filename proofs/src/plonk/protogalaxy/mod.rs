@@ -48,6 +48,13 @@
 //! `G(0) = F(α)` and `G(j) = 0` for `j = 1, …, k`, so `K = (G − F(α)·L₀)/Z`
 //! is a polynomial and `e* = G(γ)`. Each round uses a fresh transcript,
 //! supplied by the caller.
+//!
+//! # One-shot
+//!
+//! [`prove_one_shot`] / [`verify_one_shot`] fold `k` fresh instances in one
+//! round and produce the decider proof. The output is a single proof, not an
+//! accumulator: it cannot be folded further. The whole proof is one
+//! transcript: the instances, the folding proof, then the decider proof.
 
 mod poly;
 
@@ -63,11 +70,13 @@ pub use degree::folding_degree;
 
 mod decider_prover;
 mod decider_verifier;
+mod one_shot;
 mod prover;
 mod verifier;
 
 pub use decider_prover::prove_relaxed_trace;
 pub use decider_verifier::verify_relaxed_trace;
+pub use one_shot::{prove_one_shot, verify_one_shot};
 pub use prover::{ProverAccumulator, ProverInstance, commit_instance};
 pub use verifier::read_instance;
 
