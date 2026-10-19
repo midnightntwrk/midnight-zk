@@ -26,6 +26,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * The in-circuit fflonk splits groups into `fflonk::balanced_chunks`, as off-circuit [#579](https://github.com/midnightntwrk/midnight-zk/pull/579)
 * The in-circuit KZG multi-open collapses the combined commitment of a point set only if it has at least `COLLAPSE_THRESHOLD` variable bases, as the off-circuit verifier does [#579](https://github.com/midnightntwrk/midnight-zk/pull/579)
 * BREAKING: `AssignedMsm::assign` is replaced by `AssignedMsm::assign_collapsed`, which assigns a collapsed MSM: fixed-base terms and a single variable-base point with the constant scalar 1, instead of a witnessed one, so accumulating it keeps its scalars as short as the accumulation challenge. `AssignedAccumulator::assign` is removed; `VerifierGadget::assign_collapsed_accumulator` assigns both sides with `assign_collapsed` [#579](https://github.com/midnightntwrk/midnight-zk/pull/579)
+* The verifier gadget reads the `cs_degree` quotient limbs as one group and opens them one by one, deriving the first limb's evaluation, rather than opening the combination of their commitments, scaled by full-width scalars [#582](https://github.com/midnightntwrk/midnight-zk/pull/582)
 * `verifier::fixed_bases` reads the labels carried by the verifying-key commitment, rather than assuming one commitment per fixed polynomial, and `fixed_base_labels` takes the constraint system and lets the new `InCircuitPCS::fixed_base_labels` group its fixed polynomials, returning the labels in the same order [#570](https://github.com/midnightntwrk/midnight-zk/pull/570)
 * BREAKING: `SelfEmulation::PCS` declares the in-circuit PCS of the verified proofs; `AssignedVk` and the `VerifierGadget` methods drop their PCS generic [#570](https://github.com/midnightntwrk/midnight-zk/pull/570)
 * `AssignedVk` holds an `AssignedEvaluationDomain` with assigned `k` and `omega` (and in-circuit derived `omega_inv` and `n = 2^k`) [#461](https://github.com/midnightntwrk/midnight-zk/pull/461)
@@ -66,6 +67,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Limb-size DP (`compute_optimal_limb_sizes`) compares candidates by length and clones only the winner; same limbs, same VKs. Cuts the serial configure path (runs in keygen and prove) [#532](https://github.com/midnightntwrk/midnight-zk/pull/532)
 
 ### Removed
+* `InCircuitHomomorphicCommitment`, which `InCircuitPCS::AssignedCommitment` no longer requires [#582](https://github.com/midnightntwrk/midnight-zk/pull/582)
 * BREAKING: `truncated-challenges` feature. The verifier gadget always truncates the challenges, and `SelfEmulation::ScalarChip` always implements `NativeInstructions` [#580](https://github.com/midnightntwrk/midnight-zk/pull/580)
 * `AssignedKZGMultiCommitment::commitment_to_zero`. An empty committed instance can be passed as an empty instance column instead, which is neither committed to nor opened [#569](https://github.com/midnightntwrk/midnight-zk/pull/569)
 * `single-h-commitment` feature in the verifier gadget [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)

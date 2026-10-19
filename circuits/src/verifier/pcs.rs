@@ -77,25 +77,6 @@ impl<'a, S: SelfEmulation, PCS: InCircuitPCS<S>> VerifierQuery<'a, S, PCS> {
 // Traits
 // ---------------------------------------------------------------------------
 
-/// In-circuit operations on an additively homomorphic commitment.
-pub trait InCircuitHomomorphicCommitment<S: SelfEmulation>: Clone + Debug + Sized {
-    /// Scales this commitment by an assigned scalar.
-    fn mul(
-        self,
-        layouter: &mut impl Layouter<S::F>,
-        scalar_chip: &S::ScalarChip,
-        scalar: &AssignedNative<S::F>,
-    ) -> Result<Self, Error>;
-
-    /// Adds another commitment to this one.
-    fn add(
-        self,
-        layouter: &mut impl Layouter<S::F>,
-        scalar_chip: &S::ScalarChip,
-        other: Self,
-    ) -> Result<Self, Error>;
-}
-
 /// An off-circuit commitment whose curve points can be read with the labels
 /// they carry.
 ///
@@ -125,7 +106,7 @@ pub trait InCircuitPCS<S: SelfEmulation>: Sized + Clone + Debug {
     type OffCircuitPCS: PolynomialCommitmentScheme<S::F, Commitment: CommitmentBases<S::C>>;
 
     /// The in-circuit type representing a committed polynomial.
-    type AssignedCommitment: InCircuitHomomorphicCommitment<S>;
+    type AssignedCommitment: Clone + Debug;
 
     /// Creates the fixed (VK-embedded) commitment to the group of `labels`.
     ///
