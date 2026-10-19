@@ -52,6 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Fix cost-model [#435](https://github.com/midnightntwrk/midnight-zk/pull/435)
 
 ### Changed
+* The table side of a LogUp lookup (its evaluations and its classes of equal tuples) is built once and cached in the `Evaluator` of the proving key when the table expressions read fixed columns only, instead of at every proof; input tuples are looked up with a reused buffer. The multiplicities are unchanged
 * The trash polynomials are computed in one parallel pass with the flattened trashcan evaluator, instead of one allocating evaluation per constraint expression; same polynomials
 * BREAKING: `PolynomialCommitmentScheme::Commitment` no longer requires `Add` and `Mul<F>`: no generic code combines commitments, so a scheme need not be homomorphic [#582](https://github.com/midnightntwrk/midnight-zk/pull/582)
 * The KZG multi-open takes first the point set with the most variable-base polynomials, then the others by cardinality, so that fewer scalars are products of two truncated challenges. This changes the proof [#583](https://github.com/midnightntwrk/midnight-zk/pull/583)

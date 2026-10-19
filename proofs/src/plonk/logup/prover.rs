@@ -20,13 +20,17 @@
 //!   iterates over columns
 //! - **Accumulator `Z(X)`**: Running sum of log-derivative differences
 
-use std::{hash::Hash, iter};
+use std::{hash::Hash, iter, sync::Arc};
 
 use ff::{BatchInvert, FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::{
-    plonk::{Error, Expression, ProvingKey, evaluation::evaluate, logup::ChunkedArgument},
+    plonk::{
+        Error, Expression, ProvingKey,
+        evaluation::evaluate,
+        logup::{ChunkedArgument, table::TableSide},
+    },
     poly::{LagrangeCoeff, Polynomial, commitment::PolynomialCommitmentScheme},
     utils::arithmetic::parallelize,
 };
@@ -45,7 +49,7 @@ pub(crate) struct ComputedMultiplicities<F: PrimeField> {
     /// Per chunk, per input, the evaluation of each of its expressions.
     chunked_input_evals: Vec<Vec<Vec<Polynomial<F, LagrangeCoeff>>>>,
     /// The evaluation of each table expression.
-    table_evals: Vec<Polynomial<F, LagrangeCoeff>>,
+    table_evals: Arc<Vec<Polynomial<F, LagrangeCoeff>>>,
 }
 
 /// Intermediate result from logderivative computation, before transcript
@@ -57,6 +61,25 @@ pub(crate) struct ComputedLogderivative<F: PrimeField> {
 }
 
 impl<F: WithSmallOrderMulGroup<3> + Hash> ChunkedArgument<F> {
+    /// Whether the table expressions read fixed columns only. `Expression` has
+    /// no challenge variant and selectors are already removed, so checking the
+    /// advice and instance queries is exact.
+    fn table_is_fixed(&self) -> bool {
+        self.table_expressions.iter().all(|expression| {
+            expression.evaluate(
+                &|_| true,
+                &|_| true,
+                &|_| true,
+                &|_| false,
+                &|_| false,
+                &|a| a,
+                &|a, b| a && b,
+                &|a, b| a && b,
+                &|a, _| a,
+            )
+        })
+    }
+
     /// Evaluates the input and table expressions and computes the
     /// multiplicities, comparing the input and table tuples directly. The
     /// multiplicities are neither committed nor written to the transcript: the
@@ -105,15 +128,29 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ChunkedArgument<F> {
             .map(|chunk| chunk.iter().map(|exprs| eval_expressions(exprs)).collect())
             .collect();
 
-        let table_evals = eval_expressions(&self.table_expressions);
-
         let selector = eval_expressions(std::slice::from_ref(&self.selector)).swap_remove(0);
 
         let usable_rows = n - pk.vk.cs.blinding_factors() - 1;
-        let multiplicities = compute_multiplicities(
+
+        // The table side depends on the fixed columns only: it is built once
+        // per proving key, unless a table expression reads other columns.
+        let build_table = || TableSide::new(eval_expressions(&self.table_expressions), usable_rows);
+        // The init closure runs a nested `parallelize`: two proofs sharing one `&pk`
+        // on the same rayon pool must not race on a cold cell (unsupported today).
+        let cached = pk.ev.logup_tables[argument_index]
+            .get_or_init(|| self.table_is_fixed().then(build_table))
+            .as_ref();
+        let uncached;
+        let table = match cached {
+            Some(table) => table,
+            None => {
+                uncached = build_table();
+                &uncached
+            }
+        };
+        let multiplicities = table.multiplicities(
             &selector,
             &chunked_input_evals.iter().flatten().map(Vec::as_slice).collect::<Vec<_>>(),
-            &table_evals,
             usable_rows,
             blinding_values,
         );
@@ -125,7 +162,7 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ChunkedArgument<F> {
             selector,
             multiplicities,
             chunked_input_evals,
-            table_evals,
+            table_evals: Arc::clone(&table.evals),
         })
     }
 }
@@ -256,26 +293,9 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ComputedMultiplicities<F> {
     }
 }
 
-/// Computes the multiplicity of each table tuple among the input tuples.
-///
-/// A tuple is a row of a set of polynomials, one per expression: row `i` of
-/// `table` is the `i`-th table tuple, and row `r` of `values[j]` the `r`-th
-/// tuple of the `j`-th input. Returns a vector where `result[i]` is the number
-/// of times the `i`-th table tuple appears among the selected input tuples.
-///
-/// When a tuple appears multiple times in the table, the multiplicity is
-/// normalized: if a tuple is looked up `k` times and appears `t` times in the
-/// table, each table position gets multiplicity `k/t`.
-///
-/// Only tuples in the first `usable_rows` are counted for both inputs and
-/// table. Blinding rows are excluded from the counting but still get a
-/// multiplicity value (zero for tuples not in the active region).
-///
-/// # Panics
-///
-/// Panics if any selected input tuple (where the selector is non-zero) is not
-/// present in `table`, or if an input does not have as many polynomials as the
-/// table.
+/// Multiplicities of the table tuples (see [TableSide::multiplicities]),
+/// building the table side from scratch.
+#[cfg(test)]
 pub(crate) fn compute_multiplicities<F>(
     selector: &Polynomial<F, LagrangeCoeff>,
     values: &[&[Polynomial<F, LagrangeCoeff>]],
@@ -284,72 +304,14 @@ pub(crate) fn compute_multiplicities<F>(
     blinding_values: &[F],
 ) -> Vec<F>
 where
-    F: PrimeField + std::hash::Hash + Eq,
+    F: PrimeField + Hash,
 {
-    use rustc_hash::FxHashMap;
-
-    let n = selector.len();
-    let width = table.len();
-    assert_eq!(blinding_values.len(), n - usable_rows);
-
-    let tuple_at = |columns: &[Polynomial<F, LagrangeCoeff>], row: usize| -> Vec<F> {
-        columns.iter().map(|column| column[row]).collect()
-    };
-
-    // Count how many times each tuple appears in the table (active rows only)
-    let table_tuples: Vec<Vec<F>> = (0..usable_rows).map(|row| tuple_at(table, row)).collect();
-    let mut table_counts: FxHashMap<&[F], u32> = FxHashMap::default();
-    for tuple in table_tuples.iter() {
-        *table_counts.entry(tuple).or_default() += 1;
-    }
-
-    // Count how many times each tuple appears in inputs (only where the selector
-    // is non-zero).
-    let mut input_counts: FxHashMap<&[F], u32> =
-        table_counts.keys().map(|tuple| (*tuple, 0)).collect();
-    for input in values.iter() {
-        assert_eq!(
-            input.len(),
-            width,
-            "an input and the table have different widths"
-        );
-        for row in (0..usable_rows).filter(|&row| !selector[row].is_zero_vartime()) {
-            let tuple = tuple_at(input, row);
-            *input_counts
-                .get_mut(tuple.as_slice())
-                .unwrap_or_else(|| panic!("input tuple {tuple:?} not found in lookup table")) += 1;
-        }
-    }
-
-    // Build vector of table counts for batch inversion (only for active table
-    // tuples)
-    let mut table_count_inverses: Vec<F> = (0..n)
-        .map(|i| {
-            if i < usable_rows {
-                let tuple = table_tuples[i].as_slice();
-                F::from(*table_counts.get(tuple).unwrap_or(&1) as u64)
-            } else {
-                F::ONE // Random blinding factors will be applied later
-            }
-        })
-        .collect();
-    table_count_inverses.iter_mut().batch_invert();
-
-    // Compute normalized multiplicities: input_count / table_count
-    // Blinding rows get random values to ensure ZK.
-    table_count_inverses
-        .into_iter()
-        .enumerate()
-        .map(|(i, table_count_inv)| {
-            if i < usable_rows {
-                let tuple = table_tuples[i].as_slice();
-                let input_count = *input_counts.get(tuple).unwrap_or(&0);
-                F::from(input_count as u64) * table_count_inv
-            } else {
-                blinding_values[i - usable_rows]
-            }
-        })
-        .collect()
+    TableSide::new(table.to_vec(), usable_rows).multiplicities(
+        selector,
+        values,
+        usable_rows,
+        blinding_values,
+    )
 }
 
 #[cfg(test)]
@@ -360,6 +322,11 @@ mod tests {
     use midnight_curves::Fq;
 
     use super::*;
+    use crate::{
+        circuit::{Layouter, SimpleFloorPlanner, Value},
+        plonk::{Advice, Circuit, Column, ConstraintSystem, TableColumn},
+        poly::Rotation,
+    };
 
     fn poly_from_vec(values: Vec<Fq>) -> Polynomial<Fq, LagrangeCoeff> {
         Polynomial {
@@ -528,5 +495,205 @@ mod tests {
             compute_multiplicities(&poly_from_vec(vec![Fq::ONE; 4]), &[&input], &table, 4, &[]);
 
         assert_eq!(result, [2, 1, 1, 0].map(Fq::from).to_vec());
+    }
+
+    /// The previous implementation, hashing a freshly allocated tuple per row.
+    fn reference_multiplicities<F>(
+        selector: &Polynomial<F, LagrangeCoeff>,
+        values: &[&[Polynomial<F, LagrangeCoeff>]],
+        table: &[Polynomial<F, LagrangeCoeff>],
+        usable_rows: usize,
+        blinding_values: &[F],
+    ) -> Vec<F>
+    where
+        F: PrimeField + std::hash::Hash + Eq,
+    {
+        use rustc_hash::FxHashMap;
+
+        let n = selector.len();
+        let width = table.len();
+        assert_eq!(blinding_values.len(), n - usable_rows);
+
+        let tuple_at = |columns: &[Polynomial<F, LagrangeCoeff>], row: usize| -> Vec<F> {
+            columns.iter().map(|column| column[row]).collect()
+        };
+
+        // Count how many times each tuple appears in the table (active rows only)
+        let table_tuples: Vec<Vec<F>> = (0..usable_rows).map(|row| tuple_at(table, row)).collect();
+        let mut table_counts: FxHashMap<&[F], u32> = FxHashMap::default();
+        for tuple in table_tuples.iter() {
+            *table_counts.entry(tuple).or_default() += 1;
+        }
+
+        // Count how many times each tuple appears in inputs (only where the selector
+        // is non-zero).
+        let mut input_counts: FxHashMap<&[F], u32> =
+            table_counts.keys().map(|tuple| (*tuple, 0)).collect();
+        for input in values.iter() {
+            assert_eq!(
+                input.len(),
+                width,
+                "an input and the table have different widths"
+            );
+            for row in (0..usable_rows).filter(|&row| !selector[row].is_zero_vartime()) {
+                let tuple = tuple_at(input, row);
+                *input_counts.get_mut(tuple.as_slice()).unwrap_or_else(|| {
+                    panic!("input tuple {tuple:?} not found in lookup table")
+                }) += 1;
+            }
+        }
+
+        // Build vector of table counts for batch inversion (only for active table
+        // tuples)
+        let mut table_count_inverses: Vec<F> = (0..n)
+            .map(|i| {
+                if i < usable_rows {
+                    let tuple = table_tuples[i].as_slice();
+                    F::from(*table_counts.get(tuple).unwrap_or(&1) as u64)
+                } else {
+                    F::ONE // Random blinding factors will be applied later
+                }
+            })
+            .collect();
+        table_count_inverses.iter_mut().batch_invert();
+
+        // Compute normalized multiplicities: input_count / table_count
+        // Blinding rows get random values to ensure ZK.
+        table_count_inverses
+            .into_iter()
+            .enumerate()
+            .map(|(i, table_count_inv)| {
+                if i < usable_rows {
+                    let tuple = table_tuples[i].as_slice();
+                    let input_count = *input_counts.get(tuple).unwrap_or(&0);
+                    F::from(input_count as u64) * table_count_inv
+                } else {
+                    blinding_values[i - usable_rows]
+                }
+            })
+            .collect()
+    }
+
+    #[test]
+    fn test_table_side_matches_reference() {
+        use rand_chacha::ChaCha20Rng;
+        use rand_core::{RngCore, SeedableRng};
+
+        let mut rng = ChaCha20Rng::seed_from_u64(0x10600);
+        let (n, usable_rows, width) = (64usize, 58usize, 3usize);
+        // Table of pairs/triples with many duplicates.
+        let table: Vec<_> = (0..width)
+            .map(|c| {
+                poly_from_vec(
+                    (0..n)
+                        .map(|r| Fq::from((r % 11) as u64 + (c as u64) * (r % 3 == 0) as u64))
+                        .collect(),
+                )
+            })
+            .collect();
+        // Inputs: rows copied from random active table rows.
+        let inputs: Vec<Vec<_>> = (0..3)
+            .map(|_| {
+                let rows: Vec<usize> =
+                    (0..n).map(|_| rng.next_u32() as usize % usable_rows).collect();
+                table
+                    .iter()
+                    .map(|col| poly_from_vec(rows.iter().map(|&r| col[r]).collect()))
+                    .collect()
+            })
+            .collect();
+        let selector =
+            poly_from_vec((0..n).map(|_| Fq::from((rng.next_u32() % 2) as u64)).collect());
+        let blinding: Vec<_> = (0..n - usable_rows).map(|_| Fq::random(&mut rng)).collect();
+        let values: Vec<&[_]> = inputs.iter().map(Vec::as_slice).collect();
+
+        let expected = reference_multiplicities(&selector, &values, &table, usable_rows, &blinding);
+        let got = compute_multiplicities(&selector, &values, &table, usable_rows, &blinding);
+        assert_eq!(expected, got);
+        assert!(got[..usable_rows].iter().any(|m| *m != Fq::ZERO));
+    }
+
+    /// A lookup `a ∈ {0, ..., TABLE_SIZE - 1}` with no selector.
+    #[derive(Clone, Copy)]
+    struct RangeCircuit;
+
+    const TABLE_SIZE: u64 = 16;
+
+    impl Circuit<Fq> for RangeCircuit {
+        type Config = (Column<Advice>, TableColumn);
+        type FloorPlanner = SimpleFloorPlanner;
+        #[cfg(feature = "circuit-params")]
+        type Params = ();
+
+        fn without_witnesses(&self) -> Self {
+            *self
+        }
+
+        fn configure(meta: &mut ConstraintSystem<Fq>) -> Self::Config {
+            let (a, table) = (meta.advice_column(), meta.lookup_table_column());
+            meta.lookup("range", None, |meta| {
+                vec![(meta.query_advice(a, Rotation::cur()), table)]
+            });
+            (a, table)
+        }
+
+        fn synthesize(
+            &self,
+            (a, table): Self::Config,
+            mut layouter: impl Layouter<Fq>,
+        ) -> Result<(), crate::plonk::Error> {
+            layouter.assign_table(
+                || "table",
+                |mut t| {
+                    (0..TABLE_SIZE).try_for_each(|row| {
+                        t.assign_cell(|| "t", table, row as usize, || Value::known(Fq::from(row)))
+                    })
+                },
+            )?;
+            layouter.assign_region(
+                || "values",
+                |mut region| {
+                    (0..TABLE_SIZE).try_for_each(|row| {
+                        let value = Value::known(Fq::from(row));
+                        region.assign_advice(|| "a", a, row as usize, || value).map(|_| ())
+                    })
+                },
+            )
+        }
+    }
+
+    /// The table side cached in the proving key gives the same result on a
+    /// second call.
+    #[test]
+    fn test_multiplicities_cache_reuse() {
+        use midnight_curves::Bls12;
+
+        use crate::{
+            plonk::{keygen_pk, keygen_vk_with_k},
+            poly::kzg::KZGCommitmentScheme,
+        };
+
+        type CS = KZGCommitmentScheme<Bls12>;
+        let k = 6;
+        let params = <CS as PolynomialCommitmentScheme<Fq>>::gen_params(k);
+        let vk = keygen_vk_with_k::<_, CS, _>(&params, &RangeCircuit, k).unwrap();
+        let pk = keygen_pk(vk, &RangeCircuit).unwrap();
+
+        let n = 1usize << k;
+        let a = (0..n as u64).map(|row| Fq::from(row % TABLE_SIZE)).collect();
+        let advice = [pk.vk.domain.lagrange_from_vec(a)];
+        let blinding = vec![Fq::from(7u64); pk.vk.cs.blinding_factors() + 1];
+        let arg = pk.vk.cs.lookups[0].chunk_by_degree(pk.vk.cs.degree());
+
+        let run = || {
+            arg.compute_multiplicities_parallel(0, &pk, &advice, &pk.fixed_values, &[], &blinding)
+                .unwrap()
+        };
+        assert!(pk.ev.logup_tables[0].get().is_none());
+        let cold = run();
+        assert!(pk.ev.logup_tables[0].get().is_some());
+        let warm = run();
+        assert_eq!(cold.multiplicities.values, warm.multiplicities.values);
+        assert_eq!(cold.selector.values, warm.selector.values);
     }
 }

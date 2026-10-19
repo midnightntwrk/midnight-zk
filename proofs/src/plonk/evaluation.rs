@@ -1,8 +1,10 @@
+use std::sync::OnceLock;
+
 use ff::{PrimeField, WithSmallOrderMulGroup};
 use group::ff::Field;
 use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
-use super::{ConstraintSystem, Expression, trash};
+use super::{ConstraintSystem, Expression, logup::table::TableSide, trash};
 use crate::{
     plonk::{Any, argument},
     poly::{
@@ -101,6 +103,10 @@ pub struct Evaluator<F: PrimeField> {
     pub trashcans: Vec<GraphEvaluator<F>>,
     /// Flattened trash evaluators (parallel to `trashcans`).
     pub trashcans_flat: Vec<FlatGraphEvaluator<F>>,
+    /// Table side of each lookup, built on first use (`None` when the table
+    /// reads columns other than fixed ones). Tied to the `pk.fixed_values` it
+    /// is built from, which must not change afterwards.
+    pub(crate) logup_tables: Vec<OnceLock<Option<TableSide<F>>>>,
 }
 
 /// GraphEvaluator
@@ -676,6 +682,7 @@ impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
             lookups_flat: Vec::new(),
             trashcans: Vec::new(),
             trashcans_flat: Vec::new(),
+            logup_tables: cs.lookups.iter().map(|_| OnceLock::new()).collect(),
         };
 
         // Custom gates

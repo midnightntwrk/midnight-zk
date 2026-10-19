@@ -146,6 +146,7 @@ use crate::{
 };
 
 pub(crate) mod prover;
+pub(crate) mod table;
 
 /// A `BatchedArgument` collects all lookups that query the same table. For
 /// multi-column lookups (e.g., checking `(a, b) ∈ (t_1, t_2)`), columns are
