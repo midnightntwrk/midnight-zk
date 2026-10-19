@@ -375,7 +375,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         let logups = cs
             .lookups()
             .iter()
-            .map(|l| l.chunk_by_degree(assigned_vk.cs_degree))
+            .map(|l| l.chunk_by_degree(cs.lookup_chunk_bound()))
             .collect::<Vec<_>>();
 
         // The advice columns and the logup multiplicities form the phase1 group.
@@ -641,7 +641,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         // Evaluate polys from lookup argument
         cs.lookups()
             .iter()
-            .map(|l| l.chunk_by_degree(assigned_vk.cs_degree))
+            .map(|l| l.chunk_by_degree(cs.lookup_chunk_bound()))
             .enumerate()
             .map(|(argument_index, argument)| {
                 let per_flat_inputs: Vec<&[Vec<_>]> =

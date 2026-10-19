@@ -644,7 +644,7 @@ mod tests {
             pk.vk.domain.empty_lagrange(),
         ];
         let blinding = vec![Fq::from(7u64); pk.vk.cs.blinding_factors() + 1];
-        let arg = pk.vk.cs.lookups[0].chunk_by_degree(pk.vk.cs.degree());
+        let arg = pk.vk.cs.lookups[0].chunk_by_degree(pk.vk.cs.lookup_chunk_bound());
 
         let run = || {
             arg.compute_multiplicities_parallel(0, &pk, &advice, &pk.fixed_values, &[], &blinding)

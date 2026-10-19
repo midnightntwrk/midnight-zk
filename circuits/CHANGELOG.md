@@ -23,6 +23,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 
 ### Changed
+* The in-circuit verifier chunks the lookups with `ConstraintSystem::lookup_chunk_bound` (the degree of the constraint system unless set)
 * BREAKING: the verifier gadget squeezes one `y` challenge per identity, one `theta` per lookup tuple position and one trash challenge per trashcan expression, as the off-circuit verifier now does, instead of using powers of single challenges. It no longer accepts proofs of the previous prover
 * Faster witness computation of the foreign-field chips; constraints and verifying keys are unchanged. The decomposition into variable limbs reads the canonical little-endian bytes of the value instead of shifting and masking a `BigInt`, `bigint_to_fe` multiplies by `2^64` per digit, and the (double) base powers and their reductions modulo the auxiliary moduli are computed once per `FieldChip` configuration, instead of at every gate assignment. Limb sizes above 64 bits are rejected for decomposition
 * The range-check cost of the foreign-field gate bounds (`next_cheapest_power_of_two`) is read from one table of minimal row counts, instead of rebuilding the limb-size DP for each bound; same bounds, faster `configure`

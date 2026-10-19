@@ -56,7 +56,7 @@ fn identity_degrees<F: Field>(cs: &ConstraintSystem<F>) -> Vec<usize> {
     // `h·Πⱼ(fⱼ + β) − Σⱼ Π_{k≠j}(f_k + β)`; the accumulator
     // `(Z(ωX) − Z − s·Σh)·(t + β) + m`.
     for lookup in &cs.lookups {
-        let chunked = lookup.chunk_by_degree(cs.degree());
+        let chunked = lookup.chunk_by_degree(cs.lookup_chunk_bound());
         degrees.push(1);
         for chunk in chunked.input_expression_chunks() {
             degrees.push(1 + chunk.iter().map(|tuple| compressed_degree(tuple)).sum::<usize>());

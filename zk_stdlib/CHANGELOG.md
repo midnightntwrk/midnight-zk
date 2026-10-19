@@ -8,6 +8,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 ### Added
+* `ZkStdLibArch::lookup_chunk_bound`, the degree bound for packing lookup inputs into helper columns (`None` keeps the default)
 * Improved SRS loading for tests [#276](https://github.com/midnightntwrk/midnight-zk/pull/276)
 * Expose the Merkle Mountain Range gadget through `ZkStdLib::mmr` [#509](https://github.com/midnightntwrk/midnight-zk/pull/509)
 * `single-h-commitment` feature and improved SRS loading for tests [#276](https://github.com/midnightntwrk/midnight-zk/pull/276)
@@ -24,6 +25,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Fix cost model proof size check to account for committed instance columns [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 
 ### Changed
+* `ZKSTD_VERSION` is 3: `ZkStdLibArch` serializes `lookup_chunk_bound`; version 2 keys still decode, with `None`
 * Update the golden files following the quotient limbs of `midnight-proofs` being committed to as one group and opened one by one, which changes the proofs [#582](https://github.com/midnightntwrk/midnight-zk/pull/582)
 * `prove` passes the committed-instance column of a relation without a committed instance as an empty instance column, so it is neither committed to nor opened and the proof shrinks by one scalar. `verify` and `batch_verify` take it the same way when given no committed instance [#569](https://github.com/midnightntwrk/midnight-zk/pull/569)
 * `cost_model` and `update_circuit_goldenfiles` take whether the relation has a committed instance [#569](https://github.com/midnightntwrk/midnight-zk/pull/569)
