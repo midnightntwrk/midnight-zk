@@ -332,11 +332,6 @@ mod tests {
     use midnight_curves::Fq;
 
     use super::*;
-    use crate::{
-        circuit::{Layouter, SimpleFloorPlanner, Value},
-        plonk::{Advice, Circuit, Column, ConstraintSystem, TableColumn},
-        poly::Rotation,
-    };
 
     fn poly_from_vec(values: Vec<Fq>) -> Polynomial<Fq, LagrangeCoeff> {
         Polynomial {
@@ -623,55 +618,6 @@ mod tests {
         assert!(got[..usable_rows].iter().any(|m| *m != Fq::ZERO));
     }
 
-    /// A lookup `a ∈ {0, ..., TABLE_SIZE - 1}` with no selector.
-    #[derive(Clone, Copy)]
-    struct RangeCircuit;
-
-    const TABLE_SIZE: u64 = 16;
-
-    impl Circuit<Fq> for RangeCircuit {
-        type Config = (Column<Advice>, TableColumn);
-        type FloorPlanner = SimpleFloorPlanner;
-        #[cfg(feature = "circuit-params")]
-        type Params = ();
-
-        fn without_witnesses(&self) -> Self {
-            *self
-        }
-
-        fn configure(meta: &mut ConstraintSystem<Fq>) -> Self::Config {
-            let (a, table) = (meta.advice_column(), meta.lookup_table_column());
-            meta.lookup("range", None, |meta| {
-                vec![(meta.query_advice(a, Rotation::cur()), table)]
-            });
-            (a, table)
-        }
-
-        fn synthesize(
-            &self,
-            (a, table): Self::Config,
-            mut layouter: impl Layouter<Fq>,
-        ) -> Result<(), crate::plonk::Error> {
-            layouter.assign_table(
-                || "table",
-                |mut t| {
-                    (0..TABLE_SIZE).try_for_each(|row| {
-                        t.assign_cell(|| "t", table, row as usize, || Value::known(Fq::from(row)))
-                    })
-                },
-            )?;
-            layouter.assign_region(
-                || "values",
-                |mut region| {
-                    (0..TABLE_SIZE).try_for_each(|row| {
-                        let value = Value::known(Fq::from(row));
-                        region.assign_advice(|| "a", a, row as usize, || value).map(|_| ())
-                    })
-                },
-            )
-        }
-    }
-
     /// The table side cached in the proving key gives the same result on a
     /// second call.
     #[test]
@@ -679,19 +625,24 @@ mod tests {
         use midnight_curves::Bls12;
 
         use crate::{
-            plonk::{keygen_pk, keygen_vk_with_k},
+            plonk::{
+                keygen_pk, keygen_vk_with_k,
+                test_circuit::{K, SquareCircuit, TABLE_SIZE},
+            },
             poly::kzg::KZGCommitmentScheme,
         };
 
         type CS = KZGCommitmentScheme<Bls12>;
-        let k = 6;
-        let params = <CS as PolynomialCommitmentScheme<Fq>>::gen_params(k);
-        let vk = keygen_vk_with_k::<_, CS, _>(&params, &RangeCircuit, k).unwrap();
-        let pk = keygen_pk(vk, &RangeCircuit).unwrap();
+        let params = <CS as PolynomialCommitmentScheme<Fq>>::gen_params(K);
+        let vk = keygen_vk_with_k::<_, CS, _>(&params, &SquareCircuit, K).unwrap();
+        let pk = keygen_pk(vk, &SquareCircuit).unwrap();
 
-        let n = 1usize << k;
-        let a = (0..n as u64).map(|row| Fq::from(row % TABLE_SIZE)).collect();
-        let advice = [pk.vk.domain.lagrange_from_vec(a)];
+        let n = 1usize << K;
+        let a = (0..n as u64).map(|row| Fq::from(row % TABLE_SIZE + 1)).collect();
+        let advice = [
+            pk.vk.domain.lagrange_from_vec(a),
+            pk.vk.domain.empty_lagrange(),
+        ];
         let blinding = vec![Fq::from(7u64); pk.vk.cs.blinding_factors() + 1];
         let arg = pk.vk.cs.lookups[0].chunk_by_degree(pk.vk.cs.degree());
 

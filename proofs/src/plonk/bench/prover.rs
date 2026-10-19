@@ -15,8 +15,8 @@ use crate::{
         circuit::Circuit,
         logup,
         prover::{
-            compute_h_poly, compute_instances, compute_nu_poly, compute_queries, parse_advices,
-            write_instance_evals_to_transcript,
+            add_h0_eval, compute_h_poly, compute_instances, compute_nu_poly, compute_queries,
+            parse_advices, write_instance_evals_to_transcript,
         },
         traces::ProverTrace,
     },
@@ -25,7 +25,6 @@ use crate::{
         commitment::PolynomialCommitmentScheme,
     },
     transcript::{Hashable, Sampleable, Transcript},
-    utils::arithmetic::eval_polynomial,
 };
 
 /// The polynomials of one argument phase group, keyed by their label.
@@ -548,13 +547,7 @@ where
     let phase2_evaluated = phase2_committed.evaluate(cs, &x_rotations, transcript)?;
     let mut quotient_evaluated = quotient_committed.evaluate(cs, &x_rotations, transcript)?;
 
-    // h_0(x) is not written to the proof, the verifier derives it.
-    let h0 = PolynomialLabel::QuotientPiece(0);
-    let h0_eval = eval_polynomial(
-        quotient_committed.poly(&h0).expect("a quotient limb h_0"),
-        x,
-    );
-    quotient_evaluated.insert(h0, x, h0_eval);
+    add_h0_eval(&quotient_committed, &mut quotient_evaluated, x);
 
     let instance_labels: Vec<_> = (0..nb_committed_instances)
         .map(|i| [PolynomialLabel::CommittedInstance(i)])

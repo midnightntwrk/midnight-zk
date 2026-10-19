@@ -222,17 +222,7 @@ where
         &y,
     );
 
-    // h_0(x) is derived from nu(x) = (x^n - 1) h(x), for
-    // h(x) = h_0(x) + x^{n-2} h_1(x) + ..., so that opening h_0 at it checks
-    // the identities.
-    let higher_limbs = (quotient_evaluated.evals_map.values().skip(1).rev())
-        .fold(F::ZERO, |acc, evals| {
-            (acc + evals[0].eval()) * splitting_factor
-        });
-    let vanishing_inv =
-        Option::<F>::from((xn - F::ONE).invert()).ok_or(Error::ConstraintSystemFailure)?;
-    let h0_eval = nu_eval * vanishing_inv - higher_limbs;
-    quotient_evaluated.insert(PolynomialLabel::QuotientPiece(0), x, h0_eval);
+    derive_h0_eval(&mut quotient_evaluated, nu_eval, x, splitting_factor, xn)?;
 
     // Collect queries that are checked in the multi-open argument
     //
@@ -264,6 +254,33 @@ where
     // polynomial commitments open to the correct values, which is true as long
     // as the following accumulator passes the invariant.
     CS::multi_prepare(&queries, transcript).map_err(|_| Error::Opening)
+}
+
+/// Adds the evaluation of the quotient limb `h_0` at `x` to
+/// `quotient_evaluated`, which holds those of all the other limbs. It is
+/// derived from `nu_eval = nu(x) = (x^n - 1) h(x)`, for
+/// `h(x) = h_0(x) + x^{n-2} h_1(x) + ...`, so that opening `h_0` at `x` checks
+/// the identities. `splitting_factor` is `x^{n-2}` and `xn` is `x^n`.
+pub(crate) fn derive_h0_eval<F, CS>(
+    quotient_evaluated: &mut argument::verifier::Evaluated<F, CS>,
+    nu_eval: F,
+    x: F,
+    splitting_factor: F,
+    xn: F,
+) -> Result<(), Error>
+where
+    F: WithSmallOrderMulGroup<3>,
+    CS: PolynomialCommitmentScheme<F>,
+{
+    let higher_limbs = (quotient_evaluated.evals_map.values().skip(1).rev())
+        .fold(F::ZERO, |acc, evals| {
+            (acc + evals[0].eval()) * splitting_factor
+        });
+    let vanishing_inv =
+        Option::<F>::from((xn - F::ONE).invert()).ok_or(Error::ConstraintSystemFailure)?;
+    let h0_eval = nu_eval * vanishing_inv - higher_limbs;
+    quotient_evaluated.insert(PolynomialLabel::QuotientPiece(0), x, h0_eval);
+    Ok(())
 }
 
 /// Prepares a plonk proof into a PCS instance that can be finalized or

@@ -54,13 +54,18 @@ where
     CS::commit(params, &poly, PolynomialLabel::CommittedInstance(0))
 }
 
-/// This computes a proof trace for the provided `circuit` when given the
-/// public parameters `params` and the proving key [`ProvingKey`] that was
-/// generated previously for the same circuit. The provided `instances`
-/// are zero-padded internally.
+/// Runs the commit phases of [`create_proof`] for the provided `circuit` when
+/// given the public parameters `params` and the proving key [`ProvingKey`] that
+/// was generated previously for the same circuit: it synthesises the witness,
+/// commits to phase 1 (advice columns and logup multiplicities), squeezes the
+/// theta, beta, gamma and trash challenges, commits to phase 2 (permutation,
+/// logup and trash columns) and squeezes the y challenges. The provided
+/// `instances` are zero-padded internally.
 ///
-/// The trace can then be used to finalise the proof.
-pub(crate) fn compute_trace<
+/// The transcript is left right after the y challenges. The returned trace
+/// holds the phase-1 and phase-2 polynomials in Lagrange form; it can be
+/// converted with [`ProverTrace::into_coeff`] and finalised into a proof.
+pub(crate) fn commit_phases<
     'a,
     F,
     CS: PolynomialCommitmentScheme<F>,
@@ -77,7 +82,7 @@ pub(crate) fn compute_trace<
     instances: &[&[F]],
     transcript: &mut T,
     mut rng: impl RngCore + CryptoRng,
-) -> Result<ProverTrace<'a, F>, Error>
+) -> Result<ProverTrace<'a, F, LagrangeCoeff>, Error>
 where
     CS::Commitment: Hashable<T::Hash>,
     F: WithSmallOrderMulGroup<3>
@@ -273,11 +278,6 @@ where
         instance_values,
     } = instance;
 
-    let domain = pk.vk.get_domain();
-
-    let phase1_committed = phase1_committed.into_coeff(domain);
-    let phase2_committed = phase2_committed.into_coeff(domain);
-
     Ok(ProverTrace {
         instance_polys,
         instance_values,
@@ -359,13 +359,7 @@ where
 
     let mut quotient_evaluated = quotient_committed.evaluate(cs, &x_rotations, transcript)?;
 
-    // h_0(x) is not written to the proof, the verifier derives it.
-    let h0 = PolynomialLabel::QuotientPiece(0);
-    let h0_eval = eval_polynomial(
-        quotient_committed.poly(&h0).expect("a quotient limb h_0"),
-        x,
-    );
-    quotient_evaluated.insert(h0, x, h0_eval);
+    add_h0_eval(&quotient_committed, &mut quotient_evaluated, x);
 
     let instance_labels: Vec<_> = (0..nb_committed_instances)
         .map(|i| [PolynomialLabel::CommittedInstance(i)])
@@ -414,7 +408,7 @@ where
         + Ord
         + FromUniformBytes<64>,
 {
-    let trace = compute_trace(
+    let trace = commit_phases(
         params,
         pk,
         circuit,
@@ -423,7 +417,8 @@ where
         instances,
         transcript,
         &mut rng,
-    )?;
+    )?
+    .into_coeff(pk.vk.get_domain());
     finalise_proof(
         params,
         pk,
@@ -697,6 +692,26 @@ fn blind_quotient_limbs<F: PrimeField>(quotient_limbs: &mut [Vec<F>]) {
     }
 
     quotient_limbs[nr_limbs - 1].extend([F::ZERO; 2]);
+}
+
+/// Adds the evaluation of the quotient limb `h_0` at `x` to
+/// `quotient_evaluated`. It is not written to the proof: the verifier derives
+/// it from `nu(x)`, see `derive_h0_eval`.
+///
+/// # Panics
+///
+/// If `quotient_committed` has no limb `h_0`.
+pub(crate) fn add_h0_eval<F: PrimeField>(
+    quotient_committed: &argument::prover::Committed<F, Coeff>,
+    quotient_evaluated: &mut argument::prover::Evaluated<'_, F>,
+    x: F,
+) {
+    let h0 = PolynomialLabel::QuotientPiece(0);
+    let h0_eval = eval_polynomial(
+        quotient_committed.poly(&h0).expect("a quotient limb h_0"),
+        x,
+    );
+    quotient_evaluated.insert(h0, x, h0_eval);
 }
 
 pub(super) fn write_instance_evals_to_transcript<F, CS, T>(
