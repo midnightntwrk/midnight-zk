@@ -38,4 +38,4 @@ jobs:
           persist-credentials: false
 
       - name: Scan code
-        uses: midnightntwrk/upload-sarif-github-action@362d0346b194663004cb371e8e8523bd1c910917
+        uses: midnightntwrk/upload-sarif-github-action@4e7a363e1fcd1be102b28485ad17bcb507deada6
