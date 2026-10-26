@@ -78,8 +78,9 @@ struct AssignedEvaluationDomain<S: SelfEmulation> {
 
 /// Type for in-circuit verifying keys.
 ///
-/// Only the transcript representation and the evaluation domain are assigned
-/// in-circuit; the constraint system is kept off-circuit.
+/// The transcript representation and the evaluation domain are assigned
+/// in-circuit (as are the commitments, for keys obtained from an [UnboundVk]);
+/// the constraint system is kept off-circuit.
 ///
 /// The fixed and permutation commitments are either:
 ///  - placeholders (the `Fixed` variant of [AssignedKZGCommitment]) that only
@@ -94,7 +95,13 @@ struct AssignedEvaluationDomain<S: SelfEmulation> {
 ///    by the hash the key is bound to.
 ///
 /// The only entry points are [VerifierGadget::assign_vk_as_public_input],
-/// [VerifierGadget::assign_fixed_vk] and the binding functions of [UnboundVk].
+/// [VerifierGadget::assign_fixed_vk] and [VerifierGadget::bind_vk_to_hash].
+///
+/// This type does not guarantee that its values are consistent with each
+/// other (e.g. that `omega` is a primitive `2^k`-th root of unity, or that they
+/// match the key `transcript_repr` commits to). For keys obtained through
+/// [VerifierGadget::bind_vk_to_hash] this is enforced by the hash constraint;
+/// for the other entry points it is the caller's responsibility.
 #[derive(Clone, Debug)]
 pub struct AssignedVk<S: SelfEmulation> {
     domain: AssignedEvaluationDomain<S>,

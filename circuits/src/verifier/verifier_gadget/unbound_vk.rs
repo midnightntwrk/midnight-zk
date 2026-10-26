@@ -11,15 +11,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! A privately assigned verifying key, which must be bound to a hash before it
-//! can be used.
+//! A privately assigned verifying key, which must be bound before it can be
+//! used: its hash is computed in-circuit and constrained to equal a trusted
+//! value.
 //!
 //! # WARNING
 //!
-//! Binding only guarantees that the key matches the given hash. It is the
-//! responsibility of the caller to guarantee the integrity of that hash (e.g.
-//! by making it a public input or a constant). Binding to an unconstrained
-//! witness lets a malicious prover use any verifying key.
+//! Binding only guarantees that the key's hash equals the given value. It is
+//! the responsibility of the caller to guarantee the integrity of that value
+//! (e.g. by making it a public input or a constant). Not binding the key, or
+//! binding it to an unconstrained witness, results in an overall relation of
+//! the form "I know a proof of *some* statement", which is trivially
+//! satisfiable and thus meaningless.
 
 use midnight_proofs::{
     circuit::{Layouter, Value},
@@ -41,14 +44,14 @@ use crate::{
 /// A privately assigned verifying key that has not yet been bound to anything.
 ///
 /// Nothing about the witnessed key is constrained, beyond its commitments
-/// being on the curve. The only way to use it is to bind it to a trusted hash,
-/// through [`VerifierGadget::bind_vk_to_hash`], which returns the usable
-/// [`AssignedVk`].
+/// being on the curve. It must be bound through
+/// [`VerifierGadget::bind_vk_to_hash`], which constrains its [`vk_hash`] to
+/// equal a trusted value and returns the usable [`AssignedVk`].
 ///
-/// Its commitments are witnessed, so they enter the accumulator as variable
-/// bases. Keys whose commitments should be fixed bases (resolved by the
-/// decider) must be assigned with [`VerifierGadget::assign_vk_as_public_input`]
-/// or [`VerifierGadget::assign_fixed_vk`] instead.
+/// Its commitments are witnessed. Keys with fixed commitments (not witnessed
+/// in-circuit) must be assigned with
+/// [`VerifierGadget::assign_vk_as_public_input`] or
+/// [`VerifierGadget::assign_fixed_vk`] instead.
 #[derive(Clone, Debug)]
 pub struct UnboundVk<S: SelfEmulation>(AssignedVk<S>);
 
@@ -75,6 +78,10 @@ impl<S: SelfEmulation> VerifierGadget<S> {
     ///
     /// The resulting key must be bound before it can be used, see
     /// [`UnboundVk`].
+    ///
+    /// The circuit layout is taken off-circuit from `cs`, so `vk` may be
+    /// unknown (e.g. at keygen). `cs` must be the constraint system of the key
+    /// whose hash it will be bound to; this is not checked in-circuit.
     ///
     /// `cs` must be finalized, i.e. its selectors must have been converted to
     /// fixed columns, as in the constraint system of a verifying key.
