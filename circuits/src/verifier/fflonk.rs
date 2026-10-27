@@ -36,6 +36,7 @@ use midnight_proofs::{
 use crate::{
     field::AssignedNative,
     instructions::ArithInstructions,
+    types::InnerValue,
     verifier::{
         AssignedAccumulator, SelfEmulation,
         pcs::{InCircuitPCS, VerifierQuery},
@@ -80,10 +81,18 @@ where
     fn assign_commitment(
         layouter: &mut impl Layouter<S::F>,
         curve_chip: &S::CurveChip,
-        value: Value<S::C>,
-        label: PolynomialLabel,
+        value: Value<<Self::AssignedCommitment as InnerValue>::Element>,
+        labels: &[PolynomialLabel],
     ) -> Result<Self::AssignedCommitment, Error> {
-        PCS::assign_commitment(layouter, curve_chip, value, Collection(vec![label]))
+        PCS::assign_commitment(layouter, curve_chip, value, &Self::chunk_labels(labels))
+    }
+
+    fn commitment_as_public_input(
+        layouter: &mut impl Layouter<S::F>,
+        curve_chip: &S::CurveChip,
+        commitment: &Self::AssignedCommitment,
+    ) -> Result<Vec<AssignedNative<S::F>>, Error> {
+        PCS::commitment_as_public_input(layouter, curve_chip, commitment)
     }
 
     fn read_commitment(

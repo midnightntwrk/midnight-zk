@@ -44,8 +44,8 @@ use midnight_proofs::{
 use crate::{
     CircuitField,
     field::AssignedNative,
-    instructions::{ArithInstructions, AssignmentInstructions},
-    types::InnerValue,
+    instructions::{ArithInstructions, AssignmentInstructions, PublicInputInstructions},
+    types::{InnerValue, Instantiable},
     verifier::{
         AssignedAccumulator, SelfEmulation,
         msm::{AssignedMsm, AssignedPoint},
@@ -118,15 +118,16 @@ impl<S: SelfEmulation> AssignedKZGCommitment<S> {
         AssignedKZGCommitment::Simple(AssignedPoint::Fixed, label)
     }
 
-    /// Assigns a curve point in the circuit and wraps it in a labeled `Simple`
-    /// commitment.
+    /// Assigns a curve point in the circuit (without subgroup check) and wraps
+    /// it in a labeled `Simple` commitment.
     pub fn assign(
         layouter: &mut impl Layouter<S::F>,
         curve_chip: &S::CurveChip,
         point: Value<S::C>,
         label: PolynomialLabel,
     ) -> Result<Self, Error> {
-        curve_chip.assign(layouter, point).map(|p| Self::simple(p, label))
+        S::assign_without_subgroup_check(layouter, curve_chip, point)
+            .map(|p| Self::simple(p, label))
     }
 
     /// Converts this commitment into an [`AssignedMsm`] for use in the
@@ -176,6 +177,27 @@ impl<S: SelfEmulation> InnerValue for AssignedKZGMultiCommitment<S> {
 
     fn value(&self) -> Value<Self::Element> {
         Value::from_iter(self.0.iter().map(|c| c.value())).map(KZGMultiCommitment)
+    }
+}
+
+impl<S: SelfEmulation> Instantiable<S::F> for AssignedKZGMultiCommitment<S> {
+    /// # Panics
+    ///
+    /// Panics if `com` contains a linear combination of commitments.
+    fn as_public_input(com: &KZGMultiCommitment<S::Engine>) -> Vec<S::F> {
+        (com.0.iter())
+            .flat_map(|c| match c {
+                KZGCommitment::Simple(point, _) => S::AssignedPoint::as_public_input(point),
+                KZGCommitment::Linear(..) => {
+                    panic!("linear combinations of commitments cannot be public inputs")
+                }
+            })
+            .collect()
+    }
+
+    #[cfg(any(test, feature = "testing"))]
+    fn from_public_input(_fields: &[S::F]) -> Option<KZGMultiCommitment<S::Engine>> {
+        unimplemented!("the labels of a commitment are not part of its public inputs")
     }
 }
 
@@ -613,12 +635,39 @@ impl<S: SelfEmulation> InCircuitPCS<S> for InCircuitKZG<S> {
     fn assign_commitment(
         layouter: &mut impl Layouter<S::F>,
         curve_chip: &S::CurveChip,
-        value: Value<S::C>,
-        label: PolynomialLabel,
+        value: Value<KZGMultiCommitment<S::Engine>>,
+        labels: &[PolynomialLabel],
     ) -> Result<Self::AssignedCommitment, Error> {
-        Ok(AssignedKZGMultiCommitment(vec![
-            AssignedKZGCommitment::assign(layouter, curve_chip, value, label)?,
-        ]))
+        PolynomialLabel::assert_distinct(labels);
+        let points = value
+            .map(|com| {
+                assert_eq!(com.0.len(), labels.len());
+                com.0.iter().map(|c| *c.as_point()).collect::<Vec<_>>()
+            })
+            .transpose_vec(labels.len());
+        let inners = (points.into_iter().zip(labels))
+            .map(|(point, label)| {
+                AssignedKZGCommitment::assign(layouter, curve_chip, point, label.clone())
+            })
+            .collect::<Result<Vec<_>, Error>>()?;
+        Ok(AssignedKZGMultiCommitment(inners))
+    }
+
+    fn commitment_as_public_input(
+        layouter: &mut impl Layouter<S::F>,
+        curve_chip: &S::CurveChip,
+        commitment: &AssignedKZGMultiCommitment<S>,
+    ) -> Result<Vec<AssignedNative<S::F>>, Error> {
+        let mut inputs = vec![];
+        for com in commitment.0.iter() {
+            match com {
+                AssignedKZGCommitment::Simple(AssignedPoint::Variable(point), _) => {
+                    inputs.extend(curve_chip.as_public_input(layouter, point)?)
+                }
+                _ => panic!("only commitments to assigned points can be public inputs"),
+            }
+        }
+        Ok(inputs)
     }
 
     fn read_commitment(
