@@ -160,9 +160,7 @@ impl MidnightVK {
     }
 }
 
-/// Validates a `k` read from untrusted key bytes: `k = 0` underflows the
-/// `k - 1` used to configure the pow2range table, and a domain of `2^k` rows
-/// needs a `2^k`-th root of unity, which exists only for `k <= F::S`.
+/// Returns an error unless `0 < k <= F::S`.
 fn check_k(k: u8) -> io::Result<u8> {
     let max_k = F::S;
     if 0 < k && u32::from(k) <= max_k {
