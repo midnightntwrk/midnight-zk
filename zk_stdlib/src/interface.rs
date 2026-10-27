@@ -15,7 +15,7 @@
 
 use std::{cell::RefCell, io, rc::Rc};
 
-use ff::Field;
+use ff::{Field, PrimeField};
 use midnight_circuits::types::ComposableChip;
 use midnight_curves::{Bls12, G1Projective};
 use midnight_proofs::{
@@ -130,7 +130,7 @@ impl MidnightVK {
 
         let mut byte = [0u8; 1];
         reader.read_exact(&mut byte)?;
-        let k = byte[0];
+        let k = check_k(byte[0])?;
 
         let mut bytes = [0u8; 4];
         reader.read_exact(&mut bytes)?;
@@ -158,6 +158,17 @@ impl MidnightVK {
     pub fn vk(&self) -> &VerifyingKey<midnight_curves::Fq, DefaultPCS> {
         &self.vk
     }
+}
+
+/// Returns an error unless `0 < k <= F::S`.
+fn check_k(k: u8) -> io::Result<u8> {
+    let max_k = F::S;
+    if 0 < k && u32::from(k) <= max_k {
+        return Ok(k);
+    }
+
+    let msg = format!("key declares k = {k}, expected 1..={max_k} (log2 of the circuit size)");
+    Err(io::Error::new(io::ErrorKind::InvalidData, msg))
 }
 
 /// A proving key of a Midnight circuit.
@@ -197,7 +208,7 @@ impl<Rel: Relation> MidnightPK<Rel> {
         let mut byte = [0u8; 1];
 
         reader.read_exact(&mut byte)?;
-        let k = byte[0];
+        let k = check_k(byte[0])?;
 
         let relation = Rel::read_relation(reader)?;
 

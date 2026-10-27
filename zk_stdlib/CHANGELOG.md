@@ -22,6 +22,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 * Fix cost model proof size check to account for committed instance columns [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
+* `MidnightVK::read` and `MidnightPK::read` reject a `k` outside `1..=F::S` instead of underflowing on `k = 0` [#581](https://github.com/midnightntwrk/midnight-zk/pull/581)
 
 ### Changed
 * Update the golden files following the quotient limbs of `midnight-proofs` being committed to as one group and opened one by one, which changes the proofs [#582](https://github.com/midnightntwrk/midnight-zk/pull/582)
