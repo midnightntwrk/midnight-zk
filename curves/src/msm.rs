@@ -8,6 +8,9 @@ use rayon::iter::{
 
 use crate::CurveAffine;
 
+mod pippenger;
+pub use pippenger::msm_pippenger;
+
 const BATCH_SIZE: usize = 64;
 
 fn get_booth_index(window_index: usize, window_size: usize, el: &[u8]) -> i32 {
