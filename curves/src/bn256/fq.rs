@@ -34,6 +34,8 @@ impl ExtField for Fq {
     fn frobenius_map(&mut self, _: usize) {}
 }
 
+impl crate::curve::FieldInto for Fq {}
+
 #[cfg(test)]
 mod test {
     use super::*;

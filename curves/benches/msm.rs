@@ -122,6 +122,19 @@ fn msm_blst(c: &mut Criterion) {
         }
     }
 
+    // midnight-curves msm_pippenger version (the commitments' MSM).
+    for (b_index, b) in BITS.iter().enumerate() {
+        for k in MULTICORE_RANGE {
+            let n: usize = 1 << k;
+            let id = format!("msm_pippenger_{b}b_{k}");
+            group.bench_function(BenchmarkId::new("msm_pippenger", id), |b| {
+                b.iter(|| {
+                    midnight_curves::msm::msm_pippenger(&coeffs[b_index][..n], &bases[..n]);
+                })
+            });
+        }
+    }
+
     group.finish();
 }
 

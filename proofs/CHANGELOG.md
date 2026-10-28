@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `kzg::KZGEngine`, the pairing engines over which KZG commitments can be made, bounding `KZGCommitmentScheme<E>` [#644](https://github.com/midnightntwrk/midnight-zk/pull/644)
 * `transcript::TranscriptField<H>` (`Hashable<H> + Sampleable<H>`) and `plonk::ProofField<H>` (`TranscriptField<H> + WithSmallOrderMulGroup<3> + FromUniformBytes<64> + Hash + Ord`), which the prover, verifier and commitment schemes are bounded by [#644](https://github.com/midnightntwrk/midnight-zk/pull/644)
 ### Changed
+* KZG commitments (`commit`, `commit_many` and `commit_interleaved`, hence the prover, keygen and `commit_to_instances`) use the Rust `msm_pippenger` instead of blst's `multi_exp_affine` for BLS12-381 G1, with the same results. The verifier's MSM (`msm_specific`) is unchanged [#TBD](https://github.com/midnightntwrk/midnight-zk/pull/TBD)
 * Only the code that needs `ZETA` (building an `EvaluationDomain`, and reading or creating keys) requires `WithSmallOrderMulGroup<3>`; the getters of `EvaluationDomain`, `VerifyingKey` and `ProvingKey`, and the prover and verifier internals, require `PrimeField` [#644](https://github.com/midnightntwrk/midnight-zk/pull/644)
 ### Removed
 
