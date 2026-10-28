@@ -626,16 +626,6 @@ where
             .iter()
             .try_for_each(|c| self.native_gadget.constrain_as_public_input(layouter, c))
     }
-
-    fn assign_as_public_input(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        value: Value<C::CryptographicGroup>,
-    ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
-        let point = self.assign(layouter, value)?;
-        self.constrain_as_public_input(layouter, &point)?;
-        Ok(point)
-    }
 }
 
 /// Inherit assignment instructions for [AssignedField], from the

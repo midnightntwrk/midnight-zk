@@ -421,19 +421,6 @@ where
             .iter()
             .try_for_each(|c| self.native_gadget.constrain_as_public_input(layouter, c))
     }
-
-    fn assign_as_public_input(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        value: Value<C::CryptographicGroup>,
-    ) -> Result<AssignedForeignPoint<F, C, B>, Error> {
-        // Given our optimized way of constraining a point as public input, we
-        // cannot optimize the direct assignment as PI. We just compose `assign`
-        // with `constrain_as_public_input`.
-        let point = self.assign_without_subgroup_check(layouter, value)?;
-        self.constrain_as_public_input(layouter, &point)?;
-        Ok(point)
-    }
 }
 
 /// Inherit assignment instructions for [AssignedNative], from the

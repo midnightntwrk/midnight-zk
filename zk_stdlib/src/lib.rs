@@ -1130,14 +1130,6 @@ where
     ) -> Result<(), Error> {
         self.native_gadget.constrain_as_public_input(layouter, assigned)
     }
-
-    fn assign_as_public_input(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        value: Value<<T>::Element>,
-    ) -> Result<T, Error> {
-        self.native_gadget.assign_as_public_input(layouter, value)
-    }
 }
 
 impl<T> CommittedInstanceInstructions<F, T> for ZkStdLib

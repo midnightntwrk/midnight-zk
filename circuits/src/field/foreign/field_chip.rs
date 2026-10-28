@@ -537,18 +537,6 @@ where
             .iter()
             .try_for_each(|c| self.native_gadget.constrain_as_public_input(layouter, c))
     }
-
-    fn assign_as_public_input(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        value: Value<K>,
-    ) -> Result<AssignedField<F, K, P>, Error> {
-        // Do NOT optimize this implementation. Since we batch various limbs when
-        // constraing as public inputs, we cannot skip the range-checks on the limbs.
-        let assigned = self.assign(layouter, value)?;
-        self.constrain_as_public_input(layouter, &assigned)?;
-        Ok(assigned)
-    }
 }
 
 impl<F, K, P, N> AssertionInstructions<F, AssignedField<F, K, P>> for FieldChip<F, K, P, N>

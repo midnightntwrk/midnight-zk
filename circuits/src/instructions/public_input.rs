@@ -25,6 +25,7 @@ use midnight_proofs::{
 };
 
 use crate::{
+    instructions::AssignmentInstructions,
     types::{AssignedNative, Instantiable},
     CircuitField,
 };
@@ -55,25 +56,20 @@ where
         assigned: &Assigned,
     ) -> Result<(), Error>;
 
-    /// Same as [assign](crate::instructions::AssignmentInstructions::assign),
-    /// but it immediately constrains the assigned value as a public input.
-    /// This allows the implementer of this function to skip some in-circuit
-    /// checks on the structure of the assigned value, which will be
-    /// guaranteed to hold through the public input bind.
-    ///
-    /// # WARNING
-    /// Declaring public inputs with this function may assume that the verifier
-    /// will perform additional off-circuit checks on the public inputs.
-    /// **DO NOT** use this function if you are not sure these checks are going
-    /// to be enforced. Instead, you can safely use
-    /// [assign](crate::instructions::AssignmentInstructions::assign)
-    /// followed by
-    /// [constrain_as_public_input](PublicInputInstructions::constrain_as_public_input).
+    /// Same as [assign](AssignmentInstructions::assign), but it immediately
+    /// constrains the assigned value as a public input.
     fn assign_as_public_input(
         &self,
         layouter: &mut impl Layouter<F>,
         value: Value<Assigned::Element>,
-    ) -> Result<Assigned, Error>;
+    ) -> Result<Assigned, Error>
+    where
+        Self: AssignmentInstructions<F, Assigned>,
+    {
+        let assigned = self.assign(layouter, value)?;
+        self.constrain_as_public_input(layouter, &assigned)?;
+        Ok(assigned)
+    }
 }
 
 /// Instruction to constrain public inputs in committed form.

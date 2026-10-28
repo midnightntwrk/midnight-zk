@@ -1008,25 +1008,6 @@ impl<C: EdwardsCurve> PublicInputInstructions<C::Base, AssignedNativePoint<C>> f
             .iter()
             .try_for_each(|c| self.native_gadget.constrain_as_public_input(layouter, c))
     }
-
-    fn assign_as_public_input(
-        &self,
-        layouter: &mut impl Layouter<C::Base>,
-        p: Value<C::CryptographicGroup>,
-    ) -> Result<AssignedNativePoint<C>, Error> {
-        let (x, y) = p.map(|p| p.into().coordinates().unwrap()).unzip();
-        let x = self.native_gadget.assign_as_public_input(layouter, x)?;
-        let y = self.native_gadget.assign_as_public_input(layouter, y)?;
-
-        // Since the input value will be constrained to be equal to a PI,
-        // the verifier will check the validity of the point out-of-circuit,
-        // so the checks can be skipped.
-        Ok(AssignedNativePoint {
-            x,
-            y,
-            checked_in_subgroup: true,
-        })
-    }
 }
 
 impl<C: EdwardsCurve> PublicInputInstructions<C::Base, AssignedScalarOfNativeCurve<C>>
@@ -1054,16 +1035,6 @@ impl<C: EdwardsCurve> PublicInputInstructions<C::Base, AssignedScalarOfNativeCur
         self.as_public_input(layouter, assigned)?
             .iter()
             .try_for_each(|c| self.native_gadget.constrain_as_public_input(layouter, c))
-    }
-
-    fn assign_as_public_input(
-        &self,
-        layouter: &mut impl Layouter<C::Base>,
-        value: Value<C::ScalarField>,
-    ) -> Result<AssignedScalarOfNativeCurve<C>, Error> {
-        let assigned: AssignedScalarOfNativeCurve<C> = self.assign(layouter, value)?;
-        self.constrain_as_public_input(layouter, &assigned)?;
-        Ok(assigned)
     }
 }
 

@@ -526,19 +526,6 @@ where
         let assigned_as_native: AssignedNative<F> = assigned.clone().into();
         self.constrain_as_public_input(layouter, &assigned_as_native)
     }
-
-    fn assign_as_public_input(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        value: Value<u8>,
-    ) -> Result<AssignedByte<F>, Error> {
-        // We can skip the in-circuit [0, 255]-range-check as this condition will
-        // be enforced through the public inputs bind anyway.
-        let assigned_native = self
-            .native_chip
-            .assign_as_public_input(layouter, value.map(|byte| F::from(byte as u64)))?;
-        self.convert_unsafe(layouter, &assigned_native)
-    }
 }
 
 impl<F, CD, NA, Assigned> CommittedInstanceInstructions<F, Assigned> for NativeGadget<F, CD, NA>
@@ -1037,14 +1024,6 @@ where
     ) -> Result<(), Error> {
         self.native_chip.constrain_as_public_input(layouter, assigned)
     }
-
-    fn assign_as_public_input(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        value: Value<F>,
-    ) -> Result<AssignedNative<F>, Error> {
-        self.native_chip.assign_as_public_input(layouter, value)
-    }
 }
 
 // Inherit F Assignment Instructions.
@@ -1103,14 +1082,6 @@ where
         assigned: &AssignedBit<F>,
     ) -> Result<(), Error> {
         self.native_chip.constrain_as_public_input(layouter, assigned)
-    }
-
-    fn assign_as_public_input(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        value: Value<bool>,
-    ) -> Result<AssignedBit<F>, Error> {
-        self.native_chip.assign_as_public_input(layouter, value)
     }
 }
 

@@ -165,16 +165,6 @@ where
             .iter()
             .try_for_each(|x| self.scalar_chip.constrain_as_public_input(layouter, x))
     }
-
-    fn assign_as_public_input(
-        &self,
-        layouter: &mut impl Layouter<C::ScalarField>,
-        value: Value<C>,
-    ) -> Result<FakePoint<C>, Error> {
-        let assigned_point = self.assign(layouter, value)?;
-        self.constrain_as_public_input(layouter, &assigned_point)?;
-        Ok(assigned_point)
-    }
 }
 
 /// Implementation of a light version of the SelfEmulation trait for blstrs.
