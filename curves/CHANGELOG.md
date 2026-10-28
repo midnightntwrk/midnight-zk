@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 ## [Unreleased]
 ### Added
 ### Changed
+### Fixed
+* `msm` bench: one generator per rayon job made 98% of its points and scalars repeats; each item is now seeded on its own [#TBD](https://github.com/midnightntwrk/midnight-zk/pull/TBD)
 ### Removed
 
 ## 0.4.0-rc.1
