@@ -39,6 +39,51 @@ pub trait CurveExt:
     /// Returns the curve constant b.
     fn b() -> Self::Base;
 }
+
+/// Field operations writing to a destination, `out = a op b`. The defaults use
+/// the `Field` operators. A field implemented by external routines (BLS12-381's
+/// `Fp`, on blst) overrides them to call those routines on the destination
+/// itself: the operators would first copy the operands, and copying a result
+/// just written by such a routine stalls the CPU (the store cannot be forwarded
+/// to the wider load). The MSM's bucket arithmetic is written with these.
+pub trait FieldInto: ff::Field {
+    /// `out = a·b`.
+    #[inline]
+    fn mul_into(out: &mut Self, a: &Self, b: &Self) {
+        *out = *a * b;
+    }
+
+    /// `out = a^2`.
+    #[inline]
+    fn square_into(out: &mut Self, a: &Self) {
+        *out = a.square();
+    }
+
+    /// `out = a + b`.
+    #[inline]
+    fn add_into(out: &mut Self, a: &Self, b: &Self) {
+        *out = *a + b;
+    }
+
+    /// `out = a - b`.
+    #[inline]
+    fn sub_into(out: &mut Self, a: &Self, b: &Self) {
+        *out = *a - b;
+    }
+
+    /// `out = -a`.
+    #[inline]
+    fn neg_into(out: &mut Self, a: &Self) {
+        *out = -*a;
+    }
+
+    /// `a = b - a`.
+    #[inline]
+    fn rsub_assign(a: &mut Self, b: &Self) {
+        *a = *b - *a;
+    }
+}
+
 /// This trait is the affine counterpart to `Curve` and is used for
 /// serialization, storage in memory, and inspection of $x$ and $y$ coordinates.
 pub trait CurveAffine:
@@ -55,7 +100,7 @@ pub trait CurveAffine:
     /// The scalar field of this elliptic curve.
     type ScalarExt: ff::WithSmallOrderMulGroup<3> + Ord;
     /// The base field over which this elliptic curve is constructed.
-    type Base: ff::WithSmallOrderMulGroup<3> + Ord;
+    type Base: ff::WithSmallOrderMulGroup<3> + Ord + FieldInto;
     /// The projective form of the curve
     type CurveExt: CurveExt<AffineExt = Self, ScalarExt = <Self as CurveAffine>::ScalarExt>;
 
@@ -68,6 +113,18 @@ pub trait CurveAffine:
     /// curve.
     fn from_xy(x: Self::Base, y: Self::Base) -> CtOption<Self>;
 
+    /// The point $(x, y)$, which the caller guarantees is on the curve and,
+    /// where [`from_xy`](Self::from_xy) also checks it, in the prime-order
+    /// subgroup (e.g. a sum of such points). Curves whose check is costly
+    /// skip it; the default checks.
+    ///
+    /// # Panics
+    ///
+    /// The default panics if [`from_xy`](Self::from_xy) rejects the point.
+    fn from_xy_unchecked(x: Self::Base, y: Self::Base) -> Self {
+        Self::from_xy(x, y).expect("from_xy_unchecked: the caller vouches for (x, y)")
+    }
+
     /// Returns whether or not this element is on the curve; should
     /// always be true unless an "unchecked" API was used.
     fn is_on_curve(&self) -> Choice;
@@ -77,6 +134,15 @@ pub trait CurveAffine:
 
     /// Returns the curve constant $b$.
     fn b() -> Self::Base;
+
+    /// The affine coordinates, borrowed, if the representation holds them as
+    /// `Base`s (MSMs then read them in place instead of copying them out).
+    /// All or nothing for a type: `Some` for every point or for none.
+    /// Meaningless for the identity.
+    #[doc(hidden)]
+    fn xy_ref(&self) -> Option<(&Self::Base, &Self::Base)> {
+        None
+    }
 }
 
 /// The affine coordinates of a point on an elliptic curve.

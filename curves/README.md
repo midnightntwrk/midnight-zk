@@ -39,6 +39,10 @@ Due to the assembly based nature of the implementation in `blst`, currently only
 
 To enable portable features when building the blst dependency, use the 'portable' feature: `--features portable`.
 
+### MSM Backend
+
+Polynomial commitments use `msm::msm_pippenger`, a Rust Pippenger (blst-style tiling, batched affine buckets, per-arch window tables). The verifier's MSM in `midnight-proofs` (`msm_specific`) still uses blst's `G1Affine::multi_exp_affine` for BLS12-381 G1.
+
 
 ### Benchmarking
 

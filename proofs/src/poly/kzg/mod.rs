@@ -31,7 +31,7 @@ use std::{fmt::Debug, hash::Hash};
 use commitment::{KZGCommitment, KZGMultiCommitment};
 use ff::Field;
 use group::Group;
-use midnight_curves::{pairing::MultiMillerLoop, serde::SerdeObject};
+use midnight_curves::{msm::msm_pippenger, pairing::MultiMillerLoop, serde::SerdeObject};
 use rand_core::OsRng;
 
 use crate::{
@@ -40,7 +40,7 @@ use crate::{
         commitment::{InterleavedCommit, PolynomialCommitmentScheme},
         kzg::{
             commitment::NB_POLYS_PREFIX_BYTES,
-            msm::{DualMSM, msm_specific},
+            msm::DualMSM,
             params::{ParamsKZG, ParamsVerifierKZG},
             utils::construct_intermediate_sets,
         },
@@ -138,7 +138,7 @@ where
                     let size = polynomial.values.len();
                     assert!(bases.len() >= size);
                     KZGCommitment::Simple(
-                        msm_specific::<E::G1Affine>(&polynomial.values, &bases[..size]),
+                        commit_msm::<E::G1Affine>(&polynomial.values, &bases[..size]),
                         label.clone(),
                     )
                 })
@@ -567,6 +567,21 @@ where
     }
 }
 
+/// The MSM behind every commitment: `Σ coeffs[i]·bases[i]`, by
+/// [`msm_pippenger`]. Test builds also compute it with the verifier's MSM
+/// ([`msm_specific`](msm::msm_specific)) and check that both agree.
+fn commit_msm<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
+    let res = msm_pippenger(coeffs, bases);
+    #[cfg(test)]
+    assert_eq!(
+        res,
+        msm::msm_specific(coeffs, bases),
+        "msm_pippenger disagrees with msm_specific on {} terms",
+        coeffs.len()
+    );
+    res
+}
+
 /// Commitment to `Σ_i X^i f_i(X^t)`, for `chunk` the polynomials `f_i` and
 /// `t` the next power of two of their number.
 fn commit_chunk<E: MultiMillerLoop, B: PolynomialRepresentation>(
@@ -583,7 +598,7 @@ where
         "the polynomials of a chunk have different lengths"
     );
     (chunk.iter().enumerate())
-        .map(|(i, poly)| msm_specific(&poly.values, &params.residue_bases::<B>(t, n, i)))
+        .map(|(i, poly)| commit_msm(&poly.values, &params.residue_bases::<B>(t, n, i)))
         .sum()
 }
 
