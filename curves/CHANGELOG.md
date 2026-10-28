@@ -7,22 +7,22 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 
 ## [Unreleased]
 ### Added
-* `msm::msm_pippenger`, the MSM used for polynomial commitments: a Pippenger over blst-style tiles of windows × chunks of the terms, with batched affine buckets (gnark's) from window 7 and XYZZ buckets below, and per-arch window tables (x86-64, aarch64); a sparse input (more zero scalars than non-zero) is compacted first [#TBD](https://github.com/midnightntwrk/midnight-zk/pull/TBD)
-* `FieldInto`: field arithmetic written into a destination (blst-style); every method has a default, and BLS12-381 `Fp` overrides them with direct blst calls [#TBD](https://github.com/midnightntwrk/midnight-zk/pull/TBD)
-* `CurveAffine::from_xy_unchecked`, a point from coordinates the caller vouches for (BLS12-381 G1 skips the subgroup check), and the hidden `CurveAffine::xy_ref`, which lets an MSM read a base's coordinates in place [#TBD](https://github.com/midnightntwrk/midnight-zk/pull/TBD)
+* `msm::msm_pippenger`, the MSM used for polynomial commitments: a Pippenger over blst-style tiles of windows × chunks of the terms, with batched affine buckets (gnark's) from window 7 and XYZZ buckets below, and per-arch window tables (x86-64, aarch64); a sparse input (more zero scalars than non-zero) is compacted first [#594](https://github.com/midnightntwrk/midnight-zk/pull/594)
+* `FieldInto`: field arithmetic written into a destination (blst-style); every method has a default, and BLS12-381 `Fp` overrides them with direct blst calls [#594](https://github.com/midnightntwrk/midnight-zk/pull/594)
+* `CurveAffine::from_xy_unchecked`, a point from coordinates the caller vouches for (BLS12-381 G1 skips the subgroup check), and the hidden `CurveAffine::xy_ref`, which lets an MSM read a base's coordinates in place [#594](https://github.com/midnightntwrk/midnight-zk/pull/594)
 * Affine MSM path `G1Affine::multi_exp_affine` [#350](https://github.com/midnightntwrk/midnight-zk/pull/350)
 * Cached-twiddle FFT (`best_fft_with_twiddles`, `compute_twiddles`) and pruned DIF FFT (`fft_coeff_to_extended`) [#352](https://github.com/midnightntwrk/midnight-zk/pull/352)
 * Add Curve25519 [#181](https://github.com/midnightntwrk/midnight-zk/pull/181)
 * Add `k256` module [#189](https://github.com/midnightntwrk/midnight-zk/pull/189), [#191](https://github.com/midnightntwrk/midnight-zk/pull/191)
 
 ### Changed
-* BREAKING: `CurveAffine::Base` requires `FieldInto`. A downstream `CurveAffine` implementation needs `impl FieldInto for <Base> {}` [#TBD](https://github.com/midnightntwrk/midnight-zk/pull/TBD)
-* BLS12-381 `Fp` overrides `is_zero_vartime` (an OR of the limbs) and inlines `is_zero`, `square` and `double` [#TBD](https://github.com/midnightntwrk/midnight-zk/pull/TBD)
+* BREAKING: `CurveAffine::Base` requires `FieldInto`. A downstream `CurveAffine` implementation needs `impl FieldInto for <Base> {}` [#594](https://github.com/midnightntwrk/midnight-zk/pull/594)
+* BLS12-381 `Fp` overrides `is_zero_vartime` (an OR of the limbs) and inlines `is_zero`, `square` and `double` [#594](https://github.com/midnightntwrk/midnight-zk/pull/594)
 * Migrate to Rust edition 2024 (from 2018); declare MSRV 1.90. Both are now inherited from the workspace [#508](https://github.com/midnightntwrk/midnight-zk/pull/508)
 *  Moved the generic extension-field tower (`ExtField`, `quadratic`/`cubic`) from `ff_ext` to the dev-curves `bn256` module [#412](https://github.com/midnightntwrk/midnight-zk/pull/412)
 
 ### Fixed
-* `msm` bench: one generator per rayon job made 98% of its points and scalars repeats; each item is now seeded on its own [#TBD](https://github.com/midnightntwrk/midnight-zk/pull/TBD)
+* `msm` bench: one generator per rayon job made 98% of its points and scalars repeats; each item is now seeded on its own [#594](https://github.com/midnightntwrk/midnight-zk/pull/594)
 * Add prime-order subgroup check in `G1Affine::from_uncompressed` [#425](https://github.com/midnightntwrk/midnight-zk/pull/425)
 * `G1Affine::coordinates` skips the subgroup check. [#544](https://github.com/midnightntwrk/midnight-zk/pull/544)
 
