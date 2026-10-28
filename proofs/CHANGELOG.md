@@ -52,7 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Fix cost-model [#435](https://github.com/midnightntwrk/midnight-zk/pull/435)
 
 ### Changed
-* KZG commitments (`commit`, `commit_many` and `commit_interleaved`, hence the prover, keygen and `commit_to_instances`) use the Rust `msm_pippenger` instead of blst's `multi_exp_affine` for BLS12-381 G1, with the same results. The verifier's MSM (`msm_specific`) is unchanged [#TBD](https://github.com/midnightntwrk/midnight-zk/pull/TBD)
+* KZG commitments (`commit`, `commit_many` and `commit_interleaved`, hence the prover, keygen and `commit_to_instances`) use the Rust `msm_pippenger` instead of blst's `multi_exp_affine` for BLS12-381 G1, with the same results. The verifier's MSM (`msm_specific`) is unchanged [#594](https://github.com/midnightntwrk/midnight-zk/pull/594)
 * BREAKING: `PolynomialCommitmentScheme::Commitment` no longer requires `Add` and `Mul<F>`: no generic code combines commitments, so a scheme need not be homomorphic [#582](https://github.com/midnightntwrk/midnight-zk/pull/582)
 * The KZG multi-open takes first the point set with the most variable-base polynomials, then the others by cardinality, so that fewer scalars are products of two truncated challenges. This changes the proof [#583](https://github.com/midnightntwrk/midnight-zk/pull/583)
 * fflonk splits the polynomials of a `commit_many` call into the same number of chunks as before, of balanced sizes (e.g. 6, 6, 5 rather than 8, 8, 1), instead of chunks of `T_MAX` and a remainder. This changes fflonk verifying keys and proofs [#579](https://github.com/midnightntwrk/midnight-zk/pull/579)
