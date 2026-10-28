@@ -502,28 +502,40 @@ fn test_lane_collision() {
 /// density around that threshold, with an identity base among the terms.
 #[test]
 fn test_sparse() {
-    let n = 1 << 12;
-    let mut points = random_points::<G1Affine>(n, 31);
-    points[5] = G1Affine::identity();
-    let dense = random_scalars::<Fq>(n, 32);
-    let mut rng = rng(33);
-    for nonzero in [0, 1, 2, 50, n / 2 - 1, n / 2, n / 2 + 1, n - 1, n] {
-        let mut scalars = vec![Fq::ZERO; n];
-        let mut placed = 0;
-        while placed < nonzero {
-            let i = rng.next_u32() as usize % n;
-            if scalars[i].is_zero_vartime() {
-                scalars[i] = dense[i];
-                placed += 1;
+    let check = |n: usize, seed: u64, oracle: &dyn Fn(&[Fq], &[G1Affine]) -> G1Projective| {
+        let mut points = random_points::<G1Affine>(n, seed);
+        points[5] = G1Affine::identity();
+        let dense = random_scalars::<Fq>(n, seed + 1);
+        let mut rng = rng(seed + 2);
+        for nonzero in [0, 1, 2, 50, n / 2 - 1, n / 2, n / 2 + 1, n - 1, n] {
+            // Non-zeros at random positions, then all at the end: chunks of
+            // differing counts, and empty ones.
+            for at_end in [false, true] {
+                let mut scalars = vec![Fq::ZERO; n];
+                let mut placed = 0;
+                while placed < nonzero {
+                    let i = if at_end {
+                        n - 1 - placed
+                    } else {
+                        rng.next_u32() as usize % n
+                    };
+                    if scalars[i].is_zero_vartime() {
+                        scalars[i] = dense[i];
+                        placed += 1;
+                    }
+                }
+                let expected = oracle(&scalars, &points);
+                assert_eq!(
+                    msm_pippenger(&scalars, &points),
+                    expected,
+                    "n {n}, nonzero {nonzero}, at_end {at_end}"
+                );
             }
         }
-        let expected = naive(&scalars, &points);
-        assert_eq!(
-            msm_pippenger(&scalars, &points),
-            expected,
-            "nonzero {nonzero}"
-        );
-    }
+    };
+    check(1 << 12, 31, &naive::<G1Affine>);
+    // Over the parallel compaction's threshold, with a partial last chunk.
+    check((1 << 14) + 37, 34, &blst);
 }
 
 /// The largest sizes: run with `--ignored`.
