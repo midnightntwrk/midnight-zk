@@ -7,14 +7,14 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 
 ## [Unreleased]
 ### Added
-* `msm::msm_pippenger`, the MSM used for polynomial commitments: a Pippenger over blst-style tiles of windows × chunks of the terms, with batched affine buckets (gnark's) from window 7 and XYZZ buckets below, and per-arch window tables (x86-64, aarch64); a sparse input (more zero scalars than non-zero) is compacted first [#TBD](https://github.com/midnightntwrk/midnight-zk/pull/TBD)
-* `FieldInto`: field arithmetic written into a destination (blst-style); every method has a default, and BLS12-381 `Fp` overrides them with direct blst calls [#TBD](https://github.com/midnightntwrk/midnight-zk/pull/TBD)
-* `CurveAffine::from_xy_unchecked`, a point from coordinates the caller vouches for (BLS12-381 G1 skips the subgroup check), and the hidden `CurveAffine::xy_ref`, which lets an MSM read a base's coordinates in place [#TBD](https://github.com/midnightntwrk/midnight-zk/pull/TBD)
+* `msm::msm_pippenger`, the MSM used for polynomial commitments: a Pippenger over blst-style tiles of windows × chunks of the terms, with batched affine buckets (gnark's) from window 7 and XYZZ buckets below, and per-arch window tables (x86-64, aarch64); a sparse input (more zero scalars than non-zero) is compacted first [#594](https://github.com/midnightntwrk/midnight-zk/pull/594)
+* `FieldInto`: field arithmetic written into a destination (blst-style); every method has a default, and BLS12-381 `Fp` overrides them with direct blst calls [#594](https://github.com/midnightntwrk/midnight-zk/pull/594)
+* `CurveAffine::from_xy_unchecked`, a point from coordinates the caller vouches for (BLS12-381 G1 skips the subgroup check), and the hidden `CurveAffine::xy_ref`, which lets an MSM read a base's coordinates in place [#594](https://github.com/midnightntwrk/midnight-zk/pull/594)
 ### Changed
-* BREAKING: `CurveAffine::Base` requires `FieldInto`. A downstream `CurveAffine` implementation needs `impl FieldInto for <Base> {}` [#TBD](https://github.com/midnightntwrk/midnight-zk/pull/TBD)
-* BLS12-381 `Fp` overrides `is_zero_vartime` (an OR of the limbs) and inlines `is_zero`, `square` and `double` [#TBD](https://github.com/midnightntwrk/midnight-zk/pull/TBD)
+* BREAKING: `CurveAffine::Base` requires `FieldInto`. A downstream `CurveAffine` implementation needs `impl FieldInto for <Base> {}` [#594](https://github.com/midnightntwrk/midnight-zk/pull/594)
+* BLS12-381 `Fp` overrides `is_zero_vartime` (an OR of the limbs) and inlines `is_zero`, `square` and `double` [#594](https://github.com/midnightntwrk/midnight-zk/pull/594)
 ### Fixed
-* `msm` bench: one generator per rayon job made 98% of its points and scalars repeats; each item is now seeded on its own [#TBD](https://github.com/midnightntwrk/midnight-zk/pull/TBD)
+* `msm` bench: one generator per rayon job made 98% of its points and scalars repeats; each item is now seeded on its own [#594](https://github.com/midnightntwrk/midnight-zk/pull/594)
 ### Removed
 
 ## 0.4.0-rc.1
