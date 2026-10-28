@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 *  Moved the generic extension-field tower (`ExtField`, `quadratic`/`cubic`) from `ff_ext` to the dev-curves `bn256` module [#412](https://github.com/midnightntwrk/midnight-zk/pull/412)
 
 ### Fixed
+* `msm` bench: one generator per rayon job made 98% of its points and scalars repeats; each item is now seeded on its own [#TBD](https://github.com/midnightntwrk/midnight-zk/pull/TBD)
 * Add prime-order subgroup check in `G1Affine::from_uncompressed` [#425](https://github.com/midnightntwrk/midnight-zk/pull/425)
 * `G1Affine::coordinates` skips the subgroup check. [#544](https://github.com/midnightntwrk/midnight-zk/pull/544)
 
