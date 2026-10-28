@@ -9,6 +9,8 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 ### Added
 ### Changed
+* `assign_as_public_input` always performs the in-circuit checks of `assign` (affects the VKs of relations with byte, Jubjub point or BLS12-381 point public inputs) [#598](https://github.com/midnightntwrk/midnight-zk/pull/598)
+
 ### Removed
 
 ## [2.3.5]

@@ -11,6 +11,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Added the `is_collapsed` function to [#553](https://github.com/midnightntwrk/midnight-zk/pull/553/)
 
 ### Changed
+* `assign_as_public_input` always performs the in-circuit checks of `assign` (affects the VKs of circuits with byte, Jubjub point or BLS12-381 point public inputs) [#598](https://github.com/midnightntwrk/midnight-zk/pull/598)
 
 ### Removed
 
