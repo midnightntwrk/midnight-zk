@@ -8,7 +8,10 @@ use std::ops::{Neg, Range};
 
 use ff::{Field, PrimeField};
 use group::Group;
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use rayon::{
+    iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator, repeat_n},
+    slice::ParallelSlice,
+};
 
 use crate::{CurveAffine, FieldInto};
 
@@ -842,8 +845,20 @@ fn msm_with_window<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C], c: usize) 
     pippenger::<C, _, _, _>(coeffs.len(), repr, xy, nbits, c)
 }
 
-/// From this many terms, [`compact`] counts the non-zero scalars in parallel.
-const PARALLEL_COUNT: usize = 1 << 14;
+/// From this many terms, [`compact`] counts and copies in parallel, in chunks
+/// of [`COMPACT_CHUNK`] terms.
+const PARALLEL_COMPACT: usize = 1 << 14;
+
+/// The terms one job of a parallel [`compact`] counts, then copies.
+const COMPACT_CHUNK: usize = 1 << 11;
+
+/// The terms with a non-zero scalar.
+fn nonzero_terms<'a, C: CurveAffine>(
+    coeffs: &'a [C::Scalar],
+    bases: &'a [C],
+) -> impl Iterator<Item = (&'a C::Scalar, &'a C)> {
+    coeffs.iter().zip(bases).filter(|(s, _)| !s.is_zero_vartime())
+}
 
 /// The non-zero terms of a sparse input, compacted; `None` when at least half
 /// the scalars are non-zero (the input is then used in place). Zero scalars add
@@ -851,18 +866,53 @@ const PARALLEL_COUNT: usize = 1 << 14;
 /// integrates, is chosen by the length, so a sparse MSM would pay for its
 /// zeros.
 fn compact<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> Option<(Vec<C::Scalar>, Vec<C>)> {
-    // Counted on the calling thread below `PARALLEL_COUNT`: waking the pool costs
-    // more than the count for a small input.
-    let nonzero = if coeffs.len() < PARALLEL_COUNT {
-        coeffs.iter().filter(|s| !s.is_zero_vartime()).count()
-    } else {
-        coeffs.par_iter().filter(|s| !s.is_zero_vartime()).count()
-    };
-    if 2 * nonzero >= coeffs.len() {
+    let n = coeffs.len();
+    // On the calling thread below `PARALLEL_COMPACT`: waking the pool costs
+    // more than the work for a small input.
+    if n < PARALLEL_COMPACT {
+        let nonzero = coeffs.iter().filter(|s| !s.is_zero_vartime()).count();
+        if 2 * nonzero >= n {
+            return None;
+        }
+        let (mut scalars, mut points) = (Vec::with_capacity(nonzero), Vec::with_capacity(nonzero));
+        for (s, b) in nonzero_terms(coeffs, bases) {
+            scalars.push(*s);
+            points.push(*b);
+        }
+        return Some((scalars, points));
+    }
+    let counts: Vec<usize> = coeffs
+        .par_chunks(COMPACT_CHUNK)
+        .map(|chunk| chunk.iter().filter(|s| !s.is_zero_vartime()).count())
+        .collect();
+    let nonzero = counts.iter().sum::<usize>();
+    if 2 * nonzero >= n {
         return None;
     }
-    let terms = coeffs.iter().zip(bases).filter(|(s, _)| !s.is_zero_vartime());
-    Some(terms.map(|(s, b)| (*s, *b)).unzip())
+    let (mut scalars, mut points) = (Vec::new(), Vec::new());
+    repeat_n(C::Scalar::ZERO, nonzero).collect_into_vec(&mut scalars);
+    repeat_n(C::identity(), nonzero).collect_into_vec(&mut points);
+    // Each chunk's own slice of the outputs, by the running sum of the counts.
+    let mut slices = Vec::with_capacity(counts.len());
+    let (mut rest_s, mut rest_p) = (scalars.as_mut_slice(), points.as_mut_slice());
+    for &count in &counts {
+        let (s, tail) = std::mem::take(&mut rest_s).split_at_mut(count);
+        rest_s = tail;
+        let (p, tail) = std::mem::take(&mut rest_p).split_at_mut(count);
+        rest_p = tail;
+        slices.push((s, p));
+    }
+    coeffs
+        .par_chunks(COMPACT_CHUNK)
+        .zip(bases.par_chunks(COMPACT_CHUNK))
+        .zip(slices)
+        .for_each(|((cs, bs), (scalars, points))| {
+            for (i, (s, b)) in nonzero_terms(cs, bs).enumerate() {
+                scalars[i] = *s;
+                points[i] = *b;
+            }
+        });
+    Some((scalars, points))
 }
 
 /// The multi-scalar multiplication `Σ coeffs[i]·bases[i]` (the identity if
