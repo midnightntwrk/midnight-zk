@@ -16,6 +16,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Removed
 
 ### Fixed
+* `div` and `inv` of `AssignedScalarOfNativeCurve` now enforce a non-zero divisor in-circuit and accept non-canonical inputs (affects the VKs of circuits using Jubjub scalar division or inversion) [#603](https://github.com/midnightntwrk/midnight-zk/pull/603)
 * `PartialEq` for `AssignedBigUint` no longer treats a limb vector and its proper prefix as equal [#601](https://github.com/midnightntwrk/midnight-zk/pull/601)
 
 ## [7.2.4]

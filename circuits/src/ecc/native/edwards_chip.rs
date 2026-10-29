@@ -1198,8 +1198,9 @@ impl<C: EdwardsCurve> ArithInstructions<C::Base, AssignedScalarOfNativeCurve<C>>
             C::ScalarField::NUM_BITS,
         )?;
 
-        let r = r.to_biguint(layouter, &self.biguint_gadget)?;
-        let s = s.to_biguint(layouter, &self.biguint_gadget)?;
+        let r = r.to_canonical_biguint(layouter, &self.biguint_gadget)?;
+        let s = s.to_canonical_biguint(layouter, &self.biguint_gadget)?;
+        self.biguint_gadget.assert_non_zero(layouter, &s)?;
         let res_times_s = self.biguint_gadget.mul(layouter, &res, &s)?;
         let reduced_res_times_s =
             reduce_biguint_mod_scalar_order::<C>(layouter, &self.biguint_gadget, &res_times_s)?;
