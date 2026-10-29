@@ -3873,8 +3873,8 @@
       "max_deg": "5",
       "permutations": "8",
       "point_sets": "4",
-      "rows": "18",
-      "table_rows": "389"
+      "rows": "12",
+      "table_rows": "269"
     },
     "from_bits": {
       "advice_columns": "5",
