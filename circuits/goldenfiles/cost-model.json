@@ -3385,7 +3385,7 @@
       "max_deg": "5",
       "permutations": "12",
       "point_sets": "4",
-      "rows": "245",
+      "rows": "253",
       "table_rows": "385"
     },
     "is_equal": {
@@ -3640,7 +3640,7 @@
       "max_deg": "5",
       "permutations": "10",
       "point_sets": "4",
-      "rows": "333",
+      "rows": "495",
       "table_rows": "455"
     },
     "inv": {
@@ -3651,7 +3651,7 @@
       "max_deg": "5",
       "permutations": "10",
       "point_sets": "4",
-      "rows": "423",
+      "rows": "591",
       "table_rows": "455"
     },
     "is_equal": {

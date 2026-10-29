@@ -899,11 +899,17 @@ where
         }
 
         if x == &one {
-            return Ok(y.clone());
+            return match multiplying_constant {
+                None => Ok(y.clone()),
+                Some(k) => self.mul_by_constant(layouter, y, k),
+            };
         }
 
         if y == &one {
-            return Ok(x.clone());
+            return match multiplying_constant {
+                None => Ok(x.clone()),
+                Some(k) => self.mul_by_constant(layouter, x, k),
+            };
         }
 
         let y = match multiplying_constant {
