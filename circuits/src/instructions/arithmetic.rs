@@ -407,7 +407,6 @@ pub(crate) mod tests {
         Sub,
         Mul,
         MulWithConst,
-        MulWithConstSwapped,
         Div,
         Neg,
         Inv,
@@ -479,9 +478,6 @@ pub(crate) mod tests {
                 Operation::Mul => chip.mul(&mut layouter, &x, &y, None),
                 Operation::MulWithConst => {
                     chip.mul(&mut layouter, &x, &y, Some(self.inputs[2].clone()))
-                }
-                Operation::MulWithConstSwapped => {
-                    chip.mul(&mut layouter, &y, &x, Some(self.inputs[2].clone()))
                 }
                 Operation::Div => chip.div(&mut layouter, &x, &y),
                 Operation::Neg => chip.neg(&mut layouter, &x),
@@ -711,11 +707,12 @@ pub(crate) mod tests {
             cost_model = false;
         });
 
-        // (x, y, c, x * y * c). Since y is fixed, y = 1 exercises the shortcuts for
-        // a fixed one operand (in both positions, thanks to the swapped variant).
+        // (x, y, c, x * y * c)
         [
             (r, 1, 3, 3 * r, true),
             (r, 1, 3, r, false),
+            (1, r, 3, 3 * r, true),
+            (1, r, 3, r, false),
             (-2, 1, -1, 2, true),
             (r, 0, 3, 0, true),
             (8, 5, 3, 120, true),
@@ -725,17 +722,15 @@ pub(crate) mod tests {
         .for_each(|(x, y, c, expected, must_pass)| {
             let inputs = [i64_to_element(x), i64_to_element(y), i64_to_element(c)];
             let expected: Assigned::Element = i64_to_element(expected);
-            for op in [Operation::MulWithConst, Operation::MulWithConstSwapped] {
-                run::<F, Assigned, ArithChip>(
-                    &inputs,
-                    expected.clone(),
-                    op,
-                    *must_pass,
-                    false,
-                    cost_model_name,
-                    "mul_with_const",
-                );
-            }
+            run::<F, Assigned, ArithChip>(
+                &inputs,
+                expected,
+                Operation::MulWithConst,
+                *must_pass,
+                false,
+                cost_model_name,
+                "mul_with_const",
+            );
         });
     }
 
