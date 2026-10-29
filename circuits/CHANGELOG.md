@@ -15,6 +15,9 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Removed
 
+### Fixed
+* `PartialEq` for `AssignedBigUint` no longer treats a limb vector and its proper prefix as equal [#601](https://github.com/midnightntwrk/midnight-zk/pull/601)
+
 ## [7.2.4]
 ### Changed
 * Make `Instantiable::from_public_inputs` fallible [#485](https://github.com/midnightntwrk/midnight-zk/pull/485)
