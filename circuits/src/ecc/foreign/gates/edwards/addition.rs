@@ -117,10 +117,10 @@ impl<C: CircuitCurve> AdditionConfig<C> {
         //
         // We can bound the LHS as follows:
         // If s = +1, LHS is in the range [-(2 * S),           3 * S + S²]
-        // If s = -1, LHS is in the range [-(2 * S + S² + 2),         - 2]
+        // If s = -1, LHS is in the range [-(3 * S + S² + 2),         - 2]
         //
-        // Union range:                   [-(2 * S + S² + 2),  3 * S + S²]
-        let expr_min = -(BI::from(2) * &max_sum + &max_sum_sqrd + BI::from(2));
+        // Union range:                   [-(3 * S + S² + 2),  3 * S + S²]
+        let expr_min = -(BI::from(3) * &max_sum + &max_sum_sqrd + BI::from(2));
         let expr_max = BI::from(3) * &max_sum + &max_sum_sqrd;
         let expr_bounds = (expr_min, expr_max);
 
@@ -133,7 +133,7 @@ impl<C: CircuitCurve> AdditionConfig<C> {
                 let max_sum_mj = sum_bigints(&bs_mj, &limbs_max);
                 let max_sum_sqrd_mj = sum_bigints(&bs_sqrd_mj, &limbs_max_sqrd);
 
-                let expr_min_mj = -(BI::from(2) * &max_sum_mj + &max_sum_sqrd_mj + BI::from(2));
+                let expr_min_mj = -(BI::from(3) * &max_sum_mj + &max_sum_sqrd_mj + BI::from(2));
                 let expr_max_mj = BI::from(3) * &max_sum_mj + &max_sum_sqrd_mj;
                 (expr_min_mj, expr_max_mj)
             })

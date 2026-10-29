@@ -57,7 +57,8 @@ where
         self.assert_equal(layouter, &sqr, x)
     }
 
-    /// Returns `1` if the given input is a quadratic residue and `0` otherwise.
+    /// Returns `1` if the given input is a square (`0` included) and `0`
+    /// otherwise.
     fn is_square(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -66,7 +67,13 @@ where
         let is_square_value = x.value().map(|x| bool::from(x.sqrt().is_some()));
         let is_square = self.assign(layouter, is_square_value)?;
 
-        // x is a quadratic residue iff x * qnr is not.
+        // Both 0 and 0 * qnr are squares, so we forbid the non-square branch
+        // on x = 0.
+        let one = self.assign_fixed(layouter, Assigned::inner_one())?;
+        let x_or_one = self.select(layouter, &is_square, &one, x)?;
+        self.assert_non_zero(layouter, &x_or_one)?;
+
+        // A non-zero x is a quadratic residue iff x * qnr is not.
         let x_times_qnr = self.mul_by_constant(layouter, x, qnr::<Assigned::Element>())?;
         let y = self.select(layouter, &is_square, x, &x_times_qnr)?;
 
