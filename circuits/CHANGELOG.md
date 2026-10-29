@@ -15,6 +15,9 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Removed
 
+### Fixed
+* Foreign-field `mul` no longer ignores the multiplying constant when one of the operands is a fixed one [#605](https://github.com/midnightntwrk/midnight-zk/pull/605)
+
 ## [7.2.4]
 ### Changed
 * Make `Instantiable::from_public_inputs` fallible [#485](https://github.com/midnightntwrk/midnight-zk/pull/485)
