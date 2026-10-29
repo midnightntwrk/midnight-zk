@@ -17,6 +17,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 * `PartialEq` for `AssignedBigUint` no longer treats a limb vector and its proper prefix as equal [#601](https://github.com/midnightntwrk/midnight-zk/pull/601)
+* Lower bound of the foreign Edwards addition identity for `sign = -1` (affects the VKs of circuits using foreign Edwards curves) [#607](https://github.com/midnightntwrk/midnight-zk/pull/607)
 
 ## [7.2.4]
 ### Changed
