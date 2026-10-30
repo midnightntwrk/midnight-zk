@@ -241,18 +241,11 @@ where
         point: &AssignedForeignEdwardsPoint<F, Curve25519, B>,
     ) -> Result<[AssignedByte<F>; 32], Error> {
         // Decomposition into (LE) bytes enforces canonicity.
-        let mut y_bytes = self.base_field_chip().assigned_to_le_bytes(
-            layouter,
-            &self.y_coordinate(point),
-            None,
-        )?;
+        let y = self.y(layouter, point)?;
+        let mut y_bytes = self.base_field_chip().assigned_to_le_bytes(layouter, &y, None)?;
 
-        let x_bits = self.base_field_chip().assigned_to_le_bits(
-            layouter,
-            &self.x_coordinate(point),
-            Some(255),
-            true,
-        )?;
+        let x = self.x(layouter, point)?;
+        let x_bits = self.base_field_chip().assigned_to_le_bits(layouter, &x, Some(255), true)?;
 
         // Encode the sign bit of x (= x mod 2, i.e., the least significant bit of x)
         // into the most significant byte of y: MSB = MSB of y + LSBit of x * 128.
@@ -1088,8 +1081,9 @@ where
 
         let p = self.assign(layouter, p_value)?;
 
-        self.base_field_chip.assert_equal(layouter, x, &self.x_coordinate(&p))?;
-        self.base_field_chip.assert_equal(layouter, y, &self.y_coordinate(&p))?;
+        let (px, py) = (self.x(layouter, &p)?, self.y(layouter, &p)?);
+        self.base_field_chip.assert_equal(layouter, x, &px)?;
+        self.base_field_chip.assert_equal(layouter, y, &py)?;
 
         Ok(p)
     }
@@ -1100,6 +1094,22 @@ where
 
     fn y_coordinate(&self, point: &Self::Point) -> Self::Coordinate {
         point.y.clone()
+    }
+
+    fn x(
+        &self,
+        _layouter: &mut impl Layouter<F>,
+        point: &Self::Point,
+    ) -> Result<Self::Coordinate, Error> {
+        Ok(point.x.clone())
+    }
+
+    fn y(
+        &self,
+        _layouter: &mut impl Layouter<F>,
+        point: &Self::Point,
+    ) -> Result<Self::Coordinate, Error> {
+        Ok(point.y.clone())
     }
 
     fn base_field(&self) -> &impl DecompositionInstructions<F, Self::Coordinate> {

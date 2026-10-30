@@ -401,6 +401,10 @@ where
         layouter: &mut impl Layouter<F>,
         p: &AssignedForeignPoint<F, C, B>,
     ) -> Result<Vec<AssignedNative<F>>, Error> {
+        // The coordinates of the identity are arbitrary, set them to (0, 0).
+        let id = self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
+        let p = &self.select(layouter, &p.is_id, &id, p)?;
+
         let mut pis = [
             self.base_field_chip.as_public_input(layouter, &p.x)?.as_slice(),
             self.base_field_chip.as_public_input(layouter, &p.y)?.as_slice(),
@@ -953,6 +957,24 @@ where
 
     fn y_coordinate(&self, point: &Self::Point) -> Self::Coordinate {
         point.y.clone()
+    }
+
+    fn x(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        point: &Self::Point,
+    ) -> Result<Self::Coordinate, Error> {
+        self.assert_non_zero(layouter, point)?;
+        Ok(point.x.clone())
+    }
+
+    fn y(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        point: &Self::Point,
+    ) -> Result<Self::Coordinate, Error> {
+        self.assert_non_zero(layouter, point)?;
+        Ok(point.y.clone())
     }
 
     fn base_field(&self) -> &impl DecompositionInstructions<F, Self::Coordinate> {

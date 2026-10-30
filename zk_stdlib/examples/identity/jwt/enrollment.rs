@@ -167,7 +167,7 @@ impl CredentialEnrollment {
 
         let gen = secp256k1_curve.assign_fixed(layouter, K256::generator())?;
         let lhs = secp256k1_curve.msm(layouter, &[m_over_s, r_over_s], &[gen, pk])?;
-        let lhs_x = secp256k1_curve.x_coordinate(&lhs);
+        let lhs_x = secp256k1_curve.x(layouter, &lhs)?;
 
         secp256k1_base.assert_equal(layouter, &lhs_x, &r_as_base)
     }

@@ -833,6 +833,22 @@ impl<C: EdwardsCurve> EccInstructions<C::Base, C> for EccChip<C> {
         point.y.clone()
     }
 
+    fn x(
+        &self,
+        _layouter: &mut impl Layouter<C::Base>,
+        point: &Self::Point,
+    ) -> Result<Self::Coordinate, Error> {
+        Ok(point.x.clone())
+    }
+
+    fn y(
+        &self,
+        _layouter: &mut impl Layouter<C::Base>,
+        point: &Self::Point,
+    ) -> Result<Self::Coordinate, Error> {
+        Ok(point.y.clone())
+    }
+
     fn base_field(&self) -> &impl DecompositionInstructions<C::Base, Self::Coordinate> {
         &self.native_gadget
     }
