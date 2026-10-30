@@ -60,13 +60,13 @@ where
     ///     ],
     /// )?;
     ///
-    /// let check: AssignedBit<F> = chip.is_canonical(&mut layouter, &x)?;
+    /// let check: AssignedBit<F> = chip.is_canonical_bits(&mut layouter, &x)?;
     /// // This is not sufficient to check that the value is canonical,
     /// // we need to check that the output is true.
     /// chip.assert_equal_to_fixed(&mut layouter, &check, true)?;
     /// # });
     /// ```
-    fn is_canonical(
+    fn is_canonical_bits(
         &self,
         layouter: &mut impl Layouter<F>,
         bits: &[AssignedBit<F>],
@@ -246,7 +246,7 @@ pub(crate) mod tests {
 
             cost_measure_start(&mut layouter);
             let res = match self.operation {
-                Operation::Canonical => chip.is_canonical(&mut layouter, &bits),
+                Operation::Canonical => chip.is_canonical_bits(&mut layouter, &bits),
                 Operation::Lower => chip.le_bits_lower_than(&mut layouter, &bits, bound),
                 Operation::Geq => chip.le_bits_geq_than(&mut layouter, &bits, bound),
             }?;

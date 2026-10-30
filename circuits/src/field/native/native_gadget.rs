@@ -899,7 +899,8 @@ where
             // (since the modulus is a large prime, which is odd).
             // Thus, we can enforce canonicity by checking that the least significant bit of
             // our output matches `sgn0(x)`.
-            // NB: `self.sgn0` is significantly more efficient than `self.is_canonical`.
+            // NB: `self.sgn0` is significantly more efficient than
+            // `self.is_canonical_bits`.
             let b0 = self.sgn0(layouter, x)?;
             self.assert_equal(layouter, &bits[0], &b0)?;
         }
