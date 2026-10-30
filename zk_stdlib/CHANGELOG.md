@@ -11,6 +11,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 * `assign_as_public_input` always performs the in-circuit checks of `assign` (affects the VKs of relations with byte, Jubjub point or BLS12-381 point public inputs) [#598](https://github.com/midnightntwrk/midnight-zk/pull/598)
 * `DivisionInstructions::div_rem` and `rem` panic when `divisor * (dividend_bound / divisor + 1)` exceeds the field modulus, in particular when no bound is given; `DivisionInstructions` is deprecated [#606](https://github.com/midnightntwrk/midnight-zk/pull/606)
+* Examples use `EccInstructions::x` and `y` instead of the deprecated `x_coordinate` and `y_coordinate`, asserting that secp256k1 points are not the identity (affects the VKs of the Bitcoin signature and credential examples) [#612](https://github.com/midnightntwrk/midnight-zk/issues/612)
 
 ### Removed
 
