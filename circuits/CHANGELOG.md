@@ -17,6 +17,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Removed
 
 ### Fixed
+* The identity of foreign Weierstrass curves has coordinates `(0, 0)`, so `x_coordinate`, `y_coordinate` and `as_public_input` no longer return prover-chosen values for it (affects the VKs of circuits using foreign Weierstrass curves) [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 * Foreign-field `mul` no longer ignores the multiplying constant when one of the operands is a fixed one [#605](https://github.com/midnightntwrk/midnight-zk/pull/605)
 * `div` and `inv` of `AssignedScalarOfNativeCurve` now enforce a non-zero divisor in-circuit and accept non-canonical inputs (affects the VKs of circuits using Jubjub scalar division or inversion) [#603](https://github.com/midnightntwrk/midnight-zk/pull/603)
 * `PartialEq` for `AssignedBigUint` no longer treats a limb vector and its proper prefix as equal [#601](https://github.com/midnightntwrk/midnight-zk/pull/601)
