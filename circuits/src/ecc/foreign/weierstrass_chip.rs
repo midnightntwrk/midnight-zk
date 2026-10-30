@@ -959,6 +959,26 @@ where
         point.y.clone()
     }
 
+    fn x(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        point: &Self::Point,
+    ) -> Result<Self::Coordinate, Error> {
+        // The coordinates of the identity are arbitrary.
+        self.assert_non_zero(layouter, point)?;
+        Ok(point.x.clone())
+    }
+
+    fn y(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        point: &Self::Point,
+    ) -> Result<Self::Coordinate, Error> {
+        // The coordinates of the identity are arbitrary.
+        self.assert_non_zero(layouter, point)?;
+        Ok(point.y.clone())
+    }
+
     fn base_field(&self) -> &impl DecompositionInstructions<F, Self::Coordinate> {
         self.base_field_chip()
     }
