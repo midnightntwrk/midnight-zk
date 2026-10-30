@@ -8,6 +8,15 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 ### Added
+
+### Changed
+
+### Removed
+
+### Fixed
+
+## [7.3.0]
+### Added
 * Added the `is_collapsed` function to [#553](https://github.com/midnightntwrk/midnight-zk/pull/553/)
 * Added `EccInstructions::x` and `y`, which take a layouter and, on Weierstrass curves, assert that the point is not the identity; `x_coordinate` and `y_coordinate` are deprecated [#612](https://github.com/midnightntwrk/midnight-zk/issues/612)
 
@@ -16,13 +25,11 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * `DivisionInstructions::div_rem` and `rem` panic when `divisor * (dividend_bound / divisor + 1)` exceeds the field modulus, in particular when no bound is given; `DivisionInstructions` is deprecated [#606](https://github.com/midnightntwrk/midnight-zk/pull/606)
 * In-circuit `as_public_input` outputs a canonical encoding for foreign-field elements and foreign Weierstrass points (including the identity) (affects the VKs of circuits with such public inputs) [#612](https://github.com/midnightntwrk/midnight-zk/issues/612)
 
-### Removed
-
 ### Fixed
 * Foreign-field `mul` no longer ignores the multiplying constant when one of the operands is a fixed one [#605](https://github.com/midnightntwrk/midnight-zk/pull/605)
 * `div` and `inv` of `AssignedScalarOfNativeCurve` now enforce a non-zero divisor in-circuit and accept non-canonical inputs (affects the VKs of circuits using Jubjub scalar division or inversion) [#603](https://github.com/midnightntwrk/midnight-zk/pull/603)
 * `PartialEq` for `AssignedBigUint` no longer treats a limb vector and its proper prefix as equal [#601](https://github.com/midnightntwrk/midnight-zk/pull/601)
-* Lower bound of the foreign Edwards addition identity for `sign = -1` (affects the VKs of circuits using foreign Edwards curves) [#607](https://github.com/midnightntwrk/midnight-zk/pull/607)
+* Lower bound of the foreign Edwards addition identity for `sign = -1` (affects the VKs of circuits using foreign Edwards curves) [#609](https://github.com/midnightntwrk/midnight-zk/pull/609)
 * In-circuit `as_public_input` of Jubjub scalars encodes the canonical value, as `Instantiable::as_public_input` does (affects the VKs of circuits with Jubjub scalar public inputs) [#611](https://github.com/midnightntwrk/midnight-zk/pull/611)
 
 ## [7.2.4]

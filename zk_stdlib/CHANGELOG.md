@@ -9,12 +9,15 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 ### Added
 ### Changed
+### Removed
+
+## [2.4.0]
+### Changed
+* Bump `midnight-circuits` to 7.3.0 [#614](https://github.com/midnightntwrk/midnight-zk/pull/614)
 * `assign_as_public_input` always performs the in-circuit checks of `assign` (affects the VKs of relations with byte, Jubjub point or BLS12-381 point public inputs) [#598](https://github.com/midnightntwrk/midnight-zk/pull/598)
 * `DivisionInstructions::div_rem` and `rem` panic when `divisor * (dividend_bound / divisor + 1)` exceeds the field modulus, in particular when no bound is given; `DivisionInstructions` is deprecated [#606](https://github.com/midnightntwrk/midnight-zk/pull/606)
 * Examples use `EccInstructions::x` and `y` instead of the deprecated `x_coordinate` and `y_coordinate`, asserting that secp256k1 points are not the identity (affects the VKs of the Bitcoin signature and credential examples) [#612](https://github.com/midnightntwrk/midnight-zk/issues/612)
 * In-circuit `as_public_input` of Jubjub scalars encodes the canonical value, as `Instantiable::as_public_input` does (affects the VKs of relations with Jubjub scalar public inputs) [#611](https://github.com/midnightntwrk/midnight-zk/pull/611)
-
-### Removed
 
 ## [2.3.5]
 ### Changed
