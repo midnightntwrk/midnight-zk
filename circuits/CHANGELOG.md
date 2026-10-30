@@ -9,10 +9,13 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 ### Added
 * Added the `is_collapsed` function to [#553](https://github.com/midnightntwrk/midnight-zk/pull/553/)
+* `LimbCanonicityInstructions` to perform canonicity checks on limbs [#610](https://github.com/midnightntwrk/midnight-zk/pull/610)
 
 ### Changed
 * `assign_as_public_input` always performs the in-circuit checks of `assign` (affects the VKs of circuits with byte, Jubjub point or BLS12-381 point public inputs) [#598](https://github.com/midnightntwrk/midnight-zk/pull/598)
 * `DivisionInstructions::div_rem` and `rem` panic when `divisor * (dividend_bound / divisor + 1)` exceeds the field modulus, in particular when no bound is given; `DivisionInstructions` is deprecated [#606](https://github.com/midnightntwrk/midnight-zk/pull/606)
+* `CanonicityInstructions::is_canonical` renamed `is_canonical_bits`, and `NativeInstructions` requires `LimbCanonicityInstructions` [#610](https://github.com/midnightntwrk/midnight-zk/pull/610)
+* `as_public_input` of foreign field elements and foreign Weierstrass points only accepts the canonical encoding [#610](https://github.com/midnightntwrk/midnight-zk/pull/610)
 
 ### Removed
 

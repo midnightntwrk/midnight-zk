@@ -11,6 +11,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 * `assign_as_public_input` always performs the in-circuit checks of `assign` (affects the VKs of relations with byte, Jubjub point or BLS12-381 point public inputs) [#598](https://github.com/midnightntwrk/midnight-zk/pull/598)
 * `DivisionInstructions::div_rem` and `rem` panic when `divisor * (dividend_bound / divisor + 1)` exceeds the field modulus, in particular when no bound is given; `DivisionInstructions` is deprecated [#606](https://github.com/midnightntwrk/midnight-zk/pull/606)
+* Foreign field elements and foreign points are exposed as public inputs only in their canonical encoding [#610](https://github.com/midnightntwrk/midnight-zk/pull/610)
 
 ### Removed
 
