@@ -174,8 +174,9 @@ where
 
 /// Type for foreign EC points.
 /// The identity is represented with field `is_id`, whose value is `1` iff the
-/// point is the identity. If `is_id` is set, the values of `x` and `y` are
-/// irrelevant and can be anything.
+/// point is the identity. If `is_id` is set, `x = y = 0`. This is enforced in
+/// `assign_point_unchecked`; any new way of building a point must preserve it,
+/// otherwise the coordinates of the identity are chosen by the prover.
 /// x2 is a ModInt encoding the square of x, which is computed once and stored.
 /// This value is used by our custom gates, it allows us to implement all
 /// custom gates without degree-3 terms, so we can reuse the same auxiliary
@@ -1093,6 +1094,10 @@ where
         let x = self.base_field_chip().assign(layouter, values.map(|v| v.0))?;
         let y = self.base_field_chip().assign(layouter, values.map(|v| v.1))?;
         let is_id = self.native_gadget.assign(layouter, values.map(|v| v.2))?;
+        // Fix the coordinates of the identity to (0, 0), see [AssignedForeignPoint].
+        let zero = self.base_field_chip().assign_fixed(layouter, C::Base::ZERO)?;
+        let x = self.base_field_chip().select(layouter, &is_id, &zero, &x)?;
+        let y = self.base_field_chip().select(layouter, &is_id, &zero, &y)?;
         let p = AssignedForeignPoint::<F, C, B> {
             point: p,
             is_id,
