@@ -3772,8 +3772,8 @@
       "max_deg": "5",
       "permutations": "10",
       "point_sets": "4",
-      "rows": "430",
-      "table_rows": "455"
+      "rows": "126",
+      "table_rows": "3"
     },
     "select": {
       "advice_columns": "9",
