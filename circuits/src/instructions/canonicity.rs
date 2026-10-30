@@ -20,17 +20,21 @@
 //!
 //! The implementors of this trait need to implement [FieldInstructions]
 //! where the notion of `canonical` makes sense.
+//!
+//! [LimbCanonicityInstructions] provides the same checks on limbs, i.e.
+//! little-endian digits in base `2^log2_base`.
 
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 use num_bigint::BigUint;
 
 use crate::{
+    field::AssignedBounded,
     instructions::{AssignmentInstructions, FieldInstructions},
     types::{AssignedBit, InnerConstants, Instantiable},
     CircuitField,
 };
 
-/// The set of circuit instructions for canonicity assertions.
+/// The set of circuit instructions for canonicity assertions on bits.
 pub trait CanonicityInstructions<F, Assigned>:
     FieldInstructions<F, Assigned> + AssignmentInstructions<F, AssignedBit<F>>
 where
@@ -115,6 +119,40 @@ where
         &self,
         layouter: &mut impl Layouter<F>,
         bits: &[AssignedBit<F>],
+        bound: BigUint,
+    ) -> Result<AssignedBit<F>, Error>;
+}
+
+/// The set of circuit instructions for canonicity assertions on limbs, i.e.
+/// little-endian digits in base `2^log2_base`. Same comparison as
+/// [CanonicityInstructions], but comparing limbs requires range checks.
+pub trait LimbCanonicityInstructions<F, Assigned>:
+    FieldInstructions<F, Assigned> + AssignmentInstructions<F, AssignedBit<F>>
+where
+    F: CircuitField,
+    Assigned::Element: CircuitField,
+    Assigned: Instantiable<F> + InnerConstants + Clone,
+{
+    /// Returns `true` iff the integer represented by the given limbs, in
+    /// little-endian base `2^log2_base`, is strictly lower than the order of
+    /// `Assigned::Element`.
+    fn is_canonical_limbs(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        limbs: &[AssignedBounded<F>],
+        log2_base: u32,
+    ) -> Result<AssignedBit<F>, Error> {
+        self.le_limbs_lower_than(layouter, limbs, log2_base, self.order())
+    }
+
+    /// Returns `true` iff the integer represented by the given limbs, in
+    /// little-endian base `2^log2_base`, is strictly lower than the given
+    /// bound. Panics if the bound of a limb exceeds `2^log2_base`.
+    fn le_limbs_lower_than(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        limbs: &[AssignedBounded<F>],
+        log2_base: u32,
         bound: BigUint,
     ) -> Result<AssignedBit<F>, Error>;
 }

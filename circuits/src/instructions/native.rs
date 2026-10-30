@@ -18,7 +18,7 @@ use crate::{
     instructions::{
         AssertionInstructions, BinaryInstructions, ComparisonInstructions, ControlFlowInstructions,
         DecompositionInstructions, EqualityInstructions, FieldInstructions,
-        UnsafeConversionInstructions,
+        LimbCanonicityInstructions, UnsafeConversionInstructions,
     },
     types::{AssignedBit, AssignedByte, AssignedNative},
     CircuitField,
@@ -34,6 +34,7 @@ pub trait NativeInstructions<F>:
     + ControlFlowInstructions<F, AssignedBit<F>>
     + DecompositionInstructions<F, AssignedNative<F>>
     + ComparisonInstructions<F, AssignedNative<F>>
+    + LimbCanonicityInstructions<F, AssignedNative<F>>
     + RangeCheckInstructions<F, AssignedNative<F>>
     + UnsafeConversionInstructions<F, AssignedNative<F>, AssignedByte<F>>
     + DivisionInstructions<F, AssignedNative<F>>

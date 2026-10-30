@@ -41,15 +41,18 @@ use super::gates::{
     norm::{self, NormConfig},
 };
 use crate::{
-    field::foreign::{
-        params::{check_params, FieldEmulationParams},
-        util::{bi_from_limbs, bi_to_limbs},
+    field::{
+        foreign::{
+            params::{check_params, FieldEmulationParams},
+            util::{bi_from_limbs, bi_to_limbs},
+        },
+        AssignedBounded,
     },
     instructions::{
         ArithInstructions, AssertionInstructions, AssignmentInstructions, CanonicityInstructions,
         ControlFlowInstructions, ConversionInstructions, DecompositionInstructions,
-        EqualityInstructions, FieldInstructions, NativeInstructions, PublicInputInstructions,
-        ScalarFieldInstructions, ZeroInstructions,
+        EqualityInstructions, FieldInstructions, LimbCanonicityInstructions, NativeInstructions,
+        PublicInputInstructions, ScalarFieldInstructions, ZeroInstructions,
     },
     types::{AssignedBit, AssignedByte, AssignedNative, InnerConstants, InnerValue, Instantiable},
     utils::util::bigint_to_fe,
@@ -1783,6 +1786,24 @@ where
         bound: BigUint,
     ) -> Result<AssignedBit<F>, Error> {
         self.native_gadget.le_bits_geq_than(layouter, bits, bound)
+    }
+}
+
+impl<F, K, P, N> LimbCanonicityInstructions<F, AssignedField<F, K, P>> for FieldChip<F, K, P, N>
+where
+    F: CircuitField,
+    K: CircuitField,
+    P: FieldEmulationParams<F, K>,
+    N: NativeInstructions<F>,
+{
+    fn le_limbs_lower_than(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        limbs: &[AssignedBounded<F>],
+        log2_base: u32,
+        bound: BigUint,
+    ) -> Result<AssignedBit<F>, Error> {
+        self.native_gadget.le_limbs_lower_than(layouter, limbs, log2_base, bound)
     }
 }
 

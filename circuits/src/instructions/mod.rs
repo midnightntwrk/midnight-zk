@@ -44,7 +44,7 @@ pub use assignments::AssignmentInstructions;
 pub use base64::Base64Instructions;
 pub use binary::BinaryInstructions;
 pub use bitwise::BitwiseInstructions;
-pub use canonicity::CanonicityInstructions;
+pub use canonicity::{CanonicityInstructions, LimbCanonicityInstructions};
 pub use comparison::ComparisonInstructions;
 pub use control_flow::ControlFlowInstructions;
 pub use conversions::{ConversionInstructions, UnsafeConversionInstructions};

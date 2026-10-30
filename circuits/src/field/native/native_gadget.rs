@@ -21,7 +21,7 @@ use midnight_proofs::{
     plonk::Error,
 };
 use num_bigint::BigUint;
-use num_traits::Zero;
+use num_traits::{One, Zero};
 #[cfg(any(test, feature = "testing"))]
 use {
     crate::field::decomposition::chip::P2RDecompositionConfig,
@@ -45,8 +45,9 @@ use crate::{
         AssignmentInstructions, BinaryInstructions, BitwiseInstructions, CanonicityInstructions,
         ComparisonInstructions, ControlFlowInstructions, ConversionInstructions,
         DecompositionInstructions, DivisionInstructions, EqualityInstructions, FieldInstructions,
-        NativeInstructions, PublicInputInstructions, RangeCheckInstructions,
-        ScalarFieldInstructions, UnsafeConversionInstructions, ZeroInstructions,
+        LimbCanonicityInstructions, NativeInstructions, PublicInputInstructions,
+        RangeCheckInstructions, ScalarFieldInstructions, UnsafeConversionInstructions,
+        ZeroInstructions,
     },
     types::{AssignedBit, AssignedNative, InnerValue, Instantiable},
     utils::util::big_to_fe,
@@ -1651,6 +1652,58 @@ where
         bound: BigUint,
     ) -> Result<AssignedBit<F>, Error> {
         self.native_chip.le_bits_geq_than(layouter, bits, bound)
+    }
+}
+
+// Implement Limb Canonicity Instructions.
+impl<F, CoreDecomposition, NativeArith> LimbCanonicityInstructions<F, AssignedNative<F>>
+    for NativeGadget<F, CoreDecomposition, NativeArith>
+where
+    F: CircuitField,
+    CoreDecomposition: CoreDecompositionInstructions<F>,
+    NativeArith: CanonicityInstructions<F, AssignedNative<F>>
+        + AssertionInstructions<F, AssignedBit<F>>
+        + EqualityInstructions<F, AssignedBit<F>>
+        + ControlFlowInstructions<F, AssignedBit<F>>
+        + BinaryInstructions<F>
+        + UnsafeConversionInstructions<F, AssignedNative<F>, AssignedBit<F>>
+        + ConversionInstructions<F, AssignedBit<F>, AssignedNative<F>>,
+{
+    fn le_limbs_lower_than(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        limbs: &[AssignedBounded<F>],
+        log2_base: u32,
+        bound: BigUint,
+    ) -> Result<AssignedBit<F>, Error> {
+        // The limbs cannot encode a value as large as the bound.
+        if bound.bits() > limbs.len() as u64 * log2_base as u64 {
+            return self.assign_fixed(layouter, true);
+        }
+        let base_mask = (BigUint::one() << log2_base) - BigUint::one();
+
+        // Lexicographic comparison from the least significant limb: after limb i,
+        // `is_lower` holds iff limbs 0..=i encode an integer lower than the one
+        // encoded by limbs 0..=i of the bound.
+        let mut is_lower: Option<AssignedBit<F>> = None;
+        for (i, xi) in limbs.iter().enumerate() {
+            assert!(xi.bound() <= log2_base);
+            let bi = big_to_fe::<F>((&bound >> (i * log2_base as usize)) & &base_mask);
+            let lt = self.lower_than_fixed(layouter, xi, bi)?;
+            is_lower = Some(match is_lower {
+                None => lt,
+                Some(is_lower) => {
+                    let xi = self.element_of_bounded(layouter, xi)?;
+                    let eq = self.is_equal_to_fixed(layouter, &xi, bi)?;
+                    let eq_and_lower = self.and(layouter, &[eq, is_lower])?;
+                    self.or(layouter, &[lt, eq_and_lower])?
+                }
+            });
+        }
+        match is_lower {
+            Some(is_lower) => Ok(is_lower),
+            None => self.assign_fixed(layouter, false),
+        }
     }
 }
 
