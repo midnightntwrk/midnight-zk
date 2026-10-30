@@ -639,8 +639,8 @@
       "max_deg": "5",
       "permutations": "14",
       "point_sets": "5",
-      "rows": "484",
-      "table_rows": "417"
+      "rows": "1122",
+      "table_rows": "419"
     },
     "select": {
       "advice_columns": "10",
@@ -938,8 +938,8 @@
       "max_deg": "5",
       "permutations": "11",
       "point_sets": "4",
-      "rows": "9",
-      "table_rows": "257"
+      "rows": "329",
+      "table_rows": "259"
     },
     "select": {
       "advice_columns": "8",
@@ -1281,8 +1281,8 @@
       "max_deg": "5",
       "permutations": "11",
       "point_sets": "4",
-      "rows": "9",
-      "table_rows": "257"
+      "rows": "329",
+      "table_rows": "259"
     },
     "select": {
       "advice_columns": "8",
@@ -1624,8 +1624,8 @@
       "max_deg": "5",
       "permutations": "11",
       "point_sets": "4",
-      "rows": "9",
-      "table_rows": "257"
+      "rows": "329",
+      "table_rows": "259"
     },
     "select": {
       "advice_columns": "8",
@@ -1967,8 +1967,8 @@
       "max_deg": "5",
       "permutations": "11",
       "point_sets": "4",
-      "rows": "9",
-      "table_rows": "257"
+      "rows": "329",
+      "table_rows": "259"
     },
     "select": {
       "advice_columns": "8",
@@ -2277,8 +2277,8 @@
       "max_deg": "5",
       "permutations": "19",
       "point_sets": "5",
-      "rows": "15414",
-      "table_rows": "385"
+      "rows": "16383",
+      "table_rows": "387"
     },
     "select": {
       "advice_columns": "15",
@@ -2543,8 +2543,8 @@
       "max_deg": "5",
       "permutations": "13",
       "point_sets": "5",
-      "rows": "46",
-      "table_rows": "449"
+      "rows": "695",
+      "table_rows": "451"
     },
     "select": {
       "advice_columns": "9",
@@ -2809,8 +2809,8 @@
       "max_deg": "5",
       "permutations": "13",
       "point_sets": "5",
-      "rows": "62",
-      "table_rows": "449"
+      "rows": "711",
+      "table_rows": "451"
     },
     "select": {
       "advice_columns": "9",
@@ -3772,8 +3772,8 @@
       "max_deg": "5",
       "permutations": "10",
       "point_sets": "4",
-      "rows": "126",
-      "table_rows": "3"
+      "rows": "430",
+      "table_rows": "455"
     },
     "select": {
       "advice_columns": "9",

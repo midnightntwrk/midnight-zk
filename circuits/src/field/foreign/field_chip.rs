@@ -512,6 +512,20 @@ where
         assigned: &AssignedField<F, K, P>,
     ) -> Result<Vec<AssignedNative<F>>, Error> {
         let assigned = self.normalize(layouter, assigned)?;
+
+        // Well-formed limbs may still encode a non-canonical integer (in [m, 2m)).
+        // Assert canonicity so that the output is uniquely determined by the value.
+        let bits = (assigned.limb_values.iter())
+            .zip(well_formed_log2_bounds::<F, K, P>())
+            .map(|(limb, nb_bits)| {
+                self.native_gadget
+                    .assigned_to_le_bits(layouter, limb, Some(nb_bits as usize), true)
+            })
+            .collect::<Result<Vec<_>, Error>>()?
+            .concat();
+        let is_canonical = self.is_canonical(layouter, &bits)?;
+        self.assert_equal_to_fixed(layouter, &is_canonical, true)?;
+
         let nb_limbs_per_batch = (F::CAPACITY / P::LOG2_BASE) as usize;
         let base = BI::from(2).pow(P::LOG2_BASE);
         assigned
