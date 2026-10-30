@@ -1034,11 +1034,22 @@ impl<C: EdwardsCurve> PublicInputInstructions<C::Base, AssignedScalarOfNativeCur
         layouter: &mut impl Layouter<C::Base>,
         assigned: &AssignedScalarOfNativeCurve<C>,
     ) -> Result<Vec<AssignedNative<C::Base>>, Error> {
+        // Express in canonical form before encoding.
+        let nb_bits = C::NUM_BITS_SUBGROUP as usize;
+        let mut bits = assigned.bits.clone();
+        if !assigned.enforced_canonical && bits.len() >= nb_bits {
+            let s = assigned.to_canonical_biguint(layouter, &self.biguint_gadget)?;
+            bits = self.biguint_gadget.to_le_bits(layouter, &s)?;
+        }
+        let zero: AssignedBit<C::Base> = self.native_gadget.assign_fixed(layouter, false)?;
+        for bit in bits.iter().skip(nb_bits) {
+            self.native_gadget.assert_equal(layouter, bit, &zero)?;
+        }
+        bits.resize(nb_bits, zero);
+
         // We aggregate the bits while they fit in a single `AssignedNative`.
         let nb_bits_per_batch = C::Base::NUM_BITS as usize - 1;
-        assigned
-            .bits
-            .chunks(nb_bits_per_batch)
+        bits.chunks(nb_bits_per_batch)
             .map(|chunk| self.native_gadget.assigned_from_le_bits(layouter, chunk))
             .collect()
     }
