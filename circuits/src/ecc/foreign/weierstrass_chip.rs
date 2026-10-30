@@ -401,9 +401,14 @@ where
         layouter: &mut impl Layouter<F>,
         p: &AssignedForeignPoint<F, C, B>,
     ) -> Result<Vec<AssignedNative<F>>, Error> {
+        // The coordinates of the identity are free; expose them as (0, 0), as
+        // off-circuit.
+        let zero = self.base_field_chip.assign_fixed(layouter, C::Base::ZERO)?;
+        let x = self.base_field_chip.select(layouter, &p.is_id, &zero, &p.x)?;
+        let y = self.base_field_chip.select(layouter, &p.is_id, &zero, &p.y)?;
         let mut pis = [
-            self.base_field_chip.as_public_input(layouter, &p.x)?.as_slice(),
-            self.base_field_chip.as_public_input(layouter, &p.y)?.as_slice(),
+            self.base_field_chip.as_public_input(layouter, &x)?.as_slice(),
+            self.base_field_chip.as_public_input(layouter, &y)?.as_slice(),
         ]
         .concat();
 

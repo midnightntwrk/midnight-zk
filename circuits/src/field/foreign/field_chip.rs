@@ -515,6 +515,14 @@ where
         assigned: &AssignedField<F, K, P>,
     ) -> Result<Vec<AssignedNative<F>>, Error> {
         let assigned = self.normalize(layouter, assigned)?;
+        // Well-formed limbs may encode x or x + m: only the canonical one is exposed.
+        // Sound since well-formed limbs are range-checked in [0, 2^log2_bound).
+        let limbs = (assigned.limb_values.iter())
+            .zip(well_formed_log2_bounds::<F, K, P>())
+            .map(|(xi, log2_bound)| AssignedBounded::to_assigned_bounded_unsafe(xi, log2_bound))
+            .collect::<Vec<_>>();
+        let is_canonical = self.is_canonical_limbs(layouter, &limbs, P::LOG2_BASE)?;
+        self.assert_equal_to_fixed(layouter, &is_canonical, true)?;
         let nb_limbs_per_batch = (F::CAPACITY / P::LOG2_BASE) as usize;
         let base = BI::from(2).pow(P::LOG2_BASE);
         assigned
