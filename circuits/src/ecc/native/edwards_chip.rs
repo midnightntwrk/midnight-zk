@@ -833,7 +833,6 @@ impl<C: EdwardsCurve> EccInstructions<C::Base, C> for EccChip<C> {
         point.y.clone()
     }
 
-    // The identity (0, 1) is an affine point, no assertion is needed.
     fn x(
         &self,
         _layouter: &mut impl Layouter<C::Base>,

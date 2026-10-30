@@ -513,8 +513,9 @@ where
     ) -> Result<Vec<AssignedNative<F>>, Error> {
         let assigned = self.normalize(layouter, assigned)?;
 
-        // Well-formed limbs may still encode a non-canonical integer (in [m, 2m)).
-        // Assert canonicity so that the output is uniquely determined by the value.
+        // Well-formed limbs encode an integer in [0, 2^k), where 2^k is the smallest
+        // power of 2 bigger than m, so it may be non-canonical. Assert canonicity so
+        // that the output is uniquely determined by the value.
         let bits = (assigned.limb_values.iter())
             .zip(well_formed_log2_bounds::<F, K, P>())
             .map(|(limb, nb_bits)| {

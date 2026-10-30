@@ -964,7 +964,6 @@ where
         layouter: &mut impl Layouter<F>,
         point: &Self::Point,
     ) -> Result<Self::Coordinate, Error> {
-        // The coordinates of the identity are arbitrary.
         self.assert_non_zero(layouter, point)?;
         Ok(point.x.clone())
     }
@@ -974,7 +973,6 @@ where
         layouter: &mut impl Layouter<F>,
         point: &Self::Point,
     ) -> Result<Self::Coordinate, Error> {
-        // The coordinates of the identity are arbitrary.
         self.assert_non_zero(layouter, point)?;
         Ok(point.y.clone())
     }
