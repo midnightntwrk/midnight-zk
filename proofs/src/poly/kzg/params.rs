@@ -329,6 +329,12 @@ where
         let mut k = [0u8; 4];
         reader.read_exact(&mut k[..])?;
         let k = u32::from_le_bytes(k);
+        if k > E::Fr::S {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("k = {k} exceeds the maximum supported value {}", E::Fr::S),
+            ));
+        }
         let n = 1 << k;
 
         let (g, g_lagrange) = match format {
@@ -585,5 +591,22 @@ mod test {
         assert_eq!(params0.g_lagrange, params1.g_lagrange);
         assert_eq!(params0.g2, params1.g2);
         assert_eq!(params0.s_g2, params1.s_g2);
+    }
+
+    #[test]
+    fn test_read_custom_rejects_oversized_k() {
+        use ff::PrimeField;
+        use midnight_curves::{Bls12, Fq};
+
+        let data = (Fq::S + 1).to_le_bytes();
+        for format in [
+            SerdeFormat::Processed,
+            SerdeFormat::RawBytes,
+            SerdeFormat::RawBytesUnchecked,
+        ] {
+            let err = ParamsKZG::<Bls12>::read_custom::<_>(&mut &data[..], format).err().unwrap();
+            assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+            assert!(err.to_string().contains("exceeds the maximum supported value"));
+        }
     }
 }
