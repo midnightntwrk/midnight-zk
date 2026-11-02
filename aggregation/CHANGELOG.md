@@ -6,11 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://book.async.rs/overview/stability-guarantees.html).
 
 ## [Unreleased]
+
+## [0.1.0] - 2026-09-22
+
+First published release. The `0.1.1` and `0.1.2` entries that previously appeared here
+described in-repo iterations that were never published, so their contents are folded in.
+
 ### Added
+<<<<<<< HEAD
 * `fewer-point-sets` feature [#281](https://github.com/midnightntwrk/midnight-zk/pull/281)
+||||||| 3d4bf702
+=======
+* Expose `IvcVerifier::vk`, `IvcVerifier::params_verifier` and `IvcInstance::acc`, so an IVC chain can be finalised from outside the crate
+>>>>>>> origin/zk-stdlib-v2
 * Multi-circuit proof aggregation module and example [#311](https://github.com/midnightntwrk/midnight-zk/pull/311)
 * Add `IvcError::InvalidWitness` variant [#311](https://github.com/midnightntwrk/midnight-zk/pull/311)
 * Add `assign_without_subgroup_check` to `SelfEmulation` trait [#284](https://github.com/midnightntwrk/midnight-zk/pull/284)
+* Missing load of native_chip and poseidon (although they were not necessary) [#90](https://github.com/midnightntwrk/midnight-zk/pull/90)
+
 ### Changed
 * The multi-circuit aggregator witnesses the inner verifying keys privately, with `VerifierGadget::assign_unbound_vk` and binds each of them to its hash with `bind_vk_to_hash`: the aggregator state no longer exposes the last inner verifying key [#572](https://github.com/midnightntwrk/midnight-zk/pull/572)
 * The multi-circuit aggregator supports inner circuits of different sizes: their `k` and `omega` are public inputs, and `InnerCircuitsContext::new` takes the inner circuits' `max_bit_len` instead of `k` [#461](https://github.com/midnightntwrk/midnight-zk/pull/461)
@@ -36,6 +49,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 * Rebase to new `circuits/` with `sha512` [#96](https://github.com/midnightntwrk/midnight-zk/pull/96)
 * truncated_challenges feature to allow --all-features compilation [#146](https://github.com/midnightntwrk/midnight-zk/pull/146)
 * Rebase to new `circuits/` with `keccak` and `blake2b` [#135](https://github.com/midnightntwrk/midnight-zk/pull/135)
+<<<<<<< HEAD
 ### Fixed
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 * Run 'prepare' function in-circuit for the multi-circuit aggregator [416](https://github.com/midnightntwrk/midnight-zk/pull/416)
@@ -44,6 +58,10 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 ### Changed
 * Adapt `LightAggregator` to affine SRS storage [#350](https://github.com/midnightntwrk/midnight-zk/pull/350)
 * Adapt to configurable `NB_ARITH_COLS` [#287](https://github.com/midnightntwrk/midnight-zk/pull/287)
+||||||| 3d4bf702
+### Changed
+=======
+>>>>>>> origin/zk-stdlib-v2
 * Remove `is_genesis` from `IvcState` trait; genesis detection is now derived generically from `format_public_input` [#272](https://github.com/midnightntwrk/midnight-zk/pull/272)
 * Rename `proof_aggregation` example to `single_circuit_aggregation` [#264](https://github.com/midnightntwrk/midnight-zk/pull/264)
 * Remove `InnerValue` and `Instantiable` requirements from IVC `AssignedState` [#264](https://github.com/midnightntwrk/midnight-zk/pull/264)
@@ -55,6 +73,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 * Adapt light aggregator to support non-fixed input commitments and improved fixed_bases handling [#212](https://github.com/midnightntwrk/midnight-zk/pull/212)
 * Updated Rust toolchain to 1.90.0 [#210](https://github.com/midnightntwrk/midnight-zk/pull/210)
 * `CircuitField` refactor [#201](https://github.com/midnightntwrk/midnight-zk/pull/201)
+<<<<<<< HEAD
 
 ### Removed
 * `truncated-challenges` feature, which the examples no longer require; challenges are always truncated [#580](https://github.com/midnightntwrk/midnight-zk/pull/580)
@@ -73,6 +92,21 @@ Update dependencies only.
 * Missing load of native_chip and poseidon (although they were not necessary) [#90](https://github.com/midnightntwrk/midnight-zk/pull/90)
 
 ### Changed
+||||||| 3d4bf702
+
+### Removed
+* Halo2curves dependency [#139](https://github.com/midnightntwrk/midnight-zk/pull/139)
+
+[0.1.2]
+Update dependencies only.
+
+[0.1.1]
+### Added
+* Missing load of native_chip and poseidon (although they were not necessary) [#90](https://github.com/midnightntwrk/midnight-zk/pull/90)
+
+### Changed
+=======
+>>>>>>> origin/zk-stdlib-v2
 * Modify `pow2range` chip: adjust architecture in light aggregator [#38](https://github.com/midnightntwrk/midnight-zk/pull/38)
 * Update dependency names [#32](https://github.com/midnightntwrk/midnight-zk/pull/32)
 * Fix versions of crates in monorepo [#33](https://github.com/midnightntwrk/midnight-zk/pull/33)
@@ -83,4 +117,5 @@ Update dependencies only.
 * Rebase to new cost-model with improved K computation [#104](https://github.com/midnightntwrk/midnight-zk/pull/104)
 
 ### Removed
+* Halo2curves dependency [#139](https://github.com/midnightntwrk/midnight-zk/pull/139)
 * Add a turned-off automaton configuration due to the automaton chip being exposed in std_lib [#30](https://github.com/midnightntwrk/midnight-zk/pull/30)

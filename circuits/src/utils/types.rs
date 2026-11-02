@@ -32,7 +32,11 @@ pub trait Instantiable<F: CircuitField>: InnerValue {
     /// Inverse of [Self::as_public_input]: reconstructs the element from
     /// its public input representation. Returns `None` if `fields` does not
     /// encode a valid element.
+<<<<<<< HEAD
     #[cfg(any(test, feature = "testing"))]
+||||||| 3d4bf702
+=======
+>>>>>>> origin/zk-stdlib-v2
     fn from_public_input(fields: &[F]) -> Option<<Self as InnerValue>::Element>;
 }
 
@@ -72,7 +76,11 @@ impl<F: CircuitField> Instantiable<F> for AssignedNative<F> {
         vec![*element]
     }
 
+<<<<<<< HEAD
     #[cfg(any(test, feature = "testing"))]
+||||||| 3d4bf702
+=======
+>>>>>>> origin/zk-stdlib-v2
     fn from_public_input(fields: &[F]) -> Option<F> {
         match fields {
             [f] => Some(*f),

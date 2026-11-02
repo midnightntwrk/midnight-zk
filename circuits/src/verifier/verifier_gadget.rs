@@ -39,9 +39,19 @@ use crate::{
         pcs::{AssignedCommitment, InCircuitPCS, VerifierQuery},
         traces::VerifierTrace,
         transcript_gadget::TranscriptGadget,
+<<<<<<< HEAD
         utils::{
             evaluate_lagrange_polynomials, inner_product, mul_add, pow_of_two, square_k_times, sum,
         },
+||||||| 3d4bf702
+        trash,
+        utils::{evaluate_lagrange_polynomials, inner_product, sum, AssignedBoundedScalar},
+        vanishing, Accumulator, AssignedAccumulator, AssignedVk, SelfEmulation, VerifyingKey,
+=======
+        trash,
+        utils::{evaluate_lagrange_polynomials, inner_product, sum, AssignedBoundedScalar},
+        vanishing, Accumulator, AssignedAccumulator, AssignedVk, SelfEmulation,
+>>>>>>> origin/zk-stdlib-v2
     },
 };
 
@@ -110,18 +120,6 @@ impl<S: SelfEmulation> PublicInputInstructions<S::F, AssignedVk<S>> for Verifier
              for assigned verifying keys."
         )
     }
-
-    fn assign_as_public_input(
-        &self,
-        _layouter: &mut impl Layouter<S::F>,
-        _value: Value<VerifyingKey<S>>,
-    ) -> Result<AssignedVk<S>, Error> {
-        unimplemented!(
-            "We intend [assign_vk_as_public_input] to be the only entry point
-            for assigned verifying keys. (Note that its signature is more complex
-            that this function's signature.)"
-        )
-    }
 }
 
 impl<S: SelfEmulation> PublicInputInstructions<S::F, AssignedAccumulator<S>> for VerifierGadget<S> {
@@ -144,16 +142,6 @@ impl<S: SelfEmulation> PublicInputInstructions<S::F, AssignedAccumulator<S>> for
     ) -> Result<(), Error> {
         (assigned.lhs).constrain_as_public_input(layouter, &self.curve_chip, &self.scalar_chip)?;
         (assigned.rhs).constrain_as_public_input(layouter, &self.curve_chip, &self.scalar_chip)
-    }
-
-    fn assign_as_public_input(
-        &self,
-        _layouter: &mut impl Layouter<S::F>,
-        _value: Value<Accumulator<S>>,
-    ) -> Result<AssignedAccumulator<S>, Error> {
-        unimplemented!(
-            "This is intentionally unimplemented, use [constrain_as_public_input] instead"
-        )
     }
 }
 

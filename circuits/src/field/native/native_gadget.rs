@@ -106,7 +106,11 @@ impl<F: CircuitField> Instantiable<F> for AssignedByte<F> {
         vec![F::from(*element as u64)]
     }
 
+<<<<<<< HEAD
     #[cfg(any(test, feature = "testing"))]
+||||||| 3d4bf702
+=======
+>>>>>>> origin/zk-stdlib-v2
     fn from_public_input(fields: &[F]) -> Option<u8> {
         let [f] = fields else { return None };
         u8::try_from(f.to_biguint()).ok()
@@ -524,19 +528,6 @@ where
     ) -> Result<(), Error> {
         let assigned_as_native: AssignedNative<F> = assigned.clone().into();
         self.constrain_as_public_input(layouter, &assigned_as_native)
-    }
-
-    fn assign_as_public_input(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        value: Value<u8>,
-    ) -> Result<AssignedByte<F>, Error> {
-        // We can skip the in-circuit [0, 255]-range-check as this condition will
-        // be enforced through the public inputs bind anyway.
-        let assigned_native = self
-            .native_chip
-            .assign_as_public_input(layouter, value.map(|byte| F::from(byte as u64)))?;
-        self.convert_unsafe(layouter, &assigned_native)
     }
 }
 
@@ -1037,14 +1028,6 @@ where
     ) -> Result<(), Error> {
         self.native_chip.constrain_as_public_input(layouter, assigned)
     }
-
-    fn assign_as_public_input(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        value: Value<F>,
-    ) -> Result<AssignedNative<F>, Error> {
-        self.native_chip.assign_as_public_input(layouter, value)
-    }
 }
 
 // Inherit F Assignment Instructions.
@@ -1103,14 +1086,6 @@ where
         assigned: &AssignedBit<F>,
     ) -> Result<(), Error> {
         self.native_chip.constrain_as_public_input(layouter, assigned)
-    }
-
-    fn assign_as_public_input(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        value: Value<bool>,
-    ) -> Result<AssignedBit<F>, Error> {
-        self.native_chip.assign_as_public_input(layouter, value)
     }
 }
 

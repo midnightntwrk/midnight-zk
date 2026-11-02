@@ -1,6 +1,12 @@
 CircuitModel {
     k: 15,
+<<<<<<< HEAD
     rows: 26764,
+||||||| 3d4bf702
+    rows: 26765,
+=======
+    rows: 27413,
+>>>>>>> origin/zk-stdlib-v2
     table_rows: 30979,
     nb_unusable_rows: 14,
     max_deg: 5,

@@ -213,9 +213,17 @@ impl<S: SelfEmulation> Instantiable<S::F> for AssignedAccumulator<S> {
         .collect()
     }
 
+<<<<<<< HEAD
     #[cfg(any(test, feature = "testing"))]
     fn from_public_input(_fields: &[S::F]) -> Option<Accumulator<S>> {
         unimplemented!("Size of inner MSMs cannot be known from public input format.")
+||||||| 3d4bf702
+=======
+    /// Always returns `None`: the encoding is not invertible, since the size of
+    /// the inner MSMs cannot be known from the public input format.
+    fn from_public_input(_fields: &[S::F]) -> Option<Accumulator<S>> {
+        None
+>>>>>>> origin/zk-stdlib-v2
     }
 }
 
@@ -285,8 +293,24 @@ impl<S: SelfEmulation> AssignedAccumulator<S> {
         self.rhs.collapse(layouter, curve_chip, scalar_chip, PolynomialLabel::NoLabel)
     }
 
+<<<<<<< HEAD
     /// Resolves all `Fixed` bases in both internal MSMs by substituting their
     /// assigned circuit points from `fixed_bases`.
+||||||| 3d4bf702
+    /// Given the actual fixed bases, resolves the fixed-base part of the
+    /// internal MSMs by pairing each named scalar with its base and moving
+    /// them to regular variable-base entries.
+=======
+    /// Whether both sides are collapsed and fixed-base-resolved; see
+    /// [`AssignedMsm::is_collapsed`].
+    pub fn is_collapsed(&self) -> bool {
+        self.lhs.is_collapsed() && self.rhs.is_collapsed()
+    }
+
+    /// Given the actual fixed bases, resolves the fixed-base part of the
+    /// internal MSMs by pairing each named scalar with its base and moving
+    /// them to regular variable-base entries.
+>>>>>>> origin/zk-stdlib-v2
     ///
     /// After this call, `lhs` and `rhs` contain no `Fixed` entries; every base
     /// has been materialized into an `AssignedPoint::Variable` circuit cell.

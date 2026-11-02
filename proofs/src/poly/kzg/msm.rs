@@ -182,12 +182,37 @@ pub fn msm_specific<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Cur
         return C::Curve::identity();
     }
 
+<<<<<<< HEAD
     if TypeId::of::<C>() == TypeId::of::<G1Affine>() {
         let coeffs = unsafe { &*(coeffs.as_slice() as *const _ as *const [Fq]) };
         let bases = unsafe { &*(bases.as_slice() as *const _ as *const [G1Affine]) };
         // TODO: 255 is fine because type is checked. Another option is propagating
         // nbits as an input of msm_specific.
         let res = G1Affine::multi_exp_affine(bases, coeffs);
+||||||| 3d4bf702
+    // We empirically checked that for MSMs larger than 2**18, the blstrs
+    // implementation regresses.
+    if coeffs.len() <= (2 << 18) && TypeId::of::<C>() == TypeId::of::<midnight_curves::G1Affine>() {
+        // Safe: we just checked type
+        let coeffs_slice = coeffs.as_slice();
+        let bases_slice = bases.as_slice();
+        let coeffs = unsafe { &*(coeffs_slice as *const _ as *const [Fq]) };
+        let bases = unsafe { &*(bases_slice as *const _ as *const [G1Projective]) };
+        let res = G1Projective::multi_exp(bases, coeffs);
+=======
+    // For BLS12-381 G1 always use blst's Pippenger. The former cut-over to
+    // `msm_best` above 2^19 terms ("blst regresses above 2^18") no longer holds,
+    // and `msm_best` pays the `from_xy` subgroup check introduced in
+    // midnight-curves 0.3.1 once per base and once per bucket, which makes it
+    // several times slower on large MSMs.
+    if TypeId::of::<C>() == TypeId::of::<midnight_curves::G1Affine>() {
+        // Safe: we just checked type
+        let coeffs_slice = coeffs.as_slice();
+        let bases_slice = bases.as_slice();
+        let coeffs = unsafe { &*(coeffs_slice as *const _ as *const [Fq]) };
+        let bases = unsafe { &*(bases_slice as *const _ as *const [G1Projective]) };
+        let res = G1Projective::multi_exp(bases, coeffs);
+>>>>>>> origin/zk-stdlib-v2
         unsafe { std::mem::transmute_copy(&res) }
     } else {
         msm_best(&coeffs, &bases)

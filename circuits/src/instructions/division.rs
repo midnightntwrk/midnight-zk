@@ -29,6 +29,8 @@ use crate::{
 };
 
 /// Set of circuit instructions for integer division.
+///
+/// **Deprecated**: this trait will be removed in a future release.
 pub trait DivisionInstructions<F, Assigned>:
     ArithInstructions<F, Assigned> + RangeCheckInstructions<F, Assigned>
 where
@@ -54,12 +56,14 @@ where
     ///  - If `divisor > dividend_bound` when the bound is provided or if
     ///    `divisor` is greater than or equal to the maximum value that an
     ///    `Assigned::Element` can take.
+    ///  - If `divisor * (dividend_bound / divisor + 1) > p`, where `p` is the
+    ///    modulus of `Assigned::Element`.
     ///
     /// ```
     /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
     /// let x = chip.assign(&mut layouter, Value::known(F::from(17)))?;
     ///
-    /// let (q, r) = chip.div_rem(&mut layouter, &x, 5u64.into(), None)?;
+    /// let (q, r) = chip.div_rem(&mut layouter, &x, 5u64.into(), Some(100u64.into()))?;
     /// chip.assert_equal_to_fixed(&mut layouter, &q, F::from(3))?;
     /// chip.assert_equal_to_fixed(&mut layouter, &r, F::from(2))?;
     /// # });
@@ -78,9 +82,14 @@ where
             ));
         }
 
-        let dividend_bound = dividend_bound.unwrap_or((-Assigned::Element::from(1)).to_biguint());
+        let max = (-Assigned::Element::from(1)).to_biguint();
+        let dividend_bound = dividend_bound.unwrap_or(max.clone());
         assert!(divisor > BigUint::zero());
         assert!(divisor <= dividend_bound);
+        assert!(
+            &divisor * (&dividend_bound / &divisor + BigUint::one()) <= max + BigUint::one(),
+            "div_rem: divisor * (dividend_bound / divisor + 1) exceeds the field modulus"
+        );
 
         let (q, r) = dividend
             .value()
@@ -126,12 +135,15 @@ where
     ///  - If `modulus > input_bound` when the bound is provided or if `modulus`
     ///    is greater than or equal to the maximum value that an
     ///    `Assigned::Element` can take.
+    ///  - If `modulus * (input_bound / modulus + 1) > p`, where `p` is the
+    ///    modulus of `Assigned::Element`. Without a bound (`input_bound = p -
+    ///    1`), this is the case for every `modulus > 1`.
     ///
     /// ```
     /// # midnight_circuits::run_test_native_gadget!(chip, layouter, {
     /// let x = chip.assign(&mut layouter, Value::known(F::from(17)))?;
     ///
-    /// let r = chip.rem(&mut layouter, &x, 5u64.into(), None)?;
+    /// let r = chip.rem(&mut layouter, &x, 5u64.into(), Some(100u64.into()))?;
     /// chip.assert_equal_to_fixed(&mut layouter, &r, F::from(2))?;
     /// # });
     /// ```
@@ -170,6 +182,7 @@ pub(crate) mod tests {
     {
         dividend: Value<Assigned::Element>,
         divisor: BigUint,
+        dividend_bound: Option<BigUint>,
         expected: (Assigned::Element, Assigned::Element),
         _marker: PhantomData<(F, DivChip)>,
     }
@@ -211,7 +224,12 @@ pub(crate) mod tests {
 
             let x = chip.assign(&mut layouter, self.dividend)?;
             cost_measure_start(&mut layouter);
-            let (q, r) = chip.div_rem(&mut layouter, &x, self.divisor.clone(), None)?;
+            let (q, r) = chip.div_rem(
+                &mut layouter,
+                &x,
+                self.divisor.clone(),
+                self.dividend_bound.clone(),
+            )?;
             cost_measure_end(&mut layouter);
 
             chip.assert_equal_to_fixed(&mut layouter, &q, self.expected.0)?;
@@ -224,6 +242,7 @@ pub(crate) mod tests {
     fn run<F, Assigned, DivChip>(
         dividend: Assigned::Element,
         divisor: BigUint,
+        dividend_bound: Option<BigUint>,
         expected: (Assigned::Element, Assigned::Element),
         must_pass: bool,
         cost_model: bool,
@@ -237,6 +256,7 @@ pub(crate) mod tests {
         let circuit = TestCircuit::<F, Assigned, DivChip> {
             dividend: Value::known(dividend),
             divisor,
+            dividend_bound,
             expected,
             _marker: PhantomData,
         };
@@ -276,6 +296,7 @@ pub(crate) mod tests {
             run::<F, Assigned, DivChip>(
                 Assigned::Element::from(dividend),
                 BigUint::from(divisor as u64),
+                Some(BigUint::from(1u64 << 20)),
                 (Assigned::Element::from(q), Assigned::Element::from(r)),
                 must_pass,
                 i == 0,
@@ -283,26 +304,35 @@ pub(crate) mod tests {
             )
         });
 
-        let zero = BigUint::from(0u64);
         let one = BigUint::from(1u64);
         let two = BigUint::from(2u64);
         let max = (-Assigned::Element::from(1)).to_biguint();
 
-        [
-            (&max, &(&max - &one), (&one, &one), true),
-            (&(&max + &one), &(&max - &one), (&one, &two), false),
-            (&(&max + &one), &(&max - &one), (&zero, &zero), true),
-        ]
-        .into_iter()
-        .for_each(|(dividend, divisor, (q, r), must_pass)| {
-            run::<F, Assigned, DivChip>(
-                big_to_fe(dividend.clone()),
-                divisor.clone(),
-                (big_to_fe(q.clone()), big_to_fe(r.clone())),
-                must_pass,
-                false,
-                chip_name,
-            )
+        // The largest dividend bound accepted for divisor 2 is p - 2.
+        let (q, r) = (&max - &two).div_rem(&two);
+        run::<F, Assigned, DivChip>(
+            big_to_fe(&max - &two),
+            two.clone(),
+            Some(&max - &one),
+            (big_to_fe(q), big_to_fe(r)),
+            true,
+            false,
+            chip_name,
+        );
+
+        [None, Some(max.clone())].into_iter().for_each(|dividend_bound| {
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                run::<F, Assigned, DivChip>(
+                    Assigned::Element::from(0),
+                    two.clone(),
+                    dividend_bound,
+                    (Assigned::Element::from(0), Assigned::Element::from(0)),
+                    true,
+                    false,
+                    chip_name,
+                )
+            }));
+            assert!(result.is_err());
         });
     }
 }

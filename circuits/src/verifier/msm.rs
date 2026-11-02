@@ -362,6 +362,7 @@ impl<S: SelfEmulation> Instantiable<S::F> for AssignedMsm<S> {
         .collect::<Vec<_>>()
     }
 
+<<<<<<< HEAD
     #[cfg(any(test, feature = "testing"))]
     fn from_public_input(_fields: &[S::F]) -> Option<Msm<S>> {
         unimplemented!("not invertible: the flat encoding loses structural metadata.")
@@ -416,6 +417,13 @@ impl<S: SelfEmulation> AssignedMsm<S> {
     /// Creates a single fixed-base term MSM with the given scalar and label.
     pub fn from_fixed_term(scalar: AssignedBoundedScalar<S::F>, label: PolynomialLabel) -> Self {
         Self::from_term(scalar, AssignedPoint::Fixed, label)
+||||||| 3d4bf702
+=======
+    /// Always returns `None`: the flat encoding loses the structural metadata
+    /// needed to rebuild the MSM, so it is not invertible.
+    fn from_public_input(_fields: &[S::F]) -> Option<Msm<S>> {
+        None
+>>>>>>> origin/zk-stdlib-v2
     }
 }
 
@@ -632,8 +640,28 @@ impl<S: SelfEmulation> AssignedMsm<S> {
         Ok(())
     }
 
+<<<<<<< HEAD
     /// Resolves all `Fixed` bases by substituting their assigned circuit
     /// points.
+||||||| 3d4bf702
+    /// Given the actual fixed bases, resolves the fixed-base part of the MSM
+    /// by pairing each named scalar with its base and moving them to regular
+    /// variable-base entries.
+=======
+    /// Whether the MSM is a single base-scalar pair with no fixed-base scalars
+    /// left, as [`collapse`](Self::collapse) after
+    /// [`resolve_fixed_bases`](Self::resolve_fixed_bases) leaves it.
+    ///
+    /// This is a check on the shape only: the value of the scalar is a witness
+    /// and is not inspected.
+    pub fn is_collapsed(&self) -> bool {
+        self.bases.len() == 1 && self.scalars.len() == 1 && self.fixed_base_scalars.is_empty()
+    }
+
+    /// Given the actual fixed bases, resolves the fixed-base part of the MSM
+    /// by pairing each named scalar with its base and moving them to regular
+    /// variable-base entries.
+>>>>>>> origin/zk-stdlib-v2
     ///
     /// Each `Fixed` entry is replaced with `Variable(fixed_bases[label])`.
     /// After this call, no `Fixed` entries remain.

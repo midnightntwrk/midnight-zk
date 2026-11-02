@@ -1,8 +1,18 @@
 CircuitModel {
     k: 16,
+<<<<<<< HEAD
     rows: 53998,
     table_rows: 62745,
     nb_unusable_rows: 9,
+||||||| 3d4bf702
+    rows: 54003,
+    table_rows: 62745,
+    nb_unusable_rows: 6,
+=======
+    rows: 57563,
+    table_rows: 62747,
+    nb_unusable_rows: 6,
+>>>>>>> origin/zk-stdlib-v2
     max_deg: 5,
     advice_columns: 9,
     fixed_columns: 39,

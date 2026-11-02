@@ -8,6 +8,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 ### Added
+<<<<<<< HEAD
 * Improved SRS loading for tests [#276](https://github.com/midnightntwrk/midnight-zk/pull/276)
 * Expose the Merkle Mountain Range gadget through `ZkStdLib::mmr` [#509](https://github.com/midnightntwrk/midnight-zk/pull/509)
 * `single-h-commitment` feature and improved SRS loading for tests [#276](https://github.com/midnightntwrk/midnight-zk/pull/276)
@@ -24,7 +25,12 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Fix cost model proof size check to account for committed instance columns [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 * `MidnightVK::read` and `MidnightPK::read` reject a `k` outside `1..=F::S` instead of underflowing on `k = 0` [#581](https://github.com/midnightntwrk/midnight-zk/pull/581)
 
+||||||| 3d4bf702
+
+=======
+>>>>>>> origin/zk-stdlib-v2
 ### Changed
+<<<<<<< HEAD
 * Update the golden files following the quotient limbs of `midnight-proofs` being committed to as one group and opened one by one, which changes the proofs [#582](https://github.com/midnightntwrk/midnight-zk/pull/582)
 * `prove` passes the committed-instance column of a relation without a committed instance as an empty instance column, so it is neither committed to nor opened and the proof shrinks by one scalar. `verify` and `batch_verify` take it the same way when given no committed instance [#569](https://github.com/midnightntwrk/midnight-zk/pull/569)
 * `cost_model` and `update_circuit_goldenfiles` take whether the relation has a committed instance [#569](https://github.com/midnightntwrk/midnight-zk/pull/569)
@@ -46,10 +52,50 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Replace `secp256k1` with `k256`  [#192](https://github.com/midnightntwrk/midnight-zk/pull/192)
 * Parallelise batch_verifier [#236](https://github.com/midnightntwrk/midnight-zk/pull/236)
 
+||||||| 3d4bf702
+
+=======
+>>>>>>> origin/zk-stdlib-v2
 ### Removed
 * `truncated-challenges` feature; challenges are always truncated [#580](https://github.com/midnightntwrk/midnight-zk/pull/580)
 * `single-h-commitment` feature [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
 * `Clone` on `MidnightPK`, which holds a proving key, no longer `Clone` [#537](https://github.com/midnightntwrk/midnight-zk/pull/537)
+
+## [2.2.0]
+### Changed
+* Update verification keys following Weierstrass chip public input update [#398](https://github.com/midnightntwrk/midnight-zk/pull/398)
+
+## [2.4.0]
+### Changed
+* Bump `midnight-circuits` to 7.3.0 [#614](https://github.com/midnightntwrk/midnight-zk/pull/614)
+* `assign_as_public_input` always performs the in-circuit checks of `assign` (affects the VKs of relations with byte, Jubjub point or BLS12-381 point public inputs) [#598](https://github.com/midnightntwrk/midnight-zk/pull/598)
+* `DivisionInstructions::div_rem` and `rem` panic when `divisor * (dividend_bound / divisor + 1)` exceeds the field modulus, in particular when no bound is given; `DivisionInstructions` is deprecated [#606](https://github.com/midnightntwrk/midnight-zk/pull/606)
+* Examples use `EccInstructions::x` and `y` instead of the deprecated `x_coordinate` and `y_coordinate`, asserting that secp256k1 points are not the identity (affects the VKs of the Bitcoin signature and credential examples) [#612](https://github.com/midnightntwrk/midnight-zk/issues/612)
+* In-circuit `as_public_input` of Jubjub scalars encodes the canonical value, as `Instantiable::as_public_input` does (affects the VKs of relations with Jubjub scalar public inputs) [#611](https://github.com/midnightntwrk/midnight-zk/pull/611)
+
+## [2.3.5]
+### Changed
+* Bump `midnight-circuits` to 7.2.4 [#485](https://github.com/midnightntwrk/midnight-zk/pull/485)
+
+## [2.3.4]
+### Changed
+* Bump `midnight-circuits` to 7.2.3 and `midnight-proofs` to 0.8.2 for the verifier per-proof length check [#482](https://github.com/midnightntwrk/midnight-zk/pull/482)
+
+## [2.3.3]
+### Changed
+* Display the underlying error message in `Relation::circuit` synthesis errors [#452](https://github.com/midnightntwrk/midnight-zk/pull/452)
+
+## [2.3.2]
+### Changed
+* Bump `midnight-circuits` to 7.2.2 [451](https://github.com/midnightntwrk/midnight-zk/pull/451)
+
+## [2.3.1]
+### Fixed
+* Bug fix in midnight-curves [#434](https://github.com/midnightntwrk/midnight-zk/pull/434)
+
+## [2.3.0]
+### Added
+* `Instantiable::from_public_input`: inverse of `as_public_input` for decoding values from their public input representation [#408](https://github.com/midnightntwrk/midnight-zk/pull/408)
 
 ## [2.2.0]
 ### Changed

@@ -1,9 +1,19 @@
 [package]
 name = "midnight-zk-stdlib"
+<<<<<<< HEAD
 version = "2.2.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+||||||| 3d4bf702
+version = "2.1.0"
+edition = "2021"
+license-file.workspace = true
+=======
+version = "2.4.0"
+edition = "2021"
+license-file.workspace = true
+>>>>>>> origin/zk-stdlib-v2
 description = "Standard library of circuits and utilities for Midnight zero-knowledge proofs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -15,9 +25,9 @@ workspace = true
 group = { workspace = true }
 ff = { workspace = true }
 blake2b_simd = { workspace = true }
-midnight-circuits = { version = "7.0.0", features = ["testing"] }
-midnight-curves = { version = "0.3.0" }
-midnight-proofs = { version = "0.8.0", default-features = false, features = [
+midnight-circuits = { version = "7.3.0", features = ["testing"] }
+midnight-curves = { version = "0.3.1" }
+midnight-proofs = { version = "0.8.2", default-features = false, features = [
     "circuit-params",
     "committed-instances",
 ] }
