@@ -357,19 +357,7 @@ where
         .concat()
     }
 
-<<<<<<< HEAD
     #[cfg(any(test, feature = "testing"))]
-    fn from_public_input(fields: &[F]) -> Option<C::CryptographicGroup> {
-        let nb_limbs_per_batch = (F::CAPACITY / B::LOG2_BASE) as usize;
-        let nb_pi_per_coord = (B::NB_LIMBS as usize).div_ceil(nb_limbs_per_batch);
-        if fields.len() != 2 * nb_pi_per_coord {
-            return None;
-        }
-        let x = AssignedField::<F, C::Base, B>::from_public_input(&fields[..nb_pi_per_coord])?;
-        let y = AssignedField::<F, C::Base, B>::from_public_input(&fields[nb_pi_per_coord..])?;
-        C::from_xy(x, y).map(|p| p.into_subgroup())
-||||||| 3d4bf702
-=======
     fn from_public_input(fields: &[F]) -> Option<C::CryptographicGroup> {
         let nb_limbs_per_batch = (F::CAPACITY / B::LOG2_BASE) as usize;
         if nb_limbs_per_batch == 0 {
@@ -382,7 +370,6 @@ where
         let x = AssignedField::<F, C::Base, B>::from_public_input(&fields[..nb_pi_per_coord])?;
         let y = AssignedField::<F, C::Base, B>::from_public_input(&fields[nb_pi_per_coord..])?;
         C::from_xy(x, y)?.try_into_subgroup()
->>>>>>> origin/zk-stdlib-v2
     }
 }
 

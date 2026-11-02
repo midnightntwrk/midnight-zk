@@ -25,14 +25,8 @@ use midnight_proofs::{
 };
 
 use crate::{
-<<<<<<< HEAD
-||||||| 3d4bf702
-    types::{AssignedNative, Instantiable},
-=======
-    instructions::AssignmentInstructions,
-    types::{AssignedNative, Instantiable},
->>>>>>> origin/zk-stdlib-v2
     CircuitField,
+    instructions::AssignmentInstructions,
     types::{AssignedNative, Instantiable},
 };
 

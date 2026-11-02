@@ -1,18 +1,8 @@
 [package]
 name = "midnight-proofs"
-<<<<<<< HEAD
 version = "0.8.0"
 edition.workspace = true
 rust-version.workspace = true
-||||||| 3d4bf702
-version = "0.8.0"
-edition = "2021"
-rust-version = "1.76.0"
-=======
-version = "0.8.3"
-edition = "2021"
-rust-version = "1.76.0"
->>>>>>> origin/zk-stdlib-v2
 description = """
 Fast PLONK-based zero-knowledge proving system
 """
@@ -44,7 +34,7 @@ workspace = true
 [dependencies]
 ff = { workspace = true }
 group = { workspace = true }
-midnight-curves = "0.3.1"
+midnight-curves = "0.3.0"
 rand_core = { workspace = true, features = ["getrandom"] }
 tracing = { workspace = true }
 blake2b_simd = { workspace = true }

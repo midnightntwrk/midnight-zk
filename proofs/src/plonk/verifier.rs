@@ -134,7 +134,6 @@ where
         y,
     } = trace;
 
-<<<<<<< HEAD
     // Read the commitment to the quotient polynomial h(X) = nu(X)/(X^n-1) from
     // the transcript. The prover splits h(X) into `quotient_poly_degree + 1`
     // limbs, committed to as one group.
@@ -142,20 +141,6 @@ where
         .map(PolynomialLabel::QuotientPiece)
         .collect();
     let quotient_committed = argument::verifier::Committed::read(&quotient_labels, transcript)?;
-||||||| 3d4bf702
-    let vanishing = vanishing.read_commitments_after_y(vk, transcript)?;
-=======
-    if committed_instances.len() != num_proofs
-        || advice_commitments.len() != num_proofs
-        || permutations.len() != num_proofs
-        || lookups.len() != num_proofs
-        || trashcans.len() != num_proofs
-    {
-        return Err(Error::InvalidInstances);
-    }
-
-    let vanishing = vanishing.read_commitments_after_y(vk, transcript)?;
->>>>>>> origin/zk-stdlib-v2
 
     // Sample x challenge, which is used to ensure the circuit is
     // satisfied with high probability.

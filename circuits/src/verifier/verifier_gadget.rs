@@ -39,19 +39,9 @@ use crate::{
         pcs::{AssignedCommitment, InCircuitPCS, VerifierQuery},
         traces::VerifierTrace,
         transcript_gadget::TranscriptGadget,
-<<<<<<< HEAD
         utils::{
             evaluate_lagrange_polynomials, inner_product, mul_add, pow_of_two, square_k_times, sum,
         },
-||||||| 3d4bf702
-        trash,
-        utils::{evaluate_lagrange_polynomials, inner_product, sum, AssignedBoundedScalar},
-        vanishing, Accumulator, AssignedAccumulator, AssignedVk, SelfEmulation, VerifyingKey,
-=======
-        trash,
-        utils::{evaluate_lagrange_polynomials, inner_product, sum, AssignedBoundedScalar},
-        vanishing, Accumulator, AssignedAccumulator, AssignedVk, SelfEmulation,
->>>>>>> origin/zk-stdlib-v2
     },
 };
 

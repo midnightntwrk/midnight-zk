@@ -96,21 +96,12 @@ impl<C: CircuitCurve> Instantiable<C::Base> for AssignedNativePoint<C> {
         vec![coordinates.0, coordinates.1]
     }
 
-<<<<<<< HEAD
     #[cfg(any(test, feature = "testing"))]
     fn from_public_input(fields: &[C::Base]) -> Option<C::CryptographicGroup> {
         if fields.len() != 2 {
             return None;
         }
-        C::from_xy(fields[0], fields[1]).map(|p| p.into_subgroup())
-||||||| 3d4bf702
-=======
-    fn from_public_input(fields: &[C::Base]) -> Option<C::CryptographicGroup> {
-        if fields.len() != 2 {
-            return None;
-        }
         C::from_xy(fields[0], fields[1])?.try_into_subgroup()
->>>>>>> origin/zk-stdlib-v2
     }
 }
 
@@ -160,22 +151,7 @@ impl<C: EdwardsCurve> Instantiable<C::Base> for AssignedScalarOfNativeCurve<C> {
             .collect()
     }
 
-<<<<<<< HEAD
     #[cfg(any(test, feature = "testing"))]
-    fn from_public_input(fields: &[C::Base]) -> Option<C::ScalarField> {
-        // A scalar needs at most two elements to be represented.
-        if fields.len() > 2 {
-            return None;
-        }
-        let nb_bits_per_batch = C::Base::NUM_BITS as usize - 1;
-        let bits: Vec<bool> = fields
-            .iter()
-            .flat_map(|f| f.to_bits_le(Some(nb_bits_per_batch)))
-            .take(C::NUM_BITS_SUBGROUP as usize)
-            .collect();
-        Some(C::ScalarField::from_bits_le(&bits))
-||||||| 3d4bf702
-=======
     fn from_public_input(fields: &[C::Base]) -> Option<C::ScalarField> {
         // A scalar needs at most two elements to be represented.
         if fields.len() > 2 {
@@ -191,7 +167,6 @@ impl<C: EdwardsCurve> Instantiable<C::Base> for AssignedScalarOfNativeCurve<C> {
             .take(C::NUM_BITS_SUBGROUP as usize)
             .collect();
         C::ScalarField::try_from_bits_le(&bits)
->>>>>>> origin/zk-stdlib-v2
     }
 }
 

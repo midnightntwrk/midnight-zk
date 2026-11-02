@@ -138,23 +138,7 @@ where
             .collect()
     }
 
-<<<<<<< HEAD
     #[cfg(any(test, feature = "testing"))]
-    fn from_public_input(fields: &[F]) -> Option<K> {
-        let base = BI::from(2).pow(P::LOG2_BASE);
-        let nb_limbs_per_batch = (F::CAPACITY / P::LOG2_BASE) as usize;
-        if fields.len() != (P::NB_LIMBS as usize).div_ceil(nb_limbs_per_batch) {
-            return None;
-        }
-        let limbs: Vec<BI> = fields
-            .iter()
-            .flat_map(|f| {
-                let bi: BI = f.to_biguint().into();
-                bi_to_limbs(nb_limbs_per_batch as u32, &base, &bi)
-            })
-            .collect();
-||||||| 3d4bf702
-=======
     fn from_public_input(fields: &[F]) -> Option<K> {
         let base = BI::from(2).pow(P::LOG2_BASE);
         let nb_limbs_per_batch = (F::CAPACITY / P::LOG2_BASE) as usize;
@@ -174,7 +158,6 @@ where
             })
             .collect::<Option<Vec<_>>>()?
             .concat();
->>>>>>> origin/zk-stdlib-v2
         let (head, tail) = limbs.split_at(P::NB_LIMBS as usize);
         if tail.iter().any(|l| !l.is_zero()) {
             return None;

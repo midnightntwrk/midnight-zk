@@ -685,8 +685,8 @@
       "max_deg": "5",
       "permutations": "14",
       "point_sets": "5",
-      "rows": "1122",
-      "table_rows": "419"
+      "rows": "484",
+      "table_rows": "417"
     },
     "select": {
       "advice_columns": "10",
@@ -983,19 +983,9 @@
       "lookups": "1",
       "max_deg": "5",
       "permutations": "11",
-<<<<<<< HEAD
       "point_sets": "3",
       "rows": "9",
       "table_rows": "257"
-||||||| 3d4bf702
-      "point_sets": "4",
-      "rows": "9",
-      "table_rows": "257"
-=======
-      "point_sets": "4",
-      "rows": "329",
-      "table_rows": "259"
->>>>>>> origin/zk-stdlib-v2
     },
     "select": {
       "advice_columns": "8",
@@ -1336,19 +1326,9 @@
       "lookups": "1",
       "max_deg": "5",
       "permutations": "11",
-<<<<<<< HEAD
       "point_sets": "3",
       "rows": "9",
       "table_rows": "257"
-||||||| 3d4bf702
-      "point_sets": "4",
-      "rows": "9",
-      "table_rows": "257"
-=======
-      "point_sets": "4",
-      "rows": "329",
-      "table_rows": "259"
->>>>>>> origin/zk-stdlib-v2
     },
     "select": {
       "advice_columns": "8",
@@ -1689,19 +1669,9 @@
       "lookups": "1",
       "max_deg": "5",
       "permutations": "11",
-<<<<<<< HEAD
       "point_sets": "3",
       "rows": "9",
       "table_rows": "257"
-||||||| 3d4bf702
-      "point_sets": "4",
-      "rows": "9",
-      "table_rows": "257"
-=======
-      "point_sets": "4",
-      "rows": "329",
-      "table_rows": "259"
->>>>>>> origin/zk-stdlib-v2
     },
     "select": {
       "advice_columns": "8",
@@ -2042,19 +2012,9 @@
       "lookups": "1",
       "max_deg": "5",
       "permutations": "11",
-<<<<<<< HEAD
       "point_sets": "3",
       "rows": "9",
       "table_rows": "257"
-||||||| 3d4bf702
-      "point_sets": "4",
-      "rows": "9",
-      "table_rows": "257"
-=======
-      "point_sets": "4",
-      "rows": "329",
-      "table_rows": "259"
->>>>>>> origin/zk-stdlib-v2
     },
     "select": {
       "advice_columns": "8",
@@ -2363,16 +2323,8 @@
       "max_deg": "5",
       "permutations": "19",
       "point_sets": "5",
-<<<<<<< HEAD
       "rows": "15414",
       "table_rows": "385"
-||||||| 3d4bf702
-      "rows": "15415",
-      "table_rows": "385"
-=======
-      "rows": "16383",
-      "table_rows": "387"
->>>>>>> origin/zk-stdlib-v2
     },
     "select": {
       "advice_columns": "15",
@@ -2637,16 +2589,8 @@
       "max_deg": "5",
       "permutations": "13",
       "point_sets": "5",
-<<<<<<< HEAD
       "rows": "46",
       "table_rows": "449"
-||||||| 3d4bf702
-      "rows": "47",
-      "table_rows": "449"
-=======
-      "rows": "695",
-      "table_rows": "451"
->>>>>>> origin/zk-stdlib-v2
     },
     "select": {
       "advice_columns": "9",
@@ -2910,19 +2854,9 @@
       "lookups": "3",
       "max_deg": "5",
       "permutations": "13",
-<<<<<<< HEAD
       "point_sets": "4",
       "rows": "62",
       "table_rows": "449"
-||||||| 3d4bf702
-      "point_sets": "5",
-      "rows": "63",
-      "table_rows": "449"
-=======
-      "point_sets": "5",
-      "rows": "711",
-      "table_rows": "451"
->>>>>>> origin/zk-stdlib-v2
     },
     "select": {
       "advice_columns": "9",
@@ -3496,16 +3430,8 @@
       "lookups": "1",
       "max_deg": "5",
       "permutations": "12",
-<<<<<<< HEAD
       "point_sets": "3",
       "rows": "245",
-||||||| 3d4bf702
-      "point_sets": "4",
-      "rows": "245",
-=======
-      "point_sets": "4",
-      "rows": "253",
->>>>>>> origin/zk-stdlib-v2
       "table_rows": "385"
     },
     "is_equal": {
@@ -3759,16 +3685,8 @@
       "lookups": "1",
       "max_deg": "5",
       "permutations": "10",
-<<<<<<< HEAD
       "point_sets": "3",
       "rows": "333",
-||||||| 3d4bf702
-      "point_sets": "4",
-      "rows": "333",
-=======
-      "point_sets": "4",
-      "rows": "495",
->>>>>>> origin/zk-stdlib-v2
       "table_rows": "455"
     },
     "inv": {
@@ -3778,16 +3696,8 @@
       "lookups": "1",
       "max_deg": "5",
       "permutations": "10",
-<<<<<<< HEAD
       "point_sets": "3",
       "rows": "423",
-||||||| 3d4bf702
-      "point_sets": "4",
-      "rows": "423",
-=======
-      "point_sets": "4",
-      "rows": "591",
->>>>>>> origin/zk-stdlib-v2
       "table_rows": "455"
     },
     "is_equal": {
@@ -3907,19 +3817,9 @@
       "lookups": "1",
       "max_deg": "5",
       "permutations": "10",
-<<<<<<< HEAD
       "point_sets": "3",
       "rows": "126",
       "table_rows": "3"
-||||||| 3d4bf702
-      "point_sets": "4",
-      "rows": "126",
-      "table_rows": "3"
-=======
-      "point_sets": "4",
-      "rows": "421",
-      "table_rows": "455"
->>>>>>> origin/zk-stdlib-v2
     },
     "select": {
       "advice_columns": "9",
@@ -4018,19 +3918,9 @@
       "lookups": "1",
       "max_deg": "5",
       "permutations": "8",
-<<<<<<< HEAD
       "point_sets": "3",
       "rows": "18",
       "table_rows": "389"
-||||||| 3d4bf702
-      "point_sets": "4",
-      "rows": "18",
-      "table_rows": "389"
-=======
-      "point_sets": "4",
-      "rows": "12",
-      "table_rows": "269"
->>>>>>> origin/zk-stdlib-v2
     },
     "from_bits": {
       "advice_columns": "5",
