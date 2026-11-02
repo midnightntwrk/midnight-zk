@@ -320,7 +320,7 @@ pub(crate) mod tests {
             chip_name,
         );
 
-        [None, Some(max.clone())].into_iter().for_each(|dividend_bound| {
+        [None, Some(max)].into_iter().for_each(|dividend_bound| {
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 run::<F, Assigned, DivChip>(
                     Assigned::Element::from(0),
