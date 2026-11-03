@@ -10,6 +10,8 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 * `verifier::InCircuitKZGEngine`, the `KZGEngine`s whose KZG proofs can be verified in-circuit, bounding the KZG types of the in-circuit verifier [#644](https://github.com/midnightntwrk/midnight-zk/pull/644)
 ### Changed
+* `AssignedNative<F>` is a struct instead of an alias of `AssignedCell<F, F>`; convert from and to `AssignedCell<F, F>` with `From`. Two `AssignedNative`s are equal iff one is a clone of the other [#620](https://github.com/midnightntwrk/midnight-zk/pull/620)
+
 ### Removed
 
 ## [8.0.0-rc.1]

@@ -26,7 +26,7 @@ use midnight_proofs::{
 use crate::{
     CircuitField,
     ecc::curves::CircuitCurve,
-    field::{AssignedNative, foreign::field_chip::FieldChipConfig},
+    field::{AssignNative, AssignedNative, foreign::field_chip::FieldChipConfig},
     instructions::{
         AssignmentInstructions, ControlFlowInstructions, EccInstructions, ScalarFieldInstructions,
     },
@@ -298,8 +298,8 @@ pub(crate) fn fill_dynamic_lookup_row<F: CircuitField>(
                 if enable_lookup {
                     let x_val = x_limbs[i].value().copied();
                     let y_val = y_limbs[i].value().copied();
-                    xs.push(region.assign_advice(|| "x", x_cols[i], 0, || x_val)?);
-                    ys.push(region.assign_advice(|| "y", y_cols[i], 0, || y_val)?);
+                    xs.push(region.assign_native(|| "x", x_cols[i], 0, || x_val)?);
+                    ys.push(region.assign_native(|| "y", y_cols[i], 0, || y_val)?);
                 }
                 // If the lookup is disabled we copy the limbs into the current row.
                 else {

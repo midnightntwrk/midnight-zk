@@ -67,6 +67,7 @@ use num_traits::Zero;
 use crate::testing_utils::FromScratch;
 use crate::{
     CircuitField,
+    field::AssignNative,
     instructions::{
         ArithInstructions, AssertionInstructions, AssignmentInstructions, BinaryInstructions,
         CanonicityInstructions, ControlFlowInstructions, ConversionInstructions,
@@ -385,8 +386,8 @@ impl<F: CircuitField> NativeChip<F> {
             |mut region| {
                 // x * r - shift * r - 1 = 0
                 let r_value = value.map(|x| (x - shift).invert().unwrap_or(F::ZERO));
-                let x = region.assign_advice(|| "x", self.config.value_cols[0], 0, || value)?;
-                let r = region.assign_advice(|| "r", self.config.value_cols[1], 0, || r_value)?;
+                let x = region.assign_native(|| "x", self.config.value_cols[0], 0, || value)?;
+                let r = region.assign_native(|| "r", self.config.value_cols[1], 0, || r_value)?;
                 let mut coeffs = vec![F::ZERO; self.config.coeff_cols.len()];
                 coeffs[1] = -shift; // coeff of r
                 self.custom(&mut region, &coeffs, F::ZERO, (F::ONE, F::ZERO), -F::ONE, 0)?;
@@ -442,7 +443,7 @@ impl<F: CircuitField> NativeChip<F> {
         let mut coeffs = vec![F::ZERO; self.config.coeff_cols.len()];
 
         // assign the lc result in the first advice column
-        let assigned_result = region.assign_advice(
+        let assigned_result = region.assign_native(
             || "assign linear combination term",
             self.config.value_cols[0],
             *offset,
@@ -456,7 +457,7 @@ impl<F: CircuitField> NativeChip<F> {
             .enumerate()
             .map(|(i, term)| {
                 coeffs[i + 1] = term.0;
-                region.assign_advice(
+                region.assign_native(
                     || "assign linear combination term",
                     self.config.value_cols[i + 1],
                     *offset,
@@ -553,7 +554,7 @@ impl<F: CircuitField> NativeChip<F> {
 
         res_values
             .zip(self.config.value_cols.iter())
-            .map(|(val, col)| region.assign_advice(|| "add_consts", *col, *offset, || val))
+            .map(|(val, col)| region.assign_native(|| "add_consts", *col, *offset, || val))
             .collect::<Result<Vec<_>, Error>>()
     }
 }
@@ -570,7 +571,7 @@ where
         layouter.assign_region(
             || "Assign native value",
             |mut region| {
-                region.assign_advice(|| "assign element", self.config.value_cols[0], 0, || value)
+                region.assign_native(|| "assign element", self.config.value_cols[0], 0, || value)
             },
         )
     }
@@ -597,7 +598,7 @@ where
                 // This is hacky but necessary because we are treating a fixed cell as an
                 // assigned one. Fixed cells do not get properly filled until the end.
                 x.update_value(constant)?;
-                Ok(x)
+                Ok(AssignedNative::from(x))
             },
         )?;
 
@@ -620,7 +621,7 @@ where
                 let mut assigned = vec![];
                 for (i, chunk_values) in values.chunks(nb_arith_cols).enumerate() {
                     for (value, col) in chunk_values.iter().zip(self.config.value_cols.iter()) {
-                        let cell = region.assign_advice(|| "assign", *col, i, || *value)?;
+                        let cell = region.assign_native(|| "assign", *col, i, || *value)?;
                         assigned.push(cell);
                     }
                 }
@@ -688,7 +689,7 @@ where
             |mut region| {
                 // Enforce x * x - x = 0
                 let b_value = value.map(|b| if b { F::ONE } else { F::ZERO });
-                let b = region.assign_advice(|| "b", self.config.value_cols[0], 0, || b_value)?;
+                let b = region.assign_native(|| "b", self.config.value_cols[0], 0, || b_value)?;
                 self.copy_in_row(&mut region, &b, &self.config.value_cols[1], 0)?;
                 let mut coeffs = vec![F::ZERO; self.config.coeff_cols.len()];
                 coeffs[0] = -F::ONE; // coeff of x
@@ -1003,7 +1004,7 @@ where
                 self.copy_in_row(&mut region, y, &self.config.value_cols[1], 0)?;
                 self.copy_in_row(&mut region, z, &self.config.value_cols[2], 0)?;
                 let res =
-                    region.assign_advice(|| "res", self.config.value_cols[4], 0, || res_value)?;
+                    region.assign_native(|| "res", self.config.value_cols[4], 0, || res_value)?;
                 let mut coeffs = vec![F::ZERO; self.config.coeff_cols.len()];
                 coeffs[0] = a; // coeff of x
                 coeffs[1] = b; // coeff of y
@@ -1283,7 +1284,7 @@ where
                 region.assign_advice(|| "aux", value_cols[0], 0, || aux_val)?;
                 self.copy_in_row(&mut region, x, &value_cols[1], 0)?;
                 self.copy_in_row(&mut region, y, &value_cols[2], 0)?;
-                let res = region.assign_advice(|| "res", value_cols[4], 0, || res_val)?;
+                let res = region.assign_native(|| "res", value_cols[4], 0, || res_val)?;
                 let mut coeffs = vec![F::ZERO; self.config.coeff_cols.len()];
                 coeffs[4] = F::ONE; // coeff of res
                 self.custom(&mut region, &coeffs, F::ZERO, (F::ONE, -F::ONE), -F::ONE, 0)?;
@@ -1328,7 +1329,7 @@ where
                 region.assign_advice(|| "aux", value_cols[0], 0, || aux_val)?;
                 self.copy_in_row(&mut region, x, &value_cols[1], 0)?;
                 self.copy_in_row(&mut region, y, &value_cols[2], 0)?;
-                let res = region.assign_advice(|| "res", value_cols[4], 0, || res_val)?;
+                let res = region.assign_native(|| "res", value_cols[4], 0, || res_val)?;
                 let mut coeffs = vec![F::ZERO; self.config.coeff_cols.len()];
                 coeffs[4] = -F::ONE; // coeff of res
                 self.custom(&mut region, &coeffs, F::ZERO, (F::ONE, -F::ONE), F::ZERO, 0)?;
@@ -1372,7 +1373,7 @@ where
             |mut region| {
                 region.assign_advice(|| "aux", value_cols[0], 0, || aux_val)?;
                 self.copy_in_row(&mut region, x, &value_cols[1], 0)?;
-                let res = region.assign_advice(|| "res", value_cols[4], 0, || res_val)?;
+                let res = region.assign_native(|| "res", value_cols[4], 0, || res_val)?;
                 let mut coeffs = vec![F::ZERO; self.config.coeff_cols.len()];
                 coeffs[0] = -c; // coeff of aux
                 coeffs[4] = F::ONE; // coeff of res
@@ -1417,7 +1418,7 @@ where
             |mut region| {
                 region.assign_advice(|| "aux", value_cols[0], 0, || aux_val)?;
                 self.copy_in_row(&mut region, x, &value_cols[1], 0)?;
-                let res = region.assign_advice(|| "res", value_cols[4], 0, || res_val)?;
+                let res = region.assign_native(|| "res", value_cols[4], 0, || res_val)?;
                 let mut coeffs = vec![F::ZERO; self.config.coeff_cols.len()];
                 coeffs[0] = -c; // coeff of aux
                 coeffs[4] = -F::ONE; // coeff of res
@@ -1547,8 +1548,8 @@ where
                 self.copy_in_row(&mut region, &cond.0, &self.config.value_cols[0], 0)?;
                 self.copy_in_row(&mut region, x, &self.config.value_cols[1], 0)?;
                 self.copy_in_row(&mut region, y, &self.config.value_cols[2], 0)?;
-                let fst = region.assign_advice(|| "fst", self.config.value_cols[3], 0, || val1)?;
-                let snd = region.assign_advice(|| "snd", self.config.value_cols[4], 0, || val2)?;
+                let fst = region.assign_native(|| "fst", self.config.value_cols[3], 0, || val1)?;
+                let snd = region.assign_native(|| "snd", self.config.value_cols[4], 0, || val2)?;
                 let mut coeffs = vec![F::ZERO; self.config.coeff_cols.len()];
                 coeffs[2] = F::ONE; // coeff of y
                 coeffs[4] = -F::ONE; // coeff of snd

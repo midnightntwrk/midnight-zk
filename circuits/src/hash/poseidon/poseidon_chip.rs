@@ -33,7 +33,7 @@ use super::{
 use crate::field::{NativeConfig, native::NB_EXTRA_ARITH_FIXED_COLS};
 use crate::{
     CircuitField,
-    field::NativeChip,
+    field::{AssignNative, NativeChip},
     instructions::{ArithInstructions, AssignmentInstructions, SpongeInstructions},
     types::AssignedNative,
     utils::ComposableChip,
@@ -356,7 +356,7 @@ impl<F: PoseidonField> PoseidonChip<F> {
             .zip(inputs)
             .try_for_each(|((output, column), input)| {
                 region
-                    .assign_advice(|| "full round output", *column, *offset, || *output)
+                    .assign_native(|| "full round output", *column, *offset, || *output)
                     .map(|assigned| *input = assigned)
             })
     }
@@ -389,7 +389,7 @@ impl<F: PoseidonField> PoseidonChip<F> {
                     .iter()
                     .zip(skip_advice_vals)
                 {
-                    let _ = region.assign_advice(
+                    let _ = region.assign_native(
                         || "partial round intermediary inputs",
                         *col,
                         *offset,
@@ -407,7 +407,7 @@ impl<F: PoseidonField> PoseidonChip<F> {
             .zip(inputs)
             .try_for_each(|((output, column), input)| {
                 region
-                    .assign_advice(|| "partial round outputs", *column, *offset, || *output)
+                    .assign_native(|| "partial round outputs", *column, *offset, || *output)
                     .map(|assigned| *input = assigned)
             })
     }
