@@ -24,6 +24,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 
 ### Changed
+* `NativeChip::assign` and `assign_many` create elements that are not assigned to a cell yet: an element is assigned to the first cell it is copied to (or to the cell of an element it is constrained to be equal to), saving the rows of the assignment. Unused elements are never assigned. This changes the verifying keys of all circuits [#620](https://github.com/midnightntwrk/midnight-zk/pull/620)
 * `AssignedNative<F>` is a struct instead of an alias of `AssignedCell<F, F>`; convert from and to `AssignedCell<F, F>` with `From`. Two `AssignedNative`s are equal iff one is a clone of the other [#620](https://github.com/midnightntwrk/midnight-zk/pull/620)
 * The in-circuit KZG multi-open orders its point sets with `kzg::point_set_order`, as the off-circuit one does [#583](https://github.com/midnightntwrk/midnight-zk/pull/583)
 * The in-circuit fflonk evaluates a chunk at all the roots of a point at once: one product per polynomial and one linear combination per root, instead of Horner per root, sharing the powers of the root between chunks [#583](https://github.com/midnightntwrk/midnight-zk/pull/583)

@@ -12,6 +12,12 @@
 // limitations under the License.
 
 //! Native field elements assigned in the circuit.
+//!
+//! An [AssignedNative] may be created without a cell ([AssignedNative::free]):
+//! it is then assigned to the first cell it is copied to (or to the cell of an
+//! assigned element it is constrained to be equal to), and stays there. An
+//! element that is never used in any constraint is never assigned to a cell;
+//! as it is unconstrained, it does not need to be in the circuit.
 
 use std::{
     cell::OnceCell,
@@ -26,6 +32,8 @@ use midnight_proofs::{
 };
 
 /// A native field element assigned in the circuit.
+///
+/// Its cell is set at most once, and shared by all its clones.
 #[derive(Clone, Debug)]
 pub struct AssignedNative<F: Field> {
     value: Value<F>,
@@ -41,13 +49,18 @@ impl<F: Field> From<AssignedCell<F, F>> for AssignedNative<F> {
     }
 }
 
+/// # Panics
+///
+/// If the element is not assigned to a cell.
 impl<F: Field> From<&AssignedNative<F>> for AssignedCell<F, F> {
     fn from(assigned: &AssignedNative<F>) -> Self {
+        let mut cell = assigned.cell.get().expect("AssignedNative is not assigned").clone();
+        // The cell may have been assigned when the layouter only measured its
+        // region, without its value.
         assigned
-            .cell
-            .get()
-            .expect("AssignedNative is always assigned to a cell")
-            .clone()
+            .value
+            .map(|v| cell.update_value(v).expect("AssignedNative value mismatch"));
+        cell
     }
 }
 
@@ -67,18 +80,36 @@ impl<F: Field> Hash for AssignedNative<F> {
 }
 
 impl<F: Field> AssignedNative<F> {
+    /// An element with the given value that is not assigned to a cell yet.
+    pub(crate) fn free(value: Value<F>) -> Self {
+        AssignedNative {
+            value,
+            cell: Rc::new(OnceCell::new()),
+        }
+    }
+
     /// The value of the element.
     pub fn value(&self) -> Value<&F> {
         self.value.as_ref()
     }
 
+    /// Whether the element is assigned to a cell.
+    pub fn is_assigned(&self) -> bool {
+        self.cell.get().is_some()
+    }
+
     /// The cell where the element is assigned.
+    ///
+    /// # Panics
+    ///
+    /// If the element is not assigned to a cell (see [Self::is_assigned]).
     pub fn cell(&self) -> Cell {
-        self.cell.get().expect("AssignedNative is always assigned to a cell").cell()
+        self.cell.get().expect("AssignedNative is not assigned").cell()
     }
 
     /// Copies the element to the given advice cell, constraining them to be
-    /// equal, and returns the copy.
+    /// equal, and returns the copy. If the element is not assigned to a cell,
+    /// it is assigned to this one instead (and returned).
     ///
     /// Returns an error if either cell is in a column where equality has not
     /// been enabled.
@@ -94,8 +125,43 @@ impl<F: Field> AssignedNative<F> {
         AR: Into<String>,
     {
         let copy = region.assign_advice(annotation, column, offset, || self.value)?;
-        region.constrain_equal(copy.cell(), self.cell())?;
-        Ok(copy.into())
+        match self.cell.get() {
+            // The layouter may run a region twice: copying the element to its own cell
+            // is just assigning it.
+            Some(cell) if cell.cell() == copy.cell() => Ok(self.clone()),
+            Some(cell) => {
+                region.constrain_equal(copy.cell(), cell.cell())?;
+                Ok(copy.into())
+            }
+            None => {
+                let _ = self.cell.set(copy);
+                Ok(self.clone())
+            }
+        }
+    }
+
+    /// Constrains the element to be equal to `other`. If one of them is not
+    /// assigned to a cell, it is assigned to the cell of the other one, without
+    /// any constraint.
+    ///
+    /// Returns an error if neither element is assigned to a cell, or if one
+    /// is not and the values are known and differ.
+    pub fn constrain_equal(&self, region: &mut Region<'_, F>, other: &Self) -> Result<(), Error> {
+        match (self.cell.get(), other.cell.get()) {
+            // The layouter may run a region twice: the second time, an element
+            // assigned to the cell of the other one by the first run is found here.
+            (Some(x), Some(y)) if x.cell() == y.cell() => Ok(()),
+            (Some(x), Some(y)) => region.constrain_equal(x.cell(), y.cell()),
+            (None, None) => Err(Error::Synthesis(
+                "cannot constrain two unused AssignedNative to be equal".into(),
+            )),
+            (x, y) => {
+                (self.value.zip(other.value)).error_if_known_and(|(x, y)| x != y)?;
+                let (free, cell) = if x.is_none() { (self, y) } else { (other, x) };
+                let _ = free.cell.set(cell.unwrap().clone());
+                Ok(())
+            }
+        }
     }
 }
 

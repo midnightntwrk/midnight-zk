@@ -98,10 +98,7 @@ where
     P: FieldEmulationParams<F, K>,
 {
     fn eq(&self, other: &Self) -> bool {
-        self.limb_values
-            .iter()
-            .zip(other.limb_values.iter())
-            .all(|(s, o)| s.cell() == o.cell())
+        self.limb_values.iter().zip(other.limb_values.iter()).all(|(s, o)| s == o)
     }
 }
 

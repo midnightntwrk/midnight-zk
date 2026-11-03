@@ -54,7 +54,7 @@
       "max_deg": "5",
       "permutations": "9",
       "point_sets": "3",
-      "rows": "2818",
+      "rows": "2790",
       "table_rows": "387"
     },
     "Insert": {
@@ -65,7 +65,7 @@
       "max_deg": "5",
       "permutations": "9",
       "point_sets": "3",
-      "rows": "5610",
+      "rows": "5580",
       "table_rows": "387"
     }
   },
@@ -100,7 +100,7 @@
       "max_deg": "5",
       "permutations": "9",
       "point_sets": "3",
-      "rows": "646",
+      "rows": "632",
       "table_rows": "7"
     }
   },
@@ -163,7 +163,7 @@
       "max_deg": "5",
       "permutations": "9",
       "point_sets": "3",
-      "rows": "100",
+      "rows": "80",
       "table_rows": "257"
     },
     "substring perf (full length = 16, sub length = 5)": {
@@ -185,7 +185,7 @@
       "max_deg": "5",
       "permutations": "9",
       "point_sets": "3",
-      "rows": "157",
+      "rows": "156",
       "table_rows": "281"
     },
     "varlen partial substring perf (M = 16, sub length = 5)": {
@@ -209,7 +209,7 @@
       "max_deg": "5",
       "permutations": "10",
       "point_sets": "3",
-      "rows": "914",
+      "rows": "913",
       "table_rows": "99"
     }
   },
@@ -222,7 +222,7 @@
       "max_deg": "5",
       "permutations": "10",
       "point_sets": "4",
-      "rows": "10131",
+      "rows": "10130",
       "table_rows": "7933"
     }
   },
@@ -235,7 +235,7 @@
       "max_deg": "5",
       "permutations": "8",
       "point_sets": "3",
-      "rows": "812",
+      "rows": "757",
       "table_rows": "195"
     }
   },
@@ -248,7 +248,7 @@
       "max_deg": "5",
       "permutations": "8",
       "point_sets": "3",
-      "rows": "38",
+      "rows": "9",
       "table_rows": "129"
     }
   },
@@ -261,7 +261,7 @@
       "max_deg": "5",
       "permutations": "8",
       "point_sets": "3",
-      "rows": "548",
+      "rows": "521",
       "table_rows": "129"
     }
   },
@@ -274,7 +274,7 @@
       "max_deg": "5",
       "permutations": "8",
       "point_sets": "3",
-      "rows": "176",
+      "rows": "148",
       "table_rows": "195"
     }
   },
@@ -2279,7 +2279,7 @@
       "max_deg": "5",
       "permutations": "19",
       "point_sets": "5",
-      "rows": "39935",
+      "rows": "39926",
       "table_rows": "417"
     },
     "msm_by_bounded_scalars_3": {
@@ -2290,7 +2290,7 @@
       "max_deg": "5",
       "permutations": "19",
       "point_sets": "5",
-      "rows": "30630",
+      "rows": "30625",
       "table_rows": "417"
     },
     "mul_by_constant": {
@@ -3132,7 +3132,7 @@
       "max_deg": "4",
       "permutations": "8",
       "point_sets": "3",
-      "rows": "3",
+      "rows": "1",
       "table_rows": "3"
     },
     "lt": {
@@ -3431,7 +3431,7 @@
       "max_deg": "5",
       "permutations": "12",
       "point_sets": "3",
-      "rows": "245",
+      "rows": "235",
       "table_rows": "385"
     },
     "is_equal": {
@@ -3919,7 +3919,7 @@
       "max_deg": "5",
       "permutations": "8",
       "point_sets": "3",
-      "rows": "18",
+      "rows": "16",
       "table_rows": "389"
     },
     "from_bits": {
@@ -3952,7 +3952,7 @@
       "max_deg": "5",
       "permutations": "8",
       "point_sets": "3",
-      "rows": "14",
+      "rows": "12",
       "table_rows": "257"
     },
     "geq_fixed": {
@@ -3963,7 +3963,7 @@
       "max_deg": "5",
       "permutations": "8",
       "point_sets": "3",
-      "rows": "12",
+      "rows": "10",
       "table_rows": "257"
     },
     "greater": {
@@ -3974,7 +3974,7 @@
       "max_deg": "5",
       "permutations": "8",
       "point_sets": "3",
-      "rows": "17",
+      "rows": "15",
       "table_rows": "257"
     },
     "greater_fixed": {
@@ -3985,7 +3985,7 @@
       "max_deg": "5",
       "permutations": "8",
       "point_sets": "3",
-      "rows": "12",
+      "rows": "10",
       "table_rows": "257"
     },
     "leq": {
@@ -3996,7 +3996,7 @@
       "max_deg": "5",
       "permutations": "8",
       "point_sets": "3",
-      "rows": "16",
+      "rows": "14",
       "table_rows": "257"
     },
     "leq_fixed": {
@@ -4007,7 +4007,7 @@
       "max_deg": "5",
       "permutations": "8",
       "point_sets": "3",
-      "rows": "11",
+      "rows": "9",
       "table_rows": "257"
     },
     "lower": {
@@ -4018,7 +4018,7 @@
       "max_deg": "5",
       "permutations": "8",
       "point_sets": "3",
-      "rows": "13",
+      "rows": "11",
       "table_rows": "257"
     },
     "lower_fixed": {
@@ -4029,7 +4029,7 @@
       "max_deg": "5",
       "permutations": "8",
       "point_sets": "3",
-      "rows": "11",
+      "rows": "9",
       "table_rows": "257"
     },
     "sgn0": {
@@ -4040,7 +4040,7 @@
       "max_deg": "5",
       "permutations": "9",
       "point_sets": "3",
-      "rows": "19",
+      "rows": "18",
       "table_rows": "385"
     },
     "to_bits": {

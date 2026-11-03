@@ -336,10 +336,7 @@ impl<F: CircuitField> CoreDecompositionInstructions<F> for P2RDecompositionChip<
                 limb_sizes.as_slice(),
             )?;
 
-            layouter.assign_region(
-                || "copy",
-                |mut region| region.constrain_equal(x.cell(), y.cell()),
-            )?;
+            layouter.assign_region(|| "copy", |mut region| x.constrain_equal(&mut region, &y))?;
 
             Ok(assigned_limbs)
         }
@@ -384,7 +381,7 @@ impl<F: CircuitField> CoreDecompositionInstructions<F> for P2RDecompositionChip<
                         )?;
 
                     // copy constraint the linear combination result to equal the decomposed value
-                    region.constrain_equal(assigned_result.cell(), x.cell())?;
+                    x.constrain_equal(&mut region, &assigned_result)?;
 
                     Ok(assigned_limbs)
                 },
