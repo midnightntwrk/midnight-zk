@@ -23,13 +23,16 @@ use num_traits::One;
 
 use crate::{
     CircuitField,
-    field::foreign::{
-        params::FieldEmulationParams,
-        util::{
-            bi_to_limbs, compute_u, compute_vj, get_advice_vec, get_identity_auxiliary_bounds,
-            sum_bigints, sum_exprs, urem,
+    field::{
+        AssignNative,
+        foreign::{
+            params::FieldEmulationParams,
+            util::{
+                bi_to_limbs, compute_u, compute_vj, get_advice_vec, get_identity_auxiliary_bounds,
+                sum_bigints, sum_exprs, urem,
+            },
+            well_formed_log2_bounds,
         },
-        well_formed_log2_bounds,
     },
     instructions::RangeCheckInstructions,
     types::{AssignedField, AssignedNative},
@@ -294,21 +297,21 @@ where
 
             let z_cells = z_values
                 .zip(norm_config.z_cols.iter())
-                .map(|(z, &z_col)| region.assign_advice(|| "norm output", z_col, offset, || z))
+                .map(|(z, &z_col)| region.assign_native(|| "norm output", z_col, offset, || z))
                 .collect::<Result<Vec<_>, _>>()?;
 
             offset += 1;
 
             let u_value = u.map(|u| bigint_to_fe::<F>(&u));
             let u_cell =
-                region.assign_advice(|| "norm u", norm_config.z_cols[0], offset, || u_value)?;
+                region.assign_native(|| "norm u", norm_config.z_cols[0], offset, || u_value)?;
 
             let vs_cells = vs_values
                 .iter()
                 .zip(norm_config.z_cols[1..=norm_config.vs_bounds.len()].iter())
                 .map(|(vj, &vj_col)| {
                     let vj_value = vj.clone().map(|vj| bigint_to_fe::<F>(&vj));
-                    region.assign_advice(|| "norm vj", vj_col, offset, || vj_value)
+                    region.assign_native(|| "norm vj", vj_col, offset, || vj_value)
                 })
                 .collect::<Result<Vec<_>, _>>()?;
 

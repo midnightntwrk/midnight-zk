@@ -1,0 +1,3 @@
+# `AssignedNative` hashes (and compares) by the identity of its shared cell,
+# which does not change when the cell is bound.
+ignore-interior-mutability = ["midnight_circuits::field::assigned_native::AssignedNative"]

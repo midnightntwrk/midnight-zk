@@ -36,7 +36,7 @@ use crate::{
     CircuitField,
     biguint::BigUintGadget,
     ecc::curves::{CircuitCurve, EdwardsCurve},
-    field::{NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip},
+    field::{AssignNative, NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip},
     instructions::*,
     types::{
         AssignedBigUint, AssignedBit, AssignedByte, AssignedNative, InnerConstants, InnerValue,
@@ -509,8 +509,8 @@ impl<C: EdwardsCurve> EccChip<C> {
         let in_subgroup = q.checked_in_subgroup && s.checked_in_subgroup;
 
         let (xr_val, yr_val) = Self::p_plus_b_q(q_val, s_val, b.value());
-        let xr = region.assign_advice(|| "xr", config.advice_cols[5], offset, || xr_val)?;
-        let yr = region.assign_advice(|| "yr", config.advice_cols[6], offset, || yr_val)?;
+        let xr = region.assign_native(|| "xr", config.advice_cols[5], offset, || xr_val)?;
+        let yr = region.assign_native(|| "yr", config.advice_cols[6], offset, || yr_val)?;
 
         let (xq, yq) = q_val.map(|q| q.coordinates().unwrap()).unzip();
         let (xs, ys) = s_val.map(|s| s.coordinates().unwrap()).unzip();
@@ -563,8 +563,8 @@ impl<C: EdwardsCurve> EccChip<C> {
         let xr_val = r_val.map(|r: C| r.coordinates().unwrap().0);
         let yr_val = r_val.map(|r: C| r.coordinates().unwrap().1);
 
-        let xr = region.assign_advice(|| "xr", config.advice_cols[0], offset + 1, || xr_val)?;
-        let yr = region.assign_advice(|| "yr", config.advice_cols[1], offset + 1, || yr_val)?;
+        let xr = region.assign_native(|| "xr", config.advice_cols[0], offset + 1, || xr_val)?;
+        let yr = region.assign_native(|| "yr", config.advice_cols[1], offset + 1, || yr_val)?;
 
         region.assign_advice(
             || "xs_xs",
@@ -805,8 +805,8 @@ impl<C: EdwardsCurve> EccInstructions<C::Base, C> for EccChip<C> {
             || "assign point without subgroup check",
             |mut region: Region<'_, C::Base>| {
                 config.q_mem.enable(&mut region, 0)?;
-                let x = region.assign_advice(|| "x", config.advice_cols[0], 0, || x_val)?;
-                let y = region.assign_advice(|| "y", config.advice_cols[1], 0, || y_val)?;
+                let x = region.assign_native(|| "x", config.advice_cols[0], 0, || x_val)?;
+                let y = region.assign_native(|| "y", config.advice_cols[1], 0, || y_val)?;
                 Ok(AssignedNativePoint {
                     x,
                     y,

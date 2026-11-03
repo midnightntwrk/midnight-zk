@@ -29,7 +29,7 @@ use super::{
 use crate::{
     CircuitField,
     field::{
-        NativeChip, NativeConfig,
+        AssignNative, NativeChip, NativeConfig,
         decomposition::cpu_utils::{
             decompose_in_variable_limbsizes, variable_limbsize_coefficients,
         },
@@ -460,7 +460,7 @@ impl<F: CircuitField> CoreDecompositionInstructions<F> for P2RDecompositionChip<
                         .iter()
                         .zip(self.config.pow2range_config.val_cols.iter())
                         .map(|(value, col)| {
-                            region.assign_advice(|| "assign small", *col, 0, || *value)
+                            region.assign_native(|| "assign small", *col, 0, || *value)
                         })
                         .collect()
                 },
