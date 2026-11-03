@@ -93,6 +93,7 @@ pub(crate) mod tests {
 
     use super::*;
     use crate::{
+        field::AssignedNative,
         instructions::{AssertionInstructions, AssignmentInstructions},
         testing_utils::{FromScratch, Sampleable},
         types::InnerValue,
@@ -175,7 +176,7 @@ pub(crate) mod tests {
                 },
             )?;
 
-            let cond = AssignedBit(cond_value);
+            let cond = AssignedBit(AssignedNative::from_cell(cond_value));
 
             cost_measure_start(&mut layouter);
             match self.operation {

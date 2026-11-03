@@ -12,6 +12,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * `AssignmentInstructions::as_constant`, the constant an assigned element is known to encode at circuit-construction time, if any [#655](https://github.com/midnightntwrk/midnight-zk/pull/655)
 ### Changed
 * Native and emulated field arithmetic and the foreign MSM use `as_constant` to simplify operations with constant operands, which changes the VKs of circuits that use them [#655](https://github.com/midnightntwrk/midnight-zk/pull/655)
+* `AssignedNative<F>` is a struct instead of an alias of `AssignedCell<F, F>`; convert from `AssignedCell<F, F>` with `AssignedNative::from_cell` and to it with `From`. Two `AssignedNative`s are equal iff one is a clone of the other [#620](https://github.com/midnightntwrk/midnight-zk/pull/620)
 ### Removed
 * BREAKING: `ForeignEdwardsEccChip::as_known_constant`. Use `AssignmentInstructions::as_constant` [#655](https://github.com/midnightntwrk/midnight-zk/pull/655)
 

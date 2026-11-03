@@ -477,6 +477,7 @@ pub(crate) type RootsCache<F> = HashMap<(AssignedNative<F>, usize), Vec<Assigned
 /// The roots `[z, z ω_t, ..., z ω_t^{t-1}]` of `x`, for a witness `z`
 /// constrained by `z^t = x`, in the order of [`roots`], computed once per `x`
 /// and `t` and kept in `cache`.
+#[allow(clippy::mutable_key_type)]
 pub(crate) fn cached_roots<'c, F: CircuitField>(
     layouter: &mut impl Layouter<F>,
     scalar_chip: &impl ArithInstructions<F, AssignedNative<F>>,
@@ -523,6 +524,7 @@ pub(crate) type PowersCache<F> = HashMap<AssignedNative<F>, Vec<AssignedNative<F
 /// [`cached_roots`], computed as `Σ_i ω_t^{ij} (z^i coeffs[i])`: one product
 /// per coefficient and one linear combination per root. The powers of `z` are
 /// kept in `z_powers`.
+#[allow(clippy::mutable_key_type)]
 pub(crate) fn eval_polynomial_on_roots<F: CircuitField>(
     layouter: &mut impl Layouter<F>,
     scalar_chip: &impl ArithInstructions<F, AssignedNative<F>>,

@@ -50,7 +50,7 @@ use num_integer::Integer;
 
 use crate::{
     CircuitField,
-    field::{NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip},
+    field::{AssignNative, NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip},
     hash::sha256::{
         types::{
             AssignedMessageWord, AssignedPlain, AssignedPlainSpreaded, AssignedSpreaded,
@@ -878,7 +878,7 @@ impl<F: CircuitField> Sha256Chip<F> {
 
                 let ret_val = odd_EF.0.value().copied() + odd_nEG.0.value().copied();
                 region
-                    .assign_advice(|| "Ret", adv_cols[6], 1, || ret_val)
+                    .assign_native(|| "Ret", adv_cols[6], 1, || ret_val)
                     .map(AssignedPlain::<F, 32>)
             },
         )
@@ -1271,10 +1271,10 @@ impl<F: CircuitField> Sha256Chip<F> {
         let out_col = self.config().advice_cols[4];
         match even_or_odd {
             Parity::Evn => {
-                region.assign_advice(|| "Evn", out_col, offset, || evn_val.map(u32_to_fe))
+                region.assign_native(|| "Evn", out_col, offset, || evn_val.map(u32_to_fe))
             }
             Parity::Odd => {
-                region.assign_advice(|| "Odd", out_col, offset, || odd_val.map(u32_to_fe))
+                region.assign_native(|| "Odd", out_col, offset, || odd_val.map(u32_to_fe))
             }
         }
         .map(AssignedPlain)
@@ -1332,7 +1332,7 @@ impl<F: CircuitField> Sha256Chip<F> {
                 let a_sprdd_val =
                     a_plain.value().copied().map(fe_to_u32).map(spread).map(u64_to_fe);
                 let a_sprdd = region
-                    .assign_advice(|| "~A", self.config().advice_cols[4], 1, || a_sprdd_val)
+                    .assign_native(|| "~A", self.config().advice_cols[4], 1, || a_sprdd_val)
                     .map(AssignedSpreaded)?;
 
                 let [val_10, val_09, val_11, val_02] = (a_plain.value().copied())
@@ -1410,7 +1410,7 @@ impl<F: CircuitField> Sha256Chip<F> {
                 let e_sprdd_val =
                     (e_plain.value().copied()).map(fe_to_u32).map(spread).map(u64_to_fe);
                 let e_sprdd = region
-                    .assign_advice(|| "~E", self.config().advice_cols[4], 1, || e_sprdd_val)
+                    .assign_native(|| "~E", self.config().advice_cols[4], 1, || e_sprdd_val)
                     .map(AssignedSpreaded)?;
 
                 let [val_07, val_12, val_02, val_05, val_06] = (e_plain.value().copied())
@@ -1509,9 +1509,9 @@ impl<F: CircuitField> Sha256Chip<F> {
 
                 // The spreaded forms of 1-bit values W.1a, W.1b and W.1c equal themselves.
                 let col = self.config().advice_cols[7];
-                let limb_1a = region.assign_advice(|| "W.1a", col, 0, || val_1a.map(u32_to_fe))?;
-                let limb_1b = region.assign_advice(|| "W.1b", col, 1, || val_1b.map(u32_to_fe))?;
-                let limb_1c = region.assign_advice(|| "W.1c", col, 2, || val_1c.map(u32_to_fe))?;
+                let limb_1a = region.assign_native(|| "W.1a", col, 0, || val_1a.map(u32_to_fe))?;
+                let limb_1b = region.assign_native(|| "W.1b", col, 1, || val_1b.map(u32_to_fe))?;
+                let limb_1c = region.assign_native(|| "W.1c", col, 2, || val_1c.map(u32_to_fe))?;
 
                 Ok(AssignedMessageWord {
                     combined_plain: AssignedPlain(w_i_plain),
@@ -1560,8 +1560,8 @@ impl<F: CircuitField> Sha256Chip<F> {
         let plain_val = plain_val.map(u32_to_fe);
 
         region.assign_fixed(|| "nbits", nbits_col, offset, || nbits_val)?;
-        let plain = region.assign_advice(|| "plain", plain_col, offset, || plain_val)?;
-        let spreaded = region.assign_advice(|| "sprdd", sprdd_col, offset, || sprdd_val)?;
+        let plain = region.assign_native(|| "plain", plain_col, offset, || plain_val)?;
+        let spreaded = region.assign_native(|| "sprdd", sprdd_col, offset, || sprdd_val)?;
 
         Ok(AssignedPlainSpreaded {
             plain: AssignedPlain(plain),
@@ -1627,7 +1627,7 @@ impl<F: CircuitField> Sha256Chip<F> {
         summands[6].0.copy_advice(|| "S6", region, adv_cols[6], 2)?;
         let _carry: AssignedPlainSpreaded<F, 3> =
             self.assign_plain_and_spreaded(region, carry_val, 2, 1)?;
-        region.assign_advice(|| "sum", adv_cols[4], 0, || sum_val)
+        region.assign_native(|| "sum", adv_cols[4], 0, || sum_val)
     }
 }
 
