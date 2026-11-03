@@ -1089,14 +1089,6 @@ where
         Ok(p)
     }
 
-    fn x_coordinate(&self, point: &Self::Point) -> Self::Coordinate {
-        point.x.clone()
-    }
-
-    fn y_coordinate(&self, point: &Self::Point) -> Self::Coordinate {
-        point.y.clone()
-    }
-
     fn x(
         &self,
         _layouter: &mut impl Layouter<F>,
