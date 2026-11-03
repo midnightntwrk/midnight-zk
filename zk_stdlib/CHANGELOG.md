@@ -47,6 +47,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Parallelise batch_verifier [#236](https://github.com/midnightntwrk/midnight-zk/pull/236)
 
 ### Removed
+* BREAKING: `assign_as_public_input` on `ZkStdLib` and its chips. Use `assign` followed by `constrain_as_public_input` [#619](https://github.com/midnightntwrk/midnight-zk/pull/619)
 * `truncated-challenges` feature; challenges are always truncated [#580](https://github.com/midnightntwrk/midnight-zk/pull/580)
 * `single-h-commitment` feature [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
 * `Clone` on `MidnightPK`, which holds a proving key, no longer `Clone` [#537](https://github.com/midnightntwrk/midnight-zk/pull/537)

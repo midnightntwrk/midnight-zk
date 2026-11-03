@@ -72,7 +72,8 @@ impl Relation for BitcoinSigExample {
         let secp256k1_base = secp256k1_curve.base_field_chip();
 
         // Assign the PK as public input.
-        let pk = secp256k1_curve.assign_as_public_input(layouter, instance.map(|(pk, _)| pk))?;
+        let pk = secp256k1_curve.assign(layouter, instance.map(|(pk, _)| pk))?;
+        secp256k1_curve.constrain_as_public_input(layouter, &pk)?;
 
         // Assign the message bytes and constrain it as public input.
         let msg_bytes = std_lib.assign_many(

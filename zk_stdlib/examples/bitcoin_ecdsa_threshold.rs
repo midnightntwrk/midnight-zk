@@ -69,7 +69,8 @@ impl Relation for BitcoinThresholdECDSA {
         let secp256k1_base = secp256k1_curve.base_field_chip();
 
         // Assign the message hash as a public input.
-        let msg_hash = secp256k1_scalar.assign_as_public_input(layouter, instance.unzip().0)?;
+        let msg_hash = secp256k1_scalar.assign(layouter, instance.unzip().0)?;
+        secp256k1_scalar.constrain_as_public_input(layouter, &msg_hash)?;
 
         // Assign the PKs and constrain them as public inputs.
         let pks = secp256k1_curve.assign_many(layouter, &instance.unzip().1.transpose_array())?;

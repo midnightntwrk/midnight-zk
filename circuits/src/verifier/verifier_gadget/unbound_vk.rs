@@ -227,8 +227,8 @@ mod tests {
                 &self.inner_cs,
             )?;
 
-            let expected_hash =
-                native_gadget.assign_as_public_input(&mut layouter, self.expected_hash)?;
+            let expected_hash = native_gadget.assign(&mut layouter, self.expected_hash)?;
+            native_gadget.constrain_as_public_input(&mut layouter, &expected_hash)?;
             let inner_vk =
                 verifier_chip.bind_vk_to_hash(&mut layouter, unbound_vk, &expected_hash)?;
 
