@@ -10,6 +10,7 @@ extern crate criterion;
 
 use std::time::SystemTime;
 
+use blst::{MultiPoint, blst_p1_affine};
 use criterion::{BenchmarkId, Criterion};
 use ff::PrimeField;
 use group::Group;
@@ -95,15 +96,18 @@ fn msm_blst(c: &mut Criterion) {
 
     let (bases, coeffs) = setup::<midnight_curves::G1Affine>();
 
-    // Blstrs version.
+    // blst's MSM on the affine bases; the scalars' conversion to bytes is
+    // timed, as the Rust MSM converts its scalars too.
+    let points: Vec<blst_p1_affine> = bases.iter().map(|p| *p.as_ref()).collect();
     for (b_index, b) in BITS.iter().enumerate() {
         for k in MULTICORE_RANGE {
             let n: usize = 1 << k;
             let id = format!("blstrs_{b}b_{k}");
-            let points: Vec<midnight_curves::G1Projective> = bases.iter().map(Into::into).collect();
             group.bench_function(BenchmarkId::new("Blst", id), |b| {
                 b.iter(|| {
-                    midnight_curves::G1Projective::multi_exp(&points[..n], &coeffs[b_index][..n])
+                    let bytes: Vec<u8> =
+                        coeffs[b_index][..n].iter().flat_map(|s| s.to_bytes_le()).collect();
+                    points[..n].mult(&bytes, 255)
                 })
             });
         }
@@ -117,19 +121,6 @@ fn msm_blst(c: &mut Criterion) {
             group.bench_function(BenchmarkId::new("msm_best", id), |b| {
                 b.iter(|| {
                     midnight_curves::msm::msm_best(&coeffs[b_index][..n], &bases[..n]);
-                })
-            });
-        }
-    }
-
-    // midnight-curves msm_pippenger version (the commitments' MSM).
-    for (b_index, b) in BITS.iter().enumerate() {
-        for k in MULTICORE_RANGE {
-            let n: usize = 1 << k;
-            let id = format!("msm_pippenger_{b}b_{k}");
-            group.bench_function(BenchmarkId::new("msm_pippenger", id), |b| {
-                b.iter(|| {
-                    midnight_curves::msm::msm_pippenger(&coeffs[b_index][..n], &bases[..n]);
                 })
             });
         }

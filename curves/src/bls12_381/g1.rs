@@ -417,34 +417,6 @@ impl G1Affine {
     }
 }
 
-impl G1Affine {
-    /// Perform a multi-exponentiation on affine points.
-    ///
-    /// # Panics
-    ///
-    /// If |points| != |scalars|.
-    /// If |scalars| == 0 due to internal blst `mult` call.
-    pub fn multi_exp_affine(points: &[Self], scalars: &[Fq]) -> G1Projective {
-        use blst::MultiPoint;
-
-        let n = points.len();
-        assert_eq!(n, scalars.len());
-
-        // G1Affine is #[repr(transparent)] over blst_p1_affine.
-        let affine_slice =
-            unsafe { std::slice::from_raw_parts(points.as_ptr() as *const blst_p1_affine, n) };
-
-        let mut scalar_bytes: Vec<u8> = Vec::with_capacity(n * 32);
-        for a in scalars.iter().map(|s| s.to_bytes_le()) {
-            scalar_bytes.extend_from_slice(&a);
-        }
-
-        // Blst Pippenger MSM over affine points.
-        let res = affine_slice.mult(scalar_bytes.as_slice(), 255);
-        G1Projective(res)
-    }
-}
-
 impl SerdeObject for G1Affine {
     fn from_raw_bytes_unchecked(bytes: &[u8]) -> Self {
         debug_assert_eq!(bytes.len(), UNCOMPRESSED_SIZE);
@@ -629,27 +601,6 @@ impl G1Projective {
     /// Returns the z coordinate.
     pub fn z(&self) -> Fp {
         Fp(self.0.z)
-    }
-
-    /// Perform a multi-exponentiation, aka "multi-scalar-multiplication" (MSM)
-    /// using `blst`'s implementation of Pippenger's algorithm.
-    /// Note: `scalars` is cloned in this method.
-    pub fn multi_exp(points: &[Self], scalars: &[Fq]) -> Self {
-        let n = points.len();
-        assert_eq!(n, scalars.len());
-        let points =
-            unsafe { std::slice::from_raw_parts(points.as_ptr() as *const blst_p1, points.len()) };
-
-        let points = p1_affines::from(points);
-
-        let mut scalar_bytes: Vec<u8> = Vec::with_capacity(n * 32);
-        for a in scalars.iter().map(|s| s.to_bytes_le()) {
-            scalar_bytes.extend_from_slice(&a);
-        }
-
-        let res = points.mult(scalar_bytes.as_slice(), 255);
-
-        G1Projective(res)
     }
 }
 
@@ -950,6 +901,22 @@ impl CurveAffine for G1Affine {
     fn from_xy(x: Self::Base, y: Self::Base) -> CtOption<Self> {
         let p = Self::from_raw_unchecked(x, y, false);
         CtOption::new(p, p.is_torsion_free())
+    }
+
+    /// `β` a cube root of unity in `Fp`, `λ = z^2 - 1`, a cube root of unity
+    /// mod the group order `r = λ^2 + λ + 1` (`test_glv` checks they
+    /// match).
+    fn glv() -> Option<(Fp, u128)> {
+        let beta = Fp::from_u64s_le(&[
+            0x8bfd00000000aaac,
+            0x409427eb4f49fffd,
+            0x897d29650fb85f9b,
+            0xaa0d857d89759ad4,
+            0xec02408663d4de85,
+            0x1a0111ea397fe699,
+        ])
+        .expect("β is below the modulus");
+        Some((beta, 0xac45a4010001a40200000000ffffffff))
     }
 
     /// Skips `from_xy`'s subgroup check, which costs about a scalar
@@ -1603,26 +1570,5 @@ mod tests {
         assert!(bool::from(
             <G1Affine as UncompressedEncoding>::from_uncompressed(&enc).is_none()
         ));
-    }
-
-    #[test]
-    fn test_multi_exp() {
-        const SIZE: usize = 10;
-        let mut rng = XorShiftRng::from_seed([
-            0x59, 0x62, 0xbe, 0x5d, 0x76, 0x3d, 0x31, 0x8d, 0x17, 0xdb, 0x37, 0x32, 0x54, 0x06,
-            0xbc, 0xe5,
-        ]);
-
-        let points: Vec<G1Projective> = (0..SIZE).map(|_| G1Projective::random(&mut rng)).collect();
-        let scalars: Vec<Fq> = (0..SIZE).map(|_| Fq::random(&mut rng)).collect();
-
-        let mut naive = points[0] * scalars[0];
-        for i in 1..SIZE {
-            naive += points[i] * scalars[i];
-        }
-
-        let pippenger = G1Projective::multi_exp(points.as_slice(), scalars.as_slice());
-
-        assert_eq!(naive, pippenger);
     }
 }

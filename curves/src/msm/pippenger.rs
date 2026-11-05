@@ -1,8 +1,7 @@
 //! A Pippenger multi-scalar multiplication over tiles of windows × chunks of
 //! the terms (blst's design), with batched affine buckets (gnark's) from window
-//! 7 and XYZZ buckets below.
-//!
-//! This is the MSM behind polynomial commitments; see [`msm_pippenger`].
+//! 7 and XYZZ buckets below, the GLV endomorphism for small MSMs, and one
+//! scalar multiplication per term for the smallest; see [`msm_best`].
 
 use std::ops::{Neg, Range};
 
@@ -817,7 +816,7 @@ where
     acc.to_curve::<C>()
 }
 
-/// [`msm_pippenger`] with window size `c`.
+/// The Pippenger of [`msm_best`] with window size `c`.
 fn msm_with_window<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C], c: usize) -> C::Curve {
     assert_eq!(coeffs.len(), bases.len());
     let nbits = C::Scalar::NUM_BITS as usize;
@@ -843,6 +842,125 @@ fn msm_with_window<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C], c: usize) 
     let points: Vec<Affine<C::Base>> = bases.par_iter().map(Affine::from).collect();
     let xy = |i: usize| (&points[i].x, &points[i].y);
     pippenger::<C, _, _, _>(coeffs.len(), repr, xy, nbits, c)
+}
+
+/// One scalar multiplication per term, in parallel, then their sum: best for a
+/// few terms.
+fn msm_pointwise<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
+    coeffs
+        .par_iter()
+        .zip(bases.par_iter())
+        .map(|(s, b)| b.to_curve() * s)
+        .reduce(C::Curve::identity, |a, b| a + b)
+}
+
+/// `⌊2^256 / λ⌋` as little-endian limbs (129 bits for a 128-bit `λ`), by long
+/// division: the Barrett constant for [`glv_split`].
+fn glv_reciprocal(lambda: u128) -> [u64; 3] {
+    // The numerator is a 1 followed by 256 zeros; its leading 1 is below λ, so that
+    // quotient bit is 0 and the remainder starts at 1.
+    let (mut rem, mut q) = (1u128, [0u64; 3]);
+    for _ in 0..256 {
+        let carry = rem >> 127;
+        rem <<= 1;
+        let bit = carry == 1 || rem >= lambda;
+        if bit {
+            rem = rem.wrapping_sub(lambda);
+        }
+        q = [
+            q[0] << 1 | u64::from(bit),
+            q[1] << 1 | q[0] >> 63,
+            q[2] << 1 | q[1] >> 63,
+        ];
+    }
+    q
+}
+
+/// `k = k2·λ + k1` with `k1 < λ`, for a little-endian `k < 2^128 λ`: the GLV
+/// halves, little-endian. By Barrett reduction with `m = glv_reciprocal(λ)`:
+/// `(k·m) >> 256` is at most 2 below `⌊k/λ⌋`, and the remainder is corrected by
+/// subtracting `λ`.
+fn glv_split(k: &[u8], lambda: u128, m: &[u64; 3]) -> ([u8; 16], [u8; 16]) {
+    let mut bytes = [0u8; 32];
+    bytes[..k.len()].copy_from_slice(k);
+    let (limbs, _) = bytes.as_chunks::<8>();
+    let kl: [u64; 4] = core::array::from_fn(|i| u64::from_le_bytes(limbs[i]));
+    // k·m, keeping limbs 4 and 5 (bits 256..384; the quotient is below 2^128).
+    let mut prod = [0u64; 7];
+    for (i, ki) in kl.iter().enumerate() {
+        let mut carry = 0u128;
+        for (j, mj) in m.iter().enumerate() {
+            let t = u128::from(*ki) * u128::from(*mj) + u128::from(prod[i + j]) + carry;
+            prod[i + j] = t as u64; // Lossless: the low 64 bits, by design.
+            carry = t >> 64;
+        }
+        prod[i + 3] = carry as u64; // Lossless: a 64-bit carry.
+    }
+    let mut q = u128::from(prod[4]) | (u128::from(prod[5]) << 64);
+    // r = k - q·λ, which is below 3λ < 2^130: compute it mod 2^192.
+    let (ql, qh) = (q as u64, (q >> 64) as u64); // Lossless: the two halves.
+    let (ll, lh) = (lambda as u64, (lambda >> 64) as u64); // Lossless: the two halves.
+    let p0 = u128::from(ql) * u128::from(ll);
+    let p1 = u128::from(ql) * u128::from(lh) + u128::from(qh) * u128::from(ll) + (p0 >> 64);
+    let p2 = u128::from(qh) * u128::from(lh) + (p1 >> 64);
+    let ql_lambda = [p0 as u64, p1 as u64, p2 as u64]; // Lossless: limbs of q·λ mod 2^192.
+    let mut r = [0u64; 3];
+    let mut borrow = 0u64;
+    for i in 0..3 {
+        let (d, b1) = kl[i].overflowing_sub(ql_lambda[i]);
+        let (d, b2) = d.overflowing_sub(borrow);
+        r[i] = d;
+        borrow = u64::from(b1 | b2);
+    }
+    // At most two corrections; r has at most 130 bits.
+    for _ in 0..3 {
+        let r_lo = u128::from(r[0]) | (u128::from(r[1]) << 64);
+        if r[2] == 0 && r_lo < lambda {
+            break;
+        }
+        let (d, b) = r_lo.overflowing_sub(lambda);
+        r = [d as u64, (d >> 64) as u64, r[2] - u64::from(b)]; // Lossless: halves of d.
+        q += 1;
+    }
+    debug_assert!(r[2] == 0 && (u128::from(r[0]) | (u128::from(r[1]) << 64)) < lambda);
+    let rem = u128::from(r[0]) | (u128::from(r[1]) << 64);
+    (rem.to_le_bytes(), q.to_le_bytes())
+}
+
+/// The Pippenger through the GLV endomorphism `(β, λ)` ([`CurveAffine::glv`]),
+/// with window size `c`: twice the terms, with 128-bit scalars, so half the
+/// windows and doublings.
+fn msm_glv_with_window<C: CurveAffine>(
+    coeffs: &[C::Scalar],
+    bases: &[C],
+    (beta, lambda): (C::Base, u128),
+    c: usize,
+) -> C::Curve {
+    assert_eq!(coeffs.len(), bases.len());
+    let m = glv_reciprocal(lambda);
+    // Each term as two, (k1, P) and (k2, φ(P)); an identity base gets zero scalars.
+    let split = |(s, b): (&C::Scalar, &C)| {
+        let (k1, k2) = match bool::from(b.is_identity()) {
+            true => ([0; 16], [0; 16]),
+            false => glv_split(s.to_repr().as_ref(), lambda, &m),
+        };
+        let p = Affine::from(b);
+        let phi = Affine {
+            x: p.x * beta,
+            y: p.y,
+        };
+        [(k1, p), (k2, phi)]
+    };
+    let (scalars, points): (Vec<[u8; 16]>, Vec<Affine<C::Base>>) =
+        coeffs.iter().zip(bases).flat_map(split).unzip();
+    let repr = |r: Range<usize>| scalars[r].to_vec();
+    pippenger::<C, _, _, _>(
+        scalars.len(),
+        repr,
+        |i| (&points[i].x, &points[i].y),
+        128,
+        c,
+    )
 }
 
 /// From this many terms, [`compact`] counts and copies in parallel, in chunks
@@ -916,20 +1034,37 @@ fn compact<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> Option<(Vec<C::
 }
 
 /// The multi-scalar multiplication `Σ coeffs[i]·bases[i]` (the identity if
-/// there are no terms), as used for polynomial commitments: a Pippenger over
-/// blst-style tiles of windows × chunks of the terms, with batched affine
-/// buckets from window 7 and XYZZ buckets below. Parallel; identity bases and
-/// zero scalars contribute nothing.
+/// there are no terms): a Pippenger over blst-style tiles of windows × chunks
+/// of the terms, with batched affine buckets from window 7 and XYZZ buckets
+/// below; through the GLV endomorphism ([`CurveAffine::glv`]) for 32..128
+/// terms, and one scalar multiplication per term below 32. Parallel; identity
+/// bases and zero scalars contribute nothing.
 ///
 /// # Panics
 ///
 /// If `coeffs` and `bases` have different lengths.
-pub fn msm_pippenger<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
+pub fn msm_best<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
     assert_eq!(coeffs.len(), bases.len());
     if let Some((coeffs, bases)) = compact(coeffs, bases) {
-        return msm_with_window(&coeffs, &bases, window_size(bases.len()));
+        return msm_dispatch(&coeffs, &bases);
     }
-    msm_with_window(coeffs, bases, window_size(bases.len()))
+    msm_dispatch(coeffs, bases)
+}
+
+/// [`msm_best`] of an input that is dense or already compacted.
+fn msm_dispatch<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
+    let n = bases.len();
+    if n < 32 {
+        return msm_pointwise(coeffs, bases);
+    }
+    // Measured on BLS12-381 G1: GLV halves the doublings, which pays only while
+    // they are a large share of the work.
+    if n < 128
+        && let Some(glv) = C::glv()
+    {
+        return msm_glv_with_window(coeffs, bases, glv, 5);
+    }
+    msm_with_window(coeffs, bases, window_size(n))
 }
 
 #[cfg(test)]

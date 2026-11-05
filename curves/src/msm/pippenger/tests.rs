@@ -1,19 +1,22 @@
-//! Differential tests of [`super::msm_pippenger`]: against blst's MSM
-//! (`G1Affine::multi_exp_affine`), a naive sum, and sums with known discrete
-//! logarithms, across sizes, windows, thread counts and adversarial scalars and
-//! bases.
+//! Differential tests of [`super::msm_best`]: against blst's MSM (called
+//! directly), a naive sum, and sums with known discrete logarithms, across
+//! sizes, windows, thread counts and adversarial scalars and bases.
 //!
 //! `MSM_FUZZ_ITERS` and `MSM_FUZZ_SEED` lengthen or reseed [`fuzz`].
 
 use std::ops::Neg;
 
+use blst::{MultiPoint, blst_p1_affine};
 use ff::{Field, PrimeField};
 use group::{Curve, Group, prime::PrimeCurveAffine};
 use rand_core::{RngCore, SeedableRng};
 use rand_xorshift::XorShiftRng;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
-use super::{Xyzz, chunk_count, get_booth_index, msm_pippenger, msm_with_window, window_size};
+use super::{
+    Xyzz, chunk_count, get_booth_index, glv_reciprocal, glv_split, msm_best, msm_glv_with_window,
+    msm_pointwise, msm_with_window, window_size,
+};
 use crate::{CurveAffine, Fq, G1Affine, G1Projective, bn256};
 
 fn rng(seed: u64) -> XorShiftRng {
@@ -44,12 +47,14 @@ fn naive<C: CurveAffine>(scalars: &[C::Scalar], points: &[C]) -> C::Curve {
         .fold(C::Curve::identity(), |acc, (s, p)| acc + *p * s)
 }
 
-/// blst's MSM, which panics on no terms.
+/// blst's MSM (`blst_p1s_mult_pippenger`), which panics on no terms.
 fn blst(scalars: &[Fq], points: &[G1Affine]) -> G1Projective {
     if scalars.is_empty() {
         return G1Projective::identity();
     }
-    G1Affine::multi_exp_affine(points, scalars)
+    let points: Vec<blst_p1_affine> = points.iter().map(|p| p.0).collect();
+    let bytes: Vec<u8> = scalars.iter().flat_map(Fq::to_bytes_le).collect();
+    G1Projective(points.mult(&bytes, 255))
 }
 
 /// `msm_with_window` in a pool of `threads` threads.
@@ -262,7 +267,7 @@ fn test_every_size_up_to_300() {
     for n in 0..=300 {
         let (s, p) = (&scalars[..n], &points[..n]);
         let expected = naive(s, p);
-        assert_eq!(msm_pippenger(s, p), expected, "n {n}");
+        assert_eq!(msm_best(s, p), expected, "n {n}");
         assert_eq!(blst(s, p), expected, "blst, n {n}");
     }
 }
@@ -292,7 +297,7 @@ fn test_powers_of_two() {
     for k in 8..=16 {
         for n in [(1 << k) - 1, 1 << k, (1 << k) + 1] {
             let (s, p) = (&scalars[..n], &points[..n]);
-            assert_eq!(msm_pippenger(s, p), blst(s, p), "n {n}");
+            assert_eq!(msm_best(s, p), blst(s, p), "n {n}");
         }
     }
 }
@@ -427,11 +432,7 @@ fn test_bn256() {
     for m in [0, 1, 31, 32, 100, 1000, n] {
         let (s, p) = (&scalars[..m], &points[..m]);
         let expected = naive(s, p);
-        assert_eq!(
-            crate::msm::msm_parallel(s, p),
-            expected,
-            "msm_parallel, n {m}"
-        );
+        assert_eq!(msm_best(s, p), expected, "n {m}");
         for c in [window_size(m), 4, 7, 9, 13] {
             assert_eq!(msm_with_window(s, p, c), expected, "n {m} c {c}");
         }
@@ -482,6 +483,99 @@ fn test_fuzz() {
     }
 }
 
+/// BLS12-381 G1's GLV constants match: `(β·x, y) = λ·(x, y)`.
+#[test]
+fn test_glv_constants() {
+    let (beta, lambda) = G1Affine::glv().unwrap();
+    for p in random_points::<G1Affine>(8, 24) {
+        let phi = G1Affine::from_xy(p.x() * beta, p.y()).unwrap();
+        assert_eq!(
+            phi,
+            (p * Fq::from_u128(lambda)).to_affine(),
+            "β does not match λ"
+        );
+    }
+}
+
+/// The split is exact, `k1 + k2·λ = k` with `k1 < λ`, on edge cases and at
+/// random.
+#[test]
+fn test_glv_split() {
+    let (_, lambda) = G1Affine::glv().unwrap();
+    let m = glv_reciprocal(lambda);
+    let l = Fq::from_u128(lambda);
+    let mut ks = vec![
+        Fq::ZERO,
+        Fq::ONE,
+        -Fq::ONE,
+        l,
+        l - Fq::ONE,
+        l + Fq::ONE,
+        l * l,
+        l * l + l,
+        -l,
+        Fq::from_u128(u128::MAX),
+    ];
+    let mut rng = rng(25);
+    ks.extend((0..10_000).map(|_| Fq::random(&mut rng)));
+    for k in ks {
+        let (k1, k2) = glv_split(k.to_repr().as_ref(), lambda, &m);
+        let (k1, k2) = (u128::from_le_bytes(k1), u128::from_le_bytes(k2));
+        assert!(k1 < lambda, "k1 not below λ for {k:?}");
+        assert_eq!(Fq::from_u128(k1) + Fq::from_u128(k2) * l, k);
+    }
+}
+
+/// The GLV Pippenger at every size up to 300, several windows, with every
+/// scalar class and identity bases.
+#[test]
+fn test_glv_msm() {
+    let glv = G1Affine::glv().unwrap();
+    let mut points = random_points::<G1Affine>(300, 26);
+    for i in (0..300).step_by(11) {
+        points[i] = G1Affine::identity();
+    }
+    let mut rng = rng(27);
+    let repeated = Fq::random(&mut rng);
+    let scalars: Vec<Fq> = (0..300)
+        .map(|i| scalar_of(SCALAR_CLASSES[i % SCALAR_CLASSES.len()], &mut rng, repeated))
+        .collect();
+    for n in 0..=300 {
+        let (s, p) = (&scalars[..n], &points[..n]);
+        let expected = naive(s, p);
+        for c in [3, 4, 5, 8, 11] {
+            assert_eq!(msm_glv_with_window(s, p, glv, c), expected, "n {n} c {c}");
+        }
+    }
+}
+
+/// One scalar multiplication per term, and `msm_best`'s dispatch on both sides
+/// of its thresholds (32 and 128 terms), with identities and every scalar
+/// class.
+#[test]
+fn test_pointwise_and_dispatch() {
+    let mut points = random_points::<G1Affine>(200, 28);
+    points[3] = G1Affine::identity();
+    let mut rng = rng(29);
+    let repeated = Fq::random(&mut rng);
+    let scalars: Vec<Fq> = (0..200)
+        .map(|i| scalar_of(SCALAR_CLASSES[i % SCALAR_CLASSES.len()], &mut rng, repeated))
+        .collect();
+    for n in [0, 1, 2, 4, 30, 31, 32, 33, 64, 126, 127, 128, 129, 200] {
+        let (s, p) = (&scalars[..n], &points[..n]);
+        let expected = naive(s, p);
+        assert_eq!(msm_pointwise(s, p), expected, "pointwise n {n}");
+        assert_eq!(msm_best(s, p), expected, "msm_best n {n}");
+        for threads in [1, 3, 12] {
+            assert_eq!(
+                in_pool::<G1Affine>(threads, || msm_best(s, p)),
+                expected,
+                "n {n}"
+            );
+        }
+    }
+}
+
 /// A same-x collision while summing the buckets in lanes (a lane's running
 /// sum meets the next bucket, its negation or its double, or the lanes' sum
 /// meets a lane): the lane path must give up and the XYZZ summation take over.
@@ -526,7 +620,7 @@ fn test_sparse() {
                 }
                 let expected = oracle(&scalars, &points);
                 assert_eq!(
-                    msm_pippenger(&scalars, &points),
+                    msm_best(&scalars, &points),
                     expected,
                     "n {n}, nonzero {nonzero}, at_end {at_end}"
                 );
@@ -547,6 +641,6 @@ fn test_large() {
     let scalars = random_scalars::<Fq>(max, 23);
     for k in 17..=18 {
         let (s, p) = (&scalars[..1 << k], &points[..1 << k]);
-        assert_eq!(msm_pippenger(s, p), blst(s, p), "k {k}");
+        assert_eq!(msm_best(s, p), blst(s, p), "k {k}");
     }
 }
