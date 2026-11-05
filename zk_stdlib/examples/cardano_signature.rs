@@ -95,7 +95,11 @@ impl Relation for CardanoSigExample {
             .map(|(a_bytes, _)| a_bytes)
             .transpose_array()
             .into_iter()
-            .map(|b| std_lib.assign_as_public_input(layouter, b))
+            .map(|b| {
+                let byte: AssignedByte<F> = std_lib.assign(layouter, b)?;
+                std_lib.constrain_as_public_input(layouter, &byte)?;
+                Ok::<_, Error>(byte)
+            })
             .collect::<Result<Vec<_>, _>>()?
             .try_into()
             .expect("exactly 32 bytes");

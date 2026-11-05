@@ -77,7 +77,8 @@ impl Relation for CredentialEnrollment {
         let b64_chip = std_lib.base64();
 
         // Assign the PK as public input.
-        let pk = secp256k1_curve.assign_as_public_input(layouter, instance)?;
+        let pk = secp256k1_curve.assign(layouter, instance)?;
+        secp256k1_curve.constrain_as_public_input(layouter, &pk)?;
 
         let (payload, sig) = witness.unzip();
 

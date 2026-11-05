@@ -24,6 +24,7 @@ use midnight_circuits::{
     instructions::{
         AssertionInstructions, AssignmentInstructions, PublicInputInstructions, hash::HashCPU,
     },
+    types::AssignedNative,
 };
 use midnight_proofs::{
     circuit::{Layouter, Value},
@@ -68,8 +69,11 @@ impl Relation for PIsCircuit {
         //   let inputs = instance
         //     .transpose_vec(self.nb_public_inputs as usize)
         //     .into_iter()
-        //     .map(|input| std_lib.assign_as_public_input(layouter, input))
+        //     .map(|input| std_lib.assign(layouter, input))
         //     .collect::<Result<Vec<_>, Error>>()?;
+        //   inputs
+        //     .iter()
+        //     .try_for_each(|x| std_lib.constrain_as_public_input(layouter, x))?;
         //
         // however, that would not allow us to test the issue that we are
         // concerned about here.
@@ -77,7 +81,11 @@ impl Relation for PIsCircuit {
         instance.map(|v| inputs = v[..self.nb_public_inputs as usize].to_vec());
         let inputs = inputs
             .into_iter()
-            .map(|input| std_lib.assign_as_public_input(layouter, Value::known(input)))
+            .map(|input| {
+                let x: AssignedNative<F> = std_lib.assign(layouter, Value::known(input))?;
+                std_lib.constrain_as_public_input(layouter, &x)?;
+                Ok(x)
+            })
             .collect::<Result<Vec<_>, Error>>()?;
 
         let preimage_values = witness.transpose_vec(self.nb_public_inputs as usize);

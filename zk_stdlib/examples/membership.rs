@@ -68,8 +68,9 @@ impl Relation for MembershipExample {
         map.init(layouter, witness.map(|(_, _, mt_map)| mt_map))?;
 
         std_lib.constrain_as_public_input(layouter, &map.succinct_repr())?;
-        let proven_sets: AssignedNative<F> = std_lib
-            .assign_as_public_input(layouter, instance.map(|(_, proven_sets)| proven_sets))?;
+        let proven_sets: AssignedNative<F> =
+            std_lib.assign(layouter, instance.map(|(_, proven_sets)| proven_sets))?;
+        std_lib.constrain_as_public_input(layouter, &proven_sets)?;
 
         // Then, we prove that the `(key, value)`, represented by `(element,
         // member_sets)` is indeed part of the map represented by the succinct

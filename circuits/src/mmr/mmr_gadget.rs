@@ -625,16 +625,6 @@ where
         (self.as_public_input(layouter, assigned)?.iter())
             .try_for_each(|cell| self.native_gadget.constrain_as_public_input(layouter, cell))
     }
-
-    fn assign_as_public_input(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        value: Value<MmrState<F, CAPACITY>>,
-    ) -> Result<AssignedMmr<F, CAPACITY>, Error> {
-        let assigned = self.assign(layouter, value)?;
-        self.constrain_as_public_input(layouter, &assigned)?;
-        Ok(assigned)
-    }
 }
 
 #[cfg(any(test, feature = "testing"))]
