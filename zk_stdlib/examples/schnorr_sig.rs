@@ -129,9 +129,8 @@ impl Relation for SchnorrExample {
         // 1. rv = s * G + e * Pk
         let rv = (std_lib.jubjub()).msm(layouter, &[sig_s, sig_e], &[generator, pk.clone()])?;
 
-        let coords = |p| (jubjub.x_coordinate(p), jubjub.y_coordinate(p));
-        let (pkx, pky) = coords(&pk);
-        let (rx, ry) = coords(&rv);
+        let (pkx, pky) = (jubjub.x(layouter, &pk)?, jubjub.y(layouter, &pk)?);
+        let (rx, ry) = (jubjub.x(layouter, &rv)?, jubjub.y(layouter, &rv)?);
 
         // 2. ev = hash( PK.x || PK.y || r.x || r.y || m)
         let h = std_lib.poseidon(layouter, &[pkx, pky, rx, ry, message])?;

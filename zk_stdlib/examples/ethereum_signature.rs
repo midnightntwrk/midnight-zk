@@ -7,7 +7,7 @@ use midnight_circuits::{
     field::foreign::params::MultiEmulationParams,
     instructions::{
         ArithInstructions, AssertionInstructions, AssignmentInstructions,
-        DecompositionInstructions, EccInstructions, PublicInputInstructions, ZeroInstructions,
+        DecompositionInstructions, EccInstructions, PublicInputInstructions,
     },
     types::{AssignedByte, AssignedForeignPoint, Instantiable},
 };
@@ -111,12 +111,8 @@ impl Relation for EthereumSigExample {
         let r_point =
             secp256k1_curve.msm_by_le_bits(layouter, &[u1_bits, u2_bits], &[generator, pk])?;
 
-        // Check the correctness of R:
-        //  1. It should not be the identity.
-        secp256k1_curve.assert_non_zero(layouter, &r_point)?;
-
-        // 2. r_point.x should be equal to r.
-        let r_point_x = secp256k1_curve.x_coordinate(&r_point);
+        // Check that r_point.x equals r (`x` asserts that r_point is not the identity).
+        let r_point_x = secp256k1_curve.x(layouter, &r_point)?;
         let r_point_x_bits = secp256k1_base.assigned_to_le_bytes(layouter, &r_point_x, None)?;
         let r_point_x_scalar =
             secp256k1_scalar.assigned_from_le_bytes(layouter, &r_point_x_bits)?;

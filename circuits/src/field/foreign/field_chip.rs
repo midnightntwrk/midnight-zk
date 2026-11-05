@@ -142,16 +142,22 @@ where
     fn from_public_input(fields: &[F]) -> Option<K> {
         let base = BI::from(2).pow(P::LOG2_BASE);
         let nb_limbs_per_batch = (F::CAPACITY / P::LOG2_BASE) as usize;
-        if fields.len() != (P::NB_LIMBS as usize).div_ceil(nb_limbs_per_batch) {
+        if nb_limbs_per_batch == 0
+            || fields.len() != (P::NB_LIMBS as usize).div_ceil(nb_limbs_per_batch)
+        {
             return None;
         }
+        // Every batch must be expressible with `nb_limbs_per_batch` limbs in base
+        // `base`, otherwise the input is not a valid encoding.
+        let batch_bound = BI::pow(&base, nb_limbs_per_batch as u32);
         let limbs: Vec<BI> = fields
             .iter()
-            .flat_map(|f| {
+            .map(|f| {
                 let bi: BI = f.to_biguint().into();
-                bi_to_limbs(nb_limbs_per_batch as u32, &base, &bi)
+                (bi < batch_bound).then(|| bi_to_limbs(nb_limbs_per_batch as u32, &base, &bi))
             })
-            .collect();
+            .collect::<Option<Vec<_>>>()?
+            .concat();
         let (head, tail) = limbs.split_at(P::NB_LIMBS as usize);
         if tail.iter().any(|l| !l.is_zero()) {
             return None;
@@ -507,6 +513,21 @@ where
         assigned: &AssignedField<F, K, P>,
     ) -> Result<Vec<AssignedNative<F>>, Error> {
         let assigned = self.normalize(layouter, assigned)?;
+
+        // Well-formed limbs encode an integer in [0, 2^k), where 2^k is the smallest
+        // power of 2 bigger than m, so it may be non-canonical. Assert canonicity so
+        // that the output is uniquely determined by the value.
+        let bits = (assigned.limb_values.iter())
+            .zip(well_formed_log2_bounds::<F, K, P>())
+            .map(|(limb, nb_bits)| {
+                self.native_gadget
+                    .assigned_to_le_bits(layouter, limb, Some(nb_bits as usize), true)
+            })
+            .collect::<Result<Vec<_>, Error>>()?
+            .concat();
+        let is_canonical = self.is_canonical(layouter, &bits)?;
+        self.assert_equal_to_fixed(layouter, &is_canonical, true)?;
+
         let nb_limbs_per_batch = (F::CAPACITY / P::LOG2_BASE) as usize;
         let base = BI::from(2).pow(P::LOG2_BASE);
         assigned
@@ -531,18 +552,6 @@ where
         self.as_public_input(layouter, assigned)?
             .iter()
             .try_for_each(|c| self.native_gadget.constrain_as_public_input(layouter, c))
-    }
-
-    fn assign_as_public_input(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        value: Value<K>,
-    ) -> Result<AssignedField<F, K, P>, Error> {
-        // Do NOT optimize this implementation. Since we batch various limbs when
-        // constraing as public inputs, we cannot skip the range-checks on the limbs.
-        let assigned = self.assign(layouter, value)?;
-        self.constrain_as_public_input(layouter, &assigned)?;
-        Ok(assigned)
     }
 }
 
@@ -906,11 +915,17 @@ where
         }
 
         if x == &one {
-            return Ok(y.clone());
+            return match multiplying_constant {
+                None => Ok(y.clone()),
+                Some(k) => self.mul_by_constant(layouter, y, k),
+            };
         }
 
         if y == &one {
-            return Ok(x.clone());
+            return match multiplying_constant {
+                None => Ok(x.clone()),
+                Some(k) => self.mul_by_constant(layouter, x, k),
+            };
         }
 
         let y = match multiplying_constant {

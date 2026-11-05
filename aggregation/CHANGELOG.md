@@ -8,9 +8,6 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 ## [Unreleased]
 ### Added
 * `fewer-point-sets` feature [#281](https://github.com/midnightntwrk/midnight-zk/pull/281)
-* Multi-circuit proof aggregation module and example [#311](https://github.com/midnightntwrk/midnight-zk/pull/311)
-* Add `IvcError::InvalidWitness` variant [#311](https://github.com/midnightntwrk/midnight-zk/pull/311)
-* Add `assign_without_subgroup_check` to `SelfEmulation` trait [#284](https://github.com/midnightntwrk/midnight-zk/pull/284)
 ### Changed
 * The multi-circuit aggregator witnesses the inner verifying keys privately, with `VerifierGadget::assign_unbound_vk` and binds each of them to its hash with `bind_vk_to_hash`: the aggregator state no longer exposes the last inner verifying key [#572](https://github.com/midnightntwrk/midnight-zk/pull/572)
 * The multi-circuit aggregator supports inner circuits of different sizes: their `k` and `omega` are public inputs, and `InnerCircuitsContext::new` takes the inner circuits' `max_bit_len` instead of `k` [#461](https://github.com/midnightntwrk/midnight-zk/pull/461)
@@ -21,12 +18,41 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 * `IvcCircuit::new` takes a finalized constraint system, see `ConstraintSystem::into_finalized`. The IVC circuit and the multi-circuit aggregator finalize the constraint systems they configure [#546](https://github.com/midnightntwrk/midnight-zk/pull/546)
 * Migrate to Rust edition 2024; MSRV raised from 1.76 to 1.90. Both are now inherited from the workspace [#508](https://github.com/midnightntwrk/midnight-zk/pull/508)
 * Adapt to single-proof prover API [#375](https://github.com/midnightntwrk/midnight-zk/pull/375)
-* Adapt to new `ZkStdLib` curve accessors [#335](https://github.com/midnightntwrk/midnight-zk/pull/335)
-* `IvcCircuit`'s `Relation::Error` is now `IvcError` instead of `plonk::Error` [#311](https://github.com/midnightntwrk/midnight-zk/pull/311)
-* `IvcVerifier` is now generic over `T: Ivc` and stores the context internally; `verify` no longer takes a `ctx` parameter [#302](https://github.com/midnightntwrk/midnight-zk/pull/302)
 * Add `IvcVerifier::with_deserialized_vk` and `IvcProver::with_deserialized_pk` for testing label correctness after a VK/PK roundtrip [#392](https://github.com/midnightntwrk/midnight-zk/pull/392)
 * Adapt IVC and multi-circuit aggregator to `PolynomialLabel`-keyed `fixed_bases` verifier API [#430](https://github.com/midnightntwrk/midnight-zk/pull/430)
 * Adapt to new `KZGCommitment` API [#381](https://github.com/midnightntwrk/midnight-zk/pull/381)
+* Adapt `LightAggregator` to affine SRS storage [#350](https://github.com/midnightntwrk/midnight-zk/pull/350)
+* Adapt to configurable `NB_ARITH_COLS` [#287](https://github.com/midnightntwrk/midnight-zk/pull/287)
+
+### Fixed
+* Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
+* Run 'prepare' function in-circuit for the multi-circuit aggregator [416](https://github.com/midnightntwrk/midnight-zk/pull/416)
+* The single-circuit aggregation example passes the finalized constraint system of the inner verifying key to `assign_fixed_vk`, instead of a constraint system that still has selectors, which made the in-circuit verifier panic [#546](https://github.com/midnightntwrk/midnight-zk/pull/546)
+
+### Removed
+* `truncated-challenges` feature, which the examples no longer require; challenges are always truncated [#580](https://github.com/midnightntwrk/midnight-zk/pull/580)
+* `single-h-commitment` feature [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
+* `IvcCircuit::cs_degree` [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
+* `fewer-point-sets` feature [#554](https://github.com/midnightntwrk/midnight-zk/pull/554)
+* `Clone` on `IvcProver`, which holds a proving key, no longer `Clone` [#537](https://github.com/midnightntwrk/midnight-zk/pull/537)
+* Remove `LightAggregator` module, not in use and hard to maintain [#427](https://github.com/midnightntwrk/midnight-zk/pull/427)
+
+## [0.1.0] - 2026-09-22
+
+First published release. The `0.1.1` and `0.1.2` entries that previously appeared here
+described in-repo iterations that were never published, so their contents are folded in.
+
+### Added
+* Expose `IvcVerifier::vk`, `IvcVerifier::params_verifier` and `IvcInstance::acc`, so an IVC chain can be finalised from outside the crate
+* Multi-circuit proof aggregation module and example [#311](https://github.com/midnightntwrk/midnight-zk/pull/311)
+* Add `IvcError::InvalidWitness` variant [#311](https://github.com/midnightntwrk/midnight-zk/pull/311)
+* Add `assign_without_subgroup_check` to `SelfEmulation` trait [#284](https://github.com/midnightntwrk/midnight-zk/pull/284)
+* Missing load of native_chip and poseidon (although they were not necessary) [#90](https://github.com/midnightntwrk/midnight-zk/pull/90)
+
+### Changed
+* Adapt to new `ZkStdLib` curve accessors [#335](https://github.com/midnightntwrk/midnight-zk/pull/335)
+* `IvcCircuit`'s `Relation::Error` is now `IvcError` instead of `plonk::Error` [#311](https://github.com/midnightntwrk/midnight-zk/pull/311)
+* `IvcVerifier` is now generic over `T: Ivc` and stores the context internally; `verify` no longer takes a `ctx` parameter [#302](https://github.com/midnightntwrk/midnight-zk/pull/302)
 * Introduce `IvcIO` trait and `Ivc` convenience trait [#264](https://github.com/midnightntwrk/midnight-zk/pull/264)
 * Proof aggregation example [#258](https://github.com/midnightntwrk/midnight-zk/pull/258)
 * Introduce `IvcContext` [#258](https://github.com/midnightntwrk/midnight-zk/pull/258)
@@ -36,14 +62,6 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 * Rebase to new `circuits/` with `sha512` [#96](https://github.com/midnightntwrk/midnight-zk/pull/96)
 * truncated_challenges feature to allow --all-features compilation [#146](https://github.com/midnightntwrk/midnight-zk/pull/146)
 * Rebase to new `circuits/` with `keccak` and `blake2b` [#135](https://github.com/midnightntwrk/midnight-zk/pull/135)
-### Fixed
-* Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
-* Run 'prepare' function in-circuit for the multi-circuit aggregator [416](https://github.com/midnightntwrk/midnight-zk/pull/416)
-* The single-circuit aggregation example passes the finalized constraint system of the inner verifying key to `assign_fixed_vk`, instead of a constraint system that still has selectors, which made the in-circuit verifier panic [#546](https://github.com/midnightntwrk/midnight-zk/pull/546)
-
-### Changed
-* Adapt `LightAggregator` to affine SRS storage [#350](https://github.com/midnightntwrk/midnight-zk/pull/350)
-* Adapt to configurable `NB_ARITH_COLS` [#287](https://github.com/midnightntwrk/midnight-zk/pull/287)
 * Remove `is_genesis` from `IvcState` trait; genesis detection is now derived generically from `format_public_input` [#272](https://github.com/midnightntwrk/midnight-zk/pull/272)
 * Rename `proof_aggregation` example to `single_circuit_aggregation` [#264](https://github.com/midnightntwrk/midnight-zk/pull/264)
 * Remove `InnerValue` and `Instantiable` requirements from IVC `AssignedState` [#264](https://github.com/midnightntwrk/midnight-zk/pull/264)
@@ -55,24 +73,6 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 * Adapt light aggregator to support non-fixed input commitments and improved fixed_bases handling [#212](https://github.com/midnightntwrk/midnight-zk/pull/212)
 * Updated Rust toolchain to 1.90.0 [#210](https://github.com/midnightntwrk/midnight-zk/pull/210)
 * `CircuitField` refactor [#201](https://github.com/midnightntwrk/midnight-zk/pull/201)
-
-### Removed
-* `truncated-challenges` feature, which the examples no longer require; challenges are always truncated [#580](https://github.com/midnightntwrk/midnight-zk/pull/580)
-* `single-h-commitment` feature [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
-* `IvcCircuit::cs_degree` [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
-* `fewer-point-sets` feature [#554](https://github.com/midnightntwrk/midnight-zk/pull/554)
-* `Clone` on `IvcProver`, which holds a proving key, no longer `Clone` [#537](https://github.com/midnightntwrk/midnight-zk/pull/537)
-* Remove `LightAggregator` module, not in use and hard to maintain [#427](https://github.com/midnightntwrk/midnight-zk/pull/427)
-* Halo2curves dependency [#139](https://github.com/midnightntwrk/midnight-zk/pull/139)
-
-[0.1.2]
-Update dependencies only.
-
-[0.1.1]
-### Added
-* Missing load of native_chip and poseidon (although they were not necessary) [#90](https://github.com/midnightntwrk/midnight-zk/pull/90)
-
-### Changed
 * Modify `pow2range` chip: adjust architecture in light aggregator [#38](https://github.com/midnightntwrk/midnight-zk/pull/38)
 * Update dependency names [#32](https://github.com/midnightntwrk/midnight-zk/pull/32)
 * Fix versions of crates in monorepo [#33](https://github.com/midnightntwrk/midnight-zk/pull/33)
@@ -83,4 +83,5 @@ Update dependencies only.
 * Rebase to new cost-model with improved K computation [#104](https://github.com/midnightntwrk/midnight-zk/pull/104)
 
 ### Removed
+* Halo2curves dependency [#139](https://github.com/midnightntwrk/midnight-zk/pull/139)
 * Add a turned-off automaton configuration due to the automaton chip being exposed in std_lib [#30](https://github.com/midnightntwrk/midnight-zk/pull/30)

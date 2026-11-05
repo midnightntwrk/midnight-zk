@@ -110,18 +110,6 @@ impl<S: SelfEmulation> PublicInputInstructions<S::F, AssignedVk<S>> for Verifier
              for assigned verifying keys."
         )
     }
-
-    fn assign_as_public_input(
-        &self,
-        _layouter: &mut impl Layouter<S::F>,
-        _value: Value<VerifyingKey<S>>,
-    ) -> Result<AssignedVk<S>, Error> {
-        unimplemented!(
-            "We intend [assign_vk_as_public_input] to be the only entry point
-            for assigned verifying keys. (Note that its signature is more complex
-            that this function's signature.)"
-        )
-    }
 }
 
 impl<S: SelfEmulation> PublicInputInstructions<S::F, AssignedAccumulator<S>> for VerifierGadget<S> {
@@ -144,16 +132,6 @@ impl<S: SelfEmulation> PublicInputInstructions<S::F, AssignedAccumulator<S>> for
     ) -> Result<(), Error> {
         (assigned.lhs).constrain_as_public_input(layouter, &self.curve_chip, &self.scalar_chip)?;
         (assigned.rhs).constrain_as_public_input(layouter, &self.curve_chip, &self.scalar_chip)
-    }
-
-    fn assign_as_public_input(
-        &self,
-        _layouter: &mut impl Layouter<S::F>,
-        _value: Value<Accumulator<S>>,
-    ) -> Result<AssignedAccumulator<S>, Error> {
-        unimplemented!(
-            "This is intentionally unimplemented, use [constrain_as_public_input] instead"
-        )
     }
 }
 

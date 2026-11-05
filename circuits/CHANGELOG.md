@@ -80,6 +80,44 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Remove `Expression::Challenge` variant and phase-parameterized `Any::Advice`; multi-phase advice columns are no longer supported [#376](https://github.com/midnightntwrk/midnight-zk/pull/376)
 * Remove `LabeledPoint`, `fixed_commitment_name`, `perm_commitment_name`, and `vk_name` helpers from the verifier module [#430](https://github.com/midnightntwrk/midnight-zk/pull/430)
 
+## [7.3.0]
+### Added
+* Added the `is_collapsed` function to [#553](https://github.com/midnightntwrk/midnight-zk/pull/553/)
+* Added `EccInstructions::x` and `y`, which take a layouter and, on Weierstrass curves, assert that the point is not the identity; `x_coordinate` and `y_coordinate` are deprecated [#612](https://github.com/midnightntwrk/midnight-zk/issues/612)
+
+### Changed
+* `assign_as_public_input` always performs the in-circuit checks of `assign` (affects the VKs of circuits with byte, Jubjub point or BLS12-381 point public inputs) [#598](https://github.com/midnightntwrk/midnight-zk/pull/598)
+* `DivisionInstructions::div_rem` and `rem` panic when `divisor * (dividend_bound / divisor + 1)` exceeds the field modulus, in particular when no bound is given; `DivisionInstructions` is deprecated [#606](https://github.com/midnightntwrk/midnight-zk/pull/606)
+* In-circuit `as_public_input` outputs a canonical encoding for foreign-field elements and foreign Weierstrass points (including the identity) (affects the VKs of circuits with such public inputs) [#612](https://github.com/midnightntwrk/midnight-zk/issues/612)
+
+### Fixed
+* Foreign-field `mul` no longer ignores the multiplying constant when one of the operands is a fixed one [#605](https://github.com/midnightntwrk/midnight-zk/pull/605)
+* `div` and `inv` of `AssignedScalarOfNativeCurve` now enforce a non-zero divisor in-circuit and accept non-canonical inputs (affects the VKs of circuits using Jubjub scalar division or inversion) [#603](https://github.com/midnightntwrk/midnight-zk/pull/603)
+* `PartialEq` for `AssignedBigUint` no longer treats a limb vector and its proper prefix as equal [#601](https://github.com/midnightntwrk/midnight-zk/pull/601)
+* Lower bound of the foreign Edwards addition identity for `sign = -1` (affects the VKs of circuits using foreign Edwards curves) [#609](https://github.com/midnightntwrk/midnight-zk/pull/609)
+* In-circuit `as_public_input` of Jubjub scalars encodes the canonical value, as `Instantiable::as_public_input` does (affects the VKs of circuits with Jubjub scalar public inputs) [#611](https://github.com/midnightntwrk/midnight-zk/pull/611)
+
+## [7.2.4]
+### Changed
+* Make `Instantiable::from_public_inputs` fallible [#485](https://github.com/midnightntwrk/midnight-zk/pull/485)
+
+## [7.2.3]
+### Changed
+* Require `midnight-proofs` >= 0.8.2 for the verifier per-proof length check [#482](https://github.com/midnightntwrk/midnight-zk/pull/482)
+
+## [7.2.2]
+### Fixed
+* Fix `InnerValue` for `AssignedScalarOfNativeCurve` [#451](https://github.com/midnightntwrk/midnight-zk/pull/451)
+
+## [7.2.1]
+### Fixed
+* Bug fix in midnight-curves [#434](https://github.com/midnightntwrk/midnight-zk/pull/434)
+
+## [7.2.0]
+### Added
+* `Instantiable::from_public_input`: inverse of `as_public_input` for decoding values from their public input representation [#408](https://github.com/midnightntwrk/midnight-zk/pull/408)
+* Expose `to_biguint`, `to_canonical_biguint` and `from_biguint` in native Edwards chip [#408](https://github.com/midnightntwrk/midnight-zk/pull/408)
+
 ## [7.1.0]
 ### Changed
 * Modify `is_identity` flag encoding in Weierstrass chip: append as a dedicated public input element instead of packing into the first limb [#398](https://github.com/midnightntwrk/midnight-zk/pull/398)

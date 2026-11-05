@@ -213,9 +213,11 @@ impl<S: SelfEmulation> Instantiable<S::F> for AssignedAccumulator<S> {
         .collect()
     }
 
+    /// Always returns `None`: the encoding is not invertible, since the size of
+    /// the inner MSMs cannot be known from the public input format.
     #[cfg(any(test, feature = "testing"))]
     fn from_public_input(_fields: &[S::F]) -> Option<Accumulator<S>> {
-        unimplemented!("Size of inner MSMs cannot be known from public input format.")
+        None
     }
 }
 
@@ -283,6 +285,12 @@ impl<S: SelfEmulation> AssignedAccumulator<S> {
     ) -> Result<(), Error> {
         self.lhs.collapse(layouter, curve_chip, scalar_chip, PolynomialLabel::NoLabel)?;
         self.rhs.collapse(layouter, curve_chip, scalar_chip, PolynomialLabel::NoLabel)
+    }
+
+    /// Whether both sides are collapsed and fixed-base-resolved; see
+    /// [`AssignedMsm::is_collapsed`].
+    pub fn is_collapsed(&self) -> bool {
+        self.lhs.is_collapsed() && self.rhs.is_collapsed()
     }
 
     /// Resolves all `Fixed` bases in both internal MSMs by substituting their

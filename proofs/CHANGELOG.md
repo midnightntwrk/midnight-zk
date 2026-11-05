@@ -136,6 +136,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Remove `msm_inner_product` from `utils::arithmetic`; superseded by the generic `inner_product` [#430](https://github.com/midnightntwrk/midnight-zk/pull/430)
 * Remove redundant `PolynomialLabel::Instance` variant; use `CommittedInstance` [#450](https://github.com/midnightntwrk/midnight-zk/pull/450)
 
+## [0.8.3]
+### Changed
+* `msm_specific` always uses blst's multi-exponentiation for BLS12-381 G1, removing the cut-over to `msm_best` above 2^19 terms. `msm_best` runs the `from_xy` subgroup check of midnight-curves 0.3.1 on every base and bucket, which made commitments above 2^19 terms (k >= 20 circuits) about 7x slower [#536](https://github.com/midnightntwrk/midnight-zk/pull/536)
+
+## [0.8.2]
+### Fixed
+* Check per-proof vector lengths in `verify_algebraic_constraints`. [#482](https://github.com/midnightntwrk/midnight-zk/pull/482)
+
+## [0.8.1]
+### Fixed
+* Bug fix in midnight-curves [#434](https://github.com/midnightntwrk/midnight-zk/pull/434)
+
 ## [0.8.0]
 ### Added
 * Add `Blake2b256` transcript hash for on-chain verification [#322](https://github.com/midnightntwrk/midnight-zk/pull/322)

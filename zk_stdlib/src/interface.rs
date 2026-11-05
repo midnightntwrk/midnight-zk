@@ -13,7 +13,7 @@
 
 //! Front-end interface to the proof system.
 
-use std::{cell::RefCell, io, rc::Rc};
+use std::{cell::RefCell, fmt::Debug, io, rc::Rc};
 
 use ff::{Field, PrimeField};
 use midnight_circuits::types::ComposableChip;
@@ -352,7 +352,7 @@ pub trait Relation: Clone {
     type Witness: Clone;
 
     /// The error type returned by [Self::circuit] and [Self::format_instance].
-    type Error: From<plonk::Error>;
+    type Error: From<plonk::Error> + Debug;
 
     /// Produces a vector of field elements in PLONK format representing the
     /// given [Self::Instance].
@@ -434,8 +434,9 @@ impl<R: Relation> Circuit<F> for MidnightCircuit<'_, R> {
                 self.witness.clone(),
             )
             .map_err(|e| {
+                let error_msg = format!("Relation::circuit error: {e:?}");
                 *self.circuit_error.borrow_mut() = Some(e);
-                Error::Synthesis("Relation::circuit error".into())
+                Error::Synthesis(error_msg)
             })?;
 
         // After the circuit function has been called, we can update the expected

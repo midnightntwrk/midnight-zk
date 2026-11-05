@@ -96,7 +96,7 @@ impl<F: CircuitField> AssignedBigUint<F> {
 impl<F: CircuitField> PartialEq for AssignedBigUint<F> {
     fn eq(&self, other: &Self) -> bool {
         // Cell address comparison
-        self.limbs.iter().zip(other.limbs.iter()).all(|(s, o)| s == o)
+        self.limbs == other.limbs
     }
 }
 

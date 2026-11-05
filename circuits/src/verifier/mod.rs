@@ -133,9 +133,11 @@ impl<S: SelfEmulation> Instantiable<S::F> for AssignedVk<S> {
         .concat()
     }
 
+    /// Always returns `None`: [Self::as_public_input] encodes the verifying key
+    /// as its `transcript_repr()`, which is not invertible.
     #[cfg(any(test, feature = "testing"))]
     fn from_public_input(_fields: &[S::F]) -> Option<VerifyingKey<S>> {
-        unimplemented!("as_public_input encodes the VK as its transcript_repr() — not invertible")
+        None
     }
 }
 

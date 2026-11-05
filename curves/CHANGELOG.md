@@ -17,7 +17,6 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 *  Moved the generic extension-field tower (`ExtField`, `quadratic`/`cubic`) from `ff_ext` to the dev-curves `bn256` module [#412](https://github.com/midnightntwrk/midnight-zk/pull/412)
 
 ### Fixed
-* Add prime-order subgroup check in `G1Affine::from_uncompressed` [#425](https://github.com/midnightntwrk/midnight-zk/pull/425)
 * `G1Affine::coordinates` skips the subgroup check. [#544](https://github.com/midnightntwrk/midnight-zk/pull/544)
 
 ### Removed
@@ -25,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 * Removed `serde::{Serialize, Deserialize}` impls and the `serde` feature [#412](https://github.com/midnightntwrk/midnight-zk/pull/412)
 * Removed unused public API: `unique_messages`/`PairingG1G2`/`PairingG2G1`, `CurveExt::{endo, jacobian_coordinates, new_jacobian, hash_to_curve}`, `Coordinates::{u, v}`, `hash_to_curve` module (+ BLS inherent `hash_to_curve`), the `__private_bench` feature (`Fp12`/`Fp2`); the unused `halo2curves` dep [#412](https://github.com/midnightntwrk/midnight-zk/pull/412)
 *
+## 0.3.1
+### Fixed
+* Add prime-order subgroup check in `G1Affine::from_uncompressed` [#425](https://github.com/midnightntwrk/midnight-zk/pull/425)
+
 ## 0.3.0
 ### Added
 * Add Curve25519 [#181](https://github.com/midnightntwrk/midnight-zk/pull/181)
