@@ -542,17 +542,17 @@ where
         });
 
         // Range-check the cells in the range [0, base)
-        let x_cells = (0..P::NB_LIMBS)
+        let x_values = (0..P::NB_LIMBS)
             .map(|i| x.clone().map(|limbs| bigint_to_fe::<F>(&limbs[i as usize])))
-            .zip(well_formed_log2_bounds::<F, K, P>().iter())
-            .map(|(xi_value, log2_bound)| {
-                self.native_gadget.assign_lower_than_fixed(
-                    layouter,
-                    xi_value,
-                    &(BigUint::one() << *log2_bound),
-                )
-            })
-            .collect::<Result<Vec<_>, Error>>()?;
+            .collect::<Vec<_>>();
+        let x_cells = self.native_gadget.assign_many(layouter, &x_values)?;
+        for (xi, log2_bound) in x_cells.iter().zip(well_formed_log2_bounds::<F, K, P>()) {
+            self.native_gadget.assert_lower_than_fixed(
+                layouter,
+                xi,
+                &(BigUint::one() << log2_bound),
+            )?;
+        }
 
         Ok(AssignedField::<F, K, P> {
             limb_values: x_cells,
