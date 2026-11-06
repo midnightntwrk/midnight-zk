@@ -620,22 +620,39 @@ where
     ) -> Result<Vec<AssignedNative<F>>, Error> {
         let assigned = self.normalize(layouter, assigned)?;
 
-        // Well-formed limbs encode an integer in [0, 2^k), where 2^k is the smallest
-        // power of 2 bigger than m, so it may be non-canonical. Assert canonicity so
-        // that the output is uniquely determined by the value.
-        let bits = (assigned.limb_values.iter())
-            .zip(well_formed_log2_bounds::<F, K, P>())
-            .map(|(limb, nb_bits)| {
-                self.native_gadget
-                    .assigned_to_le_bits(layouter, limb, Some(nb_bits as usize), true)
+        // Well-formed limbs encode an integer X in [0, 2^k), where 2^k is the smallest
+        // power of 2 bigger than m, so it may be non-canonical. Assert X <= m - 1 so
+        // that the output is uniquely determined by the value: the limbs d_i of
+        // (m - 1) - X, with d_i = c_i - x_i - b_i + base * b_{i+1} for the limbs c_i
+        // of m - 1 and borrows b_i (b_0 = 0 and no borrow out of the top limb), are
+        // range-checked to the limb sizes.
+        let base = BI::from(2).pow(P::LOG2_BASE);
+        let m_minus_1 = bi_to_limbs(P::NB_LIMBS, &base, &(assigned.modulus() - BI::one()));
+        let xs = assigned.bigint_limbs();
+        let log2_bounds = well_formed_log2_bounds::<F, K, P>();
+        let mut borrow = Value::known(false);
+        let borrows = (0..m_minus_1.len() - 1)
+            .map(|i| {
+                let diff = xs.clone().zip(borrow).map(|(xs, b)| &m_minus_1[i] - &xs[i] - b as u8);
+                borrow = diff.map(|d| d.is_negative());
+                borrow
             })
-            .collect::<Result<Vec<_>, Error>>()?
-            .concat();
-        let is_canonical = self.is_canonical(layouter, &bits)?;
-        self.assert_equal_to_fixed(layouter, &is_canonical, true)?;
+            .collect::<Vec<_>>();
+        let borrows: Vec<AssignedBit<F>> = self.native_gadget.assign_many(layouter, &borrows)?;
+        for (i, (x, c)) in assigned.limb_values.iter().zip(&m_minus_1).enumerate() {
+            let mut terms = vec![(-F::ONE, x.clone())];
+            if i > 0 {
+                terms.push((-F::ONE, borrows[i - 1].clone().into()));
+            }
+            if let Some(b) = borrows.get(i) {
+                terms.push((bigint_to_fe::<F>(&base), b.clone().into()));
+            }
+            let d = self.native_gadget.linear_combination(layouter, &terms, bigint_to_fe(c))?;
+            let bound = BigUint::one() << log2_bounds[i];
+            self.native_gadget.assert_lower_than_fixed(layouter, &d, &bound)?;
+        }
 
         let nb_limbs_per_batch = (F::CAPACITY / P::LOG2_BASE) as usize;
-        let base = BI::from(2).pow(P::LOG2_BASE);
         assigned
             .limb_values
             .chunks(nb_limbs_per_batch)
@@ -1931,6 +1948,7 @@ mod tests {
         k256::{Fp as K256Base, Fq as K256Scalar},
         p256::{Fp as P256Base, Fq as P256Scalar},
     };
+    use midnight_proofs::{circuit::SimpleFloorPlanner, dev::MockProver, plonk::Circuit};
 
     use super::*;
     use crate::{
@@ -2011,4 +2029,57 @@ mod tests {
     test!(decomposition, test_bit_decomposition);
     test!(decomposition, test_byte_decomposition);
     test!(decomposition, test_sgn0);
+
+    /// `as_public_input` on well-formed limbs encoding the integer `x`.
+    struct PublicInputCircuit(BI);
+
+    type Chip = FieldChip<BlsScalar, K256Base, MultiEmulationParams, NativeGadget<BlsScalar>>;
+
+    impl Circuit<BlsScalar> for PublicInputCircuit {
+        type Config = <Chip as FromScratch<BlsScalar>>::Config;
+        type FloorPlanner = SimpleFloorPlanner;
+        type Params = ();
+
+        fn without_witnesses(&self) -> Self {
+            unreachable!()
+        }
+
+        fn configure(meta: &mut ConstraintSystem<BlsScalar>) -> Self::Config {
+            let instances = [meta.instance_column(), meta.instance_column()];
+            Chip::configure_from_scratch(meta, &mut vec![], &mut vec![], &instances)
+        }
+
+        fn synthesize(
+            &self,
+            config: Self::Config,
+            mut layouter: impl Layouter<BlsScalar>,
+        ) -> Result<(), Error> {
+            type P = MultiEmulationParams;
+            let chip = Chip::new_from_scratch(&config);
+            let base = BI::from(2).pow(<P as FieldEmulationParams<BlsScalar, K256Base>>::LOG2_BASE);
+            let nb_limbs = <P as FieldEmulationParams<BlsScalar, K256Base>>::NB_LIMBS;
+            let limb_values = bi_to_limbs(nb_limbs, &base, &self.0)
+                .iter()
+                .map(|l| chip.native_gadget.assign(&mut layouter, Value::known(bigint_to_fe(l))))
+                .collect::<Result<Vec<_>, _>>()?;
+            let x = AssignedField::<BlsScalar, K256Base, P> {
+                limb_values,
+                limb_bounds: well_formed_bounds::<BlsScalar, K256Base, P>(),
+                _marker: PhantomData,
+            };
+            chip.as_public_input(&mut layouter, &x)?;
+            chip.load_from_scratch(&mut layouter)
+        }
+    }
+
+    #[test]
+    fn test_public_input_canonicity() {
+        let m = K256Base::modulus().to_bigint().unwrap();
+        let satisfied = |x: BI| {
+            MockProver::run(&PublicInputCircuit(x), vec![vec![], vec![]])
+                .is_ok_and(|prover| prover.verify().is_ok())
+        };
+        assert!(satisfied(&m - BI::one()));
+        assert!(!satisfied(m));
+    }
 }

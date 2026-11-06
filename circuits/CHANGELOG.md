@@ -25,6 +25,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 
 ### Changed
+* `FieldChip::as_public_input` asserts canonicity by range-checking the limbs of `(m - 1) - x`, computed with a borrow per limb, instead of comparing the bits of `x` with `m`. This changes the verifying keys of circuits with foreign-field public inputs [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 * BREAKING: `ForeignWeierstrassEccChip::configure` takes the `max_bit_len` of the range-check chip: the carries of the unified identity whose size the chip does not take are split as `c_lo + 2^s·c_hi`, with `c_hi` in a column after `cond`, and `nb_foreign_ecc_chip_columns` accounts for those columns. This changes the verifying keys of circuits using the chip [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 * `NativeGadget` has no generic chips: it holds a `NativeChip` and a `RangeCheckChip`, which performs all of its range checks, decompositions included, and `NativeGadgetConfig` holds their configurations. This changes the verifying keys of every circuit [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 * BREAKING: the `configure` functions of `FieldChip`, `ForeignWeierstrassEccChip` and `ForeignEdwardsEccChip`, and the `bounds` of their gates, no longer take `nb_parallel_range_checks` and `max_bit_len`: the carry bounds are the next powers of two [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
