@@ -112,11 +112,7 @@ pub struct UnifiedConfig<C: WeierstrassCurve> {
 impl<C: WeierstrassCurve> UnifiedConfig<C> {
     /// Computes worst-case auxiliary-variable bounds for the gate, given the
     /// declared coefficient ranges and the limb decomposition parameters.
-    pub fn bounds<F, P>(
-        coeff_bounds: &CoeffBounds,
-        nb_parallel_range_checks: usize,
-        max_bit_len: u32,
-    ) -> ((BI, BI), Vec<(BI, BI)>)
+    pub fn bounds<F, P>(coeff_bounds: &CoeffBounds) -> ((BI, BI), Vec<(BI, BI)>)
     where
         F: CircuitField,
         P: FieldEmulationParams<F, C::Base>,
@@ -152,8 +148,6 @@ impl<C: WeierstrassCurve> UnifiedConfig<C> {
             &moduli,
             expr_bounds,
             &expr_mj_bounds,
-            nb_parallel_range_checks,
-            max_bit_len,
         )
     }
 
@@ -164,8 +158,6 @@ impl<C: WeierstrassCurve> UnifiedConfig<C> {
         field_chip_config: &FieldChipConfig,
         cond_col: &Column<Advice>,
         coeff_bounds: &CoeffBounds,
-        nb_parallel_range_checks: usize,
-        max_bit_len: u32,
     ) -> UnifiedConfig<C>
     where
         F: CircuitField,
@@ -176,8 +168,7 @@ impl<C: WeierstrassCurve> UnifiedConfig<C> {
         let bs = P::base_powers();
         let bs2 = P::double_base_powers();
 
-        let ((k_min, u_max), vs_bounds) =
-            Self::bounds::<F, P>(coeff_bounds, nb_parallel_range_checks, max_bit_len);
+        let ((k_min, u_max), vs_bounds) = Self::bounds::<F, P>(coeff_bounds);
 
         let alpha = curve_alpha::<C>();
         let q_unified = meta.selector();

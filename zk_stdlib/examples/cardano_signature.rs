@@ -148,7 +148,7 @@ impl Relation for CardanoSigExample {
         ZkStdLibArch {
             curve25519: true,
             sha2_512: true,
-            nr_pow2range_cols: 4,
+            nb_range_check_groups: 2,
             ..ZkStdLibArch::default()
         }
     }

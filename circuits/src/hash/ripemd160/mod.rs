@@ -74,7 +74,7 @@ mod tests {
                 AssignedByte<Scalar>,
                 [AssignedByte<Scalar>; 20],
                 RipeMD160Chip<Scalar>,
-                NativeGadget<Scalar, _, _>,
+                NativeGadget<Scalar>,
             >(cost_model, "RIPEMD160", input_size)
         }
 

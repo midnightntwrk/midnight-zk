@@ -169,7 +169,7 @@ mod tests {
     use super::*;
     use crate::{
         ecc::foreign::weierstrass_chip::ForeignWeierstrassEccChip,
-        field::{NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip},
+        field::{NativeChip, NativeGadget, RangeCheckChip},
         hash::poseidon::{PoseidonChip, PoseidonState},
         instructions::PublicInputInstructions,
         types::ComposableChip,
@@ -213,8 +213,8 @@ mod tests {
             mut layouter: impl Layouter<F>,
         ) -> Result<(), Error> {
             let native_chip = <NativeChip<F> as ComposableChip<F>>::new(&config.0, &());
-            let core_decomp_chip = P2RDecompositionChip::new(&config.1, &16);
-            let native_gadget = NativeGadget::new(core_decomp_chip.clone(), native_chip.clone());
+            let range_check_chip = RangeCheckChip::new(&config.1, &());
+            let native_gadget = NativeGadget::new(native_chip.clone(), range_check_chip.clone());
             let curve_chip =
                 ForeignWeierstrassEccChip::new(&config.2, &native_gadget, &native_gadget);
             let poseidon_chip = PoseidonChip::new(&config.3, &native_chip);
@@ -245,7 +245,7 @@ mod tests {
             acc.collapse(&mut layouter, &curve_chip, &native_gadget)?;
             verifier_chip.constrain_as_public_input(&mut layouter, &acc)?;
 
-            core_decomp_chip.load(&mut layouter)
+            range_check_chip.load(&mut layouter)
         }
     }
 

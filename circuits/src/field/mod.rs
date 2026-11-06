@@ -12,13 +12,13 @@
 // limitations under the License.
 
 //! Native and non-native arithmetic
-pub mod decomposition;
 pub mod foreign;
 pub mod native;
 pub mod range_check;
 
 use midnight_proofs::circuit::AssignedCell;
-pub use native::{AssignedBounded, NativeChip, NativeConfig, NativeGadget};
+pub use native::{AssignedBounded, NativeChip, NativeConfig, NativeGadget, NativeGadgetConfig};
+pub use range_check::{RangeCheckChip, RangeCheckConfig};
 
 /// AssignedNative
 pub type AssignedNative<F> = AssignedCell<F, F>;

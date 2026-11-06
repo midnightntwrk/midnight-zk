@@ -137,19 +137,12 @@ where
         base_field_config: &FieldChipConfig,
         advice_columns: &[Column<Advice>],
         fixed_columns: &[Column<Fixed>],
-        nb_parallel_range_checks: usize,
-        max_bit_len: u32,
     ) -> ForeignEdwardsEccConfig<C> {
         assert!(C::A.legendre() == 1);
         assert!(C::D.legendre() == -1);
 
-        let addition_config = AdditionConfig::<C>::configure::<F, B>(
-            meta,
-            base_field_config,
-            fixed_columns[0],
-            nb_parallel_range_checks,
-            max_bit_len,
-        );
+        let addition_config =
+            AdditionConfig::<C>::configure::<F, B>(meta, base_field_config, fixed_columns[0]);
 
         let (q_multi_select, tag_col_multi_select) =
             configure_multi_select_lookup(meta, advice_columns, base_field_config);
@@ -1488,21 +1481,13 @@ where
         while advice_columns.len() < nb_advice_cols {
             advice_columns.push(meta.advice_column());
         }
-        let nb_parallel_range_checks = 4;
-        let max_bit_len = 8;
-        let base_field_config = FieldChip::<F, C::Base, B, N>::configure(
-            meta,
-            &advice_columns[..nb_advice_cols],
-            nb_parallel_range_checks,
-            max_bit_len,
-        );
+        let base_field_config =
+            FieldChip::<F, C::Base, B, N>::configure(meta, &advice_columns[..nb_advice_cols]);
         let ff_ecc_config = ForeignEdwardsEccChip::<F, C, B, S, N>::configure(
             meta,
             &base_field_config,
             advice_columns,
             fixed_columns,
-            nb_parallel_range_checks,
-            max_bit_len,
         );
         ForeignEdwardsEccTestConfig {
             native_gadget_config,
@@ -1524,15 +1509,12 @@ mod tests {
     use super::*;
     use crate::{
         ecc::curves::CircuitCurve,
-        field::{
-            NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip,
-            foreign::params::MultiEmulationParams,
-        },
+        field::{NativeGadget, foreign::params::MultiEmulationParams},
         instructions::{assertions, control_flow, ecc, equality, public_input, zero},
     };
 
     type F = BlsScalar;
-    type Native<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
+    type Native<F> = NativeGadget<F>;
     type EmulatedField<F, C> = FieldChip<F, <C as Group>::Scalar, MultiEmulationParams, Native<F>>;
 
     macro_rules! test_generic {

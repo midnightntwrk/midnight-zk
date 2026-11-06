@@ -145,7 +145,7 @@ impl Relation for FullCredential {
             secp256k1: true,
             base64: true,
             automaton: true,
-            nr_pow2range_cols: 3,
+            nb_range_check_groups: 2,
             ..ZkStdLibArch::default()
         }
     }

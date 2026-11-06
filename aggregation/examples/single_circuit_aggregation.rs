@@ -211,7 +211,7 @@ impl IvcTransition for ProofAggregation {
     fn arch() -> ZkStdLibArch {
         ZkStdLibArch {
             poseidon: true,
-            nr_pow2range_cols: 4,
+            nb_range_check_groups: 2,
             ..ZkStdLibArch::default()
         }
     }

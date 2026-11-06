@@ -291,10 +291,7 @@ mod tests {
     };
 
     use super::*;
-    use crate::{
-        field::{NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip},
-        testing_utils::FromScratch,
-    };
+    use crate::{field::NativeGadget, testing_utils::FromScratch};
 
     #[derive(Clone, Copy, Debug)]
     enum ParseTarget {
@@ -372,7 +369,7 @@ mod tests {
     where
         F: CircuitField + FromUniformBytes<64> + Ord,
     {
-        let circuit = TestCircuit::<F, NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>> {
+        let circuit = TestCircuit::<F, NativeGadget<F>> {
             string: string.iter().map(|x| F::from(*x as u64)).map(Value::known).collect(),
             expected: F::from(expected),
             operation,

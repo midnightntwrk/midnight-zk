@@ -25,6 +25,8 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 
 ### Changed
+* `NativeGadget` has no generic chips: it holds a `NativeChip` and a `RangeCheckChip`, which performs all of its range checks, decompositions included, and `NativeGadgetConfig` holds their configurations. This changes the verifying keys of every circuit [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
+* BREAKING: the `configure` functions of `FieldChip`, `ForeignWeierstrassEccChip` and `ForeignEdwardsEccChip`, and the `bounds` of their gates, no longer take `nb_parallel_range_checks` and `max_bit_len`: the carry bounds are the next powers of two [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 * The foreign-field and foreign ECC gates assign the limbs of the values they produce (products, quotients, slopes and resulting points) in the first row that uses them, then range-check them, instead of copying limbs assigned and range-checked beforehand. Point doubling and incomplete addition reuse the identity flag of their input. This changes the verifying keys of circuits using the chips [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 * The `multi_select` lookup of the foreign ECC chips no longer takes an advice column for the selected index: table entries encode their index in the fixed tag, as `tag · 2^64 + index`, and a lookup region copies its witnessed index into the next row, taking 2 rows instead of 1. Lookup indices must be below 2^64. This changes the verifying keys of circuits using the chips [#590](https://github.com/midnightntwrk/midnight-zk/pull/590)
 * The in-circuit KZG multi-open orders its point sets with `kzg::point_set_order`, as the off-circuit one does [#583](https://github.com/midnightntwrk/midnight-zk/pull/583)
@@ -78,6 +80,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * `VerifierGadget::assign_vk_as_public_input` and `VerifierGadget::assign_fixed_vk` take a finalized constraint system (e.g. `vk.cs()` or `ConstraintSystem::into_finalized`) and return `Error::Synthesis` if it has selectors. `assign_vk_as_public_input` no longer converts the selectors itself [#546](https://github.com/midnightntwrk/midnight-zk/pull/546)
 
 ### Removed
+* The `decomposition` module: `P2RDecompositionChip`, `Pow2RangeChip`, `CoreDecompositionInstructions` and `Pow2RangeInstructions`, replaced by `RangeCheckChip` [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 * BREAKING: `EccInstructions::x_coordinate` and `y_coordinate`. Use `x` and `y` [#619](https://github.com/midnightntwrk/midnight-zk/pull/619)
 * BREAKING: `PublicInputInstructions::assign_as_public_input`. Use `assign` followed by `constrain_as_public_input` [#619](https://github.com/midnightntwrk/midnight-zk/pull/619)
 * `InCircuitHomomorphicCommitment`, which `InCircuitPCS::AssignedCommitment` no longer requires [#582](https://github.com/midnightntwrk/midnight-zk/pull/582)

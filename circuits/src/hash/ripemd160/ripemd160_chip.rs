@@ -20,7 +20,7 @@ use num_integer::Integer;
 
 use crate::{
     CircuitField,
-    field::{AssignedNative, NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip},
+    field::{AssignedNative, NativeGadget},
     hash::ripemd160::{
         types::{AssignedSpreaded, AssignedWord, State},
         utils::{
@@ -117,7 +117,7 @@ pub struct RipeMD160Config {
 #[derive(Clone, Debug)]
 pub struct RipeMD160Chip<F: CircuitField> {
     config: RipeMD160Config,
-    pub(super) native_gadget: NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>,
+    pub(super) native_gadget: NativeGadget<F>,
 }
 
 impl<F: CircuitField> Chip<F> for RipeMD160Chip<F> {
@@ -139,7 +139,7 @@ impl<F: CircuitField> ComposableChip<F> for RipeMD160Chip<F> {
         [Column<Fixed>; NB_RIPEMD160_FIXED_COLS],
     );
 
-    type InstructionDeps = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
+    type InstructionDeps = NativeGadget<F>;
 
     fn new(config: &RipeMD160Config, native_gadget: &Self::InstructionDeps) -> Self {
         Self {
@@ -1206,11 +1206,11 @@ impl<F: CircuitField> RipeMD160Chip<F> {
 use midnight_proofs::plonk::Instance;
 
 #[cfg(any(test, feature = "testing"))]
-use crate::{field::decomposition::chip::P2RDecompositionConfig, testing_utils::FromScratch};
+use crate::{field::NativeGadgetConfig, testing_utils::FromScratch};
 
 #[cfg(any(test, feature = "testing"))]
 impl<F: CircuitField> FromScratch<F> for RipeMD160Chip<F> {
-    type Config = (RipeMD160Config, P2RDecompositionConfig);
+    type Config = (RipeMD160Config, NativeGadgetConfig);
 
     fn new_from_scratch(config: &Self::Config) -> Self {
         Self {
@@ -1242,7 +1242,7 @@ impl<F: CircuitField> FromScratch<F> for RipeMD160Chip<F> {
             fixed_columns.push(meta.fixed_column());
         }
 
-        let core_decomposition_config = NativeGadget::configure_from_scratch(
+        let native_gadget_config = NativeGadget::configure_from_scratch(
             meta,
             advice_columns,
             fixed_columns,
@@ -1264,7 +1264,7 @@ impl<F: CircuitField> FromScratch<F> for RipeMD160Chip<F> {
             ),
         );
 
-        (ripemd160_config, core_decomposition_config)
+        (ripemd160_config, native_gadget_config)
     }
 
     fn load_from_scratch(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {

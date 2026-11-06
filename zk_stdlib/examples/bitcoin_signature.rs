@@ -144,7 +144,7 @@ impl Relation for BitcoinSigExample {
         ZkStdLibArch {
             sha2_256: true,
             secp256k1: true,
-            nr_pow2range_cols: 4,
+            nb_range_check_groups: 2,
             ..ZkStdLibArch::default()
         }
     }

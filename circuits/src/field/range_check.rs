@@ -304,6 +304,11 @@ impl<F: CircuitField> ComposableChip<F> for RangeCheckChip<F> {
 }
 
 impl<F: CircuitField> RangeCheckChip<F> {
+    /// The bit size `T` of the lanes looked up against `tag = T`.
+    pub fn max_bit_len(&self) -> usize {
+        self.config.max_bit_len
+    }
+
     /// Whether the chip takes assertions of `n` bits: `n <= T`,
     /// `3T < n <= 4T` or `n` a multiple of `4T`, for `T` its `max_bit_len`.
     pub fn fits(&self, n: usize) -> bool {

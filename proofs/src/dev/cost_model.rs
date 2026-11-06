@@ -312,8 +312,9 @@ pub fn circuit_model<F: Ord + Field + FromUniformBytes<64>, CS: PolynomialCommit
 /// Place this marker in `synthesize` (via `layouter.namespace(||
 /// COST_MEASURE_START)`) immediately before the operation whose cost you want
 /// to isolate.  Pair it with [`COST_MEASURE_END`].  When both markers are
-/// present, `cost_model_options` reports `rows` as the span of the rows
-/// assigned between the two markers rather than the full circuit row count.
+/// present, `cost_model_options` reports `rows` as the number of rows of the
+/// regions assigned between the two markers rather than the full circuit row
+/// count.
 pub const COST_MEASURE_START: &str = "__cost_model_measure_start__";
 
 /// Namespace marker that signals the end of the region to measure.
@@ -386,11 +387,9 @@ pub(crate) fn cost_model_options<F: Ord + Field + FromUniformBytes<64>, C: Circu
         let mut table_rows_count = 0usize;
 
         // When the circuit uses COST_MEASURE_START / COST_MEASURE_END markers,
-        // report only the row span covered by the marked regions. Table rows
-        // are always counted in full (they are a global cost).
-        let mut min_measured_row = usize::MAX;
-        let mut max_measured_row = 0usize;
-        let mut has_any_measured = false;
+        // report only the rows of the marked regions. Table rows are always
+        // counted in full (they are a global cost).
+        let mut measured_rows = 0usize;
 
         for region in &prover.regions {
             if let Some((start, end)) = region.rows {
@@ -402,9 +401,7 @@ pub(crate) fn cost_model_options<F: Ord + Field + FromUniformBytes<64>, C: Circu
                     table_rows_count = std::cmp::max(table_rows_count, end + 1);
                 } else if prover.has_measured_regions {
                     if region.is_measured {
-                        min_measured_row = std::cmp::min(min_measured_row, start);
-                        max_measured_row = std::cmp::max(max_measured_row, end);
-                        has_any_measured = true;
+                        measured_rows += end - start + 1;
                     }
                 } else {
                     // Note that `end` is the index of the last row, so when
@@ -414,8 +411,8 @@ pub(crate) fn cost_model_options<F: Ord + Field + FromUniformBytes<64>, C: Circu
             }
         }
 
-        if has_any_measured {
-            rows_count = max_measured_row - min_measured_row + 1;
+        if prover.has_measured_regions {
+            rows_count = measured_rows;
         }
 
         (table_rows_count, rows_count)

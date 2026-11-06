@@ -35,7 +35,7 @@ use crate::{
         curves::{CircuitCurve, WeierstrassCurve},
         foreign::weierstrass_chip::ForeignWeierstrassEccChip,
     },
-    field::{AssignedNative, NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip},
+    field::{AssignedNative, NativeGadget},
     hash::poseidon::{PoseidonChip, PoseidonState},
     instructions::{
         AssignmentInstructions, HashInstructions, NativeInstructions, PublicInputInstructions,
@@ -139,7 +139,7 @@ impl SelfEmulation for BlstrsEmulation {
     type AssignedPoint = AssignedForeignPoint<Self::F, Self::C, Self::C>;
     type Hash = PoseidonState<Self::F>;
 
-    type ScalarChip = NativeGadget<Self::F, P2RDecompositionChip<Self::F>, NativeChip<Self::F>>;
+    type ScalarChip = NativeGadget<Self::F>;
     type CurveChip =
         ForeignWeierstrassEccChip<Self::F, Self::C, Self::C, Self::ScalarChip, Self::ScalarChip>;
     type SpongeChip = PoseidonChip<Self::F>;
@@ -188,7 +188,7 @@ impl SelfEmulation for BnEmulation {
     type AssignedPoint = AssignedForeignPoint<Self::F, Self::C, Self::C>;
     type Hash = PoseidonState<Self::F>;
 
-    type ScalarChip = NativeGadget<Self::F, P2RDecompositionChip<Self::F>, NativeChip<Self::F>>;
+    type ScalarChip = NativeGadget<Self::F>;
     type CurveChip =
         ForeignWeierstrassEccChip<Self::F, Self::C, Self::C, Self::ScalarChip, Self::ScalarChip>;
     type SpongeChip = PoseidonChip<Self::F>;
