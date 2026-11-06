@@ -89,9 +89,9 @@ where
     B: FieldEmulationParams<F, C::Base>,
 {
     // The scalar field is treated as a gadget. Here we only account for the columns
-    // that this chip requires for its own custom gates.
-    // The 2 in `2 + |moduli|` corresponds to `u_col` + `cond_col`.
-    B::NB_LIMBS as usize + max(B::NB_LIMBS as usize, 2 + B::moduli().len())
+    // that this chip requires for its own custom gates: next to the limbs, the
+    // carries `u` and `vj`, `cond` and the high parts of the carries.
+    B::NB_LIMBS as usize + max(B::NB_LIMBS as usize, 3 + 2 * B::moduli().len())
 }
 
 /// Shared MSM randomness for the windowed double-and-add algorithm.
@@ -1011,16 +1011,19 @@ where
         &self.scalar_field_chip
     }
 
-    /// Configures the foreign ECC chip
+    /// Configures the foreign ECC chip, for a range-check chip of the given
+    /// `max_bit_len`.
     pub fn configure(
         meta: &mut ConstraintSystem<F>,
         base_field_config: &FieldChipConfig,
         advice_columns: &[Column<Advice>],
+        max_bit_len: usize,
     ) -> ForeignWeierstrassEccConfig<C> {
-        // Assert that there is room for the cond_col in the existing columns of the
-        // field_chip configurations.
+        // The cond_col and the columns of the high parts of the carries follow the
+        // carries of the field_chip configuration.
         let cond_col_idx = base_field_config.x_cols.len() + base_field_config.v_cols.len() + 1;
-        assert!(advice_columns.len() > cond_col_idx);
+        let hi_cols =
+            &advice_columns[cond_col_idx + 1..cond_col_idx + 2 + base_field_config.v_cols.len()];
         let cond_col = advice_columns[cond_col_idx];
         meta.enable_equality(cond_col);
 
@@ -1042,7 +1045,9 @@ where
             meta,
             base_field_config,
             &cond_col,
+            hi_cols,
             &unified_coeff_bounds,
+            max_bit_len,
         );
 
         let (q_multi_select, tag_col_multi_select) =
@@ -2029,6 +2034,7 @@ where
             meta,
             &base_field_config,
             &advice_columns[..nb_advice_cols],
+            8,
         );
         ForeignEccTestConfig {
             native_gadget_config,

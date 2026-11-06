@@ -309,11 +309,9 @@ impl<F: CircuitField> RangeCheckChip<F> {
         self.config.max_bit_len
     }
 
-    /// Whether the chip takes assertions of `n` bits: `n <= T`,
-    /// `3T < n <= 4T` or `n` a multiple of `4T`, for `T` its `max_bit_len`.
+    /// Whether the chip takes assertions of `n` bits, see [fits].
     pub fn fits(&self, n: usize) -> bool {
-        let t = self.config.max_bit_len;
-        n <= t || (3 * t < n && n <= 4 * t) || n.is_multiple_of(4 * t)
+        fits(self.config.max_bit_len, n)
     }
 
     /// Asserts that `x` lies in `[0, 2^n)`.
@@ -497,6 +495,12 @@ impl<F: CircuitField> RangeCheckChip<F> {
             },
         )
     }
+}
+
+/// Whether a chip of `max_bit_len = t` takes assertions of `n` bits: `n <= t`,
+/// `3t < n <= 4t` or `n` a multiple of `4t`.
+pub fn fits(t: usize, n: usize) -> bool {
+    n <= t || (3 * t < n && n <= 4 * t) || n.is_multiple_of(4 * t)
 }
 
 /// `2^k` as a field element.

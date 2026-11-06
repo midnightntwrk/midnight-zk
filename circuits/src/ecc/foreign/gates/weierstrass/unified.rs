@@ -25,7 +25,9 @@
 //!   - `(a, b, d, e, ca, cd, k)` are fixed coefficients stored in seven
 //!     dedicated fixed columns at the selector row,
 //!   - `α` is the coefficient `a` of the curve equation `y² = x³ + αx + β`,
-//!   - `u` and `vj` are auxiliary carry witnesses,
+//!   - `u` and `vj` are auxiliary carry witnesses; a carry `c` whose size the
+//!     range-check chip does not take is `c_lo + 2^s·c_hi`, with `c_hi` in a
+//!     column after `cond`,
 //!   - `m` is the foreign-field modulus,
 //!   - `k_min` is a constant chosen so that `u` stays non-negative.
 //!
@@ -57,7 +59,8 @@
 use std::{cmp, marker::PhantomData, ops::Rem};
 
 use midnight_proofs::{
-    plonk::{Advice, Column, ConstraintSystem, Constraints, Expression, Fixed, Selector},
+    circuit::{Region, Value},
+    plonk::{Advice, Column, ConstraintSystem, Constraints, Error, Expression, Fixed, Selector},
     poly::Rotation,
 };
 use num_bigint::{BigInt as BI, ToBigInt};
@@ -66,14 +69,18 @@ use num_traits::{One, Zero};
 use crate::{
     CircuitField,
     ecc::curves::WeierstrassCurve,
-    field::foreign::{
-        field_chip::FieldChipConfig,
-        params::FieldEmulationParams,
-        util::{
-            get_advice_vec, get_identity_auxiliary_bounds, karatsuba_bilinear_sum, signed_mod,
-            signed_repr, sum_bigints, sum_exprs, urem,
+    field::{
+        foreign::{
+            field_chip::FieldChipConfig,
+            params::FieldEmulationParams,
+            util::{
+                get_advice_vec, get_identity_auxiliary_bounds, karatsuba_bilinear_sum, signed_mod,
+                signed_repr, sum_bigints, sum_exprs, urem,
+            },
         },
+        range_check::fits,
     },
+    types::AssignedNative,
     utils::util::bigint_to_fe,
 };
 
@@ -103,6 +110,10 @@ pub struct UnifiedConfig<C: WeierstrassCurve> {
     pub(super) coeff_cols: [Column<Fixed>; 7],
     pub(super) u_bounds: (BI, BI),
     pub(super) vs_bounds: Vec<(BI, BI)>,
+    /// The carries `u, v_1, ...`: their column, their bound, and the bit
+    /// position and column of their high part if they are split.
+    #[allow(clippy::type_complexity)]
+    carries: Vec<(Column<Advice>, BI, Option<(usize, Column<Advice>)>)>,
     pub(super) cond_col: Column<Advice>,
     /// Declared coefficient ranges; enforced at every call site.
     pub(super) coeff_bounds: CoeffBounds,
@@ -152,12 +163,16 @@ impl<C: WeierstrassCurve> UnifiedConfig<C> {
     }
 
     /// Configures the gate. Allocates seven fresh fixed columns for the
-    /// per-row coefficients and installs the constraint polynomial.
+    /// per-row coefficients and installs the constraint polynomial. The carries
+    /// that a range-check chip of the given `max_bit_len` does not take are
+    /// split, with their high parts in `hi_cols`.
     pub fn configure<F, P>(
         meta: &mut ConstraintSystem<F>,
         field_chip_config: &FieldChipConfig,
         cond_col: &Column<Advice>,
+        hi_cols: &[Column<Advice>],
         coeff_bounds: &CoeffBounds,
+        max_bit_len: usize,
     ) -> UnifiedConfig<C>
     where
         F: CircuitField,
@@ -170,14 +185,41 @@ impl<C: WeierstrassCurve> UnifiedConfig<C> {
 
         let ((k_min, u_max), vs_bounds) = Self::bounds::<F, P>(coeff_bounds);
 
+        let t = max_bit_len;
+        let cols = std::iter::once(field_chip_config.u_col).chain(field_chip_config.v_cols.clone());
+        let bounds = std::iter::once(&u_max).chain(vs_bounds.iter().map(|(_, vj_max)| vj_max));
+        let carries: Vec<_> = (cols.zip(bounds).zip(hi_cols))
+            .map(|((col, max), &hi_col)| {
+                let n = (max.bits() - 1) as usize;
+                let split = (1..=n / (4 * t))
+                    .rev()
+                    .map(|j| 4 * t * j)
+                    .find(|&s| s < n && fits(t, n - s))
+                    .filter(|_| !fits(t, n));
+                split.iter().for_each(|_| meta.enable_equality(hi_col));
+                (col, max.clone(), split.map(|s| (s, hi_col)))
+            })
+            .collect();
+
         let alpha = curve_alpha::<C>();
         let q_unified = meta.selector();
         let coeff_cols: [Column<Fixed>; 7] = core::array::from_fn(|_| meta.fixed_column());
 
         meta.create_gate("Foreign-field unified", |meta| {
             let cond = meta.query_advice(*cond_col, Rotation::cur());
-            let u = meta.query_advice(field_chip_config.u_col, Rotation::cur());
-            let vs = get_advice_vec(meta, &field_chip_config.v_cols, Rotation::cur());
+            let mut carry_exprs = carries.iter().map(|(col, _, split)| {
+                let c = meta.query_advice(*col, Rotation::cur());
+                match split {
+                    Some((s, hi_col)) => {
+                        let shift =
+                            Expression::Constant(bigint_to_fe::<F>(&BI::from(2).pow(*s as u32)));
+                        c + shift * meta.query_advice(*hi_col, Rotation::cur())
+                    }
+                    None => c,
+                }
+            });
+            let u = carry_exprs.next().unwrap();
+            let vs = carry_exprs.collect::<Vec<_>>();
 
             let a_s = get_advice_vec(meta, &field_chip_config.x_cols, Rotation::prev());
             let b_s = get_advice_vec(meta, &field_chip_config.z_cols, Rotation::prev());
@@ -276,10 +318,42 @@ impl<C: WeierstrassCurve> UnifiedConfig<C> {
             coeff_cols,
             u_bounds: (k_min, u_max),
             vs_bounds,
+            carries,
             cond_col: *cond_col,
             coeff_bounds: coeff_bounds.clone(),
             _marker: PhantomData,
         }
+    }
+}
+
+impl<C: WeierstrassCurve> UnifiedConfig<C> {
+    /// Assigns the carries `u` and `vj` of an instantiation at `offset`, and
+    /// returns the cells to range-check with their bounds: those of a split
+    /// carry `c = c_lo + 2^s·c_hi` are `c_lo < 2^s` and `c_hi < c_max / 2^s`.
+    pub(super) fn assign_carries<F: CircuitField>(
+        &self,
+        region: &mut Region<'_, F>,
+        offset: usize,
+        u: &Value<BI>,
+        vs: &[Value<BI>],
+    ) -> Result<Vec<(AssignedNative<F>, BI)>, Error> {
+        let mut checks = vec![];
+        for ((col, max, split), c) in self.carries.iter().zip(std::iter::once(u).chain(vs)) {
+            let mut assign = |col: Column<Advice>, v: Value<BI>, bound: BI| -> Result<(), Error> {
+                let v = v.map(|v| bigint_to_fe::<F>(&v));
+                checks.push((region.assign_advice(|| "carry", col, offset, || v)?, bound));
+                Ok(())
+            };
+            match split {
+                Some((s, hi_col)) => {
+                    let pow = BI::from(2).pow(*s as u32);
+                    assign(*col, c.clone().map(|c| &c % &pow), pow.clone())?;
+                    assign(*hi_col, c.clone().map(|c| &c / &pow), max / &pow)?;
+                }
+                None => assign(*col, c.clone(), max.clone())?,
+            }
+        }
+        Ok(checks)
     }
 }
 

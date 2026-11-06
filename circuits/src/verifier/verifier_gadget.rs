@@ -954,6 +954,7 @@ pub(crate) mod tests {
                 meta,
                 &base_config,
                 &advice_columns,
+                16,
             );
 
             let poseidon_config = PoseidonChip::configure(
