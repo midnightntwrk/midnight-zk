@@ -33,7 +33,7 @@
 use std::ops::Rem;
 
 use midnight_proofs::{
-    circuit::{Chip, Layouter},
+    circuit::{Chip, Layouter, Value},
     plonk::Error,
 };
 use num_bigint::{BigInt as BI, ToBigInt};
@@ -47,7 +47,7 @@ use crate::{
     CircuitField,
     ecc::curves::WeierstrassCurve,
     field::foreign::{
-        FieldChip,
+        FieldChip, Operand,
         params::FieldEmulationParams,
         util::{compute_u, compute_vj, pair_wise_prod, sum_bigints},
     },
@@ -56,20 +56,21 @@ use crate::{
     utils::util::bigint_to_fe,
 };
 
-/// If `cond = 1`, asserts that `p + q = r` over the foreign field.
+/// If `cond = 1`, asserts that `p + q = r` over the foreign field, with slope
+/// `lambda`. Returns `r`, assigned.
 ///
 /// If `cond = 0`, asserts nothing.
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
-pub fn assert_add<F, C, P, N>(
+pub(crate) fn assert_add<F, C, P, N>(
     layouter: &mut impl Layouter<F>,
     cond: &AssignedBit<F>,
     p: (&AssignedField<F, C::Base, P>, &AssignedField<F, C::Base, P>),
     q: (&AssignedField<F, C::Base, P>, &AssignedField<F, C::Base, P>),
-    r: (&AssignedField<F, C::Base, P>, &AssignedField<F, C::Base, P>),
-    lambda: &AssignedField<F, C::Base, P>,
+    r: (Operand<F, C::Base, P>, Operand<F, C::Base, P>),
+    lambda: Value<C::Base>,
     base_chip: &FieldChip<F, C::Base, P, N>,
     config: &UnifiedConfig<C>,
-) -> Result<(), Error>
+) -> Result<(AssignedField<F, C::Base, P>, AssignedField<F, C::Base, P>), Error>
 where
     F: CircuitField,
     C: WeierstrassCurve,
@@ -91,9 +92,9 @@ where
     let py = &base_chip.normalize(layouter, py)?;
     let qx = &base_chip.normalize(layouter, qx)?;
     let qy = &base_chip.normalize(layouter, qy)?;
-    let rx = &base_chip.normalize(layouter, rx)?;
-    let ry = &base_chip.normalize(layouter, ry)?;
-    let lambda = &base_chip.normalize(layouter, lambda)?;
+    let rx = rx.normalize(layouter, base_chip)?;
+    let ry = ry.normalize(layouter, base_chip)?;
+    let lambda = Operand::<F, C::Base, P>::New(lambda);
 
     // ---------------------------------------------------------------------------
     // Gate A — slope(p, q, negate=false)
@@ -258,16 +259,17 @@ where
     // ---------------------------------------------------------------------------
     // Lay out the 7-row region.
     // ---------------------------------------------------------------------------
-    let range_checks = layouter.assign_region(
+    let (range_checks, lambda, rx, ry) = layouter.assign_region(
         || "Add",
         |mut region| {
+            let (mut lambda, mut rx, mut ry) = (lambda.clone(), rx.clone(), ry.clone());
             // --- Row 0: gate A prev (A=qx, B=qy) ---
             copy_limbs(&mut region, qx, &fcc.x_cols, 0, "qx")?;
             copy_limbs(&mut region, qy, &fcc.z_cols, 0, "qy")?;
 
             // --- Row 1: gate A cur (C=λ, selector, u_A, vj_A, cond, fixed coeffs) ---
             config.q_unified.enable(&mut region, 1)?;
-            copy_limbs(&mut region, lambda, &fcc.x_cols, 1, "lambda")?;
+            lambda.place(&mut region, &fcc.x_cols, 1)?;
             assign_coeffs(
                 &mut region,
                 1,
@@ -297,7 +299,7 @@ where
 
             // --- Row 3: gate C cur (C=λ, selector, u_C, vj_C, cond, fixed coeffs) ---
             config.q_unified.enable(&mut region, 3)?;
-            copy_limbs(&mut region, lambda, &fcc.x_cols, 3, "lambda")?;
+            lambda.place(&mut region, &fcc.x_cols, 3)?;
             assign_coeffs(
                 &mut region,
                 3,
@@ -322,12 +324,12 @@ where
             cond.0.copy_advice(|| "cond", &mut region, config.cond_col, 3)?;
 
             // --- Row 4: gate C next (D=rx, E=ry) ---
-            copy_limbs(&mut region, rx, &fcc.x_cols, 4, "rx")?;
-            copy_limbs(&mut region, ry, &fcc.z_cols, 4, "ry")?;
+            rx.place(&mut region, &fcc.x_cols, 4)?;
+            ry.place(&mut region, &fcc.z_cols, 4)?;
 
             // --- Row 5: gate B prev (A=λ, B=rx) ---
-            copy_limbs(&mut region, lambda, &fcc.x_cols, 5, "lambda")?;
-            copy_limbs(&mut region, rx, &fcc.z_cols, 5, "rx")?;
+            lambda.place(&mut region, &fcc.x_cols, 5)?;
+            rx.place(&mut region, &fcc.z_cols, 5)?;
 
             // --- Row 6: gate B cur (C=unused, selector, u_B, vj_B, cond, fixed coeffs) ---
             config.q_unified.enable(&mut region, 6)?;
@@ -375,13 +377,18 @@ where
                     .zip(config.vs_bounds.iter().map(|(_, vj_max)| vj_max.clone())),
             );
 
-            Ok(checks_a.chain(checks_c).chain(checks_b).collect::<Vec<_>>())
+            let checks = checks_a.chain(checks_c).chain(checks_b).collect::<Vec<_>>();
+            Ok((checks, lambda, rx, ry))
         },
     )?;
 
+    let range_gadget = &base_chip.native_gadget;
     range_checks.iter().try_for_each(|(cell, ubound)| {
-        base_chip
-            .native_gadget
-            .assert_lower_than_fixed(layouter, cell, ubound.magnitude())
-    })
+        range_gadget.assert_lower_than_fixed(layouter, cell, ubound.magnitude())
+    })?;
+    let _ = lambda.finish(layouter, range_gadget)?;
+    Ok((
+        rx.finish(layouter, range_gadget)?,
+        ry.finish(layouter, range_gadget)?,
+    ))
 }

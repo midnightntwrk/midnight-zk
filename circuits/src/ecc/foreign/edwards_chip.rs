@@ -58,7 +58,7 @@ use crate::{
     field::{
         AssignedNative,
         foreign::{
-            field_chip::{FieldChip, FieldChipConfig},
+            field_chip::{FieldChip, FieldChipConfig, Operand},
             params::FieldEmulationParams,
         },
     },
@@ -499,7 +499,9 @@ where
         let base_chip = self.base_field_chip();
 
         let r_value = p.value().map(|pv| pv + q_val);
-        let r = self.assign_point_unchecked(layouter, r_value)?;
+        let (rx, ry) = r_value
+            .map(|r| r.into().coordinates().expect("Edwards coordinates cannot fail"))
+            .unzip();
 
         let px_qx = base_chip.mul_by_constant(layouter, &p.x, qx)?;
         let py_qy = base_chip.mul_by_constant(layouter, &p.y, qy)?;
@@ -509,9 +511,9 @@ where
         let d_px_py_qx_qy = base_chip.mul(layouter, &px_qx, &py_qy, Some(C::D))?;
 
         // Rx * (1 + d * Px * Py * Qx * Qy) = (Px * Qy + Py * Qx)
-        addition::assert_addition_coordinate(
+        let x = addition::assert_addition_coordinate(
             layouter,
-            &r.x,
+            Operand::New(rx),
             &px_qy,
             &py_qx,
             &d_px_py_qx_qy,
@@ -521,9 +523,9 @@ where
         )?;
 
         // Ry * (1 - d * Px * Py * Qx * Qy) = (Py * Qy - a * Px * Qx)
-        addition::assert_addition_coordinate(
+        let y = addition::assert_addition_coordinate(
             layouter,
-            &r.y,
+            Operand::New(ry),
             &py_qy,
             &neg_a_px_qx,
             &d_px_py_qx_qy,
@@ -534,8 +536,8 @@ where
 
         Ok(AssignedForeignEdwardsPoint {
             point: r_value,
-            x: r.x,
-            y: r.y,
+            x,
+            y,
         })
     }
 }
@@ -846,7 +848,9 @@ where
         let base_chip = self.base_field_chip();
 
         let r_value = p.value().zip(q.value()).map(|(p, q)| p + q);
-        let r = self.assign_point_unchecked(layouter, r_value)?;
+        let (rx, ry) = r_value
+            .map(|r| r.into().coordinates().expect("Edwards coordinates cannot fail"))
+            .unzip();
 
         let px_qx = base_chip.mul(layouter, &p.x, &q.x, None)?;
         let py_qy = base_chip.mul(layouter, &p.y, &q.y, None)?;
@@ -857,9 +861,9 @@ where
 
         // Constraint for Rx coordinate
         // Rx * (1 + d * Px * Py * Qx * Qy) = (Px * Qy + Py * Qx)
-        addition::assert_addition_coordinate(
+        let x = addition::assert_addition_coordinate(
             layouter,
-            &r.x,
+            Operand::New(rx),
             &px_qy,
             &py_qx,
             &d_px_py_qx_qy,
@@ -870,9 +874,9 @@ where
 
         // Constraint for Ry coordinate
         // Ry * (1 - d * Px * Py * Qx * Qy) = (Py * Qy - a * Px * Qx)
-        addition::assert_addition_coordinate(
+        let y = addition::assert_addition_coordinate(
             layouter,
-            &r.y,
+            Operand::New(ry),
             &py_qy,
             &neg_a_px_qx,
             &d_px_py_qx_qy,
@@ -883,8 +887,8 @@ where
 
         Ok(AssignedForeignEdwardsPoint {
             point: r_value,
-            x: r.x,
-            y: r.y,
+            x,
+            y,
         })
     }
 
@@ -917,7 +921,9 @@ where
         let base_chip = self.base_field_chip();
 
         let r_value = p.value().map(|p| p + p);
-        let r = self.assign_point_unchecked(layouter, r_value)?;
+        let (rx, ry) = r_value
+            .map(|r| r.into().coordinates().expect("Edwards coordinates cannot fail"))
+            .unzip();
 
         let px_sq = base_chip.mul(layouter, &p.x, &p.x, None)?;
         let py_sq = base_chip.mul(layouter, &p.y, &p.y, None)?;
@@ -933,9 +939,9 @@ where
         )?;
 
         // Rx * (1 + w) = 2 * Px * Py
-        addition::assert_addition_coordinate(
+        let x = addition::assert_addition_coordinate(
             layouter,
-            &r.x,
+            Operand::New(rx),
             &px_py,
             &px_py,
             &w,
@@ -945,9 +951,9 @@ where
         )?;
 
         // Ry * (1 - w) = Py^2 - a * Px^2
-        addition::assert_addition_coordinate(
+        let y = addition::assert_addition_coordinate(
             layouter,
-            &r.y,
+            Operand::New(ry),
             &py_sq,
             &neg_a_px_sq,
             &w,
@@ -958,8 +964,8 @@ where
 
         Ok(AssignedForeignEdwardsPoint {
             point: r_value,
-            x: r.x,
-            y: r.y,
+            x,
+            y,
         })
     }
 

@@ -37,7 +37,7 @@
 use std::ops::Rem;
 
 use midnight_proofs::{
-    circuit::{Chip, Layouter},
+    circuit::{Chip, Layouter, Value},
     plonk::Error,
 };
 use num_bigint::{BigInt as BI, ToBigInt};
@@ -51,7 +51,7 @@ use crate::{
     CircuitField,
     ecc::curves::WeierstrassCurve,
     field::foreign::{
-        FieldChip,
+        FieldChip, Operand,
         params::FieldEmulationParams,
         util::{compute_u, compute_vj, pair_wise_prod, signed_mod, sum_bigints},
     },
@@ -60,19 +60,20 @@ use crate::{
     utils::util::bigint_to_fe,
 };
 
-/// If `cond = 1`, asserts that `[2]p = r` over the foreign field.
+/// If `cond = 1`, asserts that `[2]p = r` over the foreign field, with tangent
+/// slope `lambda`. Returns `r`, assigned.
 ///
 /// If `cond = 0`, asserts nothing.
 #[allow(clippy::type_complexity)]
-pub fn assert_double<F, C, P, N>(
+pub(crate) fn assert_double<F, C, P, N>(
     layouter: &mut impl Layouter<F>,
     cond: &AssignedBit<F>,
     p: (&AssignedField<F, C::Base, P>, &AssignedField<F, C::Base, P>),
-    r: (&AssignedField<F, C::Base, P>, &AssignedField<F, C::Base, P>),
-    lambda: &AssignedField<F, C::Base, P>,
+    r: (Operand<F, C::Base, P>, Operand<F, C::Base, P>),
+    lambda: Value<C::Base>,
     base_chip: &FieldChip<F, C::Base, P, N>,
     config: &UnifiedConfig<C>,
-) -> Result<(), Error>
+) -> Result<(AssignedField<F, C::Base, P>, AssignedField<F, C::Base, P>), Error>
 where
     F: CircuitField,
     C: WeierstrassCurve,
@@ -91,9 +92,9 @@ where
     // Normalize each field element once; the three gates share the results.
     let px = &base_chip.normalize(layouter, px)?;
     let py = &base_chip.normalize(layouter, py)?;
-    let rx = &base_chip.normalize(layouter, rx)?;
-    let ry = &base_chip.normalize(layouter, ry)?;
-    let lambda = &base_chip.normalize(layouter, lambda)?;
+    let rx = rx.normalize(layouter, base_chip)?;
+    let ry = ry.normalize(layouter, base_chip)?;
+    let lambda = Operand::<F, C::Base, P>::New(lambda);
 
     // ---------------------------------------------------------------------------
     // Gate W — slope(p, r, negate=true), standard slot assignment
@@ -260,16 +261,18 @@ where
     // ---------------------------------------------------------------------------
     // Lay out the 7-row region.
     // ---------------------------------------------------------------------------
-    let range_checks = layouter.assign_region(
+    let (range_checks, lambda, rx, ry) = layouter.assign_region(
         || "Double",
         |mut region| {
+            let (mut lambda, mut rx, mut ry) = (lambda.clone(), rx.clone(), ry.clone());
+
             // --- Row 0: gate W prev (A=rx, B=ry) ---
-            copy_limbs(&mut region, rx, &fcc.x_cols, 0, "rx")?;
-            copy_limbs(&mut region, ry, &fcc.z_cols, 0, "ry")?;
+            rx.place(&mut region, &fcc.x_cols, 0)?;
+            ry.place(&mut region, &fcc.z_cols, 0)?;
 
             // --- Row 1: gate W cur (C=λ, selector, u_W, vj_W, cond, fixed coeffs) ---
             config.q_unified.enable(&mut region, 1)?;
-            copy_limbs(&mut region, lambda, &fcc.x_cols, 1, "lambda")?;
+            lambda.place(&mut region, &fcc.x_cols, 1)?;
             assign_coeffs(
                 &mut region,
                 1,
@@ -324,7 +327,7 @@ where
             cond.0.copy_advice(|| "cond", &mut region, config.cond_col, 3)?;
 
             // --- Row 4: shared (gate T next D=λ/E=px; gate LS prev A=λ/B=px) ---
-            copy_limbs(&mut region, lambda, &fcc.x_cols, 4, "lambda")?;
+            lambda.place(&mut region, &fcc.x_cols, 4)?;
             copy_limbs(&mut region, px, &fcc.z_cols, 4, "px")?;
 
             // --- Row 5: gate LS cur (C=unused, selector, u_LS, vj_LS, cond, fixed coeffs)
@@ -354,7 +357,7 @@ where
             cond.0.copy_advice(|| "cond", &mut region, config.cond_col, 5)?;
 
             // --- Row 6: gate LS next (D=rx, E=unused) ---
-            copy_limbs(&mut region, rx, &fcc.x_cols, 6, "rx")?;
+            rx.place(&mut region, &fcc.x_cols, 6)?;
 
             // Collect range checks for all three gates.
             let checks_w = std::iter::once((u_w_cell, u_max.clone())).chain(
@@ -373,13 +376,18 @@ where
                     .zip(config.vs_bounds.iter().map(|(_, vj_max)| vj_max.clone())),
             );
 
-            Ok(checks_w.chain(checks_t).chain(checks_ls).collect::<Vec<_>>())
+            let checks = checks_w.chain(checks_t).chain(checks_ls).collect::<Vec<_>>();
+            Ok((checks, lambda, rx, ry))
         },
     )?;
 
+    let range_gadget = &base_chip.native_gadget;
     range_checks.iter().try_for_each(|(cell, ubound)| {
-        base_chip
-            .native_gadget
-            .assert_lower_than_fixed(layouter, cell, ubound.magnitude())
-    })
+        range_gadget.assert_lower_than_fixed(layouter, cell, ubound.magnitude())
+    })?;
+    let _ = lambda.finish(layouter, range_gadget)?;
+    Ok((
+        rx.finish(layouter, range_gadget)?,
+        ry.finish(layouter, range_gadget)?,
+    ))
 }

@@ -56,7 +56,7 @@ use crate::{
         },
     },
     field::foreign::{
-        field_chip::{FieldChip, FieldChipConfig},
+        field_chip::{FieldChip, FieldChipConfig, Operand},
         params::FieldEmulationParams,
     },
     instructions::{
@@ -696,12 +696,13 @@ where
         q: &Self::Point,
     ) -> Result<Self::Point, Error> {
         let r_curve = p.value().zip(q.value()).map(|(p, q)| p + q);
-        let r = self.assign_point_unchecked(layouter, r_curve)?;
+        let (rx, ry, r_is_id) = Self::point_values(r_curve);
+        let r_is_id: AssignedBit<F> = self.native_gadget.assign(layouter, r_is_id)?;
 
         // Define some auxiliary variables.
         let p_or_q_or_r_are_id = self.native_gadget.or(
             layouter,
-            &[p.is_id.clone(), q.is_id.clone(), r.is_id.clone()],
+            &[p.is_id.clone(), q.is_id.clone(), r_is_id.clone()],
         )?;
         let none_is_id = self.native_gadget.not(layouter, &p_or_q_or_r_are_id)?;
         let px_eq_qx = self.base_field_chip().is_equal(layouter, &p.x, &q.x)?;
@@ -712,29 +713,37 @@ where
             self.base_field_chip().is_zero(layouter, &py_plus_qy)?
         };
 
-        // p = id  =>  r = q.
-        self.cond_assert_equal(layouter, &p.is_id, &r, q)?;
-
-        // q = id  =>  r = p.
-        self.cond_assert_equal(layouter, &q.is_id, &r, p)?;
-
         // p = -q  =>  r = id.
         // (The following constraint also encodes <=, which is fine.)
         let p_eq_nq = self.native_gadget.and(layouter, &[px_eq_qx.clone(), py_eq_neg_qy])?;
-        self.native_gadget.assert_equal(layouter, &p_eq_nq, &r.is_id)?;
+        self.native_gadget.assert_equal(layouter, &p_eq_nq, &r_is_id)?;
 
         // If p = q (and we are not in an id case), we double.
         // The following call satisfies the preconditions of [assert_double],
         // since we have set cond = 0 when p or r are the identity.
         let cond = self.native_gadget.and(layouter, &[px_eq_qx, py_eq_qy, none_is_id.clone()])?;
-        self.assert_double(layouter, p, &r, &cond)?;
+        let (rx, ry) =
+            self.assert_double(layouter, p, (Operand::New(rx), Operand::New(ry)), &cond)?;
 
         // If p != q (and we are not in an id case), we enforce the standard
         // add relation. The following call satisfies the preconditions of
         // [assert_add], since we have set cond = 0 when p, q or r are the
         // the identity, or when p.x = q.x.
         let cond = self.native_gadget.and(layouter, &[px_neq_qx, none_is_id])?;
-        self.assert_add(layouter, p, q, &r, &cond)?;
+        let (x, y) = (Operand::Assigned(rx), Operand::Assigned(ry));
+        let (x, y) = self.assert_add(layouter, p, q, (x, y), &cond)?;
+        let r = AssignedForeignPoint::<F, C, B> {
+            point: r_curve,
+            is_id: r_is_id,
+            x,
+            y,
+        };
+
+        // p = id  =>  r = q.
+        self.cond_assert_equal(layouter, &p.is_id, &r, q)?;
+
+        // q = id  =>  r = p.
+        self.cond_assert_equal(layouter, &q.is_id, &r, p)?;
 
         Ok(r)
     }
@@ -745,19 +754,22 @@ where
         p: &AssignedForeignPoint<F, C, B>,
     ) -> Result<AssignedForeignPoint<F, C, B>, Error> {
         let r_curve = p.value().map(|p| p + p);
-        let r = self.assign_point_unchecked(layouter, r_curve)?;
-
-        // (There are no points of order 2 by assumption.)
-        self.native_gadget.assert_equal(layouter, &p.is_id, &r.is_id)?;
+        let (x, y, _) = Self::point_values(r_curve);
 
         // If `p` is not the identity, make sure the double relation is satisfied.
-        // Note that the following call to [assert_double] satisfies the required
-        // preconditions because we set cond := (p != id) and we have asserted that
-        // p = id <=> r = id, so both preconditions of [assert_double] are guaranteed.
+        // r is the identity iff p is (there are no points of order 2 by
+        // assumption), so it takes the identity flag of p. Then the following
+        // call to [assert_double] satisfies the required preconditions because we
+        // set cond := (p != id).
         let cond = self.native_gadget.not(layouter, &p.is_id)?;
-        self.assert_double(layouter, p, &r, &cond)?;
+        let (x, y) = self.assert_double(layouter, p, (Operand::New(x), Operand::New(y)), &cond)?;
 
-        Ok(r)
+        Ok(AssignedForeignPoint::<F, C, B> {
+            point: r_curve,
+            is_id: p.is_id.clone(),
+            x,
+            y,
+        })
     }
 
     fn negate(
@@ -1057,18 +1069,10 @@ where
         layouter: &mut impl Layouter<F>,
         p: Value<C::CryptographicGroup>,
     ) -> Result<AssignedForeignPoint<F, C, B>, Error> {
-        let values = p.map(|p| {
-            if C::CryptographicGroup::is_identity(&p).into() {
-                (C::Base::ZERO, C::Base::ZERO, true)
-            } else {
-                let coordinates =
-                    p.into().coordinates().expect("assign_point_unchecked: invalid point given");
-                (coordinates.0, coordinates.1, false)
-            }
-        });
-        let x = self.base_field_chip().assign(layouter, values.map(|v| v.0))?;
-        let y = self.base_field_chip().assign(layouter, values.map(|v| v.1))?;
-        let is_id = self.native_gadget.assign(layouter, values.map(|v| v.2))?;
+        let (x, y, is_id) = Self::point_values(p);
+        let x = self.base_field_chip().assign(layouter, x)?;
+        let y = self.base_field_chip().assign(layouter, y)?;
+        let is_id = self.native_gadget.assign(layouter, is_id)?;
         let p = AssignedForeignPoint::<F, C, B> {
             point: p,
             is_id,
@@ -1076,6 +1080,28 @@ where
             y,
         };
         Ok(p)
+    }
+
+    /// The coordinates of a curve point and whether it is the identity, whose
+    /// coordinates are (0, 0).
+    #[allow(clippy::type_complexity)]
+    fn point_values(
+        p: Value<C::CryptographicGroup>,
+    ) -> (Value<C::Base>, Value<C::Base>, Value<bool>) {
+        let values = p.map(|p| {
+            if C::CryptographicGroup::is_identity(&p).into() {
+                (C::Base::ZERO, C::Base::ZERO, true)
+            } else {
+                let coordinates =
+                    p.into().coordinates().expect("point_values: invalid point given");
+                (coordinates.0, coordinates.1, false)
+            }
+        });
+        (
+            values.map(|v| v.0),
+            values.map(|v| v.1),
+            values.map(|v| v.2),
+        )
     }
 
     /// Asserts that the given point satisfies the Weierstrass curve equation
@@ -1125,24 +1151,27 @@ where
         q: &AssignedForeignPoint<F, C, B>,
     ) -> Result<AssignedForeignPoint<F, C, B>, Error> {
         let r_curve = p.value().zip(q.value()).map(|(p, q)| p + q);
-        let r = self.assign_point_unchecked(layouter, r_curve)?;
+        let (x, y, _) = Self::point_values(r_curve);
 
-        // Assert that r is not the identity.
-        self.native_gadget.assert_equal(layouter, &p.is_id, &r.is_id)?;
-
-        // The preconditions of [incomplete_add] (and the previous assertion
-        // that r != id) guarantee that the following call satisfies all the
-        // preconditions of [assert_add].
+        // r is not the identity, so it takes the identity flag of p.
+        // The preconditions of [incomplete_add] guarantee that the following call
+        // satisfies all the preconditions of [assert_add].
         // Note that the following call to [assert_add] will make the circuit
         // unsatisfiable if `p = -q`, but that is the intended behavior of
         // [incomplete_add].
         let one = self.native_gadget.assign_fixed(layouter, true)?;
-        self.assert_add(layouter, p, q, &r, &one)?;
+        let (x, y) = self.assert_add(layouter, p, q, (Operand::New(x), Operand::New(y)), &one)?;
 
-        Ok(r)
+        Ok(AssignedForeignPoint::<F, C, B> {
+            point: r_curve,
+            is_id: p.is_id.clone(),
+            x,
+            y,
+        })
     }
 
-    /// If `cond = 1`, it asserts that `r = 2p`.
+    /// If `cond = 1`, it asserts that `r = 2p`. Returns the coordinates of
+    /// `r`, assigned.
     ///
     /// If `cond = 0`, it asserts nothing.
     ///
@@ -1154,26 +1183,23 @@ where
     /// It is the responsibility of the caller to guarantee that the
     /// precondition is met, this function may not become unsatisfiable even if
     /// the precondition is violated.
+    #[allow(clippy::type_complexity)]
     fn assert_double(
         &self,
         layouter: &mut impl Layouter<F>,
         p: &AssignedForeignPoint<F, C, B>,
-        r: &AssignedForeignPoint<F, C, B>,
+        r: (Operand<F, C::Base, B>, Operand<F, C::Base, B>),
         cond: &AssignedBit<F>,
-    ) -> Result<(), Error> {
+    ) -> Result<(AssignedField<F, C::Base, B>, AssignedField<F, C::Base, B>), Error> {
         // λ = 3 * px^2 / (2 * py)
-        let lambda = {
-            let lambda_value = p.value().map(|p| {
-                if C::CryptographicGroup::is_identity(&p).into() {
-                    C::Base::ONE
-                } else {
-                    let p = p.into().coordinates().unwrap();
-                    (C::Base::from(3) * p.0 * p.0 + C::A)
-                        * (C::Base::from(2) * p.1).invert().unwrap()
-                }
-            });
-            self.base_field_chip().assign(layouter, lambda_value)?
-        };
+        let lambda = p.value().map(|p| {
+            if C::CryptographicGroup::is_identity(&p).into() {
+                C::Base::ONE
+            } else {
+                let p = p.into().coordinates().unwrap();
+                (C::Base::from(3) * p.0 * p.0 + C::A) * (C::Base::from(2) * p.1).invert().unwrap()
+            }
+        });
 
         // Assert tangent, λ² = 2px+rx, and slope(p,r,negate) in a single fused region.
         //
@@ -1187,16 +1213,15 @@ where
             layouter,
             cond,
             (&p.x, &p.y),
-            (&r.x, &r.y),
-            &lambda,
+            r,
+            lambda,
             self.base_field_chip(),
             &self.config.unified_config,
-        )?;
-
-        Ok(())
+        )
     }
 
-    /// If `cond = 1`, it asserts that `r = p + q`.
+    /// If `cond = 1`, it asserts that `r = p + q`. Returns the coordinates of
+    /// `r`, assigned.
     ///
     /// If `cond = 0`, it asserts nothing.
     ///
@@ -1223,31 +1248,29 @@ where
     ///
     /// If `p.x = q.x` (the official prover panics, but do not assume this is
     /// enforced with constraints.)
+    #[allow(clippy::type_complexity)]
     fn assert_add(
         &self,
         layouter: &mut impl Layouter<F>,
         p: &AssignedForeignPoint<F, C, B>,
         q: &AssignedForeignPoint<F, C, B>,
-        r: &AssignedForeignPoint<F, C, B>,
+        r: (Operand<F, C::Base, B>, Operand<F, C::Base, B>),
         cond: &AssignedBit<F>,
-    ) -> Result<(), Error> {
+    ) -> Result<(AssignedField<F, C::Base, B>, AssignedField<F, C::Base, B>), Error> {
         // λ = (qy - py) / (qx - px)
-        let lambda = {
-            let lambda_value = p.value().zip(q.value()).map(|(p, q)| {
-                if p.is_identity().into() || q.is_identity().into() {
+        let lambda = p.value().zip(q.value()).map(|(p, q)| {
+            if p.is_identity().into() || q.is_identity().into() {
+                C::Base::ONE
+            } else {
+                let p = p.into().coordinates().unwrap();
+                let q = q.into().coordinates().unwrap();
+                if p.0 == q.0 {
                     C::Base::ONE
                 } else {
-                    let p = p.into().coordinates().unwrap();
-                    let q = q.into().coordinates().unwrap();
-                    if p.0 == q.0 {
-                        C::Base::ONE
-                    } else {
-                        (q.1 - p.1) * (q.0 - p.0).invert().unwrap()
-                    }
+                    (q.1 - p.1) * (q.0 - p.0).invert().unwrap()
                 }
-            });
-            self.base_field_chip().assign(layouter, lambda_value)?
-        };
+            }
+        });
 
         // Assert slope(p,q), λ² = px+qx+rx, and slope(p,r,negate) in a single
         // fused region that shares one row between the two slope gates.
@@ -1272,13 +1295,11 @@ where
             cond,
             (&p.x, &p.y),
             (&q.x, &q.y),
-            (&r.x, &r.y),
-            &lambda,
+            r,
+            lambda,
             self.base_field_chip(),
             &self.config.unified_config,
-        )?;
-
-        Ok(())
+        )
     }
 
     /// Assigns a region with only 1 row with the limbs of point.x, point.y the

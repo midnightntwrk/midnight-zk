@@ -23,7 +23,7 @@ use std::{
 };
 
 use midnight_proofs::{
-    circuit::{Chip, Layouter, Value},
+    circuit::{Chip, Layouter, Region, Value},
     plonk::{Advice, Column, ConstraintSystem, Error},
 };
 use num_bigint::{BigInt as BI, BigUint, ToBigInt};
@@ -50,7 +50,7 @@ use crate::{
         ArithInstructions, AssertionInstructions, AssignmentInstructions, CanonicityInstructions,
         ControlFlowInstructions, ConversionInstructions, DecompositionInstructions,
         EqualityInstructions, FieldInstructions, NativeInstructions, PublicInputInstructions,
-        ScalarFieldInstructions, ZeroInstructions,
+        RangeCheckInstructions, ScalarFieldInstructions, ZeroInstructions,
     },
     types::{AssignedBit, AssignedByte, AssignedNative, InnerConstants, InnerValue, Instantiable},
     utils::util::bigint_to_fe,
@@ -365,6 +365,112 @@ where
             })
             .collect::<Vec<_>>();
         Value::from_iter(limbs)
+    }
+}
+
+/// A foreign-field element taken by a gate: an assigned element, whose limbs
+/// the gate copies, or the value of a new element, whose limbs the gate
+/// assigns in the first row that uses them and range-checks afterwards.
+#[derive(Clone, Debug)]
+pub(crate) enum Operand<F, K, P>
+where
+    F: CircuitField,
+    K: CircuitField,
+    P: FieldEmulationParams<F, K>,
+{
+    /// An assigned element.
+    Assigned(AssignedField<F, K, P>),
+    /// The value of a new element.
+    New(Value<K>),
+    /// A new element whose limbs have been assigned, not range-checked yet.
+    Placed(AssignedField<F, K, P>),
+}
+
+impl<F, K, P> Operand<F, K, P>
+where
+    F: CircuitField,
+    K: CircuitField,
+    P: FieldEmulationParams<F, K>,
+{
+    /// Normalizes an assigned element; a new one is well-formed.
+    pub(crate) fn normalize<N: NativeInstructions<F>>(
+        self,
+        layouter: &mut impl Layouter<F>,
+        chip: &FieldChip<F, K, P, N>,
+    ) -> Result<Self, Error> {
+        match self {
+            Operand::Assigned(x) => Ok(Operand::Assigned(chip.normalize(layouter, &x)?)),
+            op => Ok(op),
+        }
+    }
+
+    /// The limb values (in BigInt form) of the element.
+    pub(crate) fn bigint_limbs(&self) -> Value<Vec<BI>> {
+        match self {
+            Operand::Assigned(x) | Operand::Placed(x) => x.bigint_limbs(),
+            Operand::New(x) => x.map(|x| {
+                let base = BI::from(2).pow(P::LOG2_BASE);
+                bi_to_limbs(P::NB_LIMBS, &base, &(x - K::ONE).to_biguint().into())
+            }),
+        }
+    }
+
+    /// Places the limbs of the element in `cols` at `offset`: assigns those of
+    /// a new element, or copies the assigned ones.
+    pub(crate) fn place(
+        &mut self,
+        region: &mut Region<'_, F>,
+        cols: &[Column<Advice>],
+        offset: usize,
+    ) -> Result<(), Error> {
+        if let Operand::Assigned(x) | Operand::Placed(x) = self {
+            for (cell, &col) in x.limb_values.iter().zip(cols) {
+                cell.copy_advice(|| "limb", region, col, offset)?;
+            }
+            return Ok(());
+        }
+        let limbs = self
+            .bigint_limbs()
+            .map(|ls| ls.iter().map(bigint_to_fe::<F>).collect::<Vec<F>>());
+        let limb_values = (limbs.transpose_vec(P::NB_LIMBS as usize).into_iter())
+            .zip(cols)
+            .map(|(v, &col)| region.assign_advice(|| "limb", col, offset, || v))
+            .collect::<Result<Vec<_>, _>>()?;
+        *self = Operand::Placed(AssignedField {
+            limb_values,
+            limb_bounds: well_formed_bounds::<F, K, P>(),
+            _marker: PhantomData,
+        });
+        Ok(())
+    }
+
+    /// The assigned element, after the gate has placed it. The limbs of a new
+    /// element are range-checked here.
+    ///
+    /// # Panics
+    ///
+    /// If the element is new and has not been placed.
+    pub(crate) fn finish<R: RangeCheckInstructions<F, AssignedNative<F>>>(
+        self,
+        layouter: &mut impl Layouter<F>,
+        range_gadget: &R,
+    ) -> Result<AssignedField<F, K, P>, Error> {
+        match self {
+            Operand::Assigned(x) => Ok(x),
+            Operand::Placed(x) => {
+                for (xi, log2_bound) in
+                    x.limb_values.iter().zip(well_formed_log2_bounds::<F, K, P>())
+                {
+                    range_gadget.assert_lower_than_fixed(
+                        layouter,
+                        xi,
+                        &(BigUint::one() << log2_bound),
+                    )?;
+                }
+                Ok(x)
+            }
+            Operand::New(_) => panic!("a new operand was not placed in its gate"),
+        }
     }
 }
 
@@ -1428,52 +1534,24 @@ where
         y: &AssignedField<F, K, P>,
         division: bool,
     ) -> Result<AssignedField<F, K, P>, Error> {
-        let base = BI::from(2).pow(P::LOG2_BASE);
-        let nb_limbs = P::NB_LIMBS;
-
         let x = self.normalize(layouter, x)?;
         let y = self.normalize(layouter, y)?;
 
         y.value().error_if_known_and(|yv| division && K::is_zero(yv).into())?;
 
-        let zv = x
-            .value()
-            .zip(y.value())
-            .map(|(xv, yv)| {
-                if division {
-                    xv * yv.invert().unwrap()
-                } else {
-                    xv * yv
-                }
-            })
-            .map(|z| bi_to_limbs(nb_limbs, &base, &(z - K::ONE).to_biguint().into()));
-        let z_values = (0..nb_limbs)
-            .map(|i| zv.clone().map(|zs| bigint_to_fe::<F>(&zs[i as usize])))
-            .collect::<Vec<_>>();
-
-        // Assign and range-check the z limbs
-        let z_limbs = z_values
-            .iter()
-            .zip(well_formed_log2_bounds::<F, K, P>().iter())
-            .map(|(&z_value, &log2_bound)| {
-                self.native_gadget.assign_lower_than_fixed(
-                    layouter,
-                    z_value,
-                    &(BigUint::one() << log2_bound),
-                )
-            })
-            .collect::<Result<Vec<_>, Error>>()?;
-
-        let z = AssignedField::<F, K, P> {
-            limb_values: z_limbs,
-            limb_bounds: well_formed_bounds::<F, K, P>(),
-            _marker: PhantomData,
-        };
+        let z = x.value().zip(y.value()).map(|(xv, yv)| {
+            if division {
+                xv * yv.invert().unwrap()
+            } else {
+                xv * yv
+            }
+        });
 
         // Divisions z = x / y are modeled as multiplications z * y = x.
         // We swap x and z when division = true.
-        let (l, r) = if !division { (&x, &z) } else { (&z, &x) };
-        mul::assert_mul::<F, K, P, N>(
+        let (x, z) = (Operand::Assigned(x), Operand::New(z));
+        let (l, r) = if !division { (x, z) } else { (z, x) };
+        let (l, r) = mul::assert_mul::<F, K, P, N>(
             layouter,
             l,
             &y,
@@ -1482,7 +1560,7 @@ where
             &self.native_gadget,
         )?;
 
-        Ok(z)
+        Ok(if !division { r } else { l })
     }
 }
 
