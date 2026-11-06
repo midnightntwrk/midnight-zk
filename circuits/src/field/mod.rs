@@ -15,6 +15,7 @@
 pub mod decomposition;
 pub mod foreign;
 pub mod native;
+pub mod range_check;
 
 use midnight_proofs::circuit::AssignedCell;
 pub use native::{AssignedBounded, NativeChip, NativeConfig, NativeGadget};
