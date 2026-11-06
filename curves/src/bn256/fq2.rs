@@ -233,6 +233,8 @@ impl ExtField for Fq2 {
     }
 }
 
+impl crate::curve::FieldInto for Fq2 {}
+
 #[cfg(test)]
 mod test {
 

@@ -10,24 +10,26 @@ extern crate criterion;
 
 use std::time::SystemTime;
 
+use blst::{MultiPoint, blst_p1_affine};
 use criterion::{BenchmarkId, Criterion};
 use ff::PrimeField;
 use group::Group;
 use midnight_curves::CurveAffine;
 use rand_core::{RngCore, SeedableRng};
 use rand_xorshift::XorShiftRng;
-use rayon::{
-    current_thread_index,
-    prelude::{IntoParallelIterator, ParallelIterator},
-};
+use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 
 const SAMPLE_SIZE: usize = 10;
-const SEED: [u8; 16] = [
-    0x59, 0x62, 0xbe, 0x5d, 0x76, 0x3d, 0x31, 0x8d, 0x17, 0xdb, 0x37, 0x32, 0x54, 0x06, 0xbc, 0xe5,
-];
+const SEED: u64 = 0x5962_be5d_763d_318d;
 
 const MULTICORE_RANGE: &[u8] = &[8, 10, 12, 14, 16, 18, 20];
 const BITS: &[usize] = &[256];
+
+/// A generator of its own for item `i` of `stream`. One per rayon job
+/// (`map_init`) would replay the same values on every job of a thread.
+fn item_rng(stream: u64, i: u64) -> XorShiftRng {
+    XorShiftRng::seed_from_u64(SEED ^ (stream << 56) ^ i)
+}
 
 fn generate_curvepoints<C: CurveAffine>(k: u8) -> Vec<C> {
     let n: u64 = 1 << k;
@@ -36,19 +38,7 @@ fn generate_curvepoints<C: CurveAffine>(k: u8) -> Vec<C> {
     let timer = SystemTime::now();
     let bases = (0..n)
         .into_par_iter()
-        .map_init(
-            || {
-                let mut thread_seed = SEED;
-                let uniq = current_thread_index().unwrap().to_ne_bytes();
-                assert!(std::mem::size_of::<usize>() == 8);
-                for i in 0..uniq.len() {
-                    thread_seed[i] += uniq[i];
-                    thread_seed[i + 8] += uniq[i];
-                }
-                XorShiftRng::from_seed(thread_seed)
-            },
-            |rng, _| <C::CurveExt as Group>::random(rng).into(),
-        )
+        .map(|i| <C::CurveExt as Group>::random(item_rng(0, i)).into())
         .collect();
     let end = timer.elapsed().unwrap();
     println!(
@@ -73,29 +63,18 @@ fn generate_coefficients<F: PrimeField>(k: u8, bits: usize) -> Vec<F> {
 
     (0..n)
         .into_par_iter()
-        .map_init(
-            || {
-                let mut thread_seed = SEED;
-                let uniq = current_thread_index().unwrap().to_ne_bytes();
-                assert!(std::mem::size_of::<usize>() == 8);
-                for i in 0..uniq.len() {
-                    thread_seed[i] += uniq[i];
-                    thread_seed[i + 8] += uniq[i];
-                }
-                XorShiftRng::from_seed(thread_seed)
-            },
-            |rng, _| {
-                if let Some(max_val) = max_val {
-                    let v_lo = rng.next_u64() as u128;
-                    let v_hi = rng.next_u64() as u128;
-                    let mut v = v_lo + (v_hi << 64);
-                    v &= max_val; // Mask the 128bit value to get a lower number of bits
-                    F::from_u128(v)
-                } else {
-                    F::random(rng)
-                }
-            },
-        )
+        .map(|i| {
+            let mut rng = item_rng(1, i);
+            if let Some(max_val) = max_val {
+                let v_lo = rng.next_u64() as u128;
+                let v_hi = rng.next_u64() as u128;
+                let mut v = v_lo + (v_hi << 64);
+                v &= max_val; // Mask the 128bit value to get a lower number of bits
+                F::from_u128(v)
+            } else {
+                F::random(rng)
+            }
+        })
         .collect()
 }
 
@@ -117,15 +96,18 @@ fn msm_blst(c: &mut Criterion) {
 
     let (bases, coeffs) = setup::<midnight_curves::G1Affine>();
 
-    // Blstrs version.
+    // blst's MSM on the affine bases; the scalars' conversion to bytes is
+    // timed, as the Rust MSM converts its scalars too.
+    let points: Vec<blst_p1_affine> = bases.iter().map(|p| *p.as_ref()).collect();
     for (b_index, b) in BITS.iter().enumerate() {
         for k in MULTICORE_RANGE {
             let n: usize = 1 << k;
             let id = format!("blstrs_{b}b_{k}");
-            let points: Vec<midnight_curves::G1Projective> = bases.iter().map(Into::into).collect();
             group.bench_function(BenchmarkId::new("Blst", id), |b| {
                 b.iter(|| {
-                    midnight_curves::G1Projective::multi_exp(&points[..n], &coeffs[b_index][..n])
+                    let bytes: Vec<u8> =
+                        coeffs[b_index][..n].iter().flat_map(|s| s.to_bytes_le()).collect();
+                    points[..n].mult(&bytes, 255)
                 })
             });
         }

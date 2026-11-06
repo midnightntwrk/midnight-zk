@@ -52,6 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Fix cost-model [#435](https://github.com/midnightntwrk/midnight-zk/pull/435)
 
 ### Changed
+* KZG commitments and the verifier's MSMs use the Rust `msm_best` instead of blst's `multi_exp_affine` for BLS12-381 G1, with the same results [#TBD](https://github.com/midnightntwrk/midnight-zk/pull/TBD)
 * BREAKING: `PolynomialCommitmentScheme::Commitment` no longer requires `Add` and `Mul<F>`: no generic code combines commitments, so a scheme need not be homomorphic [#582](https://github.com/midnightntwrk/midnight-zk/pull/582)
 * The KZG multi-open takes first the point set with the most variable-base polynomials, then the others by cardinality, so that fewer scalars are products of two truncated challenges. This changes the proof [#583](https://github.com/midnightntwrk/midnight-zk/pull/583)
 * fflonk splits the polynomials of a `commit_many` call into the same number of chunks as before, of balanced sizes (e.g. 6, 6, 5 rather than 8, 8, 1), instead of chunks of `T_MAX` and a remainder. This changes fflonk verifying keys and proofs [#579](https://github.com/midnightntwrk/midnight-zk/pull/579)
@@ -114,6 +115,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Simplify KZG multiopen verifier to use `KZGCommitment` directly [#430](https://github.com/midnightntwrk/midnight-zk/pull/430)
 
 ### Removed
+* BREAKING: `kzg::msm::msm_specific` (blst for BLS12-381 G1 behind a `TypeId` check and `unsafe` casts); call `midnight_curves::msm::msm_best`. midnight-proofs has no `unsafe` left [#TBD](https://github.com/midnightntwrk/midnight-zk/pull/TBD)
 * BREAKING: `truncated-challenges` feature. The KZG multi-open always truncates its challenges, which changes the proofs of builds without the feature [#580](https://github.com/midnightntwrk/midnight-zk/pull/580)
 * `KZGMultiCommitment::commitment_to_zero`. An empty committed instance can be passed as an empty instance column instead, which is neither committed to nor opened [#569](https://github.com/midnightntwrk/midnight-zk/pull/569)
 * `single-h-commitment` feature, and the `PolynomialLabel::Quotient` label it committed the quotient polynomial with [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)

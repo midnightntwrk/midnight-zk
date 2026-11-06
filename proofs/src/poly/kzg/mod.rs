@@ -31,7 +31,7 @@ use std::{fmt::Debug, hash::Hash};
 use commitment::{KZGCommitment, KZGMultiCommitment};
 use ff::Field;
 use group::Group;
-use midnight_curves::{pairing::MultiMillerLoop, serde::SerdeObject};
+use midnight_curves::{msm::msm_best, pairing::MultiMillerLoop, serde::SerdeObject};
 use rand_core::OsRng;
 
 use crate::{
@@ -40,7 +40,7 @@ use crate::{
         commitment::{InterleavedCommit, PolynomialCommitmentScheme},
         kzg::{
             commitment::NB_POLYS_PREFIX_BYTES,
-            msm::{DualMSM, msm_specific},
+            msm::DualMSM,
             params::{ParamsKZG, ParamsVerifierKZG},
             utils::construct_intermediate_sets,
         },
@@ -138,7 +138,7 @@ where
                     let size = polynomial.values.len();
                     assert!(bases.len() >= size);
                     KZGCommitment::Simple(
-                        msm_specific::<E::G1Affine>(&polynomial.values, &bases[..size]),
+                        msm_best::<E::G1Affine>(&polynomial.values, &bases[..size]),
                         label.clone(),
                     )
                 })
@@ -583,7 +583,7 @@ where
         "the polynomials of a chunk have different lengths"
     );
     (chunk.iter().enumerate())
-        .map(|(i, poly)| msm_specific(&poly.values, &params.residue_bases::<B>(t, n, i)))
+        .map(|(i, poly)| msm_best(&poly.values, &params.residue_bases::<B>(t, n, i)))
         .sum()
 }
 

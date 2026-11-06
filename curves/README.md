@@ -39,6 +39,10 @@ Due to the assembly based nature of the implementation in `blst`, currently only
 
 To enable portable features when building the blst dependency, use the 'portable' feature: `--features portable`.
 
+### MSM Backend
+
+Every MSM, on every curve, goes through `msm::msm_best`: a Rust Pippenger (blst-style tiling, batched affine buckets, per-arch window tables), through the GLV endomorphism for 32..128 terms on BLS12-381 G1.
+
 
 ### Benchmarking
 

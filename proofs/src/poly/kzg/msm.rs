@@ -1,10 +1,10 @@
-use std::{any::TypeId, collections::BTreeMap, fmt::Debug, iter};
+use std::{collections::BTreeMap, fmt::Debug, iter};
 
 use ff::Field;
 use group::{Curve, Group, prime::PrimeCurveAffine};
 use itertools::izip;
 use midnight_curves::{
-    CurveAffine, Fq, G1Affine,
+    CurveAffine,
     msm::msm_best,
     pairing::{Engine, MillerLoopResult, MultiMillerLoop},
 };
@@ -148,7 +148,7 @@ where
         } else {
             let mut affine = vec![E::G1Affine::identity(); self.bases.len()];
             E::G1::batch_normalize(&self.bases, &mut affine);
-            msm_specific::<E::G1Affine>(&self.scalars, &affine)
+            msm_best::<E::G1Affine>(&self.scalars, &affine)
         }
     }
 
@@ -162,35 +162,6 @@ where
 
     fn labels(&self) -> Vec<PolynomialLabel> {
         self.labels.clone()
-    }
-}
-
-#[allow(unsafe_code)]
-/// Wrapper over the MSM function:
-/// Bls12-381 uses blstrs [`G1Affine::multi_exp_affine`], other curves use
-/// `msm_best`.
-pub fn msm_specific<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
-    // We remove zeros (keep only non-zero coefficients).
-    let (coeffs, bases): (Vec<C::Scalar>, Vec<C>) = coeffs
-        .iter()
-        .zip(bases)
-        .filter(|(s, _)| !s.is_zero_vartime())
-        .map(|(s, b)| (*s, *b))
-        .unzip();
-
-    if coeffs.is_empty() {
-        return C::Curve::identity();
-    }
-
-    if TypeId::of::<C>() == TypeId::of::<G1Affine>() {
-        let coeffs = unsafe { &*(coeffs.as_slice() as *const _ as *const [Fq]) };
-        let bases = unsafe { &*(bases.as_slice() as *const _ as *const [G1Affine]) };
-        // TODO: 255 is fine because type is checked. Another option is propagating
-        // nbits as an input of msm_specific.
-        let res = G1Affine::multi_exp_affine(bases, coeffs);
-        unsafe { std::mem::transmute_copy(&res) }
-    } else {
-        msm_best(&coeffs, &bases)
     }
 }
 
