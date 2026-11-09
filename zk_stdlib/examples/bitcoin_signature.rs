@@ -179,7 +179,7 @@ fn main() {
     const K: u32 = 15;
     let relation = BitcoinSigExample;
     let srs = srs_for_test(&relation, Some(K));
-    let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
+    let vk = midnight_zk_stdlib::setup_vk::<_, midnight_zk_stdlib::KZG>(&srs, &relation);
     let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
 
     let instance = (parse_bitcoin_point(&pk_bytes), msg_bytes);
@@ -189,13 +189,13 @@ fn main() {
         K256Scalar::from_bytes_be(&sig_bytes[32..]).expect("Secp scalar"),
     );
 
-    let proof = midnight_zk_stdlib::prove::<BitcoinSigExample, Blake2b256>(
+    let proof = midnight_zk_stdlib::prove::<BitcoinSigExample, Blake2b256, _>(
         &srs, &pk, &relation, &instance, witness, OsRng,
     )
     .expect("Proof generation should not fail");
 
     assert!(
-        midnight_zk_stdlib::verify::<BitcoinSigExample, Blake2b256>(
+        midnight_zk_stdlib::verify::<BitcoinSigExample, Blake2b256, _>(
             &srs.verifier_params(),
             &vk,
             &instance,

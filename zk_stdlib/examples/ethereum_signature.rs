@@ -192,18 +192,18 @@ fn main() {
     );
 
     println!(" - Setting up vk...");
-    let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
+    let vk = midnight_zk_stdlib::setup_vk::<_, midnight_zk_stdlib::KZG>(&srs, &relation);
     let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
 
     println!(" - Proof generation...");
-    let proof = midnight_zk_stdlib::prove::<EthereumSigExample, blake2b_simd::State>(
+    let proof = midnight_zk_stdlib::prove::<EthereumSigExample, blake2b_simd::State, _>(
         &srs, &pk, &relation, &instance, witness, OsRng,
     )
     .expect("Proof generation should not fail");
 
     println!(" - Proof verification...");
     assert!(
-        midnight_zk_stdlib::verify::<EthereumSigExample, blake2b_simd::State>(
+        midnight_zk_stdlib::verify::<EthereumSigExample, blake2b_simd::State, _>(
             &srs.verifier_params(),
             &vk,
             &instance,

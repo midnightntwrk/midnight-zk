@@ -88,7 +88,7 @@ fn main() {
     const K: u32 = 11;
     let relation = EccExample;
     let srs = srs_for_test(&relation, Some(K));
-    let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
+    let vk = midnight_zk_stdlib::setup_vk::<_, midnight_zk_stdlib::KZG>(&srs, &relation);
     let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
 
     const N: usize = 5;
@@ -100,7 +100,7 @@ fn main() {
     for _ in 0..N {
         let witness = JubjubScalar::random(&mut OsRng);
         let instance = JubjubSubgroup::generator() * witness;
-        let proof = midnight_zk_stdlib::prove::<EccExample, blake2b_simd::State>(
+        let proof = midnight_zk_stdlib::prove::<EccExample, blake2b_simd::State, _>(
             &srs, &pk, &relation, &instance, witness, OsRng,
         )
         .expect("Proof generation should not fail");
@@ -111,7 +111,7 @@ fn main() {
     }
 
     assert!(
-        midnight_zk_stdlib::batch_verify::<blake2b_simd::State>(
+        midnight_zk_stdlib::batch_verify::<blake2b_simd::State, _>(
             &srs.verifier_params(),
             &vks,
             &pis,

@@ -36,7 +36,7 @@ use super::{
 pub struct IvcProver<T: Ivc> {
     pub(crate) params: ParamsKZG<E>,
     pub(crate) relation: IvcCircuit<T>,
-    pub(crate) pk: MidnightPK<IvcCircuit<T>>,
+    pub(crate) pk: MidnightPK<IvcCircuit<T>, DefaultPCS>,
     pub(crate) state: T::State,
     pub(crate) proof: Vec<u8>,
     pub(crate) acc: Accumulator<S>,
@@ -125,7 +125,7 @@ impl<T: Ivc> IvcProver<T> {
             transition_witness,
         };
 
-        let proof = midnight_zk_stdlib::prove::<IvcCircuit<T>, PoseidonState<F>>(
+        let proof = midnight_zk_stdlib::prove::<IvcCircuit<T>, PoseidonState<F>, _>(
             &self.params,
             &self.pk,
             &self.relation,

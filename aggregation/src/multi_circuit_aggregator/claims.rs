@@ -12,7 +12,7 @@
 
 use std::fmt::Debug;
 
-use midnight_zk_stdlib::MidnightVK;
+use midnight_zk_stdlib::{DefaultPCS, MidnightVK};
 
 use super::AggregableRelation;
 use crate::ivc::F;
@@ -22,7 +22,7 @@ use crate::ivc::F;
 #[derive(Clone, Debug)]
 pub struct Claim {
     /// Verifying key identifying the inner circuit this claim refers to.
-    pub vk: MidnightVK,
+    pub vk: MidnightVK<DefaultPCS>,
     /// The public input of the inner proof, encoded as a single field element.
     pub statement: Box<dyn Statement>,
 }

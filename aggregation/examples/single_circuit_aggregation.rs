@@ -56,7 +56,7 @@ pub struct InnerCircuitContext {
     /// Evaluation domain for the inner circuit.
     domain: EvaluationDomain<F>,
     /// Verifying key.
-    vk: MidnightVK,
+    vk: MidnightVK<DefaultPCS>,
     /// SRS verifier parameters (for off-circuit proof preparation).
     params_verifier: ParamsVerifierKZG<E>,
 }
@@ -360,7 +360,7 @@ fn main() {
         std::array::from_fn(|_| sha_preimage::random_instance());
     let inner_proofs: [_; STEPS] = std::array::from_fn(|i| {
         let (digest, preimage) = &inner_statements_with_witnesses[i];
-        prove::<ShaPreimageCircuit, PoseidonState<F>>(
+        prove::<ShaPreimageCircuit, PoseidonState<F>, _>(
             &inner_srs,
             &inner_pk,
             &ShaPreimageCircuit,

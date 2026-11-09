@@ -167,7 +167,7 @@ fn main() {
     let relation = SchnorrExample;
     let srs = srs_for_test(&relation, Some(K));
     let mut rng = ChaCha8Rng::seed_from_u64(0xf001ba11);
-    let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
+    let vk = midnight_zk_stdlib::setup_vk::<_, midnight_zk_stdlib::KZG>(&srs, &relation);
     let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
 
     const N: usize = 5;
@@ -187,7 +187,7 @@ fn main() {
 
         let instance = (schnorr_pk, m);
 
-        let proof = midnight_zk_stdlib::prove::<SchnorrExample, blake2b_simd::State>(
+        let proof = midnight_zk_stdlib::prove::<SchnorrExample, blake2b_simd::State, _>(
             &srs, &pk, &relation, &instance, sig, &mut rng,
         )
         .expect("Proof generation should not fail");
@@ -200,7 +200,7 @@ fn main() {
     }
 
     assert!(
-        midnight_zk_stdlib::batch_verify::<blake2b_simd::State>(
+        midnight_zk_stdlib::batch_verify::<blake2b_simd::State, _>(
             &srs.verifier_params(),
             &vks,
             &instances,

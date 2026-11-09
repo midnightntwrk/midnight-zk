@@ -326,7 +326,7 @@ fn main() {
     };
 
     let setup = start("Setting up the vk/pk");
-    let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
+    let vk = midnight_zk_stdlib::setup_vk::<_, midnight_zk_stdlib::KZG>(&srs, &relation);
     let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
     println!("... done ({:?})", setup.elapsed());
 
@@ -344,7 +344,7 @@ fn main() {
     println!("... done ({:?})", wit.elapsed());
 
     let p = start("Proof generation");
-    let proof = midnight_zk_stdlib::prove::<CredentialProperty, blake2b_simd::State>(
+    let proof = midnight_zk_stdlib::prove::<CredentialProperty, blake2b_simd::State, _>(
         &srs,
         &pk,
         &relation,
@@ -357,7 +357,7 @@ fn main() {
 
     let v = start("Proof verification");
     assert!(
-        midnight_zk_stdlib::verify::<CredentialProperty, blake2b_simd::State>(
+        midnight_zk_stdlib::verify::<CredentialProperty, blake2b_simd::State, _>(
             &srs.verifier_params(),
             &vk,
             &(),

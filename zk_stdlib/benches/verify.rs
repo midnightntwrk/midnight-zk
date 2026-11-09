@@ -67,7 +67,7 @@ fn bench_verify(c: &mut Criterion) {
     let relation = PoseidonBench;
     let srs = srs_for_test(&relation, Some(6));
 
-    let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
+    let vk = midnight_zk_stdlib::setup_vk::<_, midnight_zk_stdlib::KZG>(&srs, &relation);
     let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
     let params_verifier = srs.verifier_params();
 
@@ -76,7 +76,7 @@ fn bench_verify(c: &mut Criterion) {
             let mut rng = ChaCha8Rng::from_entropy();
             let witness: [F; 3] = core::array::from_fn(|_| F::random(&mut rng));
             let instance = <PoseidonChip<F> as HashCPU<F, F>>::hash(&witness);
-            let proof = midnight_zk_stdlib::prove::<PoseidonBench, blake2b_simd::State>(
+            let proof = midnight_zk_stdlib::prove::<PoseidonBench, blake2b_simd::State, _>(
                 &srs, &pk, &relation, &instance, witness, OsRng,
             )
             .expect("proof generation failed");
@@ -97,7 +97,7 @@ fn bench_verify(c: &mut Criterion) {
     group.throughput(Throughput::Elements(1));
     group.bench_function("single", |b| {
         b.iter(|| {
-            midnight_zk_stdlib::verify::<PoseidonBench, blake2b_simd::State>(
+            midnight_zk_stdlib::verify::<PoseidonBench, blake2b_simd::State, _>(
                 &params_verifier,
                 &vk,
                 instance,
@@ -111,7 +111,7 @@ fn bench_verify(c: &mut Criterion) {
     group.throughput(Throughput::Elements(BATCH_SIZE as u64));
     group.bench_function(BenchmarkId::new("batch", BATCH_SIZE), |b| {
         b.iter(|| {
-            midnight_zk_stdlib::batch_verify::<blake2b_simd::State>(
+            midnight_zk_stdlib::batch_verify::<blake2b_simd::State, _>(
                 &params_verifier,
                 &vks,
                 &pis,
