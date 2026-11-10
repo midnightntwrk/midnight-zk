@@ -8,6 +8,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 ### Added
+* `RangeCheckChip`, which records assertions `x < 2^n` during synthesis and lays them out when loaded, in rows of `G` groups of four lanes looked up against a tag shared by the row, one output per group and a link between consecutive groups [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 * `InCircuitPCS::squeeze_evaluation_point`, mirroring `PolynomialCommitmentScheme::squeeze_evaluation_point`, and `InCircuitPCS::OffCircuitPCS`, the off-circuit scheme of the proofs the gadget verifies [#570](https://github.com/midnightntwrk/midnight-zk/pull/570)
 * `CommitmentBases`, the labelled points of an off-circuit commitment [#570](https://github.com/midnightntwrk/midnight-zk/pull/570)
 * in-circuit verifier and dependency of the whole library on DefaultPCS [#575](https://github.com/midnightntwrk/midnight-zk/pull/575)
@@ -24,6 +25,12 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 
 ### Changed
+* `FieldChip::assign` assigns the limbs of an element together, then range-checks them, instead of assigning each in a row of its own. This changes the verifying keys of circuits using the chip [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
+* `FieldChip::as_public_input` asserts canonicity by range-checking the limbs of `(m - 1) - x`, computed with a borrow per limb, instead of comparing the bits of `x` with `m`. This changes the verifying keys of circuits with foreign-field public inputs [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
+* BREAKING: `ForeignWeierstrassEccChip::configure` takes the `max_bit_len` of the range-check chip: the carries of the unified identity whose size the chip does not take are split as `c_lo + 2^s·c_hi`, with `c_hi` in a column after `cond`, and `nb_foreign_ecc_chip_columns` accounts for those columns. This changes the verifying keys of circuits using the chip [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
+* `NativeGadget` has no generic chips: it holds a `NativeChip` and a `RangeCheckChip`, which performs all of its range checks, decompositions included, and `NativeGadgetConfig` holds their configurations. This changes the verifying keys of every circuit [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
+* BREAKING: the `configure` functions of `FieldChip`, `ForeignWeierstrassEccChip` and `ForeignEdwardsEccChip`, and the `bounds` of their gates, no longer take `nb_parallel_range_checks` and `max_bit_len`: the carry bounds are the next powers of two [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
+* The foreign-field and foreign ECC gates assign the limbs of the values they produce (products, quotients, slopes and resulting points) in the first row that uses them, then range-check them, instead of copying limbs assigned and range-checked beforehand. Point doubling and incomplete addition reuse the identity flag of their input. This changes the verifying keys of circuits using the chips [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 * The `multi_select` lookup of the foreign ECC chips no longer takes an advice column for the selected index: table entries encode their index in the fixed tag, as `tag · 2^64 + index`, and a lookup region copies its witnessed index into the next row, taking 2 rows instead of 1. Lookup indices must be below 2^64. This changes the verifying keys of circuits using the chips [#590](https://github.com/midnightntwrk/midnight-zk/pull/590)
 * The in-circuit KZG multi-open orders its point sets with `kzg::point_set_order`, as the off-circuit one does [#583](https://github.com/midnightntwrk/midnight-zk/pull/583)
 * The in-circuit fflonk evaluates a chunk at all the roots of a point at once: one product per polynomial and one linear combination per root, instead of Horner per root, sharing the powers of the root between chunks [#583](https://github.com/midnightntwrk/midnight-zk/pull/583)
@@ -76,6 +83,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * `VerifierGadget::assign_vk_as_public_input` and `VerifierGadget::assign_fixed_vk` take a finalized constraint system (e.g. `vk.cs()` or `ConstraintSystem::into_finalized`) and return `Error::Synthesis` if it has selectors. `assign_vk_as_public_input` no longer converts the selectors itself [#546](https://github.com/midnightntwrk/midnight-zk/pull/546)
 
 ### Removed
+* The `decomposition` module: `P2RDecompositionChip`, `Pow2RangeChip`, `CoreDecompositionInstructions` and `Pow2RangeInstructions`, replaced by `RangeCheckChip` [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 * BREAKING: `EccInstructions::x_coordinate` and `y_coordinate`. Use `x` and `y` [#619](https://github.com/midnightntwrk/midnight-zk/pull/619)
 * BREAKING: `PublicInputInstructions::assign_as_public_input`. Use `assign` followed by `constrain_as_public_input` [#619](https://github.com/midnightntwrk/midnight-zk/pull/619)
 * `InCircuitHomomorphicCommitment`, which `InCircuitPCS::AssignedCommitment` no longer requires [#582](https://github.com/midnightntwrk/midnight-zk/pull/582)

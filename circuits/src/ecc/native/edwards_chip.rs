@@ -26,7 +26,7 @@ use midnight_proofs::{
 use num_bigint::{BigUint, ToBigUint};
 #[cfg(any(test, feature = "testing"))]
 use {
-    crate::field::decomposition::chip::P2RDecompositionConfig,
+    crate::field::NativeGadgetConfig,
     crate::testing_utils::{FromScratch, Sampleable},
     midnight_proofs::plonk::{Fixed, Instance},
     rand::RngCore,
@@ -36,7 +36,7 @@ use crate::{
     CircuitField,
     biguint::BigUintGadget,
     ecc::curves::{CircuitCurve, EdwardsCurve},
-    field::{NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip},
+    field::NativeGadget,
     instructions::*,
     types::{
         AssignedBigUint, AssignedBit, AssignedByte, AssignedNative, InnerConstants, InnerValue,
@@ -422,7 +422,7 @@ impl EccConfig {
     }
 }
 
-type NG<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
+type NG<F> = NativeGadget<F>;
 
 /// A native  [`EccInstructions`] chip.
 /// Since the chip is native, it only supports the embedded curve Jubjub.
@@ -1299,14 +1299,10 @@ impl<C: EdwardsCurve> ControlFlowInstructions<C::Base, AssignedScalarOfNativeCur
 
 #[cfg(any(test, feature = "testing"))]
 impl<C: EdwardsCurve> FromScratch<C::Base> for EccChip<C> {
-    type Config = (EccConfig, P2RDecompositionConfig);
+    type Config = (EccConfig, NativeGadgetConfig);
 
     fn new_from_scratch(config: &Self::Config) -> Self {
-        let p2r_decomp_config = &config.1;
-        let max_bit_len = 8;
-        let native_chip = NativeChip::new_from_scratch(&p2r_decomp_config.native_config);
-        let core_decomposition_chip = P2RDecompositionChip::new(p2r_decomp_config, &max_bit_len);
-        let native_gadget = NativeGadget::new(core_decomposition_chip, native_chip);
+        let native_gadget = NativeGadget::new_from_scratch(&config.1);
         let biguint_gadget = BigUintGadget::new(&native_gadget);
         Self {
             config: config.0.clone(),
@@ -1406,6 +1402,7 @@ mod tests {
     use super::*;
     use crate::{
         ecc::hash_to_curve::HashToCurveGadget,
+        field::NativeChip,
         hash::poseidon::PoseidonChip,
         instructions::{ecc, hash_to_curve::tests::test_hash_to_curve},
     };

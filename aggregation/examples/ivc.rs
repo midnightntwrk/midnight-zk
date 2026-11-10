@@ -127,7 +127,7 @@ impl<const N: usize> IvcTransition for PoseidonChain<N> {
         ZkStdLibArch {
             poseidon: true,
             nb_arith_cols: 9,
-            nr_pow2range_cols: 8,
+            nb_range_check_groups: 2,
             ..ZkStdLibArch::default()
         }
     }

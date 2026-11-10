@@ -23,7 +23,7 @@ use std::{
 };
 
 use midnight_proofs::{
-    circuit::{Chip, Layouter, Value},
+    circuit::{Chip, Layouter, Region, Value},
     plonk::{Advice, Column, ConstraintSystem, Error},
 };
 use num_bigint::{BigInt as BI, BigUint, ToBigInt};
@@ -50,7 +50,7 @@ use crate::{
         ArithInstructions, AssertionInstructions, AssignmentInstructions, CanonicityInstructions,
         ControlFlowInstructions, ConversionInstructions, DecompositionInstructions,
         EqualityInstructions, FieldInstructions, NativeInstructions, PublicInputInstructions,
-        ScalarFieldInstructions, ZeroInstructions,
+        RangeCheckInstructions, ScalarFieldInstructions, ZeroInstructions,
     },
     types::{AssignedBit, AssignedByte, AssignedNative, InnerConstants, InnerValue, Instantiable},
     utils::util::bigint_to_fe,
@@ -368,6 +368,112 @@ where
     }
 }
 
+/// A foreign-field element taken by a gate: an assigned element, whose limbs
+/// the gate copies, or the value of a new element, whose limbs the gate
+/// assigns in the first row that uses them and range-checks afterwards.
+#[derive(Clone, Debug)]
+pub(crate) enum Operand<F, K, P>
+where
+    F: CircuitField,
+    K: CircuitField,
+    P: FieldEmulationParams<F, K>,
+{
+    /// An assigned element.
+    Assigned(AssignedField<F, K, P>),
+    /// The value of a new element.
+    New(Value<K>),
+    /// A new element whose limbs have been assigned, not range-checked yet.
+    Placed(AssignedField<F, K, P>),
+}
+
+impl<F, K, P> Operand<F, K, P>
+where
+    F: CircuitField,
+    K: CircuitField,
+    P: FieldEmulationParams<F, K>,
+{
+    /// Normalizes an assigned element; a new one is well-formed.
+    pub(crate) fn normalize<N: NativeInstructions<F>>(
+        self,
+        layouter: &mut impl Layouter<F>,
+        chip: &FieldChip<F, K, P, N>,
+    ) -> Result<Self, Error> {
+        match self {
+            Operand::Assigned(x) => Ok(Operand::Assigned(chip.normalize(layouter, &x)?)),
+            op => Ok(op),
+        }
+    }
+
+    /// The limb values (in BigInt form) of the element.
+    pub(crate) fn bigint_limbs(&self) -> Value<Vec<BI>> {
+        match self {
+            Operand::Assigned(x) | Operand::Placed(x) => x.bigint_limbs(),
+            Operand::New(x) => x.map(|x| {
+                let base = BI::from(2).pow(P::LOG2_BASE);
+                bi_to_limbs(P::NB_LIMBS, &base, &(x - K::ONE).to_biguint().into())
+            }),
+        }
+    }
+
+    /// Places the limbs of the element in `cols` at `offset`: assigns those of
+    /// a new element, or copies the assigned ones.
+    pub(crate) fn place(
+        &mut self,
+        region: &mut Region<'_, F>,
+        cols: &[Column<Advice>],
+        offset: usize,
+    ) -> Result<(), Error> {
+        if let Operand::Assigned(x) | Operand::Placed(x) = self {
+            for (cell, &col) in x.limb_values.iter().zip(cols) {
+                cell.copy_advice(|| "limb", region, col, offset)?;
+            }
+            return Ok(());
+        }
+        let limbs = self
+            .bigint_limbs()
+            .map(|ls| ls.iter().map(bigint_to_fe::<F>).collect::<Vec<F>>());
+        let limb_values = (limbs.transpose_vec(P::NB_LIMBS as usize).into_iter())
+            .zip(cols)
+            .map(|(v, &col)| region.assign_advice(|| "limb", col, offset, || v))
+            .collect::<Result<Vec<_>, _>>()?;
+        *self = Operand::Placed(AssignedField {
+            limb_values,
+            limb_bounds: well_formed_bounds::<F, K, P>(),
+            _marker: PhantomData,
+        });
+        Ok(())
+    }
+
+    /// The assigned element, after the gate has placed it. The limbs of a new
+    /// element are range-checked here.
+    ///
+    /// # Panics
+    ///
+    /// If the element is new and has not been placed.
+    pub(crate) fn finish<R: RangeCheckInstructions<F, AssignedNative<F>>>(
+        self,
+        layouter: &mut impl Layouter<F>,
+        range_gadget: &R,
+    ) -> Result<AssignedField<F, K, P>, Error> {
+        match self {
+            Operand::Assigned(x) => Ok(x),
+            Operand::Placed(x) => {
+                for (xi, log2_bound) in
+                    x.limb_values.iter().zip(well_formed_log2_bounds::<F, K, P>())
+                {
+                    range_gadget.assert_lower_than_fixed(
+                        layouter,
+                        xi,
+                        &(BigUint::one() << log2_bound),
+                    )?;
+                }
+                Ok(x)
+            }
+            Operand::New(_) => panic!("a new operand was not placed in its gate"),
+        }
+    }
+}
+
 /// A vector of `NB_LIMBS` bounds of the form [0, base), except for possibly the
 /// most significant limb, which may be of the form [0, 2^k) with 2^k <= base.
 /// This is so that there exist emulated field elements with a unique
@@ -436,17 +542,17 @@ where
         });
 
         // Range-check the cells in the range [0, base)
-        let x_cells = (0..P::NB_LIMBS)
+        let x_values = (0..P::NB_LIMBS)
             .map(|i| x.clone().map(|limbs| bigint_to_fe::<F>(&limbs[i as usize])))
-            .zip(well_formed_log2_bounds::<F, K, P>().iter())
-            .map(|(xi_value, log2_bound)| {
-                self.native_gadget.assign_lower_than_fixed(
-                    layouter,
-                    xi_value,
-                    &(BigUint::one() << *log2_bound),
-                )
-            })
-            .collect::<Result<Vec<_>, Error>>()?;
+            .collect::<Vec<_>>();
+        let x_cells = self.native_gadget.assign_many(layouter, &x_values)?;
+        for (xi, log2_bound) in x_cells.iter().zip(well_formed_log2_bounds::<F, K, P>()) {
+            self.native_gadget.assert_lower_than_fixed(
+                layouter,
+                xi,
+                &(BigUint::one() << log2_bound),
+            )?;
+        }
 
         Ok(AssignedField::<F, K, P> {
             limb_values: x_cells,
@@ -514,22 +620,39 @@ where
     ) -> Result<Vec<AssignedNative<F>>, Error> {
         let assigned = self.normalize(layouter, assigned)?;
 
-        // Well-formed limbs encode an integer in [0, 2^k), where 2^k is the smallest
-        // power of 2 bigger than m, so it may be non-canonical. Assert canonicity so
-        // that the output is uniquely determined by the value.
-        let bits = (assigned.limb_values.iter())
-            .zip(well_formed_log2_bounds::<F, K, P>())
-            .map(|(limb, nb_bits)| {
-                self.native_gadget
-                    .assigned_to_le_bits(layouter, limb, Some(nb_bits as usize), true)
+        // Well-formed limbs encode an integer X in [0, 2^k), where 2^k is the smallest
+        // power of 2 bigger than m, so it may be non-canonical. Assert X <= m - 1 so
+        // that the output is uniquely determined by the value: the limbs d_i of
+        // (m - 1) - X, with d_i = c_i - x_i - b_i + base * b_{i+1} for the limbs c_i
+        // of m - 1 and borrows b_i (b_0 = 0 and no borrow out of the top limb), are
+        // range-checked to the limb sizes.
+        let base = BI::from(2).pow(P::LOG2_BASE);
+        let m_minus_1 = bi_to_limbs(P::NB_LIMBS, &base, &(assigned.modulus() - BI::one()));
+        let xs = assigned.bigint_limbs();
+        let log2_bounds = well_formed_log2_bounds::<F, K, P>();
+        let mut borrow = Value::known(false);
+        let borrows = (0..m_minus_1.len() - 1)
+            .map(|i| {
+                let diff = xs.clone().zip(borrow).map(|(xs, b)| &m_minus_1[i] - &xs[i] - b as u8);
+                borrow = diff.map(|d| d.is_negative());
+                borrow
             })
-            .collect::<Result<Vec<_>, Error>>()?
-            .concat();
-        let is_canonical = self.is_canonical(layouter, &bits)?;
-        self.assert_equal_to_fixed(layouter, &is_canonical, true)?;
+            .collect::<Vec<_>>();
+        let borrows: Vec<AssignedBit<F>> = self.native_gadget.assign_many(layouter, &borrows)?;
+        for (i, (x, c)) in assigned.limb_values.iter().zip(&m_minus_1).enumerate() {
+            let mut terms = vec![(-F::ONE, x.clone())];
+            if i > 0 {
+                terms.push((-F::ONE, borrows[i - 1].clone().into()));
+            }
+            if let Some(b) = borrows.get(i) {
+                terms.push((bigint_to_fe::<F>(&base), b.clone().into()));
+            }
+            let d = self.native_gadget.linear_combination(layouter, &terms, bigint_to_fe(c))?;
+            let bound = BigUint::one() << log2_bounds[i];
+            self.native_gadget.assert_lower_than_fixed(layouter, &d, &bound)?;
+        }
 
         let nb_limbs_per_batch = (F::CAPACITY / P::LOG2_BASE) as usize;
-        let base = BI::from(2).pow(P::LOG2_BASE);
         assigned
             .limb_values
             .chunks(nb_limbs_per_batch)
@@ -1372,8 +1495,6 @@ where
     pub fn configure(
         meta: &mut ConstraintSystem<F>,
         advice_columns: &[Column<Advice>],
-        nb_parallel_range_checks: usize,
-        max_bit_len: u32,
     ) -> FieldChipConfig {
         check_params::<F, K, P>();
 
@@ -1389,20 +1510,8 @@ where
             [(nb_limbs as usize + 1)..(nb_limbs as usize + 1 + P::moduli().len())]
             .to_vec();
 
-        let mul_config = MulConfig::configure::<F, K, P>(
-            meta,
-            &x_cols,
-            &z_cols,
-            nb_parallel_range_checks,
-            max_bit_len,
-        );
-        let norm_config = NormConfig::configure::<F, K, P>(
-            meta,
-            &x_cols,
-            &z_cols,
-            nb_parallel_range_checks,
-            max_bit_len,
-        );
+        let mul_config = MulConfig::configure::<F, K, P>(meta, &x_cols, &z_cols);
+        let norm_config = NormConfig::configure::<F, K, P>(meta, &x_cols, &z_cols);
 
         FieldChipConfig {
             mul_config,
@@ -1428,52 +1537,24 @@ where
         y: &AssignedField<F, K, P>,
         division: bool,
     ) -> Result<AssignedField<F, K, P>, Error> {
-        let base = BI::from(2).pow(P::LOG2_BASE);
-        let nb_limbs = P::NB_LIMBS;
-
         let x = self.normalize(layouter, x)?;
         let y = self.normalize(layouter, y)?;
 
         y.value().error_if_known_and(|yv| division && K::is_zero(yv).into())?;
 
-        let zv = x
-            .value()
-            .zip(y.value())
-            .map(|(xv, yv)| {
-                if division {
-                    xv * yv.invert().unwrap()
-                } else {
-                    xv * yv
-                }
-            })
-            .map(|z| bi_to_limbs(nb_limbs, &base, &(z - K::ONE).to_biguint().into()));
-        let z_values = (0..nb_limbs)
-            .map(|i| zv.clone().map(|zs| bigint_to_fe::<F>(&zs[i as usize])))
-            .collect::<Vec<_>>();
-
-        // Assign and range-check the z limbs
-        let z_limbs = z_values
-            .iter()
-            .zip(well_formed_log2_bounds::<F, K, P>().iter())
-            .map(|(&z_value, &log2_bound)| {
-                self.native_gadget.assign_lower_than_fixed(
-                    layouter,
-                    z_value,
-                    &(BigUint::one() << log2_bound),
-                )
-            })
-            .collect::<Result<Vec<_>, Error>>()?;
-
-        let z = AssignedField::<F, K, P> {
-            limb_values: z_limbs,
-            limb_bounds: well_formed_bounds::<F, K, P>(),
-            _marker: PhantomData,
-        };
+        let z = x.value().zip(y.value()).map(|(xv, yv)| {
+            if division {
+                xv * yv.invert().unwrap()
+            } else {
+                xv * yv
+            }
+        });
 
         // Divisions z = x / y are modeled as multiplications z * y = x.
         // We swap x and z when division = true.
-        let (l, r) = if !division { (&x, &z) } else { (&z, &x) };
-        mul::assert_mul::<F, K, P, N>(
+        let (x, z) = (Operand::Assigned(x), Operand::New(z));
+        let (l, r) = if !division { (x, z) } else { (z, x) };
+        let (l, r) = mul::assert_mul::<F, K, P, N>(
             layouter,
             l,
             &y,
@@ -1482,7 +1563,7 @@ where
             &self.native_gadget,
         )?;
 
-        Ok(z)
+        Ok(if !division { r } else { l })
     }
 }
 
@@ -1846,20 +1927,12 @@ where
             fixed_columns,
             instance_columns,
         );
-        // Use hard-coded pow2range values matching NativeGadget::configure_from_scratch
-        let nb_parallel_range_checks = 4;
-        let max_bit_len = 8;
         let field_chip_config = {
             let nb_fc_cols = nb_field_chip_columns::<F, K, P>();
             while advice_columns.len() < nb_fc_cols {
                 advice_columns.push(meta.advice_column());
             }
-            FieldChip::<F, K, P, N>::configure(
-                meta,
-                &advice_columns[..nb_fc_cols],
-                nb_parallel_range_checks,
-                max_bit_len,
-            )
+            FieldChip::<F, K, P, N>::configure(meta, &advice_columns[..nb_fc_cols])
         };
         FieldChipConfigForTests {
             native_gadget_config,
@@ -1875,13 +1948,11 @@ mod tests {
         k256::{Fp as K256Base, Fq as K256Scalar},
         p256::{Fp as P256Base, Fq as P256Scalar},
     };
+    use midnight_proofs::{circuit::SimpleFloorPlanner, dev::MockProver, plonk::Circuit};
 
     use super::*;
     use crate::{
-        field::{
-            NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip,
-            foreign::params::MultiEmulationParams,
-        },
+        field::{NativeGadget, foreign::params::MultiEmulationParams},
         instructions::{
             arithmetic, assertions, control_flow, decomposition, equality, public_input, zero,
         },
@@ -1892,12 +1963,7 @@ mod tests {
             $mod::tests::$op::<
                 $native,
                 AssignedField<$native, $emulated, MultiEmulationParams>,
-                FieldChip<
-                    $native,
-                    $emulated,
-                    MultiEmulationParams,
-                    NativeGadget<$native, P2RDecompositionChip<$native>, NativeChip<$native>>,
-                >,
+                FieldChip<$native, $emulated, MultiEmulationParams, NativeGadget<$native>>,
             >($name);
         };
     }
@@ -1942,13 +2008,8 @@ mod tests {
             $mod::tests::$op::<
                 $native,
                 AssignedField<$native, $emulated, MultiEmulationParams>,
-                FieldChip<
-                    $native,
-                    $emulated,
-                    MultiEmulationParams,
-                    NativeGadget<$native, P2RDecompositionChip<$native>, NativeChip<$native>>,
-                >,
-                NativeGadget<$native, P2RDecompositionChip<$native>, NativeChip<$native>>,
+                FieldChip<$native, $emulated, MultiEmulationParams, NativeGadget<$native>>,
+                NativeGadget<$native>,
             >($name);
         };
     }
@@ -1968,4 +2029,57 @@ mod tests {
     test!(decomposition, test_bit_decomposition);
     test!(decomposition, test_byte_decomposition);
     test!(decomposition, test_sgn0);
+
+    /// `as_public_input` on well-formed limbs encoding the integer `x`.
+    struct PublicInputCircuit(BI);
+
+    type Chip = FieldChip<BlsScalar, K256Base, MultiEmulationParams, NativeGadget<BlsScalar>>;
+
+    impl Circuit<BlsScalar> for PublicInputCircuit {
+        type Config = <Chip as FromScratch<BlsScalar>>::Config;
+        type FloorPlanner = SimpleFloorPlanner;
+        type Params = ();
+
+        fn without_witnesses(&self) -> Self {
+            unreachable!()
+        }
+
+        fn configure(meta: &mut ConstraintSystem<BlsScalar>) -> Self::Config {
+            let instances = [meta.instance_column(), meta.instance_column()];
+            Chip::configure_from_scratch(meta, &mut vec![], &mut vec![], &instances)
+        }
+
+        fn synthesize(
+            &self,
+            config: Self::Config,
+            mut layouter: impl Layouter<BlsScalar>,
+        ) -> Result<(), Error> {
+            type P = MultiEmulationParams;
+            let chip = Chip::new_from_scratch(&config);
+            let base = BI::from(2).pow(<P as FieldEmulationParams<BlsScalar, K256Base>>::LOG2_BASE);
+            let nb_limbs = <P as FieldEmulationParams<BlsScalar, K256Base>>::NB_LIMBS;
+            let limb_values = bi_to_limbs(nb_limbs, &base, &self.0)
+                .iter()
+                .map(|l| chip.native_gadget.assign(&mut layouter, Value::known(bigint_to_fe(l))))
+                .collect::<Result<Vec<_>, _>>()?;
+            let x = AssignedField::<BlsScalar, K256Base, P> {
+                limb_values,
+                limb_bounds: well_formed_bounds::<BlsScalar, K256Base, P>(),
+                _marker: PhantomData,
+            };
+            chip.as_public_input(&mut layouter, &x)?;
+            chip.load_from_scratch(&mut layouter)
+        }
+    }
+
+    #[test]
+    fn test_public_input_canonicity() {
+        let m = K256Base::modulus().to_bigint().unwrap();
+        let satisfied = |x: BI| {
+            MockProver::run(&PublicInputCircuit(x), vec![vec![], vec![]])
+                .is_ok_and(|prover| prover.verify().is_ok())
+        };
+        assert!(satisfied(&m - BI::one()));
+        assert!(!satisfied(m));
+    }
 }

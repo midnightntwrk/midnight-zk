@@ -423,8 +423,7 @@ impl<R: Relation> Circuit<F> for MidnightCircuit<'_, R> {
         config: Self::Config,
         mut layouter: impl Layouter<F>,
     ) -> Result<(), Error> {
-        let max_bit_len = (self.k - 1) as usize;
-        let zk_std_lib = ZkStdLib::new(&config, max_bit_len);
+        let zk_std_lib = ZkStdLib::new(&config);
 
         self.relation
             .circuit(
@@ -448,7 +447,7 @@ impl<R: Relation> Circuit<F> for MidnightCircuit<'_, R> {
 
         // We load the tables at the end, once we have figured out what chips/gadgets
         // were actually used.
-        zk_std_lib.core_decomposition_chip.load(&mut layouter)?;
+        zk_std_lib.range_check_chip.load(&mut layouter)?;
 
         if let Some(sha256_chip) = zk_std_lib.sha2_256_chip
             && *zk_std_lib.used_sha2_256.borrow()
@@ -685,22 +684,9 @@ pub fn cost_model<R: Relation>(
 
 /// Finds the optimal `k` (log2 of the circuit size) for the given relation.
 /// Tries different values of `k` (9..=25) and picks the smallest one where
-/// the circuit fits. The pow2range table uses `max_bit_len = k - 1`.
+/// the circuit fits. The range-check table uses `max_bit_len = k - 1`.
 pub fn optimal_k<R: Relation>(relation: &R) -> u32 {
-    let mut best_k = u32::MAX;
-
-    for k in 9..=25 {
-        let model = cost_model(relation, Some(k), false);
-
-        if model.k < best_k {
-            best_k = model.k;
-        }
-
-        // Stop when the pow2range table (2^k rows) becomes the bottleneck.
-        if model.rows < (1 << k) {
-            break;
-        }
-    }
-
-    best_k
+    (9..=25)
+        .find(|&k| cost_model(relation, Some(k), false).k <= k)
+        .expect("the relation does not fit in a circuit of size 2^25")
 }

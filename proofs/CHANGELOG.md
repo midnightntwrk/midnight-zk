@@ -52,6 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Fix cost-model [#435](https://github.com/midnightntwrk/midnight-zk/pull/435)
 
 ### Changed
+* The cost model with `COST_MEASURE_START`/`COST_MEASURE_END` markers reports the number of rows of the measured regions, which chips laying out constraints at load time may place apart, instead of their span [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 * KZG commitments and the verifier's MSMs use the Rust `msm_best` instead of blst's `multi_exp_affine` for BLS12-381 G1, with the same results [#TBD](https://github.com/midnightntwrk/midnight-zk/pull/TBD)
 * BREAKING: `PolynomialCommitmentScheme::Commitment` no longer requires `Add` and `Mul<F>`: no generic code combines commitments, so a scheme need not be homomorphic [#582](https://github.com/midnightntwrk/midnight-zk/pull/582)
 * The KZG multi-open takes first the point set with the most variable-base polynomials, then the others by cardinality, so that fewer scalars are products of two truncated challenges. This changes the proof [#583](https://github.com/midnightntwrk/midnight-zk/pull/583)

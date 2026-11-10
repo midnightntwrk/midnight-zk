@@ -27,7 +27,7 @@ macro_rules! run_test_stdlib {
                 curves::EdwardsCurve,
             },
             field::{
-                decomposition::chip::P2RDecompositionChip, foreign::params::MultiEmulationParams,
+                foreign::params::MultiEmulationParams,
                 AssignedBounded, NativeChip, NativeGadget,
             },
             instructions::*,

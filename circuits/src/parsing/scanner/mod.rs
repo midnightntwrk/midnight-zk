@@ -61,19 +61,17 @@ pub(crate) type MarkerTestVector<'a> = (&'a [u8], &'a [(usize, &'a [u8])]);
 pub(crate) type OutputTestVector<'a> = (&'a [u8], &'a [usize]);
 #[cfg(test)]
 use {
-    crate::field::decomposition::chip::P2RDecompositionConfig,
-    crate::field::decomposition::pow2range::Pow2RangeChip, crate::testing_utils::FromScratch,
-    midnight_proofs::plonk::Instance, regex::RegexInstructions,
+    crate::field::{NativeChip, NativeGadgetConfig, RangeCheckChip},
+    crate::testing_utils::FromScratch,
+    midnight_proofs::plonk::Instance,
+    regex::RegexInstructions,
 };
 
 #[cfg(test)]
 use crate::field::native::NB_EXTRA_ARITH_FIXED_COLS;
 use crate::{
     CircuitField,
-    field::{
-        AssignedNative, NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip,
-        native::AssignedBit,
-    },
+    field::{AssignedNative, NativeGadget, native::AssignedBit},
     utils::ComposableChip,
     vec::vector_gadget::VectorGadget,
 };
@@ -114,7 +112,7 @@ pub const NB_SCANNER_ADVICE_COLS: usize = {
 /// Number of shared fixed columns necessary for the scanner chip.
 pub const NB_SCANNER_FIXED_COLS: usize = 1;
 
-type NG<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
+type NG<F> = NativeGadget<F>;
 
 /// A simple map from the automaton structure to handle field elements, and thus
 /// precompute all transition operations on the prover code.
@@ -571,13 +569,10 @@ impl<F> FromScratch<F> for ScannerChip<F>
 where
     F: CircuitField + Ord,
 {
-    type Config = (P2RDecompositionConfig, ScannerConfig);
+    type Config = (NativeGadgetConfig, ScannerConfig);
 
     fn new_from_scratch(config: &Self::Config) -> Self {
-        let max_bit_len = 8;
-        let native_chip = NativeChip::new(&config.0.native_config, &());
-        let core_decomposition_chip = P2RDecompositionChip::new(&config.0, &max_bit_len);
-        let native_gadget = NG::<F>::new(core_decomposition_chip, native_chip);
+        let native_gadget = NG::<F>::new_from_scratch(&config.0);
         <ScannerChip<F> as ComposableChip<F>>::new(&config.1, &native_gadget)
     }
 
@@ -617,11 +612,13 @@ where
             ),
         );
 
-        let pow2range_config = Pow2RangeChip::configure(meta, &advice_columns[1..=4]);
-
-        let native_gadget_config = P2RDecompositionConfig {
+        let range_check_config = RangeCheckChip::configure(
+            meta,
+            &(advice_columns[..5].to_vec(), fixed_columns[..3].to_vec(), 8),
+        );
+        let native_gadget_config = NativeGadgetConfig {
             native_config,
-            pow2range_config,
+            range_check_config,
         };
 
         (native_gadget_config, scanner_config)

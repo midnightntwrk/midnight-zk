@@ -90,7 +90,7 @@ const ARCHITECTURES: [ZkStdLibArch; 4] = [
         curve25519: true,
         base64: false,
         nb_arith_cols: 5,
-        nr_pow2range_cols: 4,
+        nb_range_check_groups: 2,
         automaton: false,
     },
     ZkStdLibArch {
@@ -107,7 +107,7 @@ const ARCHITECTURES: [ZkStdLibArch; 4] = [
         curve25519: false,
         base64: false,
         nb_arith_cols: 5,
-        nr_pow2range_cols: 4,
+        nb_range_check_groups: 2,
         automaton: false,
     },
     ZkStdLibArch {
@@ -124,7 +124,7 @@ const ARCHITECTURES: [ZkStdLibArch; 4] = [
         curve25519: true,
         base64: false,
         nb_arith_cols: 5,
-        nr_pow2range_cols: 4,
+        nb_range_check_groups: 2,
         automaton: false,
     },
     ZkStdLibArch {
@@ -141,7 +141,7 @@ const ARCHITECTURES: [ZkStdLibArch; 4] = [
         curve25519: true,
         base64: true,
         nb_arith_cols: 5,
-        nr_pow2range_cols: 4,
+        nb_range_check_groups: 2,
         automaton: false,
     },
 ];

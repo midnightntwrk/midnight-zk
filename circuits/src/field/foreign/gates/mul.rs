@@ -24,6 +24,7 @@ use num_traits::One;
 use crate::{
     CircuitField,
     field::foreign::{
+        Operand,
         params::FieldEmulationParams,
         util::{
             compute_u, compute_vj, get_advice_vec, get_identity_auxiliary_bounds,
@@ -51,16 +52,7 @@ impl MulConfig {
     /// vj_max)}_j, which are parameters involved in the identities enforced
     /// by the ModArith custom gate. We refer to the implementation of this
     /// function for explanations on what such values represent.
-    ///
-    /// The `nb_parallel_range_checks` and `max_bit_len` parameters describe
-    /// the range-check decomposition chip: how many lookups run in parallel
-    /// per row and the maximum bit-length each lookup supports. They are used
-    /// to pick range-check-friendly bounds (powers of two whose bit count
-    /// aligns well with the chip's parallel lookup structure).
-    pub fn bounds<F, K, P>(
-        nb_parallel_range_checks: usize,
-        max_bit_len: u32,
-    ) -> ((BI, BI), Vec<(BI, BI)>)
+    pub fn bounds<F, K, P>() -> ((BI, BI), Vec<(BI, BI)>)
     where
         F: CircuitField,
         K: CircuitField,
@@ -108,14 +100,7 @@ impl MulConfig {
                 (expr_mj_min, expr_mj_max)
             })
             .collect();
-        get_identity_auxiliary_bounds::<F, K>(
-            "mul",
-            &moduli,
-            expr_bounds,
-            &expr_mj_bounds,
-            nb_parallel_range_checks,
-            max_bit_len,
-        )
+        get_identity_auxiliary_bounds::<F, K>("mul", &moduli, expr_bounds, &expr_mj_bounds)
     }
 
     /// Configures the foreign multiplication chip
@@ -123,8 +108,6 @@ impl MulConfig {
         meta: &mut ConstraintSystem<F>,
         xy_cols: &[Column<Advice>],
         z_cols: &[Column<Advice>],
-        nb_parallel_range_checks: usize,
-        max_bit_len: u32,
     ) -> Self
     where
         F: CircuitField,
@@ -136,8 +119,7 @@ impl MulConfig {
         let double_base_powers = P::double_base_powers();
         let moduli = P::moduli();
 
-        let ((k_min, u_max), vs_bounds) =
-            Self::bounds::<F, K, P>(nb_parallel_range_checks, max_bit_len);
+        let ((k_min, u_max), vs_bounds) = Self::bounds::<F, K, P>();
 
         let q_mul = meta.selector();
 
@@ -195,29 +177,31 @@ impl MulConfig {
     }
 }
 
-/// Asserts that the given AssignedField x, y, z are in a multiplicative
-/// relation: x * y = z.
+/// Asserts that the given x, y, z are in a multiplicative relation:
+/// x * y = z. Returns x and z, assigned.
 ///
 /// # Precondition
 ///
 /// x, y and z are assumed to be well-formed.
-pub fn assert_mul<F, K, P, RangeGadget>(
+#[allow(clippy::type_complexity)]
+pub(crate) fn assert_mul<F, K, P, RangeGadget>(
     layouter: &mut impl Layouter<F>,
-    x: &AssignedField<F, K, P>,
+    x: Operand<F, K, P>,
     y: &AssignedField<F, K, P>,
-    z: &AssignedField<F, K, P>,
+    z: Operand<F, K, P>,
     mul_config: &MulConfig,
     range_gadget: &RangeGadget,
-) -> Result<(), Error>
+) -> Result<(AssignedField<F, K, P>, AssignedField<F, K, P>), Error>
 where
     F: CircuitField,
     K: CircuitField,
     P: FieldEmulationParams<F, K>,
     RangeGadget: RangeCheckInstructions<F, AssignedNative<F>>,
 {
-    let mut range_checks = layouter.assign_region(
+    let (range_checks, x, z) = layouter.assign_region(
         || "Foreign multiplication",
         |mut region| {
+            let (mut x, mut z) = (x.clone(), z.clone());
             let mut offset = 0;
 
             let m = &K::modulus().to_bigint().unwrap();
@@ -264,17 +248,8 @@ where
 
             mul_config.q_mul.enable(&mut region, offset)?;
 
-            x.limb_values()
-                .iter()
-                .zip(mul_config.xy_cols.iter())
-                .map(|(cell, &col)| cell.copy_advice(|| "assert_mul x", &mut region, col, offset))
-                .collect::<Result<Vec<_>, _>>()?;
-
-            z.limb_values()
-                .iter()
-                .zip(mul_config.z_cols.iter())
-                .map(|(cell, &col)| cell.copy_advice(|| "assert_mul z", &mut region, col, offset))
-                .collect::<Result<Vec<_>, _>>()?;
+            x.place(&mut region, &mul_config.xy_cols, offset)?;
+            z.place(&mut region, &mul_config.z_cols, offset)?;
 
             offset += 1;
 
@@ -308,11 +283,15 @@ where
             let vs_range_checks =
                 vs_cells.into_iter().zip(vs_max.collect::<Vec<_>>()).collect::<Vec<_>>();
 
-            // Assert all range-checks
-            Ok([u_range_check].into_iter().chain(vs_range_checks))
+            let range_checks = [u_range_check].into_iter().chain(vs_range_checks);
+            Ok((range_checks.collect::<Vec<_>>(), x, z))
         },
     )?;
-    range_checks.try_for_each(|(cell, ubound)| {
-        range_gadget.assert_lower_than_fixed(layouter, &cell, ubound.magnitude())
-    })
+    range_checks.iter().try_for_each(|(cell, ubound)| {
+        range_gadget.assert_lower_than_fixed(layouter, cell, ubound.magnitude())
+    })?;
+    Ok((
+        x.finish(layouter, range_gadget)?,
+        z.finish(layouter, range_gadget)?,
+    ))
 }

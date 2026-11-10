@@ -50,7 +50,7 @@ use num_integer::Integer;
 
 use crate::{
     CircuitField,
-    field::{NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip},
+    field::NativeGadget,
     hash::sha256::{
         types::{
             AssignedMessageWord, AssignedPlain, AssignedPlainSpreaded, AssignedSpreaded,
@@ -132,7 +132,7 @@ pub struct Sha256Config {
 #[derive(Clone, Debug)]
 pub struct Sha256Chip<F: CircuitField> {
     config: Sha256Config,
-    pub(super) native_gadget: NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>,
+    pub(super) native_gadget: NativeGadget<F>,
 }
 
 impl<F: CircuitField> Chip<F> for Sha256Chip<F> {
@@ -154,7 +154,7 @@ impl<F: CircuitField> ComposableChip<F> for Sha256Chip<F> {
         [Column<Fixed>; NB_SHA256_FIXED_COLS],
     );
 
-    type InstructionDeps = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
+    type InstructionDeps = NativeGadget<F>;
 
     fn new(config: &Sha256Config, native_gadget: &Self::InstructionDeps) -> Self {
         Self {
@@ -1668,11 +1668,11 @@ impl<F: CircuitField> CompressionState<F> {
 use midnight_proofs::plonk::Instance;
 
 #[cfg(any(test, feature = "testing"))]
-use crate::{field::decomposition::chip::P2RDecompositionConfig, testing_utils::FromScratch};
+use crate::{field::NativeGadgetConfig, testing_utils::FromScratch};
 
 #[cfg(any(test, feature = "testing"))]
 impl<F: CircuitField> FromScratch<F> for Sha256Chip<F> {
-    type Config = (Sha256Config, P2RDecompositionConfig);
+    type Config = (Sha256Config, NativeGadgetConfig);
 
     fn new_from_scratch(config: &Self::Config) -> Self {
         Self {
@@ -1703,7 +1703,7 @@ impl<F: CircuitField> FromScratch<F> for Sha256Chip<F> {
             fixed_columns.push(meta.fixed_column());
         }
 
-        let core_decomposition_config = NativeGadget::configure_from_scratch(
+        let native_gadget_config = NativeGadget::configure_from_scratch(
             meta,
             advice_columns,
             fixed_columns,
@@ -1726,7 +1726,7 @@ impl<F: CircuitField> FromScratch<F> for Sha256Chip<F> {
             ),
         );
 
-        (sha256_config, core_decomposition_config)
+        (sha256_config, native_gadget_config)
     }
 
     fn load_from_scratch(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {

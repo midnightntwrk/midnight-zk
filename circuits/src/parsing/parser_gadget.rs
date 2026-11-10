@@ -218,7 +218,7 @@ mod tests {
     };
 
     use super::*;
-    use crate::field::{NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip};
+    use crate::field::NativeGadget;
 
     #[derive(Clone, Debug)]
     enum Operation {
@@ -298,7 +298,7 @@ mod tests {
     where
         F: CircuitField + FromUniformBytes<64> + Ord,
     {
-        let circuit = TestCircuit::<F, NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>> {
+        let circuit = TestCircuit::<F, NativeGadget<F>> {
             sequence: sequence.iter().map(|x| F::from(*x as u64)).map(Value::known).collect(),
             idx: Value::known(F::from(idx as u64)),
             expected: expected.iter().map(|x| F::from(*x as u64)).collect(),

@@ -74,7 +74,7 @@ impl Relation for RSASignatureCircuit {
 
     fn used_chips(&self) -> ZkStdLibArch {
         ZkStdLibArch {
-            nr_pow2range_cols: 4,
+            nb_range_check_groups: 2,
             ..ZkStdLibArch::default()
         }
     }
@@ -89,7 +89,7 @@ impl Relation for RSASignatureCircuit {
 }
 
 fn main() {
-    const K: u32 = 12;
+    const K: u32 = 14;
     let relation = RSASignatureCircuit;
     let srs = srs_for_test(&relation, Some(K));
     let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);

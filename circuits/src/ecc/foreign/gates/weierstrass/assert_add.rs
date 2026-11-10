@@ -33,7 +33,7 @@
 use std::ops::Rem;
 
 use midnight_proofs::{
-    circuit::{Chip, Layouter},
+    circuit::{Chip, Layouter, Value},
     plonk::Error,
 };
 use num_bigint::{BigInt as BI, ToBigInt};
@@ -47,29 +47,29 @@ use crate::{
     CircuitField,
     ecc::curves::WeierstrassCurve,
     field::foreign::{
-        FieldChip,
+        FieldChip, Operand,
         params::FieldEmulationParams,
         util::{compute_u, compute_vj, pair_wise_prod, sum_bigints},
     },
     instructions::NativeInstructions,
     types::{AssignedBit, AssignedField, InnerValue},
-    utils::util::bigint_to_fe,
 };
 
-/// If `cond = 1`, asserts that `p + q = r` over the foreign field.
+/// If `cond = 1`, asserts that `p + q = r` over the foreign field, with slope
+/// `lambda`. Returns `r`, assigned.
 ///
 /// If `cond = 0`, asserts nothing.
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
-pub fn assert_add<F, C, P, N>(
+pub(crate) fn assert_add<F, C, P, N>(
     layouter: &mut impl Layouter<F>,
     cond: &AssignedBit<F>,
     p: (&AssignedField<F, C::Base, P>, &AssignedField<F, C::Base, P>),
     q: (&AssignedField<F, C::Base, P>, &AssignedField<F, C::Base, P>),
-    r: (&AssignedField<F, C::Base, P>, &AssignedField<F, C::Base, P>),
-    lambda: &AssignedField<F, C::Base, P>,
+    r: (Operand<F, C::Base, P>, Operand<F, C::Base, P>),
+    lambda: Value<C::Base>,
     base_chip: &FieldChip<F, C::Base, P, N>,
     config: &UnifiedConfig<C>,
-) -> Result<(), Error>
+) -> Result<(AssignedField<F, C::Base, P>, AssignedField<F, C::Base, P>), Error>
 where
     F: CircuitField,
     C: WeierstrassCurve,
@@ -91,9 +91,9 @@ where
     let py = &base_chip.normalize(layouter, py)?;
     let qx = &base_chip.normalize(layouter, qx)?;
     let qy = &base_chip.normalize(layouter, qy)?;
-    let rx = &base_chip.normalize(layouter, rx)?;
-    let ry = &base_chip.normalize(layouter, ry)?;
-    let lambda = &base_chip.normalize(layouter, lambda)?;
+    let rx = rx.normalize(layouter, base_chip)?;
+    let ry = ry.normalize(layouter, base_chip)?;
+    let lambda = Operand::<F, C::Base, P>::New(lambda);
 
     // ---------------------------------------------------------------------------
     // Gate A — slope(p, q, negate=false)
@@ -258,16 +258,17 @@ where
     // ---------------------------------------------------------------------------
     // Lay out the 7-row region.
     // ---------------------------------------------------------------------------
-    let range_checks = layouter.assign_region(
+    let (range_checks, lambda, rx, ry) = layouter.assign_region(
         || "Add",
         |mut region| {
+            let (mut lambda, mut rx, mut ry) = (lambda.clone(), rx.clone(), ry.clone());
             // --- Row 0: gate A prev (A=qx, B=qy) ---
             copy_limbs(&mut region, qx, &fcc.x_cols, 0, "qx")?;
             copy_limbs(&mut region, qy, &fcc.z_cols, 0, "qy")?;
 
             // --- Row 1: gate A cur (C=λ, selector, u_A, vj_A, cond, fixed coeffs) ---
             config.q_unified.enable(&mut region, 1)?;
-            copy_limbs(&mut region, lambda, &fcc.x_cols, 1, "lambda")?;
+            lambda.place(&mut region, &fcc.x_cols, 1)?;
             assign_coeffs(
                 &mut region,
                 1,
@@ -275,20 +276,7 @@ where
                 &config.coeff_bounds,
                 [&a_a, &b_a, &d_a, &e_a, &ca_a, &cd_a, &BI::zero()],
             )?;
-            let u_a_cell = region.assign_advice(
-                || "u_A",
-                fcc.u_col,
-                1,
-                || u_a.clone().map(|u| bigint_to_fe::<F>(&u)),
-            )?;
-            let vs_a_cells = vs_a
-                .iter()
-                .zip(fcc.v_cols.iter())
-                .map(|(vj, &col)| {
-                    let val = vj.clone().map(|v| bigint_to_fe::<F>(&v));
-                    region.assign_advice(|| "vj_A", col, 1, || val)
-                })
-                .collect::<Result<Vec<_>, _>>()?;
+            let checks_a = config.assign_carries(&mut region, 1, &u_a, &vs_a)?;
             cond.0.copy_advice(|| "cond", &mut region, config.cond_col, 1)?;
 
             // --- Row 2: shared (gate A next D,E = gate C prev A,B) ---
@@ -297,7 +285,7 @@ where
 
             // --- Row 3: gate C cur (C=λ, selector, u_C, vj_C, cond, fixed coeffs) ---
             config.q_unified.enable(&mut region, 3)?;
-            copy_limbs(&mut region, lambda, &fcc.x_cols, 3, "lambda")?;
+            lambda.place(&mut region, &fcc.x_cols, 3)?;
             assign_coeffs(
                 &mut region,
                 3,
@@ -305,29 +293,16 @@ where
                 &config.coeff_bounds,
                 [&a_c, &b_c, &d_c, &e_c, &ca_c, &cd_c, &BI::zero()],
             )?;
-            let u_c_cell = region.assign_advice(
-                || "u_C",
-                fcc.u_col,
-                3,
-                || u_c.clone().map(|u| bigint_to_fe::<F>(&u)),
-            )?;
-            let vs_c_cells = vs_c
-                .iter()
-                .zip(fcc.v_cols.iter())
-                .map(|(vj, &col)| {
-                    let val = vj.clone().map(|v| bigint_to_fe::<F>(&v));
-                    region.assign_advice(|| "vj_C", col, 3, || val)
-                })
-                .collect::<Result<Vec<_>, _>>()?;
+            let checks_c = config.assign_carries(&mut region, 3, &u_c, &vs_c)?;
             cond.0.copy_advice(|| "cond", &mut region, config.cond_col, 3)?;
 
             // --- Row 4: gate C next (D=rx, E=ry) ---
-            copy_limbs(&mut region, rx, &fcc.x_cols, 4, "rx")?;
-            copy_limbs(&mut region, ry, &fcc.z_cols, 4, "ry")?;
+            rx.place(&mut region, &fcc.x_cols, 4)?;
+            ry.place(&mut region, &fcc.z_cols, 4)?;
 
             // --- Row 5: gate B prev (A=λ, B=rx) ---
-            copy_limbs(&mut region, lambda, &fcc.x_cols, 5, "lambda")?;
-            copy_limbs(&mut region, rx, &fcc.z_cols, 5, "rx")?;
+            lambda.place(&mut region, &fcc.x_cols, 5)?;
+            rx.place(&mut region, &fcc.z_cols, 5)?;
 
             // --- Row 6: gate B cur (C=unused, selector, u_B, vj_B, cond, fixed coeffs) ---
             config.q_unified.enable(&mut region, 6)?;
@@ -338,50 +313,25 @@ where
                 &config.coeff_bounds,
                 [&a_b, &b_b, &d_b, &e_b, &ca_b, &cd_b, &BI::zero()],
             )?;
-            let u_b_cell = region.assign_advice(
-                || "u_B",
-                fcc.u_col,
-                6,
-                || u_b.clone().map(|u| bigint_to_fe::<F>(&u)),
-            )?;
-            let vs_b_cells = vs_b
-                .iter()
-                .zip(fcc.v_cols.iter())
-                .map(|(vj, &col)| {
-                    let val = vj.clone().map(|v| bigint_to_fe::<F>(&v));
-                    region.assign_advice(|| "vj_B", col, 6, || val)
-                })
-                .collect::<Result<Vec<_>, _>>()?;
+            let checks_b = config.assign_carries(&mut region, 6, &u_b, &vs_b)?;
             cond.0.copy_advice(|| "cond", &mut region, config.cond_col, 6)?;
 
             // --- Row 7: gate B next (D=px, E=qx) ---
             copy_limbs(&mut region, px, &fcc.x_cols, 7, "px")?;
             copy_limbs(&mut region, qx, &fcc.z_cols, 7, "qx")?;
 
-            // Collect range checks for all three gates.
-            let checks_a = std::iter::once((u_a_cell, u_max.clone())).chain(
-                vs_a_cells
-                    .into_iter()
-                    .zip(config.vs_bounds.iter().map(|(_, vj_max)| vj_max.clone())),
-            );
-            let checks_c = std::iter::once((u_c_cell, u_max.clone())).chain(
-                vs_c_cells
-                    .into_iter()
-                    .zip(config.vs_bounds.iter().map(|(_, vj_max)| vj_max.clone())),
-            );
-            let checks_b = std::iter::once((u_b_cell, u_max.clone())).chain(
-                vs_b_cells
-                    .into_iter()
-                    .zip(config.vs_bounds.iter().map(|(_, vj_max)| vj_max.clone())),
-            );
-
-            Ok(checks_a.chain(checks_c).chain(checks_b).collect::<Vec<_>>())
+            let checks = [checks_a, checks_c, checks_b].concat();
+            Ok((checks, lambda, rx, ry))
         },
     )?;
 
+    let range_gadget = &base_chip.native_gadget;
     range_checks.iter().try_for_each(|(cell, ubound)| {
-        base_chip
-            .native_gadget
-            .assert_lower_than_fixed(layouter, cell, ubound.magnitude())
-    })
+        range_gadget.assert_lower_than_fixed(layouter, cell, ubound.magnitude())
+    })?;
+    let _ = lambda.finish(layouter, range_gadget)?;
+    Ok((
+        rx.finish(layouter, range_gadget)?,
+        ry.finish(layouter, range_gadget)?,
+    ))
 }

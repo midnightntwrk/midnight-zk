@@ -270,7 +270,7 @@ mod test {
 
     use super::*;
     use crate::{
-        field::{NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip},
+        field::NativeGadget,
         hash::poseidon::{PoseidonChip, constants::PoseidonField},
         map::cpu::MapMt,
         utils::circuit_modeling::{circuit_to_json, cost_measure_end, cost_measure_start},
@@ -439,9 +439,7 @@ mod test {
     }
 
     fn run_poseidon_test<F: PoseidonField + ff::FromUniformBytes<64> + Ord>(cost_model: bool) {
-        test_map::<F, NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>, PoseidonChip<F>>(
-            cost_model,
-        )
+        test_map::<F, NativeGadget<F>, PoseidonChip<F>>(cost_model)
     }
 
     #[test]

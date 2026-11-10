@@ -1020,13 +1020,13 @@ mod tests {
 
     use super::*;
     use crate::{
-        field::{NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip},
+        field::NativeGadget,
         instructions::{assertions, control_flow, equality, zero},
         testing_utils::FromScratch,
     };
 
     // Aliases for readability.
-    type NG<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
+    type NG<F> = NativeGadget<F>;
     type BG<F> = BigUintGadget<F, NG<F>>;
 
     macro_rules! test_field {
@@ -1147,7 +1147,7 @@ mod tests {
     where
         F: CircuitField + FromUniformBytes<64> + Ord,
     {
-        let circuit = TestCircuit::<F, NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>> {
+        let circuit = TestCircuit::<F, NativeGadget<F>> {
             x: Value::known(x.clone()),
             y: Value::known(y.clone()),
             expected: expected.clone(),

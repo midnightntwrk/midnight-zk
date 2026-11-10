@@ -58,7 +58,7 @@ use crate::{
     field::{
         AssignedNative,
         foreign::{
-            field_chip::{FieldChip, FieldChipConfig},
+            field_chip::{FieldChip, FieldChipConfig, Operand},
             params::FieldEmulationParams,
         },
     },
@@ -137,19 +137,12 @@ where
         base_field_config: &FieldChipConfig,
         advice_columns: &[Column<Advice>],
         fixed_columns: &[Column<Fixed>],
-        nb_parallel_range_checks: usize,
-        max_bit_len: u32,
     ) -> ForeignEdwardsEccConfig<C> {
         assert!(C::A.legendre() == 1);
         assert!(C::D.legendre() == -1);
 
-        let addition_config = AdditionConfig::<C>::configure::<F, B>(
-            meta,
-            base_field_config,
-            fixed_columns[0],
-            nb_parallel_range_checks,
-            max_bit_len,
-        );
+        let addition_config =
+            AdditionConfig::<C>::configure::<F, B>(meta, base_field_config, fixed_columns[0]);
 
         let (q_multi_select, tag_col_multi_select) =
             configure_multi_select_lookup(meta, advice_columns, base_field_config);
@@ -499,7 +492,9 @@ where
         let base_chip = self.base_field_chip();
 
         let r_value = p.value().map(|pv| pv + q_val);
-        let r = self.assign_point_unchecked(layouter, r_value)?;
+        let (rx, ry) = r_value
+            .map(|r| r.into().coordinates().expect("Edwards coordinates cannot fail"))
+            .unzip();
 
         let px_qx = base_chip.mul_by_constant(layouter, &p.x, qx)?;
         let py_qy = base_chip.mul_by_constant(layouter, &p.y, qy)?;
@@ -509,9 +504,9 @@ where
         let d_px_py_qx_qy = base_chip.mul(layouter, &px_qx, &py_qy, Some(C::D))?;
 
         // Rx * (1 + d * Px * Py * Qx * Qy) = (Px * Qy + Py * Qx)
-        addition::assert_addition_coordinate(
+        let x = addition::assert_addition_coordinate(
             layouter,
-            &r.x,
+            Operand::New(rx),
             &px_qy,
             &py_qx,
             &d_px_py_qx_qy,
@@ -521,9 +516,9 @@ where
         )?;
 
         // Ry * (1 - d * Px * Py * Qx * Qy) = (Py * Qy - a * Px * Qx)
-        addition::assert_addition_coordinate(
+        let y = addition::assert_addition_coordinate(
             layouter,
-            &r.y,
+            Operand::New(ry),
             &py_qy,
             &neg_a_px_qx,
             &d_px_py_qx_qy,
@@ -534,8 +529,8 @@ where
 
         Ok(AssignedForeignEdwardsPoint {
             point: r_value,
-            x: r.x,
-            y: r.y,
+            x,
+            y,
         })
     }
 }
@@ -846,7 +841,9 @@ where
         let base_chip = self.base_field_chip();
 
         let r_value = p.value().zip(q.value()).map(|(p, q)| p + q);
-        let r = self.assign_point_unchecked(layouter, r_value)?;
+        let (rx, ry) = r_value
+            .map(|r| r.into().coordinates().expect("Edwards coordinates cannot fail"))
+            .unzip();
 
         let px_qx = base_chip.mul(layouter, &p.x, &q.x, None)?;
         let py_qy = base_chip.mul(layouter, &p.y, &q.y, None)?;
@@ -857,9 +854,9 @@ where
 
         // Constraint for Rx coordinate
         // Rx * (1 + d * Px * Py * Qx * Qy) = (Px * Qy + Py * Qx)
-        addition::assert_addition_coordinate(
+        let x = addition::assert_addition_coordinate(
             layouter,
-            &r.x,
+            Operand::New(rx),
             &px_qy,
             &py_qx,
             &d_px_py_qx_qy,
@@ -870,9 +867,9 @@ where
 
         // Constraint for Ry coordinate
         // Ry * (1 - d * Px * Py * Qx * Qy) = (Py * Qy - a * Px * Qx)
-        addition::assert_addition_coordinate(
+        let y = addition::assert_addition_coordinate(
             layouter,
-            &r.y,
+            Operand::New(ry),
             &py_qy,
             &neg_a_px_qx,
             &d_px_py_qx_qy,
@@ -883,8 +880,8 @@ where
 
         Ok(AssignedForeignEdwardsPoint {
             point: r_value,
-            x: r.x,
-            y: r.y,
+            x,
+            y,
         })
     }
 
@@ -917,7 +914,9 @@ where
         let base_chip = self.base_field_chip();
 
         let r_value = p.value().map(|p| p + p);
-        let r = self.assign_point_unchecked(layouter, r_value)?;
+        let (rx, ry) = r_value
+            .map(|r| r.into().coordinates().expect("Edwards coordinates cannot fail"))
+            .unzip();
 
         let px_sq = base_chip.mul(layouter, &p.x, &p.x, None)?;
         let py_sq = base_chip.mul(layouter, &p.y, &p.y, None)?;
@@ -933,9 +932,9 @@ where
         )?;
 
         // Rx * (1 + w) = 2 * Px * Py
-        addition::assert_addition_coordinate(
+        let x = addition::assert_addition_coordinate(
             layouter,
-            &r.x,
+            Operand::New(rx),
             &px_py,
             &px_py,
             &w,
@@ -945,9 +944,9 @@ where
         )?;
 
         // Ry * (1 - w) = Py^2 - a * Px^2
-        addition::assert_addition_coordinate(
+        let y = addition::assert_addition_coordinate(
             layouter,
-            &r.y,
+            Operand::New(ry),
             &py_sq,
             &neg_a_px_sq,
             &w,
@@ -958,8 +957,8 @@ where
 
         Ok(AssignedForeignEdwardsPoint {
             point: r_value,
-            x: r.x,
-            y: r.y,
+            x,
+            y,
         })
     }
 
@@ -1482,21 +1481,13 @@ where
         while advice_columns.len() < nb_advice_cols {
             advice_columns.push(meta.advice_column());
         }
-        let nb_parallel_range_checks = 4;
-        let max_bit_len = 8;
-        let base_field_config = FieldChip::<F, C::Base, B, N>::configure(
-            meta,
-            &advice_columns[..nb_advice_cols],
-            nb_parallel_range_checks,
-            max_bit_len,
-        );
+        let base_field_config =
+            FieldChip::<F, C::Base, B, N>::configure(meta, &advice_columns[..nb_advice_cols]);
         let ff_ecc_config = ForeignEdwardsEccChip::<F, C, B, S, N>::configure(
             meta,
             &base_field_config,
             advice_columns,
             fixed_columns,
-            nb_parallel_range_checks,
-            max_bit_len,
         );
         ForeignEdwardsEccTestConfig {
             native_gadget_config,
@@ -1518,15 +1509,12 @@ mod tests {
     use super::*;
     use crate::{
         ecc::curves::CircuitCurve,
-        field::{
-            NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip,
-            foreign::params::MultiEmulationParams,
-        },
+        field::{NativeGadget, foreign::params::MultiEmulationParams},
         instructions::{assertions, control_flow, ecc, equality, public_input, zero},
     };
 
     type F = BlsScalar;
-    type Native<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
+    type Native<F> = NativeGadget<F>;
     type EmulatedField<F, C> = FieldChip<F, <C as Group>::Scalar, MultiEmulationParams, Native<F>>;
 
     macro_rules! test_generic {

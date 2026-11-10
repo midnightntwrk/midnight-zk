@@ -112,7 +112,7 @@ mod tests {
                 AssignedByte<Scalar>,
                 [AssignedByte<Scalar>; 32],
                 Sha256Chip<Scalar>,
-                NativeGadget<Scalar, _, _>,
+                NativeGadget<Scalar>,
             >(cost_model, "SHA256", input_size)
         }
 

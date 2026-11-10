@@ -16,10 +16,7 @@ use midnight_proofs::{circuit::Layouter, plonk::Error};
 use super::{Sha256Chip, sha256_chip::IV};
 use crate::{
     CircuitField,
-    field::{
-        AssignedBounded, AssignedNative, NativeChip, NativeGadget,
-        decomposition::chip::P2RDecompositionChip,
-    },
+    field::{AssignedBounded, AssignedNative, NativeGadget},
     hash::sha256::{
         sha256_chip::ROUND_CONSTANTS,
         types::{AssignedPlain, CompressionState},
@@ -49,7 +46,7 @@ impl<F: CircuitField> VarLenSha256Gadget<F> {
 }
 
 impl<F: CircuitField> VarLenSha256Gadget<F> {
-    fn ng(&self) -> &NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>> {
+    fn ng(&self) -> &NativeGadget<F> {
         &self.sha256chip.native_gadget
     }
 }

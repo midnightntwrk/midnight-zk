@@ -23,7 +23,7 @@ use midnight_proofs::{
 };
 
 use crate::{
-    field::{NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip},
+    field::NativeGadget,
     hash::poseidon::PoseidonChip,
     instructions::hash::HashCPU,
     mmr::{
@@ -36,7 +36,7 @@ use crate::{
 const CAPACITY: usize = 5;
 type F = midnight_curves::Fq;
 type H = PoseidonChip<F>;
-type Ng = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
+type Ng = NativeGadget<F>;
 
 struct PrefixCircuit {
     small: Value<MmrState<F, CAPACITY>>,

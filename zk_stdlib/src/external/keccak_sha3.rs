@@ -23,9 +23,7 @@ use midnight_circuits::{
     types::{AssignedByte, InnerValue},
 };
 #[cfg(test)]
-use midnight_circuits::{
-    field::decomposition::chip::P2RDecompositionConfig, testing_utils::FromScratch,
-};
+use midnight_circuits::{field::NativeGadgetConfig, testing_utils::FromScratch};
 #[cfg(test)]
 use midnight_proofs::plonk::Instance;
 use midnight_proofs::{
@@ -147,7 +145,7 @@ impl<F: CircuitField> KeccakSha3Wrapper<F> {
 
 #[cfg(test)]
 impl<F: CircuitField> FromScratch<F> for KeccakSha3Wrapper<F> {
-    type Config = (PackedConfig, P2RDecompositionConfig);
+    type Config = (PackedConfig, NativeGadgetConfig);
 
     fn new_from_scratch(config: &Self::Config) -> Self {
         let native_gadget = NG::new_from_scratch(&config.1);
@@ -304,7 +302,7 @@ mod test {
                 AssignedByte<Fq>,
                 [AssignedByte<Fq>; 32],
                 Keccak256<Fq>,
-                NativeGadget<Fq, _, _>,
+                NativeGadget<Fq>,
             >(cost_model, "Keccak_256", input_size);
         }
         const SHA3_256_RATE: usize = 136;
@@ -333,13 +331,9 @@ mod test {
     #[test]
     fn test_sha3_preimage() {
         fn test_wrapper(input_size: usize, cost_model: bool) {
-            test_hash::<
-                Fq,
-                AssignedByte<Fq>,
-                [AssignedByte<Fq>; 32],
-                Sha3_256<Fq>,
-                NativeGadget<Fq, _, _>,
-            >(cost_model, "Sha3_256", input_size);
+            test_hash::<Fq, AssignedByte<Fq>, [AssignedByte<Fq>; 32], Sha3_256<Fq>, NativeGadget<Fq>>(
+                cost_model, "Sha3_256", input_size,
+            );
         }
         const SHA3_256_RATE: usize = 136;
 

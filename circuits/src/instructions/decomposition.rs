@@ -20,8 +20,6 @@
 //! that implements [InnerValue](crate::types::InnerValue)) that is being
 //! decomposed/composed.
 
-use std::fmt::Debug;
-
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use crate::{
@@ -285,17 +283,6 @@ where
         let bits = self.assigned_to_le_bits(layouter, x, None, true)?;
         Ok(bits[0].clone())
     }
-}
-
-/// Pow2Range range-check instructions.
-pub trait Pow2RangeInstructions<F: CircuitField>: Debug + Clone {
-    /// Asserts that all the given assigned values in the range `[0, 2^n)`.
-    fn assert_values_lower_than_2_pow_n(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        values: &[AssignedNative<F>],
-        n: usize,
-    ) -> Result<(), Error>;
 }
 
 #[cfg(test)]

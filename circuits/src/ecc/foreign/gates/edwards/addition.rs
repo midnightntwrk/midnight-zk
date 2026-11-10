@@ -25,7 +25,7 @@ use crate::{
     CircuitField,
     ecc::curves::CircuitCurve,
     field::foreign::{
-        FieldChip, FieldChipConfig,
+        FieldChip, FieldChipConfig, Operand,
         params::FieldEmulationParams,
         util::{
             compute_u, compute_vj, get_advice_vec, get_identity_auxiliary_bounds, pair_wise_prod,
@@ -56,10 +56,7 @@ impl<C: CircuitCurve> AdditionConfig<C> {
     /// are parameters involved in the identities enforced by the ModArith
     /// custom gate. We refer to the implementation of this function for
     /// explanations on what such values represent.
-    pub fn bounds<F, P>(
-        nb_parallel_range_checks: usize,
-        max_bit_len: u32,
-    ) -> ((BI, BI), Vec<(BI, BI)>)
+    pub fn bounds<F, P>() -> ((BI, BI), Vec<(BI, BI)>)
     where
         F: CircuitField,
         P: FieldEmulationParams<F, C::Base>,
@@ -144,8 +141,6 @@ impl<C: CircuitCurve> AdditionConfig<C> {
             &moduli,
             expr_bounds,
             &expr_mj_bounds,
-            nb_parallel_range_checks,
-            max_bit_len,
         )
     }
 
@@ -154,8 +149,6 @@ impl<C: CircuitCurve> AdditionConfig<C> {
         meta: &mut ConstraintSystem<F>,
         field_chip_config: &FieldChipConfig,
         sign_col: Column<Fixed>,
-        nb_parallel_range_checks: usize,
-        max_bit_len: u32,
     ) -> AdditionConfig<C>
     where
         F: CircuitField,
@@ -166,8 +159,7 @@ impl<C: CircuitCurve> AdditionConfig<C> {
         let bs = P::base_powers();
         let bs_sqrd = P::double_base_powers();
 
-        let ((k_min, u_max), vs_bounds) =
-            Self::bounds::<F, P>(nb_parallel_range_checks, max_bit_len);
+        let ((k_min, u_max), vs_bounds) = Self::bounds::<F, P>();
 
         let q = meta.selector();
 
@@ -239,7 +231,8 @@ impl<C: CircuitCurve> AdditionConfig<C> {
     }
 }
 
-/// Asserts the addition identity `x * (1 ± w) = y + z (mod m)`.
+/// Asserts the addition identity `x * (1 ± w) = y + z (mod m)`. Returns `x`,
+/// assigned.
 ///
 /// When `negate_w` is `false`, asserts `x * (1 + w) = y + z`.
 /// When `negate_w` is `true`,  asserts `x * (1 - w) = y + z`.
@@ -256,16 +249,16 @@ impl<C: CircuitCurve> AdditionConfig<C> {
 // and
 // `Ry * (1 - d * Px * Py * Qx * Qy) = Py * Qy - a * Px * Qx`.
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
-pub fn assert_addition_coordinate<F, C, P, N>(
+pub(crate) fn assert_addition_coordinate<F, C, P, N>(
     layouter: &mut impl Layouter<F>,
-    x: &AssignedField<F, C::Base, P>,
+    x: Operand<F, C::Base, P>,
     y: &AssignedField<F, C::Base, P>,
     z: &AssignedField<F, C::Base, P>,
     w: &AssignedField<F, C::Base, P>,
     negate_w: bool,
     base_chip: &FieldChip<F, C::Base, P, N>,
     addition_config: &AdditionConfig<C>,
-) -> Result<(), Error>
+) -> Result<AssignedField<F, C::Base, P>, Error>
 where
     F: CircuitField,
     C: CircuitCurve,
@@ -278,7 +271,7 @@ where
     let bs_sqrd = P::double_base_powers();
     let field_chip_config = base_chip.config();
 
-    let x_norm = &base_chip.normalize(layouter, x)?;
+    let x_norm = x.normalize(layouter, base_chip)?;
     let y_norm = &base_chip.normalize(layouter, y)?;
     let z_norm = &base_chip.normalize(layouter, z)?;
     let w_norm = &base_chip.normalize(layouter, w)?;
@@ -287,10 +280,11 @@ where
     let sx_coeff = BI::one() + &sign; // 2 or 0
     let const_offset = &sign - BI::one(); // 0 or -2
 
-    let range_checks = layouter.assign_region(
+    let (range_checks, x) = layouter.assign_region(
         || "Foreign-Edwards addition",
         |mut region| {
-            let xs_val = x_norm.bigint_limbs();
+            let mut x = x_norm.clone();
+            let xs_val = x.bigint_limbs();
             let ys_val = y_norm.bigint_limbs();
             let zs_val = z_norm.bigint_limbs();
             let ws_val = w_norm.bigint_limbs();
@@ -329,7 +323,6 @@ where
                     })
                 });
 
-            let x_limbs = x_norm.limb_values();
             let y_limbs = y_norm.limb_values();
             let z_limbs = z_norm.limb_values();
             let w_limbs = w_norm.limb_values();
@@ -342,13 +335,7 @@ where
             let mut offset = 0;
 
             // 1st row
-            x_limbs
-                .iter()
-                .zip(field_chip_config.x_cols.iter())
-                .map(|(cell, &col)| {
-                    cell.copy_advice(|| "Edwards.addition x", &mut region, col, offset)
-                })
-                .collect::<Result<Vec<_>, _>>()?;
+            x.place(&mut region, &field_chip_config.x_cols, offset)?;
 
             w_limbs
                 .iter()
@@ -413,14 +400,14 @@ where
             // Every vj_cell will be range-checked in [0, vj_max)
             let vs_range_checks = vs_cells.into_iter().zip(vs_max);
 
-            // Assert all range-checks
-            Ok([u_range_check].into_iter().chain(vs_range_checks).collect::<Vec<_>>())
+            let range_checks = [u_range_check].into_iter().chain(vs_range_checks);
+            Ok((range_checks.collect::<Vec<_>>(), x))
         },
     )?;
 
+    let range_gadget = &base_chip.native_gadget;
     range_checks.iter().try_for_each(|(cell, ubound)| {
-        base_chip
-            .native_gadget
-            .assert_lower_than_fixed(layouter, cell, ubound.magnitude())
-    })
+        range_gadget.assert_lower_than_fixed(layouter, cell, ubound.magnitude())
+    })?;
+    x.finish(layouter, range_gadget)
 }

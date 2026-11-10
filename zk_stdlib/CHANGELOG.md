@@ -21,6 +21,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * `MidnightPCS`, the catalog of the polynomial commitment schemes supported by zk_stdlib (KZG and fflonk over KZG), with `srs_k`, the size of the SRS for a given circuit size [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
 
 ### Fixed
+* `optimal_k` returns the smallest `k` for which the circuit, with its range-check table of `max_bit_len = k - 1`, fits in `2^k` rows, instead of a size computed with a smaller table [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 * Fix cost model proof size check to account for committed instance columns [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 * `MidnightVK::read` and `MidnightPK::read` reject a `k` outside `1..=F::S` instead of underflowing on `k = 0` [#581](https://github.com/midnightntwrk/midnight-zk/pull/581)
 
@@ -54,6 +55,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [2.4.0]
 ### Changed
+* BREAKING: `ZkStdLibArch::nr_pow2range_cols` is replaced by `nb_range_check_groups`, the number of groups of the range-check chip, of 5 advice columns each, at the same position in the serialized architecture; `ZkStdLib::new` no longer takes `max_bit_len`, which the configuration carries. This changes the verifying keys of every circuit [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 * Bump `midnight-circuits` to 7.3.0 [#614](https://github.com/midnightntwrk/midnight-zk/pull/614)
 * `assign_as_public_input` always performs the in-circuit checks of `assign` (affects the VKs of relations with byte, Jubjub point or BLS12-381 point public inputs) [#598](https://github.com/midnightntwrk/midnight-zk/pull/598)
 * `DivisionInstructions::div_rem` and `rem` panic when `divisor * (dividend_bound / divisor + 1)` exceeds the field modulus, in particular when no bound is given; `DivisionInstructions` is deprecated [#606](https://github.com/midnightntwrk/midnight-zk/pull/606)

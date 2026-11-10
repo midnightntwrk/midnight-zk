@@ -14,17 +14,16 @@
 //! A gadget that implement all basic basic operations in the native field, i.e.
 //! basic field operations, decompositions and comparisons
 
-use std::{cell::RefCell, cmp::min, collections::HashMap, marker::PhantomData, rc::Rc};
+use std::{cell::RefCell, cmp::min, collections::HashMap, rc::Rc};
 
 use midnight_proofs::{
-    circuit::{Layouter, Value},
+    circuit::{Chip, Layouter, Value},
     plonk::Error,
 };
 use num_bigint::BigUint;
 use num_traits::Zero;
 #[cfg(any(test, feature = "testing"))]
 use {
-    crate::field::decomposition::{chip::P2RDecompositionConfig, pow2range::Pow2RangeChip},
     crate::field::native::NB_EXTRA_ARITH_FIXED_COLS,
     crate::testing_utils::{FromScratch, Sampleable},
     crate::utils::ComposableChip,
@@ -35,8 +34,8 @@ use {
 use crate::{
     CircuitField,
     field::{
-        NativeChip,
-        decomposition::{chip::P2RDecompositionChip, instructions::CoreDecompositionInstructions},
+        NativeChip, NativeConfig,
+        range_check::{RangeCheckChip, RangeCheckConfig},
     },
     instructions::{
         ArithInstructions, AssertionInstructions, AssignmentInstructions, BinaryInstructions,
@@ -51,6 +50,15 @@ use crate::{
     utils::util::big_to_fe,
 };
 
+/// The configuration of the chips of a [NativeGadget].
+#[derive(Clone, Debug)]
+pub struct NativeGadgetConfig {
+    /// The configuration of the native arithmetic chip.
+    pub native_config: NativeConfig,
+    /// The configuration of the range-check chip.
+    pub range_check_config: RangeCheckConfig,
+}
+
 #[derive(Debug, Clone)]
 /// A gadget that implements all basic operations on the Native field:
 /// - Assignments
@@ -62,33 +70,89 @@ use crate::{
 /// - Conversions
 /// - Decomposition
 /// - Equality
-pub struct NativeGadget<F, CoreDecomposition, NativeArith>
-where
-    F: CircuitField,
-    CoreDecomposition: CoreDecompositionInstructions<F>,
-    NativeArith: ArithInstructions<F, AssignedNative<F>>,
-{
-    core_decomposition_chip: CoreDecomposition,
+pub struct NativeGadget<F: CircuitField> {
     /// The underlying native field arithmetic chip.
-    pub native_chip: NativeArith,
+    pub native_chip: NativeChip<F>,
+    range_check_chip: RangeCheckChip<F>,
     constrained_cells: Rc<RefCell<HashMap<AssignedNative<F>, BigUint>>>,
-    _marker: PhantomData<F>,
 }
 
-impl<F, CoreDecomposition, NativeArith> NativeGadget<F, CoreDecomposition, NativeArith>
-where
-    F: CircuitField,
-    CoreDecomposition: CoreDecompositionInstructions<F>,
-    NativeArith: ArithInstructions<F, AssignedNative<F>>,
-{
+impl<F: CircuitField> NativeGadget<F> {
     /// Create a new gadget.
-    pub fn new(core_decomposition_chip: CoreDecomposition, native_chip: NativeArith) -> Self {
+    pub fn new(native_chip: NativeChip<F>, range_check_chip: RangeCheckChip<F>) -> Self {
         Self {
-            core_decomposition_chip,
             native_chip,
+            range_check_chip,
             constrained_cells: Rc::new(RefCell::new(HashMap::new())),
-            _marker: PhantomData,
         }
+    }
+
+    /// Asserts that `x < 2^n`: through the range-check chip if it takes
+    /// assertions of `n` bits, and otherwise on the limbs of `x` of sizes it
+    /// takes.
+    fn assert_lower_than_pow2(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &AssignedNative<F>,
+        n: usize,
+    ) -> Result<(), Error> {
+        let chip = &self.range_check_chip;
+        if chip.fits(n) {
+            return chip.assert_lower_than_pow2(layouter, x, n);
+        }
+        let t = chip.max_bit_len();
+        let (mut sizes, mut rest) = (vec![], n);
+        while rest > 0 {
+            let size = match rest {
+                _ if chip.fits(rest) => rest,
+                _ if rest < 4 * t => t,
+                _ => 4 * t * (rest / (4 * t)),
+            };
+            sizes.push(size);
+            rest -= size;
+        }
+        self.decompose(layouter, x, &sizes).map(|_| ())
+    }
+
+    /// Decomposes `x` in range-checked limbs of the given bit sizes, in
+    /// little-endian order: `x = sum_i 2^(s_0 + ... + s_(i-1)) * limb_i`.
+    fn decompose(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &AssignedNative<F>,
+        sizes: &[usize],
+    ) -> Result<Vec<AssignedNative<F>>, Error> {
+        let limbs = layouter.assign_region(
+            || "decompose",
+            |mut region| {
+                let mut shift = 0;
+                let terms = sizes
+                    .iter()
+                    .map(|&size| {
+                        let limb = x.value().map(|x| {
+                            big_to_fe((x.to_biguint() >> shift) % (BigUint::from(1u8) << size))
+                        });
+                        shift += size;
+                        (big_to_fe(BigUint::from(1u8) << (shift - size)), limb)
+                    })
+                    .collect::<Vec<_>>();
+                let nb_cols = self.native_chip.config().value_cols.len() - 1;
+                let (limbs, y) = self.native_chip.assign_linear_combination_aux(
+                    &mut region,
+                    &terms,
+                    F::ZERO,
+                    &x.value().copied(),
+                    nb_cols,
+                    &mut 0,
+                )?;
+                region.constrain_equal(x.cell(), y.cell())?;
+                Ok(limbs)
+            },
+        )?;
+        for (limb, &size) in limbs.iter().zip(sizes) {
+            self.assert_lower_than_pow2(layouter, limb, size)?;
+        }
+        Ok(limbs)
     }
 
     /// Updates the (strict) upper-bound of the given assigned cell to the
@@ -238,19 +302,7 @@ impl<F: CircuitField> InnerValue for AssignedBounded<F> {
     }
 }
 
-impl<F, CoreDecomposition, NativeArith> RangeCheckInstructions<F, AssignedNative<F>>
-    for NativeGadget<F, CoreDecomposition, NativeArith>
-where
-    F: CircuitField,
-    CoreDecomposition: CoreDecompositionInstructions<F>,
-    NativeArith: ArithInstructions<F, AssignedNative<F>>
-        + AssignmentInstructions<F, AssignedBit<F>>
-        + ConversionInstructions<F, AssignedBit<F>, AssignedNative<F>>
-        + UnsafeConversionInstructions<F, AssignedNative<F>, AssignedBit<F>>
-        + BinaryInstructions<F>
-        + EqualityInstructions<F, AssignedNative<F>>
-        + ControlFlowInstructions<F, AssignedNative<F>>,
-{
+impl<F: CircuitField> RangeCheckInstructions<F, AssignedNative<F>> for NativeGadget<F> {
     fn assign_lower_than_fixed(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -261,11 +313,6 @@ where
             return self.assign_fixed(layouter, F::ZERO);
         }
 
-        // compute largest k such that 2^k <= bound
-        let k = (bound.bits() - 1) as usize;
-        if *bound == BigUint::from(1u8) << k {
-            return self.core_decomposition_chip.assign_less_than_pow2(layouter, value, k);
-        }
         let x = self.assign(layouter, value)?;
         self.assert_lower_than_fixed(layouter, &x, bound)?;
         Ok(x)
@@ -290,7 +337,7 @@ where
 
         // if the bound is a power of 2, the check is easier
         if two_pow_k == *bound {
-            return self.core_decomposition_chip.assert_less_than_pow2(layouter, x, k);
+            return self.assert_lower_than_pow2(layouter, x, k);
         }
 
         // b := x in [0, 2^k)
@@ -302,23 +349,11 @@ where
         // x in [0, bound) <=> x in [0, 2^k) or (x - diff) in [0, 2^k)
         let shifted_x = self.add_constant(layouter, x, -diff)?;
         let y = self.select(layouter, &b, x, &shifted_x)?;
-        self.core_decomposition_chip.assert_less_than_pow2(layouter, &y, k)
+        self.assert_lower_than_pow2(layouter, &y, k)
     }
 }
 
-impl<F, CoreDecomposition, NativeArith> ComparisonInstructions<F, AssignedNative<F>>
-    for NativeGadget<F, CoreDecomposition, NativeArith>
-where
-    F: CircuitField,
-    CoreDecomposition: CoreDecompositionInstructions<F>,
-    NativeArith: ArithInstructions<F, AssignedNative<F>>
-        + AssignmentInstructions<F, AssignedBit<F>>
-        + ConversionInstructions<F, AssignedBit<F>, AssignedNative<F>>
-        + UnsafeConversionInstructions<F, AssignedNative<F>, AssignedBit<F>>
-        + BinaryInstructions<F>
-        + EqualityInstructions<F, AssignedNative<F>>
-        + ControlFlowInstructions<F, AssignedNative<F>>,
-{
+impl<F: CircuitField> ComparisonInstructions<F, AssignedNative<F>> for NativeGadget<F> {
     // This constant must not exceed F::NUM_BITS - 2. This restriction derives from
     // the assumption that the following condition holds true:
     //
@@ -407,8 +442,7 @@ where
         ];
         let z = self.linear_combination(layouter, terms.as_slice(), -y)?;
 
-        self.core_decomposition_chip
-            .assert_less_than_pow2(layouter, &z, x.bound() as usize)?;
+        self.assert_lower_than_pow2(layouter, &z, x.bound() as usize)?;
         Ok(assigned_result)
     }
 
@@ -452,8 +486,7 @@ where
         let z = self.linear_combination(layouter, terms.as_slice(), F::ZERO)?;
 
         let max_bound = x.bound().max(y.bound());
-        self.core_decomposition_chip
-            .assert_less_than_pow2(layouter, &z, max_bound as usize)?;
+        self.assert_lower_than_pow2(layouter, &z, max_bound as usize)?;
         Ok(assigned_result)
     }
 
@@ -485,30 +518,10 @@ where
     }
 }
 
-impl<F, CoreDecomposition, NativeArith> DivisionInstructions<F, AssignedNative<F>>
-    for NativeGadget<F, CoreDecomposition, NativeArith>
-where
-    F: CircuitField,
-    CoreDecomposition: CoreDecompositionInstructions<F>,
-    NativeArith: ArithInstructions<F, AssignedNative<F>>
-        + AssignmentInstructions<F, AssignedBit<F>>
-        + ConversionInstructions<F, AssignedBit<F>, AssignedNative<F>>
-        + UnsafeConversionInstructions<F, AssignedNative<F>, AssignedBit<F>>
-        + BinaryInstructions<F>
-        + EqualityInstructions<F, AssignedNative<F>>
-        + ControlFlowInstructions<F, AssignedNative<F>>,
-{
-}
+impl<F: CircuitField> DivisionInstructions<F, AssignedNative<F>> for NativeGadget<F> {}
 
 /// Instructions for constraining bytes as public inputs.
-impl<F, CoreDecomposition, NativeArith> PublicInputInstructions<F, AssignedByte<F>>
-    for NativeGadget<F, CoreDecomposition, NativeArith>
-where
-    F: CircuitField,
-    CoreDecomposition: CoreDecompositionInstructions<F>,
-    NativeArith:
-        PublicInputInstructions<F, AssignedNative<F>> + ArithInstructions<F, AssignedNative<F>>,
-{
+impl<F: CircuitField> PublicInputInstructions<F, AssignedByte<F>> for NativeGadget<F> {
     fn as_public_input(
         &self,
         _layouter: &mut impl Layouter<F>,
@@ -527,12 +540,9 @@ where
     }
 }
 
-impl<F, CD, NA, Assigned> CommittedInstanceInstructions<F, Assigned> for NativeGadget<F, CD, NA>
+impl<F, Assigned> CommittedInstanceInstructions<F, Assigned> for NativeGadget<F>
 where
     F: CircuitField,
-    CD: CoreDecompositionInstructions<F>,
-    NA: CommittedInstanceInstructions<F, AssignedNative<F>>
-        + ArithInstructions<F, AssignedNative<F>>,
     Assigned: Instantiable<F> + Into<AssignedNative<F>>,
 {
     fn constrain_as_committed_public_input(
@@ -547,21 +557,15 @@ where
 }
 
 /// The set of circuit instructions for assignment of bytes.
-impl<F, CoreDecomposition, NativeArith> AssignmentInstructions<F, AssignedByte<F>>
-    for NativeGadget<F, CoreDecomposition, NativeArith>
-where
-    F: CircuitField,
-    CoreDecomposition: CoreDecompositionInstructions<F>,
-    NativeArith: ArithInstructions<F, AssignedNative<F>>,
-{
+impl<F: CircuitField> AssignmentInstructions<F, AssignedByte<F>> for NativeGadget<F> {
     fn assign(
         &self,
         layouter: &mut impl Layouter<F>,
         byte: Value<u8>,
     ) -> Result<AssignedByte<F>, Error> {
         let byte_as_f = byte.map(|b| F::from(b as u64));
-        let assigned =
-            self.core_decomposition_chip.assign_less_than_pow2(layouter, byte_as_f, 8)?;
+        let assigned = self.native_chip.assign(layouter, byte_as_f)?;
+        self.assert_lower_than_pow2(layouter, &assigned, 8)?;
         Ok(AssignedByte(assigned))
     }
 
@@ -581,22 +585,19 @@ where
     ) -> Result<Vec<AssignedByte<F>>, Error> {
         let values_as_f: Vec<_> = values.iter().map(|v| v.map(|b| F::from(b as u64))).collect();
 
-        self.core_decomposition_chip
-            .assign_many_small(layouter, &values_as_f, 8)?
+        let assigned = self.native_chip.assign_many(layouter, &values_as_f)?;
+        assigned
             .iter()
-            .map(|assigned_native| self.convert_unsafe(layouter, assigned_native))
+            .map(|x| {
+                self.assert_lower_than_pow2(layouter, x, 8)?;
+                self.convert_unsafe(layouter, x)
+            })
             .collect()
     }
 }
 
 /// The set of AssertionInstructions for bytes.
-impl<F, CoreDecomposition, NativeArith> AssertionInstructions<F, AssignedByte<F>>
-    for NativeGadget<F, CoreDecomposition, NativeArith>
-where
-    F: CircuitField,
-    CoreDecomposition: CoreDecompositionInstructions<F>,
-    NativeArith: ArithInstructions<F, AssignedNative<F>>,
-{
+impl<F: CircuitField> AssertionInstructions<F, AssignedByte<F>> for NativeGadget<F> {
     fn assert_equal(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -641,14 +642,7 @@ where
 }
 
 /// The set of EqualityInstructions for bytes.
-impl<F, CoreDecomposition, NativeArith> EqualityInstructions<F, AssignedByte<F>>
-    for NativeGadget<F, CoreDecomposition, NativeArith>
-where
-    F: CircuitField,
-    CoreDecomposition: CoreDecompositionInstructions<F>,
-    NativeArith:
-        ArithInstructions<F, AssignedNative<F>> + EqualityInstructions<F, AssignedNative<F>>,
-{
+impl<F: CircuitField> EqualityInstructions<F, AssignedByte<F>> for NativeGadget<F> {
     fn is_equal(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -693,7 +687,7 @@ where
 }
 
 impl<F: CircuitField, const N: usize> AssertionInstructions<F, [AssignedByte<F>; N]>
-    for NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>
+    for NativeGadget<F>
 {
     fn assert_equal(
         &self,
@@ -749,13 +743,8 @@ impl<F: CircuitField, const N: usize> AssertionInstructions<F, [AssignedByte<F>;
 }
 
 /// Conversion from AssignedNative to AssignedByte.
-impl<F, CoreDecomposition, NativeArith>
-    ConversionInstructions<F, AssignedNative<F>, AssignedByte<F>>
-    for NativeGadget<F, CoreDecomposition, NativeArith>
-where
-    F: CircuitField,
-    CoreDecomposition: CoreDecompositionInstructions<F>,
-    NativeArith: ArithInstructions<F, AssignedNative<F>>,
+impl<F: CircuitField> ConversionInstructions<F, AssignedNative<F>, AssignedByte<F>>
+    for NativeGadget<F>
 {
     fn convert_value(&self, x: &F) -> Option<u8> {
         let b_as_bn = x.to_biguint();
@@ -790,13 +779,8 @@ where
 }
 
 /// Conversion from AssignedByte to AssignedNative.
-impl<F, CoreDecomposition, NativeArith>
-    ConversionInstructions<F, AssignedByte<F>, AssignedNative<F>>
-    for NativeGadget<F, CoreDecomposition, NativeArith>
-where
-    F: CircuitField,
-    CoreDecomposition: CoreDecompositionInstructions<F>,
-    NativeArith: ArithInstructions<F, AssignedNative<F>>,
+impl<F: CircuitField> ConversionInstructions<F, AssignedByte<F>, AssignedNative<F>>
+    for NativeGadget<F>
 {
     fn convert_value(&self, x: &u8) -> Option<F> {
         Some(F::from(*x as u64))
@@ -813,13 +797,8 @@ where
 }
 
 /// Unsafe conversion from AssignedNative to AssignedByte.
-impl<F, CoreDecomposition, NativeArith>
-    UnsafeConversionInstructions<F, AssignedNative<F>, AssignedByte<F>>
-    for NativeGadget<F, CoreDecomposition, NativeArith>
-where
-    F: CircuitField,
-    CoreDecomposition: CoreDecompositionInstructions<F>,
-    NativeArith: ArithInstructions<F, AssignedNative<F>>,
+impl<F: CircuitField> UnsafeConversionInstructions<F, AssignedNative<F>, AssignedByte<F>>
+    for NativeGadget<F>
 {
     /// CAUTION: use only if you know what you are doing!
     ///
@@ -848,25 +827,7 @@ where
 }
 
 /// The set of circuit instructions for decomposition operations.
-impl<F, CoreDecomposition, NativeArith> DecompositionInstructions<F, AssignedNative<F>>
-    for NativeGadget<F, CoreDecomposition, NativeArith>
-where
-    F: CircuitField,
-    CoreDecomposition: CoreDecompositionInstructions<F>,
-    NativeArith: ArithInstructions<F, AssignedNative<F>>
-        + ConversionInstructions<F, AssignedBit<F>, AssignedNative<F>>
-        + UnsafeConversionInstructions<F, AssignedNative<F>, AssignedBit<F>>
-        + AssignmentInstructions<F, AssignedBit<F>>
-        + BinaryInstructions<F>
-        + EqualityInstructions<F, AssignedNative<F>>
-        + ControlFlowInstructions<F, AssignedNative<F>>,
-    NativeGadget<F, CoreDecomposition, NativeArith>: CanonicityInstructions<F, AssignedNative<F>>
-        + AssertionInstructions<F, AssignedBit<F>>
-        + AssignmentInstructions<F, AssignedBit<F>>
-        + BinaryInstructions<F>
-        + EqualityInstructions<F, AssignedNative<F>>
-        + ControlFlowInstructions<F, AssignedNative<F>>,
-{
+impl<F: CircuitField> DecompositionInstructions<F, AssignedNative<F>> for NativeGadget<F> {
     fn assigned_to_le_bits(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -881,9 +842,7 @@ where
             "assigned_to_le_bits: why do you need the output to have more bits than necessary?"
         );
 
-        let limbs = self
-            .core_decomposition_chip
-            .decompose_fixed_limb_size(layouter, x, nb_bits, 1)?;
+        let limbs = self.decompose(layouter, x, &vec![1; nb_bits])?;
         let bits = limbs
             .iter()
             .map(|x| self.native_chip.convert_unsafe(layouter, x))
@@ -936,12 +895,7 @@ where
         // If nb_bytes < ⌈F::NUM_BITS / 8⌉, wrap-arounds are not possible, so canonicity is always
         // guaranteed. In this case we can split in bytes more efficiently.
         else {
-            let limbs = self.core_decomposition_chip.decompose_fixed_limb_size(
-                layouter,
-                x,
-                8 * nb_bytes,
-                8,
-            )?;
+            let limbs = self.decompose(layouter, x, &vec![8; nb_bytes])?;
             limbs
                 .iter()
                 .map(|x| self.convert_unsafe(layouter, x))
@@ -958,12 +912,7 @@ where
     ) -> Result<Vec<AssignedNative<F>>, Error> {
         assert!(nb_bits_per_chunk < F::NUM_BITS as usize);
         let nb_chunks = nb_chunks.unwrap_or((F::NUM_BITS as usize).div_ceil(nb_bits_per_chunk));
-        self.core_decomposition_chip.decompose_fixed_limb_size(
-            layouter,
-            x,
-            nb_bits_per_chunk * nb_chunks,
-            nb_bits_per_chunk,
-        )
+        self.decompose(layouter, x, &vec![nb_bits_per_chunk; nb_chunks])
     }
 
     fn sgn0(
@@ -1001,14 +950,7 @@ where
 }
 
 // Inherit F Public Input Instructions.
-impl<F, CoreDecomposition, NativeArith> PublicInputInstructions<F, AssignedNative<F>>
-    for NativeGadget<F, CoreDecomposition, NativeArith>
-where
-    F: CircuitField,
-    CoreDecomposition: CoreDecompositionInstructions<F>,
-    NativeArith:
-        PublicInputInstructions<F, AssignedNative<F>> + ArithInstructions<F, AssignedNative<F>>,
-{
+impl<F: CircuitField> PublicInputInstructions<F, AssignedNative<F>> for NativeGadget<F> {
     fn as_public_input(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -1027,13 +969,7 @@ where
 }
 
 // Inherit F Assignment Instructions.
-impl<F, CoreDecomposition, NativeArith> AssignmentInstructions<F, AssignedNative<F>>
-    for NativeGadget<F, CoreDecomposition, NativeArith>
-where
-    F: CircuitField,
-    CoreDecomposition: CoreDecompositionInstructions<F>,
-    NativeArith: ArithInstructions<F, AssignedNative<F>>,
-{
+impl<F: CircuitField> AssignmentInstructions<F, AssignedNative<F>> for NativeGadget<F> {
     fn assign(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -1060,14 +996,7 @@ where
 }
 
 // Inherit Bit Public Input Instructions.
-impl<F, CoreDecomposition, NativeArith> PublicInputInstructions<F, AssignedBit<F>>
-    for NativeGadget<F, CoreDecomposition, NativeArith>
-where
-    F: CircuitField,
-    CoreDecomposition: CoreDecompositionInstructions<F>,
-    NativeArith:
-        PublicInputInstructions<F, AssignedBit<F>> + ArithInstructions<F, AssignedNative<F>>,
-{
+impl<F: CircuitField> PublicInputInstructions<F, AssignedBit<F>> for NativeGadget<F> {
     fn as_public_input(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -1086,15 +1015,7 @@ where
 }
 
 // Inherit Bit Assignment Instructions.
-impl<F, CoreDecomposition, NativeArith> AssignmentInstructions<F, AssignedBit<F>>
-    for NativeGadget<F, CoreDecomposition, NativeArith>
-where
-    F: CircuitField,
-    CoreDecomposition: CoreDecompositionInstructions<F>,
-    NativeArith: ArithInstructions<F, AssignedNative<F>>
-        + AssignmentInstructions<F, AssignedBit<F>>
-        + UnsafeConversionInstructions<F, AssignedNative<F>, AssignedBit<F>>,
-{
+impl<F: CircuitField> AssignmentInstructions<F, AssignedBit<F>> for NativeGadget<F> {
     fn assign(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -1118,22 +1039,19 @@ where
     ) -> Result<Vec<AssignedBit<F>>, Error> {
         let values_as_f: Vec<_> = values.iter().map(|v| v.map(|b| F::from(b as u64))).collect();
 
-        self.core_decomposition_chip
-            .assign_many_small(layouter, &values_as_f, 1)?
+        let assigned = self.native_chip.assign_many(layouter, &values_as_f)?;
+        assigned
             .iter()
-            .map(|assigned_native| self.native_chip.convert_unsafe(layouter, assigned_native))
+            .map(|x| {
+                self.assert_lower_than_pow2(layouter, x, 1)?;
+                self.native_chip.convert_unsafe(layouter, x)
+            })
             .collect()
     }
 }
 
 // Inherit F Assertion Instructions.
-impl<F, CoreDecomposition, NativeArith> AssertionInstructions<F, AssignedNative<F>>
-    for NativeGadget<F, CoreDecomposition, NativeArith>
-where
-    F: CircuitField,
-    CoreDecomposition: CoreDecompositionInstructions<F>,
-    NativeArith: ArithInstructions<F, AssignedNative<F>>,
-{
+impl<F: CircuitField> AssertionInstructions<F, AssignedNative<F>> for NativeGadget<F> {
     fn assert_equal(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -1182,13 +1100,7 @@ where
 }
 
 // Inherit Bit Assertion Instructions.
-impl<F, CoreDecomposition, NativeArith> AssertionInstructions<F, AssignedBit<F>>
-    for NativeGadget<F, CoreDecomposition, NativeArith>
-where
-    F: CircuitField,
-    CoreDecomposition: CoreDecompositionInstructions<F>,
-    NativeArith: ArithInstructions<F, AssignedNative<F>> + AssertionInstructions<F, AssignedBit<F>>,
-{
+impl<F: CircuitField> AssertionInstructions<F, AssignedBit<F>> for NativeGadget<F> {
     fn assert_equal(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -1227,13 +1139,7 @@ where
 }
 
 // Inherit Arith Instructions.
-impl<F, CoreDecomposition, NativeArith> ArithInstructions<F, AssignedNative<F>>
-    for NativeGadget<F, CoreDecomposition, NativeArith>
-where
-    F: CircuitField,
-    CoreDecomposition: CoreDecompositionInstructions<F>,
-    NativeArith: ArithInstructions<F, AssignedNative<F>>,
-{
+impl<F: CircuitField> ArithInstructions<F, AssignedNative<F>> for NativeGadget<F> {
     fn linear_combination(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -1314,17 +1220,14 @@ where
 }
 
 // Inherit Conversion Instructions to AssignedBit.
-impl<F, CoreDecomposition, NativeArith> ConversionInstructions<F, AssignedNative<F>, AssignedBit<F>>
-    for NativeGadget<F, CoreDecomposition, NativeArith>
-where
-    F: CircuitField,
-    CoreDecomposition: CoreDecompositionInstructions<F>,
-    NativeArith: ArithInstructions<F, AssignedNative<F>>
-        + ConversionInstructions<F, AssignedNative<F>, AssignedBit<F>>
-        + UnsafeConversionInstructions<F, AssignedNative<F>, AssignedBit<F>>,
+impl<F: CircuitField> ConversionInstructions<F, AssignedNative<F>, AssignedBit<F>>
+    for NativeGadget<F>
 {
     fn convert_value(&self, x: &F) -> Option<bool> {
-        self.native_chip.convert_value(x)
+        <NativeChip<F> as ConversionInstructions<F, AssignedNative<F>, AssignedBit<F>>>::convert_value(
+            &self.native_chip,
+            x,
+        )
     }
 
     fn convert(
@@ -1343,16 +1246,14 @@ where
 }
 
 // Inherit Conversion Instructions from AssignedBit.
-impl<F, CoreDecomposition, NativeArith> ConversionInstructions<F, AssignedBit<F>, AssignedNative<F>>
-    for NativeGadget<F, CoreDecomposition, NativeArith>
-where
-    F: CircuitField,
-    CoreDecomposition: CoreDecompositionInstructions<F>,
-    NativeArith: ArithInstructions<F, AssignedNative<F>>
-        + ConversionInstructions<F, AssignedBit<F>, AssignedNative<F>>,
+impl<F: CircuitField> ConversionInstructions<F, AssignedBit<F>, AssignedNative<F>>
+    for NativeGadget<F>
 {
     fn convert_value(&self, x: &bool) -> Option<F> {
-        self.native_chip.convert_value(x)
+        <NativeChip<F> as ConversionInstructions<F, AssignedBit<F>, AssignedNative<F>>>::convert_value(
+            &self.native_chip,
+            x,
+        )
     }
 
     fn convert(
@@ -1367,13 +1268,7 @@ where
 }
 
 // Inherit Binary Instructions.
-impl<F, CoreDecomposition, NativeArith> BinaryInstructions<F>
-    for NativeGadget<F, CoreDecomposition, NativeArith>
-where
-    F: CircuitField,
-    CoreDecomposition: CoreDecompositionInstructions<F>,
-    NativeArith: ArithInstructions<F, AssignedNative<F>> + BinaryInstructions<F>,
-{
+impl<F: CircuitField> BinaryInstructions<F> for NativeGadget<F> {
     fn and(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -1408,14 +1303,7 @@ where
 }
 
 // Inherit F Equality Instructions.
-impl<F, CoreDecomposition, NativeArith> EqualityInstructions<F, AssignedNative<F>>
-    for NativeGadget<F, CoreDecomposition, NativeArith>
-where
-    F: CircuitField,
-    CoreDecomposition: CoreDecompositionInstructions<F>,
-    NativeArith:
-        ArithInstructions<F, AssignedNative<F>> + EqualityInstructions<F, AssignedNative<F>>,
-{
+impl<F: CircuitField> EqualityInstructions<F, AssignedNative<F>> for NativeGadget<F> {
     fn is_equal(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -1454,13 +1342,7 @@ where
 }
 
 // Implement Bit Equality Instructions.
-impl<F, CoreDecomposition, NativeArith> EqualityInstructions<F, AssignedBit<F>>
-    for NativeGadget<F, CoreDecomposition, NativeArith>
-where
-    F: CircuitField,
-    CoreDecomposition: CoreDecompositionInstructions<F>,
-    NativeArith: ArithInstructions<F, AssignedNative<F>> + EqualityInstructions<F, AssignedBit<F>>,
-{
+impl<F: CircuitField> EqualityInstructions<F, AssignedBit<F>> for NativeGadget<F> {
     fn is_equal(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -1499,26 +1381,10 @@ where
 }
 
 // Inherit Zero Instructions.
-impl<F, CoreDecomposition, NativeArith> ZeroInstructions<F, AssignedNative<F>>
-    for NativeGadget<F, CoreDecomposition, NativeArith>
-where
-    F: CircuitField,
-    CoreDecomposition: CoreDecompositionInstructions<F>,
-    NativeArith: ArithInstructions<F, AssignedNative<F>>
-        + AssertionInstructions<F, AssignedNative<F>>
-        + EqualityInstructions<F, AssignedNative<F>>,
-{
-}
+impl<F: CircuitField> ZeroInstructions<F, AssignedNative<F>> for NativeGadget<F> {}
 
 // Inherit F ControlFlow Instructions.
-impl<F, CoreDecomposition, NativeArith> ControlFlowInstructions<F, AssignedNative<F>>
-    for NativeGadget<F, CoreDecomposition, NativeArith>
-where
-    F: CircuitField,
-    CoreDecomposition: CoreDecompositionInstructions<F>,
-    NativeArith:
-        ArithInstructions<F, AssignedNative<F>> + ControlFlowInstructions<F, AssignedNative<F>>,
-{
+impl<F: CircuitField> ControlFlowInstructions<F, AssignedNative<F>> for NativeGadget<F> {
     fn select(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -1541,14 +1407,7 @@ where
 }
 
 // Inherit Bit ControlFlow Instructions.
-impl<F, CoreDecomposition, NativeArith> ControlFlowInstructions<F, AssignedBit<F>>
-    for NativeGadget<F, CoreDecomposition, NativeArith>
-where
-    F: CircuitField,
-    CoreDecomposition: CoreDecompositionInstructions<F>,
-    NativeArith:
-        ArithInstructions<F, AssignedNative<F>> + ControlFlowInstructions<F, AssignedBit<F>>,
-{
+impl<F: CircuitField> ControlFlowInstructions<F, AssignedBit<F>> for NativeGadget<F> {
     fn select(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -1571,14 +1430,7 @@ where
 }
 
 // Implement Byte ControlFlow Instructions.
-impl<F, CoreDecomposition, NativeArith> ControlFlowInstructions<F, AssignedByte<F>>
-    for NativeGadget<F, CoreDecomposition, NativeArith>
-where
-    F: CircuitField,
-    CoreDecomposition: CoreDecompositionInstructions<F>,
-    NativeArith:
-        ArithInstructions<F, AssignedNative<F>> + ControlFlowInstructions<F, AssignedNative<F>>,
-{
+impl<F: CircuitField> ControlFlowInstructions<F, AssignedByte<F>> for NativeGadget<F> {
     fn select(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -1605,49 +1457,19 @@ where
 }
 
 // Inherit Field Instructions.
-impl<F, CoreDecomposition, NativeArith> FieldInstructions<F, AssignedNative<F>>
-    for NativeGadget<F, CoreDecomposition, NativeArith>
-where
-    F: CircuitField,
-    CoreDecomposition: CoreDecompositionInstructions<F>,
-    NativeArith: FieldInstructions<F, AssignedNative<F>>
-        + AssertionInstructions<F, AssignedBit<F>>
-        + UnsafeConversionInstructions<F, AssignedNative<F>, AssignedBit<F>>
-        + EqualityInstructions<F, AssignedBit<F>>,
-{
+impl<F: CircuitField> FieldInstructions<F, AssignedNative<F>> for NativeGadget<F> {
     fn order(&self) -> BigUint {
         self.native_chip.order()
     }
 }
 
 // Implement Scalar Field Instructions.
-impl<F, CoreDecomposition, NativeArith> ScalarFieldInstructions<F>
-    for NativeGadget<F, CoreDecomposition, NativeArith>
-where
-    F: CircuitField,
-    CoreDecomposition: CoreDecompositionInstructions<F>,
-    NativeArith: CanonicityInstructions<F, AssignedNative<F>>
-        + AssertionInstructions<F, AssignedBit<F>>
-        + EqualityInstructions<F, AssignedBit<F>>
-        + UnsafeConversionInstructions<F, AssignedNative<F>, AssignedBit<F>>
-        + ConversionInstructions<F, AssignedBit<F>, AssignedNative<F>>
-        + AssignmentInstructions<F, AssignedBit<F>>
-        + BinaryInstructions<F>,
-{
+impl<F: CircuitField> ScalarFieldInstructions<F> for NativeGadget<F> {
     type Scalar = AssignedNative<F>;
 }
 
 // Inherit Canonicity Instructions.
-impl<F, CoreDecomposition, NativeArith> CanonicityInstructions<F, AssignedNative<F>>
-    for NativeGadget<F, CoreDecomposition, NativeArith>
-where
-    F: CircuitField,
-    CoreDecomposition: CoreDecompositionInstructions<F>,
-    NativeArith: CanonicityInstructions<F, AssignedNative<F>>
-        + AssertionInstructions<F, AssignedBit<F>>
-        + UnsafeConversionInstructions<F, AssignedNative<F>, AssignedBit<F>>
-        + EqualityInstructions<F, AssignedBit<F>>,
-{
+impl<F: CircuitField> CanonicityInstructions<F, AssignedNative<F>> for NativeGadget<F> {
     fn le_bits_lower_than(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -1668,55 +1490,24 @@ where
 }
 
 // Implement Native Instructions.
-impl<F, CoreDecomposition, NativeArith> NativeInstructions<F>
-    for NativeGadget<F, CoreDecomposition, NativeArith>
-where
-    F: CircuitField,
-    CoreDecomposition: CoreDecompositionInstructions<F>,
-    NativeArith: CanonicityInstructions<F, AssignedNative<F>>
-        + AssertionInstructions<F, AssignedBit<F>>
-        + EqualityInstructions<F, AssignedBit<F>>
-        + ControlFlowInstructions<F, AssignedBit<F>>
-        + BinaryInstructions<F>
-        + UnsafeConversionInstructions<F, AssignedNative<F>, AssignedBit<F>>
-        + ConversionInstructions<F, AssignedBit<F>, AssignedNative<F>>,
-{
-}
+impl<F: CircuitField> NativeInstructions<F> for NativeGadget<F> {}
 
 // Implement Bitwise Instructions.
-impl<F, CoreDecomposition, NativeArith> BitwiseInstructions<F, AssignedNative<F>>
-    for NativeGadget<F, CoreDecomposition, NativeArith>
-where
-    F: CircuitField,
-    CoreDecomposition: CoreDecompositionInstructions<F>,
-    NativeArith: CanonicityInstructions<F, AssignedNative<F>>
-        + AssertionInstructions<F, AssignedBit<F>>
-        + EqualityInstructions<F, AssignedBit<F>>
-        + ControlFlowInstructions<F, AssignedBit<F>>
-        + BinaryInstructions<F>
-        + UnsafeConversionInstructions<F, AssignedNative<F>, AssignedBit<F>>
-        + ConversionInstructions<F, AssignedBit<F>, AssignedNative<F>>,
-{
-}
+impl<F: CircuitField> BitwiseInstructions<F, AssignedNative<F>> for NativeGadget<F> {}
 
-// Circuit implementation for NativeGadget based on the
-// P2RDecompositionChip and the NativeChip
 #[cfg(any(test, feature = "testing"))]
-impl<F: CircuitField> FromScratch<F> for NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>> {
-    // The circuit config is simply the P2RDecompositionConfig since this contains a
-    // NativeConfig as well
-    type Config = P2RDecompositionConfig;
+impl<F: CircuitField> FromScratch<F> for NativeGadget<F> {
+    type Config = NativeGadgetConfig;
 
     fn new_from_scratch(config: &Self::Config) -> Self {
-        let max_bit_len = 8;
         let native_chip = NativeChip::new_from_scratch(&config.native_config);
-        let core_decomposition_chip = P2RDecompositionChip::new(config, &max_bit_len);
-        NativeGadget::new(core_decomposition_chip, native_chip)
+        let range_check_chip = RangeCheckChip::new(&config.range_check_config, &());
+        NativeGadget::new(native_chip, range_check_chip)
     }
 
     fn load_from_scratch(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
         self.native_chip.load_from_scratch(layouter)?;
-        self.core_decomposition_chip.load(layouter)
+        self.range_check_chip.load(layouter)
     }
 
     fn configure_from_scratch(
@@ -1743,12 +1534,14 @@ impl<F: CircuitField> FromScratch<F> for NativeGadget<F, P2RDecompositionChip<F>
                 *instance_columns,
             ),
         );
-        // Use hard-coded value for nr of range check cols in test
-        let pow2range_config = Pow2RangeChip::configure(meta, &advice_columns[1..=4]);
+        let range_check_config = RangeCheckChip::configure(
+            meta,
+            &(advice_columns[..5].to_vec(), fixed_columns[..3].to_vec(), 8),
+        );
 
-        P2RDecompositionConfig {
+        NativeGadgetConfig {
             native_config,
-            pow2range_config,
+            range_check_config,
         }
     }
 }
@@ -1767,8 +1560,8 @@ mod tests {
                 $module::tests::$operation::<
                     BlsScalar,
                     AssignedNative<BlsScalar>,
-                    NativeGadget<BlsScalar, P2RDecompositionChip<BlsScalar>, NativeChip<BlsScalar>>,
-                    NativeGadget<BlsScalar, P2RDecompositionChip<BlsScalar>, NativeChip<BlsScalar>>,
+                    NativeGadget<BlsScalar>,
+                    NativeGadget<BlsScalar>,
                 >("native_gadget_bls");
             }
         };
@@ -1785,7 +1578,7 @@ mod tests {
                 $module::tests::$operation::<
                     BlsScalar,
                     AssignedNative<BlsScalar>,
-                    NativeGadget<BlsScalar, P2RDecompositionChip<BlsScalar>, NativeChip<BlsScalar>>,
+                    NativeGadget<BlsScalar>,
                 >("native_gadget_bls");
             }
         };
