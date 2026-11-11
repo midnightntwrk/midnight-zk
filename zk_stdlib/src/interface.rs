@@ -22,10 +22,11 @@ use midnight_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
     dev::cost_model::{CircuitModel, circuit_model},
     plonk::{
-        self, Circuit, ConstraintSystem, Error, ProvingKey, VerifyingKey, keygen_vk_with_k, prepare,
+        self, Circuit, ConstraintSystem, Error, ProvingKey, VerifyingKey, create_proof, keygen_pk,
+        keygen_vk_with_k, prepare,
     },
     poly::{
-        commitment::{Guard, PolynomialCommitmentScheme},
+        commitment::Guard,
         kzg::{
             commitment::KZGMultiCommitment,
             params::{ParamsKZG, ParamsVerifierKZG},
@@ -36,7 +37,7 @@ use midnight_proofs::{
 };
 use rand::{CryptoRng, RngCore};
 
-use crate::{DefaultPCS, F, ZkStdLib, ZkStdLibArch, ZkStdLibConfig, utils::plonk_api::BlstPLONK};
+use crate::{F, KZG, MidnightPCS, ZkStdLib, ZkStdLibArch, ZkStdLibConfig};
 
 /// Circuit structure which is used to create any circuit that can be compiled
 /// into keys using the ZK standard library.
@@ -91,14 +92,14 @@ impl<'a, R: Relation> MidnightCircuit<'a, R> {
 
 /// A verifier key of a Midnight circuit.
 #[derive(Clone, Debug)]
-pub struct MidnightVK {
+pub struct MidnightVK<PCS: MidnightPCS> {
     architecture: ZkStdLibArch,
     k: u8,
     nb_public_inputs: usize,
-    vk: VerifyingKey<midnight_curves::Fq, DefaultPCS>,
+    vk: VerifyingKey<midnight_curves::Fq, PCS>,
 }
 
-impl MidnightVK {
+impl<PCS: MidnightPCS> MidnightVK<PCS> {
     /// Writes a verifying key to a buffer.
     ///
     /// Depending on the `format`:
@@ -108,6 +109,8 @@ impl MidnightVK {
     /// Using `RawBytesUnchecked` will have the same effect as `RawBytes`,
     /// but it is not recommended.
     pub fn write<W: io::Write>(&self, writer: &mut W, format: SerdeFormat) -> io::Result<()> {
+        writer.write_all(&[PCS::ID])?;
+
         self.architecture.write(writer)?;
 
         writer.write_all(&[self.k])?;
@@ -125,10 +128,19 @@ impl MidnightVK {
     ///
     /// # WARNING
     /// Use `RawBytesUnchecked` only if you trust the party who wrote the key.
+    ///
+    /// Fails if the key was written by another version of zk_stdlib, or under
+    /// a commitment scheme other than `PCS`.
     pub fn read<R: io::Read>(reader: &mut R, format: SerdeFormat) -> io::Result<Self> {
+        let mut byte = [0u8; 1];
+        reader.read_exact(&mut byte)?;
+        if byte[0] != PCS::ID {
+            let msg = format!("key declares PCS id {}, expected {}", byte[0], PCS::ID);
+            return Err(io::Error::new(io::ErrorKind::InvalidData, msg));
+        }
+
         let architecture = ZkStdLibArch::read(reader)?;
 
-        let mut byte = [0u8; 1];
         reader.read_exact(&mut byte)?;
         let k = check_k(byte[0])?;
 
@@ -155,7 +167,7 @@ impl MidnightVK {
     }
 
     /// The underlying midnight-proofs verifying key.
-    pub fn vk(&self) -> &VerifyingKey<midnight_curves::Fq, DefaultPCS> {
+    pub fn vk(&self) -> &VerifyingKey<midnight_curves::Fq, PCS> {
         &self.vk
     }
 }
@@ -173,13 +185,13 @@ fn check_k(k: u8) -> io::Result<u8> {
 
 /// A proving key of a Midnight circuit.
 #[derive(Debug)]
-pub struct MidnightPK<R: Relation> {
+pub struct MidnightPK<R: Relation, PCS: MidnightPCS> {
     k: u8,
     relation: R,
-    pk: ProvingKey<midnight_curves::Fq, DefaultPCS>,
+    pk: ProvingKey<midnight_curves::Fq, PCS>,
 }
 
-impl<Rel: Relation> MidnightPK<Rel> {
+impl<Rel: Relation, PCS: MidnightPCS> MidnightPK<Rel, PCS> {
     /// Writes a proving key to a buffer.
     ///
     /// Depending on the `format`:
@@ -233,7 +245,7 @@ impl<Rel: Relation> MidnightPK<Rel> {
     }
 
     /// The underlying midnight-proofs proving key.
-    pub fn pk(&self) -> &ProvingKey<midnight_curves::Fq, DefaultPCS> {
+    pub fn pk(&self) -> &ProvingKey<midnight_curves::Fq, PCS> {
         &self.pk
     }
 }
@@ -321,20 +333,20 @@ impl<Rel: Relation> MidnightPK<Rel> {
 /// let relation = ShaPreImageCircuit;
 /// let srs = srs_for_test(&relation, Some(13));
 ///
-/// let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
+/// let vk = midnight_zk_stdlib::setup_vk::<_, midnight_zk_stdlib::KZG>(&srs, &relation);
 /// let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
 ///
 /// let mut rng = ChaCha8Rng::from_entropy();
 /// let witness: [u8; 24] = core::array::from_fn(|_| rng.r#gen());
 /// let instance = sha2::Sha256::digest(witness).into();
 ///
-/// let proof = midnight_zk_stdlib::prove::<ShaPreImageCircuit, blake2b_simd::State>(
+/// let proof = midnight_zk_stdlib::prove::<ShaPreImageCircuit, blake2b_simd::State, _>(
 ///     &srs, &pk, &relation, &instance, witness, OsRng,
 /// )
 /// .expect("Proof generation should not fail");
 ///
 /// assert!(
-///     midnight_zk_stdlib::verify::<ShaPreImageCircuit, blake2b_simd::State>(
+///     midnight_zk_stdlib::verify::<ShaPreImageCircuit, blake2b_simd::State, _>(
 ///         &srs.verifier_params(),
 ///         &vk,
 ///         &instance,
@@ -496,8 +508,11 @@ impl<R: Relation> Circuit<F> for MidnightCircuit<'_, R> {
 /// For optimal performance, downsize the SRS to the circuit's optimal `k`
 /// beforehand (see [optimal_k]). Otherwise, the circuit will use the full
 /// size of the SRS, which may be unnecessarily large.
-pub fn setup_vk<R: Relation>(params: &ParamsKZG<Bls12>, relation: &R) -> MidnightVK {
-    let k = DefaultPCS::max_k(params);
+pub fn setup_vk<R: Relation, PCS: MidnightPCS>(
+    params: &ParamsKZG<Bls12>,
+    relation: &R,
+) -> MidnightVK<PCS> {
+    let k = PCS::max_k(params);
     let circuit = MidnightCircuit::from_relation(relation, Some(k));
     let vk = keygen_vk_with_k(params, &circuit, k).expect("keygen_vk should not fail");
 
@@ -514,14 +529,17 @@ pub fn setup_vk<R: Relation>(params: &ParamsKZG<Bls12>, relation: &R) -> Midnigh
 }
 
 /// Generates a proving key for a `MidnightCircuit<R>` circuit.
-pub fn setup_pk<R: Relation>(relation: &R, vk: &MidnightVK) -> MidnightPK<R> {
+pub fn setup_pk<R: Relation, PCS: MidnightPCS>(
+    relation: &R,
+    vk: &MidnightVK<PCS>,
+) -> MidnightPK<R, PCS> {
     let circuit = MidnightCircuit::new(
         relation,
         Value::unknown(),
         Value::unknown(),
         Some(vk.k() as u32),
     );
-    let pk = BlstPLONK::<MidnightCircuit<R>>::setup_pk(&circuit, &vk.vk);
+    let pk = keygen_pk(vk.vk.clone(), &circuit).expect("keygen_pk should not fail");
     MidnightPK {
         k: vk.k(),
         relation: relation.clone(),
@@ -531,9 +549,9 @@ pub fn setup_pk<R: Relation>(relation: &R, vk: &MidnightVK) -> MidnightPK<R> {
 
 /// Produces a proof of relation `R` for the given instance (using the given
 /// proving key and witness).
-pub fn prove<R: Relation, H: TranscriptHash>(
+pub fn prove<R: Relation, H: TranscriptHash, PCS: MidnightPCS>(
     params: &ParamsKZG<Bls12>,
-    pk: &MidnightPK<R>,
+    pk: &MidnightPK<R, PCS>,
     relation: &R,
     instance: &R::Instance,
     witness: R::Witness,
@@ -554,22 +572,25 @@ where
         Value::known(witness),
         Some(pk.k as u32),
     );
-    BlstPLONK::<MidnightCircuit<R>>::prove::<H>(
+    let mut transcript = CircuitTranscript::<H>::init();
+    create_proof::<F, PCS, _, _>(
         params,
         &pk.pk,
         &circuit,
         nb_committed_instances,
         &[com_inst.as_deref().unwrap_or_default(), &pi],
+        &mut transcript,
         rng,
     )
-    .map_err(|e| circuit.take_error().unwrap_or_else(|| e.into()))
+    .map_err(|e| circuit.take_error().unwrap_or_else(|| e.into()))?;
+    Ok(transcript.finalize())
 }
 
 /// Verifies the given proof of relation `R` with respect to the given instance.
 /// Returns `Ok(())` if the proof is valid.
-pub fn verify<R: Relation, H: TranscriptHash>(
+pub fn verify<R: Relation, H: TranscriptHash, PCS: MidnightPCS>(
     params_verifier: &ParamsVerifierKZG<Bls12>,
-    vk: &MidnightVK,
+    vk: &MidnightVK<PCS>,
     instance: &R::Instance,
     committed_instance: Option<KZGMultiCommitment<Bls12>>,
     proof: &[u8],
@@ -588,13 +609,11 @@ where
     if pi.len() != vk.nb_public_inputs {
         return Err(Error::InvalidInstances.into());
     }
-    Ok(BlstPLONK::<MidnightCircuit<R>>::verify::<H>(
-        params_verifier,
-        &vk.vk,
-        &committed,
-        &instances,
-        proof,
-    )?)
+    let mut transcript = CircuitTranscript::<H>::init_from_bytes(proof);
+    let guard = prepare::<F, PCS, _>(&vk.vk, &committed, &instances, &mut transcript)?;
+    transcript.assert_empty().map_err(|_| Error::Opening)?;
+    guard.verify(params_verifier).map_err(|_| Error::Opening)?;
+    Ok(())
 }
 
 /// Verifies a batch of proofs with respect to their corresponding vk.
@@ -604,9 +623,9 @@ where
 /// in raw format (`Vec<F>`).
 ///
 /// Returns `Ok(())` if all proofs are valid.
-pub fn batch_verify<H: TranscriptHash + Send + Sync>(
+pub fn batch_verify<H: TranscriptHash + Send + Sync, PCS: MidnightPCS>(
     params_verifier: &ParamsVerifierKZG<Bls12>,
-    vks: &[MidnightVK],
+    vks: &[MidnightVK<PCS>],
     pis: &[Vec<F>],
     proofs: &[Vec<u8>],
 ) -> Result<(), Error>
@@ -633,7 +652,7 @@ where
             }
 
             let mut transcript = CircuitTranscript::init_from_bytes(proof);
-            let dual_msm = prepare::<midnight_curves::Fq, DefaultPCS, CircuitTranscript<H>>(
+            let dual_msm = prepare::<midnight_curves::Fq, PCS, CircuitTranscript<H>>(
                 &vk.vk,
                 &[],
                 &[&[], pi],
@@ -674,13 +693,13 @@ where
 /// committed to nor opened).
 /// `k` is the log2 of the circuit size. If `None`, the optimal value is
 /// computed automatically.
-pub fn cost_model<R: Relation>(
+pub fn cost_model<R: Relation, PCS: MidnightPCS>(
     relation: &R,
     k: Option<u32>,
     has_committed_instance: bool,
 ) -> CircuitModel {
     let circuit = MidnightCircuit::from_relation(relation, k);
-    circuit_model::<_, DefaultPCS>(&circuit, usize::from(has_committed_instance))
+    circuit_model::<_, PCS>(&circuit, usize::from(has_committed_instance))
 }
 
 /// Finds the optimal `k` (log2 of the circuit size) for the given relation.
@@ -690,7 +709,8 @@ pub fn optimal_k<R: Relation>(relation: &R) -> u32 {
     let mut best_k = u32::MAX;
 
     for k in 9..=25 {
-        let model = cost_model(relation, Some(k), false);
+        // The PCS only affects the proof size, not the number of rows.
+        let model = cost_model::<_, KZG>(relation, Some(k), false);
 
         if model.k < best_k {
             best_k = model.k;

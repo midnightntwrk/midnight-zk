@@ -49,7 +49,7 @@ macro_rules! generate_tests {
                 update_circuit_goldenfiles(&relation, $has_committed_instance);
 
                 let srs = srs_for_test(&relation, None);
-                let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
+                let vk = midnight_zk_stdlib::setup_vk::<_, midnight_zk_stdlib::KZG>(&srs, &relation);
                 check_vk::<MidnightCircuit<$circuit>>(&vk);
             }
         )*

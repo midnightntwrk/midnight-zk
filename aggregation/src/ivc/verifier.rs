@@ -24,13 +24,13 @@ use super::{E, F, Ivc, IvcCircuit, IvcError, IvcInstance, S, circuit::IvcExtende
 #[derive(Clone, Debug)]
 pub struct IvcVerifier<T: Ivc> {
     pub(crate) ctx: T::Context,
-    pub(crate) vk: MidnightVK,
+    pub(crate) vk: MidnightVK<DefaultPCS>,
     pub(crate) params_verifier: ParamsVerifierKZG<E>,
 }
 
 impl<T: Ivc> IvcVerifier<T> {
     /// The canonical verifying key of the IVC circuit.
-    pub fn vk(&self) -> &MidnightVK {
+    pub fn vk(&self) -> &MidnightVK<DefaultPCS> {
         &self.vk
     }
 

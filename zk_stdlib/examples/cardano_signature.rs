@@ -211,16 +211,16 @@ fn main() {
     let instance = (a_bytes, m);
     let witness = (r_bytes, s_bytes);
 
-    let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
+    let vk = midnight_zk_stdlib::setup_vk::<_, midnight_zk_stdlib::KZG>(&srs, &relation);
     let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
 
-    let proof = midnight_zk_stdlib::prove::<CardanoSigExample, blake2b_simd::State>(
+    let proof = midnight_zk_stdlib::prove::<CardanoSigExample, blake2b_simd::State, _>(
         &srs, &pk, &relation, &instance, witness, OsRng,
     )
     .expect("Proof generation should not fail");
 
     assert!(
-        midnight_zk_stdlib::verify::<CardanoSigExample, blake2b_simd::State>(
+        midnight_zk_stdlib::verify::<CardanoSigExample, blake2b_simd::State, _>(
             &srs.verifier_params(),
             &vk,
             &instance,

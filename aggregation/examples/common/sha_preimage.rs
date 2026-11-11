@@ -13,7 +13,7 @@ use midnight_proofs::{
     plonk::Error,
     poly::kzg::params::ParamsKZG,
 };
-use midnight_zk_stdlib::{MidnightPK, MidnightVK, Relation, ZkStdLib, ZkStdLibArch};
+use midnight_zk_stdlib::{DefaultPCS, MidnightPK, MidnightVK, Relation, ZkStdLib, ZkStdLibArch};
 use rand::{rngs::OsRng, Rng};
 use sha2::Digest;
 
@@ -67,12 +67,12 @@ impl Relation for ShaPreimageCircuit {
 }
 
 /// Generates the verifying key for the SHA preimage circuit.
-pub fn setup_vk(srs: &ParamsKZG<E>) -> MidnightVK {
+pub fn setup_vk(srs: &ParamsKZG<E>) -> MidnightVK<DefaultPCS> {
     midnight_zk_stdlib::setup_vk(srs, &ShaPreimageCircuit)
 }
 
 /// Generates the proving key for the SHA preimage circuit.
-pub fn setup_pk(vk: &MidnightVK) -> MidnightPK<ShaPreimageCircuit> {
+pub fn setup_pk(vk: &MidnightVK<DefaultPCS>) -> MidnightPK<ShaPreimageCircuit, DefaultPCS> {
     midnight_zk_stdlib::setup_pk(&ShaPreimageCircuit, vk)
 }
 
@@ -86,11 +86,11 @@ pub fn random_instance() -> ([u8; 32], [u8; 24]) {
 /// Proves a SHA-256 preimage statement, returning the proof bytes.
 pub fn prove(
     srs: &ParamsKZG<E>,
-    pk: &MidnightPK<ShaPreimageCircuit>,
+    pk: &MidnightPK<ShaPreimageCircuit, DefaultPCS>,
     instance: &[u8; 32],
     witness: [u8; 24],
 ) -> Vec<u8> {
-    midnight_zk_stdlib::prove::<ShaPreimageCircuit, PoseidonState<F>>(
+    midnight_zk_stdlib::prove::<ShaPreimageCircuit, PoseidonState<F>, _>(
         srs,
         pk,
         &ShaPreimageCircuit,

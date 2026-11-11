@@ -188,7 +188,7 @@ fn main() {
     };
 
     let setup = start("Setting up the vk/pk");
-    let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
+    let vk = midnight_zk_stdlib::setup_vk::<_, midnight_zk_stdlib::KZG>(&srs, &relation);
     let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
     println!("... done ({:?})", setup.elapsed());
 
@@ -207,7 +207,7 @@ fn main() {
     println!("... done\n{:?}", wit.elapsed());
 
     let p = start("Proof generation");
-    let proof = midnight_zk_stdlib::prove::<CredentialEnrollment, blake2b_simd::State>(
+    let proof = midnight_zk_stdlib::prove::<CredentialEnrollment, blake2b_simd::State, _>(
         &srs, &pk, &relation, &instance, witness, OsRng,
     )
     .expect("Proof generation should not fail");
@@ -215,7 +215,7 @@ fn main() {
 
     let v = start("Proof verification");
     assert!(
-        midnight_zk_stdlib::verify::<CredentialEnrollment, blake2b_simd::State>(
+        midnight_zk_stdlib::verify::<CredentialEnrollment, blake2b_simd::State, _>(
             &srs.verifier_params(),
             &vk,
             &instance,

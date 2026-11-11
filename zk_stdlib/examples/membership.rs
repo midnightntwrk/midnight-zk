@@ -106,7 +106,7 @@ fn main() {
     const K: u32 = 13;
     let relation = MembershipExample;
     let srs = srs_for_test(&relation, Some(K));
-    let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
+    let vk = midnight_zk_stdlib::setup_vk::<_, midnight_zk_stdlib::KZG>(&srs, &relation);
     let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
 
     let mut mt = MapMt::<F, PoseidonChip<F>>::new(&F::ZERO);
@@ -131,13 +131,13 @@ fn main() {
     let witness = (F::ONE, sets, mt.clone());
     let instance = (mt.succinct_repr(), proof_set);
 
-    let proof = midnight_zk_stdlib::prove::<MembershipExample, blake2b_simd::State>(
+    let proof = midnight_zk_stdlib::prove::<MembershipExample, blake2b_simd::State, _>(
         &srs, &pk, &relation, &instance, witness, OsRng,
     )
     .expect("Proof generation should not fail");
 
     assert!(
-        midnight_zk_stdlib::verify::<MembershipExample, blake2b_simd::State>(
+        midnight_zk_stdlib::verify::<MembershipExample, blake2b_simd::State, _>(
             &srs.verifier_params(),
             &vk,
             &instance,

@@ -70,7 +70,7 @@ fn main() {
     const K: u32 = 13;
     let relation = ShaPreImageCircuit;
     let srs = srs_for_test(&relation, Some(K));
-    let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
+    let vk = midnight_zk_stdlib::setup_vk::<_, midnight_zk_stdlib::KZG>(&srs, &relation);
     let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
 
     // Sample a random preimage as the witness.
@@ -78,13 +78,13 @@ fn main() {
     let witness: [u8; 24] = core::array::from_fn(|_| rng.r#gen());
     let instance = sha2::Sha256::digest(witness).into();
 
-    let proof = midnight_zk_stdlib::prove::<ShaPreImageCircuit, blake2b_simd::State>(
+    let proof = midnight_zk_stdlib::prove::<ShaPreImageCircuit, blake2b_simd::State, _>(
         &srs, &pk, &relation, &instance, witness, OsRng,
     )
     .expect("Proof generation should not fail");
 
     assert!(
-        midnight_zk_stdlib::verify::<ShaPreImageCircuit, blake2b_simd::State>(
+        midnight_zk_stdlib::verify::<ShaPreImageCircuit, blake2b_simd::State, _>(
             &srs.verifier_params(),
             &vk,
             &instance,
