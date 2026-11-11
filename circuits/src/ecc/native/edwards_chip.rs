@@ -827,14 +827,6 @@ impl<C: EdwardsCurve> EccInstructions<C::Base, C> for EccChip<C> {
         )
     }
 
-    fn x_coordinate(&self, point: &Self::Point) -> Self::Coordinate {
-        point.x.clone()
-    }
-
-    fn y_coordinate(&self, point: &Self::Point) -> Self::Coordinate {
-        point.y.clone()
-    }
-
     fn x(
         &self,
         _layouter: &mut impl Layouter<C::Base>,

@@ -235,10 +235,14 @@ impl<S: SelfEmulation> VerifierGadget<S> {
                 ]
             })
             .transpose_array();
-        let transcript_repr =
-            self.scalar_chip.assign_as_public_input(layouter, transcript_repr_value)?;
-        let k = self.scalar_chip.assign_as_public_input(layouter, k_value)?;
-        let omega = self.scalar_chip.assign_as_public_input(layouter, omega_value)?;
+
+        let transcript_repr = self.scalar_chip.assign(layouter, transcript_repr_value)?;
+        let k = self.scalar_chip.assign(layouter, k_value)?;
+        let omega = self.scalar_chip.assign(layouter, omega_value)?;
+
+        self.scalar_chip.constrain_as_public_input(layouter, &transcript_repr)?;
+        self.scalar_chip.constrain_as_public_input(layouter, &k)?;
+        self.scalar_chip.constrain_as_public_input(layouter, &omega)?;
 
         let domain = self.derive_domain(layouter, k, omega)?;
 

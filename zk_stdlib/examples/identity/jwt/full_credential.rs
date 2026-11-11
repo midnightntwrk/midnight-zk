@@ -84,7 +84,8 @@ impl Relation for FullCredential {
         let b64_chip = std_lib.base64();
 
         // Assign the PK as public input.
-        let pk = secp256k1_curve.assign_as_public_input(layouter, instance)?;
+        let pk = secp256k1_curve.assign(layouter, instance)?;
+        secp256k1_curve.constrain_as_public_input(layouter, &pk)?;
 
         let payload = witness.map(|(payload, _, _)| payload).transpose_array();
         let (sig, sk) = witness.map(|(_, sig, sk)| (sig, sk)).unzip();

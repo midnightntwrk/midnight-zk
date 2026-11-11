@@ -19,14 +19,10 @@
 //! this trait that must implement [crate::types::InnerValue] and
 //! [Instantiable]).
 
-use midnight_proofs::{
-    circuit::{Layouter, Value},
-    plonk::Error,
-};
+use midnight_proofs::{circuit::Layouter, plonk::Error};
 
 use crate::{
     CircuitField,
-    instructions::AssignmentInstructions,
     types::{AssignedNative, Instantiable},
 };
 
@@ -55,21 +51,6 @@ where
         layouter: &mut impl Layouter<F>,
         assigned: &Assigned,
     ) -> Result<(), Error>;
-
-    /// Same as [assign](AssignmentInstructions::assign), but it immediately
-    /// constrains the assigned value as a public input.
-    fn assign_as_public_input(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        value: Value<Assigned::Element>,
-    ) -> Result<Assigned, Error>
-    where
-        Self: AssignmentInstructions<F, Assigned>,
-    {
-        let assigned = self.assign(layouter, value)?;
-        self.constrain_as_public_input(layouter, &assigned)?;
-        Ok(assigned)
-    }
 }
 
 /// Instruction to constrain public inputs in committed form.
@@ -112,19 +93,12 @@ pub(crate) mod tests {
     };
 
     #[derive(Clone, Debug)]
-    enum Operation {
-        Constrain,
-        Assign,
-    }
-
-    #[derive(Clone, Debug)]
     struct TestCircuit<F, Assigned, Chip>
     where
         Assigned: InnerValue,
     {
         x: Assigned::Element,
         must_pass: bool,
-        operation: Operation,
         _marker: PhantomData<(F, Assigned, Chip)>,
     }
 
@@ -169,17 +143,8 @@ pub(crate) mod tests {
             };
 
             cost_measure_start(&mut layouter);
-            let x = match self.operation {
-                Operation::Constrain => {
-                    let x = chip.assign(&mut layouter, Value::known(x_val.clone()))?;
-                    chip.constrain_as_public_input(&mut layouter, &x)?;
-                    x
-                }
-
-                Operation::Assign => {
-                    chip.assign_as_public_input(&mut layouter, Value::known(x_val.clone()))?
-                }
-            };
+            let x = chip.assign(&mut layouter, Value::known(x_val.clone()))?;
+            chip.constrain_as_public_input(&mut layouter, &x)?;
             cost_measure_end(&mut layouter);
 
             if self.must_pass {
@@ -197,7 +162,6 @@ pub(crate) mod tests {
 
     fn run<F, Assigned, Chip>(
         x: &Assigned::Element,
-        operation: Operation,
         must_pass: bool,
         cost_model: bool,
         chip_name: &str,
@@ -211,7 +175,6 @@ pub(crate) mod tests {
         let circuit = TestCircuit::<F, Assigned, Chip> {
             x: x.clone(),
             must_pass,
-            operation,
             _marker: PhantomData,
         };
 
@@ -248,11 +211,9 @@ pub(crate) mod tests {
         ]
         .into_iter()
         .for_each(|x| {
-            run::<F, Assigned, Chip>(&x, Operation::Constrain, true, cost_model, name);
+            run::<F, Assigned, Chip>(&x, true, cost_model, name);
             cost_model = false;
-            run::<F, Assigned, Chip>(&x, Operation::Assign, true, cost_model, name);
-            run::<F, Assigned, Chip>(&x, Operation::Constrain, false, cost_model, name);
-            run::<F, Assigned, Chip>(&x, Operation::Assign, false, cost_model, name);
+            run::<F, Assigned, Chip>(&x, false, cost_model, name);
 
             let encoded = Assigned::as_public_input(&x);
             let decoded = Assigned::from_public_input(&encoded)

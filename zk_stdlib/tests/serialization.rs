@@ -53,7 +53,8 @@ impl Relation for DummyCircuit {
         instance: Value<Self::Instance>,
         witness: Value<Self::Witness>,
     ) -> Result<(), Error> {
-        let instance = std_lib.assign_as_public_input(layouter, instance)?;
+        let instance = std_lib.assign(layouter, instance)?;
+        std_lib.constrain_as_public_input(layouter, &instance)?;
         let witness = std_lib.assign(layouter, witness)?;
 
         let x = std_lib.mul(layouter, &witness, &witness, None)?;

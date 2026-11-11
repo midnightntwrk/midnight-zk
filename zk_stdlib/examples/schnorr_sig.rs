@@ -112,8 +112,11 @@ impl Relation for SchnorrExample {
 
         // Assign public inputs.
         let (pk_val, m_val) = instance.map(|(pk, m)| (pk, m)).unzip();
-        let pk: AssignedNativePoint<Jubjub> = jubjub.assign_as_public_input(layouter, pk_val)?;
-        let message = std_lib.assign_as_public_input(layouter, m_val)?;
+        let pk: AssignedNativePoint<Jubjub> = jubjub.assign(layouter, pk_val)?;
+        let message = std_lib.assign(layouter, m_val)?;
+
+        jubjub.constrain_as_public_input(layouter, &pk)?;
+        std_lib.constrain_as_public_input(layouter, &message)?;
 
         // Assign witness values.
         let (sig_s_val, sig_e_bytes_val) = witness.map(|sig| (sig.s, sig.e_bytes)).unzip();
