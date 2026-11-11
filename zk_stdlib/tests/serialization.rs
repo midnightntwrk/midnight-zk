@@ -284,7 +284,7 @@ fn keys_with_out_of_range_k_are_rejected() {
 
     let mut arch_bytes = Vec::new();
     architecture.write(&mut arch_bytes).unwrap();
-    let vk_k_offset = arch_bytes.len();
+    let vk_k_offset = 1 + arch_bytes.len();
 
     for k in [0, 33, u8::MAX] {
         let mut bytes = vk_bytes.clone();
@@ -326,7 +326,7 @@ fn vk_version_and_pcs_are_checked_on_read() {
 
     for version in [1u32, 2, 4] {
         let mut bytes = vk_bytes.clone();
-        bytes[..4].copy_from_slice(&version.to_le_bytes());
+        bytes[1..5].copy_from_slice(&version.to_le_bytes());
         let err = MidnightVK::<KZG>::read(&mut &bytes[..], SerdeFormat::Processed).err();
         assert_eq!(
             err.map(|e| e.kind()),

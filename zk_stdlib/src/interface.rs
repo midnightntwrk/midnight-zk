@@ -22,7 +22,8 @@ use midnight_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
     dev::cost_model::{CircuitModel, circuit_model},
     plonk::{
-        self, Circuit, ConstraintSystem, Error, ProvingKey, VerifyingKey, keygen_vk_with_k, prepare,
+        self, Circuit, ConstraintSystem, Error, ProvingKey, VerifyingKey, create_proof, keygen_pk,
+        keygen_vk_with_k, prepare,
     },
     poly::{
         commitment::Guard,
@@ -36,9 +37,7 @@ use midnight_proofs::{
 };
 use rand::{CryptoRng, RngCore};
 
-use crate::{
-    F, KZG, MidnightPCS, ZkStdLib, ZkStdLibArch, ZkStdLibConfig, utils::plonk_api::BlstPLONK,
-};
+use crate::{F, KZG, MidnightPCS, ZkStdLib, ZkStdLibArch, ZkStdLibConfig};
 
 /// Circuit structure which is used to create any circuit that can be compiled
 /// into keys using the ZK standard library.
@@ -110,11 +109,11 @@ impl<PCS: MidnightPCS> MidnightVK<PCS> {
     /// Using `RawBytesUnchecked` will have the same effect as `RawBytes`,
     /// but it is not recommended.
     pub fn write<W: io::Write>(&self, writer: &mut W, format: SerdeFormat) -> io::Result<()> {
+        writer.write_all(&[PCS::ID])?;
+
         self.architecture.write(writer)?;
 
         writer.write_all(&[self.k])?;
-
-        writer.write_all(&[PCS::ID])?;
 
         writer.write_all(&(self.nb_public_inputs as u32).to_le_bytes())?;
 
@@ -133,17 +132,17 @@ impl<PCS: MidnightPCS> MidnightVK<PCS> {
     /// Fails if the key was written by another version of zk_stdlib, or under
     /// a commitment scheme other than `PCS`.
     pub fn read<R: io::Read>(reader: &mut R, format: SerdeFormat) -> io::Result<Self> {
-        let architecture = ZkStdLibArch::read(reader)?;
-
         let mut byte = [0u8; 1];
-        reader.read_exact(&mut byte)?;
-        let k = check_k(byte[0])?;
-
         reader.read_exact(&mut byte)?;
         if byte[0] != PCS::ID {
             let msg = format!("key declares PCS id {}, expected {}", byte[0], PCS::ID);
             return Err(io::Error::new(io::ErrorKind::InvalidData, msg));
         }
+
+        let architecture = ZkStdLibArch::read(reader)?;
+
+        reader.read_exact(&mut byte)?;
+        let k = check_k(byte[0])?;
 
         let mut bytes = [0u8; 4];
         reader.read_exact(&mut bytes)?;
@@ -540,7 +539,7 @@ pub fn setup_pk<R: Relation, PCS: MidnightPCS>(
         Value::unknown(),
         Some(vk.k() as u32),
     );
-    let pk = BlstPLONK::<MidnightCircuit<R>>::setup_pk::<PCS>(&circuit, &vk.vk);
+    let pk = keygen_pk(vk.vk.clone(), &circuit).expect("keygen_pk should not fail");
     MidnightPK {
         k: vk.k(),
         relation: relation.clone(),
@@ -573,15 +572,18 @@ where
         Value::known(witness),
         Some(pk.k as u32),
     );
-    BlstPLONK::<MidnightCircuit<R>>::prove::<H, PCS>(
+    let mut transcript = CircuitTranscript::<H>::init();
+    create_proof::<F, PCS, _, _>(
         params,
         &pk.pk,
         &circuit,
         nb_committed_instances,
         &[com_inst.as_deref().unwrap_or_default(), &pi],
+        &mut transcript,
         rng,
     )
-    .map_err(|e| circuit.take_error().unwrap_or_else(|| e.into()))
+    .map_err(|e| circuit.take_error().unwrap_or_else(|| e.into()))?;
+    Ok(transcript.finalize())
 }
 
 /// Verifies the given proof of relation `R` with respect to the given instance.
@@ -607,13 +609,11 @@ where
     if pi.len() != vk.nb_public_inputs {
         return Err(Error::InvalidInstances.into());
     }
-    Ok(BlstPLONK::<MidnightCircuit<R>>::verify::<H, PCS>(
-        params_verifier,
-        &vk.vk,
-        &committed,
-        &instances,
-        proof,
-    )?)
+    let mut transcript = CircuitTranscript::<H>::init_from_bytes(proof);
+    let guard = prepare::<F, PCS, _>(&vk.vk, &committed, &instances, &mut transcript)?;
+    transcript.assert_empty().map_err(|_| Error::Opening)?;
+    guard.verify(params_verifier).map_err(|_| Error::Opening)?;
+    Ok(())
 }
 
 /// Verifies a batch of proofs with respect to their corresponding vk.

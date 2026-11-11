@@ -232,8 +232,10 @@ impl ZkStdLibArch {
     /// serialized. This enables the reader to know the architecture without
     /// the need of deserializing the full verifying key.
     pub fn read_from_serialized_vk<R: io::Read>(reader: &mut R) -> io::Result<Self> {
-        // The current serialization of the verifying key places the architecture at
-        // the beginning.
+        // The current serialization of the verifying key starts with the PCS id,
+        // followed by the architecture.
+        let mut pcs_id = [0u8; 1];
+        reader.read_exact(&mut pcs_id)?;
         Self::read(reader)
     }
 }

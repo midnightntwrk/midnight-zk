@@ -41,7 +41,7 @@ use midnight_proofs::{
 use rand::{CryptoRng, RngCore};
 use sha2::Digest;
 
-use crate::{KZG, MidnightPCS, MidnightVK, Relation, cost_model, optimal_k};
+use crate::{DefaultPCS, MidnightPCS, MidnightVK, Relation, cost_model, optimal_k};
 
 macro_rules! plonk_api {
     ($name:ident, $engine:ty, $native:ty, $curve:ty, $projective:ty) => {
@@ -57,10 +57,10 @@ macro_rules! plonk_api {
         {
             /// PLONK VK setup for the given circuit. Downsizes the parameters to match
             /// the size of the circuit.
-            pub fn setup_vk<PCS: MidnightPCS>(
+            pub fn setup_vk(
                 params: &ParamsKZG<$engine>,
                 circuit: &Relation,
-            ) -> VerifyingKey<$native, PCS> {
+            ) -> VerifyingKey<$native, DefaultPCS> {
                 #[cfg(test)]
                 let start = Instant::now();
                 let vk = keygen_vk(params, circuit).expect("keygen_vk should not fail");
@@ -71,10 +71,10 @@ macro_rules! plonk_api {
             }
 
             /// PLONK PK setup for the given circuit.
-            pub fn setup_pk<PCS: MidnightPCS>(
+            pub fn setup_pk(
                 circuit: &Relation,
-                vk: &VerifyingKey<$native, PCS>,
-            ) -> ProvingKey<$native, PCS> {
+                vk: &VerifyingKey<$native, DefaultPCS>,
+            ) -> ProvingKey<$native, DefaultPCS> {
                 #[cfg(test)]
                 let start = Instant::now();
                 let pk = keygen_pk(vk.clone(), circuit).expect("keygen_pk should not fail");
@@ -85,9 +85,9 @@ macro_rules! plonk_api {
             }
 
             /// PLONK proving algorithm.
-            pub fn prove<H, PCS: MidnightPCS>(
+            pub fn prove<H>(
                 params: &ParamsKZG<$engine>,
-                pk: &ProvingKey<$native, PCS>,
+                pk: &ProvingKey<$native, DefaultPCS>,
                 circuit: &Relation,
                 nb_instance_commitments: usize,
                 pi: &[&[$native]],
@@ -102,7 +102,7 @@ macro_rules! plonk_api {
                 let start = Instant::now();
                 let proof = {
                     let mut transcript = CircuitTranscript::init();
-                    create_proof::<$native, PCS, CircuitTranscript<H>, Relation>(
+                    create_proof::<$native, DefaultPCS, CircuitTranscript<H>, Relation>(
                         params,
                         pk,
                         circuit,
@@ -124,9 +124,9 @@ macro_rules! plonk_api {
             }
 
             /// PLONK verification algorithm.
-            pub fn verify<H, PCS: MidnightPCS>(
+            pub fn verify<H>(
                 params_verifier: &ParamsVerifierKZG<$engine>,
-                vk: &VerifyingKey<$native, PCS>,
+                vk: &VerifyingKey<$native, DefaultPCS>,
                 instance_commitments: &[KZGMultiCommitment<$engine>],
                 pi: &[&[$native]],
                 proof: &[u8],
@@ -140,7 +140,7 @@ macro_rules! plonk_api {
 
                 #[cfg(test)]
                 let start = Instant::now();
-                let res = prepare::<$native, PCS, CircuitTranscript<H>>(
+                let res = prepare::<$native, DefaultPCS, CircuitTranscript<H>>(
                     vk,
                     instance_commitments,
                     pi,
@@ -175,7 +175,7 @@ plonk_api!(
 ///    breaking change to midnight_lib, and should change the ChangeLog
 ///    accordingly. To update the VK, re-run the example with
 ///    CHANGE_VK=BREAKING.
-pub fn check_vk<Relation: Circuit<midnight_curves::Fq>>(vk: &MidnightVK<KZG>) {
+pub fn check_vk<Relation: Circuit<midnight_curves::Fq>>(vk: &MidnightVK<DefaultPCS>) {
     let circuit_name = std::any::type_name::<Relation>()
         .split("::")
         .last()
@@ -246,7 +246,7 @@ pub fn update_circuit_goldenfiles<R: Relation>(relation: &R, has_committed_insta
     writeln!(
         f,
         "{:#?}",
-        cost_model::<_, KZG>(relation, None, has_committed_instance)
+        cost_model::<_, DefaultPCS>(relation, None, has_committed_instance)
     )
     .unwrap_or_else(|_| panic!("Could not write to file {}", file_name));
 }
@@ -270,7 +270,7 @@ pub fn load_srs<PCS: MidnightPCS>(source: SrsSource, k: u32) -> ParamsKZG<Bls12>
 /// If `k` is `None`, the optimal circuit size is derived automatically.
 pub fn srs_for_test<R: Relation>(relation: &R, k: Option<u32>) -> ParamsKZG<Bls12> {
     let k = k.unwrap_or_else(|| optimal_k(relation));
-    load_srs::<KZG>(SrsSource::Filecoin, k)
+    load_srs::<DefaultPCS>(SrsSource::Filecoin, k)
 }
 
 /// Loads Midnight's production SRS (over BLS12-381) for circuits of size `2^k`
