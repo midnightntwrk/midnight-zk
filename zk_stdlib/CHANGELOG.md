@@ -19,12 +19,14 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * BREAKING: Implemented linearization prover [#190](https://github.com/midnightntwrk/midnight-zk/pull/190)
 * `DefaultPCS`, the polynomial commitment scheme of zk_stdlib, currently `KZGCommitmentScheme<Bls12>` [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
 * `MidnightPCS`, the catalog of the polynomial commitment schemes supported by zk_stdlib (KZG and fflonk over KZG), with `srs_k`, the size of the SRS for a given circuit size [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
+* `KZG` and `FflonkKZG<LOG2_T_MAX>` (`LOG2_T_MAX` in `1..=4`), the closed catalog of commitment schemes selectable through `MidnightPCS`, and `MidnightPCS::ID`, which identifies them in serialized keys
 
 ### Fixed
 * Fix cost model proof size check to account for committed instance columns [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 * `MidnightVK::read` and `MidnightPK::read` reject a `k` outside `1..=F::S` instead of underflowing on `k = 0` [#581](https://github.com/midnightntwrk/midnight-zk/pull/581)
 
 ### Changed
+* BREAKING: `MidnightVK`, `MidnightPK`, `setup_vk`, `setup_pk`, `prove`, `verify`, `batch_verify` and `cost_model` are generic over the commitment scheme `PCS: MidnightPCS`, which must be given explicitly (e.g. `setup_vk::<_, KZG>`). Serialized verifying keys record their PCS and fail to read under another one. Their format version is 3, and `MidnightVK::read` and `ZkStdLibArch::read` reject other versions, which belong to other proof systems
 * Update the golden files following the quotient limbs of `midnight-proofs` being committed to as one group and opened one by one, which changes the proofs [#582](https://github.com/midnightntwrk/midnight-zk/pull/582)
 * `prove` passes the committed-instance column of a relation without a committed instance as an empty instance column, so it is neither committed to nor opened and the proof shrinks by one scalar. `verify` and `batch_verify` take it the same way when given no committed instance [#569](https://github.com/midnightntwrk/midnight-zk/pull/569)
 * `cost_model` and `update_circuit_goldenfiles` take whether the relation has a committed instance [#569](https://github.com/midnightntwrk/midnight-zk/pull/569)
