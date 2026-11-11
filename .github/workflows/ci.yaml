@@ -113,11 +113,20 @@ jobs:
   test-proofs:
     if: github.event.pull_request.draft == false
     name: Test proofs
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - name: Install libfontconfig1-dev
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev
+        timeout-minutes: 5
+        run: |
+          apt_options=(
+            -o Acquire::Retries=3
+            -o Acquire::http::Timeout=30
+            -o Acquire::https::Timeout=30
+            -o APT::Update::Error-Mode=any
+          )
+          sudo apt-get "${apt_options[@]}" update
+          sudo apt-get "${apt_options[@]}" install -y libfontconfig1-dev
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
@@ -179,7 +188,7 @@ jobs:
     if: github.event.pull_request.draft == false
     name: Clippy
     timeout-minutes: 30
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -191,7 +200,16 @@ jobs:
       # font required for benchmarking charts generation
       - name: Install libfontconfig1-dev
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libfontconfig1-dev
+        timeout-minutes: 5
+        run: |
+          apt_options=(
+            -o Acquire::Retries=3
+            -o Acquire::http::Timeout=30
+            -o Acquire::https::Timeout=30
+            -o APT::Update::Error-Mode=any
+          )
+          sudo apt-get "${apt_options[@]}" update
+          sudo apt-get "${apt_options[@]}" install -y libfontconfig1-dev
 
       - name: Run Clippy
         if: always()
