@@ -24,7 +24,7 @@
 //! Row 3: x=py, aux=u_T       [tangent:     C + selector]
 //! Row 4: x=λ,  z=px          [tangent:     D, E(unused)  =  lambda_sq: A, B  ← shared]
 //! Row 5: x=0,  aux=u_S       [lambda_sq:   C(zeroed) + selector]
-//! Row 6: x=px, z=rx          [lambda_sq:   D, E]
+//! Row 6: x=rx                [lambda_sq:   D, E(unused)]
 //! ```
 //!
 //! **Row-sharing trick**: the tangent gate is instantiated with C=py and D=λ

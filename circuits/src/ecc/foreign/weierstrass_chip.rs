@@ -82,6 +82,9 @@ where
     tag_col_multi_select: Column<Fixed>,
 }
 
+/// Number of fixed columns required by the custom gates of this chip.
+pub const NB_FOREIGN_WEIERSTRASS_FIXED_COLS: usize = 7;
+
 /// Number of columns required by the custom gates of this chip.
 pub fn nb_foreign_ecc_chip_columns<F, C, B, S>() -> usize
 where
@@ -1007,6 +1010,7 @@ where
         meta: &mut ConstraintSystem<F>,
         base_field_config: &FieldChipConfig,
         advice_columns: &[Column<Advice>],
+        fixed_columns: &[Column<Fixed>],
         nb_parallel_range_checks: usize,
         max_bit_len: u32,
     ) -> ForeignWeierstrassEccConfig<C> {
@@ -1018,10 +1022,10 @@ where
         meta.enable_equality(cond_col);
 
         // Coefficient ranges covering all gate instantiations:
-        //   slope:           a=0, b∈{−1,+1}, d=0,  e=1,  ca=1, cd=−1, k=0
-        //   lambda-sq (add): a=1, b=−1,      d=−1, e=−1, ca=0, cd=0,  k=0
-        //   lambda-sq (dbl): a=1, b=−2,      d=−1, e=0,  ca=0, cd=0,  k=0
-        //   tangent:         a=3, b=0,       d=0,  e=0,  ca=0, cd=−2, k=1
+        //   slope:           a=0, b∈{−1,+1}, d=0,  e∈{−1,+1}, ca=1, cd=−1, k=0
+        //   lambda-sq (add): a=1, b=−1,      d=−1, e=−1,       ca=0, cd=0,  k=0
+        //   lambda-sq (dbl): a=1, b=−2,      d=−1, e=0,        ca=0, cd=0,  k=0
+        //   tangent:         a=3, b=0,       d=0,  e=0,        ca=0, cd=−2, k=1
         let unified_coeff_bounds = CoeffBounds {
             a: (BigInt::from(0), BigInt::from(3)),
             b: (BigInt::from(-2), BigInt::from(1)),
@@ -1035,6 +1039,7 @@ where
             meta,
             base_field_config,
             &cond_col,
+            fixed_columns[..NB_FOREIGN_WEIERSTRASS_FIXED_COLS].try_into().unwrap(),
             &unified_coeff_bounds,
             nb_parallel_range_checks,
             max_bit_len,
@@ -2006,6 +2011,9 @@ where
         while advice_columns.len() < nb_advice_cols {
             advice_columns.push(meta.advice_column());
         }
+        while fixed_columns.len() < NB_FOREIGN_WEIERSTRASS_FIXED_COLS {
+            fixed_columns.push(meta.fixed_column());
+        }
         // Use hard-coded pow2range values matching NativeGadget::configure_from_scratch
         let nb_parallel_range_checks = 4;
         let max_bit_len = 8;
@@ -2019,6 +2027,7 @@ where
             meta,
             &base_field_config,
             &advice_columns[..nb_advice_cols],
+            fixed_columns,
             nb_parallel_range_checks,
             max_bit_len,
         );

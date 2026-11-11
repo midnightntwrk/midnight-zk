@@ -964,6 +964,7 @@ pub(crate) mod tests {
                 meta,
                 &base_config,
                 &advice_columns,
+                &fixed_columns,
                 nb_parallel_range_checks,
                 max_bit_len,
             );

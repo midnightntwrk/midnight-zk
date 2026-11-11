@@ -135,7 +135,7 @@ where
     // ---------------------------------------------------------------------------
     // Gate B — lambda_squared
     //   a=1, b=−1, d=−1, e=−1, ca=0, cd=0
-    //   A=λ (prev x-slot = Row 3), B=rx (prev z-slot = Row 3), D=px, E=qx
+    //   A=λ (prev x-slot = Row 5), B=rx (prev z-slot = Row 5), D=px, E=qx
     //   Enforces: λ² − rx − px − qx = 0  (mod m)
     // ---------------------------------------------------------------------------
     let (a_b, b_b, d_b, e_b, ca_b, cd_b) = (
@@ -256,7 +256,7 @@ where
         .collect();
 
     // ---------------------------------------------------------------------------
-    // Lay out the 7-row region.
+    // Lay out the 8-row region.
     // ---------------------------------------------------------------------------
     let range_checks = layouter.assign_region(
         || "Add",
