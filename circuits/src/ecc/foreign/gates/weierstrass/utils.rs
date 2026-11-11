@@ -19,12 +19,12 @@ use num_bigint::BigInt as BI;
 
 use super::unified::CoeffBounds;
 use crate::{
-    CircuitField, field::foreign::params::FieldEmulationParams, types::AssignedField,
-    utils::util::bigint_to_fe,
+    CircuitField, ecc::foreign::weierstrass_chip::NB_FOREIGN_WEIERSTRASS_FIXED_COLS,
+    field::foreign::params::FieldEmulationParams, types::AssignedField, utils::util::bigint_to_fe,
 };
 
-/// Asserts that each coefficient lies within `bounds`, then assigns the seven
-/// fixed coefficient columns at `offset`.
+/// Asserts that each coefficient lies within `bounds`, then assigns the
+/// [`NB_FOREIGN_WEIERSTRASS_FIXED_COLS`] fixed coefficient columns at `offset`.
 ///
 /// The bounds check is a hard `assert!`: a violation means the caller used
 /// coefficients outside the range for which the carry witness bounds were
@@ -32,7 +32,7 @@ use crate::{
 pub(super) fn assign_coeffs<F: CircuitField>(
     region: &mut Region<'_, F>,
     offset: usize,
-    coeff_cols: &[Column<Fixed>; 7],
+    coeff_cols: &[Column<Fixed>; NB_FOREIGN_WEIERSTRASS_FIXED_COLS],
     bounds: &CoeffBounds,
     [a, b, d, e, ca, cd, k]: [&BI; 7],
 ) -> Result<(), Error> {

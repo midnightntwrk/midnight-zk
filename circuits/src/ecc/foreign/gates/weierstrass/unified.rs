@@ -22,8 +22,8 @@
 //! where
 //!   - `A`, `B`, `C`, `D`, `E` are foreign-field elements (multi-limb) laid out
 //!     across three consecutive rows,
-//!   - `(a, b, d, e, ca, cd, k)` are fixed coefficients stored in seven
-//!     dedicated fixed columns at the selector row,
+//!   - `(a, b, d, e, ca, cd, k)` are fixed coefficients stored in
+//!     [`NB_FOREIGN_WEIERSTRASS_FIXED_COLS`] fixed columns at the selector row,
 //!   - `α` is the coefficient `a` of the curve equation `y² = x³ + αx + β`,
 //!   - `u` and `vj` are auxiliary carry witnesses,
 //!   - `m` is the foreign-field modulus,
@@ -65,7 +65,7 @@ use num_traits::{One, Zero};
 
 use crate::{
     CircuitField,
-    ecc::curves::WeierstrassCurve,
+    ecc::{curves::WeierstrassCurve, foreign::weierstrass_chip::NB_FOREIGN_WEIERSTRASS_FIXED_COLS},
     field::foreign::{
         field_chip::FieldChipConfig,
         params::FieldEmulationParams,
@@ -100,7 +100,7 @@ pub struct UnifiedConfig<C: WeierstrassCurve> {
     pub(super) q_unified: Selector,
     /// Fixed coefficient columns `[a, b, d, e, ca, cd, k]`, queried at
     /// selector offset.
-    pub(super) coeff_cols: [Column<Fixed>; 7],
+    pub(super) coeff_cols: [Column<Fixed>; NB_FOREIGN_WEIERSTRASS_FIXED_COLS],
     pub(super) u_bounds: (BI, BI),
     pub(super) vs_bounds: Vec<(BI, BI)>,
     pub(super) cond_col: Column<Advice>,
@@ -157,12 +157,13 @@ impl<C: WeierstrassCurve> UnifiedConfig<C> {
         )
     }
 
-    /// Configures the gate. Allocates seven fresh fixed columns for the
-    /// per-row coefficients and installs the constraint polynomial.
+    /// Configures the gate, storing the per-row coefficients in the given fixed
+    /// columns, and installs the constraint polynomial.
     pub fn configure<F, P>(
         meta: &mut ConstraintSystem<F>,
         field_chip_config: &FieldChipConfig,
         cond_col: &Column<Advice>,
+        coeff_cols: &[Column<Fixed>; NB_FOREIGN_WEIERSTRASS_FIXED_COLS],
         coeff_bounds: &CoeffBounds,
         nb_parallel_range_checks: usize,
         max_bit_len: u32,
@@ -181,7 +182,6 @@ impl<C: WeierstrassCurve> UnifiedConfig<C> {
 
         let alpha = curve_alpha::<C>();
         let q_unified = meta.selector();
-        let coeff_cols: [Column<Fixed>; 7] = core::array::from_fn(|_| meta.fixed_column());
 
         meta.create_gate("Foreign-field unified", |meta| {
             let cond = meta.query_advice(*cond_col, Rotation::cur());
@@ -282,7 +282,7 @@ impl<C: WeierstrassCurve> UnifiedConfig<C> {
 
         UnifiedConfig {
             q_unified,
-            coeff_cols,
+            coeff_cols: *coeff_cols,
             u_bounds: (k_min, u_max),
             vs_bounds,
             cond_col: *cond_col,
