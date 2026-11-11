@@ -123,7 +123,6 @@ jobs:
             -o Acquire::Retries=3
             -o Acquire::http::Timeout=30
             -o Acquire::https::Timeout=30
-            -o APT::Update::Error-Mode=any
           )
           sudo apt-get "${apt_options[@]}" update
           sudo apt-get "${apt_options[@]}" install -y libfontconfig1-dev
@@ -206,7 +205,6 @@ jobs:
             -o Acquire::Retries=3
             -o Acquire::http::Timeout=30
             -o Acquire::https::Timeout=30
-            -o APT::Update::Error-Mode=any
           )
           sudo apt-get "${apt_options[@]}" update
           sudo apt-get "${apt_options[@]}" install -y libfontconfig1-dev
