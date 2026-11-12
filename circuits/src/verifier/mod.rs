@@ -45,7 +45,7 @@ mod utils;
 mod verifier_gadget;
 
 pub use accumulator::{Accumulator, AssignedAccumulator};
-pub use kzg::{AssignedKZGCommitment, AssignedKZGMultiCommitment};
+pub use kzg::{AssignedKZGCommitment, AssignedKZGMultiCommitment, InCircuitKZGEngine};
 pub use msm::{AssignedMsm, AssignedPoint, Msm, Point};
 pub use pcs::{AssignedCommitment, CommitmentBases, InCircuitPCS};
 pub use transcript_gadget::{InCircuitHashable, InCircuitTranscript, PoseidonTranscriptGadget};

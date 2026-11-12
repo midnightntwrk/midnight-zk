@@ -24,20 +24,19 @@
 use std::collections::{BTreeSet, HashMap};
 
 use ff::Field;
-use midnight_curves::{CurveAffine, CurveExt, pairing::MultiMillerLoop, serde::SerdeObject};
+use midnight_curves::pairing::MultiMillerLoop;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
     poly::{
         PolynomialLabel,
         kzg::{
-            COLLAPSE_THRESHOLD, KZGCommitmentScheme,
+            COLLAPSE_THRESHOLD, KZGCommitmentScheme, KZGEngine,
             commitment::{KZGCommitment, KZGMultiCommitment},
             point_set_order,
         },
     },
     transcript::Hashable,
-    utils::helpers::ProcessedSerdeObject,
 };
 
 use crate::{
@@ -62,6 +61,26 @@ use crate::{
     },
 };
 
+/// A pairing engine whose KZG proofs can be verified in-circuit, over its
+/// scalar field, with its G1 points emulated.
+pub trait InCircuitKZGEngine:
+    KZGEngine<
+        Fr: CircuitField,
+        G1: WeierstrassCurve<ScalarField = Self::Fr, CryptographicGroup = Self::G1>
+                + FieldEmulationParams<Self::Fr, <Self::G1 as CircuitCurve>::Base>,
+    >
+{
+}
+
+impl<E> InCircuitKZGEngine for E where
+    E: KZGEngine<
+            Fr: CircuitField,
+            G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
+                    + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
+        >
+{
+}
+
 // -------------------------------------
 // See proofs/src/poly/kzg/commitment.rs
 // -------------------------------------
@@ -72,12 +91,7 @@ use crate::{
 /// Carries a polynomial commitment (or a lazy linear combination of them)
 /// together with its `PolynomialLabel`(s).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum AssignedKZGCommitment<E: MultiMillerLoop>
-where
-    E::Fr: CircuitField,
-    E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
-        + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
-{
+pub enum AssignedKZGCommitment<E: InCircuitKZGEngine> {
     /// A single committed point with its label.
     Simple(AssignedPoint<E>, PolynomialLabel),
     /// A lazy linear combination `∑ scalars[i] * points[i]` with per-term
@@ -89,13 +103,7 @@ where
     ),
 }
 
-impl<E> InnerValue for AssignedKZGCommitment<E>
-where
-    E: MultiMillerLoop,
-    E::Fr: CircuitField,
-    E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
-        + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
-{
+impl<E: InCircuitKZGEngine> InnerValue for AssignedKZGCommitment<E> {
     type Element = KZGCommitment<E>;
 
     fn value(&self) -> Value<Self::Element> {
@@ -116,13 +124,7 @@ where
     }
 }
 
-impl<E> AssignedKZGCommitment<E>
-where
-    E: MultiMillerLoop,
-    E::Fr: CircuitField,
-    E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
-        + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
-{
+impl<E: InCircuitKZGEngine> AssignedKZGCommitment<E> {
     /// Creates a `Simple` commitment from a variable-base assigned point and
     /// label.
     pub fn simple(point: AssignedG1<E>, label: PolynomialLabel) -> Self {
@@ -174,19 +176,9 @@ where
 /// [`KZGMultiCommitment`](midnight_proofs::poly::kzg::commitment::KZGMultiCommitment):
 /// a commitment to one or more polynomials.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct AssignedKZGMultiCommitment<E: MultiMillerLoop>(pub Vec<AssignedKZGCommitment<E>>)
-where
-    E::Fr: CircuitField,
-    E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
-        + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>;
+pub struct AssignedKZGMultiCommitment<E: InCircuitKZGEngine>(pub Vec<AssignedKZGCommitment<E>>);
 
-impl<E> AssignedKZGMultiCommitment<E>
-where
-    E: MultiMillerLoop,
-    E::Fr: CircuitField,
-    E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
-        + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
-{
+impl<E: InCircuitKZGEngine> AssignedKZGMultiCommitment<E> {
     fn assert_single(&self) {
         assert_eq!(
             self.0.len(),
@@ -231,13 +223,7 @@ where
     }
 }
 
-impl<E> InnerValue for AssignedKZGMultiCommitment<E>
-where
-    E: MultiMillerLoop,
-    E::Fr: CircuitField,
-    E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
-        + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
-{
+impl<E: InCircuitKZGEngine> InnerValue for AssignedKZGMultiCommitment<E> {
     type Element = KZGMultiCommitment<E>;
 
     fn value(&self) -> Value<Self::Element> {
@@ -245,13 +231,7 @@ where
     }
 }
 
-impl<E> Instantiable<E::Fr> for AssignedKZGMultiCommitment<E>
-where
-    E: MultiMillerLoop,
-    E::Fr: CircuitField,
-    E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
-        + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
-{
+impl<E: InCircuitKZGEngine> Instantiable<E::Fr> for AssignedKZGMultiCommitment<E> {
     /// # Panics
     ///
     /// Panics if `com` contains a linear combination of commitments.
@@ -272,14 +252,7 @@ where
     }
 }
 
-impl<E> InCircuitHashable<E::Fr> for AssignedKZGMultiCommitment<E>
-where
-    E: MultiMillerLoop,
-    E::Fr: CircuitField,
-    E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
-        + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>
-        + Default,
-{
+impl<E: InCircuitKZGEngine> InCircuitHashable<E::Fr> for AssignedKZGMultiCommitment<E> {
     type Chip = CurveChip<E>;
     type Shape = [PolynomialLabel];
 
@@ -494,18 +467,12 @@ fn construct_intermediate_sets<F: CircuitField>(
 // See proofs/src/utils/arithmetic.rs
 // ----------------------------------
 
-fn msm_inner_product<E>(
+fn msm_inner_product<E: InCircuitKZGEngine>(
     layouter: &mut impl Layouter<E::Fr>,
     scalar_chip: &ScalarChip<E::Fr>,
     msms: &[AssignedMsm<E>],
     scalars: &[AssignedBoundedScalar<E::Fr>],
-) -> Result<AssignedMsm<E>, Error>
-where
-    E: MultiMillerLoop,
-    E::Fr: CircuitField,
-    E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
-        + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
-{
+) -> Result<AssignedMsm<E>, Error> {
     let mut res = AssignedMsm::empty();
     let mut msms = msms.to_vec();
     for (msm, s) in msms.iter_mut().zip(scalars) {
@@ -551,14 +518,8 @@ pub(crate) fn multi_prepare_kzg<E, T>(
     transcript: &mut T,
 ) -> Result<AssignedAccumulator<E>, Error>
 where
-    E: MultiMillerLoop,
+    E: InCircuitKZGEngine,
     E::Fr: Hashable<T::Hash>,
-    E::Fr: CircuitField,
-    E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
-        + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
-    E::G1: Default + CurveExt<ScalarExt = E::Fr> + ProcessedSerdeObject,
-    E::G1Affine: Default + CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1> + SerdeObject,
-    E::G2: ProcessedSerdeObject,
     KZGMultiCommitment<E>: Hashable<T::Hash>,
     T: InCircuitTranscript<E::Fr>,
 {
@@ -762,16 +723,7 @@ impl<E: MultiMillerLoop> CommitmentBases<E::G1> for KZGMultiCommitment<E> {
 }
 
 /// In circuit implementation of KZG.
-impl<E> InCircuitPCS<E::Fr> for KZGCommitmentScheme<E>
-where
-    E: MultiMillerLoop,
-    E::Fr: CircuitField,
-    E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
-        + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
-    E::G1: Default + CurveExt<ScalarExt = E::Fr> + ProcessedSerdeObject,
-    E::G1Affine: Default + CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1> + SerdeObject,
-    E::G2: ProcessedSerdeObject,
-{
+impl<E: InCircuitKZGEngine> InCircuitPCS<E::Fr> for KZGCommitmentScheme<E> {
     type CommitmentChip = CurveChip<E>;
     type AssignedCommitment = AssignedKZGMultiCommitment<E>;
     type AssignedVerificationGuard = AssignedAccumulator<E>;
