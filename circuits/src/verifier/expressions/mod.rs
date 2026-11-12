@@ -20,10 +20,11 @@ use midnight_proofs::{
 };
 
 use crate::{
+    CircuitField,
     field::AssignedNative,
     instructions::{ArithInstructions, AssignmentInstructions},
     verifier::{
-        ScalarChip, SelfEmulation,
+        ScalarChip,
         argument::Evaluation,
         utils::{mul_add, try_reduce},
     },
@@ -34,11 +35,11 @@ pub(crate) mod permutation;
 pub(crate) mod trash;
 
 /// The `index`-th evaluation of the polynomial labelled `label`.
-pub(crate) fn eval_at<'a, S: SelfEmulation>(
-    evals_map: &'a BTreeMap<PolynomialLabel, Vec<Evaluation<S>>>,
+pub(crate) fn eval_at<'a, F: CircuitField>(
+    evals_map: &'a BTreeMap<PolynomialLabel, Vec<Evaluation<F>>>,
     label: &PolynomialLabel,
     index: usize,
-) -> Result<&'a AssignedNative<S::F>, Error> {
+) -> Result<&'a AssignedNative<F>, Error> {
     evals_map
         .get(label)
         .and_then(|evals| evals.get(index))
@@ -47,14 +48,14 @@ pub(crate) fn eval_at<'a, S: SelfEmulation>(
 }
 
 /// Function to evaluate expressions in-circuit.
-pub(crate) fn eval_expression<S: SelfEmulation>(
-    layouter: &mut impl Layouter<S::F>,
-    scalar_chip: &ScalarChip<S::F>,
-    advice: &[AssignedNative<S::F>],   // advice evals
-    fixed: &[AssignedNative<S::F>],    // fixed evals
-    instance: &[AssignedNative<S::F>], // instance evals
-    expr: &Expression<S::F>,
-) -> Result<AssignedNative<S::F>, Error> {
+pub(crate) fn eval_expression<F: CircuitField>(
+    layouter: &mut impl Layouter<F>,
+    scalar_chip: &ScalarChip<F>,
+    advice: &[AssignedNative<F>],   // advice evals
+    fixed: &[AssignedNative<F>],    // fixed evals
+    instance: &[AssignedNative<F>], // instance evals
+    expr: &Expression<F>,
+) -> Result<AssignedNative<F>, Error> {
     match expr {
         Expression::Constant(k) => scalar_chip.assign_fixed(layouter, *k),
         Expression::Selector(_) => {
@@ -64,39 +65,39 @@ pub(crate) fn eval_expression<S: SelfEmulation>(
         Expression::Advice(query) => Ok(advice[query.index.unwrap()].clone()),
         Expression::Instance(query) => Ok(instance[query.index.unwrap()].clone()),
         Expression::Negated(e) => {
-            let val = eval_expression::<S>(layouter, scalar_chip, advice, fixed, instance, e)?;
+            let val = eval_expression::<F>(layouter, scalar_chip, advice, fixed, instance, e)?;
             scalar_chip.neg(layouter, &val)
         }
         Expression::Sum(e1, e2) => {
-            let e1 = eval_expression::<S>(layouter, scalar_chip, advice, fixed, instance, e1)?;
-            let e2 = eval_expression::<S>(layouter, scalar_chip, advice, fixed, instance, e2)?;
+            let e1 = eval_expression::<F>(layouter, scalar_chip, advice, fixed, instance, e1)?;
+            let e2 = eval_expression::<F>(layouter, scalar_chip, advice, fixed, instance, e2)?;
             scalar_chip.add(layouter, &e1, &e2)
         }
         Expression::Product(e1, e2) => {
-            let val1 = eval_expression::<S>(layouter, scalar_chip, advice, fixed, instance, e1)?;
-            let val2 = eval_expression::<S>(layouter, scalar_chip, advice, fixed, instance, e2)?;
+            let val1 = eval_expression::<F>(layouter, scalar_chip, advice, fixed, instance, e1)?;
+            let val2 = eval_expression::<F>(layouter, scalar_chip, advice, fixed, instance, e2)?;
             scalar_chip.mul(layouter, &val1, &val2, None)
         }
         Expression::Scaled(e, k) => {
-            let val = eval_expression::<S>(layouter, scalar_chip, advice, fixed, instance, e)?;
+            let val = eval_expression::<F>(layouter, scalar_chip, advice, fixed, instance, e)?;
             scalar_chip.mul_by_constant(layouter, &val, *k)
         }
     }
 }
 
-pub(crate) fn compress_expressions<S: SelfEmulation>(
-    layouter: &mut impl Layouter<S::F>,
-    scalar_chip: &ScalarChip<S::F>,
-    advice_evals: &[AssignedNative<S::F>],
-    fixed_evals: &[AssignedNative<S::F>],
-    instance_evals: &[AssignedNative<S::F>],
-    r: &AssignedNative<S::F>,
-    expressions: &[Expression<S::F>],
-) -> Result<AssignedNative<S::F>, Error> {
+pub(crate) fn compress_expressions<F: CircuitField>(
+    layouter: &mut impl Layouter<F>,
+    scalar_chip: &ScalarChip<F>,
+    advice_evals: &[AssignedNative<F>],
+    fixed_evals: &[AssignedNative<F>],
+    instance_evals: &[AssignedNative<F>],
+    r: &AssignedNative<F>,
+    expressions: &[Expression<F>],
+) -> Result<AssignedNative<F>, Error> {
     let evaluated_expressions = expressions
         .iter()
         .map(|expression| {
-            eval_expression::<S>(
+            eval_expression::<F>(
                 layouter,
                 scalar_chip,
                 advice_evals,

@@ -16,7 +16,6 @@
 
 use std::io;
 
-use ff::Field;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
@@ -25,33 +24,31 @@ use midnight_proofs::{
 
 use crate::{
     CircuitField,
+    hash::poseidon::{PoseidonChip, PoseidonState, constants::PoseidonField},
     instructions::{AssignmentInstructions, SpongeInstructions},
     types::AssignedNative,
-    verifier::{ScalarChip, SelfEmulation},
+    verifier::ScalarChip,
 };
 
-type SpongeState<S> = <<S as SelfEmulation>::SpongeChip as SpongeInstructions<
-    <S as SelfEmulation>::F,
-    AssignedNative<<S as SelfEmulation>::F>,
-    AssignedNative<<S as SelfEmulation>::F>,
->>::State;
+type SpongeState<F> =
+    <PoseidonChip<F> as SpongeInstructions<F, AssignedNative<F>, AssignedNative<F>>>::State;
 
 /// Gadget used to run the transcript reader in-circuit.
 #[derive(Clone, Debug)]
-pub struct PoseidonTranscriptGadget<S: SelfEmulation> {
-    scalar_chip: ScalarChip<S::F>,
-    sponge_chip: S::SpongeChip,
-    sponge_state: Option<SpongeState<S>>,
+pub struct PoseidonTranscriptGadget<F: PoseidonField> {
+    scalar_chip: ScalarChip<F>,
+    sponge_chip: PoseidonChip<F>,
+    sponge_state: Option<SpongeState<F>>,
     // Track the number of field elements we have in the buffer.
     input_len: usize,
     // Transcript reader is included, to help parse the proof. This parsing
     // *does not* need to be verified in-circuit.
-    transcript_reader: Option<CircuitTranscript<S::Hash>>,
+    transcript_reader: Option<CircuitTranscript<PoseidonState<F>>>,
 }
 
-impl<S: SelfEmulation> PoseidonTranscriptGadget<S> {
+impl<F: PoseidonField> PoseidonTranscriptGadget<F> {
     /// Creates a new `PoseidonTranscriptGadget` from the corresponding chips.
-    pub fn new(scalar_chip: &ScalarChip<S::F>, sponge_chip: &S::SpongeChip) -> Self {
+    pub fn new(scalar_chip: &ScalarChip<F>, sponge_chip: &PoseidonChip<F>) -> Self {
         Self {
             scalar_chip: scalar_chip.clone(),
             sponge_chip: sponge_chip.clone(),
@@ -112,12 +109,12 @@ pub trait InCircuitTranscript<F: CircuitField>: Clone {
         F: Hashable<Self::Hash>;
 }
 
-impl<S: SelfEmulation> InCircuitTranscript<S::F> for PoseidonTranscriptGadget<S> {
-    type Hash = S::Hash;
+impl<F: PoseidonField> InCircuitTranscript<F> for PoseidonTranscriptGadget<F> {
+    type Hash = PoseidonState<F>;
 
     fn init_with_proof(
         &mut self,
-        layouter: &mut impl Layouter<S::F>,
+        layouter: &mut impl Layouter<F>,
         proof: Value<Vec<u8>>,
     ) -> Result<(), Error> {
         self.sponge_state = Some(self.sponge_chip.init(layouter, None)?);
@@ -137,8 +134,8 @@ impl<S: SelfEmulation> InCircuitTranscript<S::F> for PoseidonTranscriptGadget<S>
 
     fn common(
         &mut self,
-        layouter: &mut impl Layouter<S::F>,
-        inputs: &[AssignedNative<S::F>],
+        layouter: &mut impl Layouter<F>,
+        inputs: &[AssignedNative<F>],
     ) -> Result<(), Error> {
         self.input_len += inputs.len();
         let state = self.sponge_state.as_mut().expect("You must init the transcript gadget");
@@ -147,24 +144,24 @@ impl<S: SelfEmulation> InCircuitTranscript<S::F> for PoseidonTranscriptGadget<S>
 
     fn squeeze_challenge(
         &mut self,
-        layouter: &mut impl Layouter<S::F>,
-    ) -> Result<AssignedNative<S::F>, Error> {
+        layouter: &mut impl Layouter<F>,
+    ) -> Result<AssignedNative<F>, Error> {
         let state = self.sponge_state.as_mut().expect("You must init the transcript gadget");
         self.sponge_chip.squeeze(layouter, state)
     }
 
-    fn read_value<V: Hashable<S::Hash>>(&mut self) -> io::Result<V> {
+    fn read_value<V: Hashable<PoseidonState<F>>>(&mut self) -> io::Result<V> {
         let reader = self.transcript_reader.as_mut().expect("You must init the transcript gadget");
         reader.read()
     }
 
-    fn read_scalar(
-        &mut self,
-        layouter: &mut impl Layouter<S::F>,
-    ) -> Result<AssignedNative<S::F>, Error> {
+    fn read_scalar(&mut self, layouter: &mut impl Layouter<F>) -> Result<AssignedNative<F>, Error>
+    where
+        F: Hashable<Self::Hash>,
+    {
         // If an error, do not fail, assign a default scalar instead.
         // (This allows us to parse dummy proofs.)
-        let scalar = Value::known(self.read_value().unwrap_or(S::F::ZERO));
+        let scalar = Value::known(self.read_value().unwrap_or(F::ZERO));
 
         let assigned_scalar = self.scalar_chip.assign(layouter, scalar)?;
         self.common_scalar(layouter, &assigned_scalar)?;
@@ -180,41 +177,41 @@ use midnight_proofs::plonk::{Advice, Column, ConstraintSystem, Fixed, Instance};
 use crate::testing_utils::FromScratch;
 
 #[cfg(any(test, feature = "testing"))]
-impl<S: SelfEmulation> FromScratch<S::F> for PoseidonTranscriptGadget<S>
+impl<F: PoseidonField> FromScratch<F> for PoseidonTranscriptGadget<F>
 where
-    S::SpongeChip: FromScratch<S::F>,
-    ScalarChip<S::F>: FromScratch<S::F>,
+    ScalarChip<F>: FromScratch<F>,
+    PoseidonChip<F>: FromScratch<F>,
 {
     type Config = (
-        <ScalarChip<S::F> as FromScratch<S::F>>::Config,
-        <S::SpongeChip as FromScratch<S::F>>::Config,
+        <ScalarChip<F> as FromScratch<F>>::Config,
+        <PoseidonChip<F> as FromScratch<F>>::Config,
     );
 
     fn new_from_scratch(config: &Self::Config) -> Self {
-        let scalar_chip = ScalarChip::<S::F>::new_from_scratch(&config.0);
-        let sponge_chip = S::SpongeChip::new_from_scratch(&config.1);
+        let scalar_chip = ScalarChip::<F>::new_from_scratch(&config.0);
+        let sponge_chip = PoseidonChip::<F>::new_from_scratch(&config.1);
         PoseidonTranscriptGadget::new(&scalar_chip, &sponge_chip)
     }
 
-    fn load_from_scratch(&self, layouter: &mut impl Layouter<S::F>) -> Result<(), Error> {
+    fn load_from_scratch(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
         self.scalar_chip.load_from_scratch(layouter)?;
         self.sponge_chip.load_from_scratch(layouter)
     }
 
     fn configure_from_scratch(
-        meta: &mut ConstraintSystem<S::F>,
+        meta: &mut ConstraintSystem<F>,
         advice_columns: &mut Vec<Column<Advice>>,
         fixed_columns: &mut Vec<Column<Fixed>>,
         instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
         (
-            ScalarChip::<S::F>::configure_from_scratch(
+            ScalarChip::<F>::configure_from_scratch(
                 meta,
                 advice_columns,
                 fixed_columns,
                 instance_columns,
             ),
-            S::SpongeChip::configure_from_scratch(
+            PoseidonChip::<F>::configure_from_scratch(
                 meta,
                 advice_columns,
                 fixed_columns,
@@ -237,15 +234,13 @@ mod tests {
     use rand::rngs::OsRng;
 
     use super::*;
-    use crate::{instructions::PublicInputInstructions, verifier::types::BlstrsEmulation};
+    use crate::instructions::{PublicInputInstructions, ecc::EccInstructions};
 
     const SIZE: usize = 12;
 
-    type S = BlstrsEmulation;
-
-    type F = <S as SelfEmulation>::F;
-    type C = <S as SelfEmulation>::C;
-    type CurveChip = <S as SelfEmulation>::CurveChip;
+    type F = midnight_curves::Fq;
+    type C = midnight_curves::G1Projective;
+    type CurveChip = crate::verifier::CurveChip<midnight_curves::Bls12>;
 
     #[derive(Clone, Debug, Default)]
     struct TestCircuit {
@@ -254,7 +249,7 @@ mod tests {
     }
 
     type Config = (
-        <PoseidonTranscriptGadget<S> as FromScratch<F>>::Config,
+        <PoseidonTranscriptGadget<F> as FromScratch<F>>::Config,
         <CurveChip as FromScratch<F>>::Config,
     );
 
@@ -262,7 +257,7 @@ mod tests {
         let instance_columns = [meta.instance_column(), meta.instance_column()];
         let (mut advice_columns, mut fixed_columns) = (vec![], vec![]);
         (
-            PoseidonTranscriptGadget::<S>::configure_from_scratch(
+            PoseidonTranscriptGadget::<F>::configure_from_scratch(
                 meta,
                 &mut advice_columns,
                 &mut fixed_columns,
@@ -295,7 +290,7 @@ mod tests {
             config: Self::Config,
             mut layouter: impl Layouter<F>,
         ) -> Result<(), Error> {
-            let mut transcript_gadget = PoseidonTranscriptGadget::<S>::new_from_scratch(&config.0);
+            let mut transcript_gadget = PoseidonTranscriptGadget::<F>::new_from_scratch(&config.0);
             let curve_chip = CurveChip::new_from_scratch(&config.1);
             transcript_gadget.init_with_proof(&mut layouter, Value::unknown())?;
 
@@ -304,7 +299,7 @@ mod tests {
                 .assign_many(&mut layouter, &self.scalars.transpose_array())?;
 
             let assigned_points = (self.points.transpose_array().iter())
-                .map(|p| S::assign_without_subgroup_check(&mut layouter, &curve_chip, *p))
+                .map(|p| curve_chip.assign_without_subgroup_check(&mut layouter, *p))
                 .collect::<Result<Vec<_>, Error>>()?;
 
             for i in 0..(SIZE / 2) {
@@ -344,7 +339,7 @@ mod tests {
             scalars: Value::known(scalars),
         };
 
-        let mut off_circuit_transcript = CircuitTranscript::<<S as SelfEmulation>::Hash>::init();
+        let mut off_circuit_transcript = CircuitTranscript::<PoseidonState<F>>::init();
 
         for i in 0..(SIZE / 2) {
             off_circuit_transcript.common(&scalars[i]).unwrap();

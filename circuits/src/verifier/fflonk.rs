@@ -20,6 +20,7 @@
 
 use std::collections::{BTreeMap, HashMap, hash_map::Entry};
 
+use ff::WithSmallOrderMulGroup;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
@@ -32,11 +33,12 @@ use midnight_proofs::{
 };
 
 use crate::{
+    CircuitField,
     field::AssignedNative,
     instructions::ArithInstructions,
     types::InnerValue,
     verifier::{
-        ScalarChip, SelfEmulation,
+        ScalarChip,
         pcs::{InCircuitPCS, VerifierQuery},
         transcript_gadget::InCircuitTranscript,
         utils::{PowersCache, RootsCache, cached_roots, eval_polynomial_on_roots},
@@ -44,10 +46,10 @@ use crate::{
 };
 
 /// In circuit implementation of Fflonk.
-impl<S, PCS, const LOG2_T_MAX: u32> InCircuitPCS<S> for Fflonk<PCS, LOG2_T_MAX>
+impl<F, PCS, const LOG2_T_MAX: u32> InCircuitPCS<F> for Fflonk<PCS, LOG2_T_MAX>
 where
-    S: SelfEmulation,
-    PCS: InCircuitPCS<S> + InterleavedCommit<S::F>,
+    F: CircuitField + WithSmallOrderMulGroup<3>,
+    PCS: InCircuitPCS<F> + InterleavedCommit<F>,
 {
     type CommitmentChip = PCS::CommitmentChip;
     type AssignedVerificationGuard = PCS::AssignedVerificationGuard;
@@ -62,7 +64,7 @@ where
     }
 
     fn assign_commitment(
-        layouter: &mut impl Layouter<S::F>,
+        layouter: &mut impl Layouter<F>,
         commitment_chip: &Self::CommitmentChip,
         value: Value<<Self::AssignedCommitment as InnerValue>::Element>,
         labels: &[PolynomialLabel],
@@ -76,15 +78,15 @@ where
     }
 
     fn commitment_as_public_input(
-        layouter: &mut impl Layouter<S::F>,
+        layouter: &mut impl Layouter<F>,
         commitment_chip: &Self::CommitmentChip,
         commitment: &Self::AssignedCommitment,
-    ) -> Result<Vec<AssignedNative<S::F>>, Error> {
+    ) -> Result<Vec<AssignedNative<F>>, Error> {
         PCS::commitment_as_public_input(layouter, commitment_chip, commitment)
     }
 
-    fn read_commitment<T: InCircuitTranscript<S::F>>(
-        layouter: &mut impl Layouter<S::F>,
+    fn read_commitment<T: InCircuitTranscript<F>>(
+        layouter: &mut impl Layouter<F>,
         commitment_chip: &Self::CommitmentChip,
         transcript: &mut T,
         labels: &[PolynomialLabel],
@@ -93,11 +95,11 @@ where
         Self::Commitment: Hashable<T::Hash>,
     {
         let labels = Self::chunk_labels(labels);
-        <PCS as InCircuitPCS<S>>::read_commitment(layouter, commitment_chip, transcript, &labels)
+        <PCS as InCircuitPCS<F>>::read_commitment(layouter, commitment_chip, transcript, &labels)
     }
 
-    fn common_commitment<T: InCircuitTranscript<S::F>>(
-        layouter: &mut impl Layouter<S::F>,
+    fn common_commitment<T: InCircuitTranscript<F>>(
+        layouter: &mut impl Layouter<F>,
         commitment_chip: &Self::CommitmentChip,
         transcript: &mut T,
         commitment: &Self::AssignedCommitment,
@@ -105,18 +107,18 @@ where
         PCS::common_commitment(layouter, commitment_chip, transcript, commitment)
     }
 
-    fn squeeze_evaluation_point<T: InCircuitTranscript<S::F>>(
-        layouter: &mut impl Layouter<S::F>,
-        scalar_chip: &ScalarChip<S::F>,
+    fn squeeze_evaluation_point<T: InCircuitTranscript<F>>(
+        layouter: &mut impl Layouter<F>,
+        scalar_chip: &ScalarChip<F>,
         transcript: &mut T,
-    ) -> Result<AssignedNative<S::F>, Error> {
+    ) -> Result<AssignedNative<F>, Error> {
         let x =
-            <PCS as InCircuitPCS<S>>::squeeze_evaluation_point(layouter, scalar_chip, transcript)?;
+            <PCS as InCircuitPCS<F>>::squeeze_evaluation_point(layouter, scalar_chip, transcript)?;
         scalar_chip.pow(layouter, &x, Self::T_MAX as u64)
     }
 
     fn commitment_labels(commitment: &Self::AssignedCommitment) -> Vec<PolynomialLabel> {
-        <PCS as InCircuitPCS<S>>::commitment_labels(commitment)
+        <PCS as InCircuitPCS<F>>::commitment_labels(commitment)
             .into_iter()
             .flat_map(|label| match label {
                 Collection(labels) => labels,
@@ -125,15 +127,15 @@ where
             .collect()
     }
 
-    fn multi_prepare<T: InCircuitTranscript<S::F>>(
-        layouter: &mut impl Layouter<S::F>,
+    fn multi_prepare<T: InCircuitTranscript<F>>(
+        layouter: &mut impl Layouter<F>,
         commitment_chip: &Self::CommitmentChip,
-        scalar_chip: &ScalarChip<S::F>,
+        scalar_chip: &ScalarChip<F>,
         transcript: &mut T,
-        queries: &[VerifierQuery<'_, S, Self>],
+        queries: &[VerifierQuery<'_, F, Self>],
     ) -> Result<Self::AssignedVerificationGuard, Error>
     where
-        S::F: Hashable<T::Hash>,
+        F: Hashable<T::Hash>,
         Self::Commitment: Hashable<T::Hash>,
     {
         // Maps the labels of every queried chunk to its commitment and the points
@@ -141,7 +143,7 @@ where
         // points)`.
         let chunks_info = queries.iter().fold(BTreeMap::new(), |mut chunks_info, q| {
             let labels = balanced_chunks(
-                &<Self as InCircuitPCS<S>>::commitment_labels(q.commitment),
+                &<Self as InCircuitPCS<F>>::commitment_labels(q.commitment),
                 Self::T_MAX,
             )
             .find(|labels| labels.contains(&q.label))
@@ -192,13 +194,13 @@ where
                 )?;
                 for (root, eval) in roots.iter().zip(root_evals) {
                     let label = Collection(labels.clone());
-                    let query = VerifierQuery::<S, PCS>::new(root, *commitment, label, &eval);
+                    let query = VerifierQuery::<F, PCS>::new(root, *commitment, label, &eval);
                     inner_queries.push(query.with_root_of(x, t));
                 }
             }
         }
 
-        <PCS as InCircuitPCS<S>>::multi_prepare(
+        <PCS as InCircuitPCS<F>>::multi_prepare(
             layouter,
             commitment_chip,
             scalar_chip,

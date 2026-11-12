@@ -24,7 +24,7 @@
 use std::collections::{BTreeSet, HashMap};
 
 use ff::Field;
-use midnight_curves::{CurveExt, pairing::MultiMillerLoop};
+use midnight_curves::{CurveAffine, CurveExt, pairing::MultiMillerLoop, serde::SerdeObject};
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
@@ -37,6 +37,7 @@ use midnight_proofs::{
         },
     },
     transcript::Hashable,
+    utils::helpers::ProcessedSerdeObject,
 };
 
 use crate::{
@@ -48,7 +49,7 @@ use crate::{
     },
     types::{InnerValue, Instantiable},
     verifier::{
-        AssignedAccumulator, ScalarChip, SelfEmulation,
+        AssignedAccumulator, ScalarChip,
         msm::{AssignedMsm, AssignedPoint},
         pcs::{CommitmentBases, InCircuitPCS, VerifierQuery},
         transcript_gadget::InCircuitTranscript,
@@ -450,19 +451,22 @@ fn evals_inner_product<F: CircuitField>(
 
 /// Verifies a bunch of KZG queries in a multi-open argument.
 /// The resulting accumulator satisfies the invariant iff all queries are valid.
-pub(crate) fn multi_prepare_kzg<S: SelfEmulation, T: InCircuitTranscript<S::F>>(
-    layouter: &mut impl Layouter<S::F>,
-    curve_chip: &CurveChip<S::Engine>,
-    scalar_chip: &ScalarChip<S::F>,
+pub(crate) fn multi_prepare_kzg<E: MultiMillerLoop, T: InCircuitTranscript<E::Fr>>(
+    layouter: &mut impl Layouter<E::Fr>,
+    curve_chip: &CurveChip<E>,
+    scalar_chip: &ScalarChip<E::Fr>,
     transcript_gadget: &mut T,
-    queries: &[VerifierQuery<S, KZGCommitmentScheme<S::Engine>>],
-) -> Result<AssignedAccumulator<S::Engine>, Error>
+    queries: &[VerifierQuery<E::Fr, KZGCommitmentScheme<E>>],
+) -> Result<AssignedAccumulator<E>, Error>
 where
-    S::F: Hashable<T::Hash>,
-    S::C: WeierstrassCurve<ScalarField = S::F>
-        + FieldEmulationParams<S::F, <S::C as CircuitCurve>::Base>,
-    KZGMultiCommitment<S::Engine>: Hashable<T::Hash>,
-    <S::C as CurveExt>::Base: CircuitField,
+    E::Fr: Hashable<T::Hash>,
+    E::Fr: CircuitField,
+    E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
+        + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
+    E::G1: Default + CurveExt<ScalarExt = E::Fr> + ProcessedSerdeObject,
+    E::G1Affine: Default + CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1> + SerdeObject,
+    E::G2: ProcessedSerdeObject,
+    KZGMultiCommitment<E>: Hashable<T::Hash>,
 {
     let one = AssignedBoundedScalar::one(layouter, scalar_chip)?;
 
@@ -476,7 +480,7 @@ where
     // whether it stands alone or in a batch: matching on the label rather than
     // on the position keeps a malformed group from aliasing every query onto the
     // same point.
-    let label_to_commitment: HashMap<PolynomialLabel, &AssignedKZGCommitment<S::Engine>> = queries
+    let label_to_commitment: HashMap<PolynomialLabel, &AssignedKZGCommitment<E>> = queries
         .iter()
         .map(|q| {
             let inners = &q.commitment.0;
@@ -496,7 +500,7 @@ where
         .filter_map(|q| q.root_of.clone().map(|root_of| (q.point.clone(), root_of)))
         .collect();
 
-    let default_eval = scalar_chip.assign_fixed(layouter, S::F::default())?;
+    let default_eval = scalar_chip.assign_fixed(layouter, E::Fr::default())?;
     let kzg_queries = queries
         .iter()
         .map(|query| (query.label.clone(), query.point.clone(), query.eval.clone()))
@@ -544,7 +548,7 @@ where
         (q_coms, q_eval_sets, point_sets)
     };
 
-    let f_com = <KZGCommitmentScheme<S::Engine> as InCircuitPCS<S>>::read_commitment(
+    let f_com = <KZGCommitmentScheme<E> as InCircuitPCS<E::Fr>>::read_commitment(
         layouter,
         curve_chip,
         transcript_gadget,
@@ -553,14 +557,14 @@ where
     .into_single();
 
     let x3 = transcript_gadget.squeeze_challenge(layouter)?;
-    let x3 = truncate::<S::F>(layouter, scalar_chip, &x3)?;
+    let x3 = truncate::<E::Fr>(layouter, scalar_chip, &x3)?;
 
     let mut q_evals_on_x3 = Vec::with_capacity(q_eval_sets.len());
     for _ in 0..q_eval_sets.len() {
         q_evals_on_x3.push(transcript_gadget.read_scalar(layouter)?);
     }
 
-    let zero = scalar_chip.assign_fixed(layouter, S::F::ZERO)?;
+    let zero = scalar_chip.assign_fixed(layouter, E::Fr::ZERO)?;
     let f_eval = point_sets
         .iter()
         .zip(q_eval_sets.iter())
@@ -593,7 +597,7 @@ where
 
     let x4 = transcript_gadget.squeeze_challenge(layouter)?;
     let truncated_x4_powers =
-        truncated_powers::<S::F>(layouter, scalar_chip, &x4, q_coms.len() + 1)?;
+        truncated_powers::<E::Fr>(layouter, scalar_chip, &x4, q_coms.len() + 1)?;
 
     let final_com = {
         let mut coms = q_coms;
@@ -625,7 +629,7 @@ where
         )
     };
 
-    let pi = <KZGCommitmentScheme<S::Engine> as InCircuitPCS<S>>::read_commitment(
+    let pi = <KZGCommitmentScheme<E> as InCircuitPCS<E::Fr>>::read_commitment(
         layouter,
         curve_chip,
         transcript_gadget,
@@ -664,20 +668,23 @@ impl<E: MultiMillerLoop> CommitmentBases<E::G1> for KZGMultiCommitment<E> {
 }
 
 /// In circuit implementation of KZG.
-impl<S: SelfEmulation> InCircuitPCS<S> for KZGCommitmentScheme<S::Engine>
+impl<E: MultiMillerLoop> InCircuitPCS<E::Fr> for KZGCommitmentScheme<E>
 where
-    S::C: WeierstrassCurve<ScalarField = S::F>
-        + FieldEmulationParams<S::F, <S::C as CircuitCurve>::Base>,
-    <S::C as CurveExt>::Base: CircuitField,
+    E::Fr: CircuitField,
+    E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
+        + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
+    E::G1: Default + CurveExt<ScalarExt = E::Fr> + ProcessedSerdeObject,
+    E::G1Affine: Default + CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1> + SerdeObject,
+    E::G2: ProcessedSerdeObject,
 {
-    type CommitmentChip = CurveChip<S::Engine>;
-    type AssignedCommitment = AssignedKZGMultiCommitment<S::Engine>;
-    type AssignedVerificationGuard = AssignedAccumulator<S::Engine>;
+    type CommitmentChip = CurveChip<E>;
+    type AssignedCommitment = AssignedKZGMultiCommitment<E>;
+    type AssignedVerificationGuard = AssignedAccumulator<E>;
 
     fn fixed_commitment(labels: &[PolynomialLabel]) -> Self::AssignedCommitment {
         PolynomialLabel::assert_distinct(labels);
         AssignedKZGMultiCommitment(
-            <Self as InCircuitPCS<S>>::fixed_base_labels(labels)
+            <Self as InCircuitPCS<E::Fr>>::fixed_base_labels(labels)
                 .into_iter()
                 .map(AssignedKZGCommitment::fixed)
                 .collect(),
@@ -689,9 +696,9 @@ where
     }
 
     fn assign_commitment(
-        layouter: &mut impl Layouter<S::F>,
-        curve_chip: &CurveChip<S::Engine>,
-        value: Value<KZGMultiCommitment<S::Engine>>,
+        layouter: &mut impl Layouter<E::Fr>,
+        curve_chip: &CurveChip<E>,
+        value: Value<KZGMultiCommitment<E>>,
         labels: &[PolynomialLabel],
     ) -> Result<Self::AssignedCommitment, Error> {
         PolynomialLabel::assert_distinct(labels);
@@ -710,10 +717,10 @@ where
     }
 
     fn commitment_as_public_input(
-        layouter: &mut impl Layouter<S::F>,
-        curve_chip: &CurveChip<S::Engine>,
-        commitment: &AssignedKZGMultiCommitment<S::Engine>,
-    ) -> Result<Vec<AssignedNative<S::F>>, Error> {
+        layouter: &mut impl Layouter<E::Fr>,
+        curve_chip: &CurveChip<E>,
+        commitment: &AssignedKZGMultiCommitment<E>,
+    ) -> Result<Vec<AssignedNative<E::Fr>>, Error> {
         let mut inputs = vec![];
         for com in commitment.0.iter() {
             match com {
@@ -729,9 +736,9 @@ where
     /// # Warning
     ///
     /// The received points are not enforced to be in the prime-order subgroup.
-    fn read_commitment<T: InCircuitTranscript<S::F>>(
-        layouter: &mut impl Layouter<S::F>,
-        curve_chip: &CurveChip<S::Engine>,
+    fn read_commitment<T: InCircuitTranscript<E::Fr>>(
+        layouter: &mut impl Layouter<E::Fr>,
+        curve_chip: &CurveChip<E>,
         transcript: &mut T,
         labels: &[PolynomialLabel],
     ) -> Result<Self::AssignedCommitment, Error>
@@ -744,26 +751,26 @@ where
         // If the proof cannot be parsed, or the commitment is not to
         // `labels.len()` polynomials, do not fail, assign default points instead.
         // (This allows us to parse dummy proofs.)
-        let com = (transcript.read_value::<KZGMultiCommitment<S::Engine>>().ok())
+        let com = (transcript.read_value::<KZGMultiCommitment<E>>().ok())
             .filter(|com| com.0.len() == labels.len())
             .unwrap_or_else(|| KZGMultiCommitment(vec![KZGCommitment::default(); labels.len()]));
-        let com = <Self as InCircuitPCS<S>>::assign_commitment(
+        let com = <Self as InCircuitPCS<E::Fr>>::assign_commitment(
             layouter,
             curve_chip,
             Value::known(com),
             labels,
         )?;
-        <Self as InCircuitPCS<S>>::common_commitment(layouter, curve_chip, transcript, &com)?;
+        <Self as InCircuitPCS<E::Fr>>::common_commitment(layouter, curve_chip, transcript, &com)?;
         Ok(com)
     }
 
-    fn common_commitment<T: InCircuitTranscript<S::F>>(
-        layouter: &mut impl Layouter<S::F>,
-        curve_chip: &CurveChip<S::Engine>,
+    fn common_commitment<T: InCircuitTranscript<E::Fr>>(
+        layouter: &mut impl Layouter<E::Fr>,
+        curve_chip: &CurveChip<E>,
         transcript: &mut T,
-        commitment: &AssignedKZGMultiCommitment<S::Engine>,
+        commitment: &AssignedKZGMultiCommitment<E>,
     ) -> Result<(), Error> {
-        let inputs = <Self as InCircuitPCS<S>>::commitment_as_public_input(
+        let inputs = <Self as InCircuitPCS<E::Fr>>::commitment_as_public_input(
             layouter, curve_chip, commitment,
         )?;
         transcript.common(layouter, &inputs)
@@ -778,15 +785,15 @@ where
             .collect()
     }
 
-    fn multi_prepare<T: InCircuitTranscript<S::F>>(
-        layouter: &mut impl Layouter<S::F>,
-        curve_chip: &CurveChip<S::Engine>,
-        scalar_chip: &ScalarChip<S::F>,
+    fn multi_prepare<T: InCircuitTranscript<E::Fr>>(
+        layouter: &mut impl Layouter<E::Fr>,
+        curve_chip: &CurveChip<E>,
+        scalar_chip: &ScalarChip<E::Fr>,
         transcript: &mut T,
-        queries: &[VerifierQuery<'_, S, Self>],
+        queries: &[VerifierQuery<'_, E::Fr, Self>],
     ) -> Result<Self::AssignedVerificationGuard, Error>
     where
-        S::F: Hashable<T::Hash>,
+        E::Fr: Hashable<T::Hash>,
         Self::Commitment: Hashable<T::Hash>,
     {
         multi_prepare_kzg(layouter, curve_chip, scalar_chip, transcript, queries)

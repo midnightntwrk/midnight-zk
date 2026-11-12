@@ -21,11 +21,12 @@ use midnight_curves::pairing::MultiMillerLoop;
 use midnight_proofs::{
     circuit::Value,
     plonk,
-    plonk::ConstraintSystem,
+    plonk::{ConstraintSystem, VerifyingKey},
     poly::{PolynomialLabel, commitment::PolynomialCommitmentScheme},
 };
 
 use crate::{
+    CircuitField,
     field::AssignedNative,
     types::{InnerValue, Instantiable},
 };
@@ -49,13 +50,8 @@ pub use kzg::{AssignedKZGCommitment, AssignedKZGMultiCommitment};
 pub use msm::{AssignedMsm, AssignedPoint, Msm, Point};
 pub use pcs::{AssignedCommitment, CommitmentBases, InCircuitPCS};
 pub use transcript_gadget::{InCircuitTranscript, PoseidonTranscriptGadget};
-#[cfg(feature = "dev-curves")]
-pub use types::BnEmulation;
-pub use types::{AssignedG1, BlstrsEmulation, CurveChip, ScalarChip, SelfEmulation};
+pub use types::{AssignedG1, CurveChip, ScalarChip};
 pub use verifier_gadget::{UnboundVk, VerifierGadget, vk_hash};
-
-/// The off-circuit verifying key of the proofs that `S` verifies in-circuit.
-type VerifyingKey<S, PCS> = plonk::VerifyingKey<<S as SelfEmulation>::F, PCS>;
 
 /// Type for in-circuit Evaluation Domain.
 ///
@@ -64,11 +60,11 @@ type VerifyingKey<S, PCS> = plonk::VerifyingKey<<S as SelfEmulation>::F, PCS>;
 ///
 /// The only entry points are the assignment functions of Verifying Keys.
 #[derive(Clone, Debug)]
-struct AssignedEvaluationDomain<S: SelfEmulation> {
-    k: AssignedNative<S::F>,
-    omega: AssignedNative<S::F>,
-    omega_inv: AssignedNative<S::F>,
-    n: AssignedNative<S::F>,
+struct AssignedEvaluationDomain<F: CircuitField> {
+    k: AssignedNative<F>,
+    omega: AssignedNative<F>,
+    omega_inv: AssignedNative<F>,
+    n: AssignedNative<F>,
 }
 
 /// Type for in-circuit verifying keys.
@@ -98,18 +94,18 @@ struct AssignedEvaluationDomain<S: SelfEmulation> {
 /// [VerifierGadget::bind_vk_to_hash] this is enforced by the hash constraint;
 /// for the other entry points it is the caller's responsibility.
 #[derive(Clone, Debug)]
-pub struct AssignedVk<S: SelfEmulation, PCS: InCircuitPCS<S>> {
-    domain: AssignedEvaluationDomain<S>,
-    phase0_commitment: AssignedCommitment<S, PCS>,
-    cs: ConstraintSystem<S::F>,
+pub struct AssignedVk<F: CircuitField, PCS: InCircuitPCS<F>> {
+    domain: AssignedEvaluationDomain<F>,
+    phase0_commitment: AssignedCommitment<F, PCS>,
+    cs: ConstraintSystem<F>,
     cs_degree: usize,
-    transcript_repr: AssignedNative<S::F>,
+    transcript_repr: AssignedNative<F>,
 }
 
-impl<S: SelfEmulation, PCS: InCircuitPCS<S>> InnerValue for AssignedVk<S, PCS> {
-    type Element = VerifyingKey<S, PCS>;
+impl<F: CircuitField, PCS: InCircuitPCS<F>> InnerValue for AssignedVk<F, PCS> {
+    type Element = VerifyingKey<F, PCS>;
 
-    fn value(&self) -> Value<VerifyingKey<S, PCS>> {
+    fn value(&self) -> Value<VerifyingKey<F, PCS>> {
         unimplemented!(
             "It is not possible to get a full verifying key out of an
              AssignedVk, as the latter does not include fixed commitments."
@@ -117,13 +113,15 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> InnerValue for AssignedVk<S, PCS> {
     }
 }
 
-impl<S: SelfEmulation, PCS: InCircuitPCS<S>> Instantiable<S::F> for AssignedVk<S, PCS> {
-    fn as_public_input(vk: &VerifyingKey<S, PCS>) -> Vec<S::F> {
+impl<F: CircuitField + WithSmallOrderMulGroup<3>, PCS: InCircuitPCS<F>> Instantiable<F>
+    for AssignedVk<F, PCS>
+{
+    fn as_public_input(vk: &VerifyingKey<F, PCS>) -> Vec<F> {
         let domain = vk.get_domain();
         [
-            AssignedNative::<S::F>::as_public_input(&vk.transcript_repr()),
-            AssignedNative::<S::F>::as_public_input(&S::F::from(domain.k() as u64)),
-            AssignedNative::<S::F>::as_public_input(&domain.get_omega()),
+            AssignedNative::<F>::as_public_input(&vk.transcript_repr()),
+            AssignedNative::<F>::as_public_input(&F::from(domain.k() as u64)),
+            AssignedNative::<F>::as_public_input(&domain.get_omega()),
         ]
         .concat()
     }
@@ -131,24 +129,24 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> Instantiable<S::F> for AssignedVk<S
     /// Always returns `None`: [Self::as_public_input] encodes the verifying key
     /// as its `transcript_repr()`, which is not invertible.
     #[cfg(any(test, feature = "testing"))]
-    fn from_public_input(_fields: &[S::F]) -> Option<VerifyingKey<S, PCS>> {
+    fn from_public_input(_fields: &[F]) -> Option<VerifyingKey<F, PCS>> {
         None
     }
 }
 
-impl<S: SelfEmulation, PCS: InCircuitPCS<S>> AssignedVk<S, PCS> {
+impl<F: CircuitField, PCS: InCircuitPCS<F>> AssignedVk<F, PCS> {
     /// The assigned `transcript_repr` of this verifying key.
-    pub fn transcript_repr(&self) -> &AssignedNative<S::F> {
+    pub fn transcript_repr(&self) -> &AssignedNative<F> {
         &self.transcript_repr
     }
 
     /// The assigned `k`.
-    pub fn k(&self) -> &AssignedNative<S::F> {
+    pub fn k(&self) -> &AssignedNative<F> {
         &self.domain.k
     }
 
     /// The assigned `omega`.
-    pub fn omega(&self) -> &AssignedNative<S::F> {
+    pub fn omega(&self) -> &AssignedNative<F> {
         &self.domain.omega
     }
 }
@@ -181,8 +179,8 @@ where
 /// The labels are sorted, matching the key order of [`fixed_bases`]. Call this
 /// before having an actual verifying key (e.g. during setup) to size an
 /// accumulator correctly.
-pub fn fixed_base_labels<S: SelfEmulation, PCS: InCircuitPCS<S>>(
-    cs: &ConstraintSystem<S::F>,
+pub fn fixed_base_labels<F: CircuitField, PCS: InCircuitPCS<F>>(
+    cs: &ConstraintSystem<F>,
 ) -> Vec<PolynomialLabel> {
     let mut labels = PCS::fixed_base_labels(&cs.fixed_polys_labels());
 

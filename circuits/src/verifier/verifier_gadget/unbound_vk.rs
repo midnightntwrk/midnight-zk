@@ -24,19 +24,21 @@
 //! the form "I know a proof of *some* statement", which is trivially
 //! satisfiable and thus meaningless.
 
+use ff::WithSmallOrderMulGroup;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::{ConstraintSystem, Error},
 };
 
 use crate::{
+    CircuitField,
     field::AssignedNative,
     instructions::{
         AssertionInstructions, AssignmentInstructions, HashInstructions, hash::HashCPU,
     },
     types::Instantiable,
     verifier::{
-        AssignedVk, SelfEmulation, VerifierGadget, VerifyingKey,
+        AssignedVk, VerifierGadget, VerifyingKey,
         pcs::{AssignedCommitment, InCircuitPCS},
     },
 };
@@ -53,30 +55,34 @@ use crate::{
 /// [`VerifierGadget::assign_vk_as_public_input`] or
 /// [`VerifierGadget::assign_fixed_vk`] instead.
 #[derive(Clone, Debug)]
-pub struct UnboundVk<S: SelfEmulation, PCS: InCircuitPCS<S>>(AssignedVk<S, PCS>);
+pub struct UnboundVk<F: CircuitField, PCS: InCircuitPCS<F>>(AssignedVk<F, PCS>);
 
 /// Computes the hash of a verifying key,
 /// `H(transcript_repr || k || omega || phase0_commitment)`.
 ///
 /// This is the off-circuit counterpart of [`VerifierGadget::bind_vk_to_hash`],
 /// where `H` must match the hash chip given to it.
-pub fn vk_hash<H: HashCPU<S::F, S::F>, S: SelfEmulation, PCS: InCircuitPCS<S>>(
-    vk: &VerifyingKey<S, PCS>,
-) -> S::F {
+pub fn vk_hash<
+    H: HashCPU<F, F>,
+    F: CircuitField + WithSmallOrderMulGroup<3>,
+    PCS: InCircuitPCS<F>,
+>(
+    vk: &VerifyingKey<F, PCS>,
+) -> F {
     let domain = vk.get_domain();
     let inputs = [
         vec![
             vk.transcript_repr(),
-            S::F::from(domain.k() as u64),
+            F::from(domain.k() as u64),
             domain.get_omega(),
         ],
-        AssignedCommitment::<S, PCS>::as_public_input(vk.phase0_commitment()),
+        AssignedCommitment::<F, PCS>::as_public_input(vk.phase0_commitment()),
     ]
     .concat();
     H::hash(&inputs)
 }
 
-impl<S: SelfEmulation, PCS: InCircuitPCS<S>> VerifierGadget<S, PCS> {
+impl<F: CircuitField + WithSmallOrderMulGroup<3>, PCS: InCircuitPCS<F>> VerifierGadget<F, PCS> {
     /// Assigns a verifying key privately.
     ///
     /// The resulting key must be bound before it can be used, see
@@ -90,17 +96,16 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> VerifierGadget<S, PCS> {
     /// fixed columns, as in the constraint system of a verifying key.
     pub fn assign_unbound_vk(
         &self,
-        layouter: &mut impl Layouter<S::F>,
-        vk: Value<&VerifyingKey<S, PCS>>,
-        cs: &ConstraintSystem<S::F>,
-    ) -> Result<UnboundVk<S, PCS>, Error> {
-        let transcript_repr: AssignedNative<S::F> =
+        layouter: &mut impl Layouter<F>,
+        vk: Value<&VerifyingKey<F, PCS>>,
+        cs: &ConstraintSystem<F>,
+    ) -> Result<UnboundVk<F, PCS>, Error> {
+        let transcript_repr: AssignedNative<F> =
             self.scalar_chip.assign(layouter, vk.map(|vk| vk.transcript_repr()))?;
-        let k: AssignedNative<S::F> = self.scalar_chip.assign(
-            layouter,
-            vk.map(|vk| S::F::from(vk.get_domain().k() as u64)),
-        )?;
-        let omega: AssignedNative<S::F> =
+        let k: AssignedNative<F> = self
+            .scalar_chip
+            .assign(layouter, vk.map(|vk| F::from(vk.get_domain().k() as u64)))?;
+        let omega: AssignedNative<F> =
             self.scalar_chip.assign(layouter, vk.map(|vk| vk.get_domain().get_omega()))?;
         let phase0_commitment = PCS::assign_commitment(
             layouter,
@@ -129,11 +134,11 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> VerifierGadget<S, PCS> {
     /// the verifier recomputes).
     pub fn bind_vk_to_hash(
         &self,
-        layouter: &mut impl Layouter<S::F>,
-        hash_chip: &impl HashInstructions<S::F, AssignedNative<S::F>, AssignedNative<S::F>>,
-        vk: UnboundVk<S, PCS>,
-        expected: &AssignedNative<S::F>,
-    ) -> Result<AssignedVk<S, PCS>, Error> {
+        layouter: &mut impl Layouter<F>,
+        hash_chip: &impl HashInstructions<F, AssignedNative<F>, AssignedNative<F>>,
+        vk: UnboundVk<F, PCS>,
+        expected: &AssignedNative<F>,
+    ) -> Result<AssignedVk<F, PCS>, Error> {
         let vk = vk.0;
         let mut inputs = vec![
             vk.transcript_repr().clone(),
@@ -178,22 +183,20 @@ mod tests {
         instructions::PublicInputInstructions,
         types::ComposableChip,
         verifier::{
-            Accumulator, AssignedAccumulator, BlstrsEmulation, InCircuitTranscript,
-            PoseidonTranscriptGadget,
+            Accumulator, AssignedAccumulator, InCircuitTranscript, PoseidonTranscriptGadget,
             verifier_gadget::tests::{InnerCircuit, TestCircuit},
         },
     };
 
-    type S = BlstrsEmulation;
     type P = KZGCommitmentScheme<E>;
-    type F = <S as SelfEmulation>::F;
-    type C = <S as SelfEmulation>::C;
-    type E = <S as SelfEmulation>::Engine;
+    type F = midnight_curves::Fq;
+    type C = midnight_curves::G1Projective;
+    type E = midnight_curves::Bls12;
 
     #[derive(Clone, Debug)]
     struct UnboundVkCircuit {
         inner_cs: ConstraintSystem<F>,
-        inner_vk: Value<VerifyingKey<S, P>>,
+        inner_vk: Value<VerifyingKey<F, P>>,
         inner_instances: Value<[F; 1]>,
         inner_proof: Value<Vec<u8>>,
         // The hash the key is bound to, given as public input.
@@ -224,9 +227,9 @@ mod tests {
             let curve_chip =
                 ForeignWeierstrassEccChip::new(&config.2, &native_gadget, &native_gadget);
             let poseidon_chip = PoseidonChip::new(&config.3, &native_chip);
-            let verifier_chip = VerifierGadget::<S, P>::new(&curve_chip, &native_gadget);
+            let verifier_chip = VerifierGadget::<F, P>::new(&curve_chip, &native_gadget);
 
-            let unbound_vk: UnboundVk<S, P> = verifier_chip.assign_unbound_vk(
+            let unbound_vk: UnboundVk<F, P> = verifier_chip.assign_unbound_vk(
                 &mut layouter,
                 self.inner_vk.as_ref(),
                 &self.inner_cs,
@@ -244,7 +247,7 @@ mod tests {
             let inner_pi = native_gadget
                 .assign_many(&mut layouter, &self.inner_instances.transpose_array())?;
 
-            let mut transcript = PoseidonTranscriptGadget::<S>::new(&native_gadget, &poseidon_chip);
+            let mut transcript = PoseidonTranscriptGadget::<F>::new(&native_gadget, &poseidon_chip);
             transcript.init_with_proof(&mut layouter, self.inner_proof.clone())?;
             let mut acc = verifier_chip.prepare(
                 &mut layouter,
@@ -261,8 +264,8 @@ mod tests {
     }
 
     struct Setup {
-        vk: VerifyingKey<S, P>,
-        other_vk: VerifyingKey<S, P>,
+        vk: VerifyingKey<F, P>,
+        other_vk: VerifyingKey<F, P>,
         output: F,
         proof: Vec<u8>,
         /// Public inputs of the collapsed inner accumulator.
@@ -343,8 +346,8 @@ mod tests {
     #[test]
     fn test_bind_vk_to_hash() {
         let setup = setup();
-        let hash = vk_hash::<PoseidonChip<F>, S, P>(&setup.vk);
-        let other_hash = vk_hash::<PoseidonChip<F>, S, P>(&setup.other_vk);
+        let hash = vk_hash::<PoseidonChip<F>, F, P>(&setup.vk);
+        let other_hash = vk_hash::<PoseidonChip<F>, F, P>(&setup.other_vk);
         assert_ne!(hash, other_hash);
 
         assert!(run(&setup, hash).is_ok());

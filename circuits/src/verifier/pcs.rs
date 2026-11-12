@@ -25,9 +25,10 @@ use midnight_proofs::{
 };
 
 use crate::{
+    CircuitField,
     field::AssignedNative,
     types::{InnerValue, Instantiable},
-    verifier::{ScalarChip, SelfEmulation, transcript_gadget::InCircuitTranscript},
+    verifier::{ScalarChip, transcript_gadget::InCircuitTranscript},
 };
 
 // ---------------------------------------------------------------------------
@@ -39,22 +40,22 @@ use crate::{
 /// `PCS` is the scheme checking the query, so that a PCS can query an inner
 /// one, as fflonk does with KZG.
 #[derive(Clone, Debug)]
-pub struct VerifierQuery<'a, S: SelfEmulation, PCS: InCircuitPCS<S>> {
-    pub(crate) point: AssignedNative<S::F>,
+pub struct VerifierQuery<'a, F: CircuitField, PCS: InCircuitPCS<F>> {
+    pub(crate) point: AssignedNative<F>,
     pub(crate) commitment: &'a PCS::AssignedCommitment,
     pub(crate) label: PolynomialLabel,
-    pub(crate) eval: AssignedNative<S::F>,
+    pub(crate) eval: AssignedNative<F>,
     /// `Some((x, t))` if `point` is one of the `t`-th roots of `x`, and the
     /// commitment is queried at all of them.
-    pub(crate) root_of: Option<(AssignedNative<S::F>, usize)>,
+    pub(crate) root_of: Option<(AssignedNative<F>, usize)>,
 }
 
-impl<'a, S: SelfEmulation, PCS: InCircuitPCS<S>> VerifierQuery<'a, S, PCS> {
+impl<'a, F: CircuitField, PCS: InCircuitPCS<F>> VerifierQuery<'a, F, PCS> {
     pub fn new(
-        point: &AssignedNative<S::F>,
+        point: &AssignedNative<F>,
         commitment: &'a PCS::AssignedCommitment,
         label: PolynomialLabel,
-        eval: &AssignedNative<S::F>,
+        eval: &AssignedNative<F>,
     ) -> Self {
         Self {
             point: point.clone(),
@@ -69,7 +70,7 @@ impl<'a, S: SelfEmulation, PCS: InCircuitPCS<S>> VerifierQuery<'a, S, PCS> {
     ///
     /// The caller guarantees that the commitment is queried at all `t` roots of
     /// `x`, and that `point^t = x` is constrained.
-    pub(crate) fn with_root_of(mut self, x: &AssignedNative<S::F>, t: usize) -> Self {
+    pub(crate) fn with_root_of(mut self, x: &AssignedNative<F>, t: usize) -> Self {
         self.root_of = Some((x.clone(), t));
         self
     }
@@ -103,8 +104,8 @@ pub trait CommitmentBases<C> {
 ///
 /// Analog of [`midnight_proofs::poly::commitment::PolynomialCommitmentScheme`]
 /// for the in-circuit verifier.
-pub trait InCircuitPCS<S: SelfEmulation>:
-    PolynomialCommitmentScheme<S::F> + Sized + Clone + Debug
+pub trait InCircuitPCS<F: CircuitField>:
+    PolynomialCommitmentScheme<F> + Sized + Clone + Debug
 {
     /// The chip this scheme operates on its commitments with.
     type CommitmentChip: Clone;
@@ -113,8 +114,8 @@ pub trait InCircuitPCS<S: SelfEmulation>:
     /// off-circuit value is a commitment of this scheme.
     type AssignedCommitment: Clone
         + Debug
-        + Instantiable<S::F>
-        + InnerValue<Element = <Self as PolynomialCommitmentScheme<S::F>>::Commitment>;
+        + Instantiable<F>
+        + InnerValue<Element = <Self as PolynomialCommitmentScheme<F>>::Commitment>;
 
     /// The in-circuit counterpart of the scheme's verification guard,
     /// produced by [`Self::multi_prepare`].
@@ -149,7 +150,7 @@ pub trait InCircuitPCS<S: SelfEmulation>:
     /// Panics if a label is repeated or if `value` does not commit to
     /// `|labels|` polynomials.
     fn assign_commitment(
-        layouter: &mut impl Layouter<S::F>,
+        layouter: &mut impl Layouter<F>,
         commitment_chip: &Self::CommitmentChip,
         value: Value<<Self::AssignedCommitment as InnerValue>::Element>,
         labels: &[PolynomialLabel],
@@ -163,15 +164,15 @@ pub trait InCircuitPCS<S: SelfEmulation>:
     /// Panics if `commitment` has no assigned points, e.g. if it was created
     /// with [`Self::fixed_commitment`].
     fn commitment_as_public_input(
-        layouter: &mut impl Layouter<S::F>,
+        layouter: &mut impl Layouter<F>,
         commitment_chip: &Self::CommitmentChip,
         commitment: &Self::AssignedCommitment,
-    ) -> Result<Vec<AssignedNative<S::F>>, Error>;
+    ) -> Result<Vec<AssignedNative<F>>, Error>;
 
     /// Reads one commitment to `labels.len()` polynomials from the proof
     /// transcript, tagging each polynomial with its label.
-    fn read_commitment<T: InCircuitTranscript<S::F>>(
-        layouter: &mut impl Layouter<S::F>,
+    fn read_commitment<T: InCircuitTranscript<F>>(
+        layouter: &mut impl Layouter<F>,
         commitment_chip: &Self::CommitmentChip,
         transcript: &mut T,
         labels: &[PolynomialLabel],
@@ -180,8 +181,8 @@ pub trait InCircuitPCS<S: SelfEmulation>:
         Self::Commitment: Hashable<T::Hash>;
 
     /// Absorbs a commitment into the proof transcript.
-    fn common_commitment<T: InCircuitTranscript<S::F>>(
-        layouter: &mut impl Layouter<S::F>,
+    fn common_commitment<T: InCircuitTranscript<F>>(
+        layouter: &mut impl Layouter<F>,
         commitment_chip: &Self::CommitmentChip,
         transcript: &mut T,
         commitment: &Self::AssignedCommitment,
@@ -190,11 +191,11 @@ pub trait InCircuitPCS<S: SelfEmulation>:
     /// Squeezes the point at which the protocol opens its committed
     /// polynomials; the default squeezes a plain challenge. Mirrors
     /// [`midnight_proofs::poly::commitment::PolynomialCommitmentScheme::squeeze_evaluation_point`].
-    fn squeeze_evaluation_point<T: InCircuitTranscript<S::F>>(
-        layouter: &mut impl Layouter<S::F>,
-        _scalar_chip: &ScalarChip<S::F>,
+    fn squeeze_evaluation_point<T: InCircuitTranscript<F>>(
+        layouter: &mut impl Layouter<F>,
+        _scalar_chip: &ScalarChip<F>,
         transcript: &mut T,
-    ) -> Result<AssignedNative<S::F>, Error> {
+    ) -> Result<AssignedNative<F>, Error> {
         transcript.squeeze_challenge(layouter)
     }
 
@@ -203,17 +204,17 @@ pub trait InCircuitPCS<S: SelfEmulation>:
     fn commitment_labels(commitment: &Self::AssignedCommitment) -> Vec<PolynomialLabel>;
 
     /// In-circuit multi-open verification; produces a verification guard.
-    fn multi_prepare<T: InCircuitTranscript<S::F>>(
-        layouter: &mut impl Layouter<S::F>,
+    fn multi_prepare<T: InCircuitTranscript<F>>(
+        layouter: &mut impl Layouter<F>,
         commitment_chip: &Self::CommitmentChip,
-        scalar_chip: &ScalarChip<S::F>,
+        scalar_chip: &ScalarChip<F>,
         transcript: &mut T,
-        queries: &[VerifierQuery<'_, S, Self>],
+        queries: &[VerifierQuery<'_, F, Self>],
     ) -> Result<Self::AssignedVerificationGuard, Error>
     where
-        S::F: Hashable<T::Hash>,
+        F: Hashable<T::Hash>,
         Self::Commitment: Hashable<T::Hash>;
 }
 
 /// The in-circuit commitment type of `PCS`.
-pub type AssignedCommitment<S, PCS> = <PCS as InCircuitPCS<S>>::AssignedCommitment;
+pub type AssignedCommitment<F, PCS> = <PCS as InCircuitPCS<F>>::AssignedCommitment;
