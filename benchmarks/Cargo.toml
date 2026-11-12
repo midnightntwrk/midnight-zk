@@ -29,6 +29,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 blake2b_simd = { workspace = true }
 sha2 = { workspace = true }
+clap = { version = "4.6", features = ["derive"] }
 
 [features]
 # Reports the time the prover spends in MSMs, FFTs and polynomial evaluations.
