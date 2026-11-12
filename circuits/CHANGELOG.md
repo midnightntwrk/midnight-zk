@@ -8,6 +8,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 ### Added
+* `ScalarChip<F>`, `CurveChip<E>` and `AssignedG1<E>`, the chip and point types of the in-circuit verifier [#638](https://github.com/midnightntwrk/midnight-zk/pull/638)
 * `InCircuitPCS::squeeze_evaluation_point`, mirroring `PolynomialCommitmentScheme::squeeze_evaluation_point`, and `InCircuitPCS::OffCircuitPCS`, the off-circuit scheme of the proofs the gadget verifies [#570](https://github.com/midnightntwrk/midnight-zk/pull/570)
 * `CommitmentBases`, the labelled points of an off-circuit commitment [#570](https://github.com/midnightntwrk/midnight-zk/pull/570)
 * in-circuit verifier and dependency of the whole library on DefaultPCS [#575](https://github.com/midnightntwrk/midnight-zk/pull/575)
@@ -24,6 +25,11 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 
 ### Changed
+* BREAKING: `SelfEmulation`, `BlstrsEmulation` and `BnEmulation` are removed. The verifier is generic over the native field `F` and `PCS: InCircuitPCS<F>` (`VerifierGadget<F, PCS>`, `AssignedVk<F, PCS>`, ...), and the KZG types over the pairing engine `E` (`Msm<E>`, `Accumulator<E>`, `AssignedKZGMultiCommitment<E>`, ...). `KZGCommitmentScheme<E>` implements `InCircuitPCS<E::Fr>` for any engine, and assigns points without a subgroup check on every curve [#638](https://github.com/midnightntwrk/midnight-zk/pull/638)
+* BREAKING: the transcript is a parameter of the in-circuit verifier, as it is off-circuit: `InCircuitTranscript<F>` is implemented by `PoseidonTranscriptGadget<F>` (formerly `TranscriptGadget`), `parse_trace`, `verify_algebraic_constraints` and `prepare` take an initialised `&mut T` instead of the proof, and the `InCircuitPCS` methods are generic over it [#638](https://github.com/midnightntwrk/midnight-zk/pull/638)
+* BREAKING: `InCircuitPCS::AssignedVerificationGuard`, returned by `multi_prepare` and `prepare`, is the in-circuit counterpart of `VerificationGuard`, and `InCircuitPCS::CommitmentChip` the chip of its commitments. The KZG accumulator methods of `VerifierGadget` move to `AssignedAccumulator` (`assign_collapsed`, `in_circuit_as_public_input`, `constrain_as_public_input`, `constrain_as_public_input_with_committed_scalars` and `accumulate`), taking their chips as arguments [#638](https://github.com/midnightntwrk/midnight-zk/pull/638)
+* BREAKING: `VerifierGadget::new` takes no sponge chip: `bind_vk_to_hash` and `AssignedAccumulator::accumulate` take the hash chip, and `vk_hash` and `Accumulator::accumulate` the matching `HashCPU` [#638](https://github.com/midnightntwrk/midnight-zk/pull/638)
+* The `InCircuitPCS` methods, `read_committed` and `Committed::evaluate` take the layouter first and their payload last [#638](https://github.com/midnightntwrk/midnight-zk/pull/638)
 * BREAKING: the off-circuit schemes implement `InCircuitPCS` themselves (`KZGCommitmentScheme`, and `Fflonk` over any of them), replacing `InCircuitKZG` and `InCircuitFflonk`, and `InCircuitPCS::OffCircuitPCS` is removed. `SelfEmulation::PCS` is removed too: the PCS is a parameter of `VerifierGadget<S, PCS>`, `AssignedVk<S, PCS>`, `UnboundVk<S, PCS>`, `VerifierTrace<S, PCS>`, `fixed_bases`, `fixed_base_labels` and `vk_hash` [#634](https://github.com/midnightntwrk/midnight-zk/pull/634)
 * The in-circuit KZG multi-open orders its point sets with `kzg::point_set_order`, as the off-circuit one does [#583](https://github.com/midnightntwrk/midnight-zk/pull/583)
 * The in-circuit fflonk evaluates a chunk at all the roots of a point at once: one product per polynomial and one linear combination per root, instead of Horner per root, sharing the powers of the root between chunks [#583](https://github.com/midnightntwrk/midnight-zk/pull/583)

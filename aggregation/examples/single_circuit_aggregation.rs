@@ -26,9 +26,7 @@ use midnight_circuits::{
     hash::poseidon::{PoseidonChip, PoseidonState},
     instructions::{hash::HashCPU, *},
     types::{AssignedNative, Instantiable},
-    verifier::{
-        self, Accumulator, AssignedAccumulator, AssignedVk, BlstrsEmulation, SelfEmulation,
-    },
+    verifier::{self, Accumulator, AssignedAccumulator, AssignedVk, InCircuitTranscript},
 };
 use midnight_proofs::{
     circuit::{Layouter, Value},
@@ -43,10 +41,9 @@ use midnight_zk_stdlib::{
 use rand::rngs::OsRng;
 use sha_preimage::ShaPreimageCircuit;
 
-type S = BlstrsEmulation;
-type F = <S as SelfEmulation>::F;
-type C = <S as SelfEmulation>::C;
-type E = <S as SelfEmulation>::Engine;
+type F = midnight_curves::Fq;
+type C = midnight_curves::G1Projective;
+type E = midnight_curves::Bls12;
 
 type InnerCircuit = ShaPreimageCircuit;
 
@@ -63,7 +60,7 @@ pub struct InnerCircuitContext {
 
 impl InnerCircuitContext {
     fn fixed_bases(&self) -> BTreeMap<PolynomialLabel, C> {
-        verifier::fixed_bases::<S, PCS>(self.vk.vk())
+        verifier::fixed_bases::<E, PCS>(self.vk.vk())
     }
 }
 
@@ -76,14 +73,14 @@ pub struct State {
     /// where h_i = Poseidon(statement_i) is the digest of the i-th statement.
     statements_hash: F,
     /// Running accumulator over inner-proof verifications.
-    inner_acc: Accumulator<S>,
+    inner_acc: Accumulator<E>,
 }
 
 /// In-circuit counterpart of [`State`] (constant size).
 #[derive(Clone, Debug)]
 pub struct AssignedState {
     statements_hash: AssignedNative<F>,
-    inner_acc: AssignedAccumulator<S>,
+    inner_acc: AssignedAccumulator<E>,
 }
 
 /// Witness for a single aggregation step: an inner statement and its proof.
@@ -131,7 +128,7 @@ impl IvcState for ProofAggregation {
         State {
             statements: vec![],
             statements_hash: F::ZERO,
-            inner_acc: Accumulator::<S>::trivial(
+            inner_acc: Accumulator::<E>::trivial(
                 &ctx.fixed_bases().keys().cloned().collect::<Vec<_>>(),
             ),
         }
@@ -163,8 +160,10 @@ impl IvcIO for ProofAggregation {
         let statements_hash =
             self.std_lib.assign(layouter, value.as_ref().map(|s| s.statements_hash))?;
 
-        let inner_acc = self.std_lib.verifier::<PCS>().assign_collapsed_accumulator(
+        let inner_acc = AssignedAccumulator::assign_collapsed(
             layouter,
+            self.std_lib.bls12_381(),
+            self.std_lib.bls12_381().scalar_field_chip(),
             &self.inner_ctx.fixed_bases().keys().cloned().collect::<Vec<_>>(),
             value.as_ref().map(|s| s.inner_acc.clone()),
         )?;
@@ -181,9 +180,11 @@ impl IvcIO for ProofAggregation {
         state: &AssignedState,
     ) -> Result<(), Error> {
         self.std_lib.constrain_as_public_input(layouter, &state.statements_hash)?;
-        self.std_lib
-            .verifier::<PCS>()
-            .constrain_as_public_input(layouter, &state.inner_acc)
+        state.inner_acc.constrain_as_public_input(
+            layouter,
+            self.std_lib.bls12_381(),
+            self.std_lib.bls12_381().scalar_field_chip(),
+        )
     }
 
     fn as_public_input(
@@ -193,7 +194,7 @@ impl IvcIO for ProofAggregation {
     ) -> Result<Vec<AssignedNative<F>>, Error> {
         Ok([
             self.std_lib.as_public_input(layouter, &state.statements_hash)?,
-            self.std_lib.verifier::<PCS>().as_public_input(layouter, &state.inner_acc)?,
+            (state.inner_acc).in_circuit_as_public_input(layouter, self.std_lib.bls12_381())?,
         ]
         .concat())
     }
@@ -201,7 +202,7 @@ impl IvcIO for ProofAggregation {
     fn format_public_input(state: &State) -> Vec<F> {
         [
             vec![state.statements_hash],
-            AssignedAccumulator::<S>::as_public_input(&state.inner_acc),
+            AssignedAccumulator::<E>::as_public_input(&state.inner_acc),
         ]
         .concat()
     }
@@ -250,7 +251,10 @@ impl IvcTransition for ProofAggregation {
 
         // Accumulate and collapse.
         let inner_acc = {
-            let mut acc = Accumulator::accumulate(&[inner_proof_acc, state.inner_acc.clone()]);
+            let mut acc = Accumulator::accumulate::<PoseidonChip<F>>(&[
+                inner_proof_acc,
+                state.inner_acc.clone(),
+            ]);
             acc.collapse();
             acc
         };
@@ -278,7 +282,7 @@ impl IvcTransition for ProofAggregation {
         witness: Value<Self::Witness>,
     ) -> Result<Self::AssignedState, Error> {
         // Assign inner VK as a hard-coded constant.
-        let inner_vk: AssignedVk<S, PCS> = self.std_lib.verifier::<PCS>().assign_fixed_vk(
+        let inner_vk: AssignedVk<F, PCS> = self.std_lib.verifier::<PCS>().assign_fixed_vk(
             layouter,
             &self.inner_ctx.domain,
             self.inner_ctx.vk.vk().cs(),
@@ -296,20 +300,25 @@ impl IvcTransition for ProofAggregation {
 
         // Verify the inner proof in-circuit.
 
+        let mut transcript = self.std_lib.verifier_transcript();
+        transcript.init_with_proof(layouter, witness.map(|w| w.inner_proof))?;
         let inner_proof_acc = self.std_lib.verifier::<PCS>().prepare(
             layouter,
             &inner_vk,
             &[],
             &[&[], &statement_pis],
-            witness.map(|w| w.inner_proof),
+            &mut transcript,
         )?;
 
         // Accumulate and collapse.
         let inner_acc = {
-            let mut acc = self
-                .std_lib
-                .verifier::<PCS>()
-                .accumulate(layouter, &[inner_proof_acc, state.inner_acc.clone()])?;
+            let mut acc = AssignedAccumulator::accumulate(
+                layouter,
+                self.std_lib.bls12_381(),
+                self.std_lib.bls12_381().scalar_field_chip(),
+                self.std_lib.poseidon_chip(),
+                &[inner_proof_acc, state.inner_acc.clone()],
+            )?;
 
             acc.collapse(
                 layouter,
