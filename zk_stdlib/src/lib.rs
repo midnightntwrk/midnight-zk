@@ -36,7 +36,8 @@ use midnight_circuits::{
                 ForeignEdwardsEccChip, ForeignEdwardsEccConfig, nb_foreign_edwards_chip_columns,
             },
             weierstrass_chip::{
-                ForeignWeierstrassEccChip, ForeignWeierstrassEccConfig, nb_foreign_ecc_chip_columns,
+                ForeignWeierstrassEccChip, ForeignWeierstrassEccConfig,
+                NB_FOREIGN_WEIERSTRASS_FIXED_COLS, nb_foreign_ecc_chip_columns,
             },
         },
         hash_to_curve::HashToCurveGadget,
@@ -470,6 +471,8 @@ impl ZkStdLib {
             arch.sha2_512 as usize * NB_SHA512_FIXED_COLS,
             (arch.keccak_256 || arch.sha3_256) as usize * PACKED_FIXED_COLS,
             arch.automaton as usize * NB_SCANNER_FIXED_COLS,
+            (arch.secp256k1 || arch.p256 || arch.bls12_381) as usize
+                * NB_FOREIGN_WEIERSTRASS_FIXED_COLS,
         ]
         .into_iter()
         .max()
@@ -552,6 +555,7 @@ impl ZkStdLib {
                 meta,
                 &base_config,
                 &advice_columns,
+                &fixed_columns,
                 nb_parallel_range_checks,
                 max_bit_len,
             )
@@ -572,6 +576,7 @@ impl ZkStdLib {
                 meta,
                 &base_config,
                 &advice_columns,
+                &fixed_columns,
                 nb_parallel_range_checks,
                 max_bit_len,
             )
@@ -588,6 +593,7 @@ impl ZkStdLib {
                 meta,
                 &base_config,
                 &advice_columns,
+                &fixed_columns,
                 nb_parallel_range_checks,
                 max_bit_len,
             )
