@@ -77,7 +77,7 @@ where
     F: FromUniformBytes<64> + Ord,
 {
     // Store model only when tests are run in BLS12-381 (i.e. when the
-    // native scalar is BLS's scalar.  F is generic so we can't name the CS
+    // native scalar is BLS's scalar.  F is generic so we can't name the PCS
     // type directly; instead we derive the commitment size from it statically.
     if F::MODULUS == Fq::MODULUS {
         let model = circuit_model_with::<F>(

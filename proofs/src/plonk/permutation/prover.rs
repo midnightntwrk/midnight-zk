@@ -18,10 +18,10 @@ impl Argument {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn compute_z_polys<
         F: WithSmallOrderMulGroup<3>,
-        CS: PolynomialCommitmentScheme<F>,
+        PCS: PolynomialCommitmentScheme<F>,
     >(
         &self,
-        pk: &plonk::ProvingKey<F, CS>,
+        pk: &plonk::ProvingKey<F, PCS>,
         advice: &[Polynomial<F, LagrangeCoeff>],
         fixed: &[Polynomial<F, LagrangeCoeff>],
         instance: &[Polynomial<F, LagrangeCoeff>],

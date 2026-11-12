@@ -72,9 +72,9 @@ where
 /// This is a verifying key which allows for the verification of proofs for a
 /// particular circuit.
 #[derive(Clone, Debug)]
-pub struct VerifyingKey<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
+pub struct VerifyingKey<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> {
     domain: EvaluationDomain<F>,
-    phase0_commitment: CS::Commitment,
+    phase0_commitment: PCS::Commitment,
     cs: ConstraintSystem<F>,
     /// Cached maximum degree of `cs` (which doesn't change after construction).
     cs_degree: usize,
@@ -85,10 +85,10 @@ pub struct VerifyingKey<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
 // Current version of the VK
 const VERSION: u8 = 0x03;
 
-impl<F, CS> VerifyingKey<F, CS>
+impl<F, PCS> VerifyingKey<F, PCS>
 where
     F: WithSmallOrderMulGroup<3> + FromUniformBytes<64>,
-    CS: PolynomialCommitmentScheme<F>,
+    PCS: PolynomialCommitmentScheme<F>,
 {
     /// Returns `n`
     pub fn n(&self) -> u64 {
@@ -187,7 +187,7 @@ where
         let cs = cs.into_finalized();
 
         let phase0_commitment =
-            CS::deserialize_commitment(reader, format, &cs.fixed_polys_labels())?;
+            PCS::deserialize_commitment(reader, format, &cs.fixed_polys_labels())?;
 
         Ok(Self::from_parts(domain, phase0_commitment, cs))
     }
@@ -217,15 +217,15 @@ where
 /// A placeholder verifying key: the key of an empty constraint system over the
 /// smallest evaluation domain (`k = 1`, `omega = -1`), with a zero
 /// `transcript_repr`. It does not verify any meaningful circuit.
-impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Default
-    for VerifyingKey<F, CS>
+impl<F: WithSmallOrderMulGroup<3>, PCS: PolynomialCommitmentScheme<F>> Default
+    for VerifyingKey<F, PCS>
 {
     fn default() -> Self {
         let cs = ConstraintSystem::default();
         let cs_degree = cs.degree();
         VerifyingKey {
             domain: EvaluationDomain::new(cs_degree as u32, 1),
-            phase0_commitment: CS::Commitment::default(),
+            phase0_commitment: PCS::Commitment::default(),
             cs,
             cs_degree,
             transcript_repr: F::default(),
@@ -233,7 +233,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Default
     }
 }
 
-impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> VerifyingKey<F, CS> {
+impl<F: WithSmallOrderMulGroup<3>, PCS: PolynomialCommitmentScheme<F>> VerifyingKey<F, PCS> {
     /// Return the bytes_length of a VerifyingKey
     pub fn bytes_length(&self, format: SerdeFormat) -> usize {
         // The header [`Self::write`] emits: the version byte and `k`.
@@ -244,7 +244,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> VerifyingK
 
     fn from_parts(
         domain: EvaluationDomain<F>,
-        phase0_commitment: CS::Commitment,
+        phase0_commitment: PCS::Commitment,
         cs: ConstraintSystem<F>,
     ) -> Self
     where
@@ -300,7 +300,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> VerifyingK
 
     /// Obtains a pinned representation of this verification key that contains
     /// the minimal information necessary to reconstruct the verification key.
-    pub fn pinned(&self) -> PinnedVerificationKey<'_, F, CS> {
+    pub fn pinned(&self) -> PinnedVerificationKey<'_, F, PCS> {
         PinnedVerificationKey {
             domain: self.domain.pinned(),
             phase0_commitment: &self.phase0_commitment,
@@ -311,7 +311,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> VerifyingK
     /// The commitment to the phase-0 group, the polynomials of
     /// [`ConstraintSystem::fixed_polys_labels`]: every fixed column, then the
     /// fixed permutation polynomials.
-    pub fn phase0_commitment(&self) -> &CS::Commitment {
+    pub fn phase0_commitment(&self) -> &PCS::Commitment {
         &self.phase0_commitment
     }
 
@@ -330,16 +330,16 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> VerifyingK
 /// its active contents.
 #[allow(dead_code)]
 #[derive(Debug)]
-pub struct PinnedVerificationKey<'a, F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
+pub struct PinnedVerificationKey<'a, F: PrimeField, PCS: PolynomialCommitmentScheme<F>> {
     domain: PinnedEvaluationDomain<'a, F>,
     cs: PinnedConstraintSystem<'a, F>,
-    phase0_commitment: &'a CS::Commitment,
+    phase0_commitment: &'a PCS::Commitment,
 }
 /// This is a proving key which allows for the creation of proofs for a
 /// particular circuit.
 #[derive(Debug)]
-pub struct ProvingKey<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
-    pub(crate) vk: VerifyingKey<F, CS>,
+pub struct ProvingKey<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> {
+    pub(crate) vk: VerifyingKey<F, PCS>,
     pub(crate) l0: Polynomial<F, ExtendedLagrangeCoeff>,
     pub(crate) l_last: Polynomial<F, ExtendedLagrangeCoeff>,
     pub(crate) l_active_row: Polynomial<F, ExtendedLagrangeCoeff>,
@@ -416,13 +416,13 @@ pub(in crate::plonk) fn build_phase0_polys<F: WithSmallOrderMulGroup<3>>(
     )
 }
 
-impl<F, CS> ProvingKey<F, CS>
+impl<F, PCS> ProvingKey<F, PCS>
 where
     F: WithSmallOrderMulGroup<3> + FromUniformBytes<64>,
-    CS: PolynomialCommitmentScheme<F>,
+    PCS: PolynomialCommitmentScheme<F>,
 {
     /// Get the underlying [`VerifyingKey`].
-    pub fn get_vk(&self) -> &VerifyingKey<F, CS> {
+    pub fn get_vk(&self) -> &VerifyingKey<F, PCS> {
         &self.vk
     }
 
@@ -436,10 +436,10 @@ where
     }
 }
 
-impl<F, CS> ProvingKey<F, CS>
+impl<F, PCS> ProvingKey<F, PCS>
 where
     F: WithSmallOrderMulGroup<3> + PrimeField + FromUniformBytes<64> + SerdeObject,
-    CS: PolynomialCommitmentScheme<F>,
+    PCS: PolynomialCommitmentScheme<F>,
 {
     /// Writes a proving key to a buffer.
     ///
@@ -481,7 +481,7 @@ where
         format: SerdeFormat,
         #[cfg(feature = "circuit-params")] params: ConcreteCircuit::Params,
     ) -> io::Result<Self> {
-        let vk = VerifyingKey::<F, CS>::read::<R, ConcreteCircuit>(
+        let vk = VerifyingKey::<F, PCS>::read::<R, ConcreteCircuit>(
             reader,
             format,
             #[cfg(feature = "circuit-params")]
@@ -548,7 +548,7 @@ where
     }
 }
 
-impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> VerifyingKey<F, CS> {
+impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> VerifyingKey<F, PCS> {
     /// Get the underlying [`EvaluationDomain`].
     pub fn get_domain(&self) -> &EvaluationDomain<F> {
         &self.domain
@@ -585,8 +585,8 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> VerifyingKey<F, CS> {
 ///
 /// `nu(x)`, which must equal `h(x) * (x^n - 1)` for the quotient `h(X)`.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn evaluate_identities<'a, F, CS>(
-    vk: &'a VerifyingKey<F, CS>,
+pub(crate) fn evaluate_identities<'a, F, PCS>(
+    vk: &'a VerifyingKey<F, PCS>,
     instance_evals: &'a [F],
     phase0_evals: &BTreeMap<PolynomialLabel, Vec<argument::Evaluation<F>>>,
     phase1_evals: &BTreeMap<PolynomialLabel, Vec<argument::Evaluation<F>>>,
@@ -601,7 +601,7 @@ pub(crate) fn evaluate_identities<'a, F, CS>(
 ) -> F
 where
     F: WithSmallOrderMulGroup<3> + FromUniformBytes<64>,
-    CS: PolynomialCommitmentScheme<F>,
+    PCS: PolynomialCommitmentScheme<F>,
 {
     // The advice evaluations in the order of `cs.advice_queries`, which is how
     // the identities index them. In the phase1 group, each column's follow the

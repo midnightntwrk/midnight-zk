@@ -633,18 +633,19 @@ mod tests {
     fn test_empty_commitment_group() {
         use midnight_curves::{Bls12, Fq};
 
-        type CS = KZGCommitmentScheme<Bls12>;
+        #[allow(clippy::upper_case_acronyms)]
+        type PCS = KZGCommitmentScheme<Bls12>;
         type T = CircuitTranscript<Blake2bState>;
 
         let params: ParamsKZG<Bls12> = ParamsKZG::unsafe_setup(4, OsRng);
-        let commitment = CS::commit_many::<Coeff>(&params, &[], &[]);
+        let commitment = PCS::commit_many::<Coeff>(&params, &[], &[]);
         assert!(commitment.0.is_empty());
 
         let fresh_challenge: Fq = T::init().squeeze_challenge();
 
         // Writing an empty group neither writes nor absorbs anything.
         let mut transcript = T::init();
-        CS::write_commitment(&mut transcript, &commitment).unwrap();
+        PCS::write_commitment(&mut transcript, &commitment).unwrap();
         let prover_challenge: Fq = transcript.squeeze_challenge();
         let proof = transcript.finalize();
         assert!(proof.is_empty());
@@ -652,7 +653,7 @@ mod tests {
 
         // Reading an empty group neither reads nor absorbs anything.
         let mut transcript = T::init_from_bytes(&proof);
-        let read = CS::read_commitment(&mut transcript, &[]).unwrap();
+        let read = PCS::read_commitment(&mut transcript, &[]).unwrap();
         assert!(read.0.is_empty());
         let verifier_challenge: Fq = transcript.squeeze_challenge();
         assert_eq!(verifier_challenge, fresh_challenge);

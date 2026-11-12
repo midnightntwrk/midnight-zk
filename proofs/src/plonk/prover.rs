@@ -37,20 +37,20 @@ use crate::{
 /// Commit to a vector of raw instances. This function can be used to prepare
 /// the committed instances that the verifier will be provided with when this
 /// feature is enabled.
-pub fn commit_to_instances<F, CS>(
-    params: &CS::Parameters,
+pub fn commit_to_instances<F, PCS>(
+    params: &PCS::Parameters,
     domain: &EvaluationDomain<F>,
     instances: &[F],
-) -> CS::Commitment
+) -> PCS::Commitment
 where
     F: WithSmallOrderMulGroup<3> + Ord + FromUniformBytes<64>,
-    CS: PolynomialCommitmentScheme<F>,
+    PCS: PolynomialCommitmentScheme<F>,
 {
     let mut poly = domain.empty_lagrange();
     for (poly_eval, value) in poly.iter_mut().zip(instances.iter()) {
         *poly_eval = *value;
     }
-    CS::commit(params, &poly, PolynomialLabel::CommittedInstance(0))
+    PCS::commit(params, &poly, PolynomialLabel::CommittedInstance(0))
 }
 
 /// This computes a proof trace for the provided `circuit` when given the
@@ -59,9 +59,9 @@ where
 /// are zero-padded internally.
 ///
 /// The trace can then be used to finalise the proof.
-pub(crate) fn compute_trace<'a, F, CS, T, ConcreteCircuit>(
-    params: &CS::Parameters,
-    pk: &'a ProvingKey<F, CS>,
+pub(crate) fn compute_trace<'a, F, PCS, T, ConcreteCircuit>(
+    params: &PCS::Parameters,
+    pk: &'a ProvingKey<F, PCS>,
     circuit: &ConcreteCircuit,
     // The prover needs to get all instances in non-committed form. However,
     // the first `nb_committed_instances` instance columns are dedicated for
@@ -73,8 +73,8 @@ pub(crate) fn compute_trace<'a, F, CS, T, ConcreteCircuit>(
 ) -> Result<ProverTrace<'a, F>, Error>
 where
     F: ProofField<T::Hash>,
-    CS: PolynomialCommitmentScheme<F>,
-    CS::Commitment: Hashable<T::Hash>,
+    PCS: PolynomialCommitmentScheme<F>,
+    PCS::Commitment: Hashable<T::Hash>,
     T: Transcript,
     ConcreteCircuit: Circuit<F>,
 {
@@ -151,7 +151,7 @@ where
         }
     }
 
-    let phase1_committed = argument::prover::Committed::commit::<CS, T, _>(
+    let phase1_committed = argument::prover::Committed::commit::<PCS, T, _>(
         params,
         phase1_polys_map,
         Polynomial::to_delta,
@@ -178,7 +178,7 @@ where
     let mut phase2_polys_map: BTreeMap<PolynomialLabel, Polynomial<F, LagrangeCoeff>> =
         BTreeMap::new();
 
-    let perm_z_polys = pk.vk.cs.permutation.compute_z_polys::<F, CS>(
+    let perm_z_polys = pk.vk.cs.permutation.compute_z_polys::<F, PCS>(
         pk,
         phase1_committed.polys_of(&advice_labels),
         &pk.fixed_values,
@@ -248,7 +248,7 @@ where
         }
     }
 
-    let phase2_committed = argument::prover::Committed::commit::<CS, T, _>(
+    let phase2_committed = argument::prover::Committed::commit::<PCS, T, _>(
         params,
         phase2_polys_map,
         Polynomial::to_double_delta,
@@ -287,9 +287,9 @@ where
 /// parameters `params` and the proving key [`ProvingKey`] that was
 /// generated previously for the same circuit. The provided `instances`
 /// are zero-padded internally.
-pub(crate) fn finalise_proof<'a, F, CS, T>(
-    params: &'a CS::Parameters,
-    pk: &'a ProvingKey<F, CS>,
+pub(crate) fn finalise_proof<'a, F, PCS, T>(
+    params: &'a PCS::Parameters,
+    pk: &'a ProvingKey<F, PCS>,
     // The prover needs to get all instances in non-committed form. However,
     // the first `nb_committed_instances` instance columns are dedicated for
     // instances that the verifier receives in committed form.
@@ -299,8 +299,8 @@ pub(crate) fn finalise_proof<'a, F, CS, T>(
 ) -> Result<(), Error>
 where
     F: ProofField<T::Hash>,
-    CS: PolynomialCommitmentScheme<F>,
-    CS::Commitment: Hashable<T::Hash>,
+    PCS: PolynomialCommitmentScheme<F>,
+    PCS::Commitment: Hashable<T::Hash>,
     T: Transcript,
 {
     #[cfg(not(feature = "committed-instances"))]
@@ -311,7 +311,7 @@ where
     // Construct the quotient polynomial h(X) = nu(X)/(X^n-1), split it into limbs,
     // and commit to the limbs as one group
     let quotient_committed =
-        compute_h_poly::<F, CS, T>(params, pk.get_vk().get_domain(), nu_poly, transcript)?;
+        compute_h_poly::<F, PCS, T>(params, pk.get_vk().get_domain(), nu_poly, transcript)?;
 
     let ProverTrace {
         instance_polys,
@@ -321,7 +321,7 @@ where
         ..
     } = trace;
 
-    let x: F = CS::squeeze_evaluation_point(transcript);
+    let x: F = PCS::squeeze_evaluation_point(transcript);
     let domain = pk.vk.get_domain();
     let cs = pk.vk.cs();
 
@@ -368,7 +368,7 @@ where
         &x_rotations,
     );
 
-    CS::multi_open(params, &queries, transcript).map_err(|_| Error::ConstraintSystemFailure)
+    PCS::multi_open(params, &queries, transcript).map_err(|_| Error::ConstraintSystemFailure)
 }
 
 /// This creates a proof for the provided `circuit` when given the public
@@ -378,9 +378,9 @@ where
 //
 // NOTE: Any change here must be mirrored in src/plonk/bench/prover.rs
 // to ensure the benchmarks remain aligned with the real prover.
-pub fn create_proof<F, CS, T, ConcreteCircuit>(
-    params: &CS::Parameters,
-    pk: &ProvingKey<F, CS>,
+pub fn create_proof<F, PCS, T, ConcreteCircuit>(
+    params: &PCS::Parameters,
+    pk: &ProvingKey<F, PCS>,
     circuit: &ConcreteCircuit,
     #[cfg(feature = "committed-instances")] nb_committed_instances: usize,
     instances: &[&[F]],
@@ -389,8 +389,8 @@ pub fn create_proof<F, CS, T, ConcreteCircuit>(
 ) -> Result<(), Error>
 where
     F: ProofField<T::Hash>,
-    CS: PolynomialCommitmentScheme<F>,
-    CS::Commitment: Hashable<T::Hash>,
+    PCS: PolynomialCommitmentScheme<F>,
+    PCS::Commitment: Hashable<T::Hash>,
     T: Transcript,
     ConcreteCircuit: Circuit<F>,
 {
@@ -414,17 +414,17 @@ where
     )
 }
 
-pub(super) fn compute_instances<F, CS, T>(
-    params: &CS::Parameters,
-    pk: &ProvingKey<F, CS>,
+pub(super) fn compute_instances<F, PCS, T>(
+    params: &PCS::Parameters,
+    pk: &ProvingKey<F, PCS>,
     instances: &[&[F]],
     nb_committed_instances: usize,
     transcript: &mut T,
 ) -> Result<InstanceSingle<F>, Error>
 where
     F: ProofField<T::Hash>,
-    CS: PolynomialCommitmentScheme<F>,
-    CS::Commitment: Hashable<T::Hash>,
+    PCS: PolynomialCommitmentScheme<F>,
+    PCS::Commitment: Hashable<T::Hash>,
     T: Transcript,
 {
     let instance_values = instances
@@ -450,7 +450,7 @@ where
             }
 
             if is_committed_instance {
-                transcript.common(&CS::commit(
+                transcript.common(&PCS::commit(
                     params,
                     &poly,
                     PolynomialLabel::CommittedInstance(i),
@@ -475,15 +475,15 @@ where
     })
 }
 
-pub(super) fn parse_advices<F, CS, ConcreteCircuit>(
-    pk: &ProvingKey<F, CS>,
+pub(super) fn parse_advices<F, PCS, ConcreteCircuit>(
+    pk: &ProvingKey<F, PCS>,
     circuit: &ConcreteCircuit,
     instances: &[&[F]],
     rng: &mut (impl RngCore + CryptoRng),
 ) -> Result<Vec<Polynomial<F, LagrangeCoeff>>, Error>
 where
     F: WithSmallOrderMulGroup<3>,
-    CS: PolynomialCommitmentScheme<F>,
+    PCS: PolynomialCommitmentScheme<F>,
     ConcreteCircuit: Circuit<F>,
 {
     let mut meta = ConstraintSystem::default();
@@ -542,8 +542,8 @@ where
     Ok(advice_polys)
 }
 
-pub(super) fn compute_nu_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>>(
-    pk: &ProvingKey<F, CS>,
+pub(super) fn compute_nu_poly<F: WithSmallOrderMulGroup<3>, PCS: PolynomialCommitmentScheme<F>>(
+    pk: &ProvingKey<F, PCS>,
     trace: &ProverTrace<'_, F>,
 ) -> Polynomial<F, ExtendedLagrangeCoeff> {
     let ProverTrace {
@@ -604,16 +604,16 @@ pub(super) fn compute_nu_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommit
 /// # Panics
 ///
 /// If `n < quotient_poly_degree + 2`, as the limbs could not hold `h(X)`.
-pub(crate) fn compute_h_poly<F, CS, T>(
-    params: &CS::Parameters,
+pub(crate) fn compute_h_poly<F, PCS, T>(
+    params: &PCS::Parameters,
     domain: &EvaluationDomain<F>,
     nu_poly: Polynomial<F, ExtendedLagrangeCoeff>,
     transcript: &mut T,
 ) -> Result<argument::prover::Committed<F, Coeff>, Error>
 where
     F: WithSmallOrderMulGroup<3> + Hashable<T::Hash>,
-    CS: PolynomialCommitmentScheme<F>,
-    CS::Commitment: Hashable<T::Hash>,
+    PCS: PolynomialCommitmentScheme<F>,
+    PCS::Commitment: Hashable<T::Hash>,
     T: Transcript,
 {
     // Construct quotient polynomial h(X) = nu(X) / (X^n - 1) in evaluation form
@@ -652,7 +652,7 @@ where
         })
         .collect();
 
-    argument::prover::Committed::commit::<CS, T, _>(params, h_limbs, Polynomial::clone, transcript)
+    argument::prover::Committed::commit::<PCS, T, _>(params, h_limbs, Polynomial::clone, transcript)
 }
 
 /// Blinds the limbs `h_k(X)` of `h(X) = Σ_k X^{k(n-2)} h_k(X)`, of `n-2`
@@ -673,8 +673,8 @@ fn blind_quotient_limbs<F: PrimeField>(quotient_limbs: &mut [Vec<F>]) {
     quotient_limbs[nr_limbs - 1].extend([F::ZERO; 2]);
 }
 
-pub(super) fn write_instance_evals_to_transcript<F, CS, T>(
-    pk: &ProvingKey<F, CS>,
+pub(super) fn write_instance_evals_to_transcript<F, PCS, T>(
+    pk: &ProvingKey<F, PCS>,
     nb_committed_instances: usize,
     instance_polys: &[Polynomial<F, Coeff>],
     x_rotations: &BTreeMap<Rotation, F>,
@@ -682,7 +682,7 @@ pub(super) fn write_instance_evals_to_transcript<F, CS, T>(
 ) -> Result<Vec<F>, Error>
 where
     F: WithSmallOrderMulGroup<3> + Hashable<T::Hash>,
-    CS: PolynomialCommitmentScheme<F>,
+    PCS: PolynomialCommitmentScheme<F>,
     T: Transcript,
 {
     let meta = &pk.vk.cs;
@@ -710,9 +710,9 @@ where
 pub(super) fn compute_queries<
     'a,
     F: WithSmallOrderMulGroup<3>,
-    CS: PolynomialCommitmentScheme<F>,
+    PCS: PolynomialCommitmentScheme<F>,
 >(
-    pk: &'a ProvingKey<F, CS>,
+    pk: &'a ProvingKey<F, PCS>,
     instance_labels: &'a [[PolynomialLabel; 1]],
     instance_polys: &'a [Polynomial<F, Coeff>],
     phase0_evals: &'a argument::prover::Evaluated<'a, F>,

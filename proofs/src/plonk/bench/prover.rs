@@ -39,9 +39,9 @@ type PhaseGroupPolys<F> = BTreeMap<PolynomialLabel, Polynomial<F, LagrangeCoeff>
 ///
 /// Benchmarks individual internal steps using the provided `group`.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn compute_trace<'a, F, CS, T, ConcreteCircuit>(
-    params: &CS::Parameters,
-    pk: &'a ProvingKey<F, CS>,
+pub(crate) fn compute_trace<'a, F, PCS, T, ConcreteCircuit>(
+    params: &PCS::Parameters,
+    pk: &'a ProvingKey<F, PCS>,
     circuit: &ConcreteCircuit,
     // The prover needs to get all instances in non-committed form. However,
     // the first `nb_committed_instances` instance columns are dedicated for
@@ -54,8 +54,8 @@ pub(crate) fn compute_trace<'a, F, CS, T, ConcreteCircuit>(
 ) -> Result<ProverTrace<'a, F>, Error>
 where
     F: ProofField<T::Hash>,
-    CS: PolynomialCommitmentScheme<F>,
-    CS::Commitment: Hashable<T::Hash>,
+    PCS: PolynomialCommitmentScheme<F>,
+    PCS::Commitment: Hashable<T::Hash>,
     T: Transcript,
     ConcreteCircuit: Circuit<F>,
 {
@@ -88,7 +88,7 @@ where
             b.iter_batched(
                 || (transcript.clone(), instances_clone.clone()),
                 |(mut t, inst)| {
-                    let _ = compute_instances::<F, CS, T>(
+                    let _ = compute_instances::<F, PCS, T>(
                         params,
                         pk,
                         &inst,
@@ -105,7 +105,7 @@ where
     let advice_polys = {
         group.bench_function("Parse advices", |b| {
             b.iter(|| {
-                let _ = parse_advices::<F, CS, ConcreteCircuit>(pk, circuit, instances, &mut rng);
+                let _ = parse_advices::<F, PCS, ConcreteCircuit>(pk, circuit, instances, &mut rng);
             })
         });
         parse_advices(pk, circuit, instances, &mut rng)?
@@ -189,7 +189,7 @@ where
                         &instance.instance_values,
                         &mult_blinds,
                     )?;
-                    argument::prover::Committed::commit::<CS, _, _>(
+                    argument::prover::Committed::commit::<PCS, _, _>(
                         params,
                         phase1_polys_map(advice_polys, &multiplicities)?,
                         Polynomial::to_delta,
@@ -202,7 +202,7 @@ where
         });
         let multiplicities =
             compute_multiplicities(&advice_polys, &instance.instance_values, &mult_blindings)?;
-        let committed = argument::prover::Committed::commit::<CS, T, _>(
+        let committed = argument::prover::Committed::commit::<PCS, T, _>(
             params,
             phase1_polys_map(advice_polys, &multiplicities)?,
             Polynomial::to_delta,
@@ -233,7 +233,7 @@ where
 
     // Compute the permutation accumulators.
     let compute_perm_z_polys = |perm_blindings: Vec<Vec<F>>| {
-        pk.vk.cs.permutation.compute_z_polys::<F, CS>(
+        pk.vk.cs.permutation.compute_z_polys::<F, PCS>(
             pk,
             phase1_committed.polys_of(&advice_labels),
             &pk.fixed_values,
@@ -371,7 +371,7 @@ where
                         phase1_committed.polys_of(&advice_labels),
                         &instance.instance_values,
                     )?;
-                    argument::prover::Committed::commit::<CS, _, _>(
+                    argument::prover::Committed::commit::<PCS, _, _>(
                         params,
                         polys_map,
                         Polynomial::to_double_delta,
@@ -389,7 +389,7 @@ where
             phase1_committed.polys_of(&advice_labels),
             &instance.instance_values,
         )?;
-        argument::prover::Committed::commit::<CS, T, _>(
+        argument::prover::Committed::commit::<PCS, T, _>(
             params,
             polys_map,
             Polynomial::to_double_delta,
@@ -427,9 +427,9 @@ where
 /// are zero-padded internally.
 ///
 /// Benchmarks individual internal steps using the provided `group`.
-pub(crate) fn finalise_proof<'a, F, CS, T>(
-    params: &'a CS::Parameters,
-    pk: &'a ProvingKey<F, CS>,
+pub(crate) fn finalise_proof<'a, F, PCS, T>(
+    params: &'a PCS::Parameters,
+    pk: &'a ProvingKey<F, PCS>,
     // The prover needs to get all instances in non-committed form. However,
     // the first `nb_committed_instances` instance columns are dedicated for
     // instances that the verifier receives in committed form.
@@ -440,8 +440,8 @@ pub(crate) fn finalise_proof<'a, F, CS, T>(
 ) -> Result<(), Error>
 where
     F: ProofField<T::Hash>,
-    CS: PolynomialCommitmentScheme<F>,
-    CS::Commitment: Hashable<T::Hash>,
+    PCS: PolynomialCommitmentScheme<F>,
+    PCS::Commitment: Hashable<T::Hash>,
     T: Transcript,
 {
     #[cfg(not(feature = "committed-instances"))]
@@ -463,7 +463,7 @@ where
             b.iter_batched(
                 || transcript.clone(),
                 |mut t| {
-                    let _ = compute_h_poly::<F, CS, T>(
+                    let _ = compute_h_poly::<F, PCS, T>(
                         params,
                         pk.get_vk().get_domain(),
                         nu_poly.clone(),
@@ -473,7 +473,7 @@ where
                 criterion::BatchSize::SmallInput,
             )
         });
-        compute_h_poly::<F, CS, T>(params, pk.get_vk().get_domain(), nu_poly, transcript)?
+        compute_h_poly::<F, PCS, T>(params, pk.get_vk().get_domain(), nu_poly, transcript)?
     };
 
     let ProverTrace {
@@ -485,7 +485,7 @@ where
     } = trace;
 
     // PCS-aware squeeze (see plonk/prover.rs).
-    let x: F = CS::squeeze_evaluation_point(transcript);
+    let x: F = PCS::squeeze_evaluation_point(transcript);
 
     let domain = pk.vk.get_domain();
     let cs = pk.vk.cs();
@@ -577,12 +577,12 @@ where
         b.iter_batched(
             || (transcript.clone(), queries.clone()),
             |(mut t, q)| {
-                let _ = CS::multi_open(params, &q, &mut t);
+                let _ = PCS::multi_open(params, &q, &mut t);
             },
             criterion::BatchSize::SmallInput,
         )
     });
-    CS::multi_open(params, &queries, transcript).map_err(|_| Error::ConstraintSystemFailure)
+    PCS::multi_open(params, &queries, transcript).map_err(|_| Error::ConstraintSystemFailure)
 }
 
 /// Benchmarked version of proof creation that measures each internal step.
@@ -591,9 +591,9 @@ where
 /// provided benchmark group, which causes those functions to benchmark their
 /// internal steps.
 #[allow(clippy::too_many_arguments)]
-pub fn benchmark_create_proof<F, CS, T, ConcreteCircuit>(
-    params: &CS::Parameters,
-    pk: &ProvingKey<F, CS>,
+pub fn benchmark_create_proof<F, PCS, T, ConcreteCircuit>(
+    params: &PCS::Parameters,
+    pk: &ProvingKey<F, PCS>,
     circuit: &ConcreteCircuit,
     #[cfg(feature = "committed-instances")] nb_committed_instances: usize,
     instances: &[&[F]],
@@ -603,8 +603,8 @@ pub fn benchmark_create_proof<F, CS, T, ConcreteCircuit>(
 ) -> Result<(), Error>
 where
     F: ProofField<T::Hash>,
-    CS: PolynomialCommitmentScheme<F>,
-    CS::Commitment: Hashable<T::Hash>,
+    PCS: PolynomialCommitmentScheme<F>,
+    PCS::Commitment: Hashable<T::Hash>,
     T: Transcript,
     ConcreteCircuit: Circuit<F>,
 {
