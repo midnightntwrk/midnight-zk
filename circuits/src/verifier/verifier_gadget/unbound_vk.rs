@@ -58,8 +58,11 @@ pub struct UnboundVk<S: SelfEmulation, PCS: InCircuitPCS<S>>(AssignedVk<S, PCS>)
 /// Computes the hash of a verifying key,
 /// `H(transcript_repr || k || omega || phase0_commitment)`.
 ///
-/// This is the off-circuit counterpart of [`VerifierGadget::bind_vk_to_hash`].
-pub fn vk_hash<S: SelfEmulation, PCS: InCircuitPCS<S>>(vk: &VerifyingKey<S, PCS>) -> S::F {
+/// This is the off-circuit counterpart of [`VerifierGadget::bind_vk_to_hash`],
+/// where `H` must match the hash chip given to it.
+pub fn vk_hash<H: HashCPU<S::F, S::F>, S: SelfEmulation, PCS: InCircuitPCS<S>>(
+    vk: &VerifyingKey<S, PCS>,
+) -> S::F {
     let domain = vk.get_domain();
     let inputs = [
         vec![
@@ -70,7 +73,7 @@ pub fn vk_hash<S: SelfEmulation, PCS: InCircuitPCS<S>>(vk: &VerifyingKey<S, PCS>
         AssignedCommitment::<S, PCS>::as_public_input(vk.phase0_commitment()),
     ]
     .concat();
-    <S::SpongeChip as HashCPU<S::F, S::F>>::hash(&inputs)
+    H::hash(&inputs)
 }
 
 impl<S: SelfEmulation, PCS: InCircuitPCS<S>> VerifierGadget<S, PCS> {
@@ -115,8 +118,8 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> VerifierGadget<S, PCS> {
         Ok(UnboundVk(vk))
     }
 
-    /// Binds the given verifying key by asserting that its [`vk_hash`] equals
-    /// `expected`.
+    /// Binds the given verifying key by asserting that its [`vk_hash`],
+    /// computed with `hash_chip`, equals `expected`.
     ///
     /// # WARNING
     ///
@@ -127,6 +130,7 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> VerifierGadget<S, PCS> {
     pub fn bind_vk_to_hash(
         &self,
         layouter: &mut impl Layouter<S::F>,
+        hash_chip: &impl HashInstructions<S::F, AssignedNative<S::F>, AssignedNative<S::F>>,
         vk: UnboundVk<S, PCS>,
         expected: &AssignedNative<S::F>,
     ) -> Result<AssignedVk<S, PCS>, Error> {
@@ -141,7 +145,7 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> VerifierGadget<S, PCS> {
             &self.commitment_chip,
             &vk.phase0_commitment,
         )?);
-        let hash = self.sponge_chip.hash(layouter, &inputs)?;
+        let hash = hash_chip.hash(layouter, &inputs)?;
         self.scalar_chip.assert_equal(layouter, &hash, expected)?;
         Ok(vk)
     }
@@ -220,8 +224,7 @@ mod tests {
             let curve_chip =
                 ForeignWeierstrassEccChip::new(&config.2, &native_gadget, &native_gadget);
             let poseidon_chip = PoseidonChip::new(&config.3, &native_chip);
-            let verifier_chip =
-                VerifierGadget::<S, P>::new(&curve_chip, &native_gadget, &poseidon_chip);
+            let verifier_chip = VerifierGadget::<S, P>::new(&curve_chip, &native_gadget);
 
             let unbound_vk: UnboundVk<S, P> = verifier_chip.assign_unbound_vk(
                 &mut layouter,
@@ -231,8 +234,12 @@ mod tests {
 
             let expected_hash = native_gadget.assign(&mut layouter, self.expected_hash)?;
             native_gadget.constrain_as_public_input(&mut layouter, &expected_hash)?;
-            let inner_vk =
-                verifier_chip.bind_vk_to_hash(&mut layouter, unbound_vk, &expected_hash)?;
+            let inner_vk = verifier_chip.bind_vk_to_hash(
+                &mut layouter,
+                &poseidon_chip,
+                unbound_vk,
+                &expected_hash,
+            )?;
 
             let inner_pi = native_gadget
                 .assign_many(&mut layouter, &self.inner_instances.transpose_array())?;
@@ -336,8 +343,8 @@ mod tests {
     #[test]
     fn test_bind_vk_to_hash() {
         let setup = setup();
-        let hash = vk_hash::<S, P>(&setup.vk);
-        let other_hash = vk_hash::<S, P>(&setup.other_vk);
+        let hash = vk_hash::<PoseidonChip<F>, S, P>(&setup.vk);
+        let other_hash = vk_hash::<PoseidonChip<F>, S, P>(&setup.other_vk);
         assert_ne!(hash, other_hash);
 
         assert!(run(&setup, hash).is_ok());

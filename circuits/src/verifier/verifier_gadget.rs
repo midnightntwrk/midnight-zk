@@ -55,7 +55,6 @@ pub use unbound_vk::{UnboundVk, vk_hash};
 pub struct VerifierGadget<S: SelfEmulation, PCS: InCircuitPCS<S>> {
     commitment_chip: PCS::CommitmentChip,
     scalar_chip: ScalarChip<S::F>,
-    sponge_chip: S::SpongeChip,
     _pcs: PhantomData<PCS>,
 }
 
@@ -74,15 +73,10 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> Chip<S::F> for VerifierGadget<S, PC
 
 impl<S: SelfEmulation, PCS: InCircuitPCS<S>> VerifierGadget<S, PCS> {
     /// Creates a new verifier gadget from its underlying components.
-    pub fn new(
-        commitment_chip: &PCS::CommitmentChip,
-        scalar_chip: &ScalarChip<S::F>,
-        sponge_chip: &S::SpongeChip,
-    ) -> Self {
+    pub fn new(commitment_chip: &PCS::CommitmentChip, scalar_chip: &ScalarChip<S::F>) -> Self {
         Self {
             commitment_chip: commitment_chip.clone(),
             scalar_chip: scalar_chip.clone(),
-            sponge_chip: sponge_chip.clone(),
             _pcs: PhantomData,
         }
     }
@@ -935,8 +929,7 @@ pub(crate) mod tests {
                 ForeignWeierstrassEccChip::new(&config.2, &native_gadget, &native_gadget);
             let poseidon_chip = PoseidonChip::new(&config.3, &native_chip);
 
-            let verifier_chip =
-                VerifierGadget::<S, P>::new(&curve_chip, &native_gadget, &poseidon_chip);
+            let verifier_chip = VerifierGadget::<S, P>::new(&curve_chip, &native_gadget);
 
             let assigned_inner_vk: AssignedVk<S, P> = verifier_chip.assign_vk_as_public_input(
                 &mut layouter,
