@@ -71,6 +71,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * `VerifierGadget::assign_vk_as_public_input` and `VerifierGadget::assign_fixed_vk` take a finalized constraint system (e.g. `vk.cs()` or `ConstraintSystem::into_finalized`) and return `Error::Synthesis` if it has selectors. `assign_vk_as_public_input` no longer converts the selectors itself [#546](https://github.com/midnightntwrk/midnight-zk/pull/546)
 
 ### Removed
+* BREAKING: `verifier::DefaultPCS`. Use `KZGCommitmentScheme<Bls12>` [#634](https://github.com/midnightntwrk/midnight-zk/pull/634)
 * BREAKING: `EccInstructions::x_coordinate` and `y_coordinate`. Use `x` and `y` [#619](https://github.com/midnightntwrk/midnight-zk/pull/619)
 * BREAKING: `PublicInputInstructions::assign_as_public_input`. Use `assign` followed by `constrain_as_public_input` [#619](https://github.com/midnightntwrk/midnight-zk/pull/619)
 * `InCircuitHomomorphicCommitment`, which `InCircuitPCS::AssignedCommitment` no longer requires [#582](https://github.com/midnightntwrk/midnight-zk/pull/582)

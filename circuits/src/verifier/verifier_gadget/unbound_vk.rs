@@ -174,13 +174,13 @@ mod tests {
         instructions::PublicInputInstructions,
         types::ComposableChip,
         verifier::{
-            Accumulator, AssignedAccumulator, BlstrsEmulation, DefaultPCS,
+            Accumulator, AssignedAccumulator, BlstrsEmulation,
             verifier_gadget::tests::{InnerCircuit, TestCircuit},
         },
     };
 
     type S = BlstrsEmulation;
-    type P = DefaultPCS;
+    type P = KZGCommitmentScheme<E>;
     type F = <S as SelfEmulation>::F;
     type C = <S as SelfEmulation>::C;
     type E = <S as SelfEmulation>::Engine;

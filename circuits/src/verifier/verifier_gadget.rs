@@ -806,7 +806,7 @@ pub(crate) mod tests {
         poly::{
             commitment::PolynomialCommitmentScheme,
             fflonk::Fflonk,
-            kzg::{msm::DualMSM, params::ParamsVerifierKZG},
+            kzg::{KZGCommitmentScheme, msm::DualMSM, params::ParamsVerifierKZG},
         },
         transcript::{CircuitTranscript, Hashable, Transcript},
     };
@@ -840,7 +840,7 @@ pub(crate) mod tests {
         },
         testing_utils::FromScratch,
         types::{ComposableChip, Instantiable},
-        verifier::{BlstrsEmulation, DefaultPCS, accumulator::Accumulator},
+        verifier::{BlstrsEmulation, accumulator::Accumulator},
     };
 
     type S = BlstrsEmulation;
@@ -1039,12 +1039,12 @@ pub(crate) mod tests {
 
     #[test]
     fn test_verify_proof() {
-        check_verify_proof::<DefaultPCS>();
+        check_verify_proof::<KZGCommitmentScheme<midnight_curves::Bls12>>();
     }
 
     #[test]
     fn test_verify_proof_fflonk() {
-        check_verify_proof::<Fflonk<DefaultPCS, 2>>();
+        check_verify_proof::<Fflonk<KZGCommitmentScheme<midnight_curves::Bls12>, 2>>();
     }
 
     /// Makes an inner proof with the off-circuit scheme `P`, verifies it

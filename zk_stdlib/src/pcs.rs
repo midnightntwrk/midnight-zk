@@ -13,7 +13,6 @@
 
 //! The polynomial commitment schemes of zk_stdlib.
 
-pub use midnight_circuits::verifier::DefaultPCS;
 use midnight_circuits::verifier::{BlstrsEmulation, InCircuitPCS};
 use midnight_curves::{Bls12, Fq};
 use midnight_proofs::poly::{
