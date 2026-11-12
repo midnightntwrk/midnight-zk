@@ -13,7 +13,7 @@
 
 //! The `aggregation` workloads: a proof that a batch of proofs is valid.
 //!
-//! The aggregation circuit verifies [`BATCH_SIZE`] proofs of a SHA-256
+//! The aggregation circuit verifies `BATCH_SIZE` proofs of a SHA-256
 //! preimage circuit in-circuit. It exposes their statements and the
 //! accumulator of their verification, whose pairing check is left to the
 //! verifier.
