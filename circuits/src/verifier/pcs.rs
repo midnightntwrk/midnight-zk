@@ -97,21 +97,20 @@ pub trait CommitmentBases<C> {
     fn bases(&self) -> Vec<(PolynomialLabel, C)>;
 }
 
-/// In-circuit abstraction over a Polynomial Commitment Scheme.
+/// In-circuit verification of the proofs of an off-circuit Polynomial
+/// Commitment Scheme, implemented by the off-circuit scheme itself.
 ///
 /// Analog of [`midnight_proofs::poly::commitment::PolynomialCommitmentScheme`]
 /// for the in-circuit verifier.
-pub trait InCircuitPCS<S: SelfEmulation>: Sized + Clone + Debug {
-    /// The off-circuit scheme whose proofs this gadget verifies. Fixes the
-    /// verifying-key type the gadget accepts.
-    type OffCircuitPCS: PolynomialCommitmentScheme<S::F, Commitment: CommitmentBases<S::C>>;
-
+pub trait InCircuitPCS<S: SelfEmulation>:
+    PolynomialCommitmentScheme<S::F, Commitment: CommitmentBases<S::C>> + Sized + Clone + Debug
+{
     /// The in-circuit type representing a committed polynomial, whose
-    /// off-circuit value is a commitment of [`Self::OffCircuitPCS`].
+    /// off-circuit value is a commitment of this scheme.
     type AssignedCommitment: Clone
         + Debug
         + Instantiable<S::F>
-        + InnerValue<Element = <Self::OffCircuitPCS as PolynomialCommitmentScheme<S::F>>::Commitment>;
+        + InnerValue<Element = <Self as PolynomialCommitmentScheme<S::F>>::Commitment>;
 
     /// Creates the fixed (VK-embedded) commitment to the group of `labels`.
     ///

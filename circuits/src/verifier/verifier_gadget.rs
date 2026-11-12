@@ -458,7 +458,11 @@ impl<S: SelfEmulation> VerifierGadget<S> {
 
         // Sample x challenge, which is used to ensure the circuit is satisfied with
         // high probability
-        let x = S::PCS::squeeze_evaluation_point(layouter, &self.scalar_chip, &mut transcript)?;
+        let x = <S::PCS as InCircuitPCS<S>>::squeeze_evaluation_point(
+            layouter,
+            &self.scalar_chip,
+            &mut transcript,
+        )?;
 
         let omega = &assigned_vk.domain.omega;
         let omega_inv = &assigned_vk.domain.omega_inv;
@@ -742,7 +746,7 @@ impl<S: SelfEmulation> VerifierGadget<S> {
         // We are now convinced the circuit is satisfied so long as the
         // polynomial commitments open to the correct values, which is true as long
         // as the following accumulator passes the invariant.
-        S::PCS::multi_prepare(
+        <S::PCS as InCircuitPCS<S>>::multi_prepare(
             layouter,
             &self.curve_chip,
             &self.scalar_chip,

@@ -43,8 +43,7 @@ mod utils;
 mod verifier_gadget;
 
 pub use accumulator::{Accumulator, AssignedAccumulator};
-pub use fflonk::InCircuitFflonk;
-pub use kzg::{AssignedKZGCommitment, AssignedKZGMultiCommitment, InCircuitKZG};
+pub use kzg::{AssignedKZGCommitment, AssignedKZGMultiCommitment};
 pub use msm::{AssignedMsm, AssignedPoint, Msm, Point};
 pub use pcs::{AssignedCommitment, CommitmentBases, InCircuitPCS};
 #[cfg(feature = "dev-curves")]
@@ -57,10 +56,7 @@ pub use verifier_gadget::{UnboundVk, VerifierGadget, vk_hash};
 pub type DefaultPCS = KZGCommitmentScheme<midnight_curves::Bls12>;
 
 /// The off-circuit verifying key of the proofs that `S` verifies in-circuit.
-type VerifyingKey<S> = plonk::VerifyingKey<
-    <S as SelfEmulation>::F,
-    <<S as SelfEmulation>::PCS as InCircuitPCS<S>>::OffCircuitPCS,
->;
+type VerifyingKey<S> = plonk::VerifyingKey<<S as SelfEmulation>::F, <S as SelfEmulation>::PCS>;
 
 /// Type for in-circuit Evaluation Domain.
 ///

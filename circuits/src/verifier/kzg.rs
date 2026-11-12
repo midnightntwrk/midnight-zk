@@ -21,10 +21,7 @@
 //!  - src/utils/arithmetic.rs
 //!  - src/poly/kzg/mod.rs
 
-use std::{
-    collections::{BTreeSet, HashMap},
-    marker::PhantomData,
-};
+use std::collections::{BTreeSet, HashMap};
 
 use ff::Field;
 use midnight_curves::pairing::MultiMillerLoop;
@@ -415,7 +412,7 @@ pub(crate) fn multi_prepare_kzg<S: SelfEmulation>(
     layouter: &mut impl Layouter<S::F>,
     curve_chip: &S::CurveChip,
     scalar_chip: &S::ScalarChip,
-    queries: &[VerifierQuery<S, InCircuitKZG<S>>],
+    queries: &[VerifierQuery<S, KZGCommitmentScheme<S::Engine>>],
     transcript_gadget: &mut TranscriptGadget<S>,
 ) -> Result<AssignedAccumulator<S>, Error> {
     let one = AssignedBoundedScalar::one(layouter, scalar_chip)?;
@@ -599,10 +596,6 @@ pub(crate) fn multi_prepare_kzg<S: SelfEmulation>(
     Ok(AssignedAccumulator::new(left, right))
 }
 
-/// KZG instantiation of [`InCircuitPCS`].
-#[derive(Clone, Copy, Debug)]
-pub struct InCircuitKZG<S: SelfEmulation>(PhantomData<S>);
-
 impl<E: MultiMillerLoop> CommitmentBases<E::G1> for KZGMultiCommitment<E> {
     fn bases(&self) -> Vec<(PolynomialLabel, E::G1)> {
         (self.0.iter())
@@ -614,14 +607,14 @@ impl<E: MultiMillerLoop> CommitmentBases<E::G1> for KZGMultiCommitment<E> {
     }
 }
 
-impl<S: SelfEmulation> InCircuitPCS<S> for InCircuitKZG<S> {
-    type OffCircuitPCS = KZGCommitmentScheme<S::Engine>;
+/// In circuit implementation of KZG.
+impl<S: SelfEmulation> InCircuitPCS<S> for KZGCommitmentScheme<S::Engine> {
     type AssignedCommitment = AssignedKZGMultiCommitment<S>;
 
     fn fixed_commitment(labels: &[PolynomialLabel]) -> Self::AssignedCommitment {
         PolynomialLabel::assert_distinct(labels);
         AssignedKZGMultiCommitment(
-            Self::fixed_base_labels(labels)
+            <Self as InCircuitPCS<S>>::fixed_base_labels(labels)
                 .into_iter()
                 .map(AssignedKZGCommitment::fixed)
                 .collect(),

@@ -26,6 +26,7 @@ use midnight_curves::{
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
+    poly::kzg::KZGCommitmentScheme,
     transcript::{Hashable, TranscriptHash},
 };
 
@@ -42,7 +43,7 @@ use crate::{
         SpongeInstructions, ecc::EccInstructions, public_input::CommittedInstanceInstructions,
     },
     types::{AssignedForeignPoint, InnerValue, Instantiable},
-    verifier::{InCircuitKZG, InCircuitPCS},
+    verifier::InCircuitPCS,
 };
 
 /// A trait for parametrizing the VerifierGadget.
@@ -148,7 +149,7 @@ impl SelfEmulation for BlstrsEmulation {
     type G2Affine = midnight_curves::G2Affine;
     type Engine = midnight_curves::Bls12;
 
-    type PCS = InCircuitKZG<Self>;
+    type PCS = KZGCommitmentScheme<Self::Engine>;
 
     fn msm(
         layouter: &mut impl Layouter<Self::F>,
@@ -197,7 +198,7 @@ impl SelfEmulation for BnEmulation {
     type G2Affine = midnight_curves::bn256::G2Affine;
     type Engine = midnight_curves::bn256::Bn256;
 
-    type PCS = InCircuitKZG<Self>;
+    type PCS = KZGCommitmentScheme<Self::Engine>;
 
     fn msm(
         layouter: &mut impl Layouter<Self::F>,

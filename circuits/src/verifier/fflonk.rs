@@ -18,10 +18,7 @@
 //! chunk under the label `Collection(chunk)`, and opening a chunk at `x`
 //! amounts to opening it with the inner PCS at the `t`-th roots of `x`.
 
-use std::{
-    collections::{BTreeMap, HashMap, hash_map::Entry},
-    marker::PhantomData,
-};
+use std::collections::{BTreeMap, HashMap, hash_map::Entry};
 
 use midnight_proofs::{
     circuit::{Layouter, Value},
@@ -45,29 +42,12 @@ use crate::{
     },
 };
 
-/// fflonk over the inner in-circuit `PCS`, combining at most `T_MAX =
-/// 2^LOG2_T_MAX` polynomials per chunk. Verifies the proofs of
-/// [`Fflonk<PCS::OffCircuitPCS, LOG2_T_MAX>`](Fflonk).
-#[derive(Clone, Copy, Debug)]
-pub struct InCircuitFflonk<PCS, const LOG2_T_MAX: u32>(PhantomData<PCS>);
-
-impl<PCS, const LOG2_T_MAX: u32> InCircuitFflonk<PCS, LOG2_T_MAX> {
-    /// The maximum number of polynomials combined into one.
-    const T_MAX: usize = 1 << LOG2_T_MAX;
-
-    /// The labels of the inner commitments to the group `labels`.
-    fn chunk_labels(labels: &[PolynomialLabel]) -> Vec<PolynomialLabel> {
-        PolynomialLabel::assert_distinct(labels);
-        balanced_chunks(labels, Self::T_MAX).map(|l| Collection(l.to_vec())).collect()
-    }
-}
-
-impl<S, PCS, const LOG2_T_MAX: u32> InCircuitPCS<S> for InCircuitFflonk<PCS, LOG2_T_MAX>
+/// In circuit implementation of Fflonk.
+impl<S, PCS, const LOG2_T_MAX: u32> InCircuitPCS<S> for Fflonk<PCS, LOG2_T_MAX>
 where
     S: SelfEmulation,
-    PCS: InCircuitPCS<S, OffCircuitPCS: InterleavedCommit<S::F>>,
+    PCS: InCircuitPCS<S> + InterleavedCommit<S::F>,
 {
-    type OffCircuitPCS = Fflonk<PCS::OffCircuitPCS, LOG2_T_MAX>;
     type AssignedCommitment = PCS::AssignedCommitment;
 
     fn fixed_commitment(labels: &[PolynomialLabel]) -> Self::AssignedCommitment {
@@ -100,7 +80,7 @@ where
         layouter: &mut impl Layouter<S::F>,
         labels: &[PolynomialLabel],
     ) -> Result<Self::AssignedCommitment, Error> {
-        PCS::read_commitment(transcript, layouter, &Self::chunk_labels(labels))
+        <PCS as InCircuitPCS<S>>::read_commitment(transcript, layouter, &Self::chunk_labels(labels))
     }
 
     fn common_commitment(
@@ -116,12 +96,13 @@ where
         scalar_chip: &S::ScalarChip,
         transcript: &mut TranscriptGadget<S>,
     ) -> Result<AssignedNative<S::F>, Error> {
-        let x = PCS::squeeze_evaluation_point(layouter, scalar_chip, transcript)?;
+        let x =
+            <PCS as InCircuitPCS<S>>::squeeze_evaluation_point(layouter, scalar_chip, transcript)?;
         scalar_chip.pow(layouter, &x, Self::T_MAX as u64)
     }
 
     fn commitment_labels(commitment: &Self::AssignedCommitment) -> Vec<PolynomialLabel> {
-        PCS::commitment_labels(commitment)
+        <PCS as InCircuitPCS<S>>::commitment_labels(commitment)
             .into_iter()
             .flat_map(|label| match label {
                 Collection(labels) => labels,
@@ -141,9 +122,12 @@ where
         // its polynomials are queried at, in query order: `labels -> (commitment,
         // points)`.
         let chunks_info = queries.iter().fold(BTreeMap::new(), |mut chunks_info, q| {
-            let labels = balanced_chunks(&Self::commitment_labels(q.commitment), Self::T_MAX)
-                .find(|labels| labels.contains(&q.label))
-                .map_or_else(|| vec![q.label.clone()], <[_]>::to_vec);
+            let labels = balanced_chunks(
+                &<Self as InCircuitPCS<S>>::commitment_labels(q.commitment),
+                Self::T_MAX,
+            )
+            .find(|labels| labels.contains(&q.label))
+            .map_or_else(|| vec![q.label.clone()], <[_]>::to_vec);
             let (_, points) = chunks_info.entry(labels).or_insert((q.commitment, Vec::new()));
             if !points.contains(&q.point) {
                 points.push(q.point.clone());
@@ -196,7 +180,7 @@ where
             }
         }
 
-        PCS::multi_prepare(
+        <PCS as InCircuitPCS<S>>::multi_prepare(
             layouter,
             curve_chip,
             scalar_chip,

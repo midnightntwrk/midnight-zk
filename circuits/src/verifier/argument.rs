@@ -145,7 +145,11 @@ pub(crate) fn read_committed<S: SelfEmulation>(
     transcript_gadget: &mut TranscriptGadget<S>,
 ) -> Result<Committed<S>, Error> {
     Ok(Committed {
-        commitment: S::PCS::read_commitment(transcript_gadget, layouter, labels)?,
+        commitment: <S::PCS as InCircuitPCS<S>>::read_commitment(
+            transcript_gadget,
+            layouter,
+            labels,
+        )?,
         polynomial_labels: labels.to_vec(),
     })
 }
