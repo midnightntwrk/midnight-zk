@@ -15,7 +15,11 @@
 //!
 //! The IVC circuit of `midnight-aggregation` verifies its own proofs, which
 //! the library commits with [`PCS`] (fflonk with up to 8 polynomials per
-//! commitment). That is the only scheme these workloads run under.
+//! commitment) unless told otherwise. The scheme sets the cost of the
+//! in-circuit verifier, and with it the size of the IVC circuit: the more
+//! polynomials per commitment, the fewer commitments the circuit has to
+//! combine. These workloads run the same transition under every scheme, each
+//! at the smallest size that fits it, see [`k_of`].
 //!
 //! A step of the library also verifies the previous proof off-circuit and
 //! draws its blinding factors from the operating system, so the timed section
@@ -23,7 +27,7 @@
 
 use ff::Field;
 use midnight_aggregation::ivc::{
-    self, Ivc, IvcContext, IvcIO, IvcProver, IvcState, IvcTransition, IvcVerifier, PCS,
+    self, Ivc, IvcContext, IvcIO, IvcProver, IvcState, IvcTransition, IvcVerifier,
 };
 use midnight_circuits::{
     hash::poseidon::PoseidonChip,
@@ -36,7 +40,7 @@ use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
 };
-use midnight_zk_stdlib::{ZkStdLib, ZkStdLibArch};
+use midnight_zk_stdlib::{FflonkKZG, KZG, MidnightPCS, ZkStdLib, ZkStdLibArch};
 
 use crate::{
     srs,
@@ -45,12 +49,18 @@ use crate::{
 
 type F = midnight_curves::Fq;
 
-/// The logarithm of the number of rows of the IVC circuit. It is the largest
-/// one whose fflonk SRS is available.
-const K: u32 = 16;
+/// The logarithm of the number of rows of the smallest IVC circuit that fits
+/// the in-circuit verifier of `pcs` and the transition.
+fn k_of(pcs: Pcs) -> u32 {
+    match pcs {
+        Pcs::Kzg => 18,
+        Pcs::FflonkT2 | Pcs::FflonkT4 => 17,
+        Pcs::FflonkT8 | Pcs::FflonkT16 => 16,
+    }
+}
 
-/// The number of Poseidon iterations per step, which fills the rows that the
-/// in-circuit verifier leaves free.
+/// The number of Poseidon iterations per step. The transition is the same
+/// under every scheme, so the circuits only differ in their verifier.
 const POSEIDON_ITERATIONS: usize = 50;
 
 /// The steps proved before the timed ones. The first step has no proof to
@@ -64,19 +74,18 @@ pub fn workloads() -> Vec<Box<dyn Workload>> {
 }
 
 /// A chain of IVC steps that all consume the same transition witness.
-struct PreparedIvc<T: Ivc> {
+struct PreparedIvc<T: Ivc, P: MidnightPCS> {
     k: u32,
-    prover: IvcProver<T>,
-    verifier: IvcVerifier<T>,
+    prover: IvcProver<T, P>,
+    verifier: IvcVerifier<T, P>,
     witness: T::Witness,
 }
 
-impl<T: Ivc> PreparedIvc<T> {
+impl<T: Ivc, P: MidnightPCS> PreparedIvc<T, P> {
     /// Generates the keys of the IVC circuit of size `2^k` and proves the
     /// warm-up steps.
-    fn new(pcs: Pcs, k: u32, ctx: T::Context, witness: T::Witness) -> Self {
-        assert_eq!(pcs, Pcs::of::<PCS>(), "the IVC library fixes the scheme");
-        let (mut prover, verifier) = ivc::setup::<T>(srs::load::<PCS>(k), k, ctx);
+    fn new(k: u32, ctx: T::Context, witness: T::Witness) -> Self {
+        let (mut prover, verifier) = ivc::setup_with_pcs::<T, P>(srs::load::<P>(k), k, ctx);
         for _ in 0..WARM_UP_STEPS {
             prover.prove_step(witness.clone()).expect("the warm-up steps are valid");
         }
@@ -89,11 +98,12 @@ impl<T: Ivc> PreparedIvc<T> {
     }
 }
 
-impl<T> Prepared for PreparedIvc<T>
+impl<T, P> Prepared for PreparedIvc<T, P>
 where
     T: Ivc,
-    IvcProver<T>: Send,
-    IvcVerifier<T>: Send,
+    P: MidnightPCS,
+    IvcProver<T, P>: Send,
+    IvcVerifier<T, P>: Send,
     T::Witness: Send,
 {
     fn k(&self) -> u32 {
@@ -124,12 +134,19 @@ impl Workload for IvcStep {
     }
 
     fn supported_pcs(&self) -> Vec<Pcs> {
-        let pcs = Pcs::of::<PCS>();
-        if pcs.fits(K) { vec![pcs] } else { vec![] }
+        Pcs::ALL.into_iter().filter(|pcs| pcs.fits(k_of(*pcs))).collect()
     }
 
     fn setup(&self, pcs: Pcs) -> Box<dyn Prepared> {
-        Box::new(PreparedIvc::<PoseidonChain>::new(pcs, K, (), ()))
+        type Step<P> = PreparedIvc<PoseidonChain, P>;
+        let k = k_of(pcs);
+        match pcs {
+            Pcs::Kzg => Box::new(Step::<KZG>::new(k, (), ())),
+            Pcs::FflonkT2 => Box::new(Step::<FflonkKZG<1>>::new(k, (), ())),
+            Pcs::FflonkT4 => Box::new(Step::<FflonkKZG<2>>::new(k, (), ())),
+            Pcs::FflonkT8 => Box::new(Step::<FflonkKZG<3>>::new(k, (), ())),
+            Pcs::FflonkT16 => Box::new(Step::<FflonkKZG<4>>::new(k, (), ())),
+        }
     }
 }
 
@@ -288,7 +305,42 @@ pub(super) fn check_workload(workload: &dyn Workload) {
 
 #[cfg(test)]
 mod tests {
+    use midnight_aggregation::ivc::IvcCircuit;
+    use midnight_proofs::{plonk::ConstraintSystem, poly::EvaluationDomain};
+
     use super::*;
+
+    /// The size the IVC circuit of `2^k` rows needs under `P`.
+    fn required_k<P: MidnightPCS>(k: u32) -> u32 {
+        let mut cs = ConstraintSystem::default();
+        let arch = IvcCircuit::<PoseidonChain, P>::arch();
+        ZkStdLib::configure(&mut cs, (arch, (k - 1) as u8));
+        let domain = EvaluationDomain::new(cs.degree() as u32, k);
+        let relation = IvcCircuit::<PoseidonChain, P>::new(domain, cs.into_finalized(), ());
+        midnight_zk_stdlib::cost_model::<_, P>(&relation, Some(k), false).k
+    }
+
+    fn check_k<P: MidnightPCS>() {
+        let k = k_of(Pcs::of::<P>());
+        assert!(required_k::<P>(k) <= k, "{}", Pcs::of::<P>());
+        assert!(required_k::<P>(k - 1) > k - 1, "{}", Pcs::of::<P>());
+    }
+
+    #[test]
+    fn k_of_is_the_smallest_size_that_fits() {
+        check_k::<KZG>();
+        check_k::<FflonkKZG<1>>();
+        check_k::<FflonkKZG<2>>();
+        check_k::<FflonkKZG<3>>();
+        check_k::<FflonkKZG<4>>();
+    }
+
+    #[test]
+    fn the_largest_chunks_do_not_fit_the_srs() {
+        let mut expected = Pcs::ALL.to_vec();
+        expected.pop();
+        assert_eq!(IvcStep.supported_pcs(), expected);
+    }
 
     #[test]
     #[ignore = "slow: generates the keys of the IVC circuit twice and proves six steps"]

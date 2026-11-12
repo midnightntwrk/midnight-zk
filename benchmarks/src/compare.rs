@@ -961,6 +961,7 @@ mod tests {
             vk_hash: "aa".repeat(32),
             proof_bytes: 4000,
             samples_ns: samples_ms.iter().map(|s| s * MS).collect(),
+            verify_ns: vec![],
             breakdown: None,
         }
     }

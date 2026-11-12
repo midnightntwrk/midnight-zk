@@ -135,6 +135,7 @@ fn summary_table<'a>(cases: impl Iterator<Item = &'a CaseResult>, with_threads: 
         ("median", true),
         ("min", true),
         ("±MAD%", true),
+        ("verify", true),
         ("proof bytes", true),
     ]);
     let mut table = Table::new(&columns);
@@ -155,6 +156,10 @@ fn summary_table<'a>(cases: impl Iterator<Item = &'a CaseResult>, with_threads: 
             ]),
             None => row.extend(["-".to_owned(), "-".to_owned(), "-".to_owned()]),
         }
+        row.push(match Stats::of(&case.verify_ns) {
+            Some(stats) => format_duration(stats.median),
+            None => "-".to_owned(),
+        });
         row.push(case.proof_bytes.to_string());
         table.rows.push(row);
     }
@@ -407,6 +412,7 @@ mod tests {
             vk_hash: "00".repeat(32),
             proof_bytes: 4_512,
             samples_ns: samples_ns.to_vec(),
+            verify_ns: vec![2_000_000, 4_000_000, 3_000_000],
             breakdown,
         }
     }
@@ -458,11 +464,11 @@ mod tests {
     #[test]
     fn summary() {
         let expected = "\
-workload      pcs         k  threads     median        min  ±MAD%  proof bytes
-------------  ---------  --  -------  ---------  ---------  -----  -----------
-poseidon      kzg        14        1    1.500 s    1.400 s    6.7         4512
-poseidon      kzg        14       32  210.00 ms  200.00 ms    4.8         4512
-sha_preimage  fflonk-t4  14        1   900.0 µs   900.0 µs    0.0         4512
+workload      pcs         k  threads     median        min  ±MAD%   verify  proof bytes
+------------  ---------  --  -------  ---------  ---------  -----  -------  -----------
+poseidon      kzg        14        1    1.500 s    1.400 s    6.7  3.00 ms         4512
+poseidon      kzg        14       32  210.00 ms  200.00 ms    4.8  3.00 ms         4512
+sha_preimage  fflonk-t4  14        1   900.0 µs   900.0 µs    0.0  3.00 ms         4512
 ";
         assert_eq!(render_summary(&fixture(false)), expected);
         assert_eq!(render_breakdowns(&fixture(false)), "");
@@ -515,16 +521,16 @@ Concurrent calls (busy/wall): msm 1.5x, fft 4.0x, poly_eval 1.0x.
 
 ## 1 thread
 
-| workload     | pcs       |   k |   median |      min | ±MAD% | proof bytes |
-| ------------ | --------- | --: | -------: | -------: | ----: | ----------: |
-| poseidon     | kzg       |  14 |  1.500 s |  1.400 s |   6.7 |        4512 |
-| sha_preimage | fflonk-t4 |  14 | 900.0 µs | 900.0 µs |   0.0 |        4512 |
+| workload     | pcs       |   k |   median |      min | ±MAD% |  verify | proof bytes |
+| ------------ | --------- | --: | -------: | -------: | ----: | ------: | ----------: |
+| poseidon     | kzg       |  14 |  1.500 s |  1.400 s |   6.7 | 3.00 ms |        4512 |
+| sha_preimage | fflonk-t4 |  14 | 900.0 µs | 900.0 µs |   0.0 | 3.00 ms |        4512 |
 
 ## 32 threads
 
-| workload | pcs |   k |    median |       min | ±MAD% | proof bytes |
-| -------- | --- | --: | --------: | --------: | ----: | ----------: |
-| poseidon | kzg |  14 | 210.00 ms | 200.00 ms |   4.8 |        4512 |
+| workload | pcs |   k |    median |       min | ±MAD% |  verify | proof bytes |
+| -------- | --- | --: | --------: | --------: | ----: | ------: | ----------: |
+| poseidon | kzg |  14 | 210.00 ms | 200.00 ms |   4.8 | 3.00 ms |        4512 |
 ";
         assert_eq!(render_markdown(&fixture(false), "2026-01-02"), expected);
     }

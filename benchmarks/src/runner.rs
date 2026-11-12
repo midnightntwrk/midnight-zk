@@ -211,6 +211,7 @@ pub fn run(config: &Config, workloads: Vec<Box<dyn Workload>>) -> Result<RunResu
                     vk_hash: vk_hash.clone(),
                     proof_bytes: measured.proof_bytes,
                     samples_ns: measured.samples_ns,
+                    verify_ns: measured.verify_ns,
                     breakdown: measured.breakdown,
                 });
             }
@@ -227,13 +228,15 @@ pub fn run(config: &Config, workloads: Vec<Box<dyn Workload>>) -> Result<RunResu
 /// The measurements of one case.
 struct Measured {
     samples_ns: Vec<u64>,
+    verify_ns: Vec<u64>,
     proof_bytes: usize,
     breakdown: Option<Breakdown>,
 }
 
 /// Proves `config.warmup + config.samples` times in a pool of `threads`
-/// threads, timing the latter. Returns `None` if the last proof is checked
-/// and does not verify.
+/// threads, timing the latter. Unless verification is skipped, it then
+/// verifies the last proof `config.samples` times, timing each. Returns
+/// `None` if that proof does not verify.
 fn measure(
     prepared: &mut dyn Prepared,
     threads: usize,
@@ -266,11 +269,20 @@ fn measure(
                 breakdown = Some(Breakdown::from(&report));
             }
         }
-        if config.verify && !prepared.verify(&proof) {
-            return None;
+        let mut verify_ns = Vec::new();
+        if config.verify {
+            for _ in 0..config.samples {
+                let start = Instant::now();
+                let valid = prepared.verify(&proof);
+                verify_ns.push(start.elapsed().as_nanos() as u64);
+                if !valid {
+                    return None;
+                }
+            }
         }
         Some(Measured {
             samples_ns,
+            verify_ns,
             proof_bytes: proof.len(),
             breakdown,
         })
@@ -457,8 +469,8 @@ mod tests {
         }
 
         // One setup per workload and scheme, then for each pool one warmup
-        // proof, two samples and one verification.
-        let case = |threads| [vec![Event::Prove(threads); 3], vec![Event::Verify]].concat();
+        // proof, two samples and two verifications.
+        let case = |threads| [vec![Event::Prove(threads); 3], vec![Event::Verify; 2]].concat();
         let per_pcs = |pcs| [vec![Event::Setup(pcs)], case(1), case(2)].concat();
         let expected = [per_pcs(Pcs::Kzg), per_pcs(Pcs::FflonkT4), per_pcs(Pcs::Kzg)].concat();
         assert_eq!(*log.lock().unwrap(), expected);

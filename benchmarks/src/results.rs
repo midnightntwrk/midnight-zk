@@ -67,6 +67,9 @@ pub struct CaseResult {
     pub proof_bytes: usize,
     /// The wall time of each proof in nanoseconds, in execution order.
     pub samples_ns: Vec<u64>,
+    /// The wall time of each verification of the last proof in nanoseconds.
+    /// It is empty if verification was skipped.
+    pub verify_ns: Vec<u64>,
     /// The breakdown of the last sample, in builds with profiling.
     pub breakdown: Option<Breakdown>,
 }
