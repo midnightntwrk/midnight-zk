@@ -170,6 +170,7 @@ pub trait InCircuitPCS<S: SelfEmulation>:
     fn read_commitment(
         transcript: &mut TranscriptGadget<S>,
         layouter: &mut impl Layouter<S::F>,
+        commitment_chip: &Self::CommitmentChip,
         labels: &[PolynomialLabel],
     ) -> Result<Self::AssignedCommitment, Error>;
 
@@ -177,6 +178,7 @@ pub trait InCircuitPCS<S: SelfEmulation>:
     fn common_commitment(
         transcript: &mut TranscriptGadget<S>,
         layouter: &mut impl Layouter<S::F>,
+        commitment_chip: &Self::CommitmentChip,
         commitment: &Self::AssignedCommitment,
     ) -> Result<(), Error>;
 

@@ -144,10 +144,16 @@ pub(crate) fn committed_from_key<S: SelfEmulation, PCS: InCircuitPCS<S>>(
 pub(crate) fn read_committed<S: SelfEmulation, PCS: InCircuitPCS<S>>(
     labels: &[PolynomialLabel],
     layouter: &mut impl Layouter<S::F>,
+    commitment_chip: &PCS::CommitmentChip,
     transcript_gadget: &mut TranscriptGadget<S>,
 ) -> Result<Committed<S, PCS>, Error> {
     Ok(Committed {
-        commitment: <PCS as InCircuitPCS<S>>::read_commitment(transcript_gadget, layouter, labels)?,
+        commitment: <PCS as InCircuitPCS<S>>::read_commitment(
+            transcript_gadget,
+            layouter,
+            commitment_chip,
+            labels,
+        )?,
         polynomial_labels: labels.to_vec(),
     })
 }

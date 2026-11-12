@@ -14,24 +14,19 @@
 //! Transcript gadget module, for in-circuit Fiat-Shamir.
 //! Shall we adopt the [SAFE API](https://hackmd.io/bHgsH6mMStCVibM_wYvb2w)?
 
-use std::io::Read;
+use std::io;
 
 use ff::Field;
 use midnight_proofs::{
     circuit::{Layouter, Value},
-    plonk::Error::{self, Synthesis},
-    poly::PolynomialLabel,
-    transcript::{CircuitTranscript, Transcript},
+    plonk::Error,
+    transcript::{CircuitTranscript, Hashable, Transcript},
 };
 
 use crate::{
-    instructions::{AssignmentInstructions, PublicInputInstructions, SpongeInstructions},
+    instructions::{AssignmentInstructions, SpongeInstructions},
     types::AssignedNative,
-    verifier::{
-        ScalarChip, SelfEmulation,
-        kzg::{AssignedKZGCommitment, AssignedKZGMultiCommitment},
-        msm::AssignedPoint,
-    },
+    verifier::{ScalarChip, SelfEmulation},
 };
 
 type SpongeState<S> = <<S as SelfEmulation>::SpongeChip as SpongeInstructions<
@@ -44,7 +39,6 @@ type SpongeState<S> = <<S as SelfEmulation>::SpongeChip as SpongeInstructions<
 #[derive(Clone, Debug)]
 pub struct TranscriptGadget<S: SelfEmulation> {
     scalar_chip: ScalarChip<S::F>,
-    curve_chip: S::CurveChip,
     sponge_chip: S::SpongeChip,
     sponge_state: Option<SpongeState<S>>,
     // Track the number of field elements we have in the buffer.
@@ -56,14 +50,9 @@ pub struct TranscriptGadget<S: SelfEmulation> {
 
 impl<S: SelfEmulation> TranscriptGadget<S> {
     /// Creates a new `TranscriptGadget` from the corresponding chips.
-    pub fn new(
-        scalar_chip: &ScalarChip<S::F>,
-        curve_chip: &S::CurveChip,
-        sponge_chip: &S::SpongeChip,
-    ) -> Self {
+    pub fn new(scalar_chip: &ScalarChip<S::F>, sponge_chip: &S::SpongeChip) -> Self {
         Self {
             scalar_chip: scalar_chip.clone(),
-            curve_chip: curve_chip.clone(),
             sponge_chip: sponge_chip.clone(),
             sponge_state: None,
             input_len: 0,
@@ -99,37 +88,18 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
         layouter: &mut impl Layouter<S::F>,
         scalar: &AssignedNative<S::F>,
     ) -> Result<(), Error> {
-        self.input_len += 1;
-        let state = self.sponge_state.as_mut().expect("You must init the transcript gadget");
-        self.sponge_chip.absorb(layouter, state, std::slice::from_ref(scalar))
+        self.common(layouter, std::slice::from_ref(scalar))
     }
 
-    /// Absorbs a commitment into the transcript, one inner polynomial point at
-    /// a time, matching the off-circuit `Hashable::to_input`.
-    pub fn common_commitment(
+    /// Absorbs the given field elements into the transcript.
+    pub fn common(
         &mut self,
         layouter: &mut impl Layouter<S::F>,
-        commitment: &AssignedKZGMultiCommitment<S>,
+        inputs: &[AssignedNative<S::F>],
     ) -> Result<(), Error> {
-        for inner in commitment.0.iter() {
-            let pis = match inner {
-                AssignedKZGCommitment::Simple(AssignedPoint::Variable(p), _label) => {
-                    self.curve_chip.as_public_input(layouter, p)
-                }
-                AssignedKZGCommitment::Simple(AssignedPoint::Fixed, label) => Err(Synthesis(
-                    format!("Fixed commitments cannot be added to the transcript: {label}"),
-                )),
-                AssignedKZGCommitment::Linear(_, _, labels) => Err(Synthesis(format!(
-                    "Linear commitments cannot be added to the transcript: {labels:?}"
-                ))),
-            }?;
-
-            self.input_len += pis.len();
-
-            let state = self.sponge_state.as_mut().expect("You must init the transcript gadget");
-            self.sponge_chip.absorb(layouter, state, &pis)?;
-        }
-        Ok(())
+        self.input_len += inputs.len();
+        let state = self.sponge_state.as_mut().expect("You must init the transcript gadget");
+        self.sponge_chip.absorb(layouter, state, inputs)
     }
 
     /// Derives a scalar challenge from the current transcript.
@@ -141,66 +111,11 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
         self.sponge_chip.squeeze(layouter, state)
     }
 
-    /// Reads `labels.len()` curve points from the prover transcript (one per
-    /// polynomial held by the commitment), absorbs them into the running hash
-    /// state, and tags each polynomial with its label.
-    ///
-    /// The labels are matched to the points read in the order given, the
-    /// order the prover commits to them in.
-    ///
-    /// With no labels, nothing is read nor absorbed: the prover writes nothing
-    /// for a commitment to no polynomials.
-    ///
-    /// # Warning
-    ///
-    /// The received points are not enforced to be in the prime-order subgroup.
-    pub fn read_commitment(
-        &mut self,
-        layouter: &mut impl Layouter<S::F>,
-        labels: &[PolynomialLabel],
-    ) -> Result<AssignedKZGMultiCommitment<S>, Error> {
-        if labels.is_empty() {
-            return Ok(AssignedKZGMultiCommitment(vec![]));
-        }
-
-        PolynomialLabel::assert_distinct(labels);
-
-        {
-            // The whole group is written to the proof as one commitment
-            // prefixed by the number of polynomials it holds, so that prefix
-            // comes before the points. It is not part of the hashed input, only
-            // the points that follow are. The count itself is discarded: how
-            // many points to read is fixed by `labels`, and out-of-circuit
-            // `read_commitment` is what rejects a proof declaring any other
-            // number. (See `Hashable::to_bytes` for `KZGMultiCommitment`.)
-            let reader =
-                self.transcript_reader.as_mut().expect("You must init the transcript gadget");
-            let mut nb_polys_bytes = [0u8; 4];
-            // If an error, do not fail. The subsequent point reads will fall
-            // back to default commitments. (This allows us to parse dummy
-            // proofs.)
-            let _ = reader.buffer().read_exact(&mut nb_polys_bytes);
-        }
-
-        let mut inners = Vec::with_capacity(labels.len());
-        for label in labels {
-            let reader =
-                self.transcript_reader.as_mut().expect("You must init the transcript gadget");
-            // If an error, do not fail, assign a default commitment instead.
-            // (This allows us to parse dummy proofs.)
-            let point: Value<S::C> = match reader.read::<S::C>() {
-                Ok(point) => Value::known(point),
-                Err(_) => Value::known(S::C::default()),
-            };
-            let assigned_point =
-                S::assign_without_subgroup_check(layouter, &self.curve_chip, point)?;
-            inners.push(AssignedKZGCommitment::simple(assigned_point, label.clone()));
-        }
-
-        let assigned_com = AssignedKZGMultiCommitment(inners);
-        self.common_commitment(layouter, &assigned_com)?;
-
-        Ok(assigned_com)
+    /// Reads a value from the proof, off-circuit. The value is neither
+    /// constrained nor absorbed into the transcript.
+    pub fn read_value<V: Hashable<S::Hash>>(&mut self) -> io::Result<V> {
+        let reader = self.transcript_reader.as_mut().expect("You must init the transcript gadget");
+        reader.read()
     }
 
     /// Reads a scalar from the reader buffer, and adds it to the transcript.
@@ -209,13 +124,9 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
         &mut self,
         layouter: &mut impl Layouter<S::F>,
     ) -> Result<AssignedNative<S::F>, Error> {
-        let reader = self.transcript_reader.as_mut().expect("You must init the transcript gadget");
         // If an error, do not fail, assign a default scalar instead.
         // (This allows us to parse dummy proofs.)
-        let scalar: Value<S::F> = match reader.read::<S::F>() {
-            Ok(scalar) => Value::known(scalar),
-            Err(_) => Value::known(S::F::ZERO),
-        };
+        let scalar = Value::known(self.read_value().unwrap_or(S::F::ZERO));
 
         let assigned_scalar = self.scalar_chip.assign(layouter, scalar)?;
         self.common_scalar(layouter, &assigned_scalar)?;
@@ -233,26 +144,22 @@ use crate::testing_utils::FromScratch;
 #[cfg(any(test, feature = "testing"))]
 impl<S: SelfEmulation> FromScratch<S::F> for TranscriptGadget<S>
 where
-    S::CurveChip: FromScratch<S::F>,
     S::SpongeChip: FromScratch<S::F>,
     ScalarChip<S::F>: FromScratch<S::F>,
 {
     type Config = (
         <ScalarChip<S::F> as FromScratch<S::F>>::Config,
-        <S::CurveChip as FromScratch<S::F>>::Config,
         <S::SpongeChip as FromScratch<S::F>>::Config,
     );
 
     fn new_from_scratch(config: &Self::Config) -> Self {
         let scalar_chip = ScalarChip::<S::F>::new_from_scratch(&config.0);
-        let curve_chip = S::CurveChip::new_from_scratch(&config.1);
-        let sponge_chip = S::SpongeChip::new_from_scratch(&config.2);
-        TranscriptGadget::new(&scalar_chip, &curve_chip, &sponge_chip)
+        let sponge_chip = S::SpongeChip::new_from_scratch(&config.1);
+        TranscriptGadget::new(&scalar_chip, &sponge_chip)
     }
 
     fn load_from_scratch(&self, layouter: &mut impl Layouter<S::F>) -> Result<(), Error> {
         self.scalar_chip.load_from_scratch(layouter)?;
-        self.curve_chip.load_from_scratch(layouter)?;
         self.sponge_chip.load_from_scratch(layouter)
     }
 
@@ -264,12 +171,6 @@ where
     ) -> Self::Config {
         (
             ScalarChip::<S::F>::configure_from_scratch(
-                meta,
-                advice_columns,
-                fixed_columns,
-                instance_columns,
-            ),
-            S::CurveChip::configure_from_scratch(
                 meta,
                 advice_columns,
                 fixed_columns,
@@ -306,6 +207,7 @@ mod tests {
 
     type F = <S as SelfEmulation>::F;
     type C = <S as SelfEmulation>::C;
+    type CurveChip = <S as SelfEmulation>::CurveChip;
 
     #[derive(Clone, Debug, Default)]
     struct TestCircuit {
@@ -313,21 +215,32 @@ mod tests {
         scalars: Value<[F; SIZE]>,
     }
 
-    fn configure(
-        meta: &mut ConstraintSystem<F>,
-    ) -> <TranscriptGadget<S> as FromScratch<F>>::Config {
-        let committed_instance_column = meta.instance_column();
-        let instance_column = meta.instance_column();
-        TranscriptGadget::<S>::configure_from_scratch(
-            meta,
-            &mut vec![],
-            &mut vec![],
-            &[committed_instance_column, instance_column],
+    type Config = (
+        <TranscriptGadget<S> as FromScratch<F>>::Config,
+        <CurveChip as FromScratch<F>>::Config,
+    );
+
+    fn configure(meta: &mut ConstraintSystem<F>) -> Config {
+        let instance_columns = [meta.instance_column(), meta.instance_column()];
+        let (mut advice_columns, mut fixed_columns) = (vec![], vec![]);
+        (
+            TranscriptGadget::<S>::configure_from_scratch(
+                meta,
+                &mut advice_columns,
+                &mut fixed_columns,
+                &instance_columns,
+            ),
+            CurveChip::configure_from_scratch(
+                meta,
+                &mut advice_columns,
+                &mut fixed_columns,
+                &instance_columns,
+            ),
         )
     }
 
     impl Circuit<F> for TestCircuit {
-        type Config = <TranscriptGadget<S> as FromScratch<F>>::Config;
+        type Config = Config;
         type FloorPlanner = SimpleFloorPlanner;
         type Params = ();
 
@@ -344,32 +257,22 @@ mod tests {
             config: Self::Config,
             mut layouter: impl Layouter<F>,
         ) -> Result<(), Error> {
-            let mut transcript_gadget = TranscriptGadget::<S>::new_from_scratch(&config);
+            let mut transcript_gadget = TranscriptGadget::<S>::new_from_scratch(&config.0);
+            let curve_chip = CurveChip::new_from_scratch(&config.1);
             transcript_gadget.init_with_proof(&mut layouter, Value::unknown())?;
 
             let assigned_scalars = transcript_gadget
                 .scalar_chip
                 .assign_many(&mut layouter, &self.scalars.transpose_array())?;
 
-            let assigned_commitments = self
-                .points
-                .transpose_array()
-                .iter()
-                .map(|p| {
-                    let assigned_p = S::assign_without_subgroup_check(
-                        &mut layouter,
-                        &transcript_gadget.curve_chip,
-                        *p,
-                    )?;
-                    Ok(AssignedKZGMultiCommitment(vec![
-                        AssignedKZGCommitment::simple(assigned_p, PolynomialLabel::NoLabel),
-                    ]))
-                })
+            let assigned_points = (self.points.transpose_array().iter())
+                .map(|p| S::assign_without_subgroup_check(&mut layouter, &curve_chip, *p))
                 .collect::<Result<Vec<_>, Error>>()?;
 
             for i in 0..(SIZE / 2) {
                 transcript_gadget.common_scalar(&mut layouter, &assigned_scalars[i])?;
-                transcript_gadget.common_commitment(&mut layouter, &assigned_commitments[i])?;
+                let point_pis = curve_chip.as_public_input(&mut layouter, &assigned_points[i])?;
+                transcript_gadget.common(&mut layouter, &point_pis)?;
             }
 
             let challenge_1 = transcript_gadget.squeeze_challenge(&mut layouter)?;
@@ -379,7 +282,8 @@ mod tests {
 
             for i in (SIZE / 2)..SIZE {
                 transcript_gadget.common_scalar(&mut layouter, &assigned_scalars[i])?;
-                transcript_gadget.common_commitment(&mut layouter, &assigned_commitments[i])?;
+                let point_pis = curve_chip.as_public_input(&mut layouter, &assigned_points[i])?;
+                transcript_gadget.common(&mut layouter, &point_pis)?;
             }
 
             let challenge_2 = transcript_gadget.squeeze_challenge(&mut layouter)?;
@@ -387,7 +291,8 @@ mod tests {
                 .scalar_chip
                 .constrain_as_public_input(&mut layouter, &challenge_2)?;
 
-            transcript_gadget.load_from_scratch(&mut layouter)
+            transcript_gadget.load_from_scratch(&mut layouter)?;
+            curve_chip.load_from_scratch(&mut layouter)
         }
     }
 

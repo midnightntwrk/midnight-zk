@@ -84,17 +84,20 @@ where
     fn read_commitment(
         transcript: &mut TranscriptGadget<S>,
         layouter: &mut impl Layouter<S::F>,
+        commitment_chip: &Self::CommitmentChip,
         labels: &[PolynomialLabel],
     ) -> Result<Self::AssignedCommitment, Error> {
-        <PCS as InCircuitPCS<S>>::read_commitment(transcript, layouter, &Self::chunk_labels(labels))
+        let labels = Self::chunk_labels(labels);
+        <PCS as InCircuitPCS<S>>::read_commitment(transcript, layouter, commitment_chip, &labels)
     }
 
     fn common_commitment(
         transcript: &mut TranscriptGadget<S>,
         layouter: &mut impl Layouter<S::F>,
+        commitment_chip: &Self::CommitmentChip,
         commitment: &Self::AssignedCommitment,
     ) -> Result<(), Error> {
-        PCS::common_commitment(transcript, layouter, commitment)
+        PCS::common_commitment(transcript, layouter, commitment_chip, commitment)
     }
 
     fn squeeze_evaluation_point(

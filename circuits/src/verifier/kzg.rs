@@ -496,9 +496,13 @@ pub(crate) fn multi_prepare_kzg<S: SelfEmulation>(
         (q_coms, q_eval_sets, point_sets)
     };
 
-    let f_com = transcript_gadget
-        .read_commitment(layouter, &[PolynomialLabel::Custom("kzg_batch".into())])?
-        .into_single();
+    let f_com = KZGCommitmentScheme::read_commitment(
+        transcript_gadget,
+        layouter,
+        curve_chip,
+        &[PolynomialLabel::Custom("kzg_batch".into())],
+    )?
+    .into_single();
 
     let x3 = transcript_gadget.squeeze_challenge(layouter)?;
     let x3 = truncate::<S::F>(layouter, scalar_chip, &x3)?;
@@ -573,9 +577,13 @@ pub(crate) fn multi_prepare_kzg<S: SelfEmulation>(
         )
     };
 
-    let pi = transcript_gadget
-        .read_commitment(layouter, &[PolynomialLabel::Custom("π".into())])?
-        .into_single();
+    let pi = KZGCommitmentScheme::read_commitment(
+        transcript_gadget,
+        layouter,
+        curve_chip,
+        &[PolynomialLabel::Custom("π".into())],
+    )?
+    .into_single();
     let pi_msm = pi.into_msm(layouter, scalar_chip)?;
 
     // Scale zπ
@@ -664,20 +672,37 @@ impl<S: SelfEmulation> InCircuitPCS<S> for KZGCommitmentScheme<S::Engine> {
         Ok(inputs)
     }
 
+    /// # Warning
+    ///
+    /// The received points are not enforced to be in the prime-order subgroup.
     fn read_commitment(
         transcript: &mut TranscriptGadget<S>,
         layouter: &mut impl Layouter<S::F>,
+        curve_chip: &S::CurveChip,
         labels: &[PolynomialLabel],
     ) -> Result<Self::AssignedCommitment, Error> {
-        transcript.read_commitment(layouter, labels)
+        if labels.is_empty() {
+            return Ok(AssignedKZGMultiCommitment(vec![]));
+        }
+        // If the proof cannot be parsed, or the commitment is not to
+        // `labels.len()` polynomials, do not fail, assign default points instead.
+        // (This allows us to parse dummy proofs.)
+        let com = (transcript.read_value::<KZGMultiCommitment<S::Engine>>().ok())
+            .filter(|com| com.0.len() == labels.len())
+            .unwrap_or_else(|| KZGMultiCommitment(vec![KZGCommitment::default(); labels.len()]));
+        let com = Self::assign_commitment(layouter, curve_chip, Value::known(com), labels)?;
+        Self::common_commitment(transcript, layouter, curve_chip, &com)?;
+        Ok(com)
     }
 
     fn common_commitment(
         transcript: &mut TranscriptGadget<S>,
         layouter: &mut impl Layouter<S::F>,
+        curve_chip: &S::CurveChip,
         commitment: &AssignedKZGMultiCommitment<S>,
     ) -> Result<(), Error> {
-        transcript.common_commitment(layouter, commitment)
+        let inputs = Self::commitment_as_public_input(layouter, curve_chip, commitment)?;
+        transcript.common(layouter, &inputs)
     }
 
     fn commitment_labels(commitment: &Self::AssignedCommitment) -> Vec<PolynomialLabel> {

@@ -355,8 +355,7 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> VerifierGadget<S, PCS> {
             assigned_committed_instances.len() + assigned_instances.len()
         );
 
-        let mut transcript =
-            TranscriptGadget::new(&self.scalar_chip, &self.commitment_chip, &self.sponge_chip);
+        let mut transcript = TranscriptGadget::new(&self.scalar_chip, &self.sponge_chip);
 
         transcript.init_with_proof(layouter, proof)?;
 
@@ -364,9 +363,9 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> VerifierGadget<S, PCS> {
         let vk_absorbed = assigned_vk.absorb_into(layouter, &mut transcript)?;
         let phase0_committed = argument::committed_from_key(&vk_absorbed);
 
-        assigned_committed_instances
-            .iter()
-            .try_for_each(|com| PCS::common_commitment(&mut transcript, layouter, com))?;
+        assigned_committed_instances.iter().try_for_each(|com| {
+            PCS::common_commitment(&mut transcript, layouter, &self.commitment_chip, com)
+        })?;
 
         for instance in assigned_instances {
             let n = self.scalar_chip.assign_fixed(layouter, (instance.len() as u64).into())?;
@@ -386,7 +385,12 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> VerifierGadget<S, PCS> {
             .chain((0..logups.len()).map(PolynomialLabel::LogupMultiplicities))
             .collect::<Vec<_>>();
 
-        let phase1_committed = argument::read_committed(&phase1_labels, layouter, &mut transcript)?;
+        let phase1_committed = argument::read_committed(
+            &phase1_labels,
+            layouter,
+            &self.commitment_chip,
+            &mut transcript,
+        )?;
 
         // Sample theta challenge for keeping lookup columns linearly independent
         let theta = transcript.squeeze_challenge(layouter)?;
@@ -412,7 +416,12 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> VerifierGadget<S, PCS> {
             phase2_labels.push(PolynomialLabel::Trash(argument_index));
         }
 
-        let phase2_committed = argument::read_committed(&phase2_labels, layouter, &mut transcript)?;
+        let phase2_committed = argument::read_committed(
+            &phase2_labels,
+            layouter,
+            &self.commitment_chip,
+            &mut transcript,
+        )?;
 
         // Sample y challenge, which keeps the gates linearly independent
         let y = transcript.squeeze_challenge(layouter)?;
@@ -469,8 +478,12 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> VerifierGadget<S, PCS> {
         // group.
         let quotient_labels: Vec<_> =
             (0..assigned_vk.cs_degree).map(PolynomialLabel::QuotientPiece).collect();
-        let quotient_committed =
-            argument::read_committed(&quotient_labels, layouter, &mut transcript)?;
+        let quotient_committed = argument::read_committed(
+            &quotient_labels,
+            layouter,
+            &self.commitment_chip,
+            &mut transcript,
+        )?;
 
         // Sample x challenge, which is used to ensure the circuit is satisfied with
         // high probability
