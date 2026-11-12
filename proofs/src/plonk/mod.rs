@@ -35,9 +35,6 @@ pub mod permutation;
 pub(crate) mod traces;
 pub(crate) mod trash;
 
-#[cfg(feature = "bench-internal")]
-pub mod bench;
-
 mod prover;
 mod verifier;
 
