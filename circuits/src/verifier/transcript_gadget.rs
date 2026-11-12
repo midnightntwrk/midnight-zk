@@ -28,7 +28,7 @@ use crate::{
     instructions::{AssignmentInstructions, PublicInputInstructions, SpongeInstructions},
     types::AssignedNative,
     verifier::{
-        SelfEmulation,
+        ScalarChip, SelfEmulation,
         kzg::{AssignedKZGCommitment, AssignedKZGMultiCommitment},
         msm::AssignedPoint,
     },
@@ -43,7 +43,7 @@ type SpongeState<S> = <<S as SelfEmulation>::SpongeChip as SpongeInstructions<
 /// Gadget used to run the transcript reader in-circuit.
 #[derive(Clone, Debug)]
 pub struct TranscriptGadget<S: SelfEmulation> {
-    scalar_chip: S::ScalarChip,
+    scalar_chip: ScalarChip<S::F>,
     curve_chip: S::CurveChip,
     sponge_chip: S::SpongeChip,
     sponge_state: Option<SpongeState<S>>,
@@ -57,7 +57,7 @@ pub struct TranscriptGadget<S: SelfEmulation> {
 impl<S: SelfEmulation> TranscriptGadget<S> {
     /// Creates a new `TranscriptGadget` from the corresponding chips.
     pub fn new(
-        scalar_chip: &S::ScalarChip,
+        scalar_chip: &ScalarChip<S::F>,
         curve_chip: &S::CurveChip,
         sponge_chip: &S::SpongeChip,
     ) -> Self {
@@ -233,18 +233,18 @@ use crate::testing_utils::FromScratch;
 #[cfg(any(test, feature = "testing"))]
 impl<S: SelfEmulation> FromScratch<S::F> for TranscriptGadget<S>
 where
-    S::ScalarChip: FromScratch<S::F>,
     S::CurveChip: FromScratch<S::F>,
     S::SpongeChip: FromScratch<S::F>,
+    ScalarChip<S::F>: FromScratch<S::F>,
 {
     type Config = (
-        <S::ScalarChip as FromScratch<S::F>>::Config,
+        <ScalarChip<S::F> as FromScratch<S::F>>::Config,
         <S::CurveChip as FromScratch<S::F>>::Config,
         <S::SpongeChip as FromScratch<S::F>>::Config,
     );
 
     fn new_from_scratch(config: &Self::Config) -> Self {
-        let scalar_chip = S::ScalarChip::new_from_scratch(&config.0);
+        let scalar_chip = ScalarChip::<S::F>::new_from_scratch(&config.0);
         let curve_chip = S::CurveChip::new_from_scratch(&config.1);
         let sponge_chip = S::SpongeChip::new_from_scratch(&config.2);
         TranscriptGadget::new(&scalar_chip, &curve_chip, &sponge_chip)
@@ -263,7 +263,7 @@ where
         instance_columns: &[Column<Instance>; 2],
     ) -> Self::Config {
         (
-            S::ScalarChip::configure_from_scratch(
+            ScalarChip::<S::F>::configure_from_scratch(
                 meta,
                 advice_columns,
                 fixed_columns,

@@ -43,7 +43,7 @@ pub use msm::{AssignedMsm, AssignedPoint, Msm, Point};
 pub use pcs::{AssignedCommitment, CommitmentBases, InCircuitPCS};
 #[cfg(feature = "dev-curves")]
 pub use types::BnEmulation;
-pub use types::{BlstrsEmulation, SelfEmulation};
+pub use types::{BlstrsEmulation, ScalarChip, SelfEmulation};
 pub use verifier_gadget::{UnboundVk, VerifierGadget, vk_hash};
 
 /// The off-circuit verifying key of the proofs that `S` verifies in-circuit.

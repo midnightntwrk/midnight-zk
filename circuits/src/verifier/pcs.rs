@@ -26,7 +26,9 @@ use midnight_proofs::{
 use crate::{
     field::AssignedNative,
     types::{InnerValue, Instantiable},
-    verifier::{AssignedAccumulator, SelfEmulation, transcript_gadget::TranscriptGadget},
+    verifier::{
+        AssignedAccumulator, ScalarChip, SelfEmulation, transcript_gadget::TranscriptGadget,
+    },
 };
 
 // ---------------------------------------------------------------------------
@@ -180,7 +182,7 @@ pub trait InCircuitPCS<S: SelfEmulation>:
     /// [`midnight_proofs::poly::commitment::PolynomialCommitmentScheme::squeeze_evaluation_point`].
     fn squeeze_evaluation_point(
         layouter: &mut impl Layouter<S::F>,
-        _scalar_chip: &S::ScalarChip,
+        _scalar_chip: &ScalarChip<S::F>,
         transcript: &mut TranscriptGadget<S>,
     ) -> Result<AssignedNative<S::F>, Error> {
         transcript.squeeze_challenge(layouter)
@@ -194,7 +196,7 @@ pub trait InCircuitPCS<S: SelfEmulation>:
     fn multi_prepare(
         layouter: &mut impl Layouter<S::F>,
         curve_chip: &S::CurveChip,
-        scalar_chip: &S::ScalarChip,
+        scalar_chip: &ScalarChip<S::F>,
         queries: &[VerifierQuery<'_, S, Self>],
         transcript: &mut TranscriptGadget<S>,
     ) -> Result<AssignedAccumulator<S>, Error>;

@@ -28,10 +28,10 @@ use midnight_proofs::{
 
 use crate::{
     field::AssignedNative,
-    instructions::PublicInputInstructions,
+    instructions::{PublicInputInstructions, public_input::CommittedInstanceInstructions},
     types::{InnerValue, Instantiable},
     verifier::{
-        types::SelfEmulation,
+        types::{ScalarChip, SelfEmulation},
         utils::{
             AssignedBoundedScalar, add_bounded_scalars, assign_bounded_scalars, mul_bounded_scalars,
         },
@@ -458,7 +458,7 @@ impl<S: SelfEmulation> AssignedMsm<S> {
         &self,
         layouter: &mut impl Layouter<S::F>,
         curve_chip: &S::CurveChip,
-        scalar_chip: &S::ScalarChip,
+        scalar_chip: &ScalarChip<S::F>,
     ) -> Result<(), Error> {
         self.bases
             .iter()
@@ -473,7 +473,7 @@ impl<S: SelfEmulation> AssignedMsm<S> {
         &self,
         layouter: &mut impl Layouter<S::F>,
         curve_chip: &S::CurveChip,
-        scalar_chip: &S::ScalarChip,
+        scalar_chip: &ScalarChip<S::F>,
     ) -> Result<(), Error> {
         self.bases
             .iter()
@@ -482,7 +482,7 @@ impl<S: SelfEmulation> AssignedMsm<S> {
         self.scalars.iter().try_for_each(|s| {
             let mut a = S::F::ZERO;
             s.scalar.clone().value().map(|v| a = *v);
-            S::constrain_scalar_as_committed_public_input(layouter, scalar_chip, &s.scalar)
+            scalar_chip.constrain_as_committed_public_input(layouter, &s.scalar)
         })
     }
 }
@@ -502,7 +502,7 @@ impl<S: SelfEmulation> AssignedMsm<S> {
     pub fn assign_collapsed(
         layouter: &mut impl Layouter<S::F>,
         curve_chip: &S::CurveChip,
-        scalar_chip: &S::ScalarChip,
+        scalar_chip: &ScalarChip<S::F>,
         fixed_base_labels: &[PolynomialLabel],
         msm_value: Value<Msm<S>>,
     ) -> Result<Self, Error> {
@@ -583,7 +583,7 @@ impl<S: SelfEmulation> AssignedMsm<S> {
         &mut self,
         layouter: &mut impl Layouter<S::F>,
         curve_chip: &S::CurveChip,
-        scalar_chip: &S::ScalarChip,
+        scalar_chip: &ScalarChip<S::F>,
         label: PolynomialLabel,
     ) -> Result<(), Error> {
         // We allocate max capacity but we may not fill it.
@@ -677,7 +677,7 @@ impl<S: SelfEmulation> AssignedMsm<S> {
     pub fn scale(
         &mut self,
         layouter: &mut impl Layouter<S::F>,
-        scalar_chip: &S::ScalarChip,
+        scalar_chip: &ScalarChip<S::F>,
         r: &AssignedBoundedScalar<S::F>,
     ) -> Result<(), Error> {
         self.scalars = (self.scalars.iter())
@@ -693,7 +693,7 @@ impl<S: SelfEmulation> AssignedMsm<S> {
     pub fn accumulate_with_r(
         &self,
         layouter: &mut impl Layouter<S::F>,
-        scalar_chip: &S::ScalarChip,
+        scalar_chip: &ScalarChip<S::F>,
         other: &Self,
         r: &AssignedBoundedScalar<S::F>,
     ) -> Result<Self, Error> {

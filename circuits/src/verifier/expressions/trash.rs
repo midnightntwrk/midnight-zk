@@ -28,7 +28,7 @@ use crate::{
     field::AssignedNative,
     instructions::ArithInstructions,
     verifier::{
-        SelfEmulation,
+        ScalarChip, SelfEmulation,
         argument::Evaluation,
         expressions::{compress_expressions, eval_expression},
     },
@@ -37,7 +37,7 @@ use crate::{
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn trash_expressions<S: SelfEmulation>(
     layouter: &mut impl Layouter<S::F>,
-    scalar_chip: &S::ScalarChip,
+    scalar_chip: &ScalarChip<S::F>,
     argument_index: usize,
     evals_map: &BTreeMap<PolynomialLabel, Vec<Evaluation<S>>>,
     selector: &Expression<S::F>,

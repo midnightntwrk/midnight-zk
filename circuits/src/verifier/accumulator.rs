@@ -49,7 +49,7 @@ use crate::{
     instructions::{HashInstructions, PublicInputInstructions, hash::HashCPU},
     types::{AssignedBit, InnerValue, Instantiable},
     verifier::{
-        SelfEmulation,
+        ScalarChip, SelfEmulation,
         msm::{AssignedMsm, Msm, Point},
         utils::{AssignedBoundedScalar, truncate_off_circuit, truncated_powers},
     },
@@ -252,7 +252,7 @@ impl<S: SelfEmulation> AssignedAccumulator<S> {
     /// This function mutates self.
     pub fn scale_by_bit(
         layouter: &mut impl Layouter<S::F>,
-        scalar_chip: &S::ScalarChip,
+        scalar_chip: &ScalarChip<S::F>,
         cond: &AssignedBit<S::F>,
         acc: &mut Self,
     ) -> Result<(), Error> {
@@ -281,7 +281,7 @@ impl<S: SelfEmulation> AssignedAccumulator<S> {
         &mut self,
         layouter: &mut impl Layouter<S::F>,
         curve_chip: &S::CurveChip,
-        scalar_chip: &S::ScalarChip,
+        scalar_chip: &ScalarChip<S::F>,
     ) -> Result<(), Error> {
         self.lhs.collapse(layouter, curve_chip, scalar_chip, PolynomialLabel::NoLabel)?;
         self.rhs.collapse(layouter, curve_chip, scalar_chip, PolynomialLabel::NoLabel)
@@ -315,7 +315,7 @@ impl<S: SelfEmulation> AssignedAccumulator<S> {
     pub fn accumulate(
         layouter: &mut impl Layouter<S::F>,
         acc_pi_chip: &impl PublicInputInstructions<S::F, AssignedAccumulator<S>>,
-        scalar_chip: &S::ScalarChip,
+        scalar_chip: &ScalarChip<S::F>,
         sponge_chip: &S::SpongeChip,
         accs: &[Self],
     ) -> Result<Self, Error> {

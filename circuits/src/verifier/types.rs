@@ -38,11 +38,14 @@ use crate::{
     field::{AssignedNative, NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip},
     hash::poseidon::{PoseidonChip, PoseidonState},
     instructions::{
-        AssignmentInstructions, HashInstructions, NativeInstructions, PublicInputInstructions,
-        SpongeInstructions, ecc::EccInstructions, public_input::CommittedInstanceInstructions,
+        AssignmentInstructions, HashInstructions, PublicInputInstructions, SpongeInstructions,
+        ecc::EccInstructions,
     },
     types::{AssignedForeignPoint, InnerValue, Instantiable},
 };
+
+/// The chip implementing native field arithmetic in the in-circuit verifier.
+pub type ScalarChip<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
 
 /// A trait for parametrizing the VerifierGadget.
 pub trait SelfEmulation: Clone + Debug {
@@ -59,9 +62,6 @@ pub trait SelfEmulation: Clone + Debug {
 
     /// A type for the Fiat-Shamir hashing.
     type Hash: TranscriptHash;
-
-    /// A chip implementing native field arithmetic operations.
-    type ScalarChip: NativeInstructions<Self::F>;
 
     /// A chip implementing assignment operations for [Self::AssignedPoint].
     type CurveChip: Clone
@@ -104,13 +104,6 @@ pub trait SelfEmulation: Clone + Debug {
         bases: &[Self::AssignedPoint],
     ) -> Result<Self::AssignedPoint, Error>;
 
-    /// Constrains the given scalar as a committed public input.
-    fn constrain_scalar_as_committed_public_input(
-        layouter: &mut impl Layouter<Self::F>,
-        scalar_chip: &Self::ScalarChip,
-        assigned_scalar: &AssignedNative<Self::F>,
-    ) -> Result<(), Error>;
-
     /// Assigns a point without checking that it is part of the prime order
     /// subgroup.
     /// Allowing points outside the subgroup does not give any advantage to an
@@ -135,9 +128,13 @@ impl SelfEmulation for BlstrsEmulation {
     type AssignedPoint = AssignedForeignPoint<Self::F, Self::C, Self::C>;
     type Hash = PoseidonState<Self::F>;
 
-    type ScalarChip = NativeGadget<Self::F, P2RDecompositionChip<Self::F>, NativeChip<Self::F>>;
-    type CurveChip =
-        ForeignWeierstrassEccChip<Self::F, Self::C, Self::C, Self::ScalarChip, Self::ScalarChip>;
+    type CurveChip = ForeignWeierstrassEccChip<
+        Self::F,
+        Self::C,
+        Self::C,
+        ScalarChip<Self::F>,
+        ScalarChip<Self::F>,
+    >;
     type SpongeChip = PoseidonChip<Self::F>;
 
     type G1Affine = midnight_curves::G1Affine;
@@ -151,14 +148,6 @@ impl SelfEmulation for BlstrsEmulation {
         bases: &[Self::AssignedPoint],
     ) -> Result<Self::AssignedPoint, Error> {
         curve_chip.msm_by_bounded_scalars(layouter, scalars, bases)
-    }
-
-    fn constrain_scalar_as_committed_public_input(
-        layouter: &mut impl Layouter<Self::F>,
-        scalar_chip: &Self::ScalarChip,
-        assigned_scalar: &AssignedNative<Self::F>,
-    ) -> Result<(), Error> {
-        scalar_chip.constrain_as_committed_public_input(layouter, assigned_scalar)
     }
 
     fn assign_without_subgroup_check(
@@ -182,9 +171,13 @@ impl SelfEmulation for BnEmulation {
     type AssignedPoint = AssignedForeignPoint<Self::F, Self::C, Self::C>;
     type Hash = PoseidonState<Self::F>;
 
-    type ScalarChip = NativeGadget<Self::F, P2RDecompositionChip<Self::F>, NativeChip<Self::F>>;
-    type CurveChip =
-        ForeignWeierstrassEccChip<Self::F, Self::C, Self::C, Self::ScalarChip, Self::ScalarChip>;
+    type CurveChip = ForeignWeierstrassEccChip<
+        Self::F,
+        Self::C,
+        Self::C,
+        ScalarChip<Self::F>,
+        ScalarChip<Self::F>,
+    >;
     type SpongeChip = PoseidonChip<Self::F>;
 
     type G1Affine = midnight_curves::bn256::G1Affine;
@@ -198,14 +191,6 @@ impl SelfEmulation for BnEmulation {
         bases: &[Self::AssignedPoint],
     ) -> Result<Self::AssignedPoint, Error> {
         curve_chip.msm_by_bounded_scalars(layouter, scalars, bases)
-    }
-
-    fn constrain_scalar_as_committed_public_input(
-        layouter: &mut impl Layouter<Self::F>,
-        scalar_chip: &Self::ScalarChip,
-        assigned_scalar: &AssignedNative<Self::F>,
-    ) -> Result<(), Error> {
-        scalar_chip.constrain_as_committed_public_input(layouter, assigned_scalar)
     }
 
     fn assign_without_subgroup_check(

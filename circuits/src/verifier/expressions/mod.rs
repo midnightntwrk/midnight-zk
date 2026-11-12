@@ -23,7 +23,7 @@ use crate::{
     field::AssignedNative,
     instructions::{ArithInstructions, AssignmentInstructions},
     verifier::{
-        SelfEmulation,
+        ScalarChip, SelfEmulation,
         argument::Evaluation,
         utils::{mul_add, try_reduce},
     },
@@ -49,7 +49,7 @@ pub(crate) fn eval_at<'a, S: SelfEmulation>(
 /// Function to evaluate expressions in-circuit.
 pub(crate) fn eval_expression<S: SelfEmulation>(
     layouter: &mut impl Layouter<S::F>,
-    scalar_chip: &S::ScalarChip,
+    scalar_chip: &ScalarChip<S::F>,
     advice: &[AssignedNative<S::F>],   // advice evals
     fixed: &[AssignedNative<S::F>],    // fixed evals
     instance: &[AssignedNative<S::F>], // instance evals
@@ -86,7 +86,7 @@ pub(crate) fn eval_expression<S: SelfEmulation>(
 
 pub(crate) fn compress_expressions<S: SelfEmulation>(
     layouter: &mut impl Layouter<S::F>,
-    scalar_chip: &S::ScalarChip,
+    scalar_chip: &ScalarChip<S::F>,
     advice_evals: &[AssignedNative<S::F>],
     fixed_evals: &[AssignedNative<S::F>],
     instance_evals: &[AssignedNative<S::F>],

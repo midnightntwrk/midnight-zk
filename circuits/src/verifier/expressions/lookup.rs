@@ -29,7 +29,7 @@ use crate::{
     field::AssignedNative,
     instructions::{ArithInstructions, AssignmentInstructions},
     verifier::{
-        SelfEmulation,
+        ScalarChip, SelfEmulation,
         argument::Evaluation,
         expressions::{compress_expressions, eval_at, eval_expression},
     },
@@ -38,7 +38,7 @@ use crate::{
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn lookup_expressions<S: SelfEmulation>(
     layouter: &mut impl Layouter<S::F>,
-    scalar_chip: &S::ScalarChip,
+    scalar_chip: &ScalarChip<S::F>,
     argument_index: usize,
     phase1_evals_map: &BTreeMap<PolynomialLabel, Vec<Evaluation<S>>>,
     phase2_evals_map: &BTreeMap<PolynomialLabel, Vec<Evaluation<S>>>,

@@ -31,7 +31,7 @@ use crate::{
     },
     verifier::{
         Accumulator, AssignedAccumulator, AssignedEvaluationDomain, AssignedMsm, AssignedVk,
-        SelfEmulation, VerifyingKey, argument,
+        ScalarChip, SelfEmulation, VerifyingKey, argument,
         expressions::{
             eval_expression, lookup::lookup_expressions, permutation::permutation_expressions,
             trash::trash_expressions,
@@ -54,7 +54,7 @@ pub use unbound_vk::{UnboundVk, vk_hash};
 #[doc(hidden)] // A bug in rustc prevents us from documenting the verifier gadget.
 pub struct VerifierGadget<S: SelfEmulation, PCS: InCircuitPCS<S>> {
     curve_chip: S::CurveChip,
-    scalar_chip: S::ScalarChip,
+    scalar_chip: ScalarChip<S::F>,
     sponge_chip: S::SpongeChip,
     _pcs: PhantomData<PCS>,
 }
@@ -76,7 +76,7 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> VerifierGadget<S, PCS> {
     /// Creates a new verifier gadget from its underlying components.
     pub fn new(
         curve_chip: &S::CurveChip,
-        scalar_chip: &S::ScalarChip,
+        scalar_chip: &ScalarChip<S::F>,
         sponge_chip: &S::SpongeChip,
     ) -> Self {
         Self {

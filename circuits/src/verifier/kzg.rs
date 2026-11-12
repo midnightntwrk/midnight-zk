@@ -44,7 +44,7 @@ use crate::{
     instructions::{ArithInstructions, AssignmentInstructions, PublicInputInstructions},
     types::{InnerValue, Instantiable},
     verifier::{
-        AssignedAccumulator, SelfEmulation,
+        AssignedAccumulator, ScalarChip, SelfEmulation,
         msm::{AssignedMsm, AssignedPoint},
         pcs::{CommitmentBases, InCircuitPCS, VerifierQuery},
         transcript_gadget::TranscriptGadget,
@@ -136,7 +136,7 @@ impl<S: SelfEmulation> AssignedKZGCommitment<S> {
     pub fn into_msm(
         self,
         layouter: &mut impl Layouter<S::F>,
-        scalar_chip: &S::ScalarChip,
+        scalar_chip: &ScalarChip<S::F>,
     ) -> Result<AssignedMsm<S>, Error> {
         let one = AssignedBoundedScalar::one(layouter, scalar_chip)?;
         Ok(match self {
@@ -367,7 +367,7 @@ fn construct_intermediate_sets<S: SelfEmulation>(
 
 fn msm_inner_product<S: SelfEmulation>(
     layouter: &mut impl Layouter<S::F>,
-    scalar_chip: &S::ScalarChip,
+    scalar_chip: &ScalarChip<S::F>,
     msms: &[AssignedMsm<S>],
     scalars: &[AssignedBoundedScalar<S::F>],
 ) -> Result<AssignedMsm<S>, Error> {
@@ -411,7 +411,7 @@ fn evals_inner_product<F: CircuitField>(
 pub(crate) fn multi_prepare_kzg<S: SelfEmulation>(
     layouter: &mut impl Layouter<S::F>,
     curve_chip: &S::CurveChip,
-    scalar_chip: &S::ScalarChip,
+    scalar_chip: &ScalarChip<S::F>,
     queries: &[VerifierQuery<S, KZGCommitmentScheme<S::Engine>>],
     transcript_gadget: &mut TranscriptGadget<S>,
 ) -> Result<AssignedAccumulator<S>, Error> {
@@ -691,7 +691,7 @@ impl<S: SelfEmulation> InCircuitPCS<S> for KZGCommitmentScheme<S::Engine> {
     fn multi_prepare(
         layouter: &mut impl Layouter<S::F>,
         curve_chip: &S::CurveChip,
-        scalar_chip: &S::ScalarChip,
+        scalar_chip: &ScalarChip<S::F>,
         queries: &[VerifierQuery<'_, S, Self>],
         transcript: &mut TranscriptGadget<S>,
     ) -> Result<AssignedAccumulator<S>, Error> {

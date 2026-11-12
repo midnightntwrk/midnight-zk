@@ -35,7 +35,7 @@ use crate::{
     instructions::ArithInstructions,
     types::InnerValue,
     verifier::{
-        AssignedAccumulator, SelfEmulation,
+        AssignedAccumulator, ScalarChip, SelfEmulation,
         pcs::{InCircuitPCS, VerifierQuery},
         transcript_gadget::TranscriptGadget,
         utils::{PowersCache, RootsCache, cached_roots, eval_polynomial_on_roots},
@@ -93,7 +93,7 @@ where
 
     fn squeeze_evaluation_point(
         layouter: &mut impl Layouter<S::F>,
-        scalar_chip: &S::ScalarChip,
+        scalar_chip: &ScalarChip<S::F>,
         transcript: &mut TranscriptGadget<S>,
     ) -> Result<AssignedNative<S::F>, Error> {
         let x =
@@ -114,7 +114,7 @@ where
     fn multi_prepare(
         layouter: &mut impl Layouter<S::F>,
         curve_chip: &S::CurveChip,
-        scalar_chip: &S::ScalarChip,
+        scalar_chip: &ScalarChip<S::F>,
         queries: &[VerifierQuery<'_, S, Self>],
         transcript: &mut TranscriptGadget<S>,
     ) -> Result<AssignedAccumulator<S>, Error> {
