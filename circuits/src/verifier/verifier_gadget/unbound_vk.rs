@@ -247,7 +247,7 @@ mod tests {
                 &mut transcript,
             )?;
             acc.collapse(&mut layouter, &curve_chip, &native_gadget)?;
-            verifier_chip.constrain_as_public_input(&mut layouter, &acc)?;
+            acc.constrain_as_public_input(&mut layouter, &curve_chip, &native_gadget)?;
 
             core_decomp_chip.load(&mut layouter)
         }
@@ -307,7 +307,7 @@ mod tests {
         // The private key's commitments are variable bases in-circuit, so only
         // `-G` stays fixed.
         let fixed_bases = BTreeMap::from([(PolynomialLabel::Custom("-G".into()), -C::generator())]);
-        let mut acc = Accumulator::<S>::from_dual_msm(dual_msm, &fixed_bases);
+        let mut acc = Accumulator::<E>::from_dual_msm(dual_msm, &fixed_bases);
         acc.collapse();
         let acc_pi = AssignedAccumulator::as_public_input(&acc);
 

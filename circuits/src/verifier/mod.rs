@@ -15,8 +15,15 @@
 
 use std::collections::BTreeMap;
 
+use ff::WithSmallOrderMulGroup;
 use group::Group;
-use midnight_proofs::{circuit::Value, plonk, plonk::ConstraintSystem, poly::PolynomialLabel};
+use midnight_curves::pairing::MultiMillerLoop;
+use midnight_proofs::{
+    circuit::Value,
+    plonk,
+    plonk::ConstraintSystem,
+    poly::{PolynomialLabel, commitment::PolynomialCommitmentScheme},
+};
 
 use crate::{
     field::AssignedNative,
@@ -44,7 +51,7 @@ pub use pcs::{AssignedCommitment, CommitmentBases, InCircuitPCS};
 pub use transcript_gadget::{InCircuitTranscript, PoseidonTranscriptGadget};
 #[cfg(feature = "dev-curves")]
 pub use types::BnEmulation;
-pub use types::{BlstrsEmulation, ScalarChip, SelfEmulation};
+pub use types::{AssignedG1, BlstrsEmulation, CurveChip, ScalarChip, SelfEmulation};
 pub use verifier_gadget::{UnboundVk, VerifierGadget, vk_hash};
 
 /// The off-circuit verifying key of the proofs that `S` verifies in-circuit.
@@ -156,12 +163,14 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> AssignedVk<S, PCS> {
 ///   proof.
 ///
 /// Pass this map to [`Accumulator::check`] or [`Msm::eval`].
-pub fn fixed_bases<S: SelfEmulation, PCS: InCircuitPCS<S>>(
-    vk: &VerifyingKey<S, PCS>,
-) -> BTreeMap<PolynomialLabel, S::C> {
+pub fn fixed_bases<E, PCS>(vk: &plonk::VerifyingKey<E::Fr, PCS>) -> BTreeMap<PolynomialLabel, E::G1>
+where
+    E: MultiMillerLoop<Fr: WithSmallOrderMulGroup<3>>,
+    PCS: PolynomialCommitmentScheme<E::Fr, Commitment: CommitmentBases<E::G1>>,
+{
     let mut fixed_bases: BTreeMap<_, _> = vk.phase0_commitment().bases().into_iter().collect();
 
-    fixed_bases.insert(PolynomialLabel::Custom("-G".into()), -S::C::generator());
+    fixed_bases.insert(PolynomialLabel::Custom("-G".into()), -E::G1::generator());
 
     fixed_bases
 }

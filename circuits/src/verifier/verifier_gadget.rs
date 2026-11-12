@@ -31,8 +31,7 @@ use crate::{
         ArithInstructions, PublicInputInstructions, assignments::AssignmentInstructions,
     },
     verifier::{
-        Accumulator, AssignedAccumulator, AssignedEvaluationDomain, AssignedMsm, AssignedVk,
-        ScalarChip, SelfEmulation, VerifyingKey, argument,
+        AssignedEvaluationDomain, AssignedVk, ScalarChip, SelfEmulation, VerifyingKey, argument,
         expressions::{
             eval_expression, lookup::lookup_expressions, permutation::permutation_expressions,
             trash::trash_expressions,
@@ -113,111 +112,6 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> PublicInputInstructions<S::F, Assig
         unimplemented!(
             "We intend [assign_vk_as_public_input] to be the only entry point
              for assigned verifying keys."
-        )
-    }
-}
-
-impl<S: SelfEmulation, PCS: InCircuitPCS<S>> PublicInputInstructions<S::F, AssignedAccumulator<S>>
-    for VerifierGadget<S, PCS>
-{
-    fn as_public_input(
-        &self,
-        layouter: &mut impl Layouter<S::F>,
-        assigned: &AssignedAccumulator<S>,
-    ) -> Result<Vec<AssignedNative<S::F>>, Error> {
-        Ok([
-            assigned.lhs.in_circuit_as_public_input(layouter, &self.commitment_chip)?,
-            assigned.rhs.in_circuit_as_public_input(layouter, &self.commitment_chip)?,
-        ]
-        .concat())
-    }
-
-    fn constrain_as_public_input(
-        &self,
-        layouter: &mut impl Layouter<S::F>,
-        assigned: &AssignedAccumulator<S>,
-    ) -> Result<(), Error> {
-        (assigned.lhs).constrain_as_public_input(
-            layouter,
-            &self.commitment_chip,
-            &self.scalar_chip,
-        )?;
-        (assigned.rhs).constrain_as_public_input(layouter, &self.commitment_chip, &self.scalar_chip)
-    }
-}
-
-impl<S: SelfEmulation, PCS: InCircuitPCS<S>> VerifierGadget<S, PCS> {
-    /// Constrains the given accumulator as a public input. The (fixed and
-    /// non-fixed) scalars of its RHS are constrained in committed form (as a
-    /// committed instance), whereas the rest of the accumulator is constrained
-    /// as a normal instance.
-    ///
-    /// See [AssignedAccumulator::as_public_input_with_committed_scalars] for
-    /// the off-circuit analog of this function.
-    pub fn constrain_acc_as_public_input_with_committed_scalars(
-        &self,
-        layouter: &mut impl Layouter<S::F>,
-        acc: &AssignedAccumulator<S>,
-    ) -> Result<(), Error> {
-        (acc.lhs).constrain_as_public_input(layouter, &self.commitment_chip, &self.scalar_chip)?;
-        (acc.rhs).constrain_as_public_input_with_committed_scalars(
-            layouter,
-            &self.commitment_chip,
-            &self.scalar_chip,
-        )
-    }
-
-    /// Witnesses the "collapsed" form of a KZG accumulator.
-    ///
-    /// The expected shape is, as [`AssignedMsm::assign_collapsed`] assigns:
-    /// * LHS: exactly one `Variable` entry labeled `NoLabel`.
-    /// * RHS: one `Fixed` entry per label in `fixed_base_labels` plus one
-    ///   `Variable` entry labeled `NoLabel`.
-    ///
-    /// This shape matches the invariant maintained by the KZG multiopen
-    /// accumulation after `collapse()` has been called off-circuit.
-    ///
-    /// # Errors
-    ///
-    /// If the expected shape is not satisfied.
-    pub fn assign_collapsed_accumulator(
-        &self,
-        layouter: &mut impl Layouter<S::F>,
-        fixed_base_labels: &[PolynomialLabel],
-        value: Value<Accumulator<S>>,
-    ) -> Result<AssignedAccumulator<S>, Error> {
-        let (lhs, rhs) = value.map(|acc| (acc.lhs(), acc.rhs())).unzip();
-        Ok(AssignedAccumulator::new(
-            AssignedMsm::assign_collapsed(
-                layouter,
-                &self.commitment_chip,
-                &self.scalar_chip,
-                &[],
-                lhs,
-            )?,
-            AssignedMsm::assign_collapsed(
-                layouter,
-                &self.commitment_chip,
-                &self.scalar_chip,
-                fixed_base_labels,
-                rhs,
-            )?,
-        ))
-    }
-
-    /// Accumulates several accumulators together. The resulting acc will
-    /// satisfy the invariant iff all the accumulators individually do.
-    pub fn accumulate(
-        &self,
-        layouter: &mut impl Layouter<S::F>,
-        accs: &[AssignedAccumulator<S>],
-    ) -> Result<AssignedAccumulator<S>, Error> {
-        AssignedAccumulator::<S>::accumulate(
-            layouter,
-            self,
-            &self.scalar_chip,
-            &self.sponge_chip,
-            accs,
         )
     }
 }
@@ -446,7 +340,7 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> VerifierGadget<S, PCS> {
         assigned_committed_instances: &[AssignedCommitment<S, PCS>],
         assigned_instances: &[&[AssignedNative<S::F>]],
         transcript: &mut T,
-    ) -> Result<AssignedAccumulator<S>, Error>
+    ) -> Result<PCS::AssignedVerificationGuard, Error>
     where
         S::F: Hashable<T::Hash>,
         PCS::Commitment: Hashable<T::Hash>,
@@ -792,7 +686,7 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> VerifierGadget<S, PCS> {
         assigned_committed_instances: &[AssignedCommitment<S, PCS>],
         assigned_instances: &[&[AssignedNative<S::F>]],
         transcript: &mut T,
-    ) -> Result<AssignedAccumulator<S>, Error>
+    ) -> Result<PCS::AssignedVerificationGuard, Error>
     where
         S::F: Hashable<T::Hash>,
         PCS::Commitment: Hashable<T::Hash>,
@@ -860,10 +754,14 @@ pub(crate) mod tests {
         },
         testing_utils::FromScratch,
         types::{ComposableChip, Instantiable},
-        verifier::{BlstrsEmulation, PoseidonTranscriptGadget, accumulator::Accumulator},
+        verifier::{
+            BlstrsEmulation, CommitmentBases, CurveChip, PoseidonTranscriptGadget,
+            accumulator::{Accumulator, AssignedAccumulator},
+        },
     };
 
     type S = BlstrsEmulation;
+    type E = midnight_curves::Bls12;
     type F = midnight_curves::Fq;
     type C = <S as SelfEmulation>::C;
     type CBase = <C as CircuitCurve>::Base;
@@ -943,8 +841,13 @@ pub(crate) mod tests {
         inner_proof: Value<Vec<u8>>,
     }
 
-    impl<P: InCircuitPCS<S> + PolynomialCommitmentScheme<F, Commitment: Hashable<PoseidonState<F>>>>
-        Circuit<F> for TestCircuit<P>
+    impl<
+        P: InCircuitPCS<
+                S,
+                CommitmentChip = CurveChip<E>,
+                AssignedVerificationGuard = AssignedAccumulator<E>,
+            > + PolynomialCommitmentScheme<F, Commitment: Hashable<PoseidonState<F>>>,
+    > Circuit<F> for TestCircuit<P>
     {
         type Config = (
             NativeConfig,
@@ -1056,7 +959,11 @@ pub(crate) mod tests {
 
             inner_proof_acc.collapse(&mut layouter, &curve_chip, &native_gadget)?;
 
-            verifier_chip.constrain_as_public_input(&mut layouter, &inner_proof_acc)?;
+            inner_proof_acc.constrain_as_public_input(
+                &mut layouter,
+                &curve_chip,
+                &native_gadget,
+            )?;
 
             core_decomp_chip.load(&mut layouter)
         }
@@ -1076,12 +983,15 @@ pub(crate) mod tests {
     /// in-circuit, and checks the circuit with the mock prover.
     fn check_verify_proof<P>()
     where
-        P: InCircuitPCS<S>
-            + PolynomialCommitmentScheme<
+        P: InCircuitPCS<
+                S,
+                CommitmentChip = CurveChip<E>,
+                AssignedVerificationGuard = AssignedAccumulator<E>,
+            > + PolynomialCommitmentScheme<
                 F,
                 VerifierParameters = ParamsVerifierKZG<midnight_curves::Bls12>,
                 VerificationGuard = DualMSM<midnight_curves::Bls12>,
-                Commitment: Hashable<PoseidonState<F>>,
+                Commitment: Hashable<PoseidonState<F>> + CommitmentBases<C>,
             >,
     {
         let mut rng = ChaCha8Rng::from_seed([0u8; 32]);
@@ -1123,13 +1033,13 @@ pub(crate) mod tests {
             .expect("Problem preparing the inner proof")
         };
 
-        let fixed_bases = crate::verifier::fixed_bases::<S, P>(&inner_vk);
+        let fixed_bases = crate::verifier::fixed_bases::<E, P>(&inner_vk);
         assert_eq!(
             crate::verifier::fixed_base_labels::<S, P>(inner_vk.cs()),
             fixed_bases.keys().cloned().collect::<Vec<_>>()
         );
 
-        let mut inner_acc = Accumulator::<S>::from_dual_msm(inner_dual_msm.clone(), &fixed_bases);
+        let mut inner_acc = Accumulator::<E>::from_dual_msm(inner_dual_msm.clone(), &fixed_bases);
 
         let inner_verifier_params = P::get_verifier_params(&inner_params);
         assert!(inner_dual_msm.check(&inner_verifier_params));

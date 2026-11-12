@@ -19,7 +19,7 @@
 use std::collections::{BTreeMap, btree_map::Entry};
 
 use ff::Field;
-use midnight_curves::msm::msm_best;
+use midnight_curves::{CurveAffine, msm::msm_best, pairing::MultiMillerLoop};
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
@@ -27,11 +27,15 @@ use midnight_proofs::{
 };
 
 use crate::{
-    field::AssignedNative,
-    instructions::{PublicInputInstructions, public_input::CommittedInstanceInstructions},
+    CircuitField,
+    ecc::curves::{CircuitCurve, WeierstrassCurve},
+    field::{AssignedNative, foreign::params::FieldEmulationParams},
+    instructions::{
+        PublicInputInstructions, ecc::EccInstructions, public_input::CommittedInstanceInstructions,
+    },
     types::{InnerValue, Instantiable},
     verifier::{
-        types::{ScalarChip, SelfEmulation},
+        types::{AssignedG1, CurveChip, ScalarChip},
         utils::{
             AssignedBoundedScalar, add_bounded_scalars, assign_bounded_scalars, mul_bounded_scalars,
         },
@@ -46,9 +50,9 @@ use crate::{
 /// identified by its `PolynomialLabel`; the actual value is not stored here
 /// and must be supplied when the MSM is evaluated or resolved.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Point<S: SelfEmulation> {
+pub enum Point<E: MultiMillerLoop> {
     /// A concrete curve point whose value is known at this stage.
-    Variable(S::C),
+    Variable(E::G1),
     /// A globally-known constant point, identified by its label.
     Fixed,
 }
@@ -60,21 +64,31 @@ pub enum Point<S: SelfEmulation> {
 /// SRS element, or the negated generator); no cell is allocated for it in the
 /// layout.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum AssignedPoint<S: SelfEmulation> {
+pub enum AssignedPoint<E: MultiMillerLoop>
+where
+    E::Fr: CircuitField,
+    E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
+        + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
+{
     /// A circuit-assigned variable-base point.
-    Variable(S::AssignedPoint),
+    Variable(AssignedG1<E>),
     /// A globally-known constant point that lives outside the circuit witness.
     Fixed,
 }
 
-impl<S: SelfEmulation> Point<S> {
+impl<E: MultiMillerLoop> Point<E>
+where
+    E::Fr: CircuitField,
+    E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
+        + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
+{
     /// Returns a reference to the inner curve point.
     ///
     /// # Panics
     ///
     /// If this is a `Fixed` point whose value has not yet been resolved.
     /// Call `resolve_fixed_bases` before accessing the point.
-    pub fn get_point(&self) -> &S::C {
+    pub fn get_point(&self) -> &E::G1 {
         match self {
             Self::Variable(p) => p,
             Self::Fixed => {
@@ -84,8 +98,13 @@ impl<S: SelfEmulation> Point<S> {
     }
 }
 
-impl<S: SelfEmulation> InnerValue for AssignedPoint<S> {
-    type Element = Point<S>;
+impl<E: MultiMillerLoop> InnerValue for AssignedPoint<E>
+where
+    E::Fr: CircuitField,
+    E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
+        + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
+{
+    type Element = Point<E>;
 
     fn value(&self) -> Value<Self::Element> {
         match self {
@@ -95,29 +114,39 @@ impl<S: SelfEmulation> InnerValue for AssignedPoint<S> {
     }
 }
 
-impl<S: SelfEmulation> Instantiable<S::F> for AssignedPoint<S> {
-    fn as_public_input(point: &Point<S>) -> Vec<S::F> {
+impl<E: MultiMillerLoop> Instantiable<E::Fr> for AssignedPoint<E>
+where
+    E::Fr: CircuitField,
+    E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
+        + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
+{
+    fn as_public_input(point: &Point<E>) -> Vec<E::Fr> {
         match point {
-            Point::Variable(p) => S::AssignedPoint::as_public_input(p),
+            Point::Variable(p) => AssignedG1::<E>::as_public_input(p),
             Point::Fixed => vec![],
         }
     }
 
     #[cfg(any(test, feature = "testing"))]
-    fn from_public_input(fields: &[S::F]) -> Option<Point<S>> {
+    fn from_public_input(fields: &[E::Fr]) -> Option<Point<E>> {
         match fields {
             [] => Some(Point::Fixed),
-            fs => S::AssignedPoint::from_public_input(fs).map(Point::Variable),
+            fs => AssignedG1::<E>::from_public_input(fs).map(Point::Variable),
         }
     }
 }
 
-impl<S: SelfEmulation> AssignedPoint<S> {
+impl<E: MultiMillerLoop> AssignedPoint<E>
+where
+    E::Fr: CircuitField,
+    E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
+        + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
+{
     pub(crate) fn in_circuit_as_public_input(
         &self,
-        layouter: &mut impl Layouter<S::F>,
-        curve_chip: &S::CurveChip,
-    ) -> Result<Vec<AssignedNative<S::F>>, Error> {
+        layouter: &mut impl Layouter<E::Fr>,
+        curve_chip: &CurveChip<E>,
+    ) -> Result<Vec<AssignedNative<E::Fr>>, Error> {
         match self {
             AssignedPoint::Variable(p) => curve_chip.as_public_input(layouter, p),
             AssignedPoint::Fixed => Ok(vec![]),
@@ -126,8 +155,8 @@ impl<S: SelfEmulation> AssignedPoint<S> {
 
     pub(crate) fn constrain_as_public_input(
         &self,
-        layouter: &mut impl Layouter<S::F>,
-        curve_chip: &S::CurveChip,
+        layouter: &mut impl Layouter<E::Fr>,
+        curve_chip: &CurveChip<E>,
     ) -> Result<(), Error> {
         match self {
             AssignedPoint::Variable(p) => curve_chip.constrain_as_public_input(layouter, p),
@@ -148,9 +177,9 @@ impl<S: SelfEmulation> AssignedPoint<S> {
 ///
 /// Invariant: `scalars.len() == bases.len() == labels.len()`.
 #[derive(Clone, Debug)]
-pub struct Msm<S: SelfEmulation> {
-    scalars: Vec<S::F>,
-    bases: Vec<Point<S>>,
+pub struct Msm<E: MultiMillerLoop> {
+    scalars: Vec<E::Fr>,
+    bases: Vec<Point<E>>,
     labels: Vec<PolynomialLabel>,
 }
 
@@ -158,19 +187,30 @@ pub struct Msm<S: SelfEmulation> {
 ///
 /// This is the in-circuit analog of `Msm<C>`.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct AssignedMsm<S: SelfEmulation> {
-    scalars: Vec<AssignedBoundedScalar<S::F>>,
-    bases: Vec<AssignedPoint<S>>,
+pub struct AssignedMsm<E: MultiMillerLoop>
+where
+    E::Fr: CircuitField,
+    E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
+        + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
+{
+    scalars: Vec<AssignedBoundedScalar<E::Fr>>,
+    bases: Vec<AssignedPoint<E>>,
     labels: Vec<PolynomialLabel>,
 }
 
-impl<S: SelfEmulation> Msm<S> {
+impl<E: MultiMillerLoop> Msm<E>
+where
+    E::Fr: CircuitField,
+    E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
+        + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
+    E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
+{
     /// Creates a new MSM from the given slice of bases, scalars and labels.
     ///
     /// # Panics
     ///
     /// If `bases`, `scalars` and `labels` do not all have the same length.
-    pub fn new(bases: &[Point<S>], scalars: &[S::F], labels: &[PolynomialLabel]) -> Self {
+    pub fn new(bases: &[Point<E>], scalars: &[E::Fr], labels: &[PolynomialLabel]) -> Self {
         assert_eq!(bases.len(), scalars.len());
         assert_eq!(bases.len(), labels.len());
         Msm {
@@ -187,8 +227,8 @@ impl<S: SelfEmulation> Msm<S> {
     /// `fixed_bases` (with a sanity-check that the point matches the expected
     /// value), or `Variable` otherwise.
     pub fn from_terms(
-        terms: &[(&PolynomialLabel, &S::F, &S::C)],
-        fixed_bases: &BTreeMap<PolynomialLabel, S::C>,
+        terms: &[(&PolynomialLabel, &E::Fr, &E::G1)],
+        fixed_bases: &BTreeMap<PolynomialLabel, E::G1>,
     ) -> Self {
         let mut bases = Vec::with_capacity(terms.len());
         let mut scalars = Vec::with_capacity(terms.len());
@@ -209,12 +249,12 @@ impl<S: SelfEmulation> Msm<S> {
     }
 
     /// The bases of this MSM.
-    pub fn bases(&self) -> Vec<Point<S>> {
+    pub fn bases(&self) -> Vec<Point<E>> {
         self.bases.clone()
     }
 
     /// The scalars of this MSM.
-    pub fn scalars(&self) -> Vec<S::F> {
+    pub fn scalars(&self) -> Vec<E::Fr> {
         self.scalars.clone()
     }
 
@@ -236,10 +276,10 @@ impl<S: SelfEmulation> Msm<S> {
     pub fn collapse(&mut self, label: PolynomialLabel) {
         // We allocate max capacity but we may not fill it.
         let n = self.bases.len();
-        let mut variable_bases = Vec::<S::G1Affine>::with_capacity(n);
-        let mut variable_scalars = Vec::<S::F>::with_capacity(n);
+        let mut variable_bases = Vec::<E::G1Affine>::with_capacity(n);
+        let mut variable_scalars = Vec::<E::Fr>::with_capacity(n);
 
-        let mut fixed_base_scalars = BTreeMap::<PolynomialLabel, S::F>::new();
+        let mut fixed_base_scalars = BTreeMap::<PolynomialLabel, E::Fr>::new();
 
         for i in 0..n {
             match self.bases[i] {
@@ -262,7 +302,7 @@ impl<S: SelfEmulation> Msm<S> {
 
         let collapsed_base = msm_best(&variable_scalars, &variable_bases);
         bases.push(Point::Variable(collapsed_base));
-        scalars.push(S::F::ONE);
+        scalars.push(E::Fr::ONE);
         labels.push(label);
 
         self.bases = bases;
@@ -278,7 +318,7 @@ impl<S: SelfEmulation> Msm<S> {
     /// # Panics
     ///
     /// If any `Fixed` label is absent from `fixed_bases`.
-    pub fn resolve_fixed_bases(&mut self, fixed_bases: &BTreeMap<PolynomialLabel, S::C>) {
+    pub fn resolve_fixed_bases(&mut self, fixed_bases: &BTreeMap<PolynomialLabel, E::G1>) {
         for (i, base) in self.bases.iter_mut().enumerate() {
             match base {
                 Point::Variable(..) => (),
@@ -300,12 +340,12 @@ impl<S: SelfEmulation> Msm<S> {
     /// # Panics
     ///
     /// If any `Fixed` label is absent from `fixed_bases`.
-    pub fn eval(&self, fixed_bases: &BTreeMap<PolynomialLabel, S::C>) -> S::C {
+    pub fn eval(&self, fixed_bases: &BTreeMap<PolynomialLabel, E::G1>) -> E::G1 {
         let mut msm = self.clone();
         msm.resolve_fixed_bases(fixed_bases);
         msm.collapse(PolynomialLabel::NoLabel);
 
-        debug_assert_eq!(msm.scalars, vec![S::F::ONE]);
+        debug_assert_eq!(msm.scalars, vec![E::Fr::ONE]);
         debug_assert_eq!(msm.labels, vec![PolynomialLabel::NoLabel]);
 
         match msm.bases.as_slice() {
@@ -317,7 +357,7 @@ impl<S: SelfEmulation> Msm<S> {
     /// Accumulates two MSMs with the given scalar r.
     /// The resulting MSM evaluates (on any `fixed_bases`) to
     /// `self.eval(fixed_bases) + r * other.eval(fixed_bases)`.
-    pub fn accumulate_with_r(&self, other: &Self, r: S::F) -> Self {
+    pub fn accumulate_with_r(&self, other: &Self, r: E::Fr) -> Self {
         let mut acc = self.clone();
 
         acc.bases.extend(other.bases.clone());
@@ -328,14 +368,19 @@ impl<S: SelfEmulation> Msm<S> {
     }
 }
 
-impl<S: SelfEmulation> InnerValue for AssignedMsm<S> {
-    type Element = Msm<S>;
+impl<E: MultiMillerLoop> InnerValue for AssignedMsm<E>
+where
+    E::Fr: CircuitField,
+    E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
+        + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
+{
+    type Element = Msm<E>;
 
     fn value(&self) -> Value<Self::Element> {
-        let bases: Value<Vec<Point<S>>> =
+        let bases: Value<Vec<Point<E>>> =
             Value::from_iter(self.bases.iter().map(|base| base.value()));
 
-        let scalars: Value<Vec<S::F>> =
+        let scalars: Value<Vec<E::Fr>> =
             Value::from_iter(self.scalars.iter().map(|s| s.scalar.value().copied()));
 
         let labels = self.labels.clone();
@@ -348,12 +393,17 @@ impl<S: SelfEmulation> InnerValue for AssignedMsm<S> {
     }
 }
 
-impl<S: SelfEmulation> Instantiable<S::F> for AssignedMsm<S> {
-    fn as_public_input(msm: &Msm<S>) -> Vec<S::F> {
+impl<E: MultiMillerLoop> Instantiable<E::Fr> for AssignedMsm<E>
+where
+    E::Fr: CircuitField,
+    E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
+        + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
+{
+    fn as_public_input(msm: &Msm<E>) -> Vec<E::Fr> {
         [
             msm.bases
                 .iter()
-                .flat_map(AssignedPoint::<S>::as_public_input)
+                .flat_map(AssignedPoint::<E>::as_public_input)
                 .collect::<Vec<_>>(),
             msm.scalars.clone(),
         ]
@@ -365,12 +415,17 @@ impl<S: SelfEmulation> Instantiable<S::F> for AssignedMsm<S> {
     /// Always returns `None`: the flat encoding loses the structural metadata
     /// needed to rebuild the MSM, so it is not invertible.
     #[cfg(any(test, feature = "testing"))]
-    fn from_public_input(_fields: &[S::F]) -> Option<Msm<S>> {
+    fn from_public_input(_fields: &[E::Fr]) -> Option<Msm<E>> {
         None
     }
 }
 
-impl<S: SelfEmulation> AssignedMsm<S> {
+impl<E: MultiMillerLoop> AssignedMsm<E>
+where
+    E::Fr: CircuitField,
+    E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
+        + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
+{
     /// Creates a new in-circuit MSM from parallel slices of scalars, bases,
     /// and labels.
     ///
@@ -378,8 +433,8 @@ impl<S: SelfEmulation> AssignedMsm<S> {
     ///
     /// If `bases`, `scalars` and `labels` do not all have the same length.
     pub fn new(
-        scalars: &[AssignedBoundedScalar<S::F>],
-        bases: &[AssignedPoint<S>],
+        scalars: &[AssignedBoundedScalar<E::Fr>],
+        bases: &[AssignedPoint<E>],
         labels: &[PolynomialLabel],
     ) -> Self {
         assert_eq!(bases.len(), scalars.len());
@@ -392,12 +447,12 @@ impl<S: SelfEmulation> AssignedMsm<S> {
     }
 
     /// The bases of this assigned MSM.
-    pub fn bases(&self) -> Vec<AssignedPoint<S>> {
+    pub fn bases(&self) -> Vec<AssignedPoint<E>> {
         self.bases.clone()
     }
 
     /// The scalars of this assigned MSM.
-    pub fn scalars(&self) -> Vec<AssignedBoundedScalar<S::F>> {
+    pub fn scalars(&self) -> Vec<AssignedBoundedScalar<E::Fr>> {
         self.scalars.clone()
     }
 
@@ -408,28 +463,33 @@ impl<S: SelfEmulation> AssignedMsm<S> {
 
     /// Creates a single-term MSM from the given scalar, base, and label.
     pub fn from_term(
-        scalar: AssignedBoundedScalar<S::F>,
-        base: AssignedPoint<S>,
+        scalar: AssignedBoundedScalar<E::Fr>,
+        base: AssignedPoint<E>,
         label: PolynomialLabel,
     ) -> Self {
         Self::new(&[scalar], &[base], &[label])
     }
 
     /// Creates a single fixed-base term MSM with the given scalar and label.
-    pub fn from_fixed_term(scalar: AssignedBoundedScalar<S::F>, label: PolynomialLabel) -> Self {
+    pub fn from_fixed_term(scalar: AssignedBoundedScalar<E::Fr>, label: PolynomialLabel) -> Self {
         Self::from_term(scalar, AssignedPoint::Fixed, label)
     }
 }
 
-impl<S: SelfEmulation> AssignedMsm<S> {
+impl<E: MultiMillerLoop> AssignedMsm<E>
+where
+    E::Fr: CircuitField,
+    E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
+        + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
+{
     /// Converts the off-circuit MSM into two vectors of scalars. The first
     /// will be used as a normal instance, whereas the second will be plugged-in
     /// in as a committed instance.
     ///
     /// The committed instance part corresponds to the scalars of the MSM.
-    pub fn as_public_input_with_committed_scalars(msm: &Msm<S>) -> (Vec<S::F>, Vec<S::F>) {
+    pub fn as_public_input_with_committed_scalars(msm: &Msm<E>) -> (Vec<E::Fr>, Vec<E::Fr>) {
         let normal_instance =
-            msm.bases.iter().flat_map(AssignedPoint::<S>::as_public_input).collect();
+            msm.bases.iter().flat_map(AssignedPoint::<E>::as_public_input).collect();
 
         let committed_instance = msm.scalars.clone();
 
@@ -437,12 +497,17 @@ impl<S: SelfEmulation> AssignedMsm<S> {
     }
 }
 
-impl<S: SelfEmulation> AssignedMsm<S> {
+impl<E: MultiMillerLoop> AssignedMsm<E>
+where
+    E::Fr: CircuitField,
+    E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
+        + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
+{
     pub(crate) fn in_circuit_as_public_input(
         &self,
-        layouter: &mut impl Layouter<S::F>,
-        curve_chip: &S::CurveChip,
-    ) -> Result<Vec<AssignedNative<S::F>>, Error> {
+        layouter: &mut impl Layouter<E::Fr>,
+        curve_chip: &CurveChip<E>,
+    ) -> Result<Vec<AssignedNative<E::Fr>>, Error> {
         Ok([
             self.bases
                 .iter()
@@ -456,9 +521,9 @@ impl<S: SelfEmulation> AssignedMsm<S> {
 
     pub(crate) fn constrain_as_public_input(
         &self,
-        layouter: &mut impl Layouter<S::F>,
-        curve_chip: &S::CurveChip,
-        scalar_chip: &ScalarChip<S::F>,
+        layouter: &mut impl Layouter<E::Fr>,
+        curve_chip: &CurveChip<E>,
+        scalar_chip: &ScalarChip<E::Fr>,
     ) -> Result<(), Error> {
         self.bases
             .iter()
@@ -471,23 +536,28 @@ impl<S: SelfEmulation> AssignedMsm<S> {
 
     pub(crate) fn constrain_as_public_input_with_committed_scalars(
         &self,
-        layouter: &mut impl Layouter<S::F>,
-        curve_chip: &S::CurveChip,
-        scalar_chip: &ScalarChip<S::F>,
+        layouter: &mut impl Layouter<E::Fr>,
+        curve_chip: &CurveChip<E>,
+        scalar_chip: &ScalarChip<E::Fr>,
     ) -> Result<(), Error> {
         self.bases
             .iter()
             .try_for_each(|base| base.constrain_as_public_input(layouter, curve_chip))?;
 
         self.scalars.iter().try_for_each(|s| {
-            let mut a = S::F::ZERO;
+            let mut a = E::Fr::ZERO;
             s.scalar.clone().value().map(|v| a = *v);
             scalar_chip.constrain_as_committed_public_input(layouter, &s.scalar)
         })
     }
 }
 
-impl<S: SelfEmulation> AssignedMsm<S> {
+impl<E: MultiMillerLoop> AssignedMsm<E>
+where
+    E::Fr: CircuitField,
+    E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
+        + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
+{
     /// Assigns a collapsed MSM: one term per label of `fixed_base_labels`, with
     /// a witnessed scalar and a fixed base, followed by a single witnessed
     /// variable-base point labeled `NoLabel`, with the constant scalar 1.
@@ -500,11 +570,11 @@ impl<S: SelfEmulation> AssignedMsm<S> {
     ///
     /// If `msm_value` is known and does not have that shape.
     pub fn assign_collapsed(
-        layouter: &mut impl Layouter<S::F>,
-        curve_chip: &S::CurveChip,
-        scalar_chip: &ScalarChip<S::F>,
+        layouter: &mut impl Layouter<E::Fr>,
+        curve_chip: &CurveChip<E>,
+        scalar_chip: &ScalarChip<E::Fr>,
         fixed_base_labels: &[PolynomialLabel],
-        msm_value: Value<Msm<S>>,
+        msm_value: Value<Msm<E>>,
     ) -> Result<Self, Error> {
         let labels = [fixed_base_labels, &[PolynomialLabel::NoLabel]].concat();
         let n = fixed_base_labels.len();
@@ -512,7 +582,7 @@ impl<S: SelfEmulation> AssignedMsm<S> {
             msm.labels != labels
                 || msm.bases[..n].iter().any(|p| matches!(p, Point::Variable(..)))
                 || matches!(msm.bases[n], Point::Fixed)
-                || msm.scalars[n] != S::F::ONE
+                || msm.scalars[n] != E::Fr::ONE
         })?;
 
         let fixed_scalars_val = msm_value.as_ref().map(|msm| msm.scalars[..n].to_vec());
@@ -524,7 +594,7 @@ impl<S: SelfEmulation> AssignedMsm<S> {
             Point::Variable(p) => *p,
             Point::Fixed => unreachable!(),
         });
-        let p = S::assign_without_subgroup_check(layouter, curve_chip, p_val)?;
+        let p = curve_chip.assign_without_subgroup_check(layouter, p_val)?;
         let mut bases = vec![AssignedPoint::Fixed; n];
         bases.push(AssignedPoint::Variable(p));
 
@@ -553,8 +623,8 @@ impl<S: SelfEmulation> AssignedMsm<S> {
     /// Appends a `(scalar, base, label)` term to this MSM.
     pub fn add_term(
         &mut self,
-        scalar: &AssignedBoundedScalar<S::F>,
-        base: &AssignedPoint<S>,
+        scalar: &AssignedBoundedScalar<E::Fr>,
+        base: &AssignedPoint<E>,
         label: &PolynomialLabel,
     ) {
         self.scalars.push(scalar.clone());
@@ -581,9 +651,9 @@ impl<S: SelfEmulation> AssignedMsm<S> {
     /// This function mutates `self`.
     pub fn collapse(
         &mut self,
-        layouter: &mut impl Layouter<S::F>,
-        curve_chip: &S::CurveChip,
-        scalar_chip: &ScalarChip<S::F>,
+        layouter: &mut impl Layouter<E::Fr>,
+        curve_chip: &CurveChip<E>,
+        scalar_chip: &ScalarChip<E::Fr>,
         label: PolynomialLabel,
     ) -> Result<(), Error> {
         // We allocate max capacity but we may not fill it.
@@ -592,7 +662,7 @@ impl<S: SelfEmulation> AssignedMsm<S> {
         let mut variable_scalars = Vec::with_capacity(n);
 
         let mut fixed_base_scalars =
-            BTreeMap::<PolynomialLabel, AssignedBoundedScalar<S::F>>::new();
+            BTreeMap::<PolynomialLabel, AssignedBoundedScalar<E::Fr>>::new();
 
         for i in 0..n {
             match self.bases[i].clone() {
@@ -622,7 +692,8 @@ impl<S: SelfEmulation> AssignedMsm<S> {
         let mut scalars: Vec<_> = fixed_base_scalars.values().cloned().collect();
         let mut labels: Vec<_> = fixed_base_scalars.keys().cloned().collect();
 
-        let collapsed_base = S::msm(layouter, curve_chip, &variable_scalars, &variable_bases)?;
+        let collapsed_base =
+            curve_chip.msm_by_bounded_scalars(layouter, &variable_scalars, &variable_bases)?;
         bases.push(AssignedPoint::Variable(collapsed_base));
         scalars.push(AssignedBoundedScalar::one(layouter, scalar_chip)?);
         labels.push(label);
@@ -655,10 +726,7 @@ impl<S: SelfEmulation> AssignedMsm<S> {
     /// # Panics
     ///
     /// If any `Fixed` label is absent from `fixed_bases`.
-    pub fn resolve_fixed_bases(
-        &mut self,
-        fixed_bases: &BTreeMap<PolynomialLabel, S::AssignedPoint>,
-    ) {
+    pub fn resolve_fixed_bases(&mut self, fixed_bases: &BTreeMap<PolynomialLabel, AssignedG1<E>>) {
         for (i, base) in self.bases.iter_mut().enumerate() {
             match base {
                 AssignedPoint::Variable(..) => (),
@@ -676,9 +744,9 @@ impl<S: SelfEmulation> AssignedMsm<S> {
     /// This function mutates self.
     pub fn scale(
         &mut self,
-        layouter: &mut impl Layouter<S::F>,
-        scalar_chip: &ScalarChip<S::F>,
-        r: &AssignedBoundedScalar<S::F>,
+        layouter: &mut impl Layouter<E::Fr>,
+        scalar_chip: &ScalarChip<E::Fr>,
+        r: &AssignedBoundedScalar<E::Fr>,
     ) -> Result<(), Error> {
         self.scalars = (self.scalars.iter())
             .map(|s| mul_bounded_scalars(layouter, scalar_chip, s, r))
@@ -692,10 +760,10 @@ impl<S: SelfEmulation> AssignedMsm<S> {
     /// `self.eval(fixed_bases) + r * other.eval(fixed_bases)`.
     pub fn accumulate_with_r(
         &self,
-        layouter: &mut impl Layouter<S::F>,
-        scalar_chip: &ScalarChip<S::F>,
+        layouter: &mut impl Layouter<E::Fr>,
+        scalar_chip: &ScalarChip<E::Fr>,
         other: &Self,
-        r: &AssignedBoundedScalar<S::F>,
+        r: &AssignedBoundedScalar<E::Fr>,
     ) -> Result<Self, Error> {
         let mut other = other.clone();
         other.scale(layouter, scalar_chip, r)?;

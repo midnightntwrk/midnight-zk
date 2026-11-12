@@ -47,6 +47,19 @@ use crate::{
 /// The chip implementing native field arithmetic in the in-circuit verifier.
 pub type ScalarChip<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
 
+/// The chip operating on the (emulated) G1 points of the pairing engine `E`.
+pub type CurveChip<E> = ForeignWeierstrassEccChip<
+    <E as Engine>::Fr,
+    <E as Engine>::G1,
+    <E as Engine>::G1,
+    ScalarChip<<E as Engine>::Fr>,
+    ScalarChip<<E as Engine>::Fr>,
+>;
+
+/// An assigned (emulated) G1 point of the pairing engine `E`.
+pub type AssignedG1<E> =
+    AssignedForeignPoint<<E as Engine>::Fr, <E as Engine>::G1, <E as Engine>::G1>;
+
 /// A trait for parametrizing the VerifierGadget.
 pub trait SelfEmulation: Clone + Debug {
     /// The native field.

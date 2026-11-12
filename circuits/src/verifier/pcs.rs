@@ -27,9 +27,7 @@ use midnight_proofs::{
 use crate::{
     field::AssignedNative,
     types::{InnerValue, Instantiable},
-    verifier::{
-        AssignedAccumulator, ScalarChip, SelfEmulation, transcript_gadget::InCircuitTranscript,
-    },
+    verifier::{ScalarChip, SelfEmulation, transcript_gadget::InCircuitTranscript},
 };
 
 // ---------------------------------------------------------------------------
@@ -106,7 +104,7 @@ pub trait CommitmentBases<C> {
 /// Analog of [`midnight_proofs::poly::commitment::PolynomialCommitmentScheme`]
 /// for the in-circuit verifier.
 pub trait InCircuitPCS<S: SelfEmulation>:
-    PolynomialCommitmentScheme<S::F, Commitment: CommitmentBases<S::C>> + Sized + Clone + Debug
+    PolynomialCommitmentScheme<S::F> + Sized + Clone + Debug
 {
     /// The chip this scheme operates on its commitments with.
     type CommitmentChip: Clone;
@@ -117,6 +115,10 @@ pub trait InCircuitPCS<S: SelfEmulation>:
         + Debug
         + Instantiable<S::F>
         + InnerValue<Element = <Self as PolynomialCommitmentScheme<S::F>>::Commitment>;
+
+    /// The in-circuit counterpart of the scheme's verification guard,
+    /// produced by [`Self::multi_prepare`].
+    type AssignedVerificationGuard: Clone + Debug;
 
     /// Creates the fixed (VK-embedded) commitment to the group of `labels`.
     ///
@@ -200,14 +202,14 @@ pub trait InCircuitPCS<S: SelfEmulation>:
     /// [`midnight_proofs::poly::commitment::PolynomialCommitmentScheme::commitment_labels`].
     fn commitment_labels(commitment: &Self::AssignedCommitment) -> Vec<PolynomialLabel>;
 
-    /// In-circuit multi-open verification; produces an accumulator.
+    /// In-circuit multi-open verification; produces a verification guard.
     fn multi_prepare<T: InCircuitTranscript<S::F>>(
         layouter: &mut impl Layouter<S::F>,
         commitment_chip: &Self::CommitmentChip,
         scalar_chip: &ScalarChip<S::F>,
         transcript: &mut T,
         queries: &[VerifierQuery<'_, S, Self>],
-    ) -> Result<AssignedAccumulator<S>, Error>
+    ) -> Result<Self::AssignedVerificationGuard, Error>
     where
         S::F: Hashable<T::Hash>,
         Self::Commitment: Hashable<T::Hash>;

@@ -36,7 +36,7 @@ use crate::{
     instructions::ArithInstructions,
     types::InnerValue,
     verifier::{
-        AssignedAccumulator, ScalarChip, SelfEmulation,
+        ScalarChip, SelfEmulation,
         pcs::{InCircuitPCS, VerifierQuery},
         transcript_gadget::InCircuitTranscript,
         utils::{PowersCache, RootsCache, cached_roots, eval_polynomial_on_roots},
@@ -50,6 +50,7 @@ where
     PCS: InCircuitPCS<S> + InterleavedCommit<S::F>,
 {
     type CommitmentChip = PCS::CommitmentChip;
+    type AssignedVerificationGuard = PCS::AssignedVerificationGuard;
     type AssignedCommitment = PCS::AssignedCommitment;
 
     fn fixed_commitment(labels: &[PolynomialLabel]) -> Self::AssignedCommitment {
@@ -130,7 +131,7 @@ where
         scalar_chip: &ScalarChip<S::F>,
         transcript: &mut T,
         queries: &[VerifierQuery<'_, S, Self>],
-    ) -> Result<AssignedAccumulator<S>, Error>
+    ) -> Result<Self::AssignedVerificationGuard, Error>
     where
         S::F: Hashable<T::Hash>,
         Self::Commitment: Hashable<T::Hash>,
