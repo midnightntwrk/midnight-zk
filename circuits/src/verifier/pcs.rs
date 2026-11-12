@@ -21,13 +21,14 @@ use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
     poly::{PolynomialLabel, commitment::PolynomialCommitmentScheme},
+    transcript::Hashable,
 };
 
 use crate::{
     field::AssignedNative,
     types::{InnerValue, Instantiable},
     verifier::{
-        AssignedAccumulator, ScalarChip, SelfEmulation, transcript_gadget::TranscriptGadget,
+        AssignedAccumulator, ScalarChip, SelfEmulation, transcript_gadget::InCircuitTranscript,
     },
 };
 
@@ -167,16 +168,18 @@ pub trait InCircuitPCS<S: SelfEmulation>:
 
     /// Reads one commitment to `labels.len()` polynomials from the proof
     /// transcript, tagging each polynomial with its label.
-    fn read_commitment(
-        transcript: &mut TranscriptGadget<S>,
+    fn read_commitment<T: InCircuitTranscript<S::F>>(
+        transcript: &mut T,
         layouter: &mut impl Layouter<S::F>,
         commitment_chip: &Self::CommitmentChip,
         labels: &[PolynomialLabel],
-    ) -> Result<Self::AssignedCommitment, Error>;
+    ) -> Result<Self::AssignedCommitment, Error>
+    where
+        Self::Commitment: Hashable<T::Hash>;
 
     /// Absorbs a commitment into the proof transcript.
-    fn common_commitment(
-        transcript: &mut TranscriptGadget<S>,
+    fn common_commitment<T: InCircuitTranscript<S::F>>(
+        transcript: &mut T,
         layouter: &mut impl Layouter<S::F>,
         commitment_chip: &Self::CommitmentChip,
         commitment: &Self::AssignedCommitment,
@@ -185,10 +188,10 @@ pub trait InCircuitPCS<S: SelfEmulation>:
     /// Squeezes the point at which the protocol opens its committed
     /// polynomials; the default squeezes a plain challenge. Mirrors
     /// [`midnight_proofs::poly::commitment::PolynomialCommitmentScheme::squeeze_evaluation_point`].
-    fn squeeze_evaluation_point(
+    fn squeeze_evaluation_point<T: InCircuitTranscript<S::F>>(
         layouter: &mut impl Layouter<S::F>,
         _scalar_chip: &ScalarChip<S::F>,
-        transcript: &mut TranscriptGadget<S>,
+        transcript: &mut T,
     ) -> Result<AssignedNative<S::F>, Error> {
         transcript.squeeze_challenge(layouter)
     }
@@ -198,13 +201,16 @@ pub trait InCircuitPCS<S: SelfEmulation>:
     fn commitment_labels(commitment: &Self::AssignedCommitment) -> Vec<PolynomialLabel>;
 
     /// In-circuit multi-open verification; produces an accumulator.
-    fn multi_prepare(
+    fn multi_prepare<T: InCircuitTranscript<S::F>>(
         layouter: &mut impl Layouter<S::F>,
         commitment_chip: &Self::CommitmentChip,
         scalar_chip: &ScalarChip<S::F>,
         queries: &[VerifierQuery<'_, S, Self>],
-        transcript: &mut TranscriptGadget<S>,
-    ) -> Result<AssignedAccumulator<S>, Error>;
+        transcript: &mut T,
+    ) -> Result<AssignedAccumulator<S>, Error>
+    where
+        S::F: Hashable<T::Hash>,
+        Self::Commitment: Hashable<T::Hash>;
 }
 
 /// The in-circuit commitment type of `PCS`.

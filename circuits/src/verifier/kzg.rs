@@ -36,6 +36,7 @@ use midnight_proofs::{
             point_set_order,
         },
     },
+    transcript::Hashable,
 };
 
 use crate::{
@@ -47,7 +48,7 @@ use crate::{
         AssignedAccumulator, ScalarChip, SelfEmulation,
         msm::{AssignedMsm, AssignedPoint},
         pcs::{CommitmentBases, InCircuitPCS, VerifierQuery},
-        transcript_gadget::TranscriptGadget,
+        transcript_gadget::InCircuitTranscript,
         utils::{
             AssignedBoundedScalar, Coset, evaluate_interpolation_quotient,
             evaluate_interpolation_quotient_on_cosets, inner_product, mul_add, truncate,
@@ -408,13 +409,17 @@ fn evals_inner_product<F: CircuitField>(
 
 /// Verifies a bunch of KZG queries in a multi-open argument.
 /// The resulting accumulator satisfies the invariant iff all queries are valid.
-pub(crate) fn multi_prepare_kzg<S: SelfEmulation>(
+pub(crate) fn multi_prepare_kzg<S: SelfEmulation, T: InCircuitTranscript<S::F>>(
     layouter: &mut impl Layouter<S::F>,
     curve_chip: &S::CurveChip,
     scalar_chip: &ScalarChip<S::F>,
     queries: &[VerifierQuery<S, KZGCommitmentScheme<S::Engine>>],
-    transcript_gadget: &mut TranscriptGadget<S>,
-) -> Result<AssignedAccumulator<S>, Error> {
+    transcript_gadget: &mut T,
+) -> Result<AssignedAccumulator<S>, Error>
+where
+    S::F: Hashable<T::Hash>,
+    KZGMultiCommitment<S::Engine>: Hashable<T::Hash>,
+{
     let one = AssignedBoundedScalar::one(layouter, scalar_chip)?;
 
     let x1 = transcript_gadget.squeeze_challenge(layouter)?;
@@ -675,12 +680,15 @@ impl<S: SelfEmulation> InCircuitPCS<S> for KZGCommitmentScheme<S::Engine> {
     /// # Warning
     ///
     /// The received points are not enforced to be in the prime-order subgroup.
-    fn read_commitment(
-        transcript: &mut TranscriptGadget<S>,
+    fn read_commitment<T: InCircuitTranscript<S::F>>(
+        transcript: &mut T,
         layouter: &mut impl Layouter<S::F>,
         curve_chip: &S::CurveChip,
         labels: &[PolynomialLabel],
-    ) -> Result<Self::AssignedCommitment, Error> {
+    ) -> Result<Self::AssignedCommitment, Error>
+    where
+        Self::Commitment: Hashable<T::Hash>,
+    {
         if labels.is_empty() {
             return Ok(AssignedKZGMultiCommitment(vec![]));
         }
@@ -695,8 +703,8 @@ impl<S: SelfEmulation> InCircuitPCS<S> for KZGCommitmentScheme<S::Engine> {
         Ok(com)
     }
 
-    fn common_commitment(
-        transcript: &mut TranscriptGadget<S>,
+    fn common_commitment<T: InCircuitTranscript<S::F>>(
+        transcript: &mut T,
         layouter: &mut impl Layouter<S::F>,
         curve_chip: &S::CurveChip,
         commitment: &AssignedKZGMultiCommitment<S>,
@@ -714,13 +722,17 @@ impl<S: SelfEmulation> InCircuitPCS<S> for KZGCommitmentScheme<S::Engine> {
             .collect()
     }
 
-    fn multi_prepare(
+    fn multi_prepare<T: InCircuitTranscript<S::F>>(
         layouter: &mut impl Layouter<S::F>,
         curve_chip: &S::CurveChip,
         scalar_chip: &ScalarChip<S::F>,
         queries: &[VerifierQuery<'_, S, Self>],
-        transcript: &mut TranscriptGadget<S>,
-    ) -> Result<AssignedAccumulator<S>, Error> {
+        transcript: &mut T,
+    ) -> Result<AssignedAccumulator<S>, Error>
+    where
+        S::F: Hashable<T::Hash>,
+        Self::Commitment: Hashable<T::Hash>,
+    {
         multi_prepare_kzg(layouter, curve_chip, scalar_chip, queries, transcript)
     }
 }

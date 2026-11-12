@@ -26,6 +26,7 @@ use midnight_proofs::{
     circuit::Layouter,
     plonk::{ConstraintSystem, Error},
     poly::{PolynomialLabel, Rotation},
+    transcript::Hashable,
 };
 
 use crate::{
@@ -34,7 +35,7 @@ use crate::{
         SelfEmulation,
         absorbed_vk::AbsorbedVk,
         pcs::{AssignedCommitment, InCircuitPCS, VerifierQuery},
-        transcript_gadget::TranscriptGadget,
+        transcript_gadget::InCircuitTranscript,
     },
 };
 
@@ -141,12 +142,15 @@ pub(crate) fn committed_from_key<S: SelfEmulation, PCS: InCircuitPCS<S>>(
 }
 
 /// Reads the commitment to the polynomials of the given labels.
-pub(crate) fn read_committed<S: SelfEmulation, PCS: InCircuitPCS<S>>(
+pub(crate) fn read_committed<S: SelfEmulation, PCS: InCircuitPCS<S>, T: InCircuitTranscript<S::F>>(
     labels: &[PolynomialLabel],
     layouter: &mut impl Layouter<S::F>,
     commitment_chip: &PCS::CommitmentChip,
-    transcript_gadget: &mut TranscriptGadget<S>,
-) -> Result<Committed<S, PCS>, Error> {
+    transcript_gadget: &mut T,
+) -> Result<Committed<S, PCS>, Error>
+where
+    PCS::Commitment: Hashable<T::Hash>,
+{
     Ok(Committed {
         commitment: <PCS as InCircuitPCS<S>>::read_commitment(
             transcript_gadget,
@@ -169,13 +173,16 @@ pub(crate) struct Evaluated<S: SelfEmulation, PCS: InCircuitPCS<S>> {
 impl<S: SelfEmulation, PCS: InCircuitPCS<S>> Committed<S, PCS> {
     /// Reads the evaluation of every polynomial of the group at each of its
     /// evaluation points.
-    pub(crate) fn evaluate(
+    pub(crate) fn evaluate<T: InCircuitTranscript<S::F>>(
         self,
         cs: &ConstraintSystem<S::F>,
         x_rotations: &BTreeMap<Rotation, AssignedNative<S::F>>,
         layouter: &mut impl Layouter<S::F>,
-        transcript_gadget: &mut TranscriptGadget<S>,
-    ) -> Result<Evaluated<S, PCS>, Error> {
+        transcript_gadget: &mut T,
+    ) -> Result<Evaluated<S, PCS>, Error>
+    where
+        S::F: Hashable<T::Hash>,
+    {
         let mut evals_map: BTreeMap<PolynomialLabel, Vec<Evaluation<S>>> = BTreeMap::new();
 
         for label in &self.polynomial_labels {

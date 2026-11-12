@@ -28,6 +28,7 @@ use midnight_proofs::{
         commitment::InterleavedCommit,
         fflonk::{Fflonk, balanced_chunks},
     },
+    transcript::Hashable,
 };
 
 use crate::{
@@ -37,7 +38,7 @@ use crate::{
     verifier::{
         AssignedAccumulator, ScalarChip, SelfEmulation,
         pcs::{InCircuitPCS, VerifierQuery},
-        transcript_gadget::TranscriptGadget,
+        transcript_gadget::InCircuitTranscript,
         utils::{PowersCache, RootsCache, cached_roots, eval_polynomial_on_roots},
     },
 };
@@ -81,18 +82,21 @@ where
         PCS::commitment_as_public_input(layouter, commitment_chip, commitment)
     }
 
-    fn read_commitment(
-        transcript: &mut TranscriptGadget<S>,
+    fn read_commitment<T: InCircuitTranscript<S::F>>(
+        transcript: &mut T,
         layouter: &mut impl Layouter<S::F>,
         commitment_chip: &Self::CommitmentChip,
         labels: &[PolynomialLabel],
-    ) -> Result<Self::AssignedCommitment, Error> {
+    ) -> Result<Self::AssignedCommitment, Error>
+    where
+        Self::Commitment: Hashable<T::Hash>,
+    {
         let labels = Self::chunk_labels(labels);
         <PCS as InCircuitPCS<S>>::read_commitment(transcript, layouter, commitment_chip, &labels)
     }
 
-    fn common_commitment(
-        transcript: &mut TranscriptGadget<S>,
+    fn common_commitment<T: InCircuitTranscript<S::F>>(
+        transcript: &mut T,
         layouter: &mut impl Layouter<S::F>,
         commitment_chip: &Self::CommitmentChip,
         commitment: &Self::AssignedCommitment,
@@ -100,10 +104,10 @@ where
         PCS::common_commitment(transcript, layouter, commitment_chip, commitment)
     }
 
-    fn squeeze_evaluation_point(
+    fn squeeze_evaluation_point<T: InCircuitTranscript<S::F>>(
         layouter: &mut impl Layouter<S::F>,
         scalar_chip: &ScalarChip<S::F>,
-        transcript: &mut TranscriptGadget<S>,
+        transcript: &mut T,
     ) -> Result<AssignedNative<S::F>, Error> {
         let x =
             <PCS as InCircuitPCS<S>>::squeeze_evaluation_point(layouter, scalar_chip, transcript)?;
@@ -120,13 +124,17 @@ where
             .collect()
     }
 
-    fn multi_prepare(
+    fn multi_prepare<T: InCircuitTranscript<S::F>>(
         layouter: &mut impl Layouter<S::F>,
         commitment_chip: &Self::CommitmentChip,
         scalar_chip: &ScalarChip<S::F>,
         queries: &[VerifierQuery<'_, S, Self>],
-        transcript: &mut TranscriptGadget<S>,
-    ) -> Result<AssignedAccumulator<S>, Error> {
+        transcript: &mut T,
+    ) -> Result<AssignedAccumulator<S>, Error>
+    where
+        S::F: Hashable<T::Hash>,
+        Self::Commitment: Hashable<T::Hash>,
+    {
         // Maps the labels of every queried chunk to its commitment and the points
         // its polynomials are queried at, in query order: `labels -> (commitment,
         // points)`.

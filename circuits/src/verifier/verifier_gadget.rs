@@ -22,6 +22,7 @@ use midnight_proofs::{
     circuit::{Chip, Layouter, Value},
     plonk::{ConstraintSystem, Error},
     poly::{EvaluationDomain, PolynomialLabel, Rotation},
+    transcript::Hashable,
 };
 
 use crate::{
@@ -38,7 +39,7 @@ use crate::{
         },
         pcs::{AssignedCommitment, InCircuitPCS, VerifierQuery},
         traces::VerifierTrace,
-        transcript_gadget::TranscriptGadget,
+        transcript_gadget::InCircuitTranscript,
         utils::{
             evaluate_lagrange_polynomials, inner_product, mul_add, pow_of_two, square_k_times, sum,
         },
@@ -327,8 +328,9 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> VerifierGadget<S, PCS> {
 }
 
 impl<S: SelfEmulation, PCS: InCircuitPCS<S>> VerifierGadget<S, PCS> {
-    /// Given a plonk proof, this function parses it to extract the verifying
-    /// trace.
+    /// Given a transcript initialised with a plonk proof (see
+    /// [InCircuitTranscript::init_with_proof]), this function parses the proof
+    /// to extract the verifying trace.
     /// This function computes all Fiat-Shamir challenges, with the exception of
     /// `x`, which is computed in [Self::verify_algebraic_constraints]. It
     /// is the in-circuit analog of "parse_trace" from midnight-proofs at
@@ -339,14 +341,17 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> VerifierGadget<S, PCS> {
     /// constraints](crate::verifier::VerifierGadget::verify_algebraic_constraints),
     /// and the resulting accumulator satisfies the
     /// [invariant](crate::verifier::Accumulator::check).
-    pub fn parse_trace(
+    pub fn parse_trace<T: InCircuitTranscript<S::F>>(
         &self,
         layouter: &mut impl Layouter<S::F>,
         assigned_vk: &AssignedVk<S, PCS>,
         assigned_committed_instances: &[AssignedCommitment<S, PCS>],
         assigned_instances: &[&[AssignedNative<S::F>]],
-        proof: Value<Vec<u8>>,
-    ) -> Result<(VerifierTrace<S, PCS>, TranscriptGadget<S>), Error> {
+        transcript: &mut T,
+    ) -> Result<VerifierTrace<S, PCS>, Error>
+    where
+        PCS::Commitment: Hashable<T::Hash>,
+    {
         let cs = &assigned_vk.cs;
 
         // Check that instances matches the expected number of instance columns
@@ -355,16 +360,12 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> VerifierGadget<S, PCS> {
             assigned_committed_instances.len() + assigned_instances.len()
         );
 
-        let mut transcript = TranscriptGadget::new(&self.scalar_chip, &self.sponge_chip);
-
-        transcript.init_with_proof(layouter, proof)?;
-
         // Hash verification key into transcript.
-        let vk_absorbed = assigned_vk.absorb_into(layouter, &mut transcript)?;
+        let vk_absorbed = assigned_vk.absorb_into(layouter, transcript)?;
         let phase0_committed = argument::committed_from_key(&vk_absorbed);
 
         assigned_committed_instances.iter().try_for_each(|com| {
-            PCS::common_commitment(&mut transcript, layouter, &self.commitment_chip, com)
+            PCS::common_commitment(transcript, layouter, &self.commitment_chip, com)
         })?;
 
         for instance in assigned_instances {
@@ -385,12 +386,8 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> VerifierGadget<S, PCS> {
             .chain((0..logups.len()).map(PolynomialLabel::LogupMultiplicities))
             .collect::<Vec<_>>();
 
-        let phase1_committed = argument::read_committed(
-            &phase1_labels,
-            layouter,
-            &self.commitment_chip,
-            &mut transcript,
-        )?;
+        let phase1_committed =
+            argument::read_committed(&phase1_labels, layouter, &self.commitment_chip, transcript)?;
 
         // Sample theta challenge for keeping lookup columns linearly independent
         let theta = transcript.squeeze_challenge(layouter)?;
@@ -416,29 +413,22 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> VerifierGadget<S, PCS> {
             phase2_labels.push(PolynomialLabel::Trash(argument_index));
         }
 
-        let phase2_committed = argument::read_committed(
-            &phase2_labels,
-            layouter,
-            &self.commitment_chip,
-            &mut transcript,
-        )?;
+        let phase2_committed =
+            argument::read_committed(&phase2_labels, layouter, &self.commitment_chip, transcript)?;
 
         // Sample y challenge, which keeps the gates linearly independent
         let y = transcript.squeeze_challenge(layouter)?;
 
-        Ok((
-            VerifierTrace {
-                phase0_committed,
-                phase1_committed,
-                phase2_committed,
-                beta,
-                gamma,
-                theta,
-                trash_challenge,
-                y,
-            },
-            transcript,
-        ))
+        Ok(VerifierTrace {
+            phase0_committed,
+            phase1_committed,
+            phase2_committed,
+            beta,
+            gamma,
+            theta,
+            trash_challenge,
+            y,
+        })
     }
 
     /// Given a [VerifierTrace], this function computes the opening challenge,
@@ -448,15 +438,19 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> VerifierGadget<S, PCS> {
     /// The proof is considered to be valid if the resulting accumulator
     /// satisfies the [invariant](crate::verifier::Accumulator::check)
     /// with respect to the relevant `tau_in_g2`.
-    pub fn verify_algebraic_constraints(
+    pub fn verify_algebraic_constraints<T: InCircuitTranscript<S::F>>(
         &self,
         layouter: &mut impl Layouter<S::F>,
         assigned_vk: &AssignedVk<S, PCS>,
         trace: VerifierTrace<S, PCS>,
         assigned_committed_instances: &[AssignedCommitment<S, PCS>],
         assigned_instances: &[&[AssignedNative<S::F>]],
-        mut transcript: TranscriptGadget<S>,
-    ) -> Result<AssignedAccumulator<S>, Error> {
+        transcript: &mut T,
+    ) -> Result<AssignedAccumulator<S>, Error>
+    where
+        S::F: Hashable<T::Hash>,
+        PCS::Commitment: Hashable<T::Hash>,
+    {
         let cs = &assigned_vk.cs;
         let k = &assigned_vk.domain.k;
         let nb_committed_instances = assigned_committed_instances.len();
@@ -482,7 +476,7 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> VerifierGadget<S, PCS> {
             &quotient_labels,
             layouter,
             &self.commitment_chip,
-            &mut transcript,
+            transcript,
         )?;
 
         // Sample x challenge, which is used to ensure the circuit is satisfied with
@@ -490,7 +484,7 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> VerifierGadget<S, PCS> {
         let x = <PCS as InCircuitPCS<S>>::squeeze_evaluation_point(
             layouter,
             &self.scalar_chip,
-            &mut transcript,
+            transcript,
         )?;
 
         let omega = &assigned_vk.domain.omega;
@@ -558,14 +552,11 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> VerifierGadget<S, PCS> {
             x_rotations.insert(rotation, point);
         }
 
-        let phase0_evaluated =
-            phase0_committed.evaluate(cs, &x_rotations, layouter, &mut transcript)?;
-        let phase1_evaluated =
-            phase1_committed.evaluate(cs, &x_rotations, layouter, &mut transcript)?;
-        let phase2_evaluated =
-            phase2_committed.evaluate(cs, &x_rotations, layouter, &mut transcript)?;
+        let phase0_evaluated = phase0_committed.evaluate(cs, &x_rotations, layouter, transcript)?;
+        let phase1_evaluated = phase1_committed.evaluate(cs, &x_rotations, layouter, transcript)?;
+        let phase2_evaluated = phase2_committed.evaluate(cs, &x_rotations, layouter, transcript)?;
         let mut quotient_evaluated =
-            quotient_committed.evaluate(cs, &x_rotations, layouter, &mut transcript)?;
+            quotient_committed.evaluate(cs, &x_rotations, layouter, transcript)?;
 
         let phase0_evals = &phase0_evaluated.evals_map;
         let phase1_evals = &phase1_evaluated.evals_map;
@@ -780,32 +771,38 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> VerifierGadget<S, PCS> {
             &self.commitment_chip,
             &self.scalar_chip,
             &queries,
-            &mut transcript,
+            transcript,
         )
     }
 
-    /// Prepares a plonk proof into a PCS instance that can be finalized or
-    /// batched. It is responsibility of the verifier to check the validity of
-    /// the instance columns. It is the in-circuit analog of "prepare" from
-    /// midnight-proofs at src/plonk/verifier.rs.
+    /// Prepares a plonk proof, with which `transcript` must have been
+    /// initialised (see [InCircuitTranscript::init_with_proof]), into a PCS
+    /// instance that can be finalized or batched. It is responsibility of the
+    /// verifier to check the validity of the instance columns. It is the
+    /// in-circuit analog of "prepare" from midnight-proofs at
+    /// src/plonk/verifier.rs.
     ///
     /// The proof is considered to be valid if the resulting accumulator
     /// satisfies the [invariant](crate::verifier::Accumulator::check)
     /// with respect to the relevant `tau_in_g2`.
-    pub fn prepare(
+    pub fn prepare<T: InCircuitTranscript<S::F>>(
         &self,
         layouter: &mut impl Layouter<S::F>,
         assigned_vk: &AssignedVk<S, PCS>,
         assigned_committed_instances: &[AssignedCommitment<S, PCS>],
         assigned_instances: &[&[AssignedNative<S::F>]],
-        proof: Value<Vec<u8>>,
-    ) -> Result<AssignedAccumulator<S>, Error> {
-        let (trace, transcript) = self.parse_trace(
+        transcript: &mut T,
+    ) -> Result<AssignedAccumulator<S>, Error>
+    where
+        S::F: Hashable<T::Hash>,
+        PCS::Commitment: Hashable<T::Hash>,
+    {
+        let trace = self.parse_trace(
             layouter,
             assigned_vk,
             assigned_committed_instances,
             assigned_instances,
-            proof,
+            transcript,
         )?;
 
         self.verify_algebraic_constraints(
@@ -863,7 +860,7 @@ pub(crate) mod tests {
         },
         testing_utils::FromScratch,
         types::{ComposableChip, Instantiable},
-        verifier::{BlstrsEmulation, accumulator::Accumulator},
+        verifier::{BlstrsEmulation, TranscriptGadget, accumulator::Accumulator},
     };
 
     type S = BlstrsEmulation;
@@ -946,7 +943,9 @@ pub(crate) mod tests {
         inner_proof: Value<Vec<u8>>,
     }
 
-    impl<P: InCircuitPCS<S> + PolynomialCommitmentScheme<F>> Circuit<F> for TestCircuit<P> {
+    impl<P: InCircuitPCS<S> + PolynomialCommitmentScheme<F, Commitment: Hashable<PoseidonState<F>>>>
+        Circuit<F> for TestCircuit<P>
+    {
         type Config = (
             NativeConfig,
             P2RDecompositionConfig,
@@ -1045,12 +1044,14 @@ pub(crate) mod tests {
             let assigned_inner_pi = native_gadget
                 .assign_many(&mut layouter, &self.inner_instances.transpose_array())?;
 
+            let mut transcript = TranscriptGadget::<S>::new(&native_gadget, &poseidon_chip);
+            transcript.init_with_proof(&mut layouter, self.inner_proof.clone())?;
             let mut inner_proof_acc = verifier_chip.prepare(
                 &mut layouter,
                 &assigned_inner_vk,
                 &[],
                 &[&[], &assigned_inner_pi],
-                self.inner_proof.clone(),
+                &mut transcript,
             )?;
 
             inner_proof_acc.collapse(&mut layouter, &curve_chip, &native_gadget)?;

@@ -18,7 +18,7 @@ use midnight_proofs::{circuit::Layouter, plonk::Error, poly::PolynomialLabel};
 use super::{
     AssignedVk, SelfEmulation,
     pcs::{AssignedCommitment, InCircuitPCS},
-    transcript_gadget::TranscriptGadget,
+    transcript_gadget::InCircuitTranscript,
 };
 
 /// An assigned verifying key whose `transcript_repr` has been absorbed into a
@@ -48,10 +48,10 @@ impl<'a, S: SelfEmulation, PCS: InCircuitPCS<S>> AbsorbedVk<'a, S, PCS> {
 impl<S: SelfEmulation, PCS: InCircuitPCS<S>> AssignedVk<S, PCS> {
     /// Absorbs this verifying key into `transcript`, returning the witness that
     /// it was.
-    pub(crate) fn absorb_into(
+    pub(crate) fn absorb_into<T: InCircuitTranscript<S::F>>(
         &self,
         layouter: &mut impl Layouter<S::F>,
-        transcript: &mut TranscriptGadget<S>,
+        transcript: &mut T,
     ) -> Result<AbsorbedVk<'_, S, PCS>, Error> {
         transcript.common_scalar(layouter, &self.transcript_repr)?;
         Ok(AbsorbedVk(self))

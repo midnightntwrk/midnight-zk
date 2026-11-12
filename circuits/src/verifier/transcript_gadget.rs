@@ -20,10 +20,11 @@ use ff::Field;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
-    transcript::{CircuitTranscript, Hashable, Transcript},
+    transcript::{CircuitTranscript, Hashable, Transcript, TranscriptHash},
 };
 
 use crate::{
+    CircuitField,
     instructions::{AssignmentInstructions, SpongeInstructions},
     types::AssignedNative,
     verifier::{ScalarChip, SelfEmulation},
@@ -59,10 +60,62 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
             transcript_reader: None,
         }
     }
+}
 
-    /// Initialises the `TranscriptGadget`, by initialising the sponge buffer,
-    /// from a given witnessed proof in the form of `Value<Vec<u8>>`.
-    pub fn init_with_proof(
+/// An in-circuit Fiat-Shamir transcript.
+///
+/// Analog of [`midnight_proofs::transcript::Transcript`] for the in-circuit
+/// verifier.
+pub trait InCircuitTranscript<F: CircuitField>: Clone {
+    /// The off-circuit hash function of the transcript, which the proof is
+    /// parsed with.
+    type Hash: TranscriptHash;
+
+    /// Initialises the transcript, by initialising the sponge buffer, from a
+    /// given witnessed proof in the form of `Value<Vec<u8>>`.
+    fn init_with_proof(
+        &mut self,
+        layouter: &mut impl Layouter<F>,
+        proof: Value<Vec<u8>>,
+    ) -> Result<(), Error>;
+
+    /// Absorbs the given field elements into the transcript.
+    fn common(
+        &mut self,
+        layouter: &mut impl Layouter<F>,
+        inputs: &[AssignedNative<F>],
+    ) -> Result<(), Error>;
+
+    /// Absorbs a scalar into the transcript.
+    fn common_scalar(
+        &mut self,
+        layouter: &mut impl Layouter<F>,
+        scalar: &AssignedNative<F>,
+    ) -> Result<(), Error> {
+        self.common(layouter, std::slice::from_ref(scalar))
+    }
+
+    /// Derives a scalar challenge from the current transcript.
+    fn squeeze_challenge(
+        &mut self,
+        layouter: &mut impl Layouter<F>,
+    ) -> Result<AssignedNative<F>, Error>;
+
+    /// Reads a value from the proof, off-circuit. The value is neither
+    /// constrained nor absorbed into the transcript.
+    fn read_value<V: Hashable<Self::Hash>>(&mut self) -> io::Result<V>;
+
+    /// Reads a scalar from the reader buffer, and adds it to the transcript.
+    /// Think of the read scalar as a witness freely chosen by the prover.
+    fn read_scalar(&mut self, layouter: &mut impl Layouter<F>) -> Result<AssignedNative<F>, Error>
+    where
+        F: Hashable<Self::Hash>;
+}
+
+impl<S: SelfEmulation> InCircuitTranscript<S::F> for TranscriptGadget<S> {
+    type Hash = S::Hash;
+
+    fn init_with_proof(
         &mut self,
         layouter: &mut impl Layouter<S::F>,
         proof: Value<Vec<u8>>,
@@ -82,17 +135,7 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
         Ok(())
     }
 
-    /// Absorbs a scalar into the transcript.
-    pub fn common_scalar(
-        &mut self,
-        layouter: &mut impl Layouter<S::F>,
-        scalar: &AssignedNative<S::F>,
-    ) -> Result<(), Error> {
-        self.common(layouter, std::slice::from_ref(scalar))
-    }
-
-    /// Absorbs the given field elements into the transcript.
-    pub fn common(
+    fn common(
         &mut self,
         layouter: &mut impl Layouter<S::F>,
         inputs: &[AssignedNative<S::F>],
@@ -102,8 +145,7 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
         self.sponge_chip.absorb(layouter, state, inputs)
     }
 
-    /// Derives a scalar challenge from the current transcript.
-    pub fn squeeze_challenge(
+    fn squeeze_challenge(
         &mut self,
         layouter: &mut impl Layouter<S::F>,
     ) -> Result<AssignedNative<S::F>, Error> {
@@ -111,16 +153,12 @@ impl<S: SelfEmulation> TranscriptGadget<S> {
         self.sponge_chip.squeeze(layouter, state)
     }
 
-    /// Reads a value from the proof, off-circuit. The value is neither
-    /// constrained nor absorbed into the transcript.
-    pub fn read_value<V: Hashable<S::Hash>>(&mut self) -> io::Result<V> {
+    fn read_value<V: Hashable<S::Hash>>(&mut self) -> io::Result<V> {
         let reader = self.transcript_reader.as_mut().expect("You must init the transcript gadget");
         reader.read()
     }
 
-    /// Reads a scalar from the reader buffer, and adds it to the transcript.
-    /// Think of the read scalar as a witness freely chosen by the prover.
-    pub fn read_scalar(
+    fn read_scalar(
         &mut self,
         layouter: &mut impl Layouter<S::F>,
     ) -> Result<AssignedNative<S::F>, Error> {
