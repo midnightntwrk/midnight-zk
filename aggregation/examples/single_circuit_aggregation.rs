@@ -63,7 +63,7 @@ pub struct InnerCircuitContext {
 
 impl InnerCircuitContext {
     fn fixed_bases(&self) -> BTreeMap<PolynomialLabel, C> {
-        verifier::fixed_bases::<S>(self.vk.vk())
+        verifier::fixed_bases::<S, DefaultPCS>(self.vk.vk())
     }
 }
 
@@ -276,7 +276,7 @@ impl IvcTransition for ProofAggregation {
         witness: Value<Self::Witness>,
     ) -> Result<Self::AssignedState, Error> {
         // Assign inner VK as a hard-coded constant.
-        let inner_vk: AssignedVk<S> = self.std_lib.verifier().assign_fixed_vk(
+        let inner_vk: AssignedVk<S, DefaultPCS> = self.std_lib.verifier().assign_fixed_vk(
             layouter,
             &self.inner_ctx.domain,
             self.inner_ctx.vk.vk().cs(),

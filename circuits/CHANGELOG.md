@@ -24,6 +24,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 
 ### Changed
+* BREAKING: the off-circuit schemes implement `InCircuitPCS` themselves (`KZGCommitmentScheme`, and `Fflonk` over any of them), replacing `InCircuitKZG` and `InCircuitFflonk`, and `InCircuitPCS::OffCircuitPCS` is removed. `SelfEmulation::PCS` is removed too: the PCS is a parameter of `VerifierGadget<S, PCS>`, `AssignedVk<S, PCS>`, `UnboundVk<S, PCS>`, `VerifierTrace<S, PCS>`, `fixed_bases`, `fixed_base_labels` and `vk_hash` [#634](https://github.com/midnightntwrk/midnight-zk/pull/634)
 * The in-circuit KZG multi-open orders its point sets with `kzg::point_set_order`, as the off-circuit one does [#583](https://github.com/midnightntwrk/midnight-zk/pull/583)
 * The in-circuit fflonk evaluates a chunk at all the roots of a point at once: one product per polynomial and one linear combination per root, instead of Horner per root, sharing the powers of the root between chunks [#583](https://github.com/midnightntwrk/midnight-zk/pull/583)
 * The in-circuit fflonk splits groups into `fflonk::balanced_chunks`, as off-circuit [#579](https://github.com/midnightntwrk/midnight-zk/pull/579)

@@ -56,7 +56,7 @@ impl<T: Ivc> IvcVerifier<T> {
             return Err(IvcError::DeciderFailed);
         }
 
-        let fixed_bases = midnight_circuits::verifier::fixed_bases::<S>(self.vk.vk());
+        let fixed_bases = midnight_circuits::verifier::fixed_bases::<S, DefaultPCS>(self.vk.vk());
 
         let pi = IvcCircuit::<T>::format_instance(&IvcExtendedInstance::new(
             self.vk.vk(),

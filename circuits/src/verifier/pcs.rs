@@ -35,10 +35,10 @@ use crate::{
 
 /// An in-circuit verifier query: a commitment evaluated at a point.
 ///
-/// `PCS` is the scheme checking the query (`S::PCS` by default), so that a PCS
-/// can query an inner one, as fflonk does with KZG.
+/// `PCS` is the scheme checking the query, so that a PCS can query an inner
+/// one, as fflonk does with KZG.
 #[derive(Clone, Debug)]
-pub struct VerifierQuery<'a, S: SelfEmulation, PCS: InCircuitPCS<S> = <S as SelfEmulation>::PCS> {
+pub struct VerifierQuery<'a, S: SelfEmulation, PCS: InCircuitPCS<S>> {
     pub(crate) point: AssignedNative<S::F>,
     pub(crate) commitment: &'a PCS::AssignedCommitment,
     pub(crate) label: PolynomialLabel,
@@ -200,5 +200,5 @@ pub trait InCircuitPCS<S: SelfEmulation>:
     ) -> Result<AssignedAccumulator<S>, Error>;
 }
 
-/// The in-circuit commitment type of the PCS declared by `S`.
-pub type AssignedCommitment<S> = <<S as SelfEmulation>::PCS as InCircuitPCS<S>>::AssignedCommitment;
+/// The in-circuit commitment type of `PCS`.
+pub type AssignedCommitment<S, PCS> = <PCS as InCircuitPCS<S>>::AssignedCommitment;

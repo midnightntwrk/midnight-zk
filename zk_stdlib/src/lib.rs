@@ -289,7 +289,7 @@ pub struct ZkStdLib {
     parser_gadget: ParserGadget<F, NG>,
     scanner_chip: Option<ScannerChip<F>>,
     vector_gadget: VectorGadget<F>,
-    verifier_gadget: Option<VerifierGadget<BlstrsEmulation>>,
+    verifier_gadget: Option<VerifierGadget<BlstrsEmulation, DefaultPCS>>,
 
     // Third-party chips.
     keccak_sha3_chip: Option<KeccakSha3Wrapper<F>>,
@@ -373,7 +373,7 @@ impl ZkStdLib {
 
         let verifier_gadget = bls12_381_chip.as_ref().zip(poseidon_gadget.as_ref()).map(
             |(curve_chip, sponge_chip)| {
-                VerifierGadget::<BlstrsEmulation>::new(curve_chip, &native_gadget, sponge_chip)
+                VerifierGadget::new(curve_chip, &native_gadget, sponge_chip)
             },
         );
 
@@ -797,7 +797,7 @@ impl ZkStdLib {
 
     /// Chip for performing in-circuit verification of proofs
     /// (generated with Poseidon as the Fiat-Shamir transcript hash).
-    pub fn verifier(&self) -> &VerifierGadget<BlstrsEmulation> {
+    pub fn verifier(&self) -> &VerifierGadget<BlstrsEmulation, DefaultPCS> {
         *self.used_bls12_381.borrow_mut() = true;
         self.verifier_gadget
             .as_ref()

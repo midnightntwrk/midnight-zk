@@ -167,7 +167,7 @@ impl IvcState for ProofAggregation {
         // Recompute the hash chain from the collected claims.
         let claims_hash = state.claims.iter().fold(F::ZERO, |h_acc, claim| {
             let statement = claim.statement.format_instance();
-            extend_claims_hash(vk_hash::<S>(claim.vk.vk()), statement, h_acc)
+            extend_claims_hash(vk_hash::<S, DefaultPCS>(claim.vk.vk()), statement, h_acc)
         });
 
         if claims_hash != state.claims_hash {
@@ -285,7 +285,7 @@ impl IvcTransition for ProofAggregation {
 
         // 4. Update hash chain.
         let claims_hash = extend_claims_hash(
-            vk_hash::<S>(witness.claim.vk.vk()),
+            vk_hash::<S, DefaultPCS>(witness.claim.vk.vk()),
             statement,
             state.claims_hash,
         );
@@ -310,7 +310,7 @@ impl IvcTransition for ProofAggregation {
 
         // 1. Witness the VK and the statement, bind the VK to its witnessed hash, and
         //    add both to the hash chain (checked by the decider).
-        let unbound_vk: UnboundVk<S> = verifier.assign_unbound_vk(
+        let unbound_vk: UnboundVk<S, DefaultPCS> = verifier.assign_unbound_vk(
             layouter,
             witness.as_ref().map(|w| w.claim.vk.vk()),
             &self.inner_ctx.cs,
@@ -321,7 +321,7 @@ impl IvcTransition for ProofAggregation {
         )?;
         let assigned_vk_hash: AssignedNative<F> = self.std_lib.assign(
             layouter,
-            witness.as_ref().map(|w| vk_hash::<S>(w.claim.vk.vk())),
+            witness.as_ref().map(|w| vk_hash::<S, DefaultPCS>(w.claim.vk.vk())),
         )?;
         let assigned_vk = verifier.bind_vk_to_hash(layouter, unbound_vk, &assigned_vk_hash)?;
         let claims_hash = self.std_lib.poseidon(

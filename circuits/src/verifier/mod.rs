@@ -56,7 +56,7 @@ pub use verifier_gadget::{UnboundVk, VerifierGadget, vk_hash};
 pub type DefaultPCS = KZGCommitmentScheme<midnight_curves::Bls12>;
 
 /// The off-circuit verifying key of the proofs that `S` verifies in-circuit.
-type VerifyingKey<S> = plonk::VerifyingKey<<S as SelfEmulation>::F, <S as SelfEmulation>::PCS>;
+type VerifyingKey<S, PCS> = plonk::VerifyingKey<<S as SelfEmulation>::F, PCS>;
 
 /// Type for in-circuit Evaluation Domain.
 ///
@@ -99,18 +99,18 @@ struct AssignedEvaluationDomain<S: SelfEmulation> {
 /// [VerifierGadget::bind_vk_to_hash] this is enforced by the hash constraint;
 /// for the other entry points it is the caller's responsibility.
 #[derive(Clone, Debug)]
-pub struct AssignedVk<S: SelfEmulation> {
+pub struct AssignedVk<S: SelfEmulation, PCS: InCircuitPCS<S>> {
     domain: AssignedEvaluationDomain<S>,
-    phase0_commitment: AssignedCommitment<S>,
+    phase0_commitment: AssignedCommitment<S, PCS>,
     cs: ConstraintSystem<S::F>,
     cs_degree: usize,
     transcript_repr: AssignedNative<S::F>,
 }
 
-impl<S: SelfEmulation> InnerValue for AssignedVk<S> {
-    type Element = VerifyingKey<S>;
+impl<S: SelfEmulation, PCS: InCircuitPCS<S>> InnerValue for AssignedVk<S, PCS> {
+    type Element = VerifyingKey<S, PCS>;
 
-    fn value(&self) -> Value<VerifyingKey<S>> {
+    fn value(&self) -> Value<VerifyingKey<S, PCS>> {
         unimplemented!(
             "It is not possible to get a full verifying key out of an
              AssignedVk, as the latter does not include fixed commitments."
@@ -118,8 +118,8 @@ impl<S: SelfEmulation> InnerValue for AssignedVk<S> {
     }
 }
 
-impl<S: SelfEmulation> Instantiable<S::F> for AssignedVk<S> {
-    fn as_public_input(vk: &VerifyingKey<S>) -> Vec<S::F> {
+impl<S: SelfEmulation, PCS: InCircuitPCS<S>> Instantiable<S::F> for AssignedVk<S, PCS> {
+    fn as_public_input(vk: &VerifyingKey<S, PCS>) -> Vec<S::F> {
         let domain = vk.get_domain();
         [
             AssignedNative::<S::F>::as_public_input(&vk.transcript_repr()),
@@ -132,12 +132,12 @@ impl<S: SelfEmulation> Instantiable<S::F> for AssignedVk<S> {
     /// Always returns `None`: [Self::as_public_input] encodes the verifying key
     /// as its `transcript_repr()`, which is not invertible.
     #[cfg(any(test, feature = "testing"))]
-    fn from_public_input(_fields: &[S::F]) -> Option<VerifyingKey<S>> {
+    fn from_public_input(_fields: &[S::F]) -> Option<VerifyingKey<S, PCS>> {
         None
     }
 }
 
-impl<S: SelfEmulation> AssignedVk<S> {
+impl<S: SelfEmulation, PCS: InCircuitPCS<S>> AssignedVk<S, PCS> {
     /// The assigned `transcript_repr` of this verifying key.
     pub fn transcript_repr(&self) -> &AssignedNative<S::F> {
         &self.transcript_repr
@@ -164,7 +164,9 @@ impl<S: SelfEmulation> AssignedVk<S> {
 ///   proof.
 ///
 /// Pass this map to [`Accumulator::check`] or [`Msm::eval`].
-pub fn fixed_bases<S: SelfEmulation>(vk: &VerifyingKey<S>) -> BTreeMap<PolynomialLabel, S::C> {
+pub fn fixed_bases<S: SelfEmulation, PCS: InCircuitPCS<S>>(
+    vk: &VerifyingKey<S, PCS>,
+) -> BTreeMap<PolynomialLabel, S::C> {
     let mut fixed_bases: BTreeMap<_, _> = vk.phase0_commitment().bases().into_iter().collect();
 
     fixed_bases.insert(PolynomialLabel::Custom("-G".into()), -S::C::generator());
@@ -178,8 +180,10 @@ pub fn fixed_bases<S: SelfEmulation>(vk: &VerifyingKey<S>) -> BTreeMap<Polynomia
 /// The labels are sorted, matching the key order of [`fixed_bases`]. Call this
 /// before having an actual verifying key (e.g. during setup) to size an
 /// accumulator correctly.
-pub fn fixed_base_labels<S: SelfEmulation>(cs: &ConstraintSystem<S::F>) -> Vec<PolynomialLabel> {
-    let mut labels = S::PCS::fixed_base_labels(&cs.fixed_polys_labels());
+pub fn fixed_base_labels<S: SelfEmulation, PCS: InCircuitPCS<S>>(
+    cs: &ConstraintSystem<S::F>,
+) -> Vec<PolynomialLabel> {
+    let mut labels = PCS::fixed_base_labels(&cs.fixed_polys_labels());
 
     // This term will be introduced by the KZG multiopen argument as a fixed base.
     // It corresponds to the negated designated generator. It is not proper of the

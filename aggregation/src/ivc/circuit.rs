@@ -146,7 +146,7 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
 
     fn format_instance(instance: &Self::Instance) -> Result<Vec<F>, IvcError> {
         Ok([
-            AssignedVk::<S>::as_public_input(&instance.vk),
+            AssignedVk::<S, DefaultPCS>::as_public_input(&instance.vk),
             T::format_public_input(&instance.state),
             AssignedAccumulator::<S>::as_public_input(&instance.acc),
         ]
@@ -163,11 +163,8 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
         let verifier_gadget = std_lib.verifier();
         let ivc_gadget = T::new(std_lib.clone(), &self.ctx);
 
-        let assigned_self_vk: AssignedVk<S> = verifier_gadget.assign_vk_as_public_input(
-            layouter,
-            instance.as_ref().map(|x| &x.vk),
-            &self.cs,
-        )?;
+        let assigned_self_vk: AssignedVk<S, DefaultPCS> = verifier_gadget
+            .assign_vk_as_public_input(layouter, instance.as_ref().map(|x| &x.vk), &self.cs)?;
 
         let prev_state_val = witness.as_ref().map(|w| w.prev_state.clone());
         let prev_state = ivc_gadget.assign(layouter, prev_state_val)?;
@@ -179,7 +176,8 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
         )?;
         ivc_gadget.constrain_as_public_input(layouter, &next_state)?;
 
-        let fixed_base_labels = midnight_circuits::verifier::fixed_base_labels::<S>(&self.cs);
+        let fixed_base_labels =
+            midnight_circuits::verifier::fixed_base_labels::<S, DefaultPCS>(&self.cs);
 
         let prev_acc_value = witness.as_ref().map(|w| w.prev_acc.clone());
         let prev_acc = verifier_gadget.assign_collapsed_accumulator(

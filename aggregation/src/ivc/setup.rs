@@ -5,7 +5,7 @@ use midnight_proofs::{
     plonk::ConstraintSystem,
     poly::{EvaluationDomain, PolynomialLabel, kzg::params::ParamsKZG},
 };
-use midnight_zk_stdlib::ZkStdLib;
+use midnight_zk_stdlib::{DefaultPCS, ZkStdLib};
 
 use super::{E, Ivc, IvcCircuit, IvcProver, IvcVerifier, S};
 
@@ -38,7 +38,7 @@ pub fn setup<T: Ivc>(
     let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
 
     let fixed_base_labels: Vec<PolynomialLabel> =
-        fixed_bases::<S>(vk.vk()).keys().cloned().collect();
+        fixed_bases::<S, DefaultPCS>(vk.vk()).keys().cloned().collect();
 
     let verifier = IvcVerifier {
         ctx: ctx.clone(),

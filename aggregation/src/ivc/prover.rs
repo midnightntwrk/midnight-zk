@@ -64,7 +64,7 @@ impl<T: Ivc> IvcProver<T> {
 
         let vk = self.pk.pk().get_vk();
 
-        let fixed_bases = midnight_circuits::verifier::fixed_bases::<S>(vk);
+        let fixed_bases = midnight_circuits::verifier::fixed_bases::<S, DefaultPCS>(vk);
 
         // Off-circuit verification of the previous proof.
         let proof_acc = if T::is_genesis(self.relation.ctx(), &self.state) {
@@ -86,7 +86,7 @@ impl<T: Ivc> IvcProver<T> {
         } else {
             // Construct the public inputs of the previous proof.
             let prev_pi = [
-                AssignedVk::<S>::as_public_input(vk),
+                AssignedVk::<S, DefaultPCS>::as_public_input(vk),
                 T::format_public_input(&self.state),
                 AssignedAccumulator::<S>::as_public_input(&self.acc),
             ]
