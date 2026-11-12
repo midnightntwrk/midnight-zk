@@ -12,17 +12,17 @@
 
 use std::fmt::Debug;
 
-use midnight_zk_stdlib::{DefaultPCS, MidnightVK};
+use midnight_zk_stdlib::MidnightVK;
 
 use super::AggregableRelation;
-use crate::ivc::F;
+use crate::ivc::{F, PCS};
 
 /// An inner-circuit verifying key paired with a corresponding statement (public
 /// inputs).
 #[derive(Clone, Debug)]
 pub struct Claim {
     /// Verifying key identifying the inner circuit this claim refers to.
-    pub vk: MidnightVK<DefaultPCS>,
+    pub vk: MidnightVK<PCS>,
     /// The public input of the inner proof, encoded as a single field element.
     pub statement: Box<dyn Statement>,
 }

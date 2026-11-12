@@ -11,9 +11,9 @@ use midnight_proofs::{
     poly::kzg::params::ParamsVerifierKZG,
     transcript::{CircuitTranscript, Transcript},
 };
-use midnight_zk_stdlib::{DefaultPCS, MidnightVK, Relation};
+use midnight_zk_stdlib::{MidnightVK, Relation};
 
-use super::{E, F, Ivc, IvcCircuit, IvcError, IvcInstance, S, circuit::IvcExtendedInstance};
+use super::{E, F, Ivc, IvcCircuit, IvcError, IvcInstance, PCS, S, circuit::IvcExtendedInstance};
 
 /// Lightweight IVC verifier carrying:
 /// - the application context (for the decider check),
@@ -24,13 +24,13 @@ use super::{E, F, Ivc, IvcCircuit, IvcError, IvcInstance, S, circuit::IvcExtende
 #[derive(Clone, Debug)]
 pub struct IvcVerifier<T: Ivc> {
     pub(crate) ctx: T::Context,
-    pub(crate) vk: MidnightVK<DefaultPCS>,
+    pub(crate) vk: MidnightVK<PCS>,
     pub(crate) params_verifier: ParamsVerifierKZG<E>,
 }
 
 impl<T: Ivc> IvcVerifier<T> {
     /// The canonical verifying key of the IVC circuit.
-    pub fn vk(&self) -> &MidnightVK<DefaultPCS> {
+    pub fn vk(&self) -> &MidnightVK<PCS> {
         &self.vk
     }
 
@@ -56,7 +56,7 @@ impl<T: Ivc> IvcVerifier<T> {
             return Err(IvcError::DeciderFailed);
         }
 
-        let fixed_bases = midnight_circuits::verifier::fixed_bases::<S, DefaultPCS>(self.vk.vk());
+        let fixed_bases = midnight_circuits::verifier::fixed_bases::<S, PCS>(self.vk.vk());
 
         let pi = IvcCircuit::<T>::format_instance(&IvcExtendedInstance::new(
             self.vk.vk(),
@@ -65,7 +65,7 @@ impl<T: Ivc> IvcVerifier<T> {
         .map_err(|_| IvcError::InvalidInstance)?;
 
         let mut transcript = CircuitTranscript::<PoseidonState<F>>::init_from_bytes(proof);
-        let dual_msm = plonk::prepare::<F, DefaultPCS, CircuitTranscript<PoseidonState<F>>>(
+        let dual_msm = plonk::prepare::<F, PCS, CircuitTranscript<PoseidonState<F>>>(
             self.vk.vk(),
             &[],
             &[&[], &pi],
