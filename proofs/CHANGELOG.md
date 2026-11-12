@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+* `Fflonk::T_MAX` is public, and `Fflonk::chunk_labels` gives the labels of the chunks of a group [#634](https://github.com/midnightntwrk/midnight-zk/pull/634)
 * `kzg::point_set_order`, the order in which the KZG multi-open takes its point sets [#583](https://github.com/midnightntwrk/midnight-zk/pull/583)
 * `fflonk::balanced_chunks`, the split of a group into the fewest chunks of at most `T_MAX`, of balanced sizes [#579](https://github.com/midnightntwrk/midnight-zk/pull/579)
 * `kzg::COLLAPSE_THRESHOLD`, the number of variable-base terms from which the KZG multi-open collapses a point set's combined commitment [#579](https://github.com/midnightntwrk/midnight-zk/pull/579)

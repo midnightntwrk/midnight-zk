@@ -42,7 +42,6 @@ use crate::{
         SpongeInstructions, ecc::EccInstructions, public_input::CommittedInstanceInstructions,
     },
     types::{AssignedForeignPoint, InnerValue, Instantiable},
-    verifier::{InCircuitKZG, InCircuitPCS},
 };
 
 /// A trait for parametrizing the VerifierGadget.
@@ -91,9 +90,6 @@ pub trait SelfEmulation: Clone + Debug {
             G1Affine = <Self::C as Curve>::AffineRepr,
             G2Affine = Self::G2Affine,
         >;
-
-    /// The in-circuit commitment scheme of the proofs being verified.
-    type PCS: InCircuitPCS<Self>;
 
     /// Variable-base multi-scalar multiplication, the `usize` next to each
     /// scalar is an (inclusive) upper-bound on their bit-length.
@@ -148,8 +144,6 @@ impl SelfEmulation for BlstrsEmulation {
     type G2Affine = midnight_curves::G2Affine;
     type Engine = midnight_curves::Bls12;
 
-    type PCS = InCircuitKZG<Self>;
-
     fn msm(
         layouter: &mut impl Layouter<Self::F>,
         curve_chip: &Self::CurveChip,
@@ -196,8 +190,6 @@ impl SelfEmulation for BnEmulation {
     type G1Affine = midnight_curves::bn256::G1Affine;
     type G2Affine = midnight_curves::bn256::G2Affine;
     type Engine = midnight_curves::bn256::Bn256;
-
-    type PCS = InCircuitKZG<Self>;
 
     fn msm(
         layouter: &mut impl Layouter<Self::F>,

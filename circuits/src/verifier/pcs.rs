@@ -35,10 +35,10 @@ use crate::{
 
 /// An in-circuit verifier query: a commitment evaluated at a point.
 ///
-/// `PCS` is the scheme checking the query (`S::PCS` by default), so that a PCS
-/// can query an inner one, as fflonk does with KZG.
+/// `PCS` is the scheme checking the query, so that a PCS can query an inner
+/// one, as fflonk does with KZG.
 #[derive(Clone, Debug)]
-pub struct VerifierQuery<'a, S: SelfEmulation, PCS: InCircuitPCS<S> = <S as SelfEmulation>::PCS> {
+pub struct VerifierQuery<'a, S: SelfEmulation, PCS: InCircuitPCS<S>> {
     pub(crate) point: AssignedNative<S::F>,
     pub(crate) commitment: &'a PCS::AssignedCommitment,
     pub(crate) label: PolynomialLabel,
@@ -97,21 +97,20 @@ pub trait CommitmentBases<C> {
     fn bases(&self) -> Vec<(PolynomialLabel, C)>;
 }
 
-/// In-circuit abstraction over a Polynomial Commitment Scheme.
+/// In-circuit verification of the proofs of an off-circuit Polynomial
+/// Commitment Scheme, implemented by the off-circuit scheme itself.
 ///
 /// Analog of [`midnight_proofs::poly::commitment::PolynomialCommitmentScheme`]
 /// for the in-circuit verifier.
-pub trait InCircuitPCS<S: SelfEmulation>: Sized + Clone + Debug {
-    /// The off-circuit scheme whose proofs this gadget verifies. Fixes the
-    /// verifying-key type the gadget accepts.
-    type OffCircuitPCS: PolynomialCommitmentScheme<S::F, Commitment: CommitmentBases<S::C>>;
-
+pub trait InCircuitPCS<S: SelfEmulation>:
+    PolynomialCommitmentScheme<S::F, Commitment: CommitmentBases<S::C>> + Sized + Clone + Debug
+{
     /// The in-circuit type representing a committed polynomial, whose
-    /// off-circuit value is a commitment of [`Self::OffCircuitPCS`].
+    /// off-circuit value is a commitment of this scheme.
     type AssignedCommitment: Clone
         + Debug
         + Instantiable<S::F>
-        + InnerValue<Element = <Self::OffCircuitPCS as PolynomialCommitmentScheme<S::F>>::Commitment>;
+        + InnerValue<Element = <Self as PolynomialCommitmentScheme<S::F>>::Commitment>;
 
     /// Creates the fixed (VK-embedded) commitment to the group of `labels`.
     ///
@@ -201,5 +200,5 @@ pub trait InCircuitPCS<S: SelfEmulation>: Sized + Clone + Debug {
     ) -> Result<AssignedAccumulator<S>, Error>;
 }
 
-/// The in-circuit commitment type of the PCS declared by `S`.
-pub type AssignedCommitment<S> = <<S as SelfEmulation>::PCS as InCircuitPCS<S>>::AssignedCommitment;
+/// The in-circuit commitment type of `PCS`.
+pub type AssignedCommitment<S, PCS> = <PCS as InCircuitPCS<S>>::AssignedCommitment;

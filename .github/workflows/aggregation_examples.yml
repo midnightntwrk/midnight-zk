@@ -45,7 +45,7 @@ jobs:
         run: mkdir -p ./examples/assets
       - name: Download SRS
         run: |
-          curl -L -o ./examples/assets/midnight-srs-2p18 https://srs.midnight.network/midnight-srs-2p18
+          curl -L -o ./examples/assets/midnight-srs-2p19 https://srs.midnight.network/midnight-srs-2p19
           curl -L -o ./examples/assets/midnight-srs-2p20 https://srs.midnight.network/midnight-srs-2p20
 
       - name: Run IVC example

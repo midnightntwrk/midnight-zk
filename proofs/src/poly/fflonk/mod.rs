@@ -72,7 +72,15 @@ pub struct Fflonk<PCS, const LOG2_T_MAX: u32>(PhantomData<PCS>);
 
 impl<PCS, const LOG2_T_MAX: u32> Fflonk<PCS, LOG2_T_MAX> {
     /// The maximum number of polynomials combined into one.
-    const T_MAX: usize = 1 << LOG2_T_MAX;
+    pub const T_MAX: usize = 1 << LOG2_T_MAX;
+
+    /// The labels of the commitments to the group `labels`: one per chunk of
+    /// [`balanced_chunks`], labelled `Collection(chunk)`. Panics if `labels`
+    /// are not distinct.
+    pub fn chunk_labels(labels: &[PolynomialLabel]) -> Vec<PolynomialLabel> {
+        PolynomialLabel::assert_distinct(labels);
+        balanced_chunks(labels, Self::T_MAX).map(|l| Collection(l.to_vec())).collect()
+    }
 }
 
 impl<F, PCS, const LOG2_T_MAX: u32> PolynomialCommitmentScheme<F> for Fflonk<PCS, LOG2_T_MAX>
@@ -110,9 +118,7 @@ where
         polynomials: &[&Polynomial<F, B>],
         labels: &[PolynomialLabel],
     ) -> Self::Commitment {
-        PolynomialLabel::assert_distinct(labels);
-        let g_labels: Vec<_> =
-            balanced_chunks(labels, Self::T_MAX).map(|l| Collection(l.to_vec())).collect();
+        let g_labels = Self::chunk_labels(labels);
         let chunks: Vec<_> = balanced_chunks(polynomials, Self::T_MAX).collect();
         PCS::commit_interleaved(params, &chunks, &g_labels)
     }
@@ -124,9 +130,7 @@ where
     where
         Self::Commitment: Hashable<T::Hash>,
     {
-        PolynomialLabel::assert_distinct(labels);
-        let g_labels: Vec<_> =
-            balanced_chunks(labels, Self::T_MAX).map(|l| Collection(l.to_vec())).collect();
+        let g_labels = Self::chunk_labels(labels);
         PCS::read_commitment(transcript, &g_labels)
     }
 
@@ -145,9 +149,7 @@ where
         format: SerdeFormat,
         labels: &[PolynomialLabel],
     ) -> io::Result<Self::Commitment> {
-        PolynomialLabel::assert_distinct(labels);
-        let g_labels: Vec<_> =
-            balanced_chunks(labels, Self::T_MAX).map(|l| Collection(l.to_vec())).collect();
+        let g_labels = Self::chunk_labels(labels);
         PCS::deserialize_commitment(reader, format, &g_labels)
     }
 

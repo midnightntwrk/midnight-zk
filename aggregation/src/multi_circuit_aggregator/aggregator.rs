@@ -13,14 +13,14 @@
 //! the claims can be inspected via the instance's state.
 
 use midnight_proofs::poly::kzg::params::ParamsKZG;
-use midnight_zk_stdlib::{DefaultPCS, MidnightVK, ZkStdLibArch};
+use midnight_zk_stdlib::{MidnightVK, ZkStdLibArch};
 
 use super::{
     AggregableRelation,
     circuit::{InnerCircuitsContext, ProofAggregation},
     claims::{Claim, TypedStatement},
 };
-use crate::ivc::{self, E, IvcError, IvcInstance};
+use crate::ivc::{self, E, IvcError, IvcInstance, PCS};
 
 impl ProofAggregation {
     /// Sets up the proof aggregator, returning an [`Aggregator`] (at genesis)
@@ -50,7 +50,7 @@ impl AggregationWitness {
     /// the inner proof bytes. The instance is wrapped into a type-erased
     /// [`Statement`](super::Statement) via [`TypedStatement`].
     pub fn new<R: AggregableRelation + Default + std::fmt::Debug + 'static>(
-        vk: MidnightVK<DefaultPCS>,
+        vk: MidnightVK<PCS>,
         instance: R::Instance,
         inner_proof: Vec<u8>,
     ) -> Self

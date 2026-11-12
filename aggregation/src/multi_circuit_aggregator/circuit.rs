@@ -30,11 +30,11 @@ use midnight_proofs::{
     transcript::{CircuitTranscript, Transcript},
     utils::SerdeFormat,
 };
-use midnight_zk_stdlib::{DefaultPCS, ZkStdLib, ZkStdLibArch};
+use midnight_zk_stdlib::{ZkStdLib, ZkStdLibArch};
 
 use super::aggregator::AggregationWitness;
 use crate::{
-    ivc::{C, E, F, IvcContext, IvcIO, IvcState, IvcTransition, S},
+    ivc::{C, E, F, IvcContext, IvcIO, IvcState, IvcTransition, PCS, S},
     multi_circuit_aggregator::Claim,
 };
 
@@ -167,7 +167,7 @@ impl IvcState for ProofAggregation {
         // Recompute the hash chain from the collected claims.
         let claims_hash = state.claims.iter().fold(F::ZERO, |h_acc, claim| {
             let statement = claim.statement.format_instance();
-            extend_claims_hash(vk_hash::<S>(claim.vk.vk()), statement, h_acc)
+            extend_claims_hash(vk_hash::<S, PCS>(claim.vk.vk()), statement, h_acc)
         });
 
         if claims_hash != state.claims_hash {
@@ -187,7 +187,7 @@ impl IvcIO for ProofAggregation {
     ) -> Result<AssignedState, Error> {
         let claims_hash = self.std_lib.assign(layouter, value.as_ref().map(|s| s.claims_hash))?;
 
-        let inner_acc = self.std_lib.verifier().assign_collapsed_accumulator(
+        let inner_acc = self.std_lib.verifier::<PCS>().assign_collapsed_accumulator(
             layouter,
             &[],
             value.as_ref().map(|s| s.inner_acc.clone()),
@@ -205,7 +205,9 @@ impl IvcIO for ProofAggregation {
         state: &AssignedState,
     ) -> Result<(), Error> {
         self.std_lib.constrain_as_public_input(layouter, &state.claims_hash)?;
-        self.std_lib.verifier().constrain_as_public_input(layouter, &state.inner_acc)
+        self.std_lib
+            .verifier::<PCS>()
+            .constrain_as_public_input(layouter, &state.inner_acc)
     }
 
     fn as_public_input(
@@ -215,7 +217,7 @@ impl IvcIO for ProofAggregation {
     ) -> Result<Vec<AssignedNative<F>>, Error> {
         Ok([
             self.std_lib.as_public_input(layouter, &state.claims_hash)?,
-            self.std_lib.verifier().as_public_input(layouter, &state.inner_acc)?,
+            self.std_lib.verifier::<PCS>().as_public_input(layouter, &state.inner_acc)?,
         ]
         .concat())
     }
@@ -252,7 +254,7 @@ impl IvcTransition for ProofAggregation {
         let inner_proof_acc = {
             let mut transcript =
                 CircuitTranscript::<PoseidonState<F>>::init_from_bytes(&witness.inner_proof);
-            let dual_msm = plonk::prepare::<F, DefaultPCS, CircuitTranscript<PoseidonState<F>>>(
+            let dual_msm = plonk::prepare::<F, PCS, CircuitTranscript<PoseidonState<F>>>(
                 witness.claim.vk.vk(),
                 &[],
                 &[&[], &[statement]],
@@ -285,7 +287,7 @@ impl IvcTransition for ProofAggregation {
 
         // 4. Update hash chain.
         let claims_hash = extend_claims_hash(
-            vk_hash::<S>(witness.claim.vk.vk()),
+            vk_hash::<S, PCS>(witness.claim.vk.vk()),
             statement,
             state.claims_hash,
         );
@@ -306,11 +308,11 @@ impl IvcTransition for ProofAggregation {
         state: &Self::AssignedState,
         witness: Value<Self::Witness>,
     ) -> Result<Self::AssignedState, Error> {
-        let verifier = self.std_lib.verifier();
+        let verifier = self.std_lib.verifier::<PCS>();
 
         // 1. Witness the VK and the statement, bind the VK to its witnessed hash, and
         //    add both to the hash chain (checked by the decider).
-        let unbound_vk: UnboundVk<S> = verifier.assign_unbound_vk(
+        let unbound_vk: UnboundVk<S, PCS> = verifier.assign_unbound_vk(
             layouter,
             witness.as_ref().map(|w| w.claim.vk.vk()),
             &self.inner_ctx.cs,
@@ -321,7 +323,7 @@ impl IvcTransition for ProofAggregation {
         )?;
         let assigned_vk_hash: AssignedNative<F> = self.std_lib.assign(
             layouter,
-            witness.as_ref().map(|w| vk_hash::<S>(w.claim.vk.vk())),
+            witness.as_ref().map(|w| vk_hash::<S, PCS>(w.claim.vk.vk())),
         )?;
         let assigned_vk = verifier.bind_vk_to_hash(layouter, unbound_vk, &assigned_vk_hash)?;
         let claims_hash = self.std_lib.poseidon(
@@ -335,7 +337,7 @@ impl IvcTransition for ProofAggregation {
 
         // 2. Verify the inner proof in-circuit against the witnessed VK and statement.
         let inner_proof_acc = {
-            let mut acc = self.std_lib.verifier().prepare(
+            let mut acc = self.std_lib.verifier::<PCS>().prepare(
                 layouter,
                 &assigned_vk,
                 &[],

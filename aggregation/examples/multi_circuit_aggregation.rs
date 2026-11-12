@@ -31,20 +31,22 @@ use std::time::Instant;
 
 use aggregatable_poseidon_preimage::PoseidonPreimageCircuit as PoseidonCircuit;
 use aggregatable_sha_preimage::AggregatableShaPreimageCircuit as ShaCircuit;
-use midnight_aggregation::multi_circuit_aggregator::{
-    AggregationWitness, InnerCircuitsContext, ProofAggregation,
+use midnight_aggregation::{
+    ivc::PCS,
+    multi_circuit_aggregator::{AggregationWitness, InnerCircuitsContext, ProofAggregation},
 };
 use midnight_circuits::{
     hash::poseidon::PoseidonState,
     verifier::{BlstrsEmulation, SelfEmulation},
 };
 use midnight_zk_stdlib::{
-    DefaultPCS, ZkStdLibArch, prove, setup_pk, setup_vk,
+    ZkStdLibArch, prove, setup_pk, setup_vk,
     utils::plonk_api::{SrsSource, load_srs},
 };
 use rand::rngs::OsRng;
 
-type F = <BlstrsEmulation as SelfEmulation>::F;
+type S = BlstrsEmulation;
+type F = <S as SelfEmulation>::F;
 
 /// Union of all architectures needed by the inner circuits.
 fn inner_arch() -> ZkStdLibArch {
@@ -68,8 +70,8 @@ fn main() {
     // introduced, proved and folded in on-the-fly, after IVC initialization.
     // Each circuit is proved against an SRS of its own size whose source (i.e.
     // toxic waste) is the same.
-    let sha_srs = load_srs::<DefaultPCS>(SrsSource::Filecoin, SHA_CIRCUIT_K);
-    let poseidon_srs = load_srs::<DefaultPCS>(SrsSource::Filecoin, POSEIDON_CIRCUIT_K);
+    let sha_srs = load_srs::<PCS>(SrsSource::Filecoin, SHA_CIRCUIT_K);
+    let poseidon_srs = load_srs::<PCS>(SrsSource::Filecoin, POSEIDON_CIRCUIT_K);
 
     // Note: verifier params from the SRS do not depend on `k`.
     let inner_verifier_params = poseidon_srs.verifier_params();
@@ -79,7 +81,7 @@ fn main() {
     let max_bit_len = 8;
     let inner_ctx = InnerCircuitsContext::new(inner_arch(), max_bit_len, inner_verifier_params);
 
-    let aggregator_srs = load_srs::<DefaultPCS>(SrsSource::Midnight, IVC_K);
+    let aggregator_srs = load_srs::<PCS>(SrsSource::Midnight, IVC_K);
     let start = Instant::now();
     let (mut aggregator, verifier) = ProofAggregation::setup(aggregator_srs, IVC_K, inner_ctx);
     println!("Aggregator setup completed in {:.2?}\n", start.elapsed());
