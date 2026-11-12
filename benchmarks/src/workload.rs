@@ -15,6 +15,7 @@
 
 use std::fmt;
 
+use ff::PrimeField;
 use midnight_curves::Bls12;
 use midnight_proofs::{poly::kzg::params::ParamsKZG, utils::SerdeFormat};
 use midnight_zk_stdlib::{FflonkKZG, KZG, MidnightPCS, MidnightPK, MidnightVK, Relation};
@@ -103,10 +104,14 @@ pub fn scheme_name<PCS: MidnightPCS>() -> String {
 }
 
 /// The hexadecimal SHA-256 digest of a verifying key.
+///
+/// The digest covers the serialized key and its transcript representation.
+/// The latter commits to the constraint system, which the former omits.
 pub fn vk_hash<PCS: MidnightPCS>(vk: &MidnightVK<PCS>) -> String {
     let mut bytes = Vec::new();
     vk.write(&mut bytes, SerdeFormat::RawBytes)
         .expect("writing to a Vec cannot fail");
+    bytes.extend_from_slice(vk.vk().transcript_repr().to_repr().as_ref());
     sha2::Sha256::digest(&bytes).iter().map(|b| format!("{b:02x}")).collect()
 }
 
@@ -167,10 +172,17 @@ where
     fn setup(&self, pcs: Pcs) -> Box<dyn Prepared> {
         let case = (self.build)();
         match pcs {
-            Pcs::Kzg => Box::new(PreparedRelation::<R, KZG>::new(case)),
-            Pcs::Fflonk => Box::new(PreparedRelation::<R, Fflonk>::new(case)),
+            Pcs::Kzg => primed(PreparedRelation::<R, KZG>::new(case)),
+            Pcs::Fflonk => primed(PreparedRelation::<R, Fflonk>::new(case)),
         }
     }
+}
+
+/// Proves once, untimed. The first proof fills the caches of the parameters,
+/// such as the fflonk residue bases, which would otherwise be timed.
+fn primed(mut prepared: impl Prepared + 'static) -> Box<dyn Prepared> {
+    prepared.prove();
+    Box::new(prepared)
 }
 
 struct PreparedRelation<R: Relation, PCS: MidnightPCS> {

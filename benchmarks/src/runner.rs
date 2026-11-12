@@ -313,7 +313,7 @@ fn git_commit() -> Option<String> {
             .then(|| String::from_utf8_lossy(&output.stdout).into_owned())
     };
     let commit = git(&["rev-parse", "--short=12", "HEAD"])?;
-    let dirty = !git(&["status", "--porcelain"])?.trim().is_empty();
+    let dirty = !git(&["status", "--porcelain", "--untracked-files=no"])?.trim().is_empty();
     Some(format!(
         "{}{}",
         commit.trim(),

@@ -214,7 +214,8 @@ fn breakdown_table(breakdown: &Breakdown) -> Table {
 }
 
 /// For each kernel that ran, the ratio of the time summed over its calls to
-/// its wall time, which tells how many threads it kept busy.
+/// its wall time, which tells how many calls ran at once. It says nothing of
+/// the threads a single call uses.
 fn parallelism_hint(breakdown: &Breakdown) -> Option<String> {
     let hints: Vec<String> = kernel_names(breakdown)
         .into_iter()
@@ -226,7 +227,7 @@ fn parallelism_hint(breakdown: &Breakdown) -> Option<String> {
             (wall > 0).then(|| format!("{name} {:.1}x", busy as f64 / wall as f64))
         })
         .collect();
-    (!hints.is_empty()).then(|| format!("Parallelism (busy/wall): {}.", hints.join(", ")))
+    (!hints.is_empty()).then(|| format!("Concurrent calls (busy/wall): {}.", hints.join(", ")))
 }
 
 fn case_title(case: &CaseResult) -> String {
@@ -480,7 +481,7 @@ phase                   msm               fft         poly_eval             othe
 synthesis    0.00 ms (0.0%)    0.00 ms (0.0%)    0.00 ms (0.0%)  50.00 ms (25.0%)    50.00 ms (25.0%)
 quotient   40.00 ms (20.0%)  60.00 ms (30.0%)  30.00 ms (15.0%)  20.00 ms (10.0%)   140.00 ms (70.0%)
 total      40.00 ms (20.0%)  60.00 ms (30.0%)  30.00 ms (15.0%)  80.00 ms (40.0%)  200.00 ms (100.0%)
-Parallelism (busy/wall): msm 1.5x, fft 4.0x, poly_eval 1.0x.
+Concurrent calls (busy/wall): msm 1.5x, fft 4.0x, poly_eval 1.0x.
 ";
         let rendered = render_breakdowns(&fixture(true));
         let expected = format!(
@@ -551,7 +552,8 @@ Parallelism (busy/wall): msm 1.5x, fft 4.0x, poly_eval 1.0x.
             assert!(rendered.contains(row), "missing row: {row}");
         }
         assert!(
-            rendered.contains("\nParallelism (busy/wall): msm 1.5x, fft 4.0x, poly_eval 1.0x.")
+            rendered
+                .contains("\nConcurrent calls (busy/wall): msm 1.5x, fft 4.0x, poly_eval 1.0x.")
         );
     }
 

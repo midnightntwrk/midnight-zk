@@ -143,6 +143,14 @@ How to read it:
 - Spans of different kernels can overlap when they run concurrently, in which
   case the kernel columns of a row add up to more than the phase total minus
   `other`. The four columns therefore do not always add up to 100%.
+- `poly_eval` includes the polynomial divisions of the multi-open argument,
+  which make up most of its `multi_open` cell.
+- Within a thread, time is charged to the innermost open span. Work that is
+  not in a span but runs under one is charged to that span, which includes a
+  task that a rayon thread steals while its span waits on the pool.
+- The `Concurrent calls` line under a table is the time summed over the calls
+  of a kernel divided by its wall time. It tells how many calls ran at once,
+  not how many threads a call used.
 
 What lands in `other` is the prover work that is not one of the three kernels:
 witness synthesis (the whole `synthesis` row), batch inversions, the
@@ -150,8 +158,9 @@ permutation products, the division by the vanishing polynomial, the linear
 combinations of polynomials in the multi-open argument, and transcript
 hashing.
 
-The recording costs less than 1% of the proving time, which is within the
-noise of the measurement. The runner still warns that a profiling build does
+On `zswap_output` and `ecdsa` under KZG, 21 interleaved samples per side
+showed no difference between a profiling and a plain build beyond the noise
+(under 0.6%). The runner still warns that a profiling build does
 not produce reference numbers, and `compare` warns when one of its inputs
 comes from such a build. Without the feature, every function of the profiling
 module is empty and the prover is unchanged.
@@ -190,7 +199,7 @@ otherwise:
 The comparison is only meaningful if both sides prove the same circuit.
 `compare` checks the digest of the verifying key of each case and prints
 `VK HASH MISMATCH` when the two builds disagree, which happens when the change
-under test alters the circuit or the keys. It also warns about a different
+under test alters the constraint system or the keys. It also warns about a different
 `k`, a different proof size, a profiling build, or a different machine. When
 both files carry a breakdown, it shows the change of each kernel, without
 testing it for significance, since a breakdown describes a single proof.
@@ -205,7 +214,7 @@ benchmarks/scripts/ab.sh ../midnight-zk-base . --rounds 3 -- --filter zswap --th
 ```
 
 It builds the crate in both checkouts, runs them for `--rounds` rounds
-(default 3), alternating which side goes first, merges the samples of each
+(default 4), alternating which side goes first, merges the samples of each
 side with `jq`, and runs `compare` on the result. Arguments after `--` go to
 `run` on both sides. The result files are kept in `./ab-results/<timestamp>`
 or in the `--out` directory. Both checkouts must contain this crate, and both
@@ -316,6 +325,12 @@ overlap, so a row is not guaranteed to add up to 100%.
 - **The reference numbers are indicative.** They were taken with the `release`
   profile on one machine, described above the tables. Compare commits on your
   own machine, with `scripts/ab.sh`.
-- The breakdown of a case describes its last proof only, and the proofs of
-  `ivc_step` differ across runs because the library draws its blinding
-  factors from the operating system.
+- The breakdown of a case describes its last proof only.
+- **The witnesses of `ivc_step` and `aggregation` differ across runs.** The
+  prover draws some blinding factors from the operating system, so the proofs
+  these two workloads verify in-circuit are not reproducible. Their circuits
+  and verifying keys are.
+- **Use enough samples before trusting a verdict.** With 5 samples per side,
+  two runs of the same build are reported as different in about 3% of the
+  cases, and a full run has 26 cases. `scripts/ab.sh` gathers 20 per side by
+  default.

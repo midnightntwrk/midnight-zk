@@ -29,7 +29,7 @@ for N rounds, merges the samples of each side and compares them.
 Arguments:
   <base-dir>     checkout of the reference commit
   <head-dir>     checkout of the commit under test
-  --rounds N     number of rounds, each measuring both sides (default 3)
+  --rounds N     number of rounds, each measuring both sides (default 4)
   --out DIR      where the result files go (default ./ab-results/<timestamp>)
   --dry-run      print the commands without running them
   -- ARGS...     passed to `midnight-benchmarks run` on both sides
@@ -56,7 +56,7 @@ warn() {
     echo "ab.sh: warning: $*" >&2
 }
 
-rounds=3
+rounds=4
 out=""
 dry_run=0
 positional=()
@@ -101,8 +101,10 @@ if [ "${#positional[@]}" -ne 2 ]; then
     die "expected <base-dir> and <head-dir>"
 fi
 case "$rounds" in
-    '' | *[!0-9]* | 0) die "--rounds must be a positive integer, got '$rounds'" ;;
+    '' | *[!0-9]*) die "--rounds must be a positive integer, got '$rounds'" ;;
 esac
+rounds=$((10#$rounds))
+[ "$rounds" -ge 1 ] || die "--rounds must be a positive integer, got '$rounds'"
 
 # Resolves symbolic links, so that two spellings of one checkout are caught.
 resolve_dir() {

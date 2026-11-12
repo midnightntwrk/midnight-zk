@@ -8,7 +8,7 @@
 //! Recording only happens with the `profiling` feature. Without it every
 //! function here is an empty inline function and the report is empty.
 
-use std::time::Duration;
+use std::{marker::PhantomData, time::Duration};
 
 /// A class of prover computation whose time is accounted separately.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -137,26 +137,28 @@ pub const ENABLED: bool = cfg!(feature = "profiling");
 #[derive(Debug)]
 pub struct Guard {
     #[cfg(feature = "profiling")]
-    open: Option<recorder::Open>,
-    #[cfg(not(feature = "profiling"))]
-    _private: (),
+    open: bool,
+    // Spans are tracked per thread, so a guard must be dropped where it was
+    // created.
+    _not_send: PhantomData<*const ()>,
 }
 
 #[cfg(feature = "profiling")]
 impl Drop for Guard {
     #[inline]
     fn drop(&mut self) {
-        if let Some(open) = self.open.take() {
-            recorder::close(open);
+        if self.open {
+            recorder::close();
         }
     }
 }
 
 /// Opens a span of `kernel` over an input of `size` elements.
 ///
-/// A span opened on a thread that already has an open span counts as a call
-/// but adds no time, so that the time of a kernel calling another one, or of
-/// a blocked thread stealing a task, is counted once.
+/// Spans nest per thread: while a span of another kernel is open inside it,
+/// a span is suspended, so every instant of a thread is charged to at most
+/// one kernel. Work that is not in a span is charged to the span around it,
+/// including a task that the thread steals while the span waits on rayon.
 #[inline(always)]
 pub fn span(kernel: Kernel, size: usize) -> Guard {
     let _ = size;
@@ -164,12 +166,15 @@ pub fn span(kernel: Kernel, size: usize) -> Guard {
     {
         Guard {
             open: recorder::open(kernel),
+            _not_send: PhantomData,
         }
     }
     #[cfg(not(feature = "profiling"))]
     {
         let _ = kernel;
-        Guard { _private: () }
+        Guard {
+            _not_send: PhantomData,
+        }
     }
 }
 
@@ -209,7 +214,7 @@ pub fn take_report() -> Report {
 #[cfg(feature = "profiling")]
 mod recorder {
     use std::{
-        cell::Cell,
+        cell::RefCell,
         sync::{
             Arc, Mutex, MutexGuard, PoisonError,
             atomic::{AtomicBool, Ordering},
@@ -219,19 +224,25 @@ mod recorder {
 
     use super::{Kernel, KernelStats, Phase, PhaseReport, Report};
 
-    /// A span that has been opened but not closed yet.
-    #[derive(Debug)]
-    pub(super) struct Open {
+    /// A span that is open on a thread.
+    struct Frame {
         kernel: Kernel,
-        start: Instant,
+        /// When the span was opened, or resumed after an inner span of
+        /// another kernel.
+        since: Instant,
+        /// The number of spans of the same kernel open inside this one.
+        same_kernel: u32,
     }
 
-    /// A closed span.
+    /// An interval during which a thread was in a span.
     #[derive(Clone, Copy, Debug)]
     pub(super) struct Span {
         pub(super) kernel: Kernel,
         pub(super) start: Instant,
         pub(super) end: Instant,
+        /// Whether this is the first interval of its span. A span has several
+        /// intervals when inner spans suspend it, and counts as one call.
+        pub(super) call: bool,
     }
 
     type Buffer = Arc<Mutex<Vec<Span>>>;
@@ -257,10 +268,10 @@ mod recorder {
     static RECORDING: AtomicBool = AtomicBool::new(false);
 
     struct Local {
-        /// Whether this thread has an open span.
-        open: Cell<bool>,
-        /// The closed spans of this thread. Only `reset` and `take_report`
-        /// ever contend for the lock.
+        /// The spans open on this thread, outermost first.
+        stack: RefCell<Vec<Frame>>,
+        /// The finished intervals of this thread. Only `reset` and
+        /// `take_report` ever contend for the lock.
         spans: Buffer,
     }
 
@@ -268,7 +279,7 @@ mod recorder {
         static LOCAL: Local = {
             let spans = Buffer::default();
             lock(&STATE).buffers.push(spans.clone());
-            Local { open: Cell::new(false), spans }
+            Local { stack: RefCell::default(), spans }
         };
     }
 
@@ -278,41 +289,77 @@ mod recorder {
         mutex.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
+    /// Opens a span on this thread. Returns whether it has to be closed.
     #[inline]
-    pub(super) fn open(kernel: Kernel) -> Option<Open> {
+    pub(super) fn open(kernel: Kernel) -> bool {
         if !RECORDING.load(Ordering::Relaxed) {
-            return None;
+            return false;
         }
+        let now = Instant::now();
         // The thread-local is gone while the thread is being torn down.
-        let start = Instant::now();
-        let outermost = LOCAL
+        LOCAL
             .try_with(|local| {
-                let outermost = !local.open.replace(true);
-                if !outermost {
-                    // An empty span counts the call without adding time.
-                    lock(&local.spans).push(Span {
-                        kernel,
-                        start,
-                        end: start,
-                    });
+                let mut stack = local.stack.borrow_mut();
+                let mut spans = lock(&local.spans);
+                match stack.last_mut() {
+                    Some(outer) if outer.kernel == kernel => {
+                        // The outer span keeps running; only the call counts.
+                        outer.same_kernel += 1;
+                        spans.push(Span {
+                            kernel,
+                            start: now,
+                            end: now,
+                            call: true,
+                        });
+                        return;
+                    }
+                    Some(outer) => spans.push(Span {
+                        kernel: outer.kernel,
+                        start: outer.since,
+                        end: now,
+                        call: false,
+                    }),
+                    None => {}
                 }
-                outermost
+                spans.push(Span {
+                    kernel,
+                    start: now,
+                    end: now,
+                    call: true,
+                });
+                stack.push(Frame {
+                    kernel,
+                    since: now,
+                    same_kernel: 0,
+                });
             })
-            .unwrap_or(false);
-        outermost.then_some(Open { kernel, start })
+            .is_ok()
     }
 
+    /// Closes the innermost span of this thread.
     #[inline]
-    pub(super) fn close(open: Open) {
-        let end = Instant::now();
+    pub(super) fn close() {
+        let now = Instant::now();
         let _ = LOCAL.try_with(|local| {
-            local.open.set(false);
+            let mut stack = local.stack.borrow_mut();
+            let Some(frame) = stack.last_mut() else {
+                return;
+            };
+            if frame.same_kernel > 0 {
+                frame.same_kernel -= 1;
+                return;
+            }
             if RECORDING.load(Ordering::Relaxed) {
                 lock(&local.spans).push(Span {
-                    kernel: open.kernel,
-                    start: open.start,
-                    end,
+                    kernel: frame.kernel,
+                    start: frame.since,
+                    end: now,
+                    call: false,
                 });
+            }
+            stack.pop();
+            if let Some(outer) = stack.last_mut() {
+                outer.since = now;
             }
         });
     }
@@ -374,10 +421,10 @@ mod recorder {
     /// The report of a recording from `start` to `end`, given the phases
     /// entered in between, in order of entry, and the closed spans.
     ///
-    /// A span belongs to the phase during which it started. It is cut at the
-    /// end of that stay in the phase, so that the time covered in a phase
-    /// never exceeds the time of the phase. Spans that started outside the
-    /// recording are ignored.
+    /// An interval belongs to the phase during which it started. It is cut at
+    /// the end of that stay in the phase, so that the time covered in a phase
+    /// never exceeds the time of the phase. Intervals that started outside
+    /// the recording are ignored.
     pub(super) fn build_report(
         start: Instant,
         end: Instant,
@@ -417,7 +464,7 @@ mod recorder {
             let span_end = span.end.min(to);
             let acc = &mut phases[phase as usize];
             let kernel = span.kernel as usize;
-            acc.stats[kernel].calls += 1;
+            acc.stats[kernel].calls += u64::from(span.call);
             acc.stats[kernel].busy += span_end.saturating_duration_since(span.start);
             acc.intervals[kernel].push((span.start, span_end));
         }
@@ -495,6 +542,7 @@ mod tests {
                 kernel,
                 start: self.at(start),
                 end: self.at(end),
+                call: true,
             }
         }
 
@@ -672,29 +720,35 @@ mod tests {
     }
 
     #[test]
-    fn nested_spans_add_no_time() {
+    fn inner_spans_suspend_the_outer_one() {
         let _exclusive = exclusive();
         reset();
         {
             let _outer = span(Kernel::Msm, 8);
-            thread::sleep(ms(2));
+            thread::sleep(ms(20));
             {
                 let _inner = span(Kernel::Fft, 8);
-                let _innermost = span(Kernel::Msm, 8);
-                thread::sleep(ms(2));
+                thread::sleep(ms(30));
+                let _same_kernel = span(Kernel::Fft, 8);
+                thread::sleep(ms(10));
             }
-            drop(span(Kernel::PolyEval, 8));
+            let _same_kernel = span(Kernel::Msm, 8);
+            thread::sleep(ms(10));
         }
         // The thread accepts spans again once the outermost one is closed.
         drop(span(Kernel::PolyEval, 8));
         let report = take_report();
 
         let preamble = phase(&report, Phase::Preamble);
-        assert_eq!(preamble.kernels[MSM].calls, 2);
-        assert!(preamble.kernels[MSM].busy >= ms(4));
-        assert_eq!(preamble.kernels[MSM].busy, preamble.kernels[MSM].wall);
-        assert_eq!(preamble.kernels[FFT], stats(0, 0, 1));
-        assert_eq!(preamble.kernels[POLY_EVAL].calls, 2);
+        let (msm, fft) = (preamble.kernels[MSM], preamble.kernels[FFT]);
+        assert_eq!((msm.calls, fft.calls), (2, 2));
+        assert_eq!(preamble.kernels[POLY_EVAL].calls, 1);
+        // The time of the inner kernel is not charged to the outer one.
+        assert!(msm.wall >= ms(30) && msm.wall < ms(60), "{msm:?}");
+        assert!(fft.wall >= ms(40), "{fft:?}");
+        assert_eq!((msm.busy, fft.busy), (msm.wall, fft.wall));
+        let poly_eval = preamble.kernels[POLY_EVAL].wall;
+        assert_eq!(preamble.covered, msm.wall + fft.wall + poly_eval);
     }
 
     #[test]
