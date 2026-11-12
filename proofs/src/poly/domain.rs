@@ -8,7 +8,10 @@ use group::ff::{BatchInvert, Field};
 use midnight_curves::fft::{best_fft_with_twiddles, compute_twiddles, fft_coeff_to_extended};
 
 use super::{Coeff, ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial, Rotation};
-use crate::utils::{arithmetic::parallelize, rational::Rational};
+use crate::{
+    profiling::{self, Kernel},
+    utils::{arithmetic::parallelize, rational::Rational},
+};
 
 /// An [`EvaluationDomain`] with the precomputed twiddle factors of its FFTs.
 /// Only the prover runs FFTs, so a `ProvingKey` holds one.
@@ -262,6 +265,7 @@ impl<F: PrimeField> FftDomain<F> {
     /// correct length.
     pub fn lagrange_to_coeff(&self, mut a: Polynomial<F, LagrangeCoeff>) -> Polynomial<F, Coeff> {
         assert_eq!(a.values.len(), 1 << self.domain.k);
+        let _span = profiling::span(Kernel::Fft, a.values.len());
 
         // Perform inverse FFT using cached twiddle factors.
         EvaluationDomain::ifft(
@@ -281,6 +285,7 @@ impl<F: PrimeField> FftDomain<F> {
     /// lagrange evaluation domain.
     pub fn coeff_to_lagrange(&self, mut a: Polynomial<F, Coeff>) -> Polynomial<F, LagrangeCoeff> {
         assert_eq!(a.values.len(), 1 << self.domain.k);
+        let _span = profiling::span(Kernel::Fft, a.values.len());
 
         best_fft_with_twiddles(&mut a.values, &self.omega, self.domain.k);
 
@@ -302,6 +307,7 @@ impl<F: PrimeField> FftDomain<F> {
     ) -> Polynomial<F, ExtendedLagrangeCoeff> {
         let n_real = a.values.len();
         assert_eq!(n_real, 1 << self.domain.k);
+        let _span = profiling::span(Kernel::Fft, self.domain.extended_len());
 
         self.domain.distribute_powers_zeta(&mut a.values, true);
         a.values.resize(self.domain.extended_len(), F::ZERO);
@@ -325,6 +331,7 @@ impl<F: PrimeField> FftDomain<F> {
     /// correct length.
     pub fn extended_to_coeff(&self, mut a: Polynomial<F, ExtendedLagrangeCoeff>) -> Vec<F> {
         assert_eq!(a.values.len(), self.domain.extended_len());
+        let _span = profiling::span(Kernel::Fft, a.values.len());
 
         // Inverse FFT using cached twiddle factors.
         EvaluationDomain::ifft(
@@ -351,6 +358,7 @@ impl<F: PrimeField> FftDomain<F> {
         mut a: Polynomial<F, ExtendedLagrangeCoeff>,
     ) -> Polynomial<F, LagrangeCoeff> {
         assert_eq!(a.values.len(), self.domain.extended_len());
+        let _span = profiling::span(Kernel::Fft, a.values.len());
 
         EvaluationDomain::ifft(
             &mut a.values,

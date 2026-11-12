@@ -46,6 +46,7 @@ use crate::{
         },
         query::{PolynomialLabel, VerifierQuery},
     },
+    profiling::{self, Kernel},
     transcript::{Hashable, Transcript, TranscriptField},
     utils::{
         arithmetic::{
@@ -581,6 +582,7 @@ impl<E: KZGEngine> InterleavedCommit<E::Fr> for KZGCommitmentScheme<E> {
 /// [`msm_pippenger`]. Test builds also compute it with the verifier's MSM
 /// ([`msm_specific`](msm::msm_specific)) and check that both agree.
 fn commit_msm<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
+    let _span = profiling::span(Kernel::Msm, coeffs.len());
     let res = msm_pippenger(coeffs, bases);
     #[cfg(test)]
     assert_eq!(
