@@ -175,7 +175,7 @@ mod tests {
         types::ComposableChip,
         verifier::{
             Accumulator, AssignedAccumulator, BlstrsEmulation, InCircuitTranscript,
-            TranscriptGadget,
+            PoseidonTranscriptGadget,
             verifier_gadget::tests::{InnerCircuit, TestCircuit},
         },
     };
@@ -237,7 +237,7 @@ mod tests {
             let inner_pi = native_gadget
                 .assign_many(&mut layouter, &self.inner_instances.transpose_array())?;
 
-            let mut transcript = TranscriptGadget::<S>::new(&native_gadget, &poseidon_chip);
+            let mut transcript = PoseidonTranscriptGadget::<S>::new(&native_gadget, &poseidon_chip);
             transcript.init_with_proof(&mut layouter, self.inner_proof.clone())?;
             let mut acc = verifier_chip.prepare(
                 &mut layouter,

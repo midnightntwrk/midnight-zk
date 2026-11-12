@@ -38,7 +38,7 @@ type SpongeState<S> = <<S as SelfEmulation>::SpongeChip as SpongeInstructions<
 
 /// Gadget used to run the transcript reader in-circuit.
 #[derive(Clone, Debug)]
-pub struct TranscriptGadget<S: SelfEmulation> {
+pub struct PoseidonTranscriptGadget<S: SelfEmulation> {
     scalar_chip: ScalarChip<S::F>,
     sponge_chip: S::SpongeChip,
     sponge_state: Option<SpongeState<S>>,
@@ -49,8 +49,8 @@ pub struct TranscriptGadget<S: SelfEmulation> {
     transcript_reader: Option<CircuitTranscript<S::Hash>>,
 }
 
-impl<S: SelfEmulation> TranscriptGadget<S> {
-    /// Creates a new `TranscriptGadget` from the corresponding chips.
+impl<S: SelfEmulation> PoseidonTranscriptGadget<S> {
+    /// Creates a new `PoseidonTranscriptGadget` from the corresponding chips.
     pub fn new(scalar_chip: &ScalarChip<S::F>, sponge_chip: &S::SpongeChip) -> Self {
         Self {
             scalar_chip: scalar_chip.clone(),
@@ -112,7 +112,7 @@ pub trait InCircuitTranscript<F: CircuitField>: Clone {
         F: Hashable<Self::Hash>;
 }
 
-impl<S: SelfEmulation> InCircuitTranscript<S::F> for TranscriptGadget<S> {
+impl<S: SelfEmulation> InCircuitTranscript<S::F> for PoseidonTranscriptGadget<S> {
     type Hash = S::Hash;
 
     fn init_with_proof(
@@ -180,7 +180,7 @@ use midnight_proofs::plonk::{Advice, Column, ConstraintSystem, Fixed, Instance};
 use crate::testing_utils::FromScratch;
 
 #[cfg(any(test, feature = "testing"))]
-impl<S: SelfEmulation> FromScratch<S::F> for TranscriptGadget<S>
+impl<S: SelfEmulation> FromScratch<S::F> for PoseidonTranscriptGadget<S>
 where
     S::SpongeChip: FromScratch<S::F>,
     ScalarChip<S::F>: FromScratch<S::F>,
@@ -193,7 +193,7 @@ where
     fn new_from_scratch(config: &Self::Config) -> Self {
         let scalar_chip = ScalarChip::<S::F>::new_from_scratch(&config.0);
         let sponge_chip = S::SpongeChip::new_from_scratch(&config.1);
-        TranscriptGadget::new(&scalar_chip, &sponge_chip)
+        PoseidonTranscriptGadget::new(&scalar_chip, &sponge_chip)
     }
 
     fn load_from_scratch(&self, layouter: &mut impl Layouter<S::F>) -> Result<(), Error> {
@@ -254,7 +254,7 @@ mod tests {
     }
 
     type Config = (
-        <TranscriptGadget<S> as FromScratch<F>>::Config,
+        <PoseidonTranscriptGadget<S> as FromScratch<F>>::Config,
         <CurveChip as FromScratch<F>>::Config,
     );
 
@@ -262,7 +262,7 @@ mod tests {
         let instance_columns = [meta.instance_column(), meta.instance_column()];
         let (mut advice_columns, mut fixed_columns) = (vec![], vec![]);
         (
-            TranscriptGadget::<S>::configure_from_scratch(
+            PoseidonTranscriptGadget::<S>::configure_from_scratch(
                 meta,
                 &mut advice_columns,
                 &mut fixed_columns,
@@ -295,7 +295,7 @@ mod tests {
             config: Self::Config,
             mut layouter: impl Layouter<F>,
         ) -> Result<(), Error> {
-            let mut transcript_gadget = TranscriptGadget::<S>::new_from_scratch(&config.0);
+            let mut transcript_gadget = PoseidonTranscriptGadget::<S>::new_from_scratch(&config.0);
             let curve_chip = CurveChip::new_from_scratch(&config.1);
             transcript_gadget.init_with_proof(&mut layouter, Value::unknown())?;
 

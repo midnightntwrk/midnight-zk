@@ -860,7 +860,7 @@ pub(crate) mod tests {
         },
         testing_utils::FromScratch,
         types::{ComposableChip, Instantiable},
-        verifier::{BlstrsEmulation, TranscriptGadget, accumulator::Accumulator},
+        verifier::{BlstrsEmulation, PoseidonTranscriptGadget, accumulator::Accumulator},
     };
 
     type S = BlstrsEmulation;
@@ -1044,7 +1044,7 @@ pub(crate) mod tests {
             let assigned_inner_pi = native_gadget
                 .assign_many(&mut layouter, &self.inner_instances.transpose_array())?;
 
-            let mut transcript = TranscriptGadget::<S>::new(&native_gadget, &poseidon_chip);
+            let mut transcript = PoseidonTranscriptGadget::<S>::new(&native_gadget, &poseidon_chip);
             transcript.init_with_proof(&mut layouter, self.inner_proof.clone())?;
             let mut inner_proof_acc = verifier_chip.prepare(
                 &mut layouter,

@@ -41,7 +41,7 @@ pub use accumulator::{Accumulator, AssignedAccumulator};
 pub use kzg::{AssignedKZGCommitment, AssignedKZGMultiCommitment};
 pub use msm::{AssignedMsm, AssignedPoint, Msm, Point};
 pub use pcs::{AssignedCommitment, CommitmentBases, InCircuitPCS};
-pub use transcript_gadget::{InCircuitTranscript, TranscriptGadget};
+pub use transcript_gadget::{InCircuitTranscript, PoseidonTranscriptGadget};
 #[cfg(feature = "dev-curves")]
 pub use types::BnEmulation;
 pub use types::{BlstrsEmulation, ScalarChip, SelfEmulation};
