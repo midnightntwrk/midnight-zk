@@ -90,10 +90,6 @@ where
     F: WithSmallOrderMulGroup<3> + FromUniformBytes<64>,
     PCS: PolynomialCommitmentScheme<F>,
 {
-    /// Returns `n`
-    pub fn n(&self) -> u64 {
-        self.domain.n
-    }
     /// Writes a verifying key to a buffer.
     ///
     /// Writes a curve element according to `format`:
@@ -233,7 +229,12 @@ impl<F: WithSmallOrderMulGroup<3>, PCS: PolynomialCommitmentScheme<F>> Default
     }
 }
 
-impl<F: WithSmallOrderMulGroup<3>, PCS: PolynomialCommitmentScheme<F>> VerifyingKey<F, PCS> {
+impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> VerifyingKey<F, PCS> {
+    /// Returns `n`
+    pub fn n(&self) -> u64 {
+        self.domain.n
+    }
+
     /// Return the bytes_length of a VerifyingKey
     pub fn bytes_length(&self, format: SerdeFormat) -> usize {
         // The header [`Self::write`] emits: the version byte and `k`.
@@ -369,7 +370,7 @@ pub struct ProvingKey<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> {
 /// Panics if `sigmas` does not hold one polynomial per column of the
 /// permutation argument.
 #[allow(clippy::type_complexity)]
-pub(in crate::plonk) fn build_phase0_polys<F: WithSmallOrderMulGroup<3>>(
+pub(in crate::plonk) fn build_phase0_polys<F: PrimeField>(
     domain: &EvaluationDomain<F>,
     cs: &ConstraintSystem<F>,
     vk_repr: F,
@@ -418,7 +419,7 @@ pub(in crate::plonk) fn build_phase0_polys<F: WithSmallOrderMulGroup<3>>(
 
 impl<F, PCS> ProvingKey<F, PCS>
 where
-    F: WithSmallOrderMulGroup<3> + FromUniformBytes<64>,
+    F: FromUniformBytes<64>,
     PCS: PolynomialCommitmentScheme<F>,
 {
     /// Get the underlying [`VerifyingKey`].
@@ -600,7 +601,7 @@ pub(crate) fn evaluate_identities<'a, F, PCS>(
     y: F,
 ) -> F
 where
-    F: WithSmallOrderMulGroup<3> + FromUniformBytes<64>,
+    F: FromUniformBytes<64>,
     PCS: PolynomialCommitmentScheme<F>,
 {
     // The advice evaluations in the order of `cs.advice_queries`, which is how

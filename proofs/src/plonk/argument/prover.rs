@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use ff::{PrimeField, WithSmallOrderMulGroup};
+use ff::PrimeField;
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
@@ -63,7 +63,7 @@ impl<F: PrimeField, B: PolynomialRepresentation> Committed<F, B> {
     }
 }
 
-impl<F: WithSmallOrderMulGroup<3>, B: PolynomialRepresentation> Committed<F, B> {
+impl<F: PrimeField, B: PolynomialRepresentation> Committed<F, B> {
     pub fn into_coeff(self, domain: &EvaluationDomain<F>) -> Committed<F, Coeff> {
         Committed {
             labels: self.labels,
@@ -159,7 +159,7 @@ impl<F: PrimeField> Committed<F, Coeff> {
         transcript: &mut T,
     ) -> Result<Evaluated<'_, F>, Error>
     where
-        F: Hashable<T::Hash> + WithSmallOrderMulGroup<3>,
+        F: Hashable<T::Hash> + PrimeField,
         T: Transcript,
     {
         let evaluate = |poly: &Polynomial<F, Coeff>, x: F| -> Evaluation<F> {

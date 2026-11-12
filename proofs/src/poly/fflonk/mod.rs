@@ -45,7 +45,7 @@ use std::{
     slice,
 };
 
-use ff::WithSmallOrderMulGroup;
+use ff::PrimeField;
 pub use utils::{balanced_chunks, roots};
 use utils::{cached_roots, compute_g};
 
@@ -85,7 +85,7 @@ impl<PCS, const LOG2_T_MAX: u32> Fflonk<PCS, LOG2_T_MAX> {
 
 impl<F, PCS, const LOG2_T_MAX: u32> PolynomialCommitmentScheme<F> for Fflonk<PCS, LOG2_T_MAX>
 where
-    F: WithSmallOrderMulGroup<3>,
+    F: PrimeField,
     PCS: InterleavedCommit<F>,
 {
     type Parameters = PCS::Parameters;

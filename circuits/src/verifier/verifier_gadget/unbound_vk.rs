@@ -24,7 +24,6 @@
 //! the form "I know a proof of *some* statement", which is trivially
 //! satisfiable and thus meaningless.
 
-use ff::WithSmallOrderMulGroup;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::{ConstraintSystem, Error},
@@ -62,11 +61,7 @@ pub struct UnboundVk<F: CircuitField, PCS: InCircuitPCS<F>>(AssignedVk<F, PCS>);
 ///
 /// This is the off-circuit counterpart of [`VerifierGadget::bind_vk_to_hash`],
 /// where `H` must match the hash chip given to it.
-pub fn vk_hash<
-    H: HashCPU<F, F>,
-    F: CircuitField + WithSmallOrderMulGroup<3>,
-    PCS: InCircuitPCS<F>,
->(
+pub fn vk_hash<H: HashCPU<F, F>, F: CircuitField, PCS: InCircuitPCS<F>>(
     vk: &VerifyingKey<F, PCS>,
 ) -> F {
     let domain = vk.get_domain();
@@ -82,7 +77,7 @@ pub fn vk_hash<
     H::hash(&inputs)
 }
 
-impl<F: CircuitField + WithSmallOrderMulGroup<3>, PCS: InCircuitPCS<F>> VerifierGadget<F, PCS> {
+impl<F: CircuitField, PCS: InCircuitPCS<F>> VerifierGadget<F, PCS> {
     /// Assigns a verifying key privately.
     ///
     /// The resulting key must be bound before it can be used, see

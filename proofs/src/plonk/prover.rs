@@ -5,7 +5,7 @@ use std::{
     slice,
 };
 
-use ff::{Field, FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
+use ff::{Field, FromUniformBytes, PrimeField};
 use rand_core::{CryptoRng, OsRng, RngCore};
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
@@ -43,7 +43,7 @@ pub fn commit_to_instances<F, PCS>(
     instances: &[F],
 ) -> PCS::Commitment
 where
-    F: WithSmallOrderMulGroup<3> + Ord + FromUniformBytes<64>,
+    F: Ord + FromUniformBytes<64>,
     PCS: PolynomialCommitmentScheme<F>,
 {
     let mut poly = domain.empty_lagrange();
@@ -482,7 +482,7 @@ pub(super) fn parse_advices<F, PCS, ConcreteCircuit>(
     rng: &mut (impl RngCore + CryptoRng),
 ) -> Result<Vec<Polynomial<F, LagrangeCoeff>>, Error>
 where
-    F: WithSmallOrderMulGroup<3>,
+    F: PrimeField,
     PCS: PolynomialCommitmentScheme<F>,
     ConcreteCircuit: Circuit<F>,
 {
@@ -542,7 +542,7 @@ where
     Ok(advice_polys)
 }
 
-pub(super) fn compute_nu_poly<F: WithSmallOrderMulGroup<3>, PCS: PolynomialCommitmentScheme<F>>(
+pub(super) fn compute_nu_poly<F: PrimeField, PCS: PolynomialCommitmentScheme<F>>(
     pk: &ProvingKey<F, PCS>,
     trace: &ProverTrace<'_, F>,
 ) -> Polynomial<F, ExtendedLagrangeCoeff> {
@@ -611,7 +611,7 @@ pub(crate) fn compute_h_poly<F, PCS, T>(
     transcript: &mut T,
 ) -> Result<argument::prover::Committed<F, Coeff>, Error>
 where
-    F: WithSmallOrderMulGroup<3> + Hashable<T::Hash>,
+    F: PrimeField + Hashable<T::Hash>,
     PCS: PolynomialCommitmentScheme<F>,
     PCS::Commitment: Hashable<T::Hash>,
     T: Transcript,
@@ -681,7 +681,7 @@ pub(super) fn write_instance_evals_to_transcript<F, PCS, T>(
     transcript: &mut T,
 ) -> Result<Vec<F>, Error>
 where
-    F: WithSmallOrderMulGroup<3> + Hashable<T::Hash>,
+    F: PrimeField + Hashable<T::Hash>,
     PCS: PolynomialCommitmentScheme<F>,
     T: Transcript,
 {
@@ -707,11 +707,7 @@ where
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn compute_queries<
-    'a,
-    F: WithSmallOrderMulGroup<3>,
-    PCS: PolynomialCommitmentScheme<F>,
->(
+pub(super) fn compute_queries<'a, F: PrimeField, PCS: PolynomialCommitmentScheme<F>>(
     pk: &'a ProvingKey<F, PCS>,
     instance_labels: &'a [[PolynomialLabel; 1]],
     instance_polys: &'a [Polynomial<F, Coeff>],

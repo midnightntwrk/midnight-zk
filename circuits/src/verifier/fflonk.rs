@@ -20,7 +20,6 @@
 
 use std::collections::{BTreeMap, HashMap, hash_map::Entry};
 
-use ff::WithSmallOrderMulGroup;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
@@ -48,7 +47,7 @@ use crate::{
 /// In circuit implementation of Fflonk.
 impl<F, PCS, const LOG2_T_MAX: u32> InCircuitPCS<F> for Fflonk<PCS, LOG2_T_MAX>
 where
-    F: CircuitField + WithSmallOrderMulGroup<3>,
+    F: CircuitField,
     PCS: InCircuitPCS<F> + InterleavedCommit<F>,
 {
     type CommitmentChip = PCS::CommitmentChip;

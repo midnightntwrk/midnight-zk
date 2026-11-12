@@ -2,7 +2,7 @@
 
 use std::ops::Range;
 
-use ff::{Field, FromUniformBytes, WithSmallOrderMulGroup};
+use ff::{Field, FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
 
 use super::{
     Error, LagrangeCoeff, Polynomial, ProvingKey, VerifyingKey,
@@ -287,7 +287,7 @@ pub fn keygen_pk<F, PCS, ConcreteCircuit>(
     circuit: &ConcreteCircuit,
 ) -> Result<ProvingKey<F, PCS>, Error>
 where
-    F: WithSmallOrderMulGroup<3>,
+    F: PrimeField,
     PCS: PolynomialCommitmentScheme<F>,
     ConcreteCircuit: Circuit<F>,
 {
@@ -348,7 +348,7 @@ pub(crate) fn compute_lagrange_polys<F, PCS>(
     cs: &ConstraintSystem<F>,
 ) -> [Polynomial<F, ExtendedLagrangeCoeff>; 3]
 where
-    F: WithSmallOrderMulGroup<3>,
+    F: PrimeField,
     PCS: PolynomialCommitmentScheme<F>,
 {
     // Compute l_0(X)

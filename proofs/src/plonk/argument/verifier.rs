@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use ff::{PrimeField, WithSmallOrderMulGroup};
+use ff::PrimeField;
 
 use crate::{
     plonk::{
@@ -48,7 +48,7 @@ pub struct Evaluated<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> {
     pub(crate) evals_map: BTreeMap<PolynomialLabel, Vec<Evaluation<F>>>,
 }
 
-impl<F: WithSmallOrderMulGroup<3>, PCS: PolynomialCommitmentScheme<F>> Committed<F, PCS> {
+impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> Committed<F, PCS> {
     pub(crate) fn evaluate<T>(
         self,
         cs: &ConstraintSystem<F>,
@@ -83,7 +83,7 @@ impl<F: WithSmallOrderMulGroup<3>, PCS: PolynomialCommitmentScheme<F>> Committed
     }
 }
 
-impl<F: WithSmallOrderMulGroup<3>, PCS: PolynomialCommitmentScheme<F>> Evaluated<F, PCS> {
+impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> Evaluated<F, PCS> {
     /// Adds the evaluation `eval` at `point` of the group's polynomial `label`,
     /// one derived rather than read from the proof.
     pub(crate) fn insert(&mut self, label: PolynomialLabel, point: F, eval: F) {

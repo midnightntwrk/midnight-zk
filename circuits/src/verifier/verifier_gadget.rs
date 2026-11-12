@@ -17,7 +17,6 @@
 //! column. (This is the norm throughout our whole codebase anyway.)
 use std::{collections::BTreeMap, fmt::Debug, iter, marker::PhantomData};
 
-use ff::WithSmallOrderMulGroup;
 use midnight_proofs::{
     circuit::{Chip, Layouter, Value},
     plonk::{ConstraintSystem, Error},
@@ -83,8 +82,8 @@ impl<F: CircuitField, PCS: InCircuitPCS<F>> VerifierGadget<F, PCS> {
     }
 }
 
-impl<F: CircuitField + WithSmallOrderMulGroup<3>, PCS: InCircuitPCS<F>>
-    PublicInputInstructions<F, AssignedVk<F, PCS>> for VerifierGadget<F, PCS>
+impl<F: CircuitField, PCS: InCircuitPCS<F>> PublicInputInstructions<F, AssignedVk<F, PCS>>
+    for VerifierGadget<F, PCS>
 {
     fn as_public_input(
         &self,
@@ -111,7 +110,7 @@ impl<F: CircuitField + WithSmallOrderMulGroup<3>, PCS: InCircuitPCS<F>>
     }
 }
 
-impl<F: CircuitField + WithSmallOrderMulGroup<3>, PCS: InCircuitPCS<F>> VerifierGadget<F, PCS> {
+impl<F: CircuitField, PCS: InCircuitPCS<F>> VerifierGadget<F, PCS> {
     /// Assigns a verifying key as a public input: its `transcript_repr` and its
     /// evaluation domain (`k` and `omega`) are assigned in-circuit, the rest is
     /// taken off-circuit from `cs`. Since `cs` suffices to lay out the circuit,

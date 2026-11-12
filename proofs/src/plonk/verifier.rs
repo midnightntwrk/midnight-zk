@@ -3,7 +3,7 @@ use std::{
     iter::{self},
 };
 
-use ff::{FromUniformBytes, WithSmallOrderMulGroup};
+use ff::FromUniformBytes;
 
 use super::{Error, VerifyingKey};
 use crate::{
@@ -28,7 +28,7 @@ pub fn parse_trace<F, PCS, T>(
     transcript: &mut T,
 ) -> Result<VerifierTrace<F, PCS>, Error>
 where
-    F: WithSmallOrderMulGroup<3> + TranscriptField<T::Hash> + FromUniformBytes<64> + Ord,
+    F: TranscriptField<T::Hash> + FromUniformBytes<64> + Ord,
     PCS: PolynomialCommitmentScheme<F>,
     PCS::Commitment: Hashable<T::Hash>,
     T: Transcript,
