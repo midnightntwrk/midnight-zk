@@ -160,7 +160,7 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
         instance: Value<Self::Instance>,
         witness: Value<Self::Witness>,
     ) -> Result<(), IvcError> {
-        let verifier_gadget = std_lib.verifier();
+        let verifier_gadget = std_lib.verifier::<DefaultPCS>();
         let ivc_gadget = T::new(std_lib.clone(), &self.ctx);
 
         let assigned_self_vk: AssignedVk<S, DefaultPCS> = verifier_gadget

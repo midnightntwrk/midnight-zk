@@ -187,7 +187,7 @@ impl IvcIO for ProofAggregation {
     ) -> Result<AssignedState, Error> {
         let claims_hash = self.std_lib.assign(layouter, value.as_ref().map(|s| s.claims_hash))?;
 
-        let inner_acc = self.std_lib.verifier().assign_collapsed_accumulator(
+        let inner_acc = self.std_lib.verifier::<DefaultPCS>().assign_collapsed_accumulator(
             layouter,
             &[],
             value.as_ref().map(|s| s.inner_acc.clone()),
@@ -205,7 +205,9 @@ impl IvcIO for ProofAggregation {
         state: &AssignedState,
     ) -> Result<(), Error> {
         self.std_lib.constrain_as_public_input(layouter, &state.claims_hash)?;
-        self.std_lib.verifier().constrain_as_public_input(layouter, &state.inner_acc)
+        self.std_lib
+            .verifier::<DefaultPCS>()
+            .constrain_as_public_input(layouter, &state.inner_acc)
     }
 
     fn as_public_input(
@@ -215,7 +217,9 @@ impl IvcIO for ProofAggregation {
     ) -> Result<Vec<AssignedNative<F>>, Error> {
         Ok([
             self.std_lib.as_public_input(layouter, &state.claims_hash)?,
-            self.std_lib.verifier().as_public_input(layouter, &state.inner_acc)?,
+            self.std_lib
+                .verifier::<DefaultPCS>()
+                .as_public_input(layouter, &state.inner_acc)?,
         ]
         .concat())
     }
@@ -306,7 +310,7 @@ impl IvcTransition for ProofAggregation {
         state: &Self::AssignedState,
         witness: Value<Self::Witness>,
     ) -> Result<Self::AssignedState, Error> {
-        let verifier = self.std_lib.verifier();
+        let verifier = self.std_lib.verifier::<DefaultPCS>();
 
         // 1. Witness the VK and the statement, bind the VK to its witnessed hash, and
         //    add both to the hash chain (checked by the decider).
@@ -335,7 +339,7 @@ impl IvcTransition for ProofAggregation {
 
         // 2. Verify the inner proof in-circuit against the witnessed VK and statement.
         let inner_proof_acc = {
-            let mut acc = self.std_lib.verifier().prepare(
+            let mut acc = self.std_lib.verifier::<DefaultPCS>().prepare(
                 layouter,
                 &assigned_vk,
                 &[],

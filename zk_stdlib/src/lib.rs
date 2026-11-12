@@ -289,7 +289,6 @@ pub struct ZkStdLib {
     parser_gadget: ParserGadget<F, NG>,
     scanner_chip: Option<ScannerChip<F>>,
     vector_gadget: VectorGadget<F>,
-    verifier_gadget: Option<VerifierGadget<BlstrsEmulation, DefaultPCS>>,
 
     // Third-party chips.
     keccak_sha3_chip: Option<KeccakSha3Wrapper<F>>,
@@ -371,12 +370,6 @@ impl ZkStdLib {
             config.scanner_config.as_ref().map(|c| ScannerChip::new(c, &native_gadget));
         let vector_gadget = VectorGadget::new(&native_gadget);
 
-        let verifier_gadget = bls12_381_chip.as_ref().zip(poseidon_gadget.as_ref()).map(
-            |(curve_chip, sponge_chip)| {
-                VerifierGadget::new(curve_chip, &native_gadget, sponge_chip)
-            },
-        );
-
         let keccak_sha3_chip = config
             .keccak_sha3_config
             .as_ref()
@@ -407,7 +400,6 @@ impl ZkStdLib {
             parser_gadget,
             scanner_chip,
             vector_gadget,
-            verifier_gadget,
             keccak_sha3_chip,
             blake2b_chip,
             used_sha2_256: Rc::new(RefCell::new(false)),
@@ -795,13 +787,18 @@ impl ZkStdLib {
         (self.scanner_chip.as_ref()).unwrap_or_else(|| panic!("ZkStdLibArch must enable automaton"))
     }
 
-    /// Chip for performing in-circuit verification of proofs
-    /// (generated with Poseidon as the Fiat-Shamir transcript hash).
-    pub fn verifier(&self) -> &VerifierGadget<BlstrsEmulation, DefaultPCS> {
+    /// Chip for performing in-circuit verification of proofs committed with
+    /// `PCS` (generated with Poseidon as the Fiat-Shamir transcript hash).
+    pub fn verifier<PCS: MidnightPCS>(&self) -> VerifierGadget<BlstrsEmulation, PCS> {
         *self.used_bls12_381.borrow_mut() = true;
-        self.verifier_gadget
-            .as_ref()
-            .unwrap_or_else(|| panic!("ZkStdLibArch must enable bls12_381 & poseidon"))
+        let (curve_chip, sponge_chip) = (self.bls12_381_chip.as_ref())
+            .zip(self.poseidon_gadget.as_ref())
+            .unwrap_or_else(|| panic!("ZkStdLibArch must enable bls12_381 & poseidon"));
+        // Building the gadget on every call is cheap: `VerifierGadget` has no
+        // configuration of its own (no extra columns or gates), it only clones
+        // the existing chips, whose state (caches, instance offsets) is shared
+        // behind `Rc`.
+        VerifierGadget::new(curve_chip, &self.native_gadget, sponge_chip)
     }
 
     /// Assert that a given assigned bit is true.

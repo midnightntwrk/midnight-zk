@@ -163,7 +163,7 @@ impl IvcIO for ProofAggregation {
         let statements_hash =
             self.std_lib.assign(layouter, value.as_ref().map(|s| s.statements_hash))?;
 
-        let inner_acc = self.std_lib.verifier().assign_collapsed_accumulator(
+        let inner_acc = self.std_lib.verifier::<DefaultPCS>().assign_collapsed_accumulator(
             layouter,
             &self.inner_ctx.fixed_bases().keys().cloned().collect::<Vec<_>>(),
             value.as_ref().map(|s| s.inner_acc.clone()),
@@ -181,7 +181,9 @@ impl IvcIO for ProofAggregation {
         state: &AssignedState,
     ) -> Result<(), Error> {
         self.std_lib.constrain_as_public_input(layouter, &state.statements_hash)?;
-        self.std_lib.verifier().constrain_as_public_input(layouter, &state.inner_acc)
+        self.std_lib
+            .verifier::<DefaultPCS>()
+            .constrain_as_public_input(layouter, &state.inner_acc)
     }
 
     fn as_public_input(
@@ -191,7 +193,9 @@ impl IvcIO for ProofAggregation {
     ) -> Result<Vec<AssignedNative<F>>, Error> {
         Ok([
             self.std_lib.as_public_input(layouter, &state.statements_hash)?,
-            self.std_lib.verifier().as_public_input(layouter, &state.inner_acc)?,
+            self.std_lib
+                .verifier::<DefaultPCS>()
+                .as_public_input(layouter, &state.inner_acc)?,
         ]
         .concat())
     }
@@ -276,12 +280,13 @@ impl IvcTransition for ProofAggregation {
         witness: Value<Self::Witness>,
     ) -> Result<Self::AssignedState, Error> {
         // Assign inner VK as a hard-coded constant.
-        let inner_vk: AssignedVk<S, DefaultPCS> = self.std_lib.verifier().assign_fixed_vk(
-            layouter,
-            &self.inner_ctx.domain,
-            self.inner_ctx.vk.vk().cs(),
-            self.inner_ctx.vk.vk().transcript_repr(),
-        )?;
+        let inner_vk: AssignedVk<S, DefaultPCS> =
+            self.std_lib.verifier::<DefaultPCS>().assign_fixed_vk(
+                layouter,
+                &self.inner_ctx.domain,
+                self.inner_ctx.vk.vk().cs(),
+                self.inner_ctx.vk.vk().transcript_repr(),
+            )?;
 
         // Assign the inner statement as a witness.
         let statement_pis = self.std_lib.assign_many(
@@ -294,7 +299,7 @@ impl IvcTransition for ProofAggregation {
 
         // Verify the inner proof in-circuit.
 
-        let inner_proof_acc = self.std_lib.verifier().prepare(
+        let inner_proof_acc = self.std_lib.verifier::<DefaultPCS>().prepare(
             layouter,
             &inner_vk,
             &[],
@@ -306,7 +311,7 @@ impl IvcTransition for ProofAggregation {
         let inner_acc = {
             let mut acc = self
                 .std_lib
-                .verifier()
+                .verifier::<DefaultPCS>()
                 .accumulate(layouter, &[inner_proof_acc, state.inner_acc.clone()])?;
 
             acc.collapse(
