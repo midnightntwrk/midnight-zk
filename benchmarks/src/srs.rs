@@ -53,7 +53,7 @@ pub fn load<PCS: MidnightPCS>(k: u32) -> ParamsKZG<Bls12> {
     };
     let file = File::open(&path).unwrap_or_else(|e| {
         panic!(
-            "cannot open the SRS at {}: {e}; see zk_stdlib/README.md",
+            "cannot open the SRS at {}: {e}; see benchmarks/README.md",
             path.display()
         )
     });
