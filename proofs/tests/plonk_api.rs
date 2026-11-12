@@ -1,7 +1,7 @@
 #![allow(clippy::many_single_char_names)]
 #![allow(clippy::op_ref)]
 
-use std::{hash::Hash, marker::PhantomData};
+use std::marker::PhantomData;
 
 use assert_matches::assert_matches;
 use blake2b_simd::State;
@@ -11,9 +11,9 @@ use midnight_proofs::{
     circuit::{Cell, Layouter, SimpleFloorPlanner, Value},
     dev::MockProver,
     plonk::{
-        Advice, Circuit, Column, ConstraintSystem, Constraints, Error, Fixed, ProvingKey,
-        TableColumn, VerifyingKey, create_proof as create_plonk_proof, keygen_pk, keygen_vk,
-        keygen_vk_with_k, prepare as prepare_plonk_proof,
+        Advice, Circuit, Column, ConstraintSystem, Constraints, Error, Fixed, ProofField,
+        ProvingKey, TableColumn, VerifyingKey, create_proof as create_plonk_proof, keygen_pk,
+        keygen_vk, keygen_vk_with_k, prepare as prepare_plonk_proof,
     },
     poly::{
         Rotation,
@@ -21,7 +21,7 @@ use midnight_proofs::{
         fflonk::Fflonk,
         kzg::{KZGCommitmentScheme, params::ParamsKZG},
     },
-    transcript::{CircuitTranscript, Hashable, Sampleable, Transcript},
+    transcript::{CircuitTranscript, Hashable, Transcript},
     utils::{arithmetic::Field, rational::Rational},
 };
 use rand_core::{CryptoRng, OsRng, RngCore};
@@ -465,13 +465,7 @@ fn plonk_api() {
         pk: &ProvingKey<F, Scheme>,
     ) -> Vec<u8>
     where
-        F: Ord
-            + WithSmallOrderMulGroup<3>
-            + FromUniformBytes<64>
-            + Sampleable<T::Hash>
-            + Hashable<T::Hash>
-            + Hash
-            + SerdeObject,
+        F: ProofField<T::Hash> + SerdeObject,
         Scheme::Commitment: Hashable<T::Hash>,
     {
         let (a, instance, lookup_table) = common!(F);
@@ -510,13 +504,7 @@ fn plonk_api() {
         vk: &VerifyingKey<F, Scheme>,
         proof: &[u8],
     ) where
-        F: Ord
-            + WithSmallOrderMulGroup<3>
-            + FromUniformBytes<64>
-            + Sampleable<T::Hash>
-            + Hashable<T::Hash>
-            + Hash
-            + SerdeObject,
+        F: ProofField<T::Hash> + SerdeObject,
         Scheme::Commitment: Hashable<T::Hash>,
     {
         let (_, instance, _) = common!(F);

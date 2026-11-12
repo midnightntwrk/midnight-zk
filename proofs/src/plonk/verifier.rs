@@ -1,6 +1,5 @@
 use std::{
     collections::BTreeMap,
-    hash::Hash,
     iter::{self},
 };
 
@@ -8,9 +7,9 @@ use ff::{FromUniformBytes, WithSmallOrderMulGroup};
 
 use super::{Error, VerifyingKey};
 use crate::{
-    plonk::{argument, evaluate_identities, traces::VerifierTrace},
+    plonk::{ProofField, argument, evaluate_identities, traces::VerifierTrace},
     poly::{PolynomialLabel, Rotation, VerifierQuery, commitment::PolynomialCommitmentScheme},
-    transcript::{Hashable, Sampleable, Transcript},
+    transcript::{Hashable, Transcript, TranscriptField},
     utils::arithmetic::compute_inner_product,
 };
 
@@ -29,14 +28,10 @@ pub fn parse_trace<F, CS, T>(
     transcript: &mut T,
 ) -> Result<VerifierTrace<F, CS>, Error>
 where
+    F: WithSmallOrderMulGroup<3> + TranscriptField<T::Hash> + FromUniformBytes<64> + Ord,
     CS: PolynomialCommitmentScheme<F>,
-    T: Transcript,
-    F: WithSmallOrderMulGroup<3>
-        + Hashable<T::Hash>
-        + Sampleable<T::Hash>
-        + FromUniformBytes<64>
-        + Ord,
     CS::Commitment: Hashable<T::Hash>,
+    T: Transcript,
 {
     #[cfg(not(feature = "committed-instances"))]
     let committed_instances: Vec<CS::Commitment> = vec![];
@@ -110,12 +105,7 @@ pub fn verify_algebraic_constraints<F, CS: PolynomialCommitmentScheme<F>, T: Tra
     transcript: &mut T,
 ) -> Result<CS::VerificationGuard, Error>
 where
-    F: WithSmallOrderMulGroup<3>
-        + Hashable<T::Hash>
-        + Sampleable<T::Hash>
-        + FromUniformBytes<64>
-        + Hash
-        + Ord,
+    F: ProofField<T::Hash>,
     CS::Commitment: Hashable<T::Hash>,
 {
     #[cfg(not(feature = "committed-instances"))]
@@ -283,12 +273,7 @@ pub fn prepare<F, CS: PolynomialCommitmentScheme<F>, T: Transcript>(
     transcript: &mut T,
 ) -> Result<CS::VerificationGuard, Error>
 where
-    F: WithSmallOrderMulGroup<3>
-        + Hashable<T::Hash>
-        + Sampleable<T::Hash>
-        + FromUniformBytes<64>
-        + Hash
-        + Ord,
+    F: ProofField<T::Hash>,
     CS::Commitment: Hashable<T::Hash>,
 {
     let trace = parse_trace(

@@ -56,7 +56,7 @@ use crate::{
         PolynomialRepresentation, ProverQuery, VerifierQuery,
         commitment::{InterleavedCommit, PolynomialCommitmentScheme},
     },
-    transcript::{Hashable, Sampleable, Transcript},
+    transcript::{Hashable, Sampleable, Transcript, TranscriptField},
     utils::{
         arithmetic::{eval_polynomial, eval_polynomial_seq},
         helpers::SerdeFormat,
@@ -166,7 +166,7 @@ where
         transcript: &mut T,
     ) -> Result<(), Error>
     where
-        F: Sampleable<T::Hash> + Hash + Ord + Hashable<T::Hash>,
+        F: TranscriptField<T::Hash> + Hash + Ord,
         Self::Commitment: Hashable<T::Hash>,
     {
         // Maps the labels of every queried chunk to its polynomials and the
@@ -245,7 +245,7 @@ where
         transcript: &mut T,
     ) -> Result<Self::VerificationGuard, Error>
     where
-        F: Sampleable<T::Hash> + Hash + Ord + Hashable<T::Hash>,
+        F: TranscriptField<T::Hash> + Hash + Ord,
         Self::Commitment: Hashable<T::Hash> + 'com,
     {
         // Maps the labels of every queried chunk to its commitment and the points

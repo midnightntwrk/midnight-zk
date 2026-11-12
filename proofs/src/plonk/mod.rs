@@ -13,7 +13,7 @@ use crate::{
     poly::{
         EvaluationDomain, ExtendedLagrangeCoeff, LagrangeCoeff, PinnedEvaluationDomain, Polynomial,
     },
-    transcript::{Hashable, Transcript},
+    transcript::{Hashable, Transcript, TranscriptField, TranscriptHash},
     utils::{
         SerdeFormat,
         helpers::{
@@ -40,7 +40,7 @@ pub mod bench;
 mod prover;
 mod verifier;
 
-use std::{collections::BTreeMap, io};
+use std::{collections::BTreeMap, hash::Hash, io};
 
 pub(crate) use absorbed_vk::AbsorbedVk;
 pub use circuit::*;
@@ -54,6 +54,20 @@ use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 pub use verifier::*;
 
 use crate::poly::{PolynomialLabel, commitment::PolynomialCommitmentScheme};
+
+/// A field over which proofs are created and verified, with a transcript of
+/// hash `H`.
+pub trait ProofField<H: TranscriptHash>:
+    TranscriptField<H> + WithSmallOrderMulGroup<3> + FromUniformBytes<64> + Hash + Ord
+{
+}
+
+impl<H, F> ProofField<H> for F
+where
+    H: TranscriptHash,
+    F: TranscriptField<H> + WithSmallOrderMulGroup<3> + FromUniformBytes<64> + Hash + Ord,
+{
+}
 
 /// This is a verifying key which allows for the verification of proofs for a
 /// particular circuit.

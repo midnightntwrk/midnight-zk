@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+* `transcript::TranscriptField<H>` (`Hashable<H> + Sampleable<H>`) and `plonk::ProofField<H>` (`TranscriptField<H> + WithSmallOrderMulGroup<3> + FromUniformBytes<64> + Hash + Ord`), which the prover, verifier and commitment schemes are bounded by [#644](https://github.com/midnightntwrk/midnight-zk/pull/644)
 ### Changed
 ### Removed
 

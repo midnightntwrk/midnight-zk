@@ -32,7 +32,7 @@ use midnight_proofs::{
             params::{ParamsKZG, ParamsVerifierKZG},
         },
     },
-    transcript::{CircuitTranscript, Hashable, Sampleable, Transcript, TranscriptHash},
+    transcript::{CircuitTranscript, Hashable, Transcript, TranscriptField, TranscriptHash},
     utils::SerdeFormat,
 };
 use rand::{CryptoRng, RngCore};
@@ -569,7 +569,7 @@ pub fn prove<R: Relation, H: TranscriptHash, PCS: MidnightPCS>(
 ) -> Result<Vec<u8>, R::Error>
 where
     G1Projective: Hashable<H>,
-    F: Hashable<H> + Sampleable<H>,
+    F: TranscriptField<H>,
 {
     let pi = R::format_instance(instance)?;
     let com_inst = R::format_committed_instances(&witness);
@@ -607,7 +607,7 @@ pub fn verify<R: Relation, H: TranscriptHash, PCS: MidnightPCS>(
 ) -> Result<(), R::Error>
 where
     G1Projective: Hashable<H>,
-    F: Hashable<H> + Sampleable<H>,
+    F: TranscriptField<H>,
 {
     let pi = R::format_instance(instance)?;
     // Without a committed instance, its column is an empty instance column, as
@@ -641,7 +641,7 @@ pub fn batch_verify<H: TranscriptHash + Send + Sync, PCS: MidnightPCS>(
 ) -> Result<(), Error>
 where
     G1Projective: Hashable<H>,
-    F: Hashable<H> + Sampleable<H>,
+    F: TranscriptField<H>,
 {
     use rayon::prelude::*;
 

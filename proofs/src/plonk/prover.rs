@@ -1,6 +1,5 @@
 use std::{
     collections::{BTreeMap, HashSet},
-    hash::Hash,
     iter::{self},
     ops::RangeTo,
     slice,
@@ -22,12 +21,12 @@ use super::{
 };
 use crate::{
     circuit::Value,
-    plonk::{argument, traces::ProverTrace},
+    plonk::{ProofField, argument, traces::ProverTrace},
     poly::{
         Coeff, EvaluationDomain, ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial, PolynomialLabel,
         ProverQuery, Rotation, batch_invert_rational, commitment::PolynomialCommitmentScheme,
     },
-    transcript::{Hashable, Sampleable, Transcript},
+    transcript::{Hashable, Transcript},
     utils::{
         arithmetic::{eval_polynomial, eval_polynomial_seq},
         rational::Rational,
@@ -78,13 +77,8 @@ pub(crate) fn compute_trace<
     mut rng: impl RngCore + CryptoRng,
 ) -> Result<ProverTrace<'a, F>, Error>
 where
+    F: ProofField<T::Hash>,
     CS::Commitment: Hashable<T::Hash>,
-    F: WithSmallOrderMulGroup<3>
-        + Sampleable<T::Hash>
-        + Hashable<T::Hash>
-        + Hash
-        + Ord
-        + FromUniformBytes<64>,
 {
     #[cfg(not(feature = "committed-instances"))]
     let nb_committed_instances: usize = 0;
@@ -306,13 +300,8 @@ pub(crate) fn finalise_proof<'a, F, CS: PolynomialCommitmentScheme<F>, T: Transc
     transcript: &mut T,
 ) -> Result<(), Error>
 where
+    F: ProofField<T::Hash>,
     CS::Commitment: Hashable<T::Hash>,
-    F: WithSmallOrderMulGroup<3>
-        + Sampleable<T::Hash>
-        + Hashable<T::Hash>
-        + Hash
-        + Ord
-        + FromUniformBytes<64>,
 {
     #[cfg(not(feature = "committed-instances"))]
     let nb_committed_instances: usize = 0;
@@ -404,13 +393,8 @@ pub fn create_proof<
     mut rng: impl RngCore + CryptoRng,
 ) -> Result<(), Error>
 where
+    F: ProofField<T::Hash>,
     CS::Commitment: Hashable<T::Hash>,
-    F: WithSmallOrderMulGroup<3>
-        + Sampleable<T::Hash>
-        + Hashable<T::Hash>
-        + Hash
-        + Ord
-        + FromUniformBytes<64>,
 {
     let trace = compute_trace(
         params,
@@ -440,15 +424,10 @@ pub(super) fn compute_instances<F, CS, T>(
     transcript: &mut T,
 ) -> Result<InstanceSingle<F>, Error>
 where
-    T: Transcript,
+    F: ProofField<T::Hash>,
     CS: PolynomialCommitmentScheme<F>,
     CS::Commitment: Hashable<T::Hash>,
-    F: WithSmallOrderMulGroup<3>
-        + Sampleable<T::Hash>
-        + Hashable<T::Hash>
-        + Hash
-        + Ord
-        + FromUniformBytes<64>,
+    T: Transcript,
 {
     let instance_values = instances
         .iter()

@@ -1,9 +1,8 @@
 //! Benchmarking utilities for the PLONK prover.
 
-use std::{collections::BTreeMap, hash::Hash};
+use std::collections::BTreeMap;
 
 use criterion::BenchmarkGroup;
-use ff::{FromUniformBytes, WithSmallOrderMulGroup};
 use rand_core::{CryptoRng, RngCore};
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
@@ -11,7 +10,7 @@ use rayon::iter::{
 
 use crate::{
     plonk::{
-        Error, ProvingKey, argument,
+        Error, ProofField, ProvingKey, argument,
         circuit::Circuit,
         logup,
         prover::{
@@ -24,7 +23,7 @@ use crate::{
         LagrangeCoeff, Polynomial, PolynomialLabel, Rotation,
         commitment::PolynomialCommitmentScheme,
     },
-    transcript::{Hashable, Sampleable, Transcript},
+    transcript::{Hashable, Transcript},
     utils::arithmetic::eval_polynomial,
 };
 
@@ -60,13 +59,8 @@ pub(crate) fn compute_trace<
     group: &mut BenchmarkGroup<'_, criterion::measurement::WallTime>,
 ) -> Result<ProverTrace<'a, F>, Error>
 where
+    F: ProofField<T::Hash>,
     CS::Commitment: Hashable<T::Hash>,
-    F: WithSmallOrderMulGroup<3>
-        + Sampleable<T::Hash>
-        + Hashable<T::Hash>
-        + Hash
-        + Ord
-        + FromUniformBytes<64>,
 {
     #[cfg(not(feature = "committed-instances"))]
     let nb_committed_instances: usize = 0;
@@ -448,13 +442,8 @@ pub(crate) fn finalise_proof<'a, F, CS: PolynomialCommitmentScheme<F>, T: Transc
     group: &mut BenchmarkGroup<'_, criterion::measurement::WallTime>,
 ) -> Result<(), Error>
 where
+    F: ProofField<T::Hash>,
     CS::Commitment: Hashable<T::Hash>,
-    F: WithSmallOrderMulGroup<3>
-        + Sampleable<T::Hash>
-        + Hashable<T::Hash>
-        + Hash
-        + Ord
-        + FromUniformBytes<64>,
 {
     #[cfg(not(feature = "committed-instances"))]
     let nb_committed_instances: usize = 0;
@@ -619,13 +608,8 @@ pub fn benchmark_create_proof<
     group: &mut BenchmarkGroup<'_, criterion::measurement::WallTime>,
 ) -> Result<(), Error>
 where
+    F: ProofField<T::Hash>,
     CS::Commitment: Hashable<T::Hash>,
-    F: WithSmallOrderMulGroup<3>
-        + Sampleable<T::Hash>
-        + Hashable<T::Hash>
-        + Hash
-        + Ord
-        + FromUniformBytes<64>,
 {
     #[cfg(not(feature = "committed-instances"))]
     let nb_committed_instances: usize = 0;

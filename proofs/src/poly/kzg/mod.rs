@@ -46,7 +46,7 @@ use crate::{
         },
         query::{PolynomialLabel, VerifierQuery},
     },
-    transcript::{Hashable, Sampleable, Transcript},
+    transcript::{Hashable, Transcript, TranscriptField},
     utils::{
         arithmetic::{
             CurveAffine, CurveExt, divide_by_roots, eval_interpolant, eval_polynomial,
@@ -252,7 +252,7 @@ where
         transcript: &mut T,
     ) -> Result<(), Error>
     where
-        E::Fr: Sampleable<T::Hash> + Hash + Ord + Hashable<T::Hash>,
+        E::Fr: TranscriptField<T::Hash> + Hash + Ord,
         KZGMultiCommitment<E>: Hashable<T::Hash>,
     {
         /// Like [`inner_product`] but for coefficient-form polynomials that may
@@ -389,7 +389,7 @@ where
         transcript: &mut T,
     ) -> Result<DualMSM<E>, Error>
     where
-        E::Fr: Sampleable<T::Hash> + Ord + Hash + Hashable<T::Hash>,
+        E::Fr: TranscriptField<T::Hash> + Ord + Hash,
         E::G1: CurveExt<ScalarExt = E::Fr>,
         KZGMultiCommitment<E>: Hashable<T::Hash> + 'com,
     {
@@ -607,7 +607,7 @@ mod tests {
             },
             query::{ProverQuery, VerifierQuery},
         },
-        transcript::{CircuitTranscript, Hashable, Sampleable, Transcript},
+        transcript::{CircuitTranscript, Hashable, Transcript, TranscriptField},
         utils::{arithmetic::eval_polynomial, helpers::ProcessedSerdeObject},
     };
 
@@ -682,12 +682,12 @@ mod tests {
     fn verify<E, T>(verifier_params: &ParamsVerifierKZG<E>, proof: &[u8], should_fail: bool)
     where
         E: MultiMillerLoop,
-        T: Transcript,
-        E::Fr: Hashable<T::Hash> + Sampleable<T::Hash> + Ord + Hash,
+        E::Fr: TranscriptField<T::Hash> + Ord + Hash,
         E::G1: Hashable<T::Hash> + CurveExt<ScalarExt = E::Fr, AffineExt = E::G1Affine>,
         E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1> + SerdeObject,
         E::G2: ProcessedSerdeObject,
         KZGMultiCommitment<E>: Hashable<T::Hash>,
+        T: Transcript,
     {
         let mut transcript = T::init_from_bytes(proof);
 
@@ -774,11 +774,11 @@ mod tests {
     fn create_proof<E, T>(kzg_params: &ParamsKZG<E>) -> Vec<u8>
     where
         E: MultiMillerLoop,
-        T: Transcript,
-        E::Fr: WithSmallOrderMulGroup<3> + Hashable<T::Hash> + Hash + Sampleable<T::Hash> + Ord,
+        E::Fr: WithSmallOrderMulGroup<3> + TranscriptField<T::Hash> + Hash + Ord,
         E::G1: Hashable<T::Hash> + CurveExt<ScalarExt = E::Fr, AffineExt = E::G1Affine>,
         E::G1Affine: SerdeObject + CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
         E::G2: ProcessedSerdeObject,
+        T: Transcript,
     {
         let k = (kzg_params.g.len() - 1).ilog2() + 1;
         let domain = EvaluationDomain::new(1, k);
