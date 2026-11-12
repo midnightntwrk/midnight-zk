@@ -956,6 +956,7 @@ mod tests {
         CaseResult {
             workload: workload.to_owned(),
             pcs,
+            scheme: pcs.to_string(),
             threads,
             k: 13,
             vk_hash: "aa".repeat(32),

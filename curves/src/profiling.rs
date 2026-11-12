@@ -154,8 +154,9 @@ impl Drop for Guard {
 
 /// Opens a span of `kernel` over an input of `size` elements.
 ///
-/// A span opened on a thread that already has an open span is not recorded,
-/// so that a kernel calling another one is counted once.
+/// A span opened on a thread that already has an open span counts as a call
+/// but adds no time, so that the time of a kernel calling another one, or of
+/// a blocked thread stealing a task, is counted once.
 #[inline(always)]
 pub fn span(kernel: Kernel, size: usize) -> Guard {
     let _ = size;
@@ -283,11 +284,22 @@ mod recorder {
             return None;
         }
         // The thread-local is gone while the thread is being torn down.
-        let outermost = LOCAL.try_with(|local| !local.open.replace(true)).unwrap_or(false);
-        outermost.then(|| Open {
-            kernel,
-            start: Instant::now(),
-        })
+        let start = Instant::now();
+        let outermost = LOCAL
+            .try_with(|local| {
+                let outermost = !local.open.replace(true);
+                if !outermost {
+                    // An empty span counts the call without adding time.
+                    lock(&local.spans).push(Span {
+                        kernel,
+                        start,
+                        end: start,
+                    });
+                }
+                outermost
+            })
+            .unwrap_or(false);
+        outermost.then_some(Open { kernel, start })
     }
 
     #[inline]
@@ -660,7 +672,7 @@ mod tests {
     }
 
     #[test]
-    fn nested_spans_count_once() {
+    fn nested_spans_add_no_time() {
         let _exclusive = exclusive();
         reset();
         {
@@ -678,11 +690,11 @@ mod tests {
         let report = take_report();
 
         let preamble = phase(&report, Phase::Preamble);
-        assert_eq!(preamble.kernels[MSM].calls, 1);
+        assert_eq!(preamble.kernels[MSM].calls, 2);
         assert!(preamble.kernels[MSM].busy >= ms(4));
         assert_eq!(preamble.kernels[MSM].busy, preamble.kernels[MSM].wall);
-        assert_eq!(preamble.kernels[FFT], KernelStats::default());
-        assert_eq!(preamble.kernels[POLY_EVAL].calls, 1);
+        assert_eq!(preamble.kernels[FFT], stats(0, 0, 1));
+        assert_eq!(preamble.kernels[POLY_EVAL].calls, 2);
     }
 
     #[test]

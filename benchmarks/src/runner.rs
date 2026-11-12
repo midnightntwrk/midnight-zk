@@ -183,9 +183,10 @@ pub fn run(config: &Config, workloads: Vec<Box<dyn Workload>>) -> Result<RunResu
             eprintln!("{} {pcs}: setup", workload.name());
             let mut prepared = workload.setup(pcs);
             let (k, vk_hash) = (prepared.k(), prepared.vk_hash());
+            let scheme = prepared.scheme();
             for &threads in &threads {
                 eprint!(
-                    "[{}/{nb_cases}] {} {pcs} k={k} threads={threads}: ",
+                    "[{}/{nb_cases}] {} {scheme} k={k} threads={threads}: ",
                     cases.len() + 1,
                     workload.name(),
                 );
@@ -206,6 +207,7 @@ pub fn run(config: &Config, workloads: Vec<Box<dyn Workload>>) -> Result<RunResu
                 cases.push(CaseResult {
                     workload: workload.name().to_owned(),
                     pcs,
+                    scheme: scheme.clone(),
                     threads,
                     k,
                     vk_hash: vk_hash.clone(),
@@ -231,23 +233,6 @@ struct Measured {
     breakdown: Option<Breakdown>,
 }
 
-/// Lends a value to one other thread while the lender is blocked.
-struct Lent<T>(T);
-
-// SAFETY: a `Lent` is only moved into `ThreadPool::install`, which blocks the
-// calling thread until the closure returns, so the value is used by one
-// thread at a time. This relies on the workload not tying its state to the
-// thread that set it up, which no prover state does.
-unsafe impl<T> Send for Lent<T> {}
-
-impl<T> Lent<T> {
-    // A method rather than a field access, so that closures capture the whole
-    // wrapper and not the field it protects.
-    fn into_inner(self) -> T {
-        self.0
-    }
-}
-
 /// Proves `config.warmup + config.samples` times in a pool of `threads`
 /// threads, timing the latter. Returns `None` if the last proof is checked
 /// and does not verify.
@@ -262,9 +247,7 @@ fn measure(
             reason: e.to_string(),
         }
     })?;
-    let lent = Lent(prepared);
     Ok(pool.install(move || {
-        let prepared = lent.into_inner();
         for _ in 0..config.warmup {
             prepared.prove();
         }
@@ -408,6 +391,10 @@ mod tests {
     impl Prepared for FakePrepared {
         fn k(&self) -> u32 {
             7
+        }
+
+        fn scheme(&self) -> String {
+            "fake".to_owned()
         }
 
         fn vk_hash(&self) -> String {

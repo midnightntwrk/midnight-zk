@@ -90,9 +90,19 @@ impl<T: Ivc> PreparedIvc<T> {
     }
 }
 
-impl<T: Ivc> Prepared for PreparedIvc<T> {
+impl<T> Prepared for PreparedIvc<T>
+where
+    T: Ivc,
+    IvcProver<T>: Send,
+    IvcVerifier<T>: Send,
+    T::Witness: Send,
+{
     fn k(&self) -> u32 {
         self.k
+    }
+
+    fn scheme(&self) -> String {
+        workload::scheme_name::<PCS>()
     }
 
     fn vk_hash(&self) -> String {

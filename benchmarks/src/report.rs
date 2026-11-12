@@ -141,7 +141,7 @@ fn summary_table<'a>(cases: impl Iterator<Item = &'a CaseResult>, with_threads: 
     for case in cases {
         let mut row = vec![
             case.workload.clone(),
-            case.pcs.to_string(),
+            case.scheme.clone(),
             case.k.to_string(),
         ];
         if with_threads {
@@ -233,7 +233,7 @@ fn case_title(case: &CaseResult) -> String {
     format!(
         "{}, {}, k={}, {}",
         case.workload,
-        case.pcs,
+        case.scheme,
         case.k,
         threads_label(case.threads)
     )
@@ -401,6 +401,7 @@ mod tests {
         CaseResult {
             workload: workload.to_owned(),
             pcs,
+            scheme: pcs.to_string(),
             threads,
             k: 14,
             vk_hash: "00".repeat(32),

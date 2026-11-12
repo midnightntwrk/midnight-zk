@@ -57,6 +57,8 @@ pub struct CaseResult {
     pub workload: String,
     /// The polynomial commitment scheme.
     pub pcs: Pcs,
+    /// The exact commitment scheme, such as `kzg` or `fflonk<4>`.
+    pub scheme: String,
     /// The number of threads of the rayon pool.
     pub threads: usize,
     /// The logarithm of the number of rows.

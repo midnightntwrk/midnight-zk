@@ -73,9 +73,13 @@ pub trait Workload {
 }
 
 /// A workload that is ready to prove.
-pub trait Prepared {
+pub trait Prepared: Send {
     /// The logarithm of the number of rows of the circuit.
     fn k(&self) -> u32;
+
+    /// The exact commitment scheme, as given by [`scheme_name`]. It tells
+    /// apart the fflonk instantiations that share [`Pcs::Fflonk`].
+    fn scheme(&self) -> String;
 
     /// The SHA-256 digest of the serialized verifying key, in hexadecimal. It
     /// identifies the circuit across builds.
@@ -88,6 +92,14 @@ pub trait Prepared {
     /// Whether `proof` is a valid proof of the latest call to
     /// [`Prepared::prove`].
     fn verify(&self, proof: &[u8]) -> bool;
+}
+
+/// The name of `PCS` in results: `kzg`, or `fflonk<t>` for `FflonkKZG<t>`.
+pub fn scheme_name<PCS: MidnightPCS>() -> String {
+    match PCS::ID {
+        0 => "kzg".to_owned(),
+        t => format!("fflonk<{t}>"),
+    }
 }
 
 /// The hexadecimal SHA-256 digest of a verifying key.
@@ -117,7 +129,9 @@ pub struct RelationCase<R: Relation> {
 /// `build` is called once per [`Workload::setup`] and must be deterministic.
 pub fn relation_workload<R>(name: &'static str, build: fn() -> RelationCase<R>) -> Box<dyn Workload>
 where
-    R: Relation + 'static,
+    R: Relation + Send + 'static,
+    R::Instance: Send,
+    R::Witness: Send,
 {
     Box::new(RelationWorkload { name, build })
 }
@@ -127,7 +141,12 @@ struct RelationWorkload<R: Relation> {
     build: fn() -> RelationCase<R>,
 }
 
-impl<R: Relation + 'static> Workload for RelationWorkload<R> {
+impl<R> Workload for RelationWorkload<R>
+where
+    R: Relation + Send + 'static,
+    R::Instance: Send,
+    R::Witness: Send,
+{
     fn name(&self) -> &'static str {
         self.name
     }
@@ -179,9 +198,19 @@ impl<R: Relation, PCS: MidnightPCS> PreparedRelation<R, PCS> {
     }
 }
 
-impl<R: Relation, PCS: MidnightPCS> Prepared for PreparedRelation<R, PCS> {
+impl<R, PCS> Prepared for PreparedRelation<R, PCS>
+where
+    R: Relation + Send,
+    R::Instance: Send,
+    R::Witness: Send,
+    PCS: MidnightPCS,
+{
     fn k(&self) -> u32 {
         self.vk.k() as u32
+    }
+
+    fn scheme(&self) -> String {
+        scheme_name::<PCS>()
     }
 
     fn vk_hash(&self) -> String {
@@ -280,6 +309,8 @@ mod tests {
             assert!(prepared.verify(&proof), "{pcs}");
             assert!(!prepared.verify(&proof[1..]), "{pcs}");
             assert_eq!(prepared.vk_hash().len(), 64);
+            let scheme = if pcs == Pcs::Kzg { "kzg" } else { "fflonk<4>" };
+            assert_eq!(prepared.scheme(), scheme);
         }
     }
 }
