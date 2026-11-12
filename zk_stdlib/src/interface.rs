@@ -201,6 +201,8 @@ impl<Rel: Relation, PCS: MidnightPCS> MidnightPK<Rel, PCS> {
     /// Using `RawBytesUnchecked` will have the same effect as `RawBytes`,
     /// but it is not recommended.
     pub fn write<W: io::Write>(&self, writer: &mut W, format: SerdeFormat) -> io::Result<()> {
+        writer.write_all(&[PCS::ID])?;
+
         writer.write_all(&[self.k])?;
 
         Rel::write_relation(&self.relation, writer)?;
@@ -216,8 +218,16 @@ impl<Rel: Relation, PCS: MidnightPCS> MidnightPK<Rel, PCS> {
     ///
     /// # WARNING
     /// Use `RawBytesUnchecked` only if you trust the party who wrote the key.
+    ///
+    /// Fails if the key was written under a commitment scheme other than
+    /// `PCS`.
     pub fn read<R: io::Read>(reader: &mut R, format: SerdeFormat) -> io::Result<Self> {
         let mut byte = [0u8; 1];
+        reader.read_exact(&mut byte)?;
+        if byte[0] != PCS::ID {
+            let msg = format!("key declares PCS id {}, expected {}", byte[0], PCS::ID);
+            return Err(io::Error::new(io::ErrorKind::InvalidData, msg));
+        }
 
         reader.read_exact(&mut byte)?;
         let k = check_k(byte[0])?;

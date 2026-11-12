@@ -297,7 +297,7 @@ fn keys_with_out_of_range_k_are_rejected() {
         );
 
         let mut bytes = pk_bytes.clone();
-        bytes[0] = k;
+        bytes[1] = k;
         let err =
             MidnightPK::<DummyCircuit, KZG>::read(&mut &bytes[..], SerdeFormat::Processed).err();
         assert_eq!(
@@ -334,4 +334,23 @@ fn vk_version_and_pcs_are_checked_on_read() {
             "version {version}"
         );
     }
+}
+
+// A PK records its PCS: reading it under another PCS fails.
+#[test]
+#[serial]
+fn pk_pcs_is_checked_on_read() {
+    let architecture = ZkStdLibArch::default();
+    let relation = DummyCircuit { architecture };
+    let srs = srs_for_test(&relation, None);
+    let vk = midnight_zk_stdlib::setup_vk::<_, KZG>(&srs, &relation);
+    let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
+
+    let mut pk_bytes = Vec::new();
+    pk.write(&mut pk_bytes, SerdeFormat::Processed).unwrap();
+
+    let err =
+        MidnightPK::<DummyCircuit, FflonkKZG<4>>::read(&mut &pk_bytes[..], SerdeFormat::Processed)
+            .err();
+    assert_eq!(err.map(|e| e.kind()), Some(ErrorKind::InvalidData));
 }
