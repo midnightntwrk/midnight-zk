@@ -492,13 +492,14 @@ impl<F: Field> Circuit<F> for AddCircuit<F> {
 }
 // ANCHOR_END: circuit
 
-fn test_prover<E: Engine + MultiMillerLoop>(
+fn test_prover<E>(
     k: u32,
     circuit: impl Circuit<E::Fr>,
     expected: bool,
     instances: Vec<E::Fr>,
 ) -> Vec<u8>
 where
+    E: Engine + MultiMillerLoop,
     E::G1: Default + Hashable<State> + CurveExt<ScalarExt = E::Fr> + ProcessedSerdeObject,
     E::G1Affine: Default + SerdeObject + CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
     E::G2: ProcessedSerdeObject,

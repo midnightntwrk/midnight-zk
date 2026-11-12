@@ -39,13 +39,7 @@ type PhaseGroupPolys<F> = BTreeMap<PolynomialLabel, Polynomial<F, LagrangeCoeff>
 ///
 /// Benchmarks individual internal steps using the provided `group`.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn compute_trace<
-    'a,
-    F,
-    CS: PolynomialCommitmentScheme<F>,
-    T: Transcript,
-    ConcreteCircuit: Circuit<F>,
->(
+pub(crate) fn compute_trace<'a, F, CS, T, ConcreteCircuit>(
     params: &CS::Parameters,
     pk: &'a ProvingKey<F, CS>,
     circuit: &ConcreteCircuit,
@@ -60,7 +54,10 @@ pub(crate) fn compute_trace<
 ) -> Result<ProverTrace<'a, F>, Error>
 where
     F: ProofField<T::Hash>,
+    CS: PolynomialCommitmentScheme<F>,
     CS::Commitment: Hashable<T::Hash>,
+    T: Transcript,
+    ConcreteCircuit: Circuit<F>,
 {
     #[cfg(not(feature = "committed-instances"))]
     let nb_committed_instances: usize = 0;
@@ -430,7 +427,7 @@ where
 /// are zero-padded internally.
 ///
 /// Benchmarks individual internal steps using the provided `group`.
-pub(crate) fn finalise_proof<'a, F, CS: PolynomialCommitmentScheme<F>, T: Transcript>(
+pub(crate) fn finalise_proof<'a, F, CS, T>(
     params: &'a CS::Parameters,
     pk: &'a ProvingKey<F, CS>,
     // The prover needs to get all instances in non-committed form. However,
@@ -443,7 +440,9 @@ pub(crate) fn finalise_proof<'a, F, CS: PolynomialCommitmentScheme<F>, T: Transc
 ) -> Result<(), Error>
 where
     F: ProofField<T::Hash>,
+    CS: PolynomialCommitmentScheme<F>,
     CS::Commitment: Hashable<T::Hash>,
+    T: Transcript,
 {
     #[cfg(not(feature = "committed-instances"))]
     let nb_committed_instances: usize = 0;
@@ -592,12 +591,7 @@ where
 /// provided benchmark group, which causes those functions to benchmark their
 /// internal steps.
 #[allow(clippy::too_many_arguments)]
-pub fn benchmark_create_proof<
-    F,
-    CS: PolynomialCommitmentScheme<F>,
-    T: Transcript,
-    ConcreteCircuit: Circuit<F>,
->(
+pub fn benchmark_create_proof<F, CS, T, ConcreteCircuit>(
     params: &CS::Parameters,
     pk: &ProvingKey<F, CS>,
     circuit: &ConcreteCircuit,
@@ -609,7 +603,10 @@ pub fn benchmark_create_proof<
 ) -> Result<(), Error>
 where
     F: ProofField<T::Hash>,
+    CS: PolynomialCommitmentScheme<F>,
     CS::Commitment: Hashable<T::Hash>,
+    T: Transcript,
+    ConcreteCircuit: Circuit<F>,
 {
     #[cfg(not(feature = "committed-instances"))]
     let nb_committed_instances: usize = 0;

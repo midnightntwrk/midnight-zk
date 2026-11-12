@@ -559,7 +559,7 @@ pub fn setup_pk<R: Relation, PCS: MidnightPCS>(
 
 /// Produces a proof of relation `R` for the given instance (using the given
 /// proving key and witness).
-pub fn prove<R: Relation, H: TranscriptHash, PCS: MidnightPCS>(
+pub fn prove<R, H, PCS>(
     params: &ParamsKZG<Bls12>,
     pk: &MidnightPK<R, PCS>,
     relation: &R,
@@ -570,6 +570,9 @@ pub fn prove<R: Relation, H: TranscriptHash, PCS: MidnightPCS>(
 where
     G1Projective: Hashable<H>,
     F: TranscriptField<H>,
+    R: Relation,
+    H: TranscriptHash,
+    PCS: MidnightPCS,
 {
     let pi = R::format_instance(instance)?;
     let com_inst = R::format_committed_instances(&witness);
@@ -598,7 +601,7 @@ where
 
 /// Verifies the given proof of relation `R` with respect to the given instance.
 /// Returns `Ok(())` if the proof is valid.
-pub fn verify<R: Relation, H: TranscriptHash, PCS: MidnightPCS>(
+pub fn verify<R, H, PCS>(
     params_verifier: &ParamsVerifierKZG<Bls12>,
     vk: &MidnightVK<PCS>,
     instance: &R::Instance,
@@ -608,6 +611,9 @@ pub fn verify<R: Relation, H: TranscriptHash, PCS: MidnightPCS>(
 where
     G1Projective: Hashable<H>,
     F: TranscriptField<H>,
+    R: Relation,
+    H: TranscriptHash,
+    PCS: MidnightPCS,
 {
     let pi = R::format_instance(instance)?;
     // Without a committed instance, its column is an empty instance column, as
@@ -633,7 +639,7 @@ where
 /// in raw format (`Vec<F>`).
 ///
 /// Returns `Ok(())` if all proofs are valid.
-pub fn batch_verify<H: TranscriptHash + Send + Sync, PCS: MidnightPCS>(
+pub fn batch_verify<H, PCS>(
     params_verifier: &ParamsVerifierKZG<Bls12>,
     vks: &[MidnightVK<PCS>],
     pis: &[Vec<F>],
@@ -642,6 +648,8 @@ pub fn batch_verify<H: TranscriptHash + Send + Sync, PCS: MidnightPCS>(
 where
     G1Projective: Hashable<H>,
     F: TranscriptField<H>,
+    H: TranscriptHash + Send + Sync,
+    PCS: MidnightPCS,
 {
     use rayon::prelude::*;
 

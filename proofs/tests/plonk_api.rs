@@ -436,11 +436,10 @@ fn plonk_api() {
         }};
     }
 
-    fn keygen<F, Scheme: PolynomialCommitmentScheme<F>>(
-        params: &mut Scheme::Parameters,
-    ) -> ProvingKey<F, Scheme>
+    fn keygen<F, Scheme>(params: &mut Scheme::Parameters) -> ProvingKey<F, Scheme>
     where
         F: FromUniformBytes<64> + WithSmallOrderMulGroup<3> + Ord,
+        Scheme: PolynomialCommitmentScheme<F>,
     {
         let (_, _, lookup_table) = common!(F);
         let empty_circuit: MyCircuit<F> = MyCircuit {
@@ -454,19 +453,17 @@ fn plonk_api() {
         keygen_pk(vk, &empty_circuit).expect("keygen_pk should not fail")
     }
 
-    fn create_proof<
-        F,
-        Scheme: PolynomialCommitmentScheme<F>,
-        T: Transcript,
-        R: RngCore + CryptoRng,
-    >(
+    fn create_proof<F, Scheme, T, R>(
         rng: R,
         params: &Scheme::Parameters,
         pk: &ProvingKey<F, Scheme>,
     ) -> Vec<u8>
     where
         F: ProofField<T::Hash> + SerdeObject,
+        Scheme: PolynomialCommitmentScheme<F>,
         Scheme::Commitment: Hashable<T::Hash>,
+        T: Transcript,
+        R: RngCore + CryptoRng,
     {
         let (a, instance, lookup_table) = common!(F);
 
@@ -499,13 +496,15 @@ fn plonk_api() {
         transcript.finalize()
     }
 
-    fn verify_proof<F, Scheme: PolynomialCommitmentScheme<F>, T: Transcript>(
+    fn verify_proof<F, Scheme, T>(
         params_verifier: &Scheme::VerifierParameters,
         vk: &VerifyingKey<F, Scheme>,
         proof: &[u8],
     ) where
         F: ProofField<T::Hash> + SerdeObject,
+        Scheme: PolynomialCommitmentScheme<F>,
         Scheme::Commitment: Hashable<T::Hash>,
+        T: Transcript,
     {
         let (_, instance, _) = common!(F);
         let pubinputs = [instance];

@@ -123,23 +123,22 @@ where
         PCS::commit_interleaved(params, &chunks, &g_labels)
     }
 
-    fn read_commitment<T: Transcript>(
+    fn read_commitment<T>(
         transcript: &mut T,
         labels: &[PolynomialLabel],
     ) -> io::Result<Self::Commitment>
     where
         Self::Commitment: Hashable<T::Hash>,
+        T: Transcript,
     {
         let g_labels = Self::chunk_labels(labels);
         PCS::read_commitment(transcript, &g_labels)
     }
 
-    fn write_commitment<T: Transcript>(
-        transcript: &mut T,
-        commitment: &Self::Commitment,
-    ) -> io::Result<()>
+    fn write_commitment<T>(transcript: &mut T, commitment: &Self::Commitment) -> io::Result<()>
     where
         Self::Commitment: Hashable<T::Hash>,
+        T: Transcript,
     {
         PCS::write_commitment(transcript, commitment)
     }
@@ -153,14 +152,15 @@ where
         PCS::deserialize_commitment(reader, format, &g_labels)
     }
 
-    fn squeeze_evaluation_point<T: Transcript>(transcript: &mut T) -> F
+    fn squeeze_evaluation_point<T>(transcript: &mut T) -> F
     where
         F: Sampleable<T::Hash>,
+        T: Transcript,
     {
         PCS::squeeze_evaluation_point(transcript).pow_vartime([Self::T_MAX as u64])
     }
 
-    fn multi_open<T: Transcript>(
+    fn multi_open<T>(
         params: &Self::Parameters,
         queries: &[ProverQuery<F>],
         transcript: &mut T,
@@ -168,6 +168,7 @@ where
     where
         F: TranscriptField<T::Hash> + Hash + Ord,
         Self::Commitment: Hashable<T::Hash>,
+        T: Transcript,
     {
         // Maps the labels of every queried chunk to its polynomials and the
         // points they are queried at, in query order: `labels -> (polys, points)`.
@@ -240,13 +241,14 @@ where
         PCS::commitment_byte_length(n.div_ceil(Self::T_MAX))
     }
 
-    fn multi_prepare<'com, T: Transcript>(
+    fn multi_prepare<'com, T>(
         queries: &[VerifierQuery<'com, F, Self>],
         transcript: &mut T,
     ) -> Result<Self::VerificationGuard, Error>
     where
         F: TranscriptField<T::Hash> + Hash + Ord,
         Self::Commitment: Hashable<T::Hash> + 'com,
+        T: Transcript,
     {
         // Maps the labels of every queried chunk to its commitment and the points
         // its polynomials are queried at, in query order: `labels -> (commitment,

@@ -130,26 +130,28 @@ pub trait InCircuitTranscript<F: CircuitField>: Clone {
     ) -> Result<AssignedNative<F>, Error>;
 
     /// Absorbs the given value into the transcript.
-    fn common<V: InCircuitHashable<F>>(
+    fn common<V>(
         &mut self,
         layouter: &mut impl Layouter<F>,
         chip: &V::Chip,
         value: &V,
     ) -> Result<(), Error>
     where
-        V::Element: Hashable<Self::Hash>;
+        V::Element: Hashable<Self::Hash>,
+        V: InCircuitHashable<F>;
 
     /// Reads a value of the given shape from the proof, assigns it and absorbs
     /// it into the transcript. Think of the read value as a witness freely
     /// chosen by the prover.
-    fn read<V: InCircuitHashable<F>>(
+    fn read<V>(
         &mut self,
         layouter: &mut impl Layouter<F>,
         chip: &V::Chip,
         shape: &V::Shape,
     ) -> Result<V, Error>
     where
-        V::Element: Hashable<Self::Hash>;
+        V::Element: Hashable<Self::Hash>,
+        V: InCircuitHashable<F>;
 }
 
 impl<F: PoseidonField> InCircuitTranscript<F> for PoseidonTranscriptGadget<F> {
@@ -183,7 +185,7 @@ impl<F: PoseidonField> InCircuitTranscript<F> for PoseidonTranscriptGadget<F> {
         self.sponge_chip.squeeze(layouter, state)
     }
 
-    fn common<V: InCircuitHashable<F>>(
+    fn common<V>(
         &mut self,
         layouter: &mut impl Layouter<F>,
         chip: &V::Chip,
@@ -191,13 +193,14 @@ impl<F: PoseidonField> InCircuitTranscript<F> for PoseidonTranscriptGadget<F> {
     ) -> Result<(), Error>
     where
         V::Element: Hashable<Self::Hash>,
+        V: InCircuitHashable<F>,
     {
         let inputs = value.to_input(layouter, chip)?;
         let state = self.sponge_state.as_mut().expect("You must init the transcript gadget");
         self.sponge_chip.absorb(layouter, state, &inputs)
     }
 
-    fn read<V: InCircuitHashable<F>>(
+    fn read<V>(
         &mut self,
         layouter: &mut impl Layouter<F>,
         chip: &V::Chip,
@@ -205,6 +208,7 @@ impl<F: PoseidonField> InCircuitTranscript<F> for PoseidonTranscriptGadget<F> {
     ) -> Result<V, Error>
     where
         V::Element: Hashable<Self::Hash>,
+        V: InCircuitHashable<F>,
     {
         let reader = self.transcript_reader.as_mut().expect("You must init the transcript gadget");
         let value = V::assign_read(layouter, chip, shape, reader.read().ok())?;

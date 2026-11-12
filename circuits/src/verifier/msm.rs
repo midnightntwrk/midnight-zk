@@ -76,8 +76,9 @@ where
     Fixed,
 }
 
-impl<E: MultiMillerLoop> Point<E>
+impl<E> Point<E>
 where
+    E: MultiMillerLoop,
     E::Fr: CircuitField,
     E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
         + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
@@ -98,8 +99,9 @@ where
     }
 }
 
-impl<E: MultiMillerLoop> InnerValue for AssignedPoint<E>
+impl<E> InnerValue for AssignedPoint<E>
 where
+    E: MultiMillerLoop,
     E::Fr: CircuitField,
     E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
         + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
@@ -114,8 +116,9 @@ where
     }
 }
 
-impl<E: MultiMillerLoop> Instantiable<E::Fr> for AssignedPoint<E>
+impl<E> Instantiable<E::Fr> for AssignedPoint<E>
 where
+    E: MultiMillerLoop,
     E::Fr: CircuitField,
     E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
         + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
@@ -136,8 +139,9 @@ where
     }
 }
 
-impl<E: MultiMillerLoop> AssignedPoint<E>
+impl<E> AssignedPoint<E>
 where
+    E: MultiMillerLoop,
     E::Fr: CircuitField,
     E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
         + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
@@ -198,8 +202,9 @@ where
     labels: Vec<PolynomialLabel>,
 }
 
-impl<E: MultiMillerLoop> Msm<E>
+impl<E> Msm<E>
 where
+    E: MultiMillerLoop,
     E::Fr: CircuitField,
     E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
         + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
@@ -368,8 +373,9 @@ where
     }
 }
 
-impl<E: MultiMillerLoop> InnerValue for AssignedMsm<E>
+impl<E> InnerValue for AssignedMsm<E>
 where
+    E: MultiMillerLoop,
     E::Fr: CircuitField,
     E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
         + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
@@ -393,8 +399,9 @@ where
     }
 }
 
-impl<E: MultiMillerLoop> Instantiable<E::Fr> for AssignedMsm<E>
+impl<E> Instantiable<E::Fr> for AssignedMsm<E>
 where
+    E: MultiMillerLoop,
     E::Fr: CircuitField,
     E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
         + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
@@ -420,8 +427,9 @@ where
     }
 }
 
-impl<E: MultiMillerLoop> AssignedMsm<E>
+impl<E> AssignedMsm<E>
 where
+    E: MultiMillerLoop,
     E::Fr: CircuitField,
     E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
         + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
@@ -476,8 +484,9 @@ where
     }
 }
 
-impl<E: MultiMillerLoop> AssignedMsm<E>
+impl<E> AssignedMsm<E>
 where
+    E: MultiMillerLoop,
     E::Fr: CircuitField,
     E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
         + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
@@ -497,8 +506,9 @@ where
     }
 }
 
-impl<E: MultiMillerLoop> AssignedMsm<E>
+impl<E> AssignedMsm<E>
 where
+    E: MultiMillerLoop,
     E::Fr: CircuitField,
     E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
         + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
@@ -552,8 +562,9 @@ where
     }
 }
 
-impl<E: MultiMillerLoop> AssignedMsm<E>
+impl<E> AssignedMsm<E>
 where
+    E: MultiMillerLoop,
     E::Fr: CircuitField,
     E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
         + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,

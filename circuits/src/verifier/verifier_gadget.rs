@@ -230,7 +230,7 @@ impl<F: CircuitField, PCS: InCircuitPCS<F>> VerifierGadget<F, PCS> {
     /// constraints](crate::verifier::VerifierGadget::verify_algebraic_constraints),
     /// and the resulting accumulator satisfies the
     /// [invariant](crate::verifier::Accumulator::check).
-    pub fn parse_trace<T: InCircuitTranscript<F>>(
+    pub fn parse_trace<T>(
         &self,
         layouter: &mut impl Layouter<F>,
         assigned_vk: &AssignedVk<F, PCS>,
@@ -241,6 +241,7 @@ impl<F: CircuitField, PCS: InCircuitPCS<F>> VerifierGadget<F, PCS> {
     where
         F: Hashable<T::Hash>,
         PCS::Commitment: Hashable<T::Hash>,
+        T: InCircuitTranscript<F>,
     {
         let cs = &assigned_vk.cs;
 
@@ -329,7 +330,7 @@ impl<F: CircuitField, PCS: InCircuitPCS<F>> VerifierGadget<F, PCS> {
     /// The proof is considered to be valid if the resulting accumulator
     /// satisfies the [invariant](crate::verifier::Accumulator::check)
     /// with respect to the relevant `tau_in_g2`.
-    pub fn verify_algebraic_constraints<T: InCircuitTranscript<F>>(
+    pub fn verify_algebraic_constraints<T>(
         &self,
         layouter: &mut impl Layouter<F>,
         assigned_vk: &AssignedVk<F, PCS>,
@@ -341,6 +342,7 @@ impl<F: CircuitField, PCS: InCircuitPCS<F>> VerifierGadget<F, PCS> {
     where
         F: Hashable<T::Hash>,
         PCS::Commitment: Hashable<T::Hash>,
+        T: InCircuitTranscript<F>,
     {
         let cs = &assigned_vk.cs;
         let k = &assigned_vk.domain.k;
@@ -684,7 +686,7 @@ impl<F: CircuitField, PCS: InCircuitPCS<F>> VerifierGadget<F, PCS> {
     /// The proof is considered to be valid if the resulting accumulator
     /// satisfies the [invariant](crate::verifier::Accumulator::check)
     /// with respect to the relevant `tau_in_g2`.
-    pub fn prepare<T: InCircuitTranscript<F>>(
+    pub fn prepare<T>(
         &self,
         layouter: &mut impl Layouter<F>,
         assigned_vk: &AssignedVk<F, PCS>,
@@ -695,6 +697,7 @@ impl<F: CircuitField, PCS: InCircuitPCS<F>> VerifierGadget<F, PCS> {
     where
         F: Hashable<T::Hash>,
         PCS::Commitment: Hashable<T::Hash>,
+        T: InCircuitTranscript<F>,
     {
         let trace = self.parse_trace(
             layouter,

@@ -92,7 +92,7 @@ where
 /// evaluations. This function does not verify the PCS proof.
 ///
 /// The verifier will error if there are trailing bits in the transcript.
-pub fn verify_algebraic_constraints<F, CS: PolynomialCommitmentScheme<F>, T: Transcript>(
+pub fn verify_algebraic_constraints<F, CS, T>(
     vk: &VerifyingKey<F, CS>,
     trace: VerifierTrace<F, CS>,
     // Unlike the prover, the verifier gets their instances in two arguments:
@@ -106,7 +106,9 @@ pub fn verify_algebraic_constraints<F, CS: PolynomialCommitmentScheme<F>, T: Tra
 ) -> Result<CS::VerificationGuard, Error>
 where
     F: ProofField<T::Hash>,
+    CS: PolynomialCommitmentScheme<F>,
     CS::Commitment: Hashable<T::Hash>,
+    T: Transcript,
 {
     #[cfg(not(feature = "committed-instances"))]
     let committed_instances: Vec<CS::Commitment> = vec![];
@@ -261,7 +263,7 @@ where
 /// instance columns.
 ///
 /// The verifier will error if there are trailing bytes in the transcript.
-pub fn prepare<F, CS: PolynomialCommitmentScheme<F>, T: Transcript>(
+pub fn prepare<F, CS, T>(
     vk: &VerifyingKey<F, CS>,
     // Unlike the prover, the verifier gets their instances in two arguments:
     // committed and normal (non-committed). Note that the total number of
@@ -274,7 +276,9 @@ pub fn prepare<F, CS: PolynomialCommitmentScheme<F>, T: Transcript>(
 ) -> Result<CS::VerificationGuard, Error>
 where
     F: ProofField<T::Hash>,
+    CS: PolynomialCommitmentScheme<F>,
     CS::Commitment: Hashable<T::Hash>,
+    T: Transcript,
 {
     let trace = parse_trace(
         vk,

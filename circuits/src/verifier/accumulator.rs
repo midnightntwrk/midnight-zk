@@ -83,8 +83,9 @@ where
     pub(crate) rhs: AssignedMsm<E>,
 }
 
-impl<E: MultiMillerLoop> Accumulator<E>
+impl<E> Accumulator<E>
 where
+    E: MultiMillerLoop,
     E::Fr: CircuitField,
     E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
         + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
@@ -211,8 +212,9 @@ where
     }
 }
 
-impl<E: MultiMillerLoop> InnerValue for AssignedAccumulator<E>
+impl<E> InnerValue for AssignedAccumulator<E>
 where
+    E: MultiMillerLoop,
     E::Fr: CircuitField,
     E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
         + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
@@ -226,8 +228,9 @@ where
     }
 }
 
-impl<E: MultiMillerLoop> Instantiable<E::Fr> for AssignedAccumulator<E>
+impl<E> Instantiable<E::Fr> for AssignedAccumulator<E>
 where
+    E: MultiMillerLoop,
     E::Fr: CircuitField,
     E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
         + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
@@ -250,8 +253,9 @@ where
     }
 }
 
-impl<E: MultiMillerLoop> AssignedAccumulator<E>
+impl<E> AssignedAccumulator<E>
 where
+    E: MultiMillerLoop,
     E::Fr: CircuitField,
     E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
         + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
@@ -277,8 +281,9 @@ where
     }
 }
 
-impl<E: MultiMillerLoop> AssignedAccumulator<E>
+impl<E> AssignedAccumulator<E>
 where
+    E: MultiMillerLoop,
     E::Fr: CircuitField,
     E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
         + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,

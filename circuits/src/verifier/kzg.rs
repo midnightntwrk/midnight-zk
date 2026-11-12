@@ -89,8 +89,9 @@ where
     ),
 }
 
-impl<E: MultiMillerLoop> InnerValue for AssignedKZGCommitment<E>
+impl<E> InnerValue for AssignedKZGCommitment<E>
 where
+    E: MultiMillerLoop,
     E::Fr: CircuitField,
     E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
         + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
@@ -115,8 +116,9 @@ where
     }
 }
 
-impl<E: MultiMillerLoop> AssignedKZGCommitment<E>
+impl<E> AssignedKZGCommitment<E>
 where
+    E: MultiMillerLoop,
     E::Fr: CircuitField,
     E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
         + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
@@ -178,8 +180,9 @@ where
     E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
         + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>;
 
-impl<E: MultiMillerLoop> AssignedKZGMultiCommitment<E>
+impl<E> AssignedKZGMultiCommitment<E>
 where
+    E: MultiMillerLoop,
     E::Fr: CircuitField,
     E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
         + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
@@ -228,8 +231,9 @@ where
     }
 }
 
-impl<E: MultiMillerLoop> InnerValue for AssignedKZGMultiCommitment<E>
+impl<E> InnerValue for AssignedKZGMultiCommitment<E>
 where
+    E: MultiMillerLoop,
     E::Fr: CircuitField,
     E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
         + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
@@ -241,8 +245,9 @@ where
     }
 }
 
-impl<E: MultiMillerLoop> Instantiable<E::Fr> for AssignedKZGMultiCommitment<E>
+impl<E> Instantiable<E::Fr> for AssignedKZGMultiCommitment<E>
 where
+    E: MultiMillerLoop,
     E::Fr: CircuitField,
     E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
         + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
@@ -267,8 +272,9 @@ where
     }
 }
 
-impl<E: MultiMillerLoop> InCircuitHashable<E::Fr> for AssignedKZGMultiCommitment<E>
+impl<E> InCircuitHashable<E::Fr> for AssignedKZGMultiCommitment<E>
 where
+    E: MultiMillerLoop,
     E::Fr: CircuitField,
     E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
         + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>
@@ -488,13 +494,14 @@ fn construct_intermediate_sets<F: CircuitField>(
 // See proofs/src/utils/arithmetic.rs
 // ----------------------------------
 
-fn msm_inner_product<E: MultiMillerLoop>(
+fn msm_inner_product<E>(
     layouter: &mut impl Layouter<E::Fr>,
     scalar_chip: &ScalarChip<E::Fr>,
     msms: &[AssignedMsm<E>],
     scalars: &[AssignedBoundedScalar<E::Fr>],
 ) -> Result<AssignedMsm<E>, Error>
 where
+    E: MultiMillerLoop,
     E::Fr: CircuitField,
     E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
         + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
@@ -536,7 +543,7 @@ fn evals_inner_product<F: CircuitField>(
 
 /// Verifies a bunch of KZG queries in a multi-open argument.
 /// The resulting accumulator satisfies the invariant iff all queries are valid.
-pub(crate) fn multi_prepare_kzg<E: MultiMillerLoop, T: InCircuitTranscript<E::Fr>>(
+pub(crate) fn multi_prepare_kzg<E, T>(
     layouter: &mut impl Layouter<E::Fr>,
     curve_chip: &CurveChip<E>,
     scalar_chip: &ScalarChip<E::Fr>,
@@ -544,6 +551,7 @@ pub(crate) fn multi_prepare_kzg<E: MultiMillerLoop, T: InCircuitTranscript<E::Fr
     transcript: &mut T,
 ) -> Result<AssignedAccumulator<E>, Error>
 where
+    E: MultiMillerLoop,
     E::Fr: Hashable<T::Hash>,
     E::Fr: CircuitField,
     E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
@@ -552,6 +560,7 @@ where
     E::G1Affine: Default + CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1> + SerdeObject,
     E::G2: ProcessedSerdeObject,
     KZGMultiCommitment<E>: Hashable<T::Hash>,
+    T: InCircuitTranscript<E::Fr>,
 {
     let one = AssignedBoundedScalar::one(layouter, scalar_chip)?;
 
@@ -753,8 +762,9 @@ impl<E: MultiMillerLoop> CommitmentBases<E::G1> for KZGMultiCommitment<E> {
 }
 
 /// In circuit implementation of KZG.
-impl<E: MultiMillerLoop> InCircuitPCS<E::Fr> for KZGCommitmentScheme<E>
+impl<E> InCircuitPCS<E::Fr> for KZGCommitmentScheme<E>
 where
+    E: MultiMillerLoop,
     E::Fr: CircuitField,
     E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
         + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
@@ -792,7 +802,7 @@ where
     /// # Warning
     ///
     /// The received points are not enforced to be in the prime-order subgroup.
-    fn read_commitment<T: InCircuitTranscript<E::Fr>>(
+    fn read_commitment<T>(
         layouter: &mut impl Layouter<E::Fr>,
         curve_chip: &CurveChip<E>,
         transcript: &mut T,
@@ -800,6 +810,7 @@ where
     ) -> Result<Self::AssignedCommitment, Error>
     where
         Self::Commitment: Hashable<T::Hash>,
+        T: InCircuitTranscript<E::Fr>,
     {
         // An empty group is never written to the transcript.
         if labels.is_empty() {
@@ -817,7 +828,7 @@ where
             .collect()
     }
 
-    fn multi_prepare<T: InCircuitTranscript<E::Fr>>(
+    fn multi_prepare<T>(
         layouter: &mut impl Layouter<E::Fr>,
         curve_chip: &CurveChip<E>,
         scalar_chip: &ScalarChip<E::Fr>,
@@ -827,6 +838,7 @@ where
     where
         E::Fr: Hashable<T::Hash>,
         Self::Commitment: Hashable<T::Hash>,
+        T: InCircuitTranscript<E::Fr>,
     {
         multi_prepare_kzg(layouter, curve_chip, scalar_chip, queries, transcript)
     }

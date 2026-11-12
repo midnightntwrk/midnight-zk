@@ -162,14 +162,15 @@ pub trait InCircuitPCS<F: CircuitField>:
 
     /// Reads one commitment to `labels.len()` polynomials from the proof
     /// transcript, tagging each polynomial with its label.
-    fn read_commitment<T: InCircuitTranscript<F>>(
+    fn read_commitment<T>(
         layouter: &mut impl Layouter<F>,
         commitment_chip: &Self::CommitmentChip,
         transcript: &mut T,
         labels: &[PolynomialLabel],
     ) -> Result<Self::AssignedCommitment, Error>
     where
-        Self::Commitment: Hashable<T::Hash>;
+        Self::Commitment: Hashable<T::Hash>,
+        T: InCircuitTranscript<F>;
 
     /// Squeezes the point at which the protocol opens its committed
     /// polynomials; the default squeezes a plain challenge. Mirrors
@@ -187,7 +188,7 @@ pub trait InCircuitPCS<F: CircuitField>:
     fn commitment_labels(commitment: &Self::AssignedCommitment) -> Vec<PolynomialLabel>;
 
     /// In-circuit multi-open verification; produces a verification guard.
-    fn multi_prepare<T: InCircuitTranscript<F>>(
+    fn multi_prepare<T>(
         layouter: &mut impl Layouter<F>,
         commitment_chip: &Self::CommitmentChip,
         scalar_chip: &ScalarChip<F>,
@@ -196,7 +197,8 @@ pub trait InCircuitPCS<F: CircuitField>:
     ) -> Result<Self::AssignedVerificationGuard, Error>
     where
         F: Hashable<T::Hash>,
-        Self::Commitment: Hashable<T::Hash>;
+        Self::Commitment: Hashable<T::Hash>,
+        T: InCircuitTranscript<F>;
 }
 
 /// The in-circuit commitment type of `PCS`.

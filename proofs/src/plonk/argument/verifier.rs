@@ -27,12 +27,13 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> Committed<F, CS> {
         }
     }
 
-    pub(crate) fn read<T: Transcript>(
+    pub(crate) fn read<T>(
         labels: &[PolynomialLabel],
         transcript: &mut T,
     ) -> Result<Committed<F, CS>, Error>
     where
         CS::Commitment: Hashable<T::Hash>,
+        T: Transcript,
     {
         Ok(Committed {
             commitment: CS::read_commitment(transcript, labels)?,
@@ -48,7 +49,7 @@ pub struct Evaluated<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
 }
 
 impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Committed<F, CS> {
-    pub(crate) fn evaluate<T: Transcript>(
+    pub(crate) fn evaluate<T>(
         self,
         cs: &ConstraintSystem<F>,
         x_rotations: &BTreeMap<Rotation, F>,
@@ -56,6 +57,7 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Committed<
     ) -> Result<Evaluated<F, CS>, Error>
     where
         F: Hashable<T::Hash>,
+        T: Transcript,
     {
         let mut evals_map: BTreeMap<PolynomialLabel, Vec<Evaluation<F>>> = BTreeMap::new();
 

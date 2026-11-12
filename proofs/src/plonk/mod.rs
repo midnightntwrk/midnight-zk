@@ -290,9 +290,10 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> VerifyingK
     }
 
     /// Hashes a verification key into a transcript.
-    pub fn hash_into<T: Transcript>(&self, transcript: &mut T) -> io::Result<()>
+    pub fn hash_into<T>(&self, transcript: &mut T) -> io::Result<()>
     where
         F: Hashable<T::Hash>,
+        T: Transcript,
     {
         self.absorb_into(transcript).map(|_| ())
     }
@@ -415,9 +416,10 @@ pub(in crate::plonk) fn build_phase0_polys<F: WithSmallOrderMulGroup<3>>(
     )
 }
 
-impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> ProvingKey<F, CS>
+impl<F, CS> ProvingKey<F, CS>
 where
-    F: FromUniformBytes<64>,
+    F: WithSmallOrderMulGroup<3> + FromUniformBytes<64>,
+    CS: PolynomialCommitmentScheme<F>,
 {
     /// Get the underlying [`VerifyingKey`].
     pub fn get_vk(&self) -> &VerifyingKey<F, CS> {
@@ -434,9 +436,10 @@ where
     }
 }
 
-impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> ProvingKey<F, CS>
+impl<F, CS> ProvingKey<F, CS>
 where
-    F: PrimeField + FromUniformBytes<64> + SerdeObject,
+    F: WithSmallOrderMulGroup<3> + PrimeField + FromUniformBytes<64> + SerdeObject,
+    CS: PolynomialCommitmentScheme<F>,
 {
     /// Writes a proving key to a buffer.
     ///

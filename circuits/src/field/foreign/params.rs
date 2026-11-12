@@ -141,9 +141,10 @@ pub struct MultiEmulationParams {}
 
 /// Implement FieldEmulationParams for any curve that can emulate itself through
 /// MultiEmulationParams.
-impl<C: CircuitCurve + Default> FieldEmulationParams<C::ScalarField, C::Base> for C
+impl<C> FieldEmulationParams<C::ScalarField, C::Base> for C
 where
     MultiEmulationParams: FieldEmulationParams<C::ScalarField, C::Base>,
+    C: CircuitCurve + Default,
 {
     const LOG2_BASE: u32 = MultiEmulationParams::LOG2_BASE;
 

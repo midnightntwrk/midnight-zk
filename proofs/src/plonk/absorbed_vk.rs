@@ -46,12 +46,10 @@ impl<'a, F: PrimeField, CS: PolynomialCommitmentScheme<F>> AbsorbedVk<'a, F, CS>
 impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> VerifyingKey<F, CS> {
     /// Absorbs this verifying key into `transcript`, returning the witness that
     /// it was.
-    pub(crate) fn absorb_into<T: Transcript>(
-        &self,
-        transcript: &mut T,
-    ) -> io::Result<AbsorbedVk<'_, F, CS>>
+    pub(crate) fn absorb_into<T>(&self, transcript: &mut T) -> io::Result<AbsorbedVk<'_, F, CS>>
     where
         F: Hashable<T::Hash>,
+        T: Transcript,
     {
         transcript.common(&self.transcript_repr)?;
         Ok(AbsorbedVk(self))

@@ -80,8 +80,9 @@ pub struct KZGCommitmentScheme<E: Engine> {
     _marker: PhantomData<E>,
 }
 
-impl<E: MultiMillerLoop> PolynomialCommitmentScheme<E::Fr> for KZGCommitmentScheme<E>
+impl<E> PolynomialCommitmentScheme<E::Fr> for KZGCommitmentScheme<E>
 where
+    E: MultiMillerLoop,
     E::G1: Default + CurveExt<ScalarExt = E::Fr> + ProcessedSerdeObject,
     E::G1Affine: Default + CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1> + SerdeObject,
     E::G2: ProcessedSerdeObject,
@@ -146,12 +147,13 @@ where
         )
     }
 
-    fn read_commitment<T: Transcript>(
+    fn read_commitment<T>(
         transcript: &mut T,
         labels: &[PolynomialLabel],
     ) -> io::Result<Self::Commitment>
     where
         Self::Commitment: Hashable<T::Hash>,
+        T: Transcript,
     {
         // An empty group is never written to the transcript.
         if labels.is_empty() {
@@ -195,12 +197,10 @@ where
         Ok(commitment)
     }
 
-    fn write_commitment<T: Transcript>(
-        transcript: &mut T,
-        commitment: &Self::Commitment,
-    ) -> io::Result<()>
+    fn write_commitment<T>(transcript: &mut T, commitment: &Self::Commitment) -> io::Result<()>
     where
         Self::Commitment: Hashable<T::Hash>,
+        T: Transcript,
     {
         // An empty group is neither written nor absorbed, so the transcript
         // carries no prefix for it and `read_commitment` reads nothing back.
@@ -246,7 +246,7 @@ where
         Ok(KZGMultiCommitment(inners))
     }
 
-    fn multi_open<T: Transcript>(
+    fn multi_open<T>(
         params: &Self::Parameters,
         queries: &[ProverQuery<E::Fr>],
         transcript: &mut T,
@@ -254,6 +254,7 @@ where
     where
         E::Fr: TranscriptField<T::Hash> + Hash + Ord,
         KZGMultiCommitment<E>: Hashable<T::Hash>,
+        T: Transcript,
     {
         /// Like [`inner_product`] but for coefficient-form polynomials that may
         /// have different lengths (zero-extending the shorter operands).
@@ -384,7 +385,7 @@ where
         transcript.write(&pi).map_err(|_| Error::OpeningError)
     }
 
-    fn multi_prepare<'com, T: Transcript>(
+    fn multi_prepare<'com, T>(
         queries: &[VerifierQuery<'com, E::Fr, KZGCommitmentScheme<E>>],
         transcript: &mut T,
     ) -> Result<DualMSM<E>, Error>
@@ -392,6 +393,7 @@ where
         E::Fr: TranscriptField<T::Hash> + Ord + Hash,
         E::G1: CurveExt<ScalarExt = E::Fr>,
         KZGMultiCommitment<E>: Hashable<T::Hash> + 'com,
+        T: Transcript,
     {
         // Refer to the halo2 book for docs:
         // https://zcash.github.io/halo2/design/proving-system/multipoint-opening.html
@@ -539,8 +541,9 @@ where
     }
 }
 
-impl<E: MultiMillerLoop> InterleavedCommit<E::Fr> for KZGCommitmentScheme<E>
+impl<E> InterleavedCommit<E::Fr> for KZGCommitmentScheme<E>
 where
+    E: MultiMillerLoop,
     E::G1: Default + CurveExt<ScalarExt = E::Fr> + ProcessedSerdeObject,
     E::G1Affine: Default + CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1> + SerdeObject,
     E::G2: ProcessedSerdeObject,
@@ -569,12 +572,11 @@ where
 
 /// Commitment to `Σ_i X^i f_i(X^t)`, for `chunk` the polynomials `f_i` and
 /// `t` the next power of two of their number.
-fn commit_chunk<E: MultiMillerLoop, B: PolynomialRepresentation>(
-    params: &ParamsKZG<E>,
-    chunk: &[&Polynomial<E::Fr, B>],
-) -> E::G1
+fn commit_chunk<E, B>(params: &ParamsKZG<E>, chunk: &[&Polynomial<E::Fr, B>]) -> E::G1
 where
+    E: MultiMillerLoop,
     E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
+    B: PolynomialRepresentation,
 {
     let t = chunk.len().next_power_of_two();
     let n = chunk[0].len();
