@@ -609,6 +609,7 @@ impl<E: MultiMillerLoop> CommitmentBases<E::G1> for KZGMultiCommitment<E> {
 
 /// In circuit implementation of KZG.
 impl<S: SelfEmulation> InCircuitPCS<S> for KZGCommitmentScheme<S::Engine> {
+    type CommitmentChip = S::CurveChip;
     type AssignedCommitment = AssignedKZGMultiCommitment<S>;
 
     fn fixed_commitment(labels: &[PolynomialLabel]) -> Self::AssignedCommitment {

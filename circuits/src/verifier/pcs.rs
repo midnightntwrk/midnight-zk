@@ -107,6 +107,9 @@ pub trait CommitmentBases<C> {
 pub trait InCircuitPCS<S: SelfEmulation>:
     PolynomialCommitmentScheme<S::F, Commitment: CommitmentBases<S::C>> + Sized + Clone + Debug
 {
+    /// The chip this scheme operates on its commitments with.
+    type CommitmentChip: Clone;
+
     /// The in-circuit type representing a committed polynomial, whose
     /// off-circuit value is a commitment of this scheme.
     type AssignedCommitment: Clone
@@ -144,7 +147,7 @@ pub trait InCircuitPCS<S: SelfEmulation>:
     /// `|labels|` polynomials.
     fn assign_commitment(
         layouter: &mut impl Layouter<S::F>,
-        curve_chip: &S::CurveChip,
+        commitment_chip: &Self::CommitmentChip,
         value: Value<<Self::AssignedCommitment as InnerValue>::Element>,
         labels: &[PolynomialLabel],
     ) -> Result<Self::AssignedCommitment, Error>;
@@ -158,7 +161,7 @@ pub trait InCircuitPCS<S: SelfEmulation>:
     /// with [`Self::fixed_commitment`].
     fn commitment_as_public_input(
         layouter: &mut impl Layouter<S::F>,
-        curve_chip: &S::CurveChip,
+        commitment_chip: &Self::CommitmentChip,
         commitment: &Self::AssignedCommitment,
     ) -> Result<Vec<AssignedNative<S::F>>, Error>;
 
@@ -195,7 +198,7 @@ pub trait InCircuitPCS<S: SelfEmulation>:
     /// In-circuit multi-open verification; produces an accumulator.
     fn multi_prepare(
         layouter: &mut impl Layouter<S::F>,
-        curve_chip: &S::CurveChip,
+        commitment_chip: &Self::CommitmentChip,
         scalar_chip: &ScalarChip<S::F>,
         queries: &[VerifierQuery<'_, S, Self>],
         transcript: &mut TranscriptGadget<S>,

@@ -48,6 +48,7 @@ where
     S: SelfEmulation,
     PCS: InCircuitPCS<S> + InterleavedCommit<S::F>,
 {
+    type CommitmentChip = PCS::CommitmentChip;
     type AssignedCommitment = PCS::AssignedCommitment;
 
     fn fixed_commitment(labels: &[PolynomialLabel]) -> Self::AssignedCommitment {
@@ -60,19 +61,24 @@ where
 
     fn assign_commitment(
         layouter: &mut impl Layouter<S::F>,
-        curve_chip: &S::CurveChip,
+        commitment_chip: &Self::CommitmentChip,
         value: Value<<Self::AssignedCommitment as InnerValue>::Element>,
         labels: &[PolynomialLabel],
     ) -> Result<Self::AssignedCommitment, Error> {
-        PCS::assign_commitment(layouter, curve_chip, value, &Self::chunk_labels(labels))
+        PCS::assign_commitment(
+            layouter,
+            commitment_chip,
+            value,
+            &Self::chunk_labels(labels),
+        )
     }
 
     fn commitment_as_public_input(
         layouter: &mut impl Layouter<S::F>,
-        curve_chip: &S::CurveChip,
+        commitment_chip: &Self::CommitmentChip,
         commitment: &Self::AssignedCommitment,
     ) -> Result<Vec<AssignedNative<S::F>>, Error> {
-        PCS::commitment_as_public_input(layouter, curve_chip, commitment)
+        PCS::commitment_as_public_input(layouter, commitment_chip, commitment)
     }
 
     fn read_commitment(
@@ -113,7 +119,7 @@ where
 
     fn multi_prepare(
         layouter: &mut impl Layouter<S::F>,
-        curve_chip: &S::CurveChip,
+        commitment_chip: &Self::CommitmentChip,
         scalar_chip: &ScalarChip<S::F>,
         queries: &[VerifierQuery<'_, S, Self>],
         transcript: &mut TranscriptGadget<S>,
@@ -182,7 +188,7 @@ where
 
         <PCS as InCircuitPCS<S>>::multi_prepare(
             layouter,
-            curve_chip,
+            commitment_chip,
             scalar_chip,
             &inner_queries,
             transcript,

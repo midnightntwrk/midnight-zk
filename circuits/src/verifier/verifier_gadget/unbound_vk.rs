@@ -101,7 +101,7 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> VerifierGadget<S, PCS> {
             self.scalar_chip.assign(layouter, vk.map(|vk| vk.get_domain().get_omega()))?;
         let phase0_commitment = PCS::assign_commitment(
             layouter,
-            &self.curve_chip,
+            &self.commitment_chip,
             vk.map(|vk| vk.phase0_commitment().clone()),
             &cs.fixed_polys_labels(),
         )?;
@@ -138,7 +138,7 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> VerifierGadget<S, PCS> {
         ];
         inputs.extend(PCS::commitment_as_public_input(
             layouter,
-            &self.curve_chip,
+            &self.commitment_chip,
             &vk.phase0_commitment,
         )?);
         let hash = self.sponge_chip.hash(layouter, &inputs)?;

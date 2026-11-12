@@ -53,7 +53,7 @@ pub use unbound_vk::{UnboundVk, vk_hash};
 #[derive(Clone, Debug)]
 #[doc(hidden)] // A bug in rustc prevents us from documenting the verifier gadget.
 pub struct VerifierGadget<S: SelfEmulation, PCS: InCircuitPCS<S>> {
-    curve_chip: S::CurveChip,
+    commitment_chip: PCS::CommitmentChip,
     scalar_chip: ScalarChip<S::F>,
     sponge_chip: S::SpongeChip,
     _pcs: PhantomData<PCS>,
@@ -75,12 +75,12 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> Chip<S::F> for VerifierGadget<S, PC
 impl<S: SelfEmulation, PCS: InCircuitPCS<S>> VerifierGadget<S, PCS> {
     /// Creates a new verifier gadget from its underlying components.
     pub fn new(
-        curve_chip: &S::CurveChip,
+        commitment_chip: &PCS::CommitmentChip,
         scalar_chip: &ScalarChip<S::F>,
         sponge_chip: &S::SpongeChip,
     ) -> Self {
         Self {
-            curve_chip: curve_chip.clone(),
+            commitment_chip: commitment_chip.clone(),
             scalar_chip: scalar_chip.clone(),
             sponge_chip: sponge_chip.clone(),
             _pcs: PhantomData,
@@ -125,8 +125,8 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> PublicInputInstructions<S::F, Assig
         assigned: &AssignedAccumulator<S>,
     ) -> Result<Vec<AssignedNative<S::F>>, Error> {
         Ok([
-            assigned.lhs.in_circuit_as_public_input(layouter, &self.curve_chip)?,
-            assigned.rhs.in_circuit_as_public_input(layouter, &self.curve_chip)?,
+            assigned.lhs.in_circuit_as_public_input(layouter, &self.commitment_chip)?,
+            assigned.rhs.in_circuit_as_public_input(layouter, &self.commitment_chip)?,
         ]
         .concat())
     }
@@ -136,8 +136,12 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> PublicInputInstructions<S::F, Assig
         layouter: &mut impl Layouter<S::F>,
         assigned: &AssignedAccumulator<S>,
     ) -> Result<(), Error> {
-        (assigned.lhs).constrain_as_public_input(layouter, &self.curve_chip, &self.scalar_chip)?;
-        (assigned.rhs).constrain_as_public_input(layouter, &self.curve_chip, &self.scalar_chip)
+        (assigned.lhs).constrain_as_public_input(
+            layouter,
+            &self.commitment_chip,
+            &self.scalar_chip,
+        )?;
+        (assigned.rhs).constrain_as_public_input(layouter, &self.commitment_chip, &self.scalar_chip)
     }
 }
 
@@ -154,10 +158,10 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> VerifierGadget<S, PCS> {
         layouter: &mut impl Layouter<S::F>,
         acc: &AssignedAccumulator<S>,
     ) -> Result<(), Error> {
-        (acc.lhs).constrain_as_public_input(layouter, &self.curve_chip, &self.scalar_chip)?;
+        (acc.lhs).constrain_as_public_input(layouter, &self.commitment_chip, &self.scalar_chip)?;
         (acc.rhs).constrain_as_public_input_with_committed_scalars(
             layouter,
-            &self.curve_chip,
+            &self.commitment_chip,
             &self.scalar_chip,
         )
     }
@@ -183,10 +187,16 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> VerifierGadget<S, PCS> {
     ) -> Result<AssignedAccumulator<S>, Error> {
         let (lhs, rhs) = value.map(|acc| (acc.lhs(), acc.rhs())).unzip();
         Ok(AssignedAccumulator::new(
-            AssignedMsm::assign_collapsed(layouter, &self.curve_chip, &self.scalar_chip, &[], lhs)?,
             AssignedMsm::assign_collapsed(
                 layouter,
-                &self.curve_chip,
+                &self.commitment_chip,
+                &self.scalar_chip,
+                &[],
+                lhs,
+            )?,
+            AssignedMsm::assign_collapsed(
+                layouter,
+                &self.commitment_chip,
                 &self.scalar_chip,
                 fixed_base_labels,
                 rhs,
@@ -346,7 +356,7 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> VerifierGadget<S, PCS> {
         );
 
         let mut transcript =
-            TranscriptGadget::new(&self.scalar_chip, &self.curve_chip, &self.sponge_chip);
+            TranscriptGadget::new(&self.scalar_chip, &self.commitment_chip, &self.sponge_chip);
 
         transcript.init_with_proof(layouter, proof)?;
 
@@ -754,7 +764,7 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> VerifierGadget<S, PCS> {
         // as the following accumulator passes the invariant.
         <PCS as InCircuitPCS<S>>::multi_prepare(
             layouter,
-            &self.curve_chip,
+            &self.commitment_chip,
             &self.scalar_chip,
             &queries,
             &mut transcript,
