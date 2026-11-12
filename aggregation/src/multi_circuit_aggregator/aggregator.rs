@@ -13,7 +13,7 @@
 //! the claims can be inspected via the instance's state.
 
 use midnight_proofs::poly::kzg::params::ParamsKZG;
-use midnight_zk_stdlib::{MidnightVK, ZkStdLibArch};
+use midnight_zk_stdlib::{DefaultPCS, MidnightVK, ZkStdLibArch};
 
 use super::{
     AggregableRelation,
@@ -50,7 +50,7 @@ impl AggregationWitness {
     /// the inner proof bytes. The instance is wrapped into a type-erased
     /// [`Statement`](super::Statement) via [`TypedStatement`].
     pub fn new<R: AggregableRelation + Default + std::fmt::Debug + 'static>(
-        vk: MidnightVK,
+        vk: MidnightVK<DefaultPCS>,
         instance: R::Instance,
         inner_proof: Vec<u8>,
     ) -> Self

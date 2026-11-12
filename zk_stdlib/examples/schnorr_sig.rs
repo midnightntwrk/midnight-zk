@@ -112,8 +112,11 @@ impl Relation for SchnorrExample {
 
         // Assign public inputs.
         let (pk_val, m_val) = instance.map(|(pk, m)| (pk, m)).unzip();
-        let pk: AssignedNativePoint<Jubjub> = jubjub.assign_as_public_input(layouter, pk_val)?;
-        let message = std_lib.assign_as_public_input(layouter, m_val)?;
+        let pk: AssignedNativePoint<Jubjub> = jubjub.assign(layouter, pk_val)?;
+        let message = std_lib.assign(layouter, m_val)?;
+
+        jubjub.constrain_as_public_input(layouter, &pk)?;
+        std_lib.constrain_as_public_input(layouter, &message)?;
 
         // Assign witness values.
         let (sig_s_val, sig_e_bytes_val) = witness.map(|sig| (sig.s, sig.e_bytes)).unzip();
@@ -129,9 +132,8 @@ impl Relation for SchnorrExample {
         // 1. rv = s * G + e * Pk
         let rv = (std_lib.jubjub()).msm(layouter, &[sig_s, sig_e], &[generator, pk.clone()])?;
 
-        let coords = |p| (jubjub.x_coordinate(p), jubjub.y_coordinate(p));
-        let (pkx, pky) = coords(&pk);
-        let (rx, ry) = coords(&rv);
+        let (pkx, pky) = (jubjub.x(layouter, &pk)?, jubjub.y(layouter, &pk)?);
+        let (rx, ry) = (jubjub.x(layouter, &rv)?, jubjub.y(layouter, &rv)?);
 
         // 2. ev = hash( PK.x || PK.y || r.x || r.y || m)
         let h = std_lib.poseidon(layouter, &[pkx, pky, rx, ry, message])?;
@@ -165,7 +167,7 @@ fn main() {
     let relation = SchnorrExample;
     let srs = srs_for_test(&relation, Some(K));
     let mut rng = ChaCha8Rng::seed_from_u64(0xf001ba11);
-    let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
+    let vk = midnight_zk_stdlib::setup_vk::<_, midnight_zk_stdlib::KZG>(&srs, &relation);
     let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
 
     const N: usize = 5;
@@ -185,7 +187,7 @@ fn main() {
 
         let instance = (schnorr_pk, m);
 
-        let proof = midnight_zk_stdlib::prove::<SchnorrExample, blake2b_simd::State>(
+        let proof = midnight_zk_stdlib::prove::<SchnorrExample, blake2b_simd::State, _>(
             &srs, &pk, &relation, &instance, sig, &mut rng,
         )
         .expect("Proof generation should not fail");
@@ -198,7 +200,7 @@ fn main() {
     }
 
     assert!(
-        midnight_zk_stdlib::batch_verify::<blake2b_simd::State>(
+        midnight_zk_stdlib::batch_verify::<blake2b_simd::State, _>(
             &srs.verifier_params(),
             &vks,
             &instances,

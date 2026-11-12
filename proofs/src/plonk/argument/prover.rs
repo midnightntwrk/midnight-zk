@@ -73,22 +73,24 @@ impl<F: WithSmallOrderMulGroup<3>, B: PolynomialRepresentation> Committed<F, B> 
 }
 
 impl<F: PrimeField, B: PolynomialRepresentation> Committed<F, B> {
-    pub fn commit<CS, T>(
+    /// Commits to the polynomials of `polys_map` in the representation given by
+    /// `encode`. The group keeps them as given.
+    pub fn commit<CS, T, E>(
         params: &CS::Parameters,
         polys_map: BTreeMap<PolynomialLabel, Polynomial<F, B>>,
+        encode: impl Fn(&Polynomial<F, B>) -> Polynomial<F, E> + Send + Sync,
         transcript: &mut T,
     ) -> Result<Self, Error>
     where
         CS: PolynomialCommitmentScheme<F>,
         CS::Commitment: Hashable<T::Hash>,
         T: Transcript,
+        E: PolynomialRepresentation,
     {
         let group = Self::from_map(polys_map);
-        let commitment = CS::commit_many(
-            params,
-            &group.polys.iter().collect::<Vec<_>>(),
-            &group.labels,
-        );
+        let encoded: Vec<_> = group.polys.par_iter().map(encode).collect();
+        let commitment =
+            CS::commit_many(params, &encoded.iter().collect::<Vec<_>>(), &group.labels);
 
         CS::write_commitment(transcript, &commitment)?;
 
@@ -194,6 +196,12 @@ impl<F: PrimeField> Committed<F, Coeff> {
 }
 
 impl<F: PrimeField> Evaluated<'_, F> {
+    /// Adds the evaluation `eval` at `point` of the group's polynomial `label`,
+    /// one the verifier derives rather than reads from the proof.
+    pub(crate) fn insert(&mut self, label: PolynomialLabel, point: F, eval: F) {
+        self.evals_map.insert(label, vec![Evaluation { point, eval }]);
+    }
+
     pub(crate) fn open(&self) -> impl Iterator<Item = ProverQuery<'_, F>> + Clone {
         self.evals_map.iter().flat_map(|(label, evaluations)| {
             evaluations.iter().map(|evaluation| {

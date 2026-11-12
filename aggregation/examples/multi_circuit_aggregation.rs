@@ -89,9 +89,15 @@ fn main() {
     let sha_pk = setup_pk(&ShaCircuit, &sha_vk);
 
     let (sha_x, sha_w) = aggregatable_sha_preimage::random_instance();
-    let inner_proof =
-        prove::<ShaCircuit, PoseidonState<F>>(&sha_srs, &sha_pk, &ShaCircuit, &sha_x, sha_w, OsRng)
-            .expect("SHA-256 proof generation should not fail");
+    let inner_proof = prove::<ShaCircuit, PoseidonState<F>, _>(
+        &sha_srs,
+        &sha_pk,
+        &ShaCircuit,
+        &sha_x,
+        sha_w,
+        OsRng,
+    )
+    .expect("SHA-256 proof generation should not fail");
     let witness = AggregationWitness::new::<ShaCircuit>(sha_vk.clone(), sha_x, inner_proof);
 
     let start = Instant::now();
@@ -103,7 +109,7 @@ fn main() {
     let poseidon_pk = setup_pk(&PoseidonCircuit, &poseidon_vk);
 
     let (poseidon_x, poseidon_w) = aggregatable_poseidon_preimage::random_instance();
-    let inner_proof = prove::<PoseidonCircuit, PoseidonState<F>>(
+    let inner_proof = prove::<PoseidonCircuit, PoseidonState<F>, _>(
         &poseidon_srs,
         &poseidon_pk,
         &PoseidonCircuit,
@@ -120,9 +126,15 @@ fn main() {
 
     // --- Aggregate another SHA-256 preimage proof ---
     let (sha_x, sha_w) = aggregatable_sha_preimage::random_instance();
-    let inner_proof =
-        prove::<ShaCircuit, PoseidonState<F>>(&sha_srs, &sha_pk, &ShaCircuit, &sha_x, sha_w, OsRng)
-            .expect("SHA-256 proof generation should not fail");
+    let inner_proof = prove::<ShaCircuit, PoseidonState<F>, _>(
+        &sha_srs,
+        &sha_pk,
+        &ShaCircuit,
+        &sha_x,
+        sha_w,
+        OsRng,
+    )
+    .expect("SHA-256 proof generation should not fail");
     let witness = AggregationWitness::new::<ShaCircuit>(sha_vk, sha_x, inner_proof);
 
     let start = Instant::now();

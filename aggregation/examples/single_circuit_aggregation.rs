@@ -27,17 +27,13 @@ use midnight_circuits::{
     instructions::{hash::HashCPU, *},
     types::{AssignedNative, Instantiable},
     verifier::{
-        self, Accumulator, AssignedAccumulator, AssignedKZGMultiCommitment, AssignedVk,
-        BlstrsEmulation, InCircuitKZG, SelfEmulation,
+        self, Accumulator, AssignedAccumulator, AssignedVk, BlstrsEmulation, SelfEmulation,
     },
 };
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::{self, Error},
-    poly::{
-        EvaluationDomain, PolynomialLabel,
-        kzg::{KZGCommitmentScheme, commitment::KZGMultiCommitment, params::ParamsVerifierKZG},
-    },
+    poly::{EvaluationDomain, PolynomialLabel, kzg::params::ParamsVerifierKZG},
     transcript::{CircuitTranscript, Transcript},
 };
 use midnight_zk_stdlib::{
@@ -60,7 +56,7 @@ pub struct InnerCircuitContext {
     /// Evaluation domain for the inner circuit.
     domain: EvaluationDomain<F>,
     /// Verifying key.
-    vk: MidnightVK,
+    vk: MidnightVK<DefaultPCS>,
     /// SRS verifier parameters (for off-circuit proof preparation).
     params_verifier: ParamsVerifierKZG<E>,
 }
@@ -233,16 +229,13 @@ impl IvcTransition for ProofAggregation {
         let inner_proof_acc = {
             let mut transcript =
                 CircuitTranscript::<PoseidonState<F>>::init_from_bytes(&witness.inner_proof);
-            let dual_msm =
-                plonk::prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<PoseidonState<F>>>(
-                    ctx.vk.vk(),
-                    &[KZGMultiCommitment::commitment_to_zero(
-                        PolynomialLabel::CommittedInstance(0),
-                    )],
-                    &[&statement_pis],
-                    &mut transcript,
-                )
-                .expect("off-circuit prepare should succeed");
+            let dual_msm = plonk::prepare::<F, DefaultPCS, CircuitTranscript<PoseidonState<F>>>(
+                ctx.vk.vk(),
+                &[],
+                &[&[], &statement_pis],
+                &mut transcript,
+            )
+            .expect("off-circuit prepare should succeed");
 
             // Sanity check.
             assert!(
@@ -283,7 +276,7 @@ impl IvcTransition for ProofAggregation {
         witness: Value<Self::Witness>,
     ) -> Result<Self::AssignedState, Error> {
         // Assign inner VK as a hard-coded constant.
-        let inner_vk: AssignedVk<S, InCircuitKZG<S>> = self.std_lib.verifier().assign_fixed_vk(
+        let inner_vk: AssignedVk<S> = self.std_lib.verifier().assign_fixed_vk(
             layouter,
             &self.inner_ctx.domain,
             self.inner_ctx.vk.vk().cs(),
@@ -300,17 +293,12 @@ impl IvcTransition for ProofAggregation {
         )?;
 
         // Verify the inner proof in-circuit.
-        let instance_com = AssignedKZGMultiCommitment::commitment_to_zero(
-            layouter,
-            self.std_lib.bls12_381(),
-            PolynomialLabel::CommittedInstance(0),
-        )?;
 
         let inner_proof_acc = self.std_lib.verifier().prepare(
             layouter,
             &inner_vk,
-            &[instance_com],
-            &[&statement_pis],
+            &[],
+            &[&[], &statement_pis],
             witness.map(|w| w.inner_proof),
         )?;
 
@@ -372,7 +360,7 @@ fn main() {
         std::array::from_fn(|_| sha_preimage::random_instance());
     let inner_proofs: [_; STEPS] = std::array::from_fn(|i| {
         let (digest, preimage) = &inner_statements_with_witnesses[i];
-        prove::<ShaPreimageCircuit, PoseidonState<F>>(
+        prove::<ShaPreimageCircuit, PoseidonState<F>, _>(
             &inner_srs,
             &inner_pk,
             &ShaPreimageCircuit,

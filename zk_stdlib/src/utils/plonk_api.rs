@@ -175,7 +175,7 @@ plonk_api!(
 ///    breaking change to midnight_lib, and should change the ChangeLog
 ///    accordingly. To update the VK, re-run the example with
 ///    CHANGE_VK=BREAKING.
-pub fn check_vk<Relation: Circuit<midnight_curves::Fq>>(vk: &MidnightVK) {
+pub fn check_vk<Relation: Circuit<midnight_curves::Fq>>(vk: &MidnightVK<DefaultPCS>) {
     let circuit_name = std::any::type_name::<Relation>()
         .split("::")
         .last()
@@ -228,8 +228,9 @@ pub fn check_vk<Relation: Circuit<midnight_curves::Fq>>(vk: &MidnightVK) {
     }
 }
 
-/// Updates the circuit goldenfiles.
-pub fn update_circuit_goldenfiles<R: Relation>(relation: &R) {
+/// Updates the circuit goldenfiles, with a committed instance if
+/// `has_committed_instance`.
+pub fn update_circuit_goldenfiles<R: Relation>(relation: &R, has_committed_instance: bool) {
     let circuit_name = std::any::type_name::<R>()
         .split("::")
         .last()
@@ -242,8 +243,12 @@ pub fn update_circuit_goldenfiles<R: Relation>(relation: &R) {
     let path = Path::new(&file_name);
     let mut f =
         File::create(path).unwrap_or_else(|_| panic!("Could not create file {}", file_name));
-    writeln!(f, "{:#?}", cost_model(relation, None))
-        .unwrap_or_else(|_| panic!("Could not write to file {}", file_name));
+    writeln!(
+        f,
+        "{:#?}",
+        cost_model::<_, DefaultPCS>(relation, None, has_committed_instance)
+    )
+    .unwrap_or_else(|_| panic!("Could not write to file {}", file_name));
 }
 
 /// Available SRS sources.

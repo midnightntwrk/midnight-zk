@@ -31,13 +31,14 @@
 //!   dummy polynomials up to the next power of two `t`.
 //!
 //! - The degree of `g` grows with `t`, so `t` is bounded by `T_MAX`: the
-//!   polynomials of a `commit_many` call are split into chunks of at most
-//!   `T_MAX` polynomials.
+//!   polynomials of a `commit_many` call are split into the fewest chunks of at
+//!   most `T_MAX` polynomials, of balanced sizes; see
+//!   [`balanced_chunks`](crate::poly::fflonk::balanced_chunks).
 
 mod utils;
 
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap, HashSet, hash_map::Entry},
+    collections::{BTreeMap, HashMap, HashSet, hash_map::Entry},
     hash::Hash,
     io::{self, Read},
     marker::PhantomData,
@@ -45,21 +46,27 @@ use std::{
 };
 
 use ff::WithSmallOrderMulGroup;
-use utils::{compute_g, roots};
+pub use utils::{balanced_chunks, roots};
+use utils::{cached_roots, compute_g};
 
 use crate::{
     poly::{
-        Error, Polynomial, PolynomialLabel, PolynomialLabel::Collection, PolynomialRepresentation,
-        ProverQuery, VerifierQuery, commitment::PolynomialCommitmentScheme,
+        Error, Polynomial, PolynomialLabel,
+        PolynomialLabel::Collection,
+        PolynomialRepresentation, ProverQuery, VerifierQuery,
+        commitment::{InterleavedCommit, PolynomialCommitmentScheme},
     },
     transcript::{Hashable, Sampleable, Transcript},
-    utils::{arithmetic::eval_polynomial, helpers::SerdeFormat},
+    utils::{
+        arithmetic::{eval_polynomial, eval_polynomial_seq},
+        helpers::SerdeFormat,
+    },
 };
 
 /// fflonk over the polynomial commitment scheme `PCS`.
 ///
-/// The polynomials of a `commit_many` call are combined in chunks of at most
-/// `T_MAX = 2^LOG2_T_MAX`.
+/// The polynomials of a `commit_many` call are combined in the
+/// [`balanced_chunks`] of at most `T_MAX = 2^LOG2_T_MAX`.
 #[derive(Clone, Debug)]
 pub struct Fflonk<PCS, const LOG2_T_MAX: u32>(PhantomData<PCS>);
 
@@ -71,7 +78,7 @@ impl<PCS, const LOG2_T_MAX: u32> Fflonk<PCS, LOG2_T_MAX> {
 impl<F, PCS, const LOG2_T_MAX: u32> PolynomialCommitmentScheme<F> for Fflonk<PCS, LOG2_T_MAX>
 where
     F: WithSmallOrderMulGroup<3>,
-    PCS: PolynomialCommitmentScheme<F>,
+    PCS: InterleavedCommit<F>,
 {
     type Parameters = PCS::Parameters;
     type VerifierParameters = PCS::VerifierParameters;
@@ -104,9 +111,10 @@ where
         labels: &[PolynomialLabel],
     ) -> Self::Commitment {
         PolynomialLabel::assert_distinct(labels);
-        let g_labels: Vec<_> = labels.chunks(Self::T_MAX).map(|l| Collection(l.to_vec())).collect();
-        let gs: Vec<_> = polynomials.chunks(Self::T_MAX).map(compute_g).collect();
-        PCS::commit_many(params, &gs.iter().collect::<Vec<_>>(), &g_labels)
+        let g_labels: Vec<_> =
+            balanced_chunks(labels, Self::T_MAX).map(|l| Collection(l.to_vec())).collect();
+        let chunks: Vec<_> = balanced_chunks(polynomials, Self::T_MAX).collect();
+        PCS::commit_interleaved(params, &chunks, &g_labels)
     }
 
     fn read_commitment<T: Transcript>(
@@ -117,7 +125,8 @@ where
         Self::Commitment: Hashable<T::Hash>,
     {
         PolynomialLabel::assert_distinct(labels);
-        let g_labels: Vec<_> = labels.chunks(Self::T_MAX).map(|l| Collection(l.to_vec())).collect();
+        let g_labels: Vec<_> =
+            balanced_chunks(labels, Self::T_MAX).map(|l| Collection(l.to_vec())).collect();
         PCS::read_commitment(transcript, &g_labels)
     }
 
@@ -137,7 +146,8 @@ where
         labels: &[PolynomialLabel],
     ) -> io::Result<Self::Commitment> {
         PolynomialLabel::assert_distinct(labels);
-        let g_labels: Vec<_> = labels.chunks(Self::T_MAX).map(|l| Collection(l.to_vec())).collect();
+        let g_labels: Vec<_> =
+            balanced_chunks(labels, Self::T_MAX).map(|l| Collection(l.to_vec())).collect();
         PCS::deserialize_commitment(reader, format, &g_labels)
     }
 
@@ -158,15 +168,17 @@ where
         Self::Commitment: Hashable<T::Hash>,
     {
         // Maps the labels of every queried chunk to its polynomials and the
-        // points they are queried at: `labels -> (polys, points)`.
+        // points they are queried at, in query order: `labels -> (polys, points)`.
         let chunks_info = queries.iter().fold(BTreeMap::new(), |mut chunks_info, q| {
-            let (labels, polys) =
-                (q.group_labels.chunks(Self::T_MAX).zip(q.group_polys.chunks(Self::T_MAX)))
-                    .find(|(labels, _)| labels.contains(&q.label))
-                    .expect("the queried group has no polynomial under the query label");
+            let (labels, polys) = (balanced_chunks(q.group_labels, Self::T_MAX)
+                .zip(balanced_chunks(q.group_polys, Self::T_MAX)))
+            .find(|(labels, _)| labels.contains(&q.label))
+            .expect("the queried group has no polynomial under the query label");
             let (_, points) = (chunks_info.entry(labels))
-                .or_insert_with(|| (polys.iter().collect::<Vec<_>>(), BTreeSet::new()));
-            points.insert(q.point);
+                .or_insert_with(|| (polys.iter().collect::<Vec<_>>(), Vec::new()));
+            if !points.contains(&q.point) {
+                points.push(q.point);
+            }
             chunks_info
         });
 
@@ -193,11 +205,18 @@ where
 
         // Opening a chunk at `x` amounts to opening its `g` at the `t`-th roots of `x`.
         let mut inner_queries = Vec::new();
+        let mut roots_cache = HashMap::new();
         for (((polys, points), g_label), g) in chunks_info.values().zip(&g_labels).zip(&gs) {
+            let t = polys.len().next_power_of_two();
             for x in points {
-                for root in roots(*x, polys.len().next_power_of_two()).ok_or(Error::OpeningError)? {
+                for root in cached_roots(&mut roots_cache, *x, t).ok_or(Error::OpeningError)? {
                     let g_poly = slice::from_ref(g);
-                    inner_queries.push(ProverQuery::new(g_label, g_poly, root, g_label[0].clone()));
+                    inner_queries.push(ProverQuery::new(
+                        g_label,
+                        g_poly,
+                        *root,
+                        g_label[0].clone(),
+                    ));
                 }
             }
         }
@@ -221,21 +240,23 @@ where
 
     fn multi_prepare<'com, T: Transcript>(
         queries: &[VerifierQuery<'com, F, Self>],
-        k: u32,
         transcript: &mut T,
     ) -> Result<Self::VerificationGuard, Error>
     where
         F: Sampleable<T::Hash> + Hash + Ord + Hashable<T::Hash>,
         Self::Commitment: Hashable<T::Hash> + 'com,
     {
-        // Maps the labels of every queried chunk to its commitment and the
-        // points its polynomials are queried at: `labels -> (commitment, points)`.
+        // Maps the labels of every queried chunk to its commitment and the points
+        // its polynomials are queried at, in query order: `labels -> (commitment,
+        // points)`.
         let chunks_info = queries.iter().fold(BTreeMap::new(), |mut chunks_info, q| {
-            let labels = (Self::commitment_labels(q.commitment).chunks(Self::T_MAX))
+            let labels = balanced_chunks(&Self::commitment_labels(q.commitment), Self::T_MAX)
                 .find(|labels| labels.contains(&q.label))
                 .map_or_else(|| vec![q.label.clone()], <[_]>::to_vec);
-            let (_, points) = chunks_info.entry(labels).or_insert((q.commitment, BTreeSet::new()));
-            points.insert(q.point);
+            let (_, points) = chunks_info.entry(labels).or_insert((q.commitment, Vec::new()));
+            if !points.contains(&q.point) {
+                points.push(q.point);
+            }
             chunks_info
         });
 
@@ -258,20 +279,20 @@ where
         // such a root `r` is equivalent to evaluating at `r` the polynomial with
         // coefficients `f_i(x)`.
         let mut inner_queries = Vec::new();
+        let mut roots_cache = HashMap::new();
         for (labels, (commitment, points)) in &chunks_info {
+            let t = labels.len().next_power_of_two();
             for x in points {
                 let f_evals: Vec<F> = labels.iter().map(|l| evals[&(l.clone(), *x)]).collect();
-                for root in
-                    roots(*x, labels.len().next_power_of_two()).ok_or(Error::OpeningError)?
-                {
-                    let eval = eval_polynomial(&f_evals, root);
+                for root in cached_roots(&mut roots_cache, *x, t).ok_or(Error::OpeningError)? {
+                    let eval = eval_polynomial_seq(&f_evals, *root);
                     let label = Collection(labels.clone());
-                    inner_queries.push(VerifierQuery::new(root, *commitment, label, eval));
+                    inner_queries.push(VerifierQuery::new(*root, *commitment, label, eval));
                 }
             }
         }
 
-        PCS::multi_prepare(&inner_queries, k, transcript)
+        PCS::multi_prepare(&inner_queries, transcript)
     }
 }
 
@@ -279,19 +300,121 @@ where
 mod tests {
     use std::io;
 
+    use blake2b_simd::State as Blake2bState;
+    use ff::Field;
     use midnight_curves::{Bls12, Fq};
-    use rand_core::OsRng;
+    use rand_core::{OsRng, RngCore};
 
     use super::Fflonk;
     use crate::{
         poly::{
-            commitment::PolynomialCommitmentScheme,
+            EvaluationDomain, PolynomialLabel, ProverQuery, VerifierQuery,
+            commitment::{Guard, PolynomialCommitmentScheme},
             kzg::{KZGCommitmentScheme, params::ParamsKZG},
         },
-        utils::helpers::SerdeFormat,
+        transcript::{CircuitTranscript, Transcript},
+        utils::{arithmetic::eval_polynomial, helpers::SerdeFormat},
     };
 
     type Kzg = KZGCommitmentScheme<Bls12>;
+
+    /// A chunk `[a0, a1]` queried as `a0(p)` and `a1(q)` has the implicit
+    /// evaluations `a1(p)` and `a0(q)`. They are read in query order, `p`
+    /// before `q`, whichever of `p` and `q` is the larger field element.
+    #[test]
+    fn test_implicit_evals_in_query_order() {
+        type CS = Fflonk<Kzg, 1>;
+        type T = CircuitTranscript<Blake2bState>;
+        let k = 3;
+        let params = CS::gen_params(k);
+        let domain = EvaluationDomain::<Fq>::new(1, k);
+        let labels = [PolynomialLabel::Advice(0), PolynomialLabel::Advice(1)];
+        let polys: Vec<_> = (0..2)
+            .map(|_| domain.coeff_from_vec((0..1 << k).map(|_| Fq::random(OsRng)).collect()))
+            .collect();
+        let commitment = CS::commit_many(&params, &polys.iter().collect::<Vec<_>>(), &labels);
+
+        let (mut seen_lt, mut seen_gt) = (false, false);
+        while !(seen_lt && seen_gt) {
+            // Opening points of a `T_MAX = 2` chunk must be squares.
+            let [p, q] = [(); 2].map(|_| Fq::random(OsRng).square());
+            seen_lt |= p < q;
+            seen_gt |= p > q;
+            let explicit = [eval_polynomial(&polys[0], p), eval_polynomial(&polys[1], q)];
+
+            let mut transcript = T::init();
+            explicit.iter().for_each(|e| transcript.write(e).unwrap());
+            let queries = [
+                ProverQuery::new(&labels, &polys, p, labels[0].clone()),
+                ProverQuery::new(&labels, &polys, q, labels[1].clone()),
+            ];
+            CS::multi_open(&params, &queries, &mut transcript).unwrap();
+            let proof = transcript.finalize();
+
+            let mut transcript = T::init_from_bytes(&proof);
+            let read: [Fq; 4] = [(); 4].map(|_| transcript.read().unwrap());
+            let implicit = [eval_polynomial(&polys[1], p), eval_polynomial(&polys[0], q)];
+            assert_eq!(read, [explicit, implicit].concat()[..]);
+
+            let mut transcript = T::init_from_bytes(&proof);
+            let evals: [Fq; 2] = [(); 2].map(|_| transcript.read().unwrap());
+            let queries = [
+                VerifierQuery::new(p, &commitment, labels[0].clone(), evals[0]),
+                VerifierQuery::new(q, &commitment, labels[1].clone(), evals[1]),
+            ];
+            let guard = CS::multi_prepare(&queries, &mut transcript).unwrap();
+            transcript.assert_empty().unwrap();
+            guard.verify(&params.verifier_params()).unwrap();
+        }
+    }
+
+    /// Commits to `nb_polys` sparse polynomials of `2^k` rows, given in
+    /// Lagrange form, in its delta forms and in coefficient form, and checks
+    /// that the commitments agree.
+    fn assert_lagrange_matches_coeff(params: &ParamsKZG<Bls12>, k: u32, nb_polys: usize) {
+        type CS = Fflonk<Kzg, 2>;
+        let domain = EvaluationDomain::<Fq>::new(1, k);
+        let lagrange: Vec<_> = (0..nb_polys)
+            .map(|_| {
+                let values = (0..1 << k)
+                    .map(|_| {
+                        if OsRng.next_u32().is_multiple_of(8) {
+                            Fq::random(OsRng)
+                        } else {
+                            Fq::ZERO
+                        }
+                    })
+                    .collect();
+                domain.lagrange_from_vec(values)
+            })
+            .collect();
+        let coeff: Vec<_> = lagrange.iter().map(|p| domain.lagrange_to_coeff(p.clone())).collect();
+        let delta: Vec<_> = lagrange.iter().map(|p| p.to_delta()).collect();
+        let double_delta: Vec<_> = lagrange.iter().map(|p| p.to_double_delta()).collect();
+        let labels: Vec<_> = (0..nb_polys).map(PolynomialLabel::Advice).collect();
+        let expected = CS::commit_many(params, &coeff.iter().collect::<Vec<_>>(), &labels);
+        assert_eq!(
+            CS::commit_many(params, &lagrange.iter().collect::<Vec<_>>(), &labels),
+            expected
+        );
+        assert_eq!(
+            CS::commit_many(params, &delta.iter().collect::<Vec<_>>(), &labels),
+            expected
+        );
+        assert_eq!(
+            CS::commit_many(params, &double_delta.iter().collect::<Vec<_>>(), &labels),
+            expected
+        );
+    }
+
+    #[test]
+    fn test_lagrange_commitments() {
+        // Full and partial chunks, of every chunk size up to `T_MAX = 4`.
+        let params = <Fflonk<Kzg, 2> as PolynomialCommitmentScheme<Fq>>::gen_params(4);
+        for nb_polys in 1..=9 {
+            assert_lagrange_matches_coeff(&params, 4, nb_polys);
+        }
+    }
 
     #[test]
     fn test_load_params() {

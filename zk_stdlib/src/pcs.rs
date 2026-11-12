@@ -13,33 +13,74 @@
 
 //! The polynomial commitment schemes of zk_stdlib.
 
+pub use midnight_circuits::verifier::DefaultPCS;
 use midnight_curves::{Bls12, Fq};
 use midnight_proofs::poly::{
     commitment::PolynomialCommitmentScheme,
     fflonk::Fflonk,
-    kzg::{KZGCommitmentScheme, params::ParamsKZG},
+    kzg::{
+        KZGCommitmentScheme,
+        commitment::KZGMultiCommitment,
+        msm::DualMSM,
+        params::{ParamsKZG, ParamsVerifierKZG},
+    },
 };
 
-/// The polynomial commitment scheme of zk_stdlib.
-pub type DefaultPCS = KZGCommitmentScheme<Bls12>;
+/// KZG over BLS12-381.
+pub type KZG = KZGCommitmentScheme<Bls12>;
 
-/// The catalog of polynomial commitment schemes supported by zk_stdlib: KZG
-/// and fflonk over KZG, for any `LOG2_T_MAX`. Their parameters are a KZG SRS
-/// over BLS12-381.
-pub trait MidnightPCS: PolynomialCommitmentScheme<Fq, Parameters = ParamsKZG<Bls12>> {
+/// fflonk over [`KZG`], combining up to `2^LOG2_T_MAX` polynomials into each
+/// commitment. [`MidnightPCS`] lists the values of `LOG2_T_MAX` it supports.
+pub type FflonkKZG<const LOG2_T_MAX: u32> = Fflonk<KZG, LOG2_T_MAX>;
+
+mod sealed {
+    pub trait Sealed {}
+}
+
+/// The catalog of polynomial commitment schemes supported by zk_stdlib:
+/// [`KZG`] and [`FflonkKZG`] with `LOG2_T_MAX` in `1..=4`. Their parameters
+/// are a KZG SRS over BLS12-381. The catalog is closed: other schemes cannot
+/// implement this trait.
+pub trait MidnightPCS:
+    sealed::Sealed
+    + PolynomialCommitmentScheme<
+        Fq,
+        Parameters = ParamsKZG<Bls12>,
+        VerifierParameters = ParamsVerifierKZG<Bls12>,
+        Commitment = KZGMultiCommitment<Bls12>,
+        VerificationGuard = DualMSM<Bls12>,
+    >
+{
+    /// Identifies the scheme in serialized keys: 0 for [`KZG`] and
+    /// `LOG2_T_MAX` for [`FflonkKZG`].
+    const ID: u8;
+
     /// The size of the SRS for circuits of size `2^k`, as the exponent `j`
     /// such that the SRS has `2^j` points. It is the inverse of
     /// [`PolynomialCommitmentScheme::max_k`].
     fn srs_k(k: u32) -> u32;
 }
 
-impl MidnightPCS for KZGCommitmentScheme<Bls12> {
+impl sealed::Sealed for KZG {}
+impl sealed::Sealed for FflonkKZG<1> {}
+impl sealed::Sealed for FflonkKZG<2> {}
+impl sealed::Sealed for FflonkKZG<3> {}
+impl sealed::Sealed for FflonkKZG<4> {}
+
+impl MidnightPCS for KZG {
+    const ID: u8 = 0;
+
     fn srs_k(k: u32) -> u32 {
         k
     }
 }
 
-impl<const LOG2_T_MAX: u32> MidnightPCS for Fflonk<KZGCommitmentScheme<Bls12>, LOG2_T_MAX> {
+impl<const LOG2_T_MAX: u32> MidnightPCS for FflonkKZG<LOG2_T_MAX>
+where
+    Self: sealed::Sealed,
+{
+    const ID: u8 = LOG2_T_MAX as u8;
+
     fn srs_k(k: u32) -> u32 {
         k + LOG2_T_MAX
     }

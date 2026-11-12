@@ -12,18 +12,16 @@
 use midnight_circuits::{
     instructions::{BinaryInstructions, PublicInputInstructions},
     types::Instantiable,
-    verifier::{
-        Accumulator, AssignedAccumulator, AssignedKZGMultiCommitment, AssignedVk, InCircuitKZG,
-    },
+    verifier::{Accumulator, AssignedAccumulator, AssignedVk},
 };
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::{ConstraintSystem, VerifyingKey},
-    poly::{EvaluationDomain, PolynomialLabel, kzg::KZGCommitmentScheme},
+    poly::EvaluationDomain,
 };
-use midnight_zk_stdlib::{Relation, ZkStdLib, ZkStdLibArch};
+use midnight_zk_stdlib::{DefaultPCS, Relation, ZkStdLib, ZkStdLibArch};
 
-use super::{E, F, Ivc, IvcError, S};
+use super::{F, Ivc, IvcError, S};
 
 /// The public instance (statement) of an IVC proof.
 ///
@@ -41,6 +39,11 @@ impl<T: Ivc> IvcInstance<T> {
     pub fn state(&self) -> &T::State {
         &self.state
     }
+
+    /// Returns the accumulator summarising all steps up to [`Self::state`].
+    pub fn acc(&self) -> &Accumulator<S> {
+        &self.acc
+    }
 }
 
 /// The instance of [`IvcCircuit`]: an [`IvcInstance`] `(state, acc)` together
@@ -53,17 +56,14 @@ impl<T: Ivc> IvcInstance<T> {
 /// to be checked against the IVC instance.
 #[derive(Clone, Debug)]
 pub struct IvcExtendedInstance<T: Ivc> {
-    pub(crate) vk: VerifyingKey<F, KZGCommitmentScheme<E>>,
+    pub(crate) vk: VerifyingKey<F, DefaultPCS>,
     pub(crate) state: T::State,
     pub(crate) acc: Accumulator<S>,
 }
 
 impl<T: Ivc> IvcExtendedInstance<T> {
     /// Extends the given instance with `vk`.
-    pub(crate) fn new(
-        vk: &VerifyingKey<F, KZGCommitmentScheme<E>>,
-        instance: IvcInstance<T>,
-    ) -> Self {
+    pub(crate) fn new(vk: &VerifyingKey<F, DefaultPCS>, instance: IvcInstance<T>) -> Self {
         IvcExtendedInstance {
             vk: vk.clone(),
             state: instance.state,
@@ -146,7 +146,7 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
 
     fn format_instance(instance: &Self::Instance) -> Result<Vec<F>, IvcError> {
         Ok([
-            AssignedVk::<S, InCircuitKZG<S>>::as_public_input(&instance.vk),
+            AssignedVk::<S>::as_public_input(&instance.vk),
             T::format_public_input(&instance.state),
             AssignedAccumulator::<S>::as_public_input(&instance.acc),
         ]
@@ -163,8 +163,11 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
         let verifier_gadget = std_lib.verifier();
         let ivc_gadget = T::new(std_lib.clone(), &self.ctx);
 
-        let assigned_self_vk: AssignedVk<S, InCircuitKZG<S>> = verifier_gadget
-            .assign_vk_as_public_input(layouter, instance.as_ref().map(|x| &x.vk), &self.cs)?;
+        let assigned_self_vk: AssignedVk<S> = verifier_gadget.assign_vk_as_public_input(
+            layouter,
+            instance.as_ref().map(|x| &x.vk),
+            &self.cs,
+        )?;
 
         let prev_state_val = witness.as_ref().map(|w| w.prev_state.clone());
         let prev_state = ivc_gadget.assign(layouter, prev_state_val)?;
@@ -176,10 +179,7 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
         )?;
         ivc_gadget.constrain_as_public_input(layouter, &next_state)?;
 
-        let fixed_base_labels = midnight_circuits::verifier::fixed_base_labels::<S>(
-            self.cs.num_fixed_columns(),
-            self.cs.permutation().columns.len(),
-        );
+        let fixed_base_labels = midnight_circuits::verifier::fixed_base_labels::<S>(&self.cs);
 
         let prev_acc_value = witness.as_ref().map(|w| w.prev_acc.clone());
         let prev_acc = verifier_gadget.assign_collapsed_accumulator(
@@ -195,19 +195,13 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
         ]
         .concat();
 
-        let instance_com = AssignedKZGMultiCommitment::commitment_to_zero(
-            layouter,
-            std_lib.bls12_381(),
-            PolynomialLabel::CommittedInstance(0),
-        )?;
-
         // Verify a witnessed proof that ensures the validity of `prev_state`.
         // The proof is valid iff `prev_proof_acc` satisfies the invariant.
         let mut prev_proof_acc = verifier_gadget.prepare(
             layouter,
             &assigned_self_vk,
-            &[instance_com],
-            &[&prev_proof_pi],
+            &[],
+            &[&[], &prev_proof_pi],
             witness.map(|w| w.prev_proof),
         )?;
 

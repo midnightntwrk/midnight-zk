@@ -84,7 +84,8 @@ impl Relation for FullCredential {
         let b64_chip = std_lib.base64();
 
         // Assign the PK as public input.
-        let pk = secp256k1_curve.assign_as_public_input(layouter, instance)?;
+        let pk = secp256k1_curve.assign(layouter, instance)?;
+        secp256k1_curve.constrain_as_public_input(layouter, &pk)?;
 
         let payload = witness.map(|(payload, _, _)| payload).transpose_array();
         let (sig, sk) = witness.map(|(_, sig, sk)| (sig, sk)).unzip();
@@ -192,7 +193,7 @@ impl FullCredential {
 
         let generator = secp256k1_curve.assign_fixed(layouter, K256::generator())?;
         let lhs = secp256k1_curve.msm(layouter, &[m_over_s, r_over_s], &[generator, pk])?;
-        let lhs_x = secp256k1_curve.x_coordinate(&lhs);
+        let lhs_x = secp256k1_curve.x(layouter, &lhs)?;
 
         secp256k1_base.assert_equal(layouter, &lhs_x, &r_as_base)
     }
@@ -324,7 +325,7 @@ fn main() {
     };
 
     let setup = start("Setting up the vk/pk");
-    let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
+    let vk = midnight_zk_stdlib::setup_vk::<_, midnight_zk_stdlib::KZG>(&srs, &relation);
     let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
     println!("... done\n{:?}", setup.elapsed());
 
@@ -337,7 +338,7 @@ fn main() {
     println!("... done ({:?})", wit.elapsed());
 
     let p = start("Proof generation");
-    let proof = midnight_zk_stdlib::prove::<FullCredential, blake2b_simd::State>(
+    let proof = midnight_zk_stdlib::prove::<FullCredential, blake2b_simd::State, _>(
         &srs, &pk, &relation, &instance, witness, OsRng,
     )
     .expect("Proof generation should not fail.");
@@ -345,7 +346,7 @@ fn main() {
 
     let v = start("Proof verification");
     assert!(
-        midnight_zk_stdlib::verify::<FullCredential, blake2b_simd::State>(
+        midnight_zk_stdlib::verify::<FullCredential, blake2b_simd::State, _>(
             &srs.verifier_params(),
             &vk,
             &instance,

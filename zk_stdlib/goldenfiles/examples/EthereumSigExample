@@ -1,6 +1,6 @@
 CircuitModel {
     k: 15,
-    rows: 26764,
+    rows: 27413,
     table_rows: 30979,
     nb_unusable_rows: 14,
     max_deg: 5,
@@ -9,7 +9,7 @@ CircuitModel {
     lookups: 6,
     trashcans: 0,
     permutations: 13,
-    column_queries: 73,
+    column_queries: 76,
     point_sets: 5,
-    size: 6064,
+    size: 6196,
 }

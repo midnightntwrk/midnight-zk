@@ -61,20 +61,20 @@ fn main() {
     const K: u32 = 6;
     let relation = PoseidonExample;
     let srs = srs_for_test(&relation, Some(K));
-    let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
+    let vk = midnight_zk_stdlib::setup_vk::<_, midnight_zk_stdlib::KZG>(&srs, &relation);
     let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
 
     let mut rng = ChaCha8Rng::from_entropy();
     let witness: [F; 3] = core::array::from_fn(|_| F::random(&mut rng));
     let instance = <PoseidonChip<F> as HashCPU<F, F>>::hash(&witness);
 
-    let proof = midnight_zk_stdlib::prove::<PoseidonExample, blake2b_simd::State>(
+    let proof = midnight_zk_stdlib::prove::<PoseidonExample, blake2b_simd::State, _>(
         &srs, &pk, &relation, &instance, witness, OsRng,
     )
     .expect("Proof generation should not fail");
 
     assert!(
-        midnight_zk_stdlib::verify::<PoseidonExample, blake2b_simd::State>(
+        midnight_zk_stdlib::verify::<PoseidonExample, blake2b_simd::State, _>(
             &srs.verifier_params(),
             &vk,
             &instance,

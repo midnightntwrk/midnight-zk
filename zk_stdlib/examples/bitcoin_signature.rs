@@ -8,7 +8,7 @@ use midnight_circuits::{
     field::foreign::params::MultiEmulationParams,
     instructions::{
         AssertionInstructions, AssignmentInstructions, DecompositionInstructions, EccInstructions,
-        PublicInputInstructions, ZeroInstructions,
+        PublicInputInstructions,
     },
     types::{AssignedByte, AssignedForeignPoint, Instantiable},
 };
@@ -72,7 +72,8 @@ impl Relation for BitcoinSigExample {
         let secp256k1_base = secp256k1_curve.base_field_chip();
 
         // Assign the PK as public input.
-        let pk = secp256k1_curve.assign_as_public_input(layouter, instance.map(|(pk, _)| pk))?;
+        let pk = secp256k1_curve.assign(layouter, instance.map(|(pk, _)| pk))?;
+        secp256k1_curve.constrain_as_public_input(layouter, &pk)?;
 
         // Assign the message bytes and constrain it as public input.
         let msg_bytes = std_lib.assign_many(
@@ -94,7 +95,7 @@ impl Relation for BitcoinSigExample {
         let tag = std_lib.assign_many_fixed(layouter, &tag_value)?;
 
         let rx_bytes = secp256k1_base.assigned_to_be_bytes(layouter, &rx, None)?;
-        let pk_x = secp256k1_curve.x_coordinate(&pk);
+        let pk_x = secp256k1_curve.x(layouter, &pk)?;
         let pk_x_bytes = secp256k1_base.assigned_to_be_bytes(layouter, &pk_x, None)?;
 
         // Prepare the SHA input with the prefix: (tag || tag || rx || pk_x || msg).
@@ -128,17 +129,14 @@ impl Relation for BitcoinSigExample {
             &[generator, neg_pk],
         )?;
 
-        // Check the correctness of R:
-        //  1. It should not be the identity.
-        secp256k1_curve.assert_non_zero(layouter, &r_point)?;
-
-        //  2. It should have an even y coordinate.
-        let y = secp256k1_curve.y_coordinate(&r_point);
+        // Check the correctness of R (`x` and `y` assert that it is not the identity):
+        //  1. It should have an even y coordinate.
+        let y = secp256k1_curve.y(layouter, &r_point)?;
         let y_sign = secp256k1_base.sgn0(layouter, &y)?;
         std_lib.assert_false(layouter, &y_sign)?;
 
-        // 3. r_point.x should be equal to the rx that was hashed.
-        let r_point_x = secp256k1_curve.x_coordinate(&r_point);
+        // 2. r_point.x should be equal to the rx that was hashed.
+        let r_point_x = secp256k1_curve.x(layouter, &r_point)?;
         secp256k1_base.assert_equal(layouter, &r_point_x, &rx)
     }
 
@@ -181,7 +179,7 @@ fn main() {
     const K: u32 = 15;
     let relation = BitcoinSigExample;
     let srs = srs_for_test(&relation, Some(K));
-    let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
+    let vk = midnight_zk_stdlib::setup_vk::<_, midnight_zk_stdlib::KZG>(&srs, &relation);
     let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
 
     let instance = (parse_bitcoin_point(&pk_bytes), msg_bytes);
@@ -191,13 +189,13 @@ fn main() {
         K256Scalar::from_bytes_be(&sig_bytes[32..]).expect("Secp scalar"),
     );
 
-    let proof = midnight_zk_stdlib::prove::<BitcoinSigExample, Blake2b256>(
+    let proof = midnight_zk_stdlib::prove::<BitcoinSigExample, Blake2b256, _>(
         &srs, &pk, &relation, &instance, witness, OsRng,
     )
     .expect("Proof generation should not fail");
 
     assert!(
-        midnight_zk_stdlib::verify::<BitcoinSigExample, Blake2b256>(
+        midnight_zk_stdlib::verify::<BitcoinSigExample, Blake2b256, _>(
             &srs.verifier_params(),
             &vk,
             &instance,

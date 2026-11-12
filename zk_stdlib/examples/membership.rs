@@ -68,8 +68,9 @@ impl Relation for MembershipExample {
         map.init(layouter, witness.map(|(_, _, mt_map)| mt_map))?;
 
         std_lib.constrain_as_public_input(layouter, &map.succinct_repr())?;
-        let proven_sets: AssignedNative<F> = std_lib
-            .assign_as_public_input(layouter, instance.map(|(_, proven_sets)| proven_sets))?;
+        let proven_sets: AssignedNative<F> =
+            std_lib.assign(layouter, instance.map(|(_, proven_sets)| proven_sets))?;
+        std_lib.constrain_as_public_input(layouter, &proven_sets)?;
 
         // Then, we prove that the `(key, value)`, represented by `(element,
         // member_sets)` is indeed part of the map represented by the succinct
@@ -105,7 +106,7 @@ fn main() {
     const K: u32 = 13;
     let relation = MembershipExample;
     let srs = srs_for_test(&relation, Some(K));
-    let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
+    let vk = midnight_zk_stdlib::setup_vk::<_, midnight_zk_stdlib::KZG>(&srs, &relation);
     let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
 
     let mut mt = MapMt::<F, PoseidonChip<F>>::new(&F::ZERO);
@@ -130,13 +131,13 @@ fn main() {
     let witness = (F::ONE, sets, mt.clone());
     let instance = (mt.succinct_repr(), proof_set);
 
-    let proof = midnight_zk_stdlib::prove::<MembershipExample, blake2b_simd::State>(
+    let proof = midnight_zk_stdlib::prove::<MembershipExample, blake2b_simd::State, _>(
         &srs, &pk, &relation, &instance, witness, OsRng,
     )
     .expect("Proof generation should not fail");
 
     assert!(
-        midnight_zk_stdlib::verify::<MembershipExample, blake2b_simd::State>(
+        midnight_zk_stdlib::verify::<MembershipExample, blake2b_simd::State, _>(
             &srs.verifier_params(),
             &vk,
             &instance,

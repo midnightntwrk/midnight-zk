@@ -349,19 +349,19 @@ fn main() {
     const K: u32 = 13;
     let relation = HybridMtExample;
     let srs = srs_for_test(&relation, Some(K));
-    let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
+    let vk = midnight_zk_stdlib::setup_vk::<_, midnight_zk_stdlib::KZG>(&srs, &relation);
     let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
 
     let witness: MerklePath<F> = create_random_merkle_path();
     let instance = witness.compute_root();
 
-    let proof = midnight_zk_stdlib::prove::<HybridMtExample, blake2b_simd::State>(
+    let proof = midnight_zk_stdlib::prove::<HybridMtExample, blake2b_simd::State, _>(
         &srs, &pk, &relation, &instance, witness, OsRng,
     )
     .expect("Proof generation should not fail");
 
     assert!(
-        midnight_zk_stdlib::verify::<HybridMtExample, blake2b_simd::State>(
+        midnight_zk_stdlib::verify::<HybridMtExample, blake2b_simd::State, _>(
             &srs.verifier_params(),
             &vk,
             &instance,

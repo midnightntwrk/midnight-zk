@@ -1,6 +1,6 @@
 [package]
 name = "midnight-proofs"
-version = "0.8.0"
+version = "0.8.3"
 edition.workspace = true
 rust-version.workspace = true
 description = """
@@ -70,9 +70,6 @@ midnight-curves = { version = "0.3.0", features = ["portable"] }
 default = ["committed-instances"]
 circuit-params = []
 dev-curves = ["midnight-curves/dev-curves"]
-
-# This feature truncates challenges to half the size of the scalar field.
-truncated-challenges = []
 
 # This feature adds a new argument to prover and verifier functions, which
 # represents instances in committed form (e.g. in the form of a polynomial

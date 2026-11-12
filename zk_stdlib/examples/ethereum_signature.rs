@@ -7,7 +7,7 @@ use midnight_circuits::{
     field::foreign::params::MultiEmulationParams,
     instructions::{
         ArithInstructions, AssertionInstructions, AssignmentInstructions,
-        DecompositionInstructions, EccInstructions, PublicInputInstructions, ZeroInstructions,
+        DecompositionInstructions, EccInstructions, PublicInputInstructions,
     },
     types::{AssignedByte, AssignedForeignPoint, Instantiable},
 };
@@ -67,7 +67,8 @@ impl Relation for EthereumSigExample {
         let secp256k1_base = secp256k1_curve.base_field_chip();
 
         // Assign the PK as public input.
-        let pk = secp256k1_curve.assign_as_public_input(layouter, instance.map(|(pk, _)| pk))?;
+        let pk = secp256k1_curve.assign(layouter, instance.map(|(pk, _)| pk))?;
+        secp256k1_curve.constrain_as_public_input(layouter, &pk)?;
 
         // Assign the message bytes and constrain it as public input.
         let msg_bytes = std_lib.assign_many(
@@ -111,12 +112,8 @@ impl Relation for EthereumSigExample {
         let r_point =
             secp256k1_curve.msm_by_le_bits(layouter, &[u1_bits, u2_bits], &[generator, pk])?;
 
-        // Check the correctness of R:
-        //  1. It should not be the identity.
-        secp256k1_curve.assert_non_zero(layouter, &r_point)?;
-
-        // 2. r_point.x should be equal to r.
-        let r_point_x = secp256k1_curve.x_coordinate(&r_point);
+        // Check that r_point.x equals r (`x` asserts that r_point is not the identity).
+        let r_point_x = secp256k1_curve.x(layouter, &r_point)?;
         let r_point_x_bits = secp256k1_base.assigned_to_le_bytes(layouter, &r_point_x, None)?;
         let r_point_x_scalar =
             secp256k1_scalar.assigned_from_le_bytes(layouter, &r_point_x_bits)?;
@@ -195,18 +192,18 @@ fn main() {
     );
 
     println!(" - Setting up vk...");
-    let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
+    let vk = midnight_zk_stdlib::setup_vk::<_, midnight_zk_stdlib::KZG>(&srs, &relation);
     let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
 
     println!(" - Proof generation...");
-    let proof = midnight_zk_stdlib::prove::<EthereumSigExample, blake2b_simd::State>(
+    let proof = midnight_zk_stdlib::prove::<EthereumSigExample, blake2b_simd::State, _>(
         &srs, &pk, &relation, &instance, witness, OsRng,
     )
     .expect("Proof generation should not fail");
 
     println!(" - Proof verification...");
     assert!(
-        midnight_zk_stdlib::verify::<EthereumSigExample, blake2b_simd::State>(
+        midnight_zk_stdlib::verify::<EthereumSigExample, blake2b_simd::State, _>(
             &srs.verifier_params(),
             &vk,
             &instance,

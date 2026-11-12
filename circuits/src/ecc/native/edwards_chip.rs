@@ -23,7 +23,7 @@ use midnight_proofs::{
     plonk::{Advice, Column, ConstraintSystem, Constraints, Error, Expression, Selector},
     poly::Rotation,
 };
-use num_bigint::ToBigUint;
+use num_bigint::{BigUint, ToBigUint};
 #[cfg(any(test, feature = "testing"))]
 use {
     crate::field::decomposition::chip::P2RDecompositionConfig,
@@ -101,7 +101,7 @@ impl<C: CircuitCurve> Instantiable<C::Base> for AssignedNativePoint<C> {
         if fields.len() != 2 {
             return None;
         }
-        C::from_xy(fields[0], fields[1]).map(|p| p.into_subgroup())
+        C::from_xy(fields[0], fields[1])?.try_into_subgroup()
     }
 }
 
@@ -128,7 +128,15 @@ impl<C: CircuitCurve> InnerValue for AssignedScalarOfNativeCurve<C> {
     fn value(&self) -> Value<Self::Element> {
         let bools = self.bits.iter().map(|b| b.value());
         let value_bools: Value<Vec<bool>> = Value::from_iter(bools);
-        value_bools.map(|le_bits| C::ScalarField::from_bits_le(&le_bits))
+        value_bools.map(|le_bits| {
+            let bytes: Vec<u8> = le_bits
+                .chunks(8)
+                .map(|chunk| chunk.iter().rev().fold(0u8, |acc, &b| (acc << 1) | (b as u8)))
+                .collect();
+            let n = BigUint::from_bytes_le(&bytes);
+            let modulus = C::ScalarField::modulus();
+            C::ScalarField::from_biguint(&(n % modulus)).unwrap()
+        })
     }
 }
 
@@ -152,10 +160,13 @@ impl<C: EdwardsCurve> Instantiable<C::Base> for AssignedScalarOfNativeCurve<C> {
         let nb_bits_per_batch = C::Base::NUM_BITS as usize - 1;
         let bits: Vec<bool> = fields
             .iter()
-            .flat_map(|f| f.to_bits_le(Some(nb_bits_per_batch)))
+            .map(|f| f.try_to_bits_le(nb_bits_per_batch))
+            .collect::<Option<Vec<_>>>()?
+            .concat()
+            .into_iter()
             .take(C::NUM_BITS_SUBGROUP as usize)
             .collect();
-        Some(C::ScalarField::from_bits_le(&bits))
+        C::ScalarField::try_from_bits_le(&bits)
     }
 }
 
@@ -194,10 +205,10 @@ fn reduce_biguint_mod_scalar_order<C: CircuitCurve>(
 }
 
 impl<C: CircuitCurve> AssignedScalarOfNativeCurve<C> {
-    /// Converts the scalar's bits into an [`AssignedBigUint`].
+    /// Converts the scalar into an [`AssignedBigUint`].
     /// The result is not guaranteed to be in canonical form (i.e. it may
     /// represent a value greater than or equal to the scalar field order).
-    fn to_biguint(
+    pub fn to_biguint(
         &self,
         layouter: &mut impl Layouter<C::Base>,
         biguint_gadget: &BigUintGadget<C::Base, NG<C::Base>>,
@@ -205,9 +216,9 @@ impl<C: CircuitCurve> AssignedScalarOfNativeCurve<C> {
         biguint_gadget.from_le_bits(layouter, &self.bits)
     }
 
-    /// Converts the scalar's bits into an [`AssignedBigUint`].
+    /// Converts the scalar into an [`AssignedBigUint`].
     /// The result is guaranteed to be in canonical form.
-    fn to_canonical_biguint(
+    pub fn to_canonical_biguint(
         &self,
         layouter: &mut impl Layouter<C::Base>,
         biguint_gadget: &BigUintGadget<C::Base, NG<C::Base>>,
@@ -222,7 +233,7 @@ impl<C: CircuitCurve> AssignedScalarOfNativeCurve<C> {
     /// Constructs an [`AssignedScalarOfNativeCurve`] from an
     /// [`AssignedBigUint`]. The result is not guaranteed to be canonical but is
     /// guaranteed to have at most `C::ScalarField::NUM_BITS` bits.
-    fn from_biguint(
+    pub fn from_biguint(
         layouter: &mut impl Layouter<C::Base>,
         biguint_gadget: &BigUintGadget<C::Base, NG<C::Base>>,
         s: &AssignedBigUint<C::Base>,
@@ -816,12 +827,20 @@ impl<C: EdwardsCurve> EccInstructions<C::Base, C> for EccChip<C> {
         )
     }
 
-    fn x_coordinate(&self, point: &Self::Point) -> Self::Coordinate {
-        point.x.clone()
+    fn x(
+        &self,
+        _layouter: &mut impl Layouter<C::Base>,
+        point: &Self::Point,
+    ) -> Result<Self::Coordinate, Error> {
+        Ok(point.x.clone())
     }
 
-    fn y_coordinate(&self, point: &Self::Point) -> Self::Coordinate {
-        point.y.clone()
+    fn y(
+        &self,
+        _layouter: &mut impl Layouter<C::Base>,
+        point: &Self::Point,
+    ) -> Result<Self::Coordinate, Error> {
+        Ok(point.y.clone())
     }
 
     fn base_field(&self) -> &impl DecompositionInstructions<C::Base, Self::Coordinate> {
@@ -999,25 +1018,6 @@ impl<C: EdwardsCurve> PublicInputInstructions<C::Base, AssignedNativePoint<C>> f
             .iter()
             .try_for_each(|c| self.native_gadget.constrain_as_public_input(layouter, c))
     }
-
-    fn assign_as_public_input(
-        &self,
-        layouter: &mut impl Layouter<C::Base>,
-        p: Value<C::CryptographicGroup>,
-    ) -> Result<AssignedNativePoint<C>, Error> {
-        let (x, y) = p.map(|p| p.into().coordinates().unwrap()).unzip();
-        let x = self.native_gadget.assign_as_public_input(layouter, x)?;
-        let y = self.native_gadget.assign_as_public_input(layouter, y)?;
-
-        // Since the input value will be constrained to be equal to a PI,
-        // the verifier will check the validity of the point out-of-circuit,
-        // so the checks can be skipped.
-        Ok(AssignedNativePoint {
-            x,
-            y,
-            checked_in_subgroup: true,
-        })
-    }
 }
 
 impl<C: EdwardsCurve> PublicInputInstructions<C::Base, AssignedScalarOfNativeCurve<C>>
@@ -1028,11 +1028,22 @@ impl<C: EdwardsCurve> PublicInputInstructions<C::Base, AssignedScalarOfNativeCur
         layouter: &mut impl Layouter<C::Base>,
         assigned: &AssignedScalarOfNativeCurve<C>,
     ) -> Result<Vec<AssignedNative<C::Base>>, Error> {
+        // Express in canonical form before encoding.
+        let nb_bits = C::NUM_BITS_SUBGROUP as usize;
+        let mut bits = assigned.bits.clone();
+        if !assigned.enforced_canonical && bits.len() >= nb_bits {
+            let s = assigned.to_canonical_biguint(layouter, &self.biguint_gadget)?;
+            bits = self.biguint_gadget.to_le_bits(layouter, &s)?;
+        }
+        let zero: AssignedBit<C::Base> = self.native_gadget.assign_fixed(layouter, false)?;
+        for bit in bits.iter().skip(nb_bits) {
+            self.native_gadget.assert_equal(layouter, bit, &zero)?;
+        }
+        bits.resize(nb_bits, zero);
+
         // We aggregate the bits while they fit in a single `AssignedNative`.
         let nb_bits_per_batch = C::Base::NUM_BITS as usize - 1;
-        assigned
-            .bits
-            .chunks(nb_bits_per_batch)
+        bits.chunks(nb_bits_per_batch)
             .map(|chunk| self.native_gadget.assigned_from_le_bits(layouter, chunk))
             .collect()
     }
@@ -1045,16 +1056,6 @@ impl<C: EdwardsCurve> PublicInputInstructions<C::Base, AssignedScalarOfNativeCur
         self.as_public_input(layouter, assigned)?
             .iter()
             .try_for_each(|c| self.native_gadget.constrain_as_public_input(layouter, c))
-    }
-
-    fn assign_as_public_input(
-        &self,
-        layouter: &mut impl Layouter<C::Base>,
-        value: Value<C::ScalarField>,
-    ) -> Result<AssignedScalarOfNativeCurve<C>, Error> {
-        let assigned: AssignedScalarOfNativeCurve<C> = self.assign(layouter, value)?;
-        self.constrain_as_public_input(layouter, &assigned)?;
-        Ok(assigned)
     }
 }
 
@@ -1218,8 +1219,9 @@ impl<C: EdwardsCurve> ArithInstructions<C::Base, AssignedScalarOfNativeCurve<C>>
             C::ScalarField::NUM_BITS,
         )?;
 
-        let r = r.to_biguint(layouter, &self.biguint_gadget)?;
-        let s = s.to_biguint(layouter, &self.biguint_gadget)?;
+        let r = r.to_canonical_biguint(layouter, &self.biguint_gadget)?;
+        let s = s.to_canonical_biguint(layouter, &self.biguint_gadget)?;
+        self.biguint_gadget.assert_non_zero(layouter, &s)?;
         let res_times_s = self.biguint_gadget.mul(layouter, &res, &s)?;
         let reduced_res_times_s =
             reduce_biguint_mod_scalar_order::<C>(layouter, &self.biguint_gadget, &res_times_s)?;

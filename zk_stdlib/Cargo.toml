@@ -1,6 +1,6 @@
 [package]
 name = "midnight-zk-stdlib"
-version = "2.2.0"
+version = "2.4.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -57,11 +57,6 @@ default = []
 # Feature that exposes some testing functionality, such as load from scratch or instantiable
 testing = ["num-bigint/rand"]
 heap_profiling = []
-# Enable truncated challenges. This makes recursive proofs more efficient
-truncated-challenges = [
-    "midnight-proofs/truncated-challenges",
-    "midnight-circuits/truncated-challenges",
-]
 
 [lib]
 bench = false

@@ -13,6 +13,8 @@
 
 //! Unit tests on serialization of Midnight keys.
 
+use std::io::ErrorKind;
+
 use midnight_circuits::instructions::{
     ArithInstructions, AssertionInstructions, AssignmentInstructions, PublicInputInstructions,
 };
@@ -22,7 +24,8 @@ use midnight_proofs::{
     utils::SerdeFormat,
 };
 use midnight_zk_stdlib::{
-    MidnightPK, MidnightVK, Relation, ZkStdLib, ZkStdLibArch, utils::plonk_api::srs_for_test,
+    FflonkKZG, KZG, MidnightPK, MidnightVK, Relation, ZkStdLib, ZkStdLibArch,
+    utils::plonk_api::srs_for_test,
 };
 use serial_test::serial;
 
@@ -51,7 +54,8 @@ impl Relation for DummyCircuit {
         instance: Value<Self::Instance>,
         witness: Value<Self::Witness>,
     ) -> Result<(), Error> {
-        let instance = std_lib.assign_as_public_input(layouter, instance)?;
+        let instance = std_lib.assign(layouter, instance)?;
+        std_lib.constrain_as_public_input(layouter, &instance)?;
         let witness = std_lib.assign(layouter, witness)?;
 
         let x = std_lib.mul(layouter, &witness, &witness, None)?;
@@ -146,7 +150,7 @@ const ARCHITECTURES: [ZkStdLibArch; 4] = [
 fn vk_serde_test(architecture: ZkStdLibArch, write_format: SerdeFormat, read_format: SerdeFormat) {
     let relation = DummyCircuit { architecture };
     let srs = srs_for_test(&relation, None);
-    let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
+    let vk = midnight_zk_stdlib::setup_vk::<_, KZG>(&srs, &relation);
 
     let mut buffer = Vec::new();
     vk.write(&mut buffer, write_format).unwrap();
@@ -158,7 +162,7 @@ fn vk_serde_test(architecture: ZkStdLibArch, write_format: SerdeFormat, read_for
     let serialised_architecture =
         ZkStdLibArch::read_from_serialized_vk(&mut cursor.clone()).unwrap();
 
-    let vk2 = MidnightVK::read(&mut cursor, read_format).unwrap();
+    let vk2 = MidnightVK::<KZG>::read(&mut cursor, read_format).unwrap();
 
     let mut buffer2 = Vec::new();
     vk2.write(&mut buffer2, write_format).unwrap();
@@ -207,7 +211,7 @@ fn vk_write_raw_then_read_processed() {
 fn pk_serde_test(architecture: ZkStdLibArch, write_format: SerdeFormat, read_format: SerdeFormat) {
     let relation = DummyCircuit { architecture };
     let srs = srs_for_test(&relation, None);
-    let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
+    let vk = midnight_zk_stdlib::setup_vk::<_, KZG>(&srs, &relation);
     let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
 
     let mut buffer = Vec::new();
@@ -217,7 +221,7 @@ fn pk_serde_test(architecture: ZkStdLibArch, write_format: SerdeFormat, read_for
     println!("PK buffer length after write: {}", buffer.len());
 
     let mut cursor = std::io::Cursor::new(buffer.clone());
-    let pk2 = MidnightPK::<DummyCircuit>::read(&mut cursor, read_format).unwrap();
+    let pk2 = MidnightPK::<DummyCircuit, KZG>::read(&mut cursor, read_format).unwrap();
 
     let mut buffer2 = Vec::new();
     pk2.write(&mut buffer2, write_format).unwrap();
@@ -260,4 +264,74 @@ fn pk_write_raw_then_read_processed() {
         SerdeFormat::RawBytes,
         SerdeFormat::Processed,
     );
+}
+
+// `k` is read from untrusted key bytes; 0 underflowed `k - 1`, and a `k` above
+// the field's two-adicity cannot index an evaluation domain.
+#[test]
+#[serial]
+fn keys_with_out_of_range_k_are_rejected() {
+    let architecture = ZkStdLibArch::default();
+    let relation = DummyCircuit { architecture };
+    let srs = srs_for_test(&relation, None);
+    let vk = midnight_zk_stdlib::setup_vk::<_, KZG>(&srs, &relation);
+    let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
+
+    let mut vk_bytes = Vec::new();
+    vk.write(&mut vk_bytes, SerdeFormat::Processed).unwrap();
+    let mut pk_bytes = Vec::new();
+    pk.write(&mut pk_bytes, SerdeFormat::Processed).unwrap();
+
+    let mut arch_bytes = Vec::new();
+    architecture.write(&mut arch_bytes).unwrap();
+    let vk_k_offset = 1 + arch_bytes.len();
+
+    for k in [0, 33, u8::MAX] {
+        let mut bytes = vk_bytes.clone();
+        bytes[vk_k_offset] = k;
+        let err = MidnightVK::<KZG>::read(&mut &bytes[..], SerdeFormat::Processed).err();
+        assert_eq!(
+            err.map(|e| e.kind()),
+            Some(ErrorKind::InvalidData),
+            "vk k = {k}"
+        );
+
+        let mut bytes = pk_bytes.clone();
+        bytes[0] = k;
+        let err =
+            MidnightPK::<DummyCircuit, KZG>::read(&mut &bytes[..], SerdeFormat::Processed).err();
+        assert_eq!(
+            err.map(|e| e.kind()),
+            Some(ErrorKind::InvalidData),
+            "pk k = {k}"
+        );
+    }
+}
+
+// A VK records its zk_stdlib version and its PCS: reading it under another
+// version, whose keys belong to another proof system, or another PCS fails.
+#[test]
+#[serial]
+fn vk_version_and_pcs_are_checked_on_read() {
+    let architecture = ZkStdLibArch::default();
+    let relation = DummyCircuit { architecture };
+    let srs = srs_for_test(&relation, None);
+    let vk = midnight_zk_stdlib::setup_vk::<_, KZG>(&srs, &relation);
+
+    let mut vk_bytes = Vec::new();
+    vk.write(&mut vk_bytes, SerdeFormat::Processed).unwrap();
+
+    let err = MidnightVK::<FflonkKZG<4>>::read(&mut &vk_bytes[..], SerdeFormat::Processed).err();
+    assert_eq!(err.map(|e| e.kind()), Some(ErrorKind::InvalidData));
+
+    for version in [1u32, 2, 4] {
+        let mut bytes = vk_bytes.clone();
+        bytes[1..5].copy_from_slice(&version.to_le_bytes());
+        let err = MidnightVK::<KZG>::read(&mut &bytes[..], SerdeFormat::Processed).err();
+        assert_eq!(
+            err.map(|e| e.kind()),
+            Some(ErrorKind::InvalidData),
+            "version {version}"
+        );
+    }
 }

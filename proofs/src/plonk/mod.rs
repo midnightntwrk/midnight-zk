@@ -536,6 +536,28 @@ impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> VerifyingKey<F, CS> {
     pub fn get_domain(&self) -> &EvaluationDomain<F> {
         &self.domain
     }
+
+    /// The labels of the phase1 group: the advice columns and the logup
+    /// multiplicities.
+    pub(crate) fn phase1_labels(&self) -> Vec<PolynomialLabel> {
+        (self.cs.advice_labels().into_iter())
+            .chain((0..self.cs.lookups.len()).map(PolynomialLabel::LogupMultiplicities))
+            .collect()
+    }
+
+    /// The labels of the phase2 group: the permutation accumulators, the logup
+    /// helpers and aggregators, and the trash polynomials.
+    pub(crate) fn phase2_labels(&self) -> Vec<PolynomialLabel> {
+        let mut labels = self.cs.permutation.accumulator_labels(self.cs_degree);
+        for (argument_index, logup_argument) in self.cs.lookups.iter().enumerate() {
+            for j in 0..logup_argument.num_chunks(self.cs_degree) {
+                labels.push(PolynomialLabel::LogupHelper(argument_index, j));
+            }
+        }
+        labels.extend((0..self.cs.lookups.len()).map(PolynomialLabel::LogupAggregator));
+        labels.extend((self.cs.trashcans.iter()).map(|t| PolynomialLabel::Trash(t.argument_index)));
+        labels
+    }
 }
 
 /// Evaluates the identities at the evaluation challenge `x` and batches them

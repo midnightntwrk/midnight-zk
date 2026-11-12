@@ -1,5 +1,4 @@
 //! Trait for a commitment scheme
-use core::ops::{Add, Mul};
 use std::{
     fmt::Debug,
     hash::Hash,
@@ -17,8 +16,7 @@ use crate::{
     utils::helpers::{ProcessedSerdeObject, SerdeFormat},
 };
 
-/// Public interface for a additively homomorphic Polynomial Commitment Scheme
-/// (PCS)
+/// Public interface for a Polynomial Commitment Scheme (PCS)
 pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
     /// Parameters needed to generate a proof in the PCS
     type Parameters: Send + Sync;
@@ -27,15 +25,7 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
     type VerifierParameters;
 
     /// Type of a committed polynomial
-    type Commitment: Clone
-        + Debug
-        + Default
-        + PartialEq
-        + ProcessedSerdeObject
-        + Send
-        + Sync
-        + Add<Output = Self::Commitment>
-        + Mul<F, Output = Self::Commitment>;
+    type Commitment: Clone + Debug + Default + PartialEq + ProcessedSerdeObject + Send + Sync;
 
     /// Verification guard. Allows for batch verification
     type VerificationGuard: Guard<Self::VerifierParameters>;
@@ -188,20 +178,31 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
 
     /// Verify an multi-opening proof for a given set of [VerifierQuery]'s.
     /// The function fails if the transcript has trailing bytes.
-    ///
-    /// `k` is the log2 of the circuit's (Lagrange) domain size. Schemes whose
-    /// opening structure depends on the domain relative to the SRS capacity
-    /// (e.g. fflonk's SRS-aware bundling) need it to reconstruct and
-    /// sanity-check the prover's choices; schemes that don't (e.g. plain KZG)
-    /// ignore it.
     fn multi_prepare<'com, T: Transcript>(
         verifier_query: &[VerifierQuery<'com, F, Self>],
-        k: u32,
         transcript: &mut T,
     ) -> Result<Self::VerificationGuard, Error>
     where
         F: Sampleable<T::Hash> + Hash + Ord + Hashable<T::Hash>,
         Self::Commitment: Hashable<T::Hash> + 'com;
+}
+
+/// A [`PolynomialCommitmentScheme`] that commits to polynomials interleaved
+/// in chunks.
+pub trait InterleavedCommit<F: PrimeField>: PolynomialCommitmentScheme<F> {
+    /// Commit to `g(X) = Σ_i X^i f_i(X^t)` for every chunk `f_0, ..., f_{k-1}`
+    /// of `chunks`, with `t` the next power of two of `k`, tagging the `g` of
+    /// each chunk with the corresponding label.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `chunks` and `labels` have different lengths, if a label is
+    /// repeated, or if the polynomials of a chunk have different lengths.
+    fn commit_interleaved<B: PolynomialRepresentation>(
+        params: &Self::Parameters,
+        chunks: &[&[&Polynomial<F, B>]],
+        labels: &[PolynomialLabel],
+    ) -> Self::Commitment;
 }
 
 /// Interface for verifier finalizer, given the verifier parameters `VP` of

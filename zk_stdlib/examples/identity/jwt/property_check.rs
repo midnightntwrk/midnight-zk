@@ -88,11 +88,11 @@ impl Relation for CredentialProperty {
         Ok(vec![])
     }
 
-    fn format_committed_instances(witness: &Self::Witness) -> Vec<F> {
+    fn format_committed_instances(witness: &Self::Witness) -> Option<Vec<F>> {
         let json_b64 = &witness.0[HEADER_LEN + 1..PAYLOAD_LEN];
         let json = base64::decode_config(json_b64, base64::STANDARD_NO_PAD)
             .expect("Valid base64 encoded JSON.");
-        json.iter().map(|byte| F::from(*byte as u64)).collect()
+        Some(json.iter().map(|byte| F::from(*byte as u64)).collect())
     }
 
     fn circuit(
@@ -326,7 +326,7 @@ fn main() {
     };
 
     let setup = start("Setting up the vk/pk");
-    let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
+    let vk = midnight_zk_stdlib::setup_vk::<_, midnight_zk_stdlib::KZG>(&srs, &relation);
     let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
     println!("... done ({:?})", setup.elapsed());
 
@@ -337,13 +337,14 @@ fn main() {
     let witness = (witness.0, holder_sk);
 
     let committed_credential = {
-        let instance = CredentialProperty::format_committed_instances(&witness);
+        let instance = CredentialProperty::format_committed_instances(&witness)
+            .expect("CredentialProperty has no committed instance");
         commit_to_instances::<_, KZGCommitmentScheme<_>>(&srs, vk.vk().get_domain(), &instance)
     };
     println!("... done ({:?})", wit.elapsed());
 
     let p = start("Proof generation");
-    let proof = midnight_zk_stdlib::prove::<CredentialProperty, blake2b_simd::State>(
+    let proof = midnight_zk_stdlib::prove::<CredentialProperty, blake2b_simd::State, _>(
         &srs,
         &pk,
         &relation,
@@ -356,7 +357,7 @@ fn main() {
 
     let v = start("Proof verification");
     assert!(
-        midnight_zk_stdlib::verify::<CredentialProperty, blake2b_simd::State>(
+        midnight_zk_stdlib::verify::<CredentialProperty, blake2b_simd::State, _>(
             &srs.verifier_params(),
             &vk,
             &(),

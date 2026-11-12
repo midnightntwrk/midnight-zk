@@ -9,7 +9,8 @@ use std::{
 };
 
 use blake2b_simd::State;
-use midnight_curves::{Bls12, Fq as Scalar};
+use group::Group;
+use midnight_curves::{Bls12, Fq as Scalar, G1Projective};
 use midnight_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
     plonk::{
@@ -21,7 +22,7 @@ use midnight_proofs::{
         commitment::Guard,
         kzg::{
             KZGCommitmentScheme,
-            commitment::KZGMultiCommitment,
+            commitment::{KZGCommitment, KZGMultiCommitment},
             params::{ParamsKZG, ParamsVerifierKZG},
         },
     },
@@ -356,9 +357,8 @@ impl Circuit<Scalar> for CommittedCircuit {
 }
 
 /// A committed instance whose label is not `CommittedInstance(i)` is a caller
-/// error: the verifier should reject it rather than panic. (The ledger always
-/// passes a correctly labelled zero commitment, so this is an API contract, not
-/// reachable from proof bytes.)
+/// error: the verifier should reject it rather than panic. (This is an API
+/// contract, not reachable from proof bytes.)
 #[cfg(feature = "committed-instances")]
 #[test]
 fn verifier_rejects_mislabelled_committed_instance() {
@@ -379,7 +379,10 @@ fn verifier_rejects_mislabelled_committed_instance() {
     let proof = transcript.finalize();
     let vparams = params.verifier_params();
     let run = |label: PolynomialLabel| {
-        let committed = [KZGMultiCommitment::commitment_to_zero(label)];
+        let committed = [KZGMultiCommitment(vec![KZGCommitment::Simple(
+            G1Projective::identity(),
+            label,
+        )])];
         panic::catch_unwind(AssertUnwindSafe(|| {
             verify_bytes(&vparams, &vk, &committed, &[], &proof)
         }))

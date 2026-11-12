@@ -149,10 +149,24 @@ where
     ) -> Result<Self::Point, Error>;
 
     /// The assigned x-coordinate of an assigned point.
-    fn x_coordinate(&self, point: &Self::Point) -> Self::Coordinate;
+    ///
+    /// If the identity has no affine coordinates on this curve (e.g. on
+    /// Weierstrass curves), this asserts that the point is not the identity.
+    fn x(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        point: &Self::Point,
+    ) -> Result<Self::Coordinate, Error>;
 
     /// The assigned y-coordinate of an assigned point.
-    fn y_coordinate(&self, point: &Self::Point) -> Self::Coordinate;
+    ///
+    /// If the identity has no affine coordinates on this curve (e.g. on
+    /// Weierstrass curves), this asserts that the point is not the identity.
+    fn y(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        point: &Self::Point,
+    ) -> Result<Self::Coordinate, Error>;
 
     /// A set of arithmetic instructions over the base field.
     fn base_field(&self) -> &impl DecompositionInstructions<F, Self::Coordinate>;
@@ -295,8 +309,8 @@ pub(crate) mod tests {
                     ecc_chip.mul_by_constant(&mut layouter, s, &p)
                 }
                 Operation::Coordinates => {
-                    let px = ecc_chip.x_coordinate(&p);
-                    let py = ecc_chip.y_coordinate(&p);
+                    let px = ecc_chip.x(&mut layouter, &p)?;
+                    let py = ecc_chip.y(&mut layouter, &p)?;
                     ecc_chip.point_from_coordinates(&mut layouter, &px, &py)
                 }
             }?;

@@ -16,7 +16,7 @@
 //! scalars only.
 //! (The bases are assumed to be fixed and globally known.)
 
-use std::collections::{BTreeMap, HashSet, btree_map::Entry};
+use std::collections::{BTreeMap, btree_map::Entry};
 
 use ff::Field;
 use midnight_curves::msm::msm_best;
@@ -362,9 +362,11 @@ impl<S: SelfEmulation> Instantiable<S::F> for AssignedMsm<S> {
         .collect::<Vec<_>>()
     }
 
+    /// Always returns `None`: the flat encoding loses the structural metadata
+    /// needed to rebuild the MSM, so it is not invertible.
     #[cfg(any(test, feature = "testing"))]
     fn from_public_input(_fields: &[S::F]) -> Option<Msm<S>> {
-        unimplemented!("not invertible: the flat encoding loses structural metadata.")
+        None
     }
 }
 
@@ -486,58 +488,56 @@ impl<S: SelfEmulation> AssignedMsm<S> {
 }
 
 impl<S: SelfEmulation> AssignedMsm<S> {
-    /// Witnesses all scalar cells and variable-base point cells for this MSM.
-    ///
-    /// The `labels` slice determines the shape: entries whose label is in
-    /// `fixed_base_labels` are represented as `AssignedPoint::Fixed` (no cell
-    /// allocated for the point); all other entries are assigned as
-    /// `AssignedPoint::Variable`.
+    /// Assigns a collapsed MSM: one term per label of `fixed_base_labels`, with
+    /// a witnessed scalar and a fixed base, followed by a single witnessed
+    /// variable-base point labeled `NoLabel`, with the constant scalar 1.
     ///
     /// # Warning
     ///
-    /// Variable-base points are not checked for subgroup membership.
+    /// The variable-base point is not checked for subgroup membership.
     ///
     /// # Errors
     ///
-    /// If `msm_value` is known and its label list differs from `labels`.
-    pub fn assign(
+    /// If `msm_value` is known and does not have that shape.
+    pub fn assign_collapsed(
         layouter: &mut impl Layouter<S::F>,
         curve_chip: &S::CurveChip,
         scalar_chip: &S::ScalarChip,
-        labels: &[PolynomialLabel],
-        fixed_base_labels: &HashSet<PolynomialLabel>,
+        fixed_base_labels: &[PolynomialLabel],
         msm_value: Value<Msm<S>>,
     ) -> Result<Self, Error> {
-        let len = labels.len();
-        assert!(fixed_base_labels.len() <= len);
-        msm_value.error_if_known_and(|msm| msm.labels != labels)?;
+        let labels = [fixed_base_labels, &[PolynomialLabel::NoLabel]].concat();
+        let n = fixed_base_labels.len();
+        msm_value.error_if_known_and(|msm| {
+            msm.labels != labels
+                || msm.bases[..n].iter().any(|p| matches!(p, Point::Variable(..)))
+                || matches!(msm.bases[n], Point::Fixed)
+                || msm.scalars[n] != S::F::ONE
+        })?;
 
-        let scalars_val = msm_value.as_ref().map(|msm| msm.scalars.clone()).transpose_vec(len);
-        let bases_val = msm_value.as_ref().map(|msm| msm.bases.clone()).transpose_vec(len);
+        let fixed_scalars_val = msm_value.as_ref().map(|msm| msm.scalars[..n].to_vec());
+        let mut scalars =
+            assign_bounded_scalars(layouter, scalar_chip, &fixed_scalars_val.transpose_vec(n))?;
+        scalars.push(AssignedBoundedScalar::one(layouter, scalar_chip)?);
 
-        let scalars = assign_bounded_scalars(layouter, scalar_chip, &scalars_val)?;
-        let mut bases = Vec::<AssignedPoint<S>>::with_capacity(len);
-
-        for i in 0..len {
-            if fixed_base_labels.contains(&labels[i]) {
-                bases_val[i].error_if_known_and(|p| matches!(p, Point::Variable(..)))?;
-                bases.push(AssignedPoint::Fixed);
-            } else {
-                bases_val[i].error_if_known_and(|p| matches!(p, Point::Fixed))?;
-                let p_val = bases_val[i].clone().map(|p| match p {
-                    Point::Variable(p) => p,
-                    Point::Fixed => unreachable!(),
-                });
-                let p = S::assign_without_subgroup_check(layouter, curve_chip, p_val)?;
-                bases.push(AssignedPoint::Variable(p));
-            }
-        }
+        let p_val = msm_value.map(|msm| match &msm.bases[n] {
+            Point::Variable(p) => *p,
+            Point::Fixed => unreachable!(),
+        });
+        let p = S::assign_without_subgroup_check(layouter, curve_chip, p_val)?;
+        let mut bases = vec![AssignedPoint::Fixed; n];
+        bases.push(AssignedPoint::Variable(p));
 
         Ok(AssignedMsm {
             scalars,
             bases,
-            labels: labels.to_vec(),
+            labels,
         })
+    }
+
+    /// The number of variable-base terms of this MSM.
+    pub(crate) fn nb_variable_bases(&self) -> usize {
+        self.bases.iter().filter(|b| matches!(b, AssignedPoint::Variable(_))).count()
     }
 
     /// An empty AssignedMsm with no fixed base scalars, that evaluates to the
@@ -632,6 +632,16 @@ impl<S: SelfEmulation> AssignedMsm<S> {
         self.labels = labels;
 
         Ok(())
+    }
+
+    /// Whether the MSM is a single base-scalar pair with no fixed-base scalars
+    /// left, as [`collapse`](Self::collapse) after
+    /// [`resolve_fixed_bases`](Self::resolve_fixed_bases) leaves it.
+    ///
+    /// This is a check on the shape only: the value of the scalar is a witness
+    /// and is not inspected.
+    pub fn is_collapsed(&self) -> bool {
+        self.bases.len() == 1 && matches!(self.bases[0], AssignedPoint::Variable(_))
     }
 
     /// Resolves all `Fixed` bases by substituting their assigned circuit

@@ -10,17 +10,14 @@
 use midnight_circuits::{
     hash::poseidon::PoseidonState,
     types::Instantiable,
-    verifier::{Accumulator, AssignedAccumulator, AssignedVk, InCircuitKZG},
+    verifier::{Accumulator, AssignedAccumulator, AssignedVk},
 };
 use midnight_proofs::{
     plonk::{self},
-    poly::{
-        PolynomialLabel,
-        kzg::{KZGCommitmentScheme, commitment::KZGMultiCommitment, params::ParamsKZG},
-    },
+    poly::kzg::params::ParamsKZG,
     transcript::{CircuitTranscript, Transcript},
 };
-use midnight_zk_stdlib::MidnightPK;
+use midnight_zk_stdlib::{DefaultPCS, MidnightPK};
 use rand::rngs::OsRng;
 
 use super::{
@@ -39,7 +36,7 @@ use super::{
 pub struct IvcProver<T: Ivc> {
     pub(crate) params: ParamsKZG<E>,
     pub(crate) relation: IvcCircuit<T>,
-    pub(crate) pk: MidnightPK<IvcCircuit<T>>,
+    pub(crate) pk: MidnightPK<IvcCircuit<T>, DefaultPCS>,
     pub(crate) state: T::State,
     pub(crate) proof: Vec<u8>,
     pub(crate) acc: Accumulator<S>,
@@ -89,7 +86,7 @@ impl<T: Ivc> IvcProver<T> {
         } else {
             // Construct the public inputs of the previous proof.
             let prev_pi = [
-                AssignedVk::<S, InCircuitKZG<S>>::as_public_input(vk),
+                AssignedVk::<S>::as_public_input(vk),
                 T::format_public_input(&self.state),
                 AssignedAccumulator::<S>::as_public_input(&self.acc),
             ]
@@ -97,15 +94,12 @@ impl<T: Ivc> IvcProver<T> {
 
             let mut transcript =
                 CircuitTranscript::<PoseidonState<F>>::init_from_bytes(&self.proof);
-            let dual_msm =
-                plonk::prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<PoseidonState<F>>>(
-                    vk,
-                    &[KZGMultiCommitment::commitment_to_zero(
-                        PolynomialLabel::CommittedInstance(0),
-                    )],
-                    &[&prev_pi],
-                    &mut transcript,
-                )?;
+            let dual_msm = plonk::prepare::<F, DefaultPCS, CircuitTranscript<PoseidonState<F>>>(
+                vk,
+                &[],
+                &[&[], &prev_pi],
+                &mut transcript,
+            )?;
 
             if !dual_msm.clone().check(&self.params.verifier_params()) {
                 return Err(IvcError::InvalidProof);
@@ -131,7 +125,7 @@ impl<T: Ivc> IvcProver<T> {
             transition_witness,
         };
 
-        let proof = midnight_zk_stdlib::prove::<IvcCircuit<T>, PoseidonState<F>>(
+        let proof = midnight_zk_stdlib::prove::<IvcCircuit<T>, PoseidonState<F>, _>(
             &self.params,
             &self.pk,
             &self.relation,

@@ -27,7 +27,7 @@
 //! Note that implication <= holds unconditionally, whereas implication => holds
 //! "computationally".
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::BTreeMap;
 
 use ff::Field;
 use group::Group;
@@ -45,17 +45,13 @@ use midnight_proofs::{
 use num_bigint::BigUint;
 use num_traits::One;
 
-#[cfg(not(feature = "truncated-challenges"))]
-use crate::verifier::utils::powers;
-#[cfg(feature = "truncated-challenges")]
-use crate::verifier::utils::{truncate_off_circuit, truncated_powers};
 use crate::{
     instructions::{HashInstructions, PublicInputInstructions, hash::HashCPU},
     types::{AssignedBit, InnerValue, Instantiable},
     verifier::{
         SelfEmulation,
         msm::{AssignedMsm, Msm, Point},
-        utils::AssignedBoundedScalar,
+        utils::{AssignedBoundedScalar, truncate_off_circuit, truncated_powers},
     },
 };
 
@@ -184,7 +180,6 @@ impl<S: SelfEmulation> Accumulator<S> {
 
         let r = <S::SpongeChip as HashCPU<S::F, S::F>>::hash(&hash_input);
         let rs = (0..accs.len()).map(|i| r.pow([i as u64]));
-        #[cfg(feature = "truncated-challenges")]
         let rs = rs.map(truncate_off_circuit).collect::<Vec<_>>();
 
         let mut acc = accs[0].clone();
@@ -218,9 +213,11 @@ impl<S: SelfEmulation> Instantiable<S::F> for AssignedAccumulator<S> {
         .collect()
     }
 
+    /// Always returns `None`: the encoding is not invertible, since the size of
+    /// the inner MSMs cannot be known from the public input format.
     #[cfg(any(test, feature = "testing"))]
     fn from_public_input(_fields: &[S::F]) -> Option<Accumulator<S>> {
-        unimplemented!("Size of inner MSMs cannot be known from public input format.")
+        None
     }
 }
 
@@ -245,49 +242,6 @@ impl<S: SelfEmulation> AssignedAccumulator<S> {
 }
 
 impl<S: SelfEmulation> AssignedAccumulator<S> {
-    /// Witnesses both sides of a KZG accumulator in the circuit.
-    ///
-    /// Each side is shaped by its `labels` slice (one entry per scalar/base
-    /// pair) and its `fixed_base_labels` set (entries whose label appears
-    /// there become `AssignedPoint::Fixed`; the rest are assigned as
-    /// variable-base points).
-    ///
-    /// # Errors
-    ///
-    /// If the known accumulator value's label list does not match the supplied
-    /// `lhs_labels` / `rhs_labels`.
-    #[allow(clippy::too_many_arguments)]
-    pub fn assign(
-        layouter: &mut impl Layouter<S::F>,
-        curve_chip: &S::CurveChip,
-        scalar_chip: &S::ScalarChip,
-        lhs_labels: &[PolynomialLabel],
-        rhs_labels: &[PolynomialLabel],
-        lhs_fixed_base_labels: &HashSet<PolynomialLabel>,
-        rhs_fixed_base_labels: &HashSet<PolynomialLabel>,
-        acc_val: Value<Accumulator<S>>,
-    ) -> Result<Self, Error> {
-        let (acc_lhs_val, acc_rhs_val) = acc_val.map(|acc| (acc.lhs, acc.rhs)).unzip();
-        Ok(AssignedAccumulator::new(
-            AssignedMsm::<S>::assign(
-                layouter,
-                curve_chip,
-                scalar_chip,
-                lhs_labels,
-                lhs_fixed_base_labels,
-                acc_lhs_val,
-            )?,
-            AssignedMsm::<S>::assign(
-                layouter,
-                curve_chip,
-                scalar_chip,
-                rhs_labels,
-                rhs_fixed_base_labels,
-                acc_rhs_val,
-            )?,
-        ))
-    }
-
     /// An `AssignedAccumulator` a given lhs and rhs terms respectively.
     pub fn new(lhs: AssignedMsm<S>, rhs: AssignedMsm<S>) -> Self {
         Self { lhs, rhs }
@@ -333,6 +287,12 @@ impl<S: SelfEmulation> AssignedAccumulator<S> {
         self.rhs.collapse(layouter, curve_chip, scalar_chip, PolynomialLabel::NoLabel)
     }
 
+    /// Whether both sides are collapsed and fixed-base-resolved; see
+    /// [`AssignedMsm::is_collapsed`].
+    pub fn is_collapsed(&self) -> bool {
+        self.lhs.is_collapsed() && self.rhs.is_collapsed()
+    }
+
     /// Resolves all `Fixed` bases in both internal MSMs by substituting their
     /// assigned circuit points from `fixed_bases`.
     ///
@@ -368,13 +328,7 @@ impl<S: SelfEmulation> AssignedAccumulator<S> {
             .collect::<Vec<_>>();
 
         let r = sponge_chip.hash(layouter, &hash_input)?;
-        #[cfg(feature = "truncated-challenges")]
         let rs = truncated_powers::<S::F>(layouter, scalar_chip, &r, accs.len())?;
-        #[cfg(not(feature = "truncated-challenges"))]
-        let rs = powers::<S::F>(layouter, scalar_chip, &r, accs.len())?
-            .iter()
-            .map(|ri| AssignedBoundedScalar::new(ri, None))
-            .collect::<Vec<_>>();
 
         let mut acc = accs[0].clone();
         for (other, ri) in accs.iter().zip(rs).skip(1) {

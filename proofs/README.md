@@ -25,9 +25,9 @@ by the Privacy Scaling Explorations (PSE) team, itself originally derived from t
   See Section 4.2 of the [aPLONK paper](https://eprint.iacr.org/2022/1352.pdf) for details.
 
 - **Truncated challenges for recursion**  
-  To enable efficient recursion, Fiat–Shamir challenges can now be truncated to 128 bits  
-  (via the `truncate-challenges` feature). This halves the size of scalar multiplications  
-  in-circuit, resulting in considerable circuit size gains for in-circuit proof verificaiton.
+  To enable efficient recursion, the Fiat–Shamir challenges of the multi-open are truncated  
+  to 128 bits. This halves the size of scalar multiplications in-circuit, resulting in  
+  considerable circuit size gains for in-circuit proof verification.
 ## Minimum Supported Rust Version
 
 Requires Rust **1.85.0** or higher.

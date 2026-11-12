@@ -18,10 +18,6 @@ jobs:
     if: github.event.pull_request.draft == false
     name: Run IVC Example
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        features:
-          - truncated-challenges
 
     steps:
       - name: Add github.com credentials to netrc
@@ -52,8 +48,8 @@ jobs:
           curl -L -o ./examples/assets/midnight-srs-2p18 https://srs.midnight.network/midnight-srs-2p18
           curl -L -o ./examples/assets/midnight-srs-2p20 https://srs.midnight.network/midnight-srs-2p20
 
-      - name: Run IVC example (${{ matrix.features }})
-        run: cargo run --release -p midnight-aggregation --example ivc --features ${{ matrix.features }}
+      - name: Run IVC example
+        run: cargo run --release -p midnight-aggregation --example ivc
 
       - name: Save Cargo Cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

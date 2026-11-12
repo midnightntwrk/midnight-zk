@@ -4,7 +4,6 @@ use std::{
 };
 
 use ff::Field;
-use group::Group;
 use midnight_curves::{CurveAffine, pairing::MultiMillerLoop};
 
 use crate::{
@@ -77,8 +76,9 @@ impl<E: MultiMillerLoop> KZGCommitment<E>
 where
     E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
 {
-    /// Collapses a `Linear` combination into a `Simple` commitment by computing
-    /// the MSM `∑ scalars[i] * points[i]`, labeling the result with `label`.
+    /// Collapses a `Linear` combination as [`MSMKZG::collapse`] does: the
+    /// non-fixed terms become one point labeled with `label`, the fixed terms
+    /// are kept. The result is `Simple` when no fixed term is left.
     ///
     /// A `Simple` commitment is left unchanged (its existing label is kept).
     pub fn collapse(&mut self, label: PolynomialLabel) {
@@ -87,9 +87,10 @@ where
             Self::Linear(points, scalars, labels) => {
                 let mut msm = MSMKZG::<E>::new(scalars, points, labels);
                 msm.collapse(label);
-                debug_assert_eq!(msm.bases.len(), 1);
-                debug_assert_eq!(msm.scalars, vec![E::Fr::ONE]);
-                *self = Self::Simple(msm.bases[0], msm.labels[0].clone());
+                *self = match msm.bases.len() {
+                    1 => Self::Simple(msm.bases[0], msm.labels.remove(0)),
+                    _ => Self::Linear(msm.bases, msm.scalars, msm.labels),
+                };
             }
         }
     }
@@ -232,12 +233,6 @@ impl<E: MultiMillerLoop> KZGMultiCommitment<E> {
     pub fn into_single(self) -> KZGCommitment<E> {
         self.assert_single();
         self.0.into_iter().next().unwrap()
-    }
-
-    /// A commitment to the zero polynomial (the identity point), tagged with
-    /// `label`. Used e.g. for empty committed-instance columns.
-    pub fn commitment_to_zero(label: PolynomialLabel) -> Self {
-        Self(vec![KZGCommitment::Simple(E::G1::identity(), label)])
     }
 }
 

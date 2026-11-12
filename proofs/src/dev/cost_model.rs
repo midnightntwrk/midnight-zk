@@ -216,6 +216,7 @@ pub fn circuit_model_with<F: Ord + Field + FromUniformBytes<64>>(
 ) -> CircuitModel {
     let o = cost_model_options(circuit, nb_committed_instances);
     let scalar = (F::NUM_BITS as usize).div_ceil(8);
+    let nb_quotient_limbs = o.max_degree;
 
     let mut queries: Vec<_> = iter::empty()
         .chain(o.advice.iter())
@@ -225,7 +226,7 @@ pub fn circuit_model_with<F: Ord + Field + FromUniformBytes<64>>(
         .chain(o.lookup.iter().flat_map(|l| l.queries()))
         .chain(o.permutation.queries())
         .chain(std::iter::repeat_n("0".parse().unwrap(), o.trash.len()))
-        .chain(iter::once("0".parse().unwrap())) // Quotient polynomial query at x
+        .chain(iter::repeat_n("0".parse().unwrap(), nb_quotient_limbs)) // Quotient limbs at x
         .filter(|p| !p.rotations.is_empty())
         .collect();
 
@@ -269,8 +270,9 @@ pub fn circuit_model_with<F: Ord + Field + FromUniformBytes<64>>(
         + o.lookup.iter().map(|l| scalar * l.num_evaluations()).sum::<usize>()
         + scalar * o.trash.len();
 
-    // Commitments to the quotient polynomial, one per limb.
-    let limbs = (o.max_degree - 1) * commit(1);
+    // The quotient limbs: one commitment group, and their evaluations at x but
+    // the first one's, which the verifier derives.
+    let limbs = commit(nb_quotient_limbs) + scalar * (nb_quotient_limbs - 1);
 
     // Multiopening argument:
     // - commit(1) bytes each for f_commitment and the opening proof
@@ -875,8 +877,8 @@ mod tests {
 
         let model = circuit_model::<_, KZGCommitmentScheme<Bls12>>(&NoCopyConstraints, 0);
         assert_eq!(model.permutations, 0);
-        // The advice and fixed queries, and the quotient polynomial's.
-        assert_eq!(model.column_queries, 3);
+        // The advice and fixed queries, and those of the three quotient limbs.
+        assert_eq!(model.column_queries, 5);
 
         let k = 6;
         let params = ParamsKZG::<Bls12>::unsafe_setup(k, OsRng);

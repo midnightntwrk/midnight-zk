@@ -81,6 +81,10 @@ pub(crate) fn eval_points<F: PrimeField>(
         PolynomialLabel::LogupHelper(_, _) => vec![at(Rotation::cur())],
         PolynomialLabel::LogupAggregator(_) => vec![at(Rotation::cur()), at(Rotation::next())],
         PolynomialLabel::Trash(_) => vec![at(Rotation::cur())],
+        // The verifier derives h_0(x) from nu(x) rather than reading it; see
+        // the `insert` of each `Evaluated`.
+        PolynomialLabel::QuotientPiece(0) => vec![],
+        PolynomialLabel::QuotientPiece(_) => vec![at(Rotation::cur())],
         _ => unreachable!(),
     }
 }

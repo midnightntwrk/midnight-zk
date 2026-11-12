@@ -8,17 +8,33 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 ### Added
+* `InCircuitPCS::squeeze_evaluation_point`, mirroring `PolynomialCommitmentScheme::squeeze_evaluation_point`, and `InCircuitPCS::OffCircuitPCS`, the off-circuit scheme of the proofs the gadget verifies [#570](https://github.com/midnightntwrk/midnight-zk/pull/570)
+* `CommitmentBases`, the labelled points of an off-circuit commitment [#570](https://github.com/midnightntwrk/midnight-zk/pull/570)
+* in-circuit verifier and dependency of the whole library on DefaultPCS [#575](https://github.com/midnightntwrk/midnight-zk/pull/575)
+* Merkle Mountain Range module (`mmr`): append-only accumulator with membership and prefix proofs [#509](https://github.com/midnightntwrk/midnight-zk/pull/509)
+* `VerifierGadget::assign_unbound_vk`, which witnesses a verifying key (commitments included) as an `UnboundVk`, usable only after binding it to a hash with `bind_vk_to_hash` [#572](https://github.com/midnightntwrk/midnight-zk/pull/572)
 * `Point`/`AssignedPoint` enums and flat-triple `Msm`/`AssignedMsm` representation to distinguish variable-base from globally-fixed bases [#430](https://github.com/midnightntwrk/midnight-zk/pull/430)
 * `AssignedKZGCommitment` enum as the in-circuit analog of `KZGCommitment` [#430](https://github.com/midnightntwrk/midnight-zk/pull/430)
 * `fixed_base_msm` on the foreign Edwards chip: public fixed-base MSM for compile-time-constant bases, backed by the internal Lim-Lee comb `fixed_base_comb_msm` with a fixed comb width [#467](https://github.com/midnightntwrk/midnight-zk/pull/467)
 * Add tests compile time generics checks for `VectorGadget` and tests for `resize` [#464](https://github.com/midnightntwrk/midnight-zk/pull/465)
 
 ### Fixed
+* The verifier gadget accepts an empty instance column, which evaluates to zero, instead of panicking [#569](https://github.com/midnightntwrk/midnight-zk/pull/569)
 * The verifier gadget no longer misreads the fixed evaluations of a circuit with a fixed column queried at more than one rotation [#547](https://github.com/midnightntwrk/midnight-zk/pull/547)
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 
 ### Changed
+* The in-circuit KZG multi-open orders its point sets with `kzg::point_set_order`, as the off-circuit one does [#583](https://github.com/midnightntwrk/midnight-zk/pull/583)
+* The in-circuit fflonk evaluates a chunk at all the roots of a point at once: one product per polynomial and one linear combination per root, instead of Horner per root, sharing the powers of the root between chunks [#583](https://github.com/midnightntwrk/midnight-zk/pull/583)
+* The in-circuit fflonk splits groups into `fflonk::balanced_chunks`, as off-circuit [#579](https://github.com/midnightntwrk/midnight-zk/pull/579)
+* The in-circuit KZG multi-open collapses the combined commitment of a point set only if it has at least `COLLAPSE_THRESHOLD` variable bases, as the off-circuit verifier does [#579](https://github.com/midnightntwrk/midnight-zk/pull/579)
+* BREAKING: `AssignedMsm::assign` is replaced by `AssignedMsm::assign_collapsed`, which assigns a collapsed MSM: fixed-base terms and a single variable-base point with the constant scalar 1, instead of a witnessed one, so accumulating it keeps its scalars as short as the accumulation challenge. `AssignedAccumulator::assign` is removed; `VerifierGadget::assign_collapsed_accumulator` assigns both sides with `assign_collapsed` [#579](https://github.com/midnightntwrk/midnight-zk/pull/579)
+* The verifier gadget reads the `cs_degree` quotient limbs as one group and opens them one by one, deriving the first limb's evaluation, rather than opening the combination of their commitments, scaled by full-width scalars [#582](https://github.com/midnightntwrk/midnight-zk/pull/582)
+* `verifier::fixed_bases` reads the labels carried by the verifying-key commitment, rather than assuming one commitment per fixed polynomial, and `fixed_base_labels` takes the constraint system and lets the new `InCircuitPCS::fixed_base_labels` group its fixed polynomials, returning the labels in the same order [#570](https://github.com/midnightntwrk/midnight-zk/pull/570)
+* BREAKING: `SelfEmulation::PCS` declares the in-circuit PCS of the verified proofs; `AssignedVk` and the `VerifierGadget` methods drop their PCS generic [#570](https://github.com/midnightntwrk/midnight-zk/pull/570)
+* `InCircuitPCS::assign_commitment` assigns a commitment to a group of polynomials, from its off-circuit value; add `InCircuitPCS::commitment_as_public_input`, and require `InCircuitPCS::AssignedCommitment: Instantiable`, with the commitments of `InCircuitPCS::OffCircuitPCS` as off-circuit values [#572](https://github.com/midnightntwrk/midnight-zk/pull/572)
 * `AssignedVk` holds an `AssignedEvaluationDomain` with assigned `k` and `omega` (and in-circuit derived `omega_inv` and `n = 2^k`) [#461](https://github.com/midnightntwrk/midnight-zk/pull/461)
+* The KZG verifier gadget computes the quotient `(q - r(x3)) / Π_i (x3 - point_i)` of each point set directly from the barycentric weights, without building the Lagrange bases [#565](https://github.com/midnightntwrk/midnight-zk/pull/565)
 * Remove the linearization from the verifier gadget, mirroring `midnight-proofs`: the simple selectors are opened through the phase-0 group and `AssignedVk` no longer holds one commitment per simple selector [#566](https://github.com/midnightntwrk/midnight-zk/pull/566)
 * `PreComputedRoundCPU::init` derives Poseidon's CPU partial-round pre-computation once per field and caches it [#527](https://github.com/midnightntwrk/midnight-zk/pull/527)
 * Change the signature of `ForeignEdwardsEccChip::from_canonical_compressed_bytes` to derive the subgroup point from assigned bytes instead of requiring a caller-supplied point witness [#540](https://github.com/midnightntwrk/midnight-zk/pull/540)
@@ -54,12 +70,55 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * `VerifierGadget::assign_vk_as_public_input` and `VerifierGadget::assign_fixed_vk` take a finalized constraint system (e.g. `vk.cs()` or `ConstraintSystem::into_finalized`) and return `Error::Synthesis` if it has selectors. `assign_vk_as_public_input` no longer converts the selectors itself [#546](https://github.com/midnightntwrk/midnight-zk/pull/546)
 
 ### Removed
+* BREAKING: `EccInstructions::x_coordinate` and `y_coordinate`. Use `x` and `y` [#619](https://github.com/midnightntwrk/midnight-zk/pull/619)
+* BREAKING: `PublicInputInstructions::assign_as_public_input`. Use `assign` followed by `constrain_as_public_input` [#619](https://github.com/midnightntwrk/midnight-zk/pull/619)
+* `InCircuitHomomorphicCommitment`, which `InCircuitPCS::AssignedCommitment` no longer requires [#582](https://github.com/midnightntwrk/midnight-zk/pull/582)
+* BREAKING: `truncated-challenges` feature. The verifier gadget always truncates the challenges, and `SelfEmulation::ScalarChip` always implements `NativeInstructions` [#580](https://github.com/midnightntwrk/midnight-zk/pull/580)
+* `AssignedKZGMultiCommitment::commitment_to_zero`. An empty committed instance can be passed as an empty instance column instead, which is neither committed to nor opened [#569](https://github.com/midnightntwrk/midnight-zk/pull/569)
 * `single-h-commitment` feature in the verifier gadget [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
 * `fewer-point-sets` feature in the verifier gadget [#554](https://github.com/midnightntwrk/midnight-zk/pull/554)
 * Remove the internal `verifier/permutation.rs` module and its `Committed`/`Evaluated`/`CommonEvaluated` types; the in-circuit permutation argument no longer carries any transcript plumbing of its own [#537](https://github.com/midnightntwrk/midnight-zk/pull/537)
 * Remove the internal `verifier/lookup.rs` module and its `Committed`/`Evaluated`/`LookupEvaluated` types; the in-circuit lookup argument no longer carries any transcript plumbing of its own [#515](https://github.com/midnightntwrk/midnight-zk/pull/515)
 * Remove `Expression::Challenge` variant and phase-parameterized `Any::Advice`; multi-phase advice columns are no longer supported [#376](https://github.com/midnightntwrk/midnight-zk/pull/376)
 * Remove `LabeledPoint`, `fixed_commitment_name`, `perm_commitment_name`, and `vk_name` helpers from the verifier module [#430](https://github.com/midnightntwrk/midnight-zk/pull/430)
+
+## [7.3.0]
+### Added
+* Added the `is_collapsed` function to [#553](https://github.com/midnightntwrk/midnight-zk/pull/553/)
+* Added `EccInstructions::x` and `y`, which take a layouter and, on Weierstrass curves, assert that the point is not the identity; `x_coordinate` and `y_coordinate` are deprecated [#612](https://github.com/midnightntwrk/midnight-zk/issues/612)
+
+### Changed
+* `assign_as_public_input` always performs the in-circuit checks of `assign` (affects the VKs of circuits with byte, Jubjub point or BLS12-381 point public inputs) [#598](https://github.com/midnightntwrk/midnight-zk/pull/598)
+* `DivisionInstructions::div_rem` and `rem` panic when `divisor * (dividend_bound / divisor + 1)` exceeds the field modulus, in particular when no bound is given; `DivisionInstructions` is deprecated [#606](https://github.com/midnightntwrk/midnight-zk/pull/606)
+* In-circuit `as_public_input` outputs a canonical encoding for foreign-field elements and foreign Weierstrass points (including the identity) (affects the VKs of circuits with such public inputs) [#612](https://github.com/midnightntwrk/midnight-zk/issues/612)
+
+### Fixed
+* Foreign-field `mul` no longer ignores the multiplying constant when one of the operands is a fixed one [#605](https://github.com/midnightntwrk/midnight-zk/pull/605)
+* `div` and `inv` of `AssignedScalarOfNativeCurve` now enforce a non-zero divisor in-circuit and accept non-canonical inputs (affects the VKs of circuits using Jubjub scalar division or inversion) [#603](https://github.com/midnightntwrk/midnight-zk/pull/603)
+* `PartialEq` for `AssignedBigUint` no longer treats a limb vector and its proper prefix as equal [#601](https://github.com/midnightntwrk/midnight-zk/pull/601)
+* Lower bound of the foreign Edwards addition identity for `sign = -1` (affects the VKs of circuits using foreign Edwards curves) [#609](https://github.com/midnightntwrk/midnight-zk/pull/609)
+* In-circuit `as_public_input` of Jubjub scalars encodes the canonical value, as `Instantiable::as_public_input` does (affects the VKs of circuits with Jubjub scalar public inputs) [#611](https://github.com/midnightntwrk/midnight-zk/pull/611)
+
+## [7.2.4]
+### Changed
+* Make `Instantiable::from_public_inputs` fallible [#485](https://github.com/midnightntwrk/midnight-zk/pull/485)
+
+## [7.2.3]
+### Changed
+* Require `midnight-proofs` >= 0.8.2 for the verifier per-proof length check [#482](https://github.com/midnightntwrk/midnight-zk/pull/482)
+
+## [7.2.2]
+### Fixed
+* Fix `InnerValue` for `AssignedScalarOfNativeCurve` [#451](https://github.com/midnightntwrk/midnight-zk/pull/451)
+
+## [7.2.1]
+### Fixed
+* Bug fix in midnight-curves [#434](https://github.com/midnightntwrk/midnight-zk/pull/434)
+
+## [7.2.0]
+### Added
+* `Instantiable::from_public_input`: inverse of `as_public_input` for decoding values from their public input representation [#408](https://github.com/midnightntwrk/midnight-zk/pull/408)
+* Expose `to_biguint`, `to_canonical_biguint` and `from_biguint` in native Edwards chip [#408](https://github.com/midnightntwrk/midnight-zk/pull/408)
 
 ## [7.1.0]
 ### Changed

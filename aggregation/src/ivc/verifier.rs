@@ -8,13 +8,10 @@
 use midnight_circuits::{hash::poseidon::PoseidonState, verifier::Accumulator};
 use midnight_proofs::{
     plonk::{self},
-    poly::{
-        PolynomialLabel,
-        kzg::{KZGCommitmentScheme, commitment::KZGMultiCommitment, params::ParamsVerifierKZG},
-    },
+    poly::kzg::params::ParamsVerifierKZG,
     transcript::{CircuitTranscript, Transcript},
 };
-use midnight_zk_stdlib::{MidnightVK, Relation};
+use midnight_zk_stdlib::{DefaultPCS, MidnightVK, Relation};
 
 use super::{E, F, Ivc, IvcCircuit, IvcError, IvcInstance, S, circuit::IvcExtendedInstance};
 
@@ -27,11 +24,21 @@ use super::{E, F, Ivc, IvcCircuit, IvcError, IvcInstance, S, circuit::IvcExtende
 #[derive(Clone, Debug)]
 pub struct IvcVerifier<T: Ivc> {
     pub(crate) ctx: T::Context,
-    pub(crate) vk: MidnightVK,
+    pub(crate) vk: MidnightVK<DefaultPCS>,
     pub(crate) params_verifier: ParamsVerifierKZG<E>,
 }
 
 impl<T: Ivc> IvcVerifier<T> {
+    /// The canonical verifying key of the IVC circuit.
+    pub fn vk(&self) -> &MidnightVK<DefaultPCS> {
+        &self.vk
+    }
+
+    /// The SRS verifier parameters, for discharging a deferred pairing.
+    pub fn params_verifier(&self) -> &ParamsVerifierKZG<E> {
+        &self.params_verifier
+    }
+
     /// Verifies an IVC proof against the given instance.
     ///
     /// Checks that the proof is valid with respect to the given instance by:
@@ -58,16 +65,13 @@ impl<T: Ivc> IvcVerifier<T> {
         .map_err(|_| IvcError::InvalidInstance)?;
 
         let mut transcript = CircuitTranscript::<PoseidonState<F>>::init_from_bytes(proof);
-        let dual_msm =
-            plonk::prepare::<F, KZGCommitmentScheme<E>, CircuitTranscript<PoseidonState<F>>>(
-                self.vk.vk(),
-                &[KZGMultiCommitment::commitment_to_zero(
-                    PolynomialLabel::CommittedInstance(0),
-                )],
-                &[&pi],
-                &mut transcript,
-            )
-            .map_err(|_| IvcError::InvalidProof)?;
+        let dual_msm = plonk::prepare::<F, DefaultPCS, CircuitTranscript<PoseidonState<F>>>(
+            self.vk.vk(),
+            &[],
+            &[&[], &pi],
+            &mut transcript,
+        )
+        .map_err(|_| IvcError::InvalidProof)?;
 
         transcript.assert_empty().map_err(|_| IvcError::TranscriptNotEmpty)?;
 

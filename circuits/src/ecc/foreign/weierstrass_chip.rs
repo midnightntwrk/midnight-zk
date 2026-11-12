@@ -252,6 +252,9 @@ where
             return Some(C::CryptographicGroup::identity());
         }
         let nb_limbs_per_batch = (F::CAPACITY / B::LOG2_BASE) as usize;
+        if nb_limbs_per_batch == 0 {
+            return None;
+        }
         let nb_pi_per_coord = B::NB_LIMBS.div_ceil(nb_limbs_per_batch as u32) as usize;
         if fields.len() != 2 * nb_pi_per_coord + 1 {
             return None;
@@ -260,7 +263,7 @@ where
         let y = AssignedField::<F, C::Base, B>::from_public_input(
             &fields[nb_pi_per_coord..nb_pi_per_coord * 2],
         )?;
-        C::from_xy(x, y).map(|p| p.into_subgroup())
+        C::from_xy(x, y)?.try_into_subgroup()
     }
 }
 
@@ -399,6 +402,10 @@ where
         layouter: &mut impl Layouter<F>,
         p: &AssignedForeignPoint<F, C, B>,
     ) -> Result<Vec<AssignedNative<F>>, Error> {
+        // The coordinates of the identity are arbitrary, set them to (0, 0).
+        let id = self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
+        let p = &self.select(layouter, &p.is_id, &id, p)?;
+
         let mut pis = [
             self.base_field_chip.as_public_input(layouter, &p.x)?.as_slice(),
             self.base_field_chip.as_public_input(layouter, &p.y)?.as_slice(),
@@ -418,19 +425,6 @@ where
         self.as_public_input(layouter, assigned)?
             .iter()
             .try_for_each(|c| self.native_gadget.constrain_as_public_input(layouter, c))
-    }
-
-    fn assign_as_public_input(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        value: Value<C::CryptographicGroup>,
-    ) -> Result<AssignedForeignPoint<F, C, B>, Error> {
-        // Given our optimized way of constraining a point as public input, we
-        // cannot optimize the direct assignment as PI. We just compose `assign`
-        // with `constrain_as_public_input`.
-        let point = self.assign_without_subgroup_check(layouter, value)?;
-        self.constrain_as_public_input(layouter, &point)?;
-        Ok(point)
     }
 }
 
@@ -958,12 +952,22 @@ where
         Ok(p)
     }
 
-    fn x_coordinate(&self, point: &Self::Point) -> Self::Coordinate {
-        point.x.clone()
+    fn x(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        point: &Self::Point,
+    ) -> Result<Self::Coordinate, Error> {
+        self.assert_non_zero(layouter, point)?;
+        Ok(point.x.clone())
     }
 
-    fn y_coordinate(&self, point: &Self::Point) -> Self::Coordinate {
-        point.y.clone()
+    fn y(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        point: &Self::Point,
+    ) -> Result<Self::Coordinate, Error> {
+        self.assert_non_zero(layouter, point)?;
+        Ok(point.y.clone())
     }
 
     fn base_field(&self) -> &impl DecompositionInstructions<F, Self::Coordinate> {

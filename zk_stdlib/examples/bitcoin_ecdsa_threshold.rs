@@ -69,7 +69,8 @@ impl Relation for BitcoinThresholdECDSA {
         let secp256k1_base = secp256k1_curve.base_field_chip();
 
         // Assign the message hash as a public input.
-        let msg_hash = secp256k1_scalar.assign_as_public_input(layouter, instance.unzip().0)?;
+        let msg_hash = secp256k1_scalar.assign(layouter, instance.unzip().0)?;
+        secp256k1_scalar.constrain_as_public_input(layouter, &msg_hash)?;
 
         // Assign the PKs and constrain them as public inputs.
         let pks = secp256k1_curve.assign_many(layouter, &instance.unzip().1.transpose_array())?;
@@ -204,7 +205,7 @@ fn main() {
     const K: u32 = 16;
     let relation = BitcoinThresholdECDSA;
     let srs = srs_for_test(&relation, Some(K));
-    let vk = midnight_zk_stdlib::setup_vk(&srs, &relation);
+    let vk = midnight_zk_stdlib::setup_vk::<_, midnight_zk_stdlib::KZG>(&srs, &relation);
     let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
 
     // Generate a random instance-witness pair.
@@ -235,13 +236,13 @@ fn main() {
     let instance = (msg_hash, pks);
     let witness = signatures;
 
-    let proof = midnight_zk_stdlib::prove::<BitcoinThresholdECDSA, blake2b_simd::State>(
+    let proof = midnight_zk_stdlib::prove::<BitcoinThresholdECDSA, blake2b_simd::State, _>(
         &srs, &pk, &relation, &instance, witness, OsRng,
     )
     .expect("Proof generation should not fail");
 
     assert!(
-        midnight_zk_stdlib::verify::<BitcoinThresholdECDSA, blake2b_simd::State>(
+        midnight_zk_stdlib::verify::<BitcoinThresholdECDSA, blake2b_simd::State, _>(
             &srs.verifier_params(),
             &vk,
             &instance,

@@ -241,18 +241,11 @@ where
         point: &AssignedForeignEdwardsPoint<F, Curve25519, B>,
     ) -> Result<[AssignedByte<F>; 32], Error> {
         // Decomposition into (LE) bytes enforces canonicity.
-        let mut y_bytes = self.base_field_chip().assigned_to_le_bytes(
-            layouter,
-            &self.y_coordinate(point),
-            None,
-        )?;
+        let y = self.y(layouter, point)?;
+        let mut y_bytes = self.base_field_chip().assigned_to_le_bytes(layouter, &y, None)?;
 
-        let x_bits = self.base_field_chip().assigned_to_le_bits(
-            layouter,
-            &self.x_coordinate(point),
-            Some(255),
-            true,
-        )?;
+        let x = self.x(layouter, point)?;
+        let x_bits = self.base_field_chip().assigned_to_le_bits(layouter, &x, Some(255), true)?;
 
         // Encode the sign bit of x (= x mod 2, i.e., the least significant bit of x)
         // into the most significant byte of y: MSB = MSB of y + LSBit of x * 128.
@@ -367,13 +360,16 @@ where
     #[cfg(any(test, feature = "testing"))]
     fn from_public_input(fields: &[F]) -> Option<C::CryptographicGroup> {
         let nb_limbs_per_batch = (F::CAPACITY / B::LOG2_BASE) as usize;
+        if nb_limbs_per_batch == 0 {
+            return None;
+        }
         let nb_pi_per_coord = (B::NB_LIMBS as usize).div_ceil(nb_limbs_per_batch);
         if fields.len() != 2 * nb_pi_per_coord {
             return None;
         }
         let x = AssignedField::<F, C::Base, B>::from_public_input(&fields[..nb_pi_per_coord])?;
         let y = AssignedField::<F, C::Base, B>::from_public_input(&fields[nb_pi_per_coord..])?;
-        C::from_xy(x, y).map(|p| p.into_subgroup())
+        C::from_xy(x, y)?.try_into_subgroup()
     }
 }
 
@@ -623,16 +619,6 @@ where
         self.as_public_input(layouter, assigned)?
             .iter()
             .try_for_each(|c| self.native_gadget.constrain_as_public_input(layouter, c))
-    }
-
-    fn assign_as_public_input(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        value: Value<C::CryptographicGroup>,
-    ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
-        let point = self.assign(layouter, value)?;
-        self.constrain_as_public_input(layouter, &point)?;
-        Ok(point)
     }
 }
 
@@ -1096,18 +1082,27 @@ where
 
         let p = self.assign(layouter, p_value)?;
 
-        self.base_field_chip.assert_equal(layouter, x, &self.x_coordinate(&p))?;
-        self.base_field_chip.assert_equal(layouter, y, &self.y_coordinate(&p))?;
+        let (px, py) = (self.x(layouter, &p)?, self.y(layouter, &p)?);
+        self.base_field_chip.assert_equal(layouter, x, &px)?;
+        self.base_field_chip.assert_equal(layouter, y, &py)?;
 
         Ok(p)
     }
 
-    fn x_coordinate(&self, point: &Self::Point) -> Self::Coordinate {
-        point.x.clone()
+    fn x(
+        &self,
+        _layouter: &mut impl Layouter<F>,
+        point: &Self::Point,
+    ) -> Result<Self::Coordinate, Error> {
+        Ok(point.x.clone())
     }
 
-    fn y_coordinate(&self, point: &Self::Point) -> Self::Coordinate {
-        point.y.clone()
+    fn y(
+        &self,
+        _layouter: &mut impl Layouter<F>,
+        point: &Self::Point,
+    ) -> Result<Self::Coordinate, Error> {
+        Ok(point.y.clone())
     }
 
     fn base_field(&self) -> &impl DecompositionInstructions<F, Self::Coordinate> {
