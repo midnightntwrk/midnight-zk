@@ -10,12 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `kzg::KZGEngine`, the pairing engines over which KZG commitments can be made, bounding `KZGCommitmentScheme<E>` [#644](https://github.com/midnightntwrk/midnight-zk/pull/644)
 * `transcript::TranscriptField<H>` (`Hashable<H> + Sampleable<H>`) and `plonk::ProofField<H>` (`TranscriptField<H> + WithSmallOrderMulGroup<3> + FromUniformBytes<64> + Hash + Ord`), which the prover, verifier and commitment schemes are bounded by [#644](https://github.com/midnightntwrk/midnight-zk/pull/644)
 * `poly::FftDomain`, an `EvaluationDomain` with the twiddle factors of its FFTs. `ProvingKey` holds one, built from its `VerifyingKey`; it is not serialized
+* `profiling` feature, which records the time the prover spends in MSMs, FFTs and polynomial evaluations during each of its phases, and the `profiling` module, a re-export of `midnight_curves::profiling` [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 ### Changed
 * The FFTs `lagrange_to_coeff`, `coeff_to_lagrange`, `coeff_to_extended`, `extended_to_coeff` and `extended_to_lagrange` move from `EvaluationDomain` to `FftDomain`, and `PolynomialRepresentation::{coeff_to_self, self_to_coeff}` take an `FftDomain`. `EvaluationDomain`, hence `VerifyingKey`, no longer computes nor stores twiddle factors. Serialized keys and proofs are unchanged
 * KZG commitments (`commit`, `commit_many` and `commit_interleaved`, hence the prover, keygen and `commit_to_instances`) use the Rust `msm_pippenger` instead of blst's `multi_exp_affine` for BLS12-381 G1, with the same results. The verifier's MSM (`msm_specific`) is unchanged [#594](https://github.com/midnightntwrk/midnight-zk/pull/594)
 * Only the code that needs `ZETA` (building an `EvaluationDomain`, and reading or creating keys) requires `WithSmallOrderMulGroup<3>`; the getters of `EvaluationDomain`, `VerifyingKey` and `ProvingKey`, and the prover and verifier internals, require `PrimeField` [#644](https://github.com/midnightntwrk/midnight-zk/pull/644)
 * Remove outdated references to the removed `Polynomial::padded_add` from the docs of the `Add` and `AddAssign` impls of `Polynomial` [#666](https://github.com/midnightntwrk/midnight-zk/pull/666)
 ### Removed
+* `bench-internal` feature, the `plonk::bench` module it exposed and the `zswap_output` bench, superseded by the `midnight-benchmarks` crate [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 
 ## [0.9.0-rc.1]
 ### Added
