@@ -74,19 +74,32 @@ pub fn point_set_order(sets: &[(usize, usize)]) -> Vec<usize> {
     order
 }
 
+/// A pairing engine over which KZG commitments can be made.
+pub trait KZGEngine:
+    MultiMillerLoop<
+        G1: Default + CurveExt<ScalarExt = Self::Fr> + ProcessedSerdeObject,
+        G1Affine: Default + CurveAffine<ScalarExt = Self::Fr, CurveExt = Self::G1> + SerdeObject,
+        G2: ProcessedSerdeObject,
+    >
+{
+}
+
+impl<E> KZGEngine for E where
+    E: MultiMillerLoop<
+            G1: Default + CurveExt<ScalarExt = E::Fr> + ProcessedSerdeObject,
+            G1Affine: Default + CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1> + SerdeObject,
+            G2: ProcessedSerdeObject,
+        >
+{
+}
+
 #[derive(Clone, Debug)]
 /// KZG verifier
 pub struct KZGCommitmentScheme<E: Engine> {
     _marker: PhantomData<E>,
 }
 
-impl<E> PolynomialCommitmentScheme<E::Fr> for KZGCommitmentScheme<E>
-where
-    E: MultiMillerLoop,
-    E::G1: Default + CurveExt<ScalarExt = E::Fr> + ProcessedSerdeObject,
-    E::G1Affine: Default + CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1> + SerdeObject,
-    E::G2: ProcessedSerdeObject,
-{
+impl<E: KZGEngine> PolynomialCommitmentScheme<E::Fr> for KZGCommitmentScheme<E> {
     type Parameters = ParamsKZG<E>;
     type VerifierParameters = ParamsVerifierKZG<E>;
     type Commitment = KZGMultiCommitment<E>;
@@ -541,13 +554,7 @@ where
     }
 }
 
-impl<E> InterleavedCommit<E::Fr> for KZGCommitmentScheme<E>
-where
-    E: MultiMillerLoop,
-    E::G1: Default + CurveExt<ScalarExt = E::Fr> + ProcessedSerdeObject,
-    E::G1Affine: Default + CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1> + SerdeObject,
-    E::G2: ProcessedSerdeObject,
-{
+impl<E: KZGEngine> InterleavedCommit<E::Fr> for KZGCommitmentScheme<E> {
     fn commit_interleaved<B: PolynomialRepresentation>(
         params: &Self::Parameters,
         chunks: &[&[&Polynomial<E::Fr, B>]],
@@ -595,7 +602,6 @@ mod tests {
 
     use blake2b_simd::State as Blake2bState;
     use ff::WithSmallOrderMulGroup;
-    use midnight_curves::{CurveAffine, CurveExt, pairing::MultiMillerLoop, serde::SerdeObject};
     use rand_core::OsRng;
 
     use crate::{
@@ -603,14 +609,14 @@ mod tests {
             Coeff, EvaluationDomain, PolynomialLabel,
             commitment::{Guard, PolynomialCommitmentScheme},
             kzg::{
-                KZGCommitmentScheme,
+                KZGCommitmentScheme, KZGEngine,
                 commitment::KZGMultiCommitment,
                 params::{ParamsKZG, ParamsVerifierKZG},
             },
             query::{ProverQuery, VerifierQuery},
         },
         transcript::{CircuitTranscript, Hashable, Transcript, TranscriptField},
-        utils::{arithmetic::eval_polynomial, helpers::ProcessedSerdeObject},
+        utils::arithmetic::eval_polynomial,
     };
 
     #[test]
@@ -684,11 +690,9 @@ mod tests {
 
     fn verify<E, T>(verifier_params: &ParamsVerifierKZG<E>, proof: &[u8], should_fail: bool)
     where
-        E: MultiMillerLoop,
+        E: KZGEngine,
         E::Fr: TranscriptField<T::Hash> + Ord + Hash,
-        E::G1: Hashable<T::Hash> + CurveExt<ScalarExt = E::Fr, AffineExt = E::G1Affine>,
-        E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1> + SerdeObject,
-        E::G2: ProcessedSerdeObject,
+        E::G1: Hashable<T::Hash>,
         KZGMultiCommitment<E>: Hashable<T::Hash>,
         T: Transcript,
     {
@@ -776,11 +780,9 @@ mod tests {
 
     fn create_proof<E, T>(kzg_params: &ParamsKZG<E>) -> Vec<u8>
     where
-        E: MultiMillerLoop,
+        E: KZGEngine,
         E::Fr: WithSmallOrderMulGroup<3> + TranscriptField<T::Hash> + Hash + Ord,
-        E::G1: Hashable<T::Hash> + CurveExt<ScalarExt = E::Fr, AffineExt = E::G1Affine>,
-        E::G1Affine: SerdeObject + CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
-        E::G2: ProcessedSerdeObject,
+        E::G1: Hashable<T::Hash>,
         T: Transcript,
     {
         let k = (kzg_params.g.len() - 1).ilog2() + 1;

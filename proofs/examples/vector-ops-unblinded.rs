@@ -6,21 +6,16 @@
 use std::marker::PhantomData;
 
 use blake2b_simd::State;
-use midnight_curves::{
-    CurveAffine, CurveExt,
-    pairing::{Engine, MultiMillerLoop},
-    serde::SerdeObject,
-};
 use midnight_proofs::{
     circuit::{AssignedCell, Chip, Layouter, Region, SimpleFloorPlanner, Value},
     plonk::{ProofField, *},
     poly::{
         Rotation,
         commitment::Guard,
-        kzg::{KZGCommitmentScheme, params::ParamsKZG},
+        kzg::{KZGCommitmentScheme, KZGEngine, params::ParamsKZG},
     },
     transcript::{CircuitTranscript, Hashable, Transcript},
-    utils::{arithmetic::Field, helpers::ProcessedSerdeObject},
+    utils::arithmetic::Field,
 };
 use rand_core::OsRng;
 
@@ -499,10 +494,8 @@ fn test_prover<E>(
     instances: Vec<E::Fr>,
 ) -> Vec<u8>
 where
-    E: Engine + MultiMillerLoop,
-    E::G1: Default + Hashable<State> + CurveExt<ScalarExt = E::Fr> + ProcessedSerdeObject,
-    E::G1Affine: Default + SerdeObject + CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
-    E::G2: ProcessedSerdeObject,
+    E: KZGEngine,
+    E::G1: Hashable<State>,
     E::Fr: ProofField<State>,
 {
     let params: ParamsKZG<E> = ParamsKZG::unsafe_setup(k, OsRng);
