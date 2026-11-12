@@ -59,6 +59,8 @@ halo2derive = "0.2.0"
 getrandom = { version = "0.2", features = ["js"] }
 
 [features]
+# Records the time spent in MSMs, FFTs and polynomial evaluations.
+profiling = []
 default = ["std"]
 std = []
 portable = ["blst/portable"]

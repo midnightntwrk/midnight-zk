@@ -1108,6 +1108,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "midnight-benchmarks"
+version = "0.0.0"
+dependencies = [
+ "blake2b_simd",
+ "ff",
+ "group",
+ "midnight-aggregation",
+ "midnight-circuits",
+ "midnight-curves",
+ "midnight-proofs",
+ "midnight-zk-stdlib",
+ "rand 0.8.7",
+ "rand_chacha",
+ "rayon",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "midnight-circuits"
 version = "8.0.0-rc.1"
 dependencies = [
