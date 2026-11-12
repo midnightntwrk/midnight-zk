@@ -956,7 +956,6 @@ mod tests {
         CaseResult {
             workload: workload.to_owned(),
             pcs,
-            scheme: pcs.to_string(),
             threads,
             k: 13,
             vk_hash: "aa".repeat(32),
@@ -1105,13 +1104,13 @@ mod tests {
         ]);
         let head = run_of(vec![
             case("poseidon", Pcs::Kzg, 8, &STEADY),
-            case("poseidon", Pcs::Fflonk, 8, &STEADY),
+            case("poseidon", Pcs::FflonkT4, 8, &STEADY),
         ]);
         let comparison = compare(&base, &head);
         assert_eq!(comparison.cases.len(), 1);
         assert_eq!(comparison.only_base.len(), 2);
         assert_eq!(comparison.only_head.len(), 1);
-        assert_eq!(comparison.only_head[0].pcs, Pcs::Fflonk);
+        assert_eq!(comparison.only_head[0].pcs, Pcs::FflonkT4);
 
         for markdown in [false, true] {
             let text = render(&comparison, markdown);
@@ -1119,7 +1118,7 @@ mod tests {
             assert!(text.contains("poseidon / kzg / 1 thread\n"));
             assert!(text.contains("ecdsa / kzg / 8 threads"));
             assert!(text.contains("Only in head (not compared)"));
-            assert!(text.contains("poseidon / fflonk / 8 threads"));
+            assert!(text.contains("poseidon / fflonk-t4 / 8 threads"));
         }
     }
 
@@ -1270,7 +1269,7 @@ mod tests {
         let base = run_of(vec![
             case("poseidon", Pcs::Kzg, 8, &STEADY),
             case("ecdsa", Pcs::Kzg, 8, &STEADY),
-            case("zswap_output", Pcs::Fflonk, 1, &STEADY),
+            case("zswap_output", Pcs::FflonkT4, 1, &STEADY),
         ]);
         let head = run_of(vec![
             case(
@@ -1285,7 +1284,7 @@ mod tests {
                 8,
                 &[1100, 1103, 1099, 1101, 1102, 1098, 1104],
             ),
-            case("zswap_output", Pcs::Fflonk, 1, &STEADY),
+            case("zswap_output", Pcs::FflonkT4, 1, &STEADY),
         ]);
         compare(&base, &head)
     }
@@ -1294,7 +1293,7 @@ mod tests {
     fn renders_plain_text() {
         let text = render(&mixed(), false);
         assert!(text.starts_with("Benchmark comparison\n  base: 0123abcd (Test CPU, 16 logical"));
-        assert!(text.contains("workload      pcs     threads    k  samples  base median"));
+        assert!(text.contains("workload      pcs        threads    k  samples  base median"));
         assert!(text.contains("-9.99%  0.89% (mad)  faster"));
         assert!(text.contains("+9.99%  0.80% (mad)  slower"));
         assert!(text.contains("+0.00%  0.84% (mad)  within noise"));
@@ -1312,8 +1311,8 @@ mod tests {
     fn renders_markdown() {
         let text = render(&mixed(), true);
         assert!(text.starts_with("### Benchmark comparison\n\n- **base**: 0123abcd"));
-        assert!(text.contains("| workload     | pcs    | threads |   k | samples |"));
-        assert!(text.contains("| :----------- | :----- | ------: | --: |"));
+        assert!(text.contains("| workload     | pcs       | threads |   k | samples |"));
+        assert!(text.contains("| :----------- | :-------- | ------: | --: |"));
         assert!(text.contains("| -9.99% | 0.89% (mad) | faster       |"));
         assert!(text.contains("| +9.99% | 0.80% (mad) | slower       |"));
         assert!(text.contains("| within noise |"));

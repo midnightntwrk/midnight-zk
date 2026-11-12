@@ -183,10 +183,9 @@ pub fn run(config: &Config, workloads: Vec<Box<dyn Workload>>) -> Result<RunResu
             eprintln!("{} {pcs}: setup", workload.name());
             let mut prepared = workload.setup(pcs);
             let (k, vk_hash) = (prepared.k(), prepared.vk_hash());
-            let scheme = prepared.scheme();
             for &threads in &threads {
                 eprint!(
-                    "[{}/{nb_cases}] {} {scheme} k={k} threads={threads}: ",
+                    "[{}/{nb_cases}] {} {pcs} k={k} threads={threads}: ",
                     cases.len() + 1,
                     workload.name(),
                 );
@@ -207,7 +206,6 @@ pub fn run(config: &Config, workloads: Vec<Box<dyn Workload>>) -> Result<RunResu
                 cases.push(CaseResult {
                     workload: workload.name().to_owned(),
                     pcs,
-                    scheme: scheme.clone(),
                     threads,
                     k,
                     vk_hash: vk_hash.clone(),
@@ -393,10 +391,6 @@ mod tests {
             7
         }
 
-        fn scheme(&self) -> String {
-            "fake".to_owned()
-        }
-
         fn vk_hash(&self) -> String {
             "ab".repeat(32)
         }
@@ -427,7 +421,7 @@ mod tests {
     fn end_to_end() {
         let log = Log::default();
         let workloads = vec![
-            Fake::boxed("alpha", &Pcs::ALL, &log),
+            Fake::boxed("alpha", &[Pcs::Kzg, Pcs::FflonkT4], &log),
             Fake::boxed("beta", &[Pcs::Kzg], &log),
         ];
         let result = run(&config(&[1, 2, 1]), workloads).unwrap();
@@ -444,8 +438,8 @@ mod tests {
             [
                 ("alpha", Pcs::Kzg, 1),
                 ("alpha", Pcs::Kzg, 2),
-                ("alpha", Pcs::Fflonk, 1),
-                ("alpha", Pcs::Fflonk, 2),
+                ("alpha", Pcs::FflonkT4, 1),
+                ("alpha", Pcs::FflonkT4, 2),
                 ("beta", Pcs::Kzg, 1),
                 ("beta", Pcs::Kzg, 2),
             ]
@@ -466,7 +460,7 @@ mod tests {
         // proof, two samples and one verification.
         let case = |threads| [vec![Event::Prove(threads); 3], vec![Event::Verify]].concat();
         let per_pcs = |pcs| [vec![Event::Setup(pcs)], case(1), case(2)].concat();
-        let expected = [per_pcs(Pcs::Kzg), per_pcs(Pcs::Fflonk), per_pcs(Pcs::Kzg)].concat();
+        let expected = [per_pcs(Pcs::Kzg), per_pcs(Pcs::FflonkT4), per_pcs(Pcs::Kzg)].concat();
         assert_eq!(*log.lock().unwrap(), expected);
 
         let json = serde_json::to_string(&result).unwrap();
@@ -491,9 +485,9 @@ mod tests {
         let log = Log::default();
         let workloads = || {
             vec![
-                Fake::boxed("alpha", &Pcs::ALL, &log),
+                Fake::boxed("alpha", &[Pcs::Kzg, Pcs::FflonkT4], &log),
                 Fake::boxed("beta", &[Pcs::Kzg], &log),
-                Fake::boxed("gamma", &Pcs::ALL, &log),
+                Fake::boxed("gamma", &[Pcs::Kzg, Pcs::FflonkT4], &log),
             ]
         };
         let names = |config: &Config| -> Vec<(String, Pcs)> {
@@ -503,22 +497,22 @@ mod tests {
 
         let filtered = Config {
             filter: vec!["lph".into(), "amm".into()],
-            pcs: Some(vec![Pcs::Fflonk]),
+            pcs: Some(vec![Pcs::FflonkT4]),
             verify: false,
             ..config(&[1])
         };
         assert_eq!(
             names(&filtered),
             [
-                ("alpha".to_owned(), Pcs::Fflonk),
-                ("gamma".to_owned(), Pcs::Fflonk)
+                ("alpha".to_owned(), Pcs::FflonkT4),
+                ("gamma".to_owned(), Pcs::FflonkT4)
             ]
         );
         assert!(!log.lock().unwrap().contains(&Event::Verify));
 
         // The only scheme `beta` supports is not requested.
         let fflonk_only = Config {
-            pcs: Some(vec![Pcs::Fflonk]),
+            pcs: Some(vec![Pcs::FflonkT4]),
             ..config(&[1])
         };
         assert!(names(&fflonk_only).iter().all(|(name, _)| name != "beta"));
@@ -533,7 +527,7 @@ mod tests {
             filter: vec!["delta".into()],
             ..config(&[1])
         };
-        let workloads = vec![Fake::boxed("alpha", &Pcs::ALL, &log)];
+        let workloads = vec![Fake::boxed("alpha", &[Pcs::Kzg, Pcs::FflonkT4], &log)];
         assert_eq!(run(&no_match, workloads), Err(Error::NothingToRun));
         assert!(log.lock().unwrap().is_empty());
     }
@@ -541,7 +535,7 @@ mod tests {
     #[test]
     fn invalid_config() {
         let log = Log::default();
-        let workloads = || vec![Fake::boxed("alpha", &Pcs::ALL, &log)];
+        let workloads = || vec![Fake::boxed("alpha", &[Pcs::Kzg, Pcs::FflonkT4], &log)];
         let no_samples = Config {
             samples: 0,
             ..config(&[1])
@@ -560,7 +554,7 @@ mod tests {
         let unsound = || -> Vec<Box<dyn Workload>> {
             vec![Box::new(Fake {
                 name: "broken",
-                pcs: vec![Pcs::Fflonk],
+                pcs: vec![Pcs::FflonkT4],
                 sound: false,
                 log: log.clone(),
             })]
@@ -570,7 +564,7 @@ mod tests {
             error,
             Error::VerificationFailed {
                 workload: "broken".into(),
-                pcs: Pcs::Fflonk,
+                pcs: Pcs::FflonkT4,
                 threads: 2
             }
         );

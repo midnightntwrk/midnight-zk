@@ -58,7 +58,8 @@ struct RunArgs {
     /// Only run workloads whose name contains one of these substrings.
     #[arg(long, value_delimiter = ',', value_name = "SUBSTR")]
     filter: Vec<String>,
-    /// The schemes to prove under: `kzg`, `fflonk`. Defaults to all those
+    /// The schemes to prove under: `kzg`, or `fflonk-t<T>` for fflonk with up
+    /// to T = 2, 4, 8 or 16 polynomials per commitment. Defaults to all those
     /// each workload supports.
     #[arg(long, value_delimiter = ',', value_parser = parse_pcs)]
     pcs: Option<Vec<Pcs>>,
@@ -205,7 +206,7 @@ mod tests {
             "--filter",
             "poseidon,sha",
             "--pcs",
-            "fflonk,kzg",
+            "fflonk-t4,kzg",
             "--threads",
             "4,max,1",
             "--warmup",
@@ -219,7 +220,7 @@ mod tests {
             panic!("expected the run command");
         };
         assert_eq!(run.filter, ["poseidon", "sha"]);
-        assert_eq!(run.pcs, Some(vec![Pcs::Fflonk, Pcs::Kzg]));
+        assert_eq!(run.pcs, Some(vec![Pcs::FflonkT4, Pcs::Kzg]));
         assert_eq!(run.threads, [4, runner::max_threads(), 1]);
         assert_eq!(run.warmup, 0);
         assert_eq!(run.json, Some("out.json".into()));
@@ -232,6 +233,8 @@ mod tests {
             &["--threads", "0"][..],
             &["--threads", "many"],
             &["--pcs", "ipa"],
+            &["--pcs", "fflonk"],
+            &["--pcs", "fflonk-t1"],
             &["--samples", "0"],
             &["list", "--samples", "2"],
         ] {

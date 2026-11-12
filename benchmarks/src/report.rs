@@ -141,7 +141,7 @@ fn summary_table<'a>(cases: impl Iterator<Item = &'a CaseResult>, with_threads: 
     for case in cases {
         let mut row = vec![
             case.workload.clone(),
-            case.scheme.clone(),
+            case.pcs.to_string(),
             case.k.to_string(),
         ];
         if with_threads {
@@ -234,7 +234,7 @@ fn case_title(case: &CaseResult) -> String {
     format!(
         "{}, {}, k={}, {}",
         case.workload,
-        case.scheme,
+        case.pcs,
         case.k,
         threads_label(case.threads)
     )
@@ -402,7 +402,6 @@ mod tests {
         CaseResult {
             workload: workload.to_owned(),
             pcs,
-            scheme: pcs.to_string(),
             threads,
             k: 14,
             vk_hash: "00".repeat(32),
@@ -432,7 +431,7 @@ mod tests {
                     breakdown(),
                 ),
                 case("poseidon", Pcs::Kzg, 32, &[200_000_000, 220_000_000], None),
-                case("sha_preimage", Pcs::Fflonk, 1, &[900_000], breakdown()),
+                case("sha_preimage", Pcs::FflonkT4, 1, &[900_000], breakdown()),
             ],
         }
     }
@@ -459,11 +458,11 @@ mod tests {
     #[test]
     fn summary() {
         let expected = "\
-workload      pcs      k  threads     median        min  ±MAD%  proof bytes
-------------  ------  --  -------  ---------  ---------  -----  -----------
-poseidon      kzg     14        1    1.500 s    1.400 s    6.7         4512
-poseidon      kzg     14       32  210.00 ms  200.00 ms    4.8         4512
-sha_preimage  fflonk  14        1   900.0 µs   900.0 µs    0.0         4512
+workload      pcs         k  threads     median        min  ±MAD%  proof bytes
+------------  ---------  --  -------  ---------  ---------  -----  -----------
+poseidon      kzg        14        1    1.500 s    1.400 s    6.7         4512
+poseidon      kzg        14       32  210.00 ms  200.00 ms    4.8         4512
+sha_preimage  fflonk-t4  14        1   900.0 µs   900.0 µs    0.0         4512
 ";
         assert_eq!(render_summary(&fixture(false)), expected);
         assert_eq!(render_breakdowns(&fixture(false)), "");
@@ -485,7 +484,7 @@ Concurrent calls (busy/wall): msm 1.5x, fft 4.0x, poly_eval 1.0x.
 ";
         let rendered = render_breakdowns(&fixture(true));
         let expected = format!(
-            "poseidon, kzg, k=14, 1 thread\n{expected_table}\nsha_preimage, fflonk, k=14, 1 \
+            "poseidon, kzg, k=14, 1 thread\n{expected_table}\nsha_preimage, fflonk-t4, k=14, 1 \
              thread\n{expected_table}\n{OVERLAP_NOTE}\n"
         );
         assert_eq!(rendered, expected);
@@ -516,10 +515,10 @@ Concurrent calls (busy/wall): msm 1.5x, fft 4.0x, poly_eval 1.0x.
 
 ## 1 thread
 
-| workload     | pcs    |   k |   median |      min | ±MAD% | proof bytes |
-| ------------ | ------ | --: | -------: | -------: | ----: | ----------: |
-| poseidon     | kzg    |  14 |  1.500 s |  1.400 s |   6.7 |        4512 |
-| sha_preimage | fflonk |  14 | 900.0 µs | 900.0 µs |   0.0 |        4512 |
+| workload     | pcs       |   k |   median |      min | ±MAD% | proof bytes |
+| ------------ | --------- | --: | -------: | -------: | ----: | ----------: |
+| poseidon     | kzg       |  14 |  1.500 s |  1.400 s |   6.7 |        4512 |
+| sha_preimage | fflonk-t4 |  14 | 900.0 µs | 900.0 µs |   0.0 |        4512 |
 
 ## 32 threads
 
@@ -536,7 +535,7 @@ Concurrent calls (busy/wall): msm 1.5x, fft 4.0x, poly_eval 1.0x.
         assert!(rendered.contains("\n**Warning**: built with the `profiling` feature"));
         assert!(rendered.contains("\n## Breakdown\n"));
         assert!(rendered.contains("\n### poseidon, kzg, k=14, 1 thread\n"));
-        assert!(rendered.contains("\n### sha_preimage, fflonk, k=14, 1 thread\n"));
+        assert!(rendered.contains("\n### sha_preimage, fflonk-t4, k=14, 1 thread\n"));
         assert!(!rendered.contains("### poseidon, kzg, k=14, 32 threads"));
         let rows = [
             "| phase     |              msm |              fft |        poly_eval |            \

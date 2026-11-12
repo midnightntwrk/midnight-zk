@@ -33,21 +33,21 @@ use midnight_proofs::{
     poly::EvaluationDomain,
     transcript::{CircuitTranscript, Transcript},
 };
-use midnight_zk_stdlib::{MidnightVK, Relation, ZkStdLib, ZkStdLibArch};
+use midnight_zk_stdlib::{FflonkKZG, MidnightVK, Relation, ZkStdLib, ZkStdLibArch};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use sha2::Digest;
 
 use crate::{
     srs,
-    workload::{Fflonk, RelationCase, Workload, relation_workload},
+    workload::{RelationCase, Workload, relation_workload},
 };
 
 type E = midnight_curves::Bls12;
 type F = midnight_curves::Fq;
 
 /// The commitment scheme of the inner proofs.
-type InnerPcs = Fflonk;
+type InnerPcs = FflonkKZG<4>;
 
 /// The number of inner proofs that the circuit aggregates.
 const BATCH_SIZE: usize = 2;

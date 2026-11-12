@@ -289,6 +289,7 @@ mod tests {
 
     #[test]
     fn fflonk() {
-        check(Pcs::Fflonk);
+        check(Pcs::FflonkT4);
+        check(Pcs::FflonkT16);
     }
 }

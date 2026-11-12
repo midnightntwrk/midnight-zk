@@ -29,29 +29,73 @@ use crate::srs;
 /// The hash function of the proof transcripts.
 pub type TranscriptHash = blake2b_simd::State;
 
-/// The fflonk instantiation that [`Pcs::Fflonk`] stands for.
-pub type Fflonk = FflonkKZG<4>;
-
 /// A polynomial commitment scheme to benchmark the prover under.
+///
+/// The fflonk schemes are named after `T_MAX`, the largest number of
+/// polynomials they combine into one commitment: `fflonk-t4` is
+/// `FflonkKZG<2>`. Plain KZG commits to each polynomial on its own, so it is
+/// the baseline with `T_MAX = 1`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
 pub enum Pcs {
     /// Plain KZG.
+    #[serde(rename = "kzg")]
     Kzg,
-    /// Fflonk over KZG, see [`Fflonk`].
-    Fflonk,
+    /// Fflonk over KZG with up to 2 polynomials per commitment.
+    #[serde(rename = "fflonk-t2")]
+    FflonkT2,
+    /// Fflonk over KZG with up to 4 polynomials per commitment.
+    #[serde(rename = "fflonk-t4")]
+    FflonkT4,
+    /// Fflonk over KZG with up to 8 polynomials per commitment.
+    #[serde(rename = "fflonk-t8")]
+    FflonkT8,
+    /// Fflonk over KZG with up to 16 polynomials per commitment.
+    #[serde(rename = "fflonk-t16")]
+    FflonkT16,
 }
 
 impl Pcs {
     /// All schemes, in reporting order.
-    pub const ALL: [Pcs; 2] = [Pcs::Kzg, Pcs::Fflonk];
+    pub const ALL: [Pcs; 5] = [
+        Pcs::Kzg,
+        Pcs::FflonkT2,
+        Pcs::FflonkT4,
+        Pcs::FflonkT8,
+        Pcs::FflonkT16,
+    ];
 
     /// The name used on the command line and in results.
     pub fn name(self) -> &'static str {
         match self {
             Pcs::Kzg => "kzg",
-            Pcs::Fflonk => "fflonk",
+            Pcs::FflonkT2 => "fflonk-t2",
+            Pcs::FflonkT4 => "fflonk-t4",
+            Pcs::FflonkT8 => "fflonk-t8",
+            Pcs::FflonkT16 => "fflonk-t16",
         }
+    }
+
+    /// The logarithm of the number of polynomials per commitment.
+    pub fn log2_t_max(self) -> u32 {
+        match self {
+            Pcs::Kzg => 0,
+            Pcs::FflonkT2 => 1,
+            Pcs::FflonkT4 => 2,
+            Pcs::FflonkT8 => 3,
+            Pcs::FflonkT16 => 4,
+        }
+    }
+
+    /// The scheme that `PCS` implements.
+    pub fn of<PCS: MidnightPCS>() -> Pcs {
+        // The identifier of a stdlib scheme is its `LOG2_T_MAX`, 0 for KZG.
+        Pcs::ALL[usize::from(PCS::ID)]
+    }
+
+    /// Whether circuits of size `2^k` fit in the available SRS under this
+    /// scheme, which needs `T_MAX` times as many points as rows.
+    pub fn fits(self, k: u32) -> bool {
+        k + self.log2_t_max() <= srs::MAX_SRS_K
     }
 }
 
@@ -78,10 +122,6 @@ pub trait Prepared: Send {
     /// The logarithm of the number of rows of the circuit.
     fn k(&self) -> u32;
 
-    /// The exact commitment scheme, as given by [`scheme_name`]. It tells
-    /// apart the fflonk instantiations that share [`Pcs::Fflonk`].
-    fn scheme(&self) -> String;
-
     /// The SHA-256 digest of the serialized verifying key, in hexadecimal. It
     /// identifies the circuit across builds.
     fn vk_hash(&self) -> String;
@@ -93,14 +133,6 @@ pub trait Prepared: Send {
     /// Whether `proof` is a valid proof of the latest call to
     /// [`Prepared::prove`].
     fn verify(&self, proof: &[u8]) -> bool;
-}
-
-/// The name of `PCS` in results: `kzg`, or `fflonk<t>` for `FflonkKZG<t>`.
-pub fn scheme_name<PCS: MidnightPCS>() -> String {
-    match PCS::ID {
-        0 => "kzg".to_owned(),
-        t => format!("fflonk<{t}>"),
-    }
 }
 
 /// The hexadecimal SHA-256 digest of a verifying key.
@@ -159,21 +191,17 @@ where
     fn supported_pcs(&self) -> Vec<Pcs> {
         let case = (self.build)();
         let k = case.k.unwrap_or_else(|| midnight_zk_stdlib::optimal_k(&case.relation));
-        let mut pcs = Vec::new();
-        if srs::fits::<KZG>(k) {
-            pcs.push(Pcs::Kzg);
-        }
-        if srs::fits::<Fflonk>(k) {
-            pcs.push(Pcs::Fflonk);
-        }
-        pcs
+        Pcs::ALL.into_iter().filter(|pcs| pcs.fits(k)).collect()
     }
 
     fn setup(&self, pcs: Pcs) -> Box<dyn Prepared> {
         let case = (self.build)();
         match pcs {
             Pcs::Kzg => primed(PreparedRelation::<R, KZG>::new(case)),
-            Pcs::Fflonk => primed(PreparedRelation::<R, Fflonk>::new(case)),
+            Pcs::FflonkT2 => primed(PreparedRelation::<R, FflonkKZG<1>>::new(case)),
+            Pcs::FflonkT4 => primed(PreparedRelation::<R, FflonkKZG<2>>::new(case)),
+            Pcs::FflonkT8 => primed(PreparedRelation::<R, FflonkKZG<3>>::new(case)),
+            Pcs::FflonkT16 => primed(PreparedRelation::<R, FflonkKZG<4>>::new(case)),
         }
     }
 }
@@ -219,10 +247,6 @@ where
 {
     fn k(&self) -> u32 {
         self.vk.k() as u32
-    }
-
-    fn scheme(&self) -> String {
-        scheme_name::<PCS>()
     }
 
     fn vk_hash(&self) -> String {
@@ -307,6 +331,24 @@ mod tests {
     }
 
     #[test]
+    fn pcs_matches_the_stdlib_schemes() {
+        assert_eq!(Pcs::of::<KZG>(), Pcs::Kzg);
+        assert_eq!(Pcs::of::<FflonkKZG<1>>(), Pcs::FflonkT2);
+        assert_eq!(Pcs::of::<FflonkKZG<2>>(), Pcs::FflonkT4);
+        assert_eq!(Pcs::of::<FflonkKZG<3>>(), Pcs::FflonkT8);
+        assert_eq!(Pcs::of::<FflonkKZG<4>>(), Pcs::FflonkT16);
+        for pcs in Pcs::ALL {
+            assert_eq!(pcs.name().strip_prefix("fflonk-t").map(|t| t.parse()), {
+                (pcs != Pcs::Kzg).then(|| Ok(1u32 << pcs.log2_t_max()))
+            });
+            let json = serde_json::to_string(&pcs).unwrap();
+            assert_eq!(json, format!("\"{pcs}\""));
+            assert!(pcs.fits(srs::MAX_SRS_K - pcs.log2_t_max()));
+            assert!(!pcs.fits(srs::MAX_SRS_K - pcs.log2_t_max() + 1));
+        }
+    }
+
+    #[test]
     fn relation_workload_proves_under_every_pcs() {
         let workload = relation_workload("identity", || RelationCase {
             relation: Identity,
@@ -321,8 +363,6 @@ mod tests {
             assert!(prepared.verify(&proof), "{pcs}");
             assert!(!prepared.verify(&proof[1..]), "{pcs}");
             assert_eq!(prepared.vk_hash().len(), 64);
-            let scheme = if pcs == Pcs::Kzg { "kzg" } else { "fflonk<4>" };
-            assert_eq!(prepared.scheme(), scheme);
         }
     }
 }

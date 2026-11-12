@@ -31,11 +31,6 @@ pub fn srs_dir() -> PathBuf {
     }
 }
 
-/// Whether circuits of size `2^k` fit in the available SRS under `PCS`.
-pub fn fits<PCS: MidnightPCS>(k: u32) -> bool {
-    PCS::srs_k(k) <= MAX_SRS_K
-}
-
 /// Loads Filecoin's SRS for circuits of size `2^k` under `PCS`.
 ///
 /// Reads `bls_filecoin_2p<j>` for `j = PCS::srs_k(k)` if present, and

@@ -347,9 +347,12 @@ mod tests {
     }
 
     #[test]
-    fn fflonk_does_not_fit_the_srs() {
+    fn only_small_fflonk_chunks_fit_the_srs() {
         for workload in super::workloads() {
-            assert_eq!(workload.supported_pcs(), [Pcs::Kzg]);
+            assert_eq!(
+                workload.supported_pcs(),
+                [Pcs::Kzg, Pcs::FflonkT2, Pcs::FflonkT4]
+            );
         }
     }
 }

@@ -14,9 +14,8 @@
 //! The `ivc` workloads: one step of an incrementally verifiable computation.
 //!
 //! The IVC circuit of `midnight-aggregation` verifies its own proofs, which
-//! the library commits with [`PCS`] (fflonk with 2^3 chunks). That is the only
-//! scheme these workloads run under, and they report it as [`Pcs::Fflonk`]
-//! although [`crate::workload::Fflonk`] has 2^4 chunks.
+//! the library commits with [`PCS`] (fflonk with up to 8 polynomials per
+//! commitment). That is the only scheme these workloads run under.
 //!
 //! A step of the library also verifies the previous proof off-circuit and
 //! draws its blinding factors from the operating system, so the timed section
@@ -76,7 +75,7 @@ impl<T: Ivc> PreparedIvc<T> {
     /// Generates the keys of the IVC circuit of size `2^k` and proves the
     /// warm-up steps.
     fn new(pcs: Pcs, k: u32, ctx: T::Context, witness: T::Witness) -> Self {
-        assert_eq!(pcs, Pcs::Fflonk, "the IVC circuit only supports fflonk");
+        assert_eq!(pcs, Pcs::of::<PCS>(), "the IVC library fixes the scheme");
         let (mut prover, verifier) = ivc::setup::<T>(srs::load::<PCS>(k), k, ctx);
         for _ in 0..WARM_UP_STEPS {
             prover.prove_step(witness.clone()).expect("the warm-up steps are valid");
@@ -99,10 +98,6 @@ where
 {
     fn k(&self) -> u32 {
         self.k
-    }
-
-    fn scheme(&self) -> String {
-        workload::scheme_name::<PCS>()
     }
 
     fn vk_hash(&self) -> String {
@@ -129,11 +124,8 @@ impl Workload for IvcStep {
     }
 
     fn supported_pcs(&self) -> Vec<Pcs> {
-        if srs::fits::<PCS>(K) {
-            vec![Pcs::Fflonk]
-        } else {
-            vec![]
-        }
+        let pcs = Pcs::of::<PCS>();
+        if pcs.fits(K) { vec![pcs] } else { vec![] }
     }
 
     fn setup(&self, pcs: Pcs) -> Box<dyn Prepared> {

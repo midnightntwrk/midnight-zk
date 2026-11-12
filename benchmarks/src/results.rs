@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use crate::workload::Pcs;
 
 /// The version of the result file format.
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;
 
 /// The outcome of one invocation of the runner.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -57,8 +57,6 @@ pub struct CaseResult {
     pub workload: String,
     /// The polynomial commitment scheme.
     pub pcs: Pcs,
-    /// The exact commitment scheme, such as `kzg` or `fflonk<4>`.
-    pub scheme: String,
     /// The number of threads of the rayon pool.
     pub threads: usize,
     /// The logarithm of the number of rows.
