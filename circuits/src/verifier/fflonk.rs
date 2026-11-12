@@ -83,25 +83,25 @@ where
     }
 
     fn read_commitment<T: InCircuitTranscript<S::F>>(
-        transcript: &mut T,
         layouter: &mut impl Layouter<S::F>,
         commitment_chip: &Self::CommitmentChip,
+        transcript: &mut T,
         labels: &[PolynomialLabel],
     ) -> Result<Self::AssignedCommitment, Error>
     where
         Self::Commitment: Hashable<T::Hash>,
     {
         let labels = Self::chunk_labels(labels);
-        <PCS as InCircuitPCS<S>>::read_commitment(transcript, layouter, commitment_chip, &labels)
+        <PCS as InCircuitPCS<S>>::read_commitment(layouter, commitment_chip, transcript, &labels)
     }
 
     fn common_commitment<T: InCircuitTranscript<S::F>>(
-        transcript: &mut T,
         layouter: &mut impl Layouter<S::F>,
         commitment_chip: &Self::CommitmentChip,
+        transcript: &mut T,
         commitment: &Self::AssignedCommitment,
     ) -> Result<(), Error> {
-        PCS::common_commitment(transcript, layouter, commitment_chip, commitment)
+        PCS::common_commitment(layouter, commitment_chip, transcript, commitment)
     }
 
     fn squeeze_evaluation_point<T: InCircuitTranscript<S::F>>(
@@ -128,8 +128,8 @@ where
         layouter: &mut impl Layouter<S::F>,
         commitment_chip: &Self::CommitmentChip,
         scalar_chip: &ScalarChip<S::F>,
-        queries: &[VerifierQuery<'_, S, Self>],
         transcript: &mut T,
+        queries: &[VerifierQuery<'_, S, Self>],
     ) -> Result<AssignedAccumulator<S>, Error>
     where
         S::F: Hashable<T::Hash>,
@@ -201,8 +201,8 @@ where
             layouter,
             commitment_chip,
             scalar_chip,
-            &inner_queries,
             transcript,
+            &inner_queries,
         )
     }
 }

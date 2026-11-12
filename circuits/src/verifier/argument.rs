@@ -143,19 +143,19 @@ pub(crate) fn committed_from_key<S: SelfEmulation, PCS: InCircuitPCS<S>>(
 
 /// Reads the commitment to the polynomials of the given labels.
 pub(crate) fn read_committed<S: SelfEmulation, PCS: InCircuitPCS<S>, T: InCircuitTranscript<S::F>>(
-    labels: &[PolynomialLabel],
     layouter: &mut impl Layouter<S::F>,
     commitment_chip: &PCS::CommitmentChip,
     transcript_gadget: &mut T,
+    labels: &[PolynomialLabel],
 ) -> Result<Committed<S, PCS>, Error>
 where
     PCS::Commitment: Hashable<T::Hash>,
 {
     Ok(Committed {
         commitment: <PCS as InCircuitPCS<S>>::read_commitment(
-            transcript_gadget,
             layouter,
             commitment_chip,
+            transcript_gadget,
             labels,
         )?,
         polynomial_labels: labels.to_vec(),
@@ -175,10 +175,10 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> Committed<S, PCS> {
     /// evaluation points.
     pub(crate) fn evaluate<T: InCircuitTranscript<S::F>>(
         self,
-        cs: &ConstraintSystem<S::F>,
-        x_rotations: &BTreeMap<Rotation, AssignedNative<S::F>>,
         layouter: &mut impl Layouter<S::F>,
         transcript_gadget: &mut T,
+        cs: &ConstraintSystem<S::F>,
+        x_rotations: &BTreeMap<Rotation, AssignedNative<S::F>>,
     ) -> Result<Evaluated<S, PCS>, Error>
     where
         S::F: Hashable<T::Hash>,

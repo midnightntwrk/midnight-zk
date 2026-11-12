@@ -169,9 +169,9 @@ pub trait InCircuitPCS<S: SelfEmulation>:
     /// Reads one commitment to `labels.len()` polynomials from the proof
     /// transcript, tagging each polynomial with its label.
     fn read_commitment<T: InCircuitTranscript<S::F>>(
-        transcript: &mut T,
         layouter: &mut impl Layouter<S::F>,
         commitment_chip: &Self::CommitmentChip,
+        transcript: &mut T,
         labels: &[PolynomialLabel],
     ) -> Result<Self::AssignedCommitment, Error>
     where
@@ -179,9 +179,9 @@ pub trait InCircuitPCS<S: SelfEmulation>:
 
     /// Absorbs a commitment into the proof transcript.
     fn common_commitment<T: InCircuitTranscript<S::F>>(
-        transcript: &mut T,
         layouter: &mut impl Layouter<S::F>,
         commitment_chip: &Self::CommitmentChip,
+        transcript: &mut T,
         commitment: &Self::AssignedCommitment,
     ) -> Result<(), Error>;
 
@@ -205,8 +205,8 @@ pub trait InCircuitPCS<S: SelfEmulation>:
         layouter: &mut impl Layouter<S::F>,
         commitment_chip: &Self::CommitmentChip,
         scalar_chip: &ScalarChip<S::F>,
-        queries: &[VerifierQuery<'_, S, Self>],
         transcript: &mut T,
+        queries: &[VerifierQuery<'_, S, Self>],
     ) -> Result<AssignedAccumulator<S>, Error>
     where
         S::F: Hashable<T::Hash>,

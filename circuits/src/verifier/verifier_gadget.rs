@@ -365,7 +365,7 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> VerifierGadget<S, PCS> {
         let phase0_committed = argument::committed_from_key(&vk_absorbed);
 
         assigned_committed_instances.iter().try_for_each(|com| {
-            PCS::common_commitment(transcript, layouter, &self.commitment_chip, com)
+            PCS::common_commitment(layouter, &self.commitment_chip, transcript, com)
         })?;
 
         for instance in assigned_instances {
@@ -387,7 +387,7 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> VerifierGadget<S, PCS> {
             .collect::<Vec<_>>();
 
         let phase1_committed =
-            argument::read_committed(&phase1_labels, layouter, &self.commitment_chip, transcript)?;
+            argument::read_committed(layouter, &self.commitment_chip, transcript, &phase1_labels)?;
 
         // Sample theta challenge for keeping lookup columns linearly independent
         let theta = transcript.squeeze_challenge(layouter)?;
@@ -414,7 +414,7 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> VerifierGadget<S, PCS> {
         }
 
         let phase2_committed =
-            argument::read_committed(&phase2_labels, layouter, &self.commitment_chip, transcript)?;
+            argument::read_committed(layouter, &self.commitment_chip, transcript, &phase2_labels)?;
 
         // Sample y challenge, which keeps the gates linearly independent
         let y = transcript.squeeze_challenge(layouter)?;
@@ -473,10 +473,10 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> VerifierGadget<S, PCS> {
         let quotient_labels: Vec<_> =
             (0..assigned_vk.cs_degree).map(PolynomialLabel::QuotientPiece).collect();
         let quotient_committed = argument::read_committed(
-            &quotient_labels,
             layouter,
             &self.commitment_chip,
             transcript,
+            &quotient_labels,
         )?;
 
         // Sample x challenge, which is used to ensure the circuit is satisfied with
@@ -552,11 +552,11 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> VerifierGadget<S, PCS> {
             x_rotations.insert(rotation, point);
         }
 
-        let phase0_evaluated = phase0_committed.evaluate(cs, &x_rotations, layouter, transcript)?;
-        let phase1_evaluated = phase1_committed.evaluate(cs, &x_rotations, layouter, transcript)?;
-        let phase2_evaluated = phase2_committed.evaluate(cs, &x_rotations, layouter, transcript)?;
+        let phase0_evaluated = phase0_committed.evaluate(layouter, transcript, cs, &x_rotations)?;
+        let phase1_evaluated = phase1_committed.evaluate(layouter, transcript, cs, &x_rotations)?;
+        let phase2_evaluated = phase2_committed.evaluate(layouter, transcript, cs, &x_rotations)?;
         let mut quotient_evaluated =
-            quotient_committed.evaluate(cs, &x_rotations, layouter, transcript)?;
+            quotient_committed.evaluate(layouter, transcript, cs, &x_rotations)?;
 
         let phase0_evals = &phase0_evaluated.evals_map;
         let phase1_evals = &phase1_evaluated.evals_map;
@@ -770,8 +770,8 @@ impl<S: SelfEmulation, PCS: InCircuitPCS<S>> VerifierGadget<S, PCS> {
             layouter,
             &self.commitment_chip,
             &self.scalar_chip,
-            &queries,
             transcript,
+            &queries,
         )
     }
 
