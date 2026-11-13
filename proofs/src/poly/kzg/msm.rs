@@ -170,6 +170,7 @@ where
 /// Bls12-381 uses blstrs [`G1Affine::multi_exp_affine`], other curves use
 /// `msm_best`.
 pub fn msm_specific<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
+    assert_eq!(coeffs.len(), bases.len());
     // We remove zeros (keep only non-zero coefficients).
     let (coeffs, bases): (Vec<C::Scalar>, Vec<C>) = coeffs
         .iter()
