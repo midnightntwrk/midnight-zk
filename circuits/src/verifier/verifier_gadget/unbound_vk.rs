@@ -38,7 +38,7 @@ use crate::{
     },
     types::Instantiable,
     verifier::{
-        AssignedVk, VerifierGadget, VerifyingKey,
+        AssignedVk, InCircuitHashable, VerifierGadget, VerifyingKey,
         pcs::{AssignedCommitment, InCircuitPCS},
     },
 };
@@ -145,11 +145,7 @@ impl<F: CircuitField + WithSmallOrderMulGroup<3>, PCS: InCircuitPCS<F>> Verifier
             vk.k().clone(),
             vk.omega().clone(),
         ];
-        inputs.extend(PCS::commitment_as_public_input(
-            layouter,
-            &self.commitment_chip,
-            &vk.phase0_commitment,
-        )?);
+        inputs.extend(vk.phase0_commitment.to_input(layouter, &self.commitment_chip)?);
         let hash = hash_chip.hash(layouter, &inputs)?;
         self.scalar_chip.assert_equal(layouter, &hash, expected)?;
         Ok(vk)
@@ -247,7 +243,7 @@ mod tests {
             let inner_pi = native_gadget
                 .assign_many(&mut layouter, &self.inner_instances.transpose_array())?;
 
-            let mut transcript = PoseidonTranscriptGadget::<F>::new(&native_gadget, &poseidon_chip);
+            let mut transcript = PoseidonTranscriptGadget::<F>::new(&poseidon_chip);
             transcript.init_with_proof(&mut layouter, self.inner_proof.clone())?;
             let mut acc = verifier_chip.prepare(
                 &mut layouter,

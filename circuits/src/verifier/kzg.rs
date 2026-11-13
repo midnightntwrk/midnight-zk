@@ -52,7 +52,7 @@ use crate::{
         AssignedAccumulator, ScalarChip,
         msm::{AssignedMsm, AssignedPoint},
         pcs::{CommitmentBases, InCircuitPCS, VerifierQuery},
-        transcript_gadget::InCircuitTranscript,
+        transcript_gadget::{InCircuitHashable, InCircuitTranscript},
         types::{AssignedG1, CurveChip},
         utils::{
             AssignedBoundedScalar, Coset, evaluate_interpolation_quotient,
@@ -198,6 +198,34 @@ where
         self.assert_single();
         self.0.into_iter().next().unwrap()
     }
+
+    /// Assigns the commitment to the group of `labels` from its off-circuit
+    /// value, without subgroup checks.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a label is repeated or if `value` does not commit to
+    /// `|labels|` polynomials.
+    fn assign(
+        layouter: &mut impl Layouter<E::Fr>,
+        curve_chip: &CurveChip<E>,
+        value: Value<KZGMultiCommitment<E>>,
+        labels: &[PolynomialLabel],
+    ) -> Result<Self, Error> {
+        PolynomialLabel::assert_distinct(labels);
+        let points = value
+            .map(|com| {
+                assert_eq!(com.0.len(), labels.len());
+                com.0.iter().map(|c| *c.as_point()).collect::<Vec<_>>()
+            })
+            .transpose_vec(labels.len());
+        let inners = (points.into_iter().zip(labels))
+            .map(|(point, label)| {
+                AssignedKZGCommitment::assign(layouter, curve_chip, point, label.clone())
+            })
+            .collect::<Result<Vec<_>, Error>>()?;
+        Ok(AssignedKZGMultiCommitment(inners))
+    }
 }
 
 impl<E: MultiMillerLoop> InnerValue for AssignedKZGMultiCommitment<E>
@@ -236,6 +264,54 @@ where
     #[cfg(any(test, feature = "testing"))]
     fn from_public_input(_fields: &[E::Fr]) -> Option<KZGMultiCommitment<E>> {
         unimplemented!("the labels of a commitment are not part of its public inputs")
+    }
+}
+
+impl<E: MultiMillerLoop> InCircuitHashable<E::Fr> for AssignedKZGMultiCommitment<E>
+where
+    E::Fr: CircuitField,
+    E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
+        + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>
+        + Default,
+{
+    type Chip = CurveChip<E>;
+    type Shape = [PolynomialLabel];
+
+    /// Assigns the commitment to the group of `labels`, or default points if
+    /// `value` is not a commitment to `labels.len()` polynomials.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a label is repeated.
+    fn assign_read(
+        layouter: &mut impl Layouter<E::Fr>,
+        curve_chip: &CurveChip<E>,
+        labels: &[PolynomialLabel],
+        value: Option<KZGMultiCommitment<E>>,
+    ) -> Result<Self, Error> {
+        let com = (value.filter(|com| com.0.len() == labels.len()))
+            .unwrap_or_else(|| KZGMultiCommitment(vec![KZGCommitment::default(); labels.len()]));
+        Self::assign(layouter, curve_chip, Value::known(com), labels)
+    }
+
+    /// # Panics
+    ///
+    /// Panics if the commitment contains fixed points or linear combinations.
+    fn to_input(
+        &self,
+        layouter: &mut impl Layouter<E::Fr>,
+        curve_chip: &CurveChip<E>,
+    ) -> Result<Vec<AssignedNative<E::Fr>>, Error> {
+        let mut inputs = vec![];
+        for com in self.0.iter() {
+            match com {
+                AssignedKZGCommitment::Simple(AssignedPoint::Variable(point), _) => {
+                    inputs.extend(curve_chip.as_public_input(layouter, point)?)
+                }
+                _ => panic!("only commitments to assigned points can be absorbed"),
+            }
+        }
+        Ok(inputs)
     }
 }
 
@@ -561,7 +637,7 @@ where
 
     let mut q_evals_on_x3 = Vec::with_capacity(q_eval_sets.len());
     for _ in 0..q_eval_sets.len() {
-        q_evals_on_x3.push(transcript_gadget.read_scalar(layouter)?);
+        q_evals_on_x3.push(transcript_gadget.read(layouter, scalar_chip, &())?);
     }
 
     let zero = scalar_chip.assign_fixed(layouter, E::Fr::ZERO)?;
@@ -701,36 +777,7 @@ where
         value: Value<KZGMultiCommitment<E>>,
         labels: &[PolynomialLabel],
     ) -> Result<Self::AssignedCommitment, Error> {
-        PolynomialLabel::assert_distinct(labels);
-        let points = value
-            .map(|com| {
-                assert_eq!(com.0.len(), labels.len());
-                com.0.iter().map(|c| *c.as_point()).collect::<Vec<_>>()
-            })
-            .transpose_vec(labels.len());
-        let inners = (points.into_iter().zip(labels))
-            .map(|(point, label)| {
-                AssignedKZGCommitment::assign(layouter, curve_chip, point, label.clone())
-            })
-            .collect::<Result<Vec<_>, Error>>()?;
-        Ok(AssignedKZGMultiCommitment(inners))
-    }
-
-    fn commitment_as_public_input(
-        layouter: &mut impl Layouter<E::Fr>,
-        curve_chip: &CurveChip<E>,
-        commitment: &AssignedKZGMultiCommitment<E>,
-    ) -> Result<Vec<AssignedNative<E::Fr>>, Error> {
-        let mut inputs = vec![];
-        for com in commitment.0.iter() {
-            match com {
-                AssignedKZGCommitment::Simple(AssignedPoint::Variable(point), _) => {
-                    inputs.extend(curve_chip.as_public_input(layouter, point)?)
-                }
-                _ => panic!("only commitments to assigned points can be public inputs"),
-            }
-        }
-        Ok(inputs)
+        AssignedKZGMultiCommitment::assign(layouter, curve_chip, value, labels)
     }
 
     /// # Warning
@@ -745,35 +792,11 @@ where
     where
         Self::Commitment: Hashable<T::Hash>,
     {
+        // An empty group is never written to the transcript.
         if labels.is_empty() {
             return Ok(AssignedKZGMultiCommitment(vec![]));
         }
-        // If the proof cannot be parsed, or the commitment is not to
-        // `labels.len()` polynomials, do not fail, assign default points instead.
-        // (This allows us to parse dummy proofs.)
-        let com = (transcript.read_value::<KZGMultiCommitment<E>>().ok())
-            .filter(|com| com.0.len() == labels.len())
-            .unwrap_or_else(|| KZGMultiCommitment(vec![KZGCommitment::default(); labels.len()]));
-        let com = <Self as InCircuitPCS<E::Fr>>::assign_commitment(
-            layouter,
-            curve_chip,
-            Value::known(com),
-            labels,
-        )?;
-        <Self as InCircuitPCS<E::Fr>>::common_commitment(layouter, curve_chip, transcript, &com)?;
-        Ok(com)
-    }
-
-    fn common_commitment<T: InCircuitTranscript<E::Fr>>(
-        layouter: &mut impl Layouter<E::Fr>,
-        curve_chip: &CurveChip<E>,
-        transcript: &mut T,
-        commitment: &AssignedKZGMultiCommitment<E>,
-    ) -> Result<(), Error> {
-        let inputs = <Self as InCircuitPCS<E::Fr>>::commitment_as_public_input(
-            layouter, curve_chip, commitment,
-        )?;
-        transcript.common(layouter, &inputs)
+        transcript.read(layouter, curve_chip, labels)
     }
 
     fn commitment_labels(commitment: &Self::AssignedCommitment) -> Vec<PolynomialLabel> {

@@ -13,10 +13,12 @@
 
 //! An assigned verifying key that has been absorbed into a transcript.
 
-use midnight_proofs::{circuit::Layouter, plonk::Error, poly::PolynomialLabel};
+use midnight_proofs::{
+    circuit::Layouter, plonk::Error, poly::PolynomialLabel, transcript::Hashable,
+};
 
 use super::{
-    AssignedVk,
+    AssignedVk, ScalarChip,
     pcs::{AssignedCommitment, InCircuitPCS},
     transcript_gadget::InCircuitTranscript,
 };
@@ -52,9 +54,13 @@ impl<F: CircuitField, PCS: InCircuitPCS<F>> AssignedVk<F, PCS> {
     pub(crate) fn absorb_into<T: InCircuitTranscript<F>>(
         &self,
         layouter: &mut impl Layouter<F>,
+        scalar_chip: &ScalarChip<F>,
         transcript: &mut T,
-    ) -> Result<AbsorbedVk<'_, F, PCS>, Error> {
-        transcript.common_scalar(layouter, &self.transcript_repr)?;
+    ) -> Result<AbsorbedVk<'_, F, PCS>, Error>
+    where
+        F: Hashable<T::Hash>,
+    {
+        transcript.common(layouter, scalar_chip, &self.transcript_repr)?;
         Ok(AbsorbedVk(self))
     }
 }

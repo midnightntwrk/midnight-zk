@@ -28,7 +28,10 @@ use crate::{
     CircuitField,
     field::AssignedNative,
     types::{InnerValue, Instantiable},
-    verifier::{ScalarChip, transcript_gadget::InCircuitTranscript},
+    verifier::{
+        ScalarChip,
+        transcript_gadget::{InCircuitHashable, InCircuitTranscript},
+    },
 };
 
 // ---------------------------------------------------------------------------
@@ -115,7 +118,8 @@ pub trait InCircuitPCS<F: CircuitField>:
     type AssignedCommitment: Clone
         + Debug
         + Instantiable<F>
-        + InnerValue<Element = <Self as PolynomialCommitmentScheme<F>>::Commitment>;
+        + InnerValue<Element = <Self as PolynomialCommitmentScheme<F>>::Commitment>
+        + InCircuitHashable<F, Chip = Self::CommitmentChip, Shape = [PolynomialLabel]>;
 
     /// The in-circuit counterpart of the scheme's verification guard,
     /// produced by [`Self::multi_prepare`].
@@ -156,19 +160,6 @@ pub trait InCircuitPCS<F: CircuitField>:
         labels: &[PolynomialLabel],
     ) -> Result<Self::AssignedCommitment, Error>;
 
-    /// The in-circuit counterpart of [`Instantiable::as_public_input`] for
-    /// commitments.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `commitment` has no assigned points, e.g. if it was created
-    /// with [`Self::fixed_commitment`].
-    fn commitment_as_public_input(
-        layouter: &mut impl Layouter<F>,
-        commitment_chip: &Self::CommitmentChip,
-        commitment: &Self::AssignedCommitment,
-    ) -> Result<Vec<AssignedNative<F>>, Error>;
-
     /// Reads one commitment to `labels.len()` polynomials from the proof
     /// transcript, tagging each polynomial with its label.
     fn read_commitment<T: InCircuitTranscript<F>>(
@@ -179,14 +170,6 @@ pub trait InCircuitPCS<F: CircuitField>:
     ) -> Result<Self::AssignedCommitment, Error>
     where
         Self::Commitment: Hashable<T::Hash>;
-
-    /// Absorbs a commitment into the proof transcript.
-    fn common_commitment<T: InCircuitTranscript<F>>(
-        layouter: &mut impl Layouter<F>,
-        commitment_chip: &Self::CommitmentChip,
-        transcript: &mut T,
-        commitment: &Self::AssignedCommitment,
-    ) -> Result<(), Error>;
 
     /// Squeezes the point at which the protocol opens its committed
     /// polynomials; the default squeezes a plain challenge. Mirrors

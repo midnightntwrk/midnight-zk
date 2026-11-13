@@ -239,6 +239,7 @@ impl<F: CircuitField, PCS: InCircuitPCS<F>> VerifierGadget<F, PCS> {
         transcript: &mut T,
     ) -> Result<VerifierTrace<F, PCS>, Error>
     where
+        F: Hashable<T::Hash>,
         PCS::Commitment: Hashable<T::Hash>,
     {
         let cs = &assigned_vk.cs;
@@ -250,17 +251,18 @@ impl<F: CircuitField, PCS: InCircuitPCS<F>> VerifierGadget<F, PCS> {
         );
 
         // Hash verification key into transcript.
-        let vk_absorbed = assigned_vk.absorb_into(layouter, transcript)?;
+        let vk_absorbed = assigned_vk.absorb_into(layouter, &self.scalar_chip, transcript)?;
         let phase0_committed = argument::committed_from_key(&vk_absorbed);
 
-        assigned_committed_instances.iter().try_for_each(|com| {
-            PCS::common_commitment(layouter, &self.commitment_chip, transcript, com)
-        })?;
+        (assigned_committed_instances.iter())
+            .try_for_each(|com| transcript.common(layouter, &self.commitment_chip, com))?;
 
         for instance in assigned_instances {
-            let n = self.scalar_chip.assign_fixed(layouter, (instance.len() as u64).into())?;
-            transcript.common_scalar(layouter, &n)?;
-            instance.iter().try_for_each(|pi| transcript.common_scalar(layouter, pi))?;
+            let n: AssignedNative<F> =
+                self.scalar_chip.assign_fixed(layouter, (instance.len() as u64).into())?;
+            transcript.common(layouter, &self.scalar_chip, &n)?;
+            (instance.iter())
+                .try_for_each(|pi| transcript.common(layouter, &self.scalar_chip, pi))?;
         }
 
         let logups = cs
@@ -409,7 +411,7 @@ impl<F: CircuitField, PCS: InCircuitPCS<F>> VerifierGadget<F, PCS> {
                 .iter()
                 .map(|(column, rotation)| {
                     if column.index() < nb_committed_instances {
-                        transcript.read_scalar(layouter)
+                        transcript.read(layouter, &self.scalar_chip, &())
                     } else {
                         let instances = assigned_instances[column.index() - nb_committed_instances];
                         let offset = (max_rotation - rotation.0) as usize;
@@ -441,11 +443,19 @@ impl<F: CircuitField, PCS: InCircuitPCS<F>> VerifierGadget<F, PCS> {
             x_rotations.insert(rotation, point);
         }
 
-        let phase0_evaluated = phase0_committed.evaluate(layouter, transcript, cs, &x_rotations)?;
-        let phase1_evaluated = phase1_committed.evaluate(layouter, transcript, cs, &x_rotations)?;
-        let phase2_evaluated = phase2_committed.evaluate(layouter, transcript, cs, &x_rotations)?;
-        let mut quotient_evaluated =
-            quotient_committed.evaluate(layouter, transcript, cs, &x_rotations)?;
+        let phase0_evaluated =
+            phase0_committed.evaluate(layouter, &self.scalar_chip, transcript, cs, &x_rotations)?;
+        let phase1_evaluated =
+            phase1_committed.evaluate(layouter, &self.scalar_chip, transcript, cs, &x_rotations)?;
+        let phase2_evaluated =
+            phase2_committed.evaluate(layouter, &self.scalar_chip, transcript, cs, &x_rotations)?;
+        let mut quotient_evaluated = quotient_committed.evaluate(
+            layouter,
+            &self.scalar_chip,
+            transcript,
+            cs,
+            &x_rotations,
+        )?;
 
         let phase0_evals = &phase0_evaluated.evals_map;
         let phase1_evals = &phase1_evaluated.evals_map;
@@ -941,7 +951,7 @@ pub(crate) mod tests {
             let assigned_inner_pi = native_gadget
                 .assign_many(&mut layouter, &self.inner_instances.transpose_array())?;
 
-            let mut transcript = PoseidonTranscriptGadget::<F>::new(&native_gadget, &poseidon_chip);
+            let mut transcript = PoseidonTranscriptGadget::<F>::new(&poseidon_chip);
             transcript.init_with_proof(&mut layouter, self.inner_proof.clone())?;
             let mut inner_proof_acc = verifier_chip.prepare(
                 &mut layouter,

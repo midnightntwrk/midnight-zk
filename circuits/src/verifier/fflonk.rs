@@ -77,14 +77,6 @@ where
         )
     }
 
-    fn commitment_as_public_input(
-        layouter: &mut impl Layouter<F>,
-        commitment_chip: &Self::CommitmentChip,
-        commitment: &Self::AssignedCommitment,
-    ) -> Result<Vec<AssignedNative<F>>, Error> {
-        PCS::commitment_as_public_input(layouter, commitment_chip, commitment)
-    }
-
     fn read_commitment<T: InCircuitTranscript<F>>(
         layouter: &mut impl Layouter<F>,
         commitment_chip: &Self::CommitmentChip,
@@ -96,15 +88,6 @@ where
     {
         let labels = Self::chunk_labels(labels);
         <PCS as InCircuitPCS<F>>::read_commitment(layouter, commitment_chip, transcript, &labels)
-    }
-
-    fn common_commitment<T: InCircuitTranscript<F>>(
-        layouter: &mut impl Layouter<F>,
-        commitment_chip: &Self::CommitmentChip,
-        transcript: &mut T,
-        commitment: &Self::AssignedCommitment,
-    ) -> Result<(), Error> {
-        PCS::common_commitment(layouter, commitment_chip, transcript, commitment)
     }
 
     fn squeeze_evaluation_point<T: InCircuitTranscript<F>>(
@@ -165,7 +148,7 @@ where
             for point in points {
                 for label in labels {
                     if let Entry::Vacant(entry) = evals.entry((label.clone(), point.clone())) {
-                        entry.insert(transcript.read_scalar(layouter)?);
+                        entry.insert(transcript.read(layouter, scalar_chip, &())?);
                     }
                 }
             }

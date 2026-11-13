@@ -49,7 +49,7 @@ pub use accumulator::{Accumulator, AssignedAccumulator};
 pub use kzg::{AssignedKZGCommitment, AssignedKZGMultiCommitment};
 pub use msm::{AssignedMsm, AssignedPoint, Msm, Point};
 pub use pcs::{AssignedCommitment, CommitmentBases, InCircuitPCS};
-pub use transcript_gadget::{InCircuitTranscript, PoseidonTranscriptGadget};
+pub use transcript_gadget::{InCircuitHashable, InCircuitTranscript, PoseidonTranscriptGadget};
 pub use types::{AssignedG1, CurveChip, ScalarChip};
 pub use verifier_gadget::{UnboundVk, VerifierGadget, vk_hash};
 

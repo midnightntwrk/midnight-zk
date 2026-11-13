@@ -807,7 +807,7 @@ impl ZkStdLib {
     /// [`Self::verifier`] (generated with Poseidon as the Fiat-Shamir
     /// transcript hash).
     pub fn verifier_transcript(&self) -> PoseidonTranscriptGadget<F> {
-        PoseidonTranscriptGadget::new(&self.native_gadget, self.poseidon_chip())
+        PoseidonTranscriptGadget::new(self.poseidon_chip())
     }
 
     /// Chip for computing Poseidon hashes.

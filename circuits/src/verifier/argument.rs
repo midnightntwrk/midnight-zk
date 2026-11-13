@@ -33,6 +33,7 @@ use crate::{
     CircuitField,
     field::AssignedNative,
     verifier::{
+        ScalarChip,
         absorbed_vk::AbsorbedVk,
         pcs::{AssignedCommitment, InCircuitPCS, VerifierQuery},
         transcript_gadget::InCircuitTranscript,
@@ -176,6 +177,7 @@ impl<F: CircuitField, PCS: InCircuitPCS<F>> Committed<F, PCS> {
     pub(crate) fn evaluate<T: InCircuitTranscript<F>>(
         self,
         layouter: &mut impl Layouter<F>,
+        scalar_chip: &ScalarChip<F>,
         transcript_gadget: &mut T,
         cs: &ConstraintSystem<F>,
         x_rotations: &BTreeMap<Rotation, AssignedNative<F>>,
@@ -191,7 +193,7 @@ impl<F: CircuitField, PCS: InCircuitPCS<F>> Committed<F, PCS> {
             for point in eval_points {
                 evals.push(Evaluation {
                     point,
-                    eval: transcript_gadget.read_scalar(layouter)?,
+                    eval: transcript_gadget.read(layouter, scalar_chip, &())?,
                 });
             }
 
