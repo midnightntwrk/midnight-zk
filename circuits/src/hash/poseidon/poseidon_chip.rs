@@ -378,7 +378,7 @@ impl<F: PoseidonField> PoseidonChip<F> {
         self.assign_constants_partial(region, round_batch_index, *offset)?;
 
         let outputs = Value::from_iter(inputs.iter().map(|x| x.value().copied()))
-            .map(|inputs: Vec<F>| {
+            .map_with_result(|inputs: Vec<F>| -> Result<Vec<F>, Error> {
                 let mut state = inputs;
                 let skip_advice_vals = partial_round_cpu_for_circuits(
                     &self.config.pre_computed,
@@ -389,15 +389,15 @@ impl<F: PoseidonField> PoseidonChip<F> {
                     .iter()
                     .zip(skip_advice_vals)
                 {
-                    let _ = region.assign_advice(
+                    region.assign_advice(
                         || "partial round intermediary inputs",
                         *col,
                         *offset,
                         || Value::known(skip_advice),
-                    );
+                    )?;
                 }
-                state
-            })
+                Ok(state)
+            })?
             .transpose_vec(WIDTH);
 
         *offset += 1;
