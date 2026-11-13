@@ -24,7 +24,6 @@ pub use error::IvcError;
 use midnight_circuits::{
     instructions::{BinaryInstructions, EqualityInstructions},
     types::{AssignedBit, AssignedNative},
-    verifier::{BlstrsEmulation, SelfEmulation},
 };
 use midnight_proofs::{
     circuit::{Layouter, Value},
@@ -38,10 +37,9 @@ pub use verifier::IvcVerifier;
 /// The commitment scheme of the IVC proofs, which the IVC circuit also
 /// verifies in-circuit.
 pub type PCS = FflonkKZG<3>;
-pub(crate) type S = BlstrsEmulation;
-pub(crate) type F = <S as SelfEmulation>::F;
-pub(crate) type C = <S as SelfEmulation>::C;
-pub(crate) type E = <S as SelfEmulation>::Engine;
+pub(crate) type F = midnight_curves::Fq;
+pub(crate) type C = midnight_curves::G1Projective;
+pub(crate) type E = midnight_curves::Bls12;
 
 pub mod circuit;
 pub mod error;

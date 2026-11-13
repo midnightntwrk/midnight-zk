@@ -21,7 +21,6 @@
 
 use std::collections::BTreeMap;
 
-use ff::{Field, PrimeField};
 use midnight_proofs::{
     circuit::Layouter,
     plonk::{Any, Column, ColumnType, ConstraintSystem, Error},
@@ -29,28 +28,29 @@ use midnight_proofs::{
 };
 
 use crate::{
+    CircuitField,
     field::AssignedNative,
     instructions::ArithInstructions,
-    verifier::{SelfEmulation, argument::Evaluation, expressions::eval_at},
+    verifier::{ScalarChip, argument::Evaluation, expressions::eval_at},
 };
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn permutation_expressions<S: SelfEmulation>(
-    layouter: &mut impl Layouter<S::F>,
-    scalar_chip: &S::ScalarChip,
-    cs: &ConstraintSystem<S::F>,
-    phase0_evals_map: &BTreeMap<PolynomialLabel, Vec<Evaluation<S>>>,
-    phase2_evals_map: &BTreeMap<PolynomialLabel, Vec<Evaluation<S>>>,
-    advice_evals: &[AssignedNative<S::F>],
-    fixed_evals: &[AssignedNative<S::F>],
-    instance_evals: &[AssignedNative<S::F>],
-    l_0: &AssignedNative<S::F>,
-    l_last: &AssignedNative<S::F>,
-    l_blind: &AssignedNative<S::F>,
-    beta: &AssignedNative<S::F>,
-    gamma: &AssignedNative<S::F>,
-    x: &AssignedNative<S::F>,
-) -> Result<Vec<AssignedNative<S::F>>, Error> {
+pub(crate) fn permutation_expressions<F: CircuitField>(
+    layouter: &mut impl Layouter<F>,
+    scalar_chip: &ScalarChip<F>,
+    cs: &ConstraintSystem<F>,
+    phase0_evals_map: &BTreeMap<PolynomialLabel, Vec<Evaluation<F>>>,
+    phase2_evals_map: &BTreeMap<PolynomialLabel, Vec<Evaluation<F>>>,
+    advice_evals: &[AssignedNative<F>],
+    fixed_evals: &[AssignedNative<F>],
+    instance_evals: &[AssignedNative<F>],
+    l_0: &AssignedNative<F>,
+    l_last: &AssignedNative<F>,
+    l_blind: &AssignedNative<F>,
+    beta: &AssignedNative<F>,
+    gamma: &AssignedNative<F>,
+    x: &AssignedNative<F>,
+) -> Result<Vec<AssignedNative<F>>, Error> {
     let chunk_len = cs.degree() - 2;
     let num_sets = cs.permutation().num_sets(cs.degree());
 
@@ -60,22 +60,22 @@ pub(crate) fn permutation_expressions<S: SelfEmulation>(
 
     // Per set: z_i(x), z_i(omega x) and, for every set but the last,
     // z_i(omega^last x). See `eval_points` in verifier/argument.rs.
-    let z = |i: usize| -> Result<&AssignedNative<S::F>, Error> {
-        eval_at::<S>(
+    let z = |i: usize| -> Result<&AssignedNative<F>, Error> {
+        eval_at::<F>(
             phase2_evals_map,
             &PolynomialLabel::PermutationAccumulator(i),
             0,
         )
     };
-    let z_next = |i: usize| -> Result<&AssignedNative<S::F>, Error> {
-        eval_at::<S>(
+    let z_next = |i: usize| -> Result<&AssignedNative<F>, Error> {
+        eval_at::<F>(
             phase2_evals_map,
             &PolynomialLabel::PermutationAccumulator(i),
             1,
         )
     };
-    let z_last = |i: usize| -> Result<&AssignedNative<S::F>, Error> {
-        eval_at::<S>(
+    let z_last = |i: usize| -> Result<&AssignedNative<F>, Error> {
+        eval_at::<F>(
             phase2_evals_map,
             &PolynomialLabel::PermutationAccumulator(i),
             2,
@@ -83,7 +83,7 @@ pub(crate) fn permutation_expressions<S: SelfEmulation>(
     };
 
     let permutation_evals = (0..cs.permutation().columns.len())
-        .map(|i| eval_at::<S>(phase0_evals_map, &PolynomialLabel::PermutationFixed(i), 0).cloned())
+        .map(|i| eval_at::<F>(phase0_evals_map, &PolynomialLabel::PermutationFixed(i), 0).cloned())
         .collect::<Result<Vec<_>, Error>>()?;
 
     // Enforce only for the first set.
@@ -94,11 +94,11 @@ pub(crate) fn permutation_expressions<S: SelfEmulation>(
         // l_0 * (1 - z_0) computed as l_0 - l_0 * z_0
         scalar_chip.add_and_mul(
             layouter,
-            (S::F::ONE, l_0),
-            (S::F::ZERO, z_0),
-            (S::F::ZERO, l_0),
-            S::F::ZERO,
-            -S::F::ONE,
+            (F::ONE, l_0),
+            (F::ZERO, z_0),
+            (F::ZERO, l_0),
+            F::ZERO,
+            -F::ONE,
         )?
     };
 
@@ -110,11 +110,11 @@ pub(crate) fn permutation_expressions<S: SelfEmulation>(
         // z_l**2 - z_l
         let aux = scalar_chip.add_and_mul(
             layouter,
-            (-S::F::ONE, z_l),
-            (S::F::ZERO, z_l),
-            (S::F::ZERO, z_l),
-            S::F::ZERO,
-            S::F::ONE,
+            (-F::ONE, z_l),
+            (F::ZERO, z_l),
+            (F::ZERO, z_l),
+            F::ZERO,
+            F::ONE,
         )?;
         scalar_chip.mul(layouter, l_last, &aux, None)?
     };
@@ -129,14 +129,14 @@ pub(crate) fn permutation_expressions<S: SelfEmulation>(
             // l_0 * (z_i - z_i_prev)
             scalar_chip.add_and_double_mul(
                 layouter,
-                (S::F::ZERO, l_0),
-                (S::F::ZERO, z_i),
-                (S::F::ZERO, z_i_prev),
-                S::F::ZERO,
-                (S::F::ONE, -S::F::ONE),
+                (F::ZERO, l_0),
+                (F::ZERO, z_i),
+                (F::ZERO, z_i_prev),
+                F::ZERO,
+                (F::ONE, -F::ONE),
             )
         })
-        .collect::<Result<Vec<AssignedNative<S::F>>, Error>>()?;
+        .collect::<Result<Vec<AssignedNative<F>>, Error>>()?;
 
     // And for all the sets we enforce:
     // (1 - (l_last(X) + l_blind(X))) * (
@@ -168,12 +168,8 @@ pub(crate) fn permutation_expressions<S: SelfEmulation>(
                 let aux = scalar_chip.mul(layouter, beta, permutation_eval, None)?;
                 let aux = scalar_chip.linear_combination(
                     layouter,
-                    &[
-                        (S::F::ONE, aux),
-                        (S::F::ONE, gamma.clone()),
-                        (S::F::ONE, eval),
-                    ],
-                    S::F::ZERO,
+                    &[(F::ONE, aux), (F::ONE, gamma.clone()), (F::ONE, eval)],
+                    F::ZERO,
                 )?;
 
                 left = scalar_chip.mul(layouter, &left, &aux, None)?;
@@ -182,7 +178,7 @@ pub(crate) fn permutation_expressions<S: SelfEmulation>(
             let mut right = z(chunk_index)?.clone();
 
             let mut current_delta = {
-                let delta_power = S::F::DELTA.pow_vartime([(chunk_index * chunk_len) as u64]);
+                let delta_power = F::DELTA.pow_vartime([(chunk_index * chunk_len) as u64]);
                 scalar_chip.mul(layouter, beta, x, Some(delta_power))?
             };
 
@@ -197,27 +193,27 @@ pub(crate) fn permutation_expressions<S: SelfEmulation>(
                 let aux = scalar_chip.linear_combination(
                     layouter,
                     &[
-                        (S::F::ONE, eval),
-                        (S::F::ONE, current_delta.clone()),
-                        (S::F::ONE, gamma.clone()),
+                        (F::ONE, eval),
+                        (F::ONE, current_delta.clone()),
+                        (F::ONE, gamma.clone()),
                     ],
-                    S::F::ZERO,
+                    F::ZERO,
                 )?;
                 right = scalar_chip.mul(layouter, &right, &aux, None)?;
                 current_delta =
-                    scalar_chip.mul_by_constant(layouter, &current_delta.clone(), S::F::DELTA)?;
+                    scalar_chip.mul_by_constant(layouter, &current_delta.clone(), F::DELTA)?;
             }
 
-            // (left - &right) * (S::F::ONE - &(l_last + &l_blind))
+            // (left - &right) * (F::ONE - &(l_last + &l_blind))
             let aux1 = scalar_chip.sub(layouter, &left, &right)?;
             let aux2 = scalar_chip.linear_combination(
                 layouter,
-                &[(-S::F::ONE, l_last.clone()), (-S::F::ONE, l_blind.clone())],
-                S::F::ONE,
+                &[(-F::ONE, l_last.clone()), (-F::ONE, l_blind.clone())],
+                F::ONE,
             )?;
             scalar_chip.mul(layouter, &aux1, &aux2, None)
         })
-        .collect::<Result<Vec<AssignedNative<S::F>>, Error>>()?;
+        .collect::<Result<Vec<AssignedNative<F>>, Error>>()?;
 
     Ok([vec![id_1, id_2], ids_3, ids_4].concat())
 }

@@ -13,7 +13,6 @@ use midnight_circuits::{
     hash::poseidon::PoseidonChip,
     instructions::{hash::HashCPU, *},
     types::AssignedNative,
-    verifier::{BlstrsEmulation, SelfEmulation},
 };
 use midnight_proofs::{
     circuit::{Layouter, Value},
@@ -24,8 +23,7 @@ use midnight_zk_stdlib::{
     utils::plonk_api::{SrsSource, load_srs},
 };
 
-type S = BlstrsEmulation;
-type F = <S as SelfEmulation>::F;
+type F = midnight_curves::Fq;
 
 /// IVC state: a counter and a hash-chain value.
 ///

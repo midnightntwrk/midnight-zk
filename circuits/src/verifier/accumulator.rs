@@ -31,6 +31,7 @@ use std::collections::BTreeMap;
 
 use ff::Field;
 use group::Group;
+use midnight_curves::{CurveAffine, pairing::MultiMillerLoop};
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
@@ -46,11 +47,15 @@ use num_bigint::BigUint;
 use num_traits::One;
 
 use crate::{
-    instructions::{HashInstructions, PublicInputInstructions, hash::HashCPU},
+    CircuitField,
+    ecc::curves::{CircuitCurve, WeierstrassCurve},
+    field::{AssignedNative, foreign::params::FieldEmulationParams},
+    instructions::{HashInstructions, hash::HashCPU},
     types::{AssignedBit, InnerValue, Instantiable},
     verifier::{
-        SelfEmulation,
+        ScalarChip,
         msm::{AssignedMsm, Msm, Point},
+        types::{AssignedG1, CurveChip},
         utils::{AssignedBoundedScalar, truncate_off_circuit, truncated_powers},
     },
 };
@@ -61,19 +66,30 @@ use crate::{
 /// a fixed-base scalars part. In order to evaluate the accumulator, one may
 /// thus need to provide the corresponding fixed bases.
 #[derive(Clone, Debug)]
-pub struct Accumulator<S: SelfEmulation> {
-    lhs: Msm<S>,
-    rhs: Msm<S>,
+pub struct Accumulator<E: MultiMillerLoop> {
+    lhs: Msm<E>,
+    rhs: Msm<E>,
 }
 
 /// Type for in-circuit accumulators (in-circuit analog of `Accumulator`).
 #[derive(Clone, Debug)]
-pub struct AssignedAccumulator<C: SelfEmulation> {
-    pub(crate) lhs: AssignedMsm<C>,
-    pub(crate) rhs: AssignedMsm<C>,
+pub struct AssignedAccumulator<E: MultiMillerLoop>
+where
+    E::Fr: CircuitField,
+    E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
+        + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
+{
+    pub(crate) lhs: AssignedMsm<E>,
+    pub(crate) rhs: AssignedMsm<E>,
 }
 
-impl<S: SelfEmulation> Accumulator<S> {
+impl<E: MultiMillerLoop> Accumulator<E>
+where
+    E::Fr: CircuitField,
+    E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
+        + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
+    E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
+{
     /// Converts an off-circuit [`DualMSM`] produced by the KZG verifier into an
     /// [`Accumulator`].
     ///
@@ -83,8 +99,8 @@ impl<S: SelfEmulation> Accumulator<S> {
     /// * otherwise, the term is recorded as `Point::Variable` with the base
     ///   stored inline.
     pub fn from_dual_msm(
-        dual_msm: DualMSM<S::Engine>,
-        fixed_bases: &BTreeMap<PolynomialLabel, S::C>,
+        dual_msm: DualMSM<E>,
+        fixed_bases: &BTreeMap<PolynomialLabel, E::G1>,
     ) -> Self {
         let (lhs, rhs) = dual_msm.split();
         Accumulator {
@@ -98,11 +114,11 @@ impl<S: SelfEmulation> Accumulator<S> {
     /// parameters.
     pub fn check(
         &self,
-        params: &ParamsVerifierKZG<S::Engine>,
-        fixed_bases: &BTreeMap<PolynomialLabel, S::C>,
+        params: &ParamsVerifierKZG<E>,
+        fixed_bases: &BTreeMap<PolynomialLabel, E::G1>,
     ) -> bool {
-        let lhs = MSMKZG::<S::Engine>::from_base(&self.lhs.eval(fixed_bases));
-        let rhs = MSMKZG::<S::Engine>::from_base(&self.rhs.eval(fixed_bases));
+        let lhs = MSMKZG::<E>::from_base(&self.lhs.eval(fixed_bases));
+        let rhs = MSMKZG::<E>::from_base(&self.rhs.eval(fixed_bases));
         DualMSM::new(lhs, rhs).check(params)
     }
 
@@ -115,34 +131,34 @@ impl<S: SelfEmulation> Accumulator<S> {
     ///   `1` and label `NoLabel`.
     pub fn trivial(fixed_base_labels: &[PolynomialLabel]) -> Self {
         let n = fixed_base_labels.len();
-        let id = S::C::identity();
+        let id = E::G1::identity();
 
         Accumulator {
             lhs: Msm::new(
                 &[Point::Variable(id)],
-                &[S::F::ONE],
+                &[E::Fr::ONE],
                 &[PolynomialLabel::NoLabel],
             ),
             rhs: Msm::new(
                 &[vec![Point::Fixed; n], vec![Point::Variable(id)]].concat(),
-                &[vec![S::F::ZERO; n], vec![S::F::ONE]].concat(),
+                &[vec![E::Fr::ZERO; n], vec![E::Fr::ONE]].concat(),
                 &[fixed_base_labels, &[PolynomialLabel::NoLabel]].concat(),
             ),
         }
     }
 
     /// An accumulator a given lhs and rhs terms respectively.
-    pub fn new(lhs: Msm<S>, rhs: Msm<S>) -> Self {
+    pub fn new(lhs: Msm<E>, rhs: Msm<E>) -> Self {
         Accumulator { lhs, rhs }
     }
 
     /// The left-hand side of this accumulator.
-    pub fn lhs(&self) -> Msm<S> {
+    pub fn lhs(&self) -> Msm<E> {
         self.lhs.clone()
     }
 
     /// The right-hand side of this accumulator.
-    pub fn rhs(&self) -> Msm<S> {
+    pub fn rhs(&self) -> Msm<E> {
         self.rhs.clone()
     }
 
@@ -157,7 +173,7 @@ impl<S: SelfEmulation> Accumulator<S> {
     ///
     /// If some of the keys in `fixed_base_scalars` from the internal MSMs do
     /// not appear in the provided `fixed_bases` map.
-    pub fn resolve_fixed_bases(&mut self, fixed_bases: &BTreeMap<PolynomialLabel, S::C>) {
+    pub fn resolve_fixed_bases(&mut self, fixed_bases: &BTreeMap<PolynomialLabel, E::G1>) {
         self.lhs.resolve_fixed_bases(fixed_bases);
         self.rhs.resolve_fixed_bases(fixed_bases);
     }
@@ -174,11 +190,14 @@ impl<S: SelfEmulation> Accumulator<S> {
 
     /// Accumulates several accumulators together. The resulting acc will
     /// satisfy the invariant iff all the accumulators individually do.
-    pub fn accumulate(accs: &[Self]) -> Self {
+    ///
+    /// The accumulation randomness is derived with `H`, which must match the
+    /// hash used by the in-circuit [`AssignedAccumulator::accumulate`].
+    pub fn accumulate<H: HashCPU<E::Fr, E::Fr>>(accs: &[Self]) -> Self {
         let hash_input =
             accs.iter().flat_map(AssignedAccumulator::as_public_input).collect::<Vec<_>>();
 
-        let r = <S::SpongeChip as HashCPU<S::F, S::F>>::hash(&hash_input);
+        let r = H::hash(&hash_input);
         let rs = (0..accs.len()).map(|i| r.pow([i as u64]));
         let rs = rs.map(truncate_off_circuit).collect::<Vec<_>>();
 
@@ -192,18 +211,28 @@ impl<S: SelfEmulation> Accumulator<S> {
     }
 }
 
-impl<S: SelfEmulation> InnerValue for AssignedAccumulator<S> {
-    type Element = Accumulator<S>;
+impl<E: MultiMillerLoop> InnerValue for AssignedAccumulator<E>
+where
+    E::Fr: CircuitField,
+    E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
+        + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
+{
+    type Element = Accumulator<E>;
 
-    fn value(&self) -> Value<Accumulator<S>> {
+    fn value(&self) -> Value<Accumulator<E>> {
         (self.lhs.value())
             .zip(self.rhs.value())
             .map(|(lhs, rhs)| Accumulator { lhs, rhs })
     }
 }
 
-impl<S: SelfEmulation> Instantiable<S::F> for AssignedAccumulator<S> {
-    fn as_public_input(acc: &Accumulator<S>) -> Vec<S::F> {
+impl<E: MultiMillerLoop> Instantiable<E::Fr> for AssignedAccumulator<E>
+where
+    E::Fr: CircuitField,
+    E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
+        + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
+{
+    fn as_public_input(acc: &Accumulator<E>) -> Vec<E::Fr> {
         [
             AssignedMsm::as_public_input(&acc.lhs),
             AssignedMsm::as_public_input(&acc.rhs),
@@ -216,19 +245,26 @@ impl<S: SelfEmulation> Instantiable<S::F> for AssignedAccumulator<S> {
     /// Always returns `None`: the encoding is not invertible, since the size of
     /// the inner MSMs cannot be known from the public input format.
     #[cfg(any(test, feature = "testing"))]
-    fn from_public_input(_fields: &[S::F]) -> Option<Accumulator<S>> {
+    fn from_public_input(_fields: &[E::Fr]) -> Option<Accumulator<E>> {
         None
     }
 }
 
-impl<S: SelfEmulation> AssignedAccumulator<S> {
+impl<E: MultiMillerLoop> AssignedAccumulator<E>
+where
+    E::Fr: CircuitField,
+    E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
+        + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
+{
     /// Converts the off-circuit accumulator into two vectors of scalars. The
     /// first will be used as a normal instance, whereas the second will be
     /// plugged-in in as a committed instance.
     ///
     /// The committed instance part corresponds to the MSM (fixed and non-fixed)
     /// scalars of the accumulator RHS.
-    pub fn as_public_input_with_committed_scalars(acc: &Accumulator<S>) -> (Vec<S::F>, Vec<S::F>) {
+    pub fn as_public_input_with_committed_scalars(
+        acc: &Accumulator<E>,
+    ) -> (Vec<E::Fr>, Vec<E::Fr>) {
         let (rhs_normal_pi, rhs_committed_pi) =
             AssignedMsm::as_public_input_with_committed_scalars(&acc.rhs);
 
@@ -241,19 +277,99 @@ impl<S: SelfEmulation> AssignedAccumulator<S> {
     }
 }
 
-impl<S: SelfEmulation> AssignedAccumulator<S> {
+impl<E: MultiMillerLoop> AssignedAccumulator<E>
+where
+    E::Fr: CircuitField,
+    E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
+        + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
+{
     /// An `AssignedAccumulator` a given lhs and rhs terms respectively.
-    pub fn new(lhs: AssignedMsm<S>, rhs: AssignedMsm<S>) -> Self {
+    pub fn new(lhs: AssignedMsm<E>, rhs: AssignedMsm<E>) -> Self {
         Self { lhs, rhs }
+    }
+
+    /// Witnesses the "collapsed" form of a KZG accumulator.
+    ///
+    /// The expected shape is, as [`AssignedMsm::assign_collapsed`] assigns:
+    /// * LHS: exactly one `Variable` entry labeled `NoLabel`.
+    /// * RHS: one `Fixed` entry per label in `fixed_base_labels` plus one
+    ///   `Variable` entry labeled `NoLabel`.
+    ///
+    /// This shape matches the invariant maintained by the KZG multiopen
+    /// accumulation after `collapse()` has been called off-circuit.
+    ///
+    /// # Errors
+    ///
+    /// If the expected shape is not satisfied.
+    pub fn assign_collapsed(
+        layouter: &mut impl Layouter<E::Fr>,
+        curve_chip: &CurveChip<E>,
+        scalar_chip: &ScalarChip<E::Fr>,
+        fixed_base_labels: &[PolynomialLabel],
+        value: Value<Accumulator<E>>,
+    ) -> Result<Self, Error> {
+        let (lhs, rhs) = value.map(|acc| (acc.lhs, acc.rhs)).unzip();
+        Ok(Self::new(
+            AssignedMsm::assign_collapsed(layouter, curve_chip, scalar_chip, &[], lhs)?,
+            AssignedMsm::assign_collapsed(
+                layouter,
+                curve_chip,
+                scalar_chip,
+                fixed_base_labels,
+                rhs,
+            )?,
+        ))
+    }
+
+    /// The in-circuit counterpart of [`Instantiable::as_public_input`].
+    pub fn in_circuit_as_public_input(
+        &self,
+        layouter: &mut impl Layouter<E::Fr>,
+        curve_chip: &CurveChip<E>,
+    ) -> Result<Vec<AssignedNative<E::Fr>>, Error> {
+        Ok([
+            self.lhs.in_circuit_as_public_input(layouter, curve_chip)?,
+            self.rhs.in_circuit_as_public_input(layouter, curve_chip)?,
+        ]
+        .concat())
+    }
+
+    /// Constrains this accumulator as a public input.
+    pub fn constrain_as_public_input(
+        &self,
+        layouter: &mut impl Layouter<E::Fr>,
+        curve_chip: &CurveChip<E>,
+        scalar_chip: &ScalarChip<E::Fr>,
+    ) -> Result<(), Error> {
+        self.lhs.constrain_as_public_input(layouter, curve_chip, scalar_chip)?;
+        self.rhs.constrain_as_public_input(layouter, curve_chip, scalar_chip)
+    }
+
+    /// Constrains this accumulator as a public input. The (fixed and
+    /// non-fixed) scalars of its RHS are constrained in committed form (as a
+    /// committed instance), whereas the rest of the accumulator is constrained
+    /// as a normal instance.
+    ///
+    /// See [AssignedAccumulator::as_public_input_with_committed_scalars] for
+    /// the off-circuit analog of this function.
+    pub fn constrain_as_public_input_with_committed_scalars(
+        &self,
+        layouter: &mut impl Layouter<E::Fr>,
+        curve_chip: &CurveChip<E>,
+        scalar_chip: &ScalarChip<E::Fr>,
+    ) -> Result<(), Error> {
+        self.lhs.constrain_as_public_input(layouter, curve_chip, scalar_chip)?;
+        self.rhs
+            .constrain_as_public_input_with_committed_scalars(layouter, curve_chip, scalar_chip)
     }
 
     /// Scales the given acc by the given assigned bit.
     ///
     /// This function mutates self.
     pub fn scale_by_bit(
-        layouter: &mut impl Layouter<S::F>,
-        scalar_chip: &S::ScalarChip,
-        cond: &AssignedBit<S::F>,
+        layouter: &mut impl Layouter<E::Fr>,
+        scalar_chip: &ScalarChip<E::Fr>,
+        cond: &AssignedBit<E::Fr>,
         acc: &mut Self,
     ) -> Result<(), Error> {
         let cond_as_bounded = AssignedBoundedScalar {
@@ -279,9 +395,9 @@ impl<S: SelfEmulation> AssignedAccumulator<S> {
     /// This function mutates self.
     pub fn collapse(
         &mut self,
-        layouter: &mut impl Layouter<S::F>,
-        curve_chip: &S::CurveChip,
-        scalar_chip: &S::ScalarChip,
+        layouter: &mut impl Layouter<E::Fr>,
+        curve_chip: &CurveChip<E>,
+        scalar_chip: &ScalarChip<E::Fr>,
     ) -> Result<(), Error> {
         self.lhs.collapse(layouter, curve_chip, scalar_chip, PolynomialLabel::NoLabel)?;
         self.rhs.collapse(layouter, curve_chip, scalar_chip, PolynomialLabel::NoLabel)
@@ -302,10 +418,7 @@ impl<S: SelfEmulation> AssignedAccumulator<S> {
     /// # Panics
     ///
     /// If any `Fixed` label in either MSM is absent from `fixed_bases`.
-    pub fn resolve_fixed_bases(
-        &mut self,
-        fixed_bases: &BTreeMap<PolynomialLabel, S::AssignedPoint>,
-    ) {
+    pub fn resolve_fixed_bases(&mut self, fixed_bases: &BTreeMap<PolynomialLabel, AssignedG1<E>>) {
         self.lhs.resolve_fixed_bases(fixed_bases);
         self.rhs.resolve_fixed_bases(fixed_bases);
     }
@@ -313,22 +426,22 @@ impl<S: SelfEmulation> AssignedAccumulator<S> {
     /// Accumulates several accumulators together. The resulting acc will
     /// satisfy the invariant iff all the accumulators individually do.
     pub fn accumulate(
-        layouter: &mut impl Layouter<S::F>,
-        acc_pi_chip: &impl PublicInputInstructions<S::F, AssignedAccumulator<S>>,
-        scalar_chip: &S::ScalarChip,
-        sponge_chip: &S::SpongeChip,
+        layouter: &mut impl Layouter<E::Fr>,
+        curve_chip: &CurveChip<E>,
+        scalar_chip: &ScalarChip<E::Fr>,
+        hash_chip: &impl HashInstructions<E::Fr, AssignedNative<E::Fr>, AssignedNative<E::Fr>>,
         accs: &[Self],
     ) -> Result<Self, Error> {
         let hash_input = accs
             .iter()
-            .map(|acc| acc_pi_chip.as_public_input(layouter, acc))
+            .map(|acc| acc.in_circuit_as_public_input(layouter, curve_chip))
             .collect::<Result<Vec<_>, Error>>()?
             .into_iter()
             .flatten()
             .collect::<Vec<_>>();
 
-        let r = sponge_chip.hash(layouter, &hash_input)?;
-        let rs = truncated_powers::<S::F>(layouter, scalar_chip, &r, accs.len())?;
+        let r = hash_chip.hash(layouter, &hash_input)?;
+        let rs = truncated_powers::<E::Fr>(layouter, scalar_chip, &r, accs.len())?;
 
         let mut acc = accs[0].clone();
         for (other, ri) in accs.iter().zip(rs).skip(1) {
