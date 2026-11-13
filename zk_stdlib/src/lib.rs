@@ -227,7 +227,6 @@ impl ZkStdLibArch {
         }
         let arch: Self = bincode::decode_from_std_read(reader, standard())
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-        // Out-of-range column counts would make `ZkStdLib::configure` panic.
         if (arch.nb_arith_cols as usize) < MIN_NB_ARITH_COLS
             || arch.nr_pow2range_cols >= arch.nb_arith_cols
         {

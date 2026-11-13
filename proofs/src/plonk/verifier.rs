@@ -165,7 +165,6 @@ where
             .map(|instance| instance.len())
             .max_by(Ord::cmp)
             .unwrap_or_default();
-        // Same bound as the prover: longer instances wrap around the domain.
         if max_instance_len > (vk.n() as usize).saturating_sub(vk.cs.blinding_factors() + 1) {
             return Err(Error::InstanceTooLarge);
         }
