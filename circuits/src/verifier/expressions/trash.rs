@@ -17,7 +17,6 @@
 
 use std::collections::BTreeMap;
 
-use ff::Field;
 use midnight_proofs::{
     circuit::Layouter,
     plonk::{Error, Expression},
@@ -25,28 +24,29 @@ use midnight_proofs::{
 };
 
 use crate::{
+    CircuitField,
     field::AssignedNative,
     instructions::ArithInstructions,
     verifier::{
-        SelfEmulation,
+        ScalarChip,
         argument::Evaluation,
         expressions::{compress_expressions, eval_expression},
     },
 };
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn trash_expressions<S: SelfEmulation>(
-    layouter: &mut impl Layouter<S::F>,
-    scalar_chip: &S::ScalarChip,
+pub(crate) fn trash_expressions<F: CircuitField>(
+    layouter: &mut impl Layouter<F>,
+    scalar_chip: &ScalarChip<F>,
     argument_index: usize,
-    evals_map: &BTreeMap<PolynomialLabel, Vec<Evaluation<S>>>,
-    selector: &Expression<S::F>,
-    constraint_expressions: &[Expression<S::F>],
-    advice_evals: &[AssignedNative<S::F>],
-    fixed_evals: &[AssignedNative<S::F>],
-    instance_evals: &[AssignedNative<S::F>],
-    trash_challenge: &AssignedNative<S::F>,
-) -> Result<Vec<AssignedNative<S::F>>, Error> {
+    evals_map: &BTreeMap<PolynomialLabel, Vec<Evaluation<F>>>,
+    selector: &Expression<F>,
+    constraint_expressions: &[Expression<F>],
+    advice_evals: &[AssignedNative<F>],
+    fixed_evals: &[AssignedNative<F>],
+    instance_evals: &[AssignedNative<F>],
+    trash_challenge: &AssignedNative<F>,
+) -> Result<Vec<AssignedNative<F>>, Error> {
     let trash_label = PolynomialLabel::Trash(argument_index);
     let trash_eval = evals_map
         .get(&trash_label)
@@ -55,7 +55,7 @@ pub(crate) fn trash_expressions<S: SelfEmulation>(
         .eval();
 
     let id = {
-        let compressed = compress_expressions::<S>(
+        let compressed = compress_expressions::<F>(
             layouter,
             scalar_chip,
             advice_evals,
@@ -65,7 +65,7 @@ pub(crate) fn trash_expressions<S: SelfEmulation>(
             constraint_expressions,
         )?;
 
-        let q = eval_expression::<S>(
+        let q = eval_expression::<F>(
             layouter,
             scalar_chip,
             advice_evals,
@@ -77,11 +77,11 @@ pub(crate) fn trash_expressions<S: SelfEmulation>(
         // `compressed - (1 - q) * trash`, computed as `compressed - trash + q * trash`
         scalar_chip.add_and_mul(
             layouter,
-            (S::F::ZERO, &q),
-            (-S::F::ONE, trash_eval),
-            (S::F::ONE, &compressed),
-            S::F::ZERO,
-            S::F::ONE,
+            (F::ZERO, &q),
+            (-F::ONE, trash_eval),
+            (F::ONE, &compressed),
+            F::ZERO,
+            F::ONE,
         )?
     };
 

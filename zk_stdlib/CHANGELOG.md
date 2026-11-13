@@ -13,6 +13,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [3.0.0-rc.1]
 ### Added
+* `ZkStdLib::verifier_transcript`, the in-circuit transcript of the proofs verified with `ZkStdLib::verifier`, and `ZkStdLib::poseidon_chip` [#638](https://github.com/midnightntwrk/midnight-zk/pull/638)
 * Improved SRS loading for tests [#276](https://github.com/midnightntwrk/midnight-zk/pull/276)
 * Expose the Merkle Mountain Range gadget through `ZkStdLib::mmr` [#509](https://github.com/midnightntwrk/midnight-zk/pull/509)
 * `single-h-commitment` feature and improved SRS loading for tests [#276](https://github.com/midnightntwrk/midnight-zk/pull/276)
@@ -31,6 +32,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * `MidnightVK::read` and `MidnightPK::read` reject a `k` outside `1..=F::S` instead of underflowing on `k = 0` [#581](https://github.com/midnightntwrk/midnight-zk/pull/581)
 
 ### Changed
+* BREAKING: `ZkStdLib::verifier::<PCS>()` returns a `VerifierGadget<F, PCS>`, and `MidnightPCS` requires `InCircuitPCS<Fq>` with `CurveChip<Bls12>` as its commitment chip and `AssignedAccumulator<Bls12>` as its verification guard [#638](https://github.com/midnightntwrk/midnight-zk/pull/638)
 * BREAKING: `MidnightVK`, `MidnightPK`, `setup_vk`, `setup_pk`, `prove`, `verify`, `batch_verify` and `cost_model` are generic over the commitment scheme `PCS: MidnightPCS`, which must be given explicitly (e.g. `setup_vk::<_, KZG>`). Serialized verifying keys record their PCS and fail to read under another one. Their format version is 3, and `MidnightVK::read` and `ZkStdLibArch::read` reject other versions, which belong to other proof systems
 * BREAKING: `ZkStdLib::verifier::<PCS>()` is generic over `PCS: MidnightPCS` and verifies proofs committed with `PCS`, which `MidnightPCS` requires to implement `InCircuitPCS<BlstrsEmulation>`. It returns a `VerifierGadget<BlstrsEmulation, PCS>` by value
 * BREAKING: serialized `MidnightPK`s record their PCS, as `MidnightVK`s do, and fail to read under another one

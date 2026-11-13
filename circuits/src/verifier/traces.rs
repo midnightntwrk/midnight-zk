@@ -1,17 +1,14 @@
-use crate::{
-    field::AssignedNative,
-    verifier::{InCircuitPCS, SelfEmulation},
-};
+use crate::{CircuitField, field::AssignedNative, verifier::InCircuitPCS};
 
 /// In-circuit verifier trace of a proof.
 #[derive(Debug)]
-pub struct VerifierTrace<S: SelfEmulation, PCS: InCircuitPCS<S>> {
-    pub(crate) phase0_committed: super::argument::Committed<S, PCS>,
-    pub(crate) phase1_committed: super::argument::Committed<S, PCS>,
-    pub(crate) phase2_committed: super::argument::Committed<S, PCS>,
-    pub(crate) beta: AssignedNative<S::F>,
-    pub(crate) gamma: AssignedNative<S::F>,
-    pub(crate) theta: AssignedNative<S::F>,
-    pub(crate) trash_challenge: AssignedNative<S::F>,
-    pub(crate) y: AssignedNative<S::F>,
+pub struct VerifierTrace<F: CircuitField, PCS: InCircuitPCS<F>> {
+    pub(crate) phase0_committed: super::argument::Committed<F, PCS>,
+    pub(crate) phase1_committed: super::argument::Committed<F, PCS>,
+    pub(crate) phase2_committed: super::argument::Committed<F, PCS>,
+    pub(crate) beta: AssignedNative<F>,
+    pub(crate) gamma: AssignedNative<F>,
+    pub(crate) theta: AssignedNative<F>,
+    pub(crate) trash_challenge: AssignedNative<F>,
+    pub(crate) y: AssignedNative<F>,
 }

@@ -35,18 +35,14 @@ use midnight_aggregation::{
     ivc::PCS,
     multi_circuit_aggregator::{AggregationWitness, InnerCircuitsContext, ProofAggregation},
 };
-use midnight_circuits::{
-    hash::poseidon::PoseidonState,
-    verifier::{BlstrsEmulation, SelfEmulation},
-};
+use midnight_circuits::hash::poseidon::PoseidonState;
 use midnight_zk_stdlib::{
     ZkStdLibArch, prove, setup_pk, setup_vk,
     utils::plonk_api::{SrsSource, load_srs},
 };
 use rand::rngs::OsRng;
 
-type S = BlstrsEmulation;
-type F = <S as SelfEmulation>::F;
+type F = midnight_curves::Fq;
 
 /// Union of all architectures needed by the inner circuits.
 fn inner_arch() -> ZkStdLibArch {
