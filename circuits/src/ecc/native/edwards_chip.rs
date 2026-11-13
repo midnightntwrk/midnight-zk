@@ -756,6 +756,7 @@ impl<C: EdwardsCurve> EccInstructions<C::Base, C> for EccChip<C> {
         scalars: &[Self::Scalar],
         bases: &[Self::Point],
     ) -> Result<Self::Point, Error> {
+        assert_eq!(scalars.len(), bases.len());
         let scaled_points = scalars
             .iter()
             .zip(bases.iter())
