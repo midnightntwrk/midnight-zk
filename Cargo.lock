@@ -203,8 +203,8 @@ dependencies = [
 
 [[package]]
 name = "blake2b_halo2"
-version = "0.2.0"
-source = "git+https://github.com/eryxcoop/blake2b_halo2?rev=9cc1f4f#9cc1f4f497c177303de390d4a32c6794bcad42bb"
+version = "0.3.0-rc.1"
+source = "git+https://github.com/eryxcoop/blake2b_halo2?rev=6d9828c#6d9828c922f5cecf0d4f0666a119581abe7ff950"
 dependencies = [
  "blake2b_simd",
  "ff",
@@ -1803,8 +1803,8 @@ dependencies = [
 
 [[package]]
 name = "sha3-circuit"
-version = "0.1.0"
-source = "git+https://github.com/alexandroszacharakis8/sha3-circuit?rev=38f7492#38f7492b74453ed712e9cd335d1bf781967f0de9"
+version = "0.3.0-rc.1"
+source = "git+https://github.com/alexandroszacharakis8/sha3-circuit?rev=a66a403#a66a403a55bc9531d9084eef2923c6353d763edf"
 dependencies = [
  "blake2b_simd",
  "ff",
