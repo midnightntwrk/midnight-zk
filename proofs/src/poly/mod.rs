@@ -330,6 +330,39 @@ pub struct Polynomial<F, B> {
     pub(crate) _marker: PhantomData<B>,
 }
 
+/// The values of a polynomial in the basis they are given in, for committing.
+#[derive(Clone, Copy, Debug)]
+pub struct CommitPoly<'a, F> {
+    basis: PolynomialBasis,
+    values: &'a [F],
+}
+
+impl<'a, F> CommitPoly<'a, F> {
+    /// The values of `poly`, in its basis.
+    pub fn new<B: PolynomialRepresentation>(poly: &'a Polynomial<F, B>) -> Self {
+        CommitPoly {
+            basis: B::BASIS,
+            values: &poly.values,
+        }
+    }
+
+    /// The basis of the values.
+    pub fn basis(&self) -> PolynomialBasis {
+        self.basis
+    }
+
+    /// The values.
+    pub fn values(&self) -> &'a [F] {
+        self.values
+    }
+}
+
+impl<'a, F, B: PolynomialRepresentation> From<&'a Polynomial<F, B>> for CommitPoly<'a, F> {
+    fn from(poly: &'a Polynomial<F, B>) -> Self {
+        Self::new(poly)
+    }
+}
+
 impl<F: Field> Polynomial<F, LagrangeCoeff> {
     /// Produce the delta encoding of a Lagrange-form polynomial:
     /// b_0 = a_0 ; b_i = a_i - a_{i-1} for all i > 0,
@@ -617,8 +650,6 @@ impl<F: Field> Polynomial<Rational<F>, LagrangeCoeff> {
 ///
 /// Both operands must have been created over the same domain (or with the same
 /// number of coefficients). This invariant is enforced by a runtime assertion.
-/// For coefficient-form polynomials of different lengths see
-/// `Polynomial::padded_add`.
 impl<'a, F: Field, B: PolynomialRepresentation> Add<&'a Polynomial<F, B>> for Polynomial<F, B> {
     type Output = Polynomial<F, B>;
 
@@ -632,8 +663,6 @@ impl<'a, F: Field, B: PolynomialRepresentation> Add<&'a Polynomial<F, B>> for Po
 ///
 /// Both operands must have been created over the same domain (or with the same
 /// number of coefficients). This invariant is enforced by a runtime assertion.
-/// For coefficient-form polynomials of different lengths see
-/// `Polynomial::padded_add`.
 impl<'a, F: Field, B: PolynomialRepresentation> AddAssign<&'a Polynomial<F, B>>
     for Polynomial<F, B>
 {
@@ -651,8 +680,6 @@ impl<'a, F: Field, B: PolynomialRepresentation> AddAssign<&'a Polynomial<F, B>>
 ///
 /// Both operands must have been created over the same domain (or with the same
 /// number of coefficients). This invariant is enforced by a runtime assertion.
-/// For coefficient-form polynomials of different lengths see
-/// `Polynomial::padded_add`.
 impl<F: Field, B: PolynomialRepresentation> Add<Polynomial<F, B>> for Polynomial<F, B> {
     type Output = Polynomial<F, B>;
 

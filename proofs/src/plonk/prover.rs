@@ -18,7 +18,7 @@ use super::{
         Advice, Any, Assignment, Circuit, Column, ConstraintSystem, Fixed, FloorPlanner, Instance,
         Selector,
     },
-    logup,
+    logup, trash,
 };
 use crate::{
     circuit::Value,
@@ -98,8 +98,6 @@ where
     let vk_absorbed = pk.vk.absorb_into(transcript)?;
     let phase0_committed = pk.phase0_polys.committed(&vk_absorbed);
 
-    let domain = &pk.vk.domain;
-
     let instance = compute_instances(params, pk, instances, nb_committed_instances, transcript)?;
 
     let advice_polys = parse_advices(pk, circuit, instances, &mut rng)?;
@@ -117,52 +115,16 @@ where
     let mult_blinding_count = pk.vk.cs.blinding_factors() + 1;
     let mult_blindings: Vec<Vec<F>> = sample_blindings(num_lookups, mult_blinding_count);
 
-    // Compute the multiplicities columns in parallel. They are committed to
-    // below, as the phase1 argument group.
-    let logup_multiplicities: Vec<logup::prover::ComputedMultiplicities<F>> = {
-        let logup_args: Vec<_> =
-            pk.vk.cs.lookups.iter().map(|l| l.chunk_by_degree(pk.vk.cs.degree())).collect();
-        logup_args
-            .par_iter()
-            .enumerate()
-            .zip(mult_blindings.par_iter())
-            .map(|((argument_index, logup), blinds)| {
-                logup.compute_multiplicities_parallel(
-                    argument_index,
-                    pk,
-                    &advice_polys,
-                    &pk.fixed_values,
-                    &instance.instance_values,
-                    blinds,
-                )
-            })
-            .collect::<Result<Vec<_>, Error>>()?
-    };
-
-    let logup_multiplicities_len = logup_multiplicities.len();
-    // The advice columns and the multiplicities form the phase1 group.
-    // TODO: Check the multiplicities clone - see if we can remove it.
+    let (multiplicities, multiplicities_polys) = compute_multiplicities(
+        pk,
+        &advice_polys,
+        &instance.instance_values,
+        &mult_blindings,
+    )?;
     let advice_labels = pk.vk.cs.advice_labels();
-    let mut phase1_polys_map: BTreeMap<PolynomialLabel, Polynomial<F, LagrangeCoeff>> =
-        BTreeMap::new();
-
-    for (label, poly) in advice_labels.iter().cloned().zip(advice_polys) {
-        if phase1_polys_map.insert(label, poly).is_some() {
-            return Err(Error::DuplicatedLabel);
-        }
-    }
-
-    for c in logup_multiplicities.iter() {
-        let label = PolynomialLabel::LogupMultiplicities(c.argument_index);
-        if phase1_polys_map.insert(label, c.multiplicities.clone()).is_some() {
-            return Err(Error::DuplicatedLabel);
-        }
-    }
-
-    let phase1_committed = argument::prover::Committed::commit::<CS, T, _>(
+    let phase1_committed = argument::prover::Committed::commit::<CS, T>(
         params,
-        phase1_polys_map,
-        Polynomial::to_delta,
+        phase1_polys(&pk.vk.cs, advice_polys, multiplicities_polys)?,
         transcript,
     )?;
 
@@ -181,10 +143,7 @@ where
     let blinding_factors = pk.vk.cs.blinding_factors();
     let num_perm_sets = pk.vk.cs.permutation.num_sets(pk.vk.cs_degree);
     let perm_blindings: Vec<Vec<F>> = sample_blindings(num_perm_sets, blinding_factors);
-    let logup_blindings: Vec<Vec<F>> = sample_blindings(logup_multiplicities_len, blinding_factors);
-
-    let mut phase2_polys_map: BTreeMap<PolynomialLabel, Polynomial<F, LagrangeCoeff>> =
-        BTreeMap::new();
+    let logup_blindings: Vec<Vec<F>> = sample_blindings(num_lookups, blinding_factors);
 
     let perm_z_polys = pk.vk.cs.permutation.compute_z_polys::<F, CS>(
         pk,
@@ -196,70 +155,25 @@ where
         perm_blindings,
     );
 
-    for (i, poly) in perm_z_polys.into_iter().enumerate() {
-        if phase2_polys_map
-            .insert(PolynomialLabel::PermutationAccumulator(i), poly)
-            .is_some()
-        {
-            return Err(Error::DuplicatedLabel);
-        }
-    }
+    let logderivatives = compute_logderivatives(
+        pk,
+        multiplicities,
+        &phase1_committed,
+        theta,
+        beta,
+        logup_blindings,
+    )?;
 
-    let logup_polys_maps = logup_multiplicities
-        .into_par_iter()
-        .zip(logup_blindings.into_par_iter())
-        .map(|(lookup, blindings)| lookup.compute_logderivative(pk, theta, beta, blindings))
-        .collect::<Result<Vec<_>, Error>>()?
-        .into_par_iter()
-        .map(|c| {
-            BTreeMap::from_iter(
-                [
-                    c.helper_polys_lagrange
-                        .into_par_iter()
-                        .enumerate()
-                        .map(|(j, p)| {
-                            (
-                                PolynomialLabel::LogupHelper(c.argument_index, j),
-                                domain.lagrange_from_vec(p),
-                            )
-                        })
-                        .collect::<Vec<_>>(),
-                    vec![(
-                        PolynomialLabel::LogupAggregator(c.argument_index),
-                        c.aggregator_poly,
-                    )],
-                ]
-                .concat(),
-            )
-        })
-        .collect::<Vec<_>>();
-
-    for polys_map in logup_polys_maps {
-        for (label, p) in polys_map {
-            if phase2_polys_map.insert(label, p).is_some() {
-                return Err(Error::DuplicatedLabel);
-            }
-        }
-    }
-
-    for (i, trash) in pk.vk.cs.trashcans.iter().enumerate() {
-        let p = trash.compute_trash_poly(
-            domain,
+    let phase2_committed = argument::prover::Committed::commit::<CS, T>(
+        params,
+        phase2_polys(
+            pk,
+            perm_z_polys,
+            logderivatives,
             trash_challenge,
             phase1_committed.polys_of(&advice_labels),
-            &pk.fixed_values,
             &instance.instance_values,
-        );
-
-        if phase2_polys_map.insert(PolynomialLabel::Trash(i), p).is_some() {
-            return Err(Error::DuplicatedLabel);
-        }
-    }
-
-    let phase2_committed = argument::prover::Committed::commit::<CS, T, _>(
-        params,
-        phase2_polys_map,
-        Polynomial::to_double_delta,
+        )?,
         transcript,
     )?;
 
@@ -565,6 +479,145 @@ where
     Ok(advice_polys)
 }
 
+/// The polynomials of a phase group, keyed by their label.
+pub(crate) type PhasePolys<F> = BTreeMap<PolynomialLabel, Polynomial<F, LagrangeCoeff>>;
+
+/// Inserts `poly` under `label`, failing if the label is already taken.
+fn insert_unique<F: PrimeField>(
+    polys: &mut PhasePolys<F>,
+    label: PolynomialLabel,
+    poly: Polynomial<F, LagrangeCoeff>,
+) -> Result<(), Error> {
+    match polys.insert(label, poly) {
+        Some(_) => Err(Error::DuplicatedLabel),
+        None => Ok(()),
+    }
+}
+
+/// The multiplicities of every lookup argument, in parallel, each with its
+/// blindings: the evaluations the logderivative polynomials are computed
+/// from, and the multiplicities polynomials in argument order.
+#[allow(clippy::type_complexity)]
+pub(crate) fn compute_multiplicities<F, CS>(
+    pk: &ProvingKey<F, CS>,
+    advice_values: &[Polynomial<F, LagrangeCoeff>],
+    instance_values: &[Polynomial<F, LagrangeCoeff>],
+    blindings: &[Vec<F>],
+) -> Result<
+    (
+        Vec<logup::prover::ComputedMultiplicities<F>>,
+        Vec<Polynomial<F, LagrangeCoeff>>,
+    ),
+    Error,
+>
+where
+    F: WithSmallOrderMulGroup<3> + Hash + Ord + FromUniformBytes<64>,
+    CS: PolynomialCommitmentScheme<F>,
+{
+    let logup_args: Vec<_> =
+        pk.vk.cs.lookups.iter().map(|l| l.chunk_by_degree(pk.vk.cs.degree())).collect();
+    Ok(logup_args
+        .par_iter()
+        .enumerate()
+        .zip(blindings.par_iter())
+        .map(|((argument_index, logup), blinds)| {
+            logup.compute_multiplicities_parallel(
+                argument_index,
+                pk,
+                advice_values,
+                &pk.fixed_values,
+                instance_values,
+                blinds,
+            )
+        })
+        .collect::<Result<Vec<_>, Error>>()?
+        .into_iter()
+        .unzip())
+}
+
+/// The phase1 group: the advice columns and the lookup multiplicities.
+pub(crate) fn phase1_polys<F: PrimeField>(
+    cs: &ConstraintSystem<F>,
+    advice_polys: Vec<Polynomial<F, LagrangeCoeff>>,
+    multiplicities_polys: Vec<Polynomial<F, LagrangeCoeff>>,
+) -> Result<PhasePolys<F>, Error> {
+    let mut polys = BTreeMap::new();
+    for (label, poly) in cs.advice_labels().into_iter().zip(advice_polys) {
+        insert_unique(&mut polys, label, poly)?;
+    }
+    for (i, poly) in multiplicities_polys.into_iter().enumerate() {
+        insert_unique(&mut polys, PolynomialLabel::LogupMultiplicities(i), poly)?;
+    }
+    Ok(polys)
+}
+
+/// The logderivative polynomials of every lookup argument, in parallel, each
+/// with its blindings, from its multiplicities in the phase1 group.
+pub(crate) fn compute_logderivatives<F, CS>(
+    pk: &ProvingKey<F, CS>,
+    multiplicities: Vec<logup::prover::ComputedMultiplicities<F>>,
+    phase1_committed: &argument::prover::Committed<F, LagrangeCoeff>,
+    theta: F,
+    beta: F,
+    blindings: Vec<Vec<F>>,
+) -> Result<Vec<logup::prover::ComputedLogderivative<F>>, Error>
+where
+    F: WithSmallOrderMulGroup<3> + Hash + Ord + FromUniformBytes<64>,
+    CS: PolynomialCommitmentScheme<F>,
+{
+    multiplicities
+        .into_par_iter()
+        .zip(blindings.into_par_iter())
+        .map(|(lookup, blindings)| {
+            let multiplicities = phase1_committed
+                .poly(&PolynomialLabel::LogupMultiplicities(lookup.argument_index))
+                .expect("the phase1 group has no multiplicities for the lookup argument");
+            lookup.compute_logderivative(pk, theta, beta, multiplicities, blindings)
+        })
+        .collect()
+}
+
+/// The phase2 group: the permutation accumulators, the logup helpers and
+/// aggregators, and the trash polynomials.
+pub(crate) fn phase2_polys<F, CS>(
+    pk: &ProvingKey<F, CS>,
+    perm_z_polys: Vec<Polynomial<F, LagrangeCoeff>>,
+    logderivatives: Vec<logup::prover::ComputedLogderivative<F>>,
+    trash_challenge: F,
+    advice_values: &[Polynomial<F, LagrangeCoeff>],
+    instance_values: &[Polynomial<F, LagrangeCoeff>],
+) -> Result<PhasePolys<F>, Error>
+where
+    F: WithSmallOrderMulGroup<3>,
+    CS: PolynomialCommitmentScheme<F>,
+{
+    let domain = pk.vk.get_domain();
+    let mut polys = BTreeMap::new();
+    for (i, poly) in perm_z_polys.into_iter().enumerate() {
+        insert_unique(&mut polys, PolynomialLabel::PermutationAccumulator(i), poly)?;
+    }
+    for c in logderivatives {
+        for (j, helper) in c.helper_polys_lagrange.into_iter().enumerate() {
+            let label = PolynomialLabel::LogupHelper(c.argument_index, j);
+            insert_unique(&mut polys, label, domain.lagrange_from_vec(helper))?;
+        }
+        let label = PolynomialLabel::LogupAggregator(c.argument_index);
+        insert_unique(&mut polys, label, c.aggregator_poly)?;
+    }
+    for (i, evaluator) in pk.ev.trashcans_flat.iter().enumerate() {
+        let poly = trash::prover::compute_trash_poly(
+            domain,
+            evaluator,
+            trash_challenge,
+            advice_values,
+            &pk.fixed_values,
+            instance_values,
+        );
+        insert_unique(&mut polys, PolynomialLabel::Trash(i), poly)?;
+    }
+    Ok(polys)
+}
+
 pub(super) fn compute_nu_poly<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>>(
     pk: &ProvingKey<F, CS>,
     trace: &ProverTrace<'_, F>,
@@ -676,7 +729,7 @@ where
         })
         .collect();
 
-    argument::prover::Committed::commit::<CS, T, _>(params, h_limbs, Polynomial::clone, transcript)
+    argument::prover::Committed::commit_coeff::<CS, T>(params, h_limbs, transcript)
 }
 
 /// Blinds the limbs `h_k(X)` of `h(X) = Σ_k X^{k(n-2)} h_k(X)`, of `n-2`

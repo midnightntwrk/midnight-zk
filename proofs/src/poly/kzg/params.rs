@@ -14,7 +14,7 @@ use midnight_curves::{
 use rand_core::RngCore;
 
 use crate::{
-    poly::{Coeff, LagrangeCoeff, LagrangeDeltaCoeff, PolynomialBasis, PolynomialRepresentation},
+    poly::PolynomialBasis,
     utils::{
         SerdeFormat,
         arithmetic::{CurveAffine, g_to_lagrange, parallelize},
@@ -103,9 +103,9 @@ impl<E: Engine + Debug> ParamsKZG<E>
 where
     E::G1Affine: CurveAffine,
 {
-    /// Return the SRS bases corresponding to the polynomial representation `B`.
-    pub fn bases<B: PolynomialRepresentation>(&self) -> &[E::G1Affine] {
-        match B::BASIS {
+    /// Return the SRS bases corresponding to the polynomial basis `basis`.
+    pub fn bases(&self, basis: PolynomialBasis) -> &[E::G1Affine] {
+        match basis {
             PolynomialBasis::Coeff => &self.g,
             PolynomialBasis::Lagrange => &self.g_lagrange,
             PolynomialBasis::LagrangeDelta => &self.g_lagrange_delta,
@@ -117,31 +117,27 @@ where
     }
 
     /// The bases of the [`Residue`] `i` modulo `t`, for committing to
-    /// `X^i f(X^t)` from the `n` values of `f` in the representation `B`.
+    /// `X^i f(X^t)` from the `n` values of `f` in the basis `basis`.
     ///
     /// # Panics
     ///
-    /// If `B` is the extended Lagrange basis, if `t·n` is larger than the SRS,
-    /// or if `B` is Lagrange or one of its delta forms and `n` is not a power
-    /// of two.
-    pub(crate) fn residue_bases<B: PolynomialRepresentation>(
+    /// If `basis` is the extended Lagrange basis, if `t·n` is larger than the
+    /// SRS, or if `basis` is Lagrange or one of its delta forms and `n` is not
+    /// a power of two.
+    pub(crate) fn residue_bases(
         &self,
+        basis: PolynomialBasis,
         t: usize,
         n: usize,
         i: usize,
     ) -> Arc<[E::G1Affine]> {
-        let residue = Residue {
-            basis: B::BASIS,
-            t,
-            n,
-            i,
-        };
+        let residue = Residue { basis, t, n, i };
         if let Some(bases) =
             self.residue_bases.read().expect("residue bases lock poisoned").get(&residue)
         {
             return bases.clone();
         }
-        let bases: Arc<[_]> = match B::BASIS {
+        let bases: Arc<[_]> = match basis {
             PolynomialBasis::Coeff => {
                 assert!(
                     t * n <= self.g.len(),
@@ -151,13 +147,17 @@ where
             }
             PolynomialBasis::Lagrange => {
                 assert!(n.is_power_of_two(), "no Lagrange residue bases of size {n}");
-                g_to_lagrange(&self.residue_bases::<Coeff>(t, n, i), n.ilog2()).into()
+                g_to_lagrange(
+                    &self.residue_bases(PolynomialBasis::Coeff, t, n, i),
+                    n.ilog2(),
+                )
+                .into()
             }
             PolynomialBasis::LagrangeDelta => {
-                suffix_sum(&self.residue_bases::<LagrangeCoeff>(t, n, i)).into()
+                suffix_sum(&self.residue_bases(PolynomialBasis::Lagrange, t, n, i)).into()
             }
             PolynomialBasis::LagrangeDoubleDelta => {
-                suffix_sum(&self.residue_bases::<LagrangeDeltaCoeff>(t, n, i)).into()
+                suffix_sum(&self.residue_bases(PolynomialBasis::LagrangeDelta, t, n, i)).into()
             }
             basis => panic!("no residue bases in the {basis:?} basis"),
         };

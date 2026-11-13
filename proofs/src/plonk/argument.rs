@@ -4,7 +4,7 @@ use ff::PrimeField;
 
 use crate::{
     plonk::ConstraintSystem,
-    poly::{PolynomialLabel, Rotation},
+    poly::{PolynomialBasis, PolynomialLabel, Rotation},
 };
 
 pub(crate) mod prover;
@@ -35,6 +35,22 @@ pub(crate) fn rotations<F: PrimeField>(cs: &ConstraintSystem<F>) -> BTreeSet<Rot
     .chain(cs.instance_queries.iter().map(|&(_, rotation)| rotation))
     .chain(cs.fixed_queries.iter().map(|&(_, rotation)| rotation))
     .collect()
+}
+
+/// The basis the prover commits the polynomial of the given label in, the one
+/// its values are the sparsest in: the delta forms zero the rows where
+/// multiplicities, accumulators, helpers and trash polynomials are constant,
+/// and those where the logup aggregators are linear.
+pub(crate) fn commit_basis(label: &PolynomialLabel) -> PolynomialBasis {
+    match label {
+        PolynomialLabel::Advice(_) => PolynomialBasis::Lagrange,
+        PolynomialLabel::LogupMultiplicities(_)
+        | PolynomialLabel::PermutationAccumulator(_)
+        | PolynomialLabel::LogupHelper(..)
+        | PolynomialLabel::Trash(_) => PolynomialBasis::LagrangeDelta,
+        PolynomialLabel::LogupAggregator(_) => PolynomialBasis::LagrangeDoubleDelta,
+        label => panic!("no commit basis for {label}"),
+    }
 }
 
 /// The evaluation points at which the polynomial of the given label needs to be
