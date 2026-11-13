@@ -13,9 +13,13 @@
 
 //! Shared utilities for foreign EC chips.
 
-use std::{cmp::max, collections::HashMap, hash::Hash};
+use std::{
+    cmp::{max, min},
+    collections::HashMap,
+    hash::Hash,
+};
 
-use ff::Field;
+use ff::{Field, PrimeField};
 use group::Group;
 use midnight_proofs::{
     circuit::{Layouter, Value},
@@ -112,7 +116,8 @@ where
     for (base, scalar) in bases.iter().zip(scalars.iter()) {
         if let Some(acc) = cache_bases.insert(base.clone(), scalar.clone()) {
             let new_scalar = scalar_chip.add(layouter, &acc.0, &scalar.0)?;
-            let new_bound = max(acc.1, scalar.1) + 1;
+            // The sum is reduced modulo the scalar field order.
+            let new_bound = min(max(acc.1, scalar.1) + 1, C::ScalarField::NUM_BITS as usize);
             cache_bases.insert(base.clone(), (new_scalar, new_bound));
         } else {
             unique_bases.push(base.clone());

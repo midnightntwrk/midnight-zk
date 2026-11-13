@@ -1181,7 +1181,9 @@ where
         let mut x = self.add_constant(layouter, x, K::ONE)?;
         if enforce_canonical {
             x = self.make_canonical(layouter, &x)?;
-        };
+        } else {
+            x = self.normalize(layouter, &x)?;
+        }
         let mut bits = vec![];
         x.limb_values
             .iter()
@@ -1340,7 +1342,8 @@ where
         // When nb_bits_per_chunk does not divide P::LOG2_BASE we cannot proceed as above,
         // let's split in bits and then aggregate chunks, this is a bit less efficient.
         else {
-            let bits = self.assigned_to_le_bits(layouter, x, None, false)?;
+            let nb_bits = nb_chunks.map(|n| n * nb_bits_per_chunk);
+            let bits = self.assigned_to_le_bits(layouter, x, nb_bits, false)?;
             bits.chunks(nb_bits_per_chunk)
                 .map(|bits_of_chunk| {
                     self.native_gadget.assigned_from_le_bits(layouter, bits_of_chunk)

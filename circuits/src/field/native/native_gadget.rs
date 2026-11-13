@@ -257,9 +257,7 @@ where
         value: Value<F>,
         bound: &BigUint,
     ) -> Result<AssignedNative<F>, Error> {
-        if bound.is_zero() {
-            return self.assign_fixed(layouter, F::ZERO);
-        }
+        assert!(!bound.is_zero(), "the bound must be positive");
 
         // compute largest k such that 2^k <= bound
         let k = (bound.bits() - 1) as usize;
@@ -277,6 +275,8 @@ where
         x: &AssignedNative<F>,
         bound: &BigUint,
     ) -> Result<(), Error> {
+        assert!(!bound.is_zero(), "the bound must be positive");
+
         if let Some(current_bound) = self.constrained_cells.borrow().get(x)
             && current_bound <= bound
         {
