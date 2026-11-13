@@ -870,32 +870,33 @@ where
         scalar: C::ScalarField,
         base: &Self::Point,
     ) -> Result<Self::Point, Error> {
+        // `mul_by_u128` and `msm_by_le_bits` are incomplete (they cannot take the
+        // identity). Change the base in case it is the identity and then change
+        // the result back when necessary.
+        let id = self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
+        let g = self.assign_fixed(layouter, C::CryptographicGroup::generator())?;
+        let p = self.select(layouter, &base.is_id, &g, base)?;
+
         // We leverage the existing implementation for `mul_by_u128` when the scalar has
         // 128 bits. Otherwise, we just default to a standard multiplication by an
         // assigned-fixed scalar.
         let scalar_as_big = scalar.to_biguint();
-        if scalar_as_big.bits() <= 128 {
+        let r = if scalar_as_big.bits() <= 128 {
             let n = scalar_as_big
                 .to_u64_digits()
                 .iter()
                 .rev()
                 .fold(0u128, |acc, limb| (acc << 64) | (*limb as u128));
-
-            // `mul_by_u128` is incomplete (it cannot take the identity).
-            // Change the base in case it is the identity and then change
-            // the result back when necessary.
-            let id = self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
-            let g = self.assign_fixed(layouter, C::CryptographicGroup::generator())?;
-            let p = self.select(layouter, &base.is_id, &g, base)?;
-            let r = self.mul_by_u128(layouter, n, &p)?;
-            return self.select(layouter, &base.is_id, &id, &r);
-        }
-        let scalar_bits = scalar
-            .to_bits_le(None)
-            .iter()
-            .map(|b| self.native_gadget.assign_fixed(layouter, *b))
-            .collect::<Result<Vec<_>, Error>>()?;
-        self.msm_by_le_bits(layouter, &[scalar_bits], std::slice::from_ref(base))
+            self.mul_by_u128(layouter, n, &p)?
+        } else {
+            let scalar_bits = scalar
+                .to_bits_le(None)
+                .iter()
+                .map(|b| self.native_gadget.assign_fixed(layouter, *b))
+                .collect::<Result<Vec<_>, Error>>()?;
+            self.msm_by_le_bits(layouter, &[scalar_bits], &[p])?
+        };
+        self.select(layouter, &base.is_id, &id, &r)
     }
 
     fn point_from_coordinates(
