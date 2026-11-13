@@ -923,8 +923,13 @@ fn compact<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> Option<(Vec<C::
 ///
 /// # Panics
 ///
-/// If `coeffs` and `bases` have different lengths.
+/// If `coeffs` and `bases` have different lengths, or if the curve constant
+/// `a` is not zero.
 pub fn msm_pippenger<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
+    assert!(
+        bool::from(C::a().is_zero()),
+        "msm_pippenger requires a curve with a = 0"
+    );
     assert_eq!(coeffs.len(), bases.len());
     if let Some((coeffs, bases)) = compact(coeffs, bases) {
         return msm_with_window(&coeffs, &bases, window_size(bases.len()));
