@@ -10,7 +10,11 @@ use ff::Field;
 use rand_core::RngCore;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
-use super::{fp::Fp, fp2::Fp2, fp6::Fp6};
+use super::{
+    fp::Fp,
+    fp2::{Fp2, fp2_neg_assign},
+    fp6::Fp6,
+};
 
 /// This represents an element $c_0 + c_1 w$ of $\mathbb{F}_{p^12} =
 /// \mathbb{F}_{p^6} / w^2 - v$.
@@ -146,14 +150,7 @@ impl Neg for Fp12 {
 
     #[inline]
     fn neg(mut self) -> Fp12 {
-        unsafe {
-            blst_fp2_cneg(&mut self.0.fp6[0].fp2[0], &self.0.fp6[0].fp2[0], true);
-            blst_fp2_cneg(&mut self.0.fp6[0].fp2[1], &self.0.fp6[0].fp2[1], true);
-            blst_fp2_cneg(&mut self.0.fp6[0].fp2[2], &self.0.fp6[0].fp2[2], true);
-            blst_fp2_cneg(&mut self.0.fp6[1].fp2[0], &self.0.fp6[1].fp2[0], true);
-            blst_fp2_cneg(&mut self.0.fp6[1].fp2[1], &self.0.fp6[1].fp2[1], true);
-            blst_fp2_cneg(&mut self.0.fp6[1].fp2[2], &self.0.fp6[1].fp2[2], true);
-        }
+        (self.0.fp6.iter_mut()).for_each(|c| c.fp2.iter_mut().for_each(fp2_neg_assign));
         self
     }
 }
