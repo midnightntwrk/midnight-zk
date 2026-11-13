@@ -29,7 +29,7 @@ use super::{
 use crate::{
     CircuitField,
     field::{
-        NativeChip, NativeConfig,
+        AssignNative, NativeChip, NativeConfig,
         decomposition::cpu_utils::{
             decompose_in_variable_limbsizes, variable_limbsize_coefficients,
         },
@@ -336,10 +336,7 @@ impl<F: CircuitField> CoreDecompositionInstructions<F> for P2RDecompositionChip<
                 limb_sizes.as_slice(),
             )?;
 
-            layouter.assign_region(
-                || "copy",
-                |mut region| region.constrain_equal(x.cell(), y.cell()),
-            )?;
+            layouter.assign_region(|| "copy", |mut region| x.constrain_equal(&mut region, &y))?;
 
             Ok(assigned_limbs)
         }
@@ -384,7 +381,7 @@ impl<F: CircuitField> CoreDecompositionInstructions<F> for P2RDecompositionChip<
                         )?;
 
                     // copy constraint the linear combination result to equal the decomposed value
-                    region.constrain_equal(assigned_result.cell(), x.cell())?;
+                    x.constrain_equal(&mut region, &assigned_result)?;
 
                     Ok(assigned_limbs)
                 },
@@ -460,7 +457,7 @@ impl<F: CircuitField> CoreDecompositionInstructions<F> for P2RDecompositionChip<
                         .iter()
                         .zip(self.config.pow2range_config.val_cols.iter())
                         .map(|(value, col)| {
-                            region.assign_advice(|| "assign small", *col, 0, || *value)
+                            region.assign_native(|| "assign small", *col, 0, || *value)
                         })
                         .collect()
                 },

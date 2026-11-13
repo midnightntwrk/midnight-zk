@@ -175,7 +175,7 @@ pub(crate) mod tests {
                 },
             )?;
 
-            let cond = AssignedBit(cond_value);
+            let cond = AssignedBit(cond_value.into());
 
             cost_measure_start(&mut layouter);
             match self.operation {

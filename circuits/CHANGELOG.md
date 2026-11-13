@@ -10,6 +10,9 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 * `verifier::InCircuitKZGEngine`, the `KZGEngine`s whose KZG proofs can be verified in-circuit, bounding the KZG types of the in-circuit verifier [#644](https://github.com/midnightntwrk/midnight-zk/pull/644)
 ### Changed
+* `NativeChip::assign` and `assign_many` create elements that are not assigned to a cell yet: an element is assigned to the first cell it is copied to (or to the cell of an element it is constrained to be equal to), saving the rows of the assignment. Unused elements are never assigned. This changes the verifying keys of all circuits [#620](https://github.com/midnightntwrk/midnight-zk/pull/620)
+* `AssignedNative<F>` is a struct instead of an alias of `AssignedCell<F, F>`; convert from and to `AssignedCell<F, F>` with `From`. Two `AssignedNative`s are equal iff one is a clone of the other [#620](https://github.com/midnightntwrk/midnight-zk/pull/620)
+
 ### Removed
 
 ## [8.0.0-rc.1]
