@@ -38,6 +38,10 @@ use crate::{
 /// Commit to a vector of raw instances. This function can be used to prepare
 /// the committed instances that the verifier will be provided with when this
 /// feature is enabled.
+///
+/// # Panics
+///
+/// If `instances` is longer than the domain.
 pub fn commit_to_instances<F, CS: PolynomialCommitmentScheme<F>>(
     params: &CS::Parameters,
     domain: &EvaluationDomain<F>,
@@ -47,6 +51,7 @@ where
     F: WithSmallOrderMulGroup<3> + Ord + FromUniformBytes<64>,
 {
     let mut poly = domain.empty_lagrange();
+    assert!(instances.len() <= poly.len());
     for (poly_eval, value) in poly.iter_mut().zip(instances.iter()) {
         *poly_eval = *value;
     }
