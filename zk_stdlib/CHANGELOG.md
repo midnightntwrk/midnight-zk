@@ -10,7 +10,6 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 ### Changed
 * Point `sha3-circuit` at a revision that requires `midnight-proofs` and `midnight-curves` by crates.io version instead of from the midnight-zk main branch, so that crates patching them to a midnight-zk tag get a single copy of each
-* Point `sha3-circuit` and `blake2b_halo2` at revisions versioned `0.3.0-rc.1`, as their previous versions (`0.1.0` and `0.2.0`) are also on crates.io for older midnight-proofs, and nix's `importCargoLock` cannot vendor one name and version from two sources
 ### Removed
 
 ## [3.0.0-rc.1]
