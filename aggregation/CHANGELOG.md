@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 ## [Unreleased]
 ### Added
 * `fewer-point-sets` feature [#281](https://github.com/midnightntwrk/midnight-zk/pull/281)
+* `ivc::setup_with_pcs`, which sets up the IVC under any commitment scheme of zk_stdlib. `IvcCircuit`, `IvcProver`, `IvcVerifier` and `IvcExtendedInstance` take the scheme as a type parameter that defaults to `ivc::PCS` [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 ### Changed
 * `IvcVerifier::verify` rejects instances whose public inputs do not have the length expected by the verifying key
 * Adapt to the removal of `SelfEmulation` from `midnight-circuits`: the circuits take the transcript and the accumulator chips from `ZkStdLib` [#638](https://github.com/midnightntwrk/midnight-zk/pull/638)
