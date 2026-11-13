@@ -209,7 +209,7 @@ dependencies = [
  "blake2b_simd",
  "ff",
  "hex",
- "midnight-curves 0.4.0-rc.1",
+ "midnight-curves",
  "midnight-proofs",
  "num-bigint",
  "rand 0.8.7",
@@ -964,9 +964,6 @@ name = "hex"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
-dependencies = [
- "serde",
-]
 
 [[package]]
 name = "hex-literal"
@@ -1102,7 +1099,7 @@ dependencies = [
  "ff",
  "group",
  "midnight-circuits",
- "midnight-curves 0.4.0-rc.1",
+ "midnight-curves",
  "midnight-proofs",
  "midnight-zk-stdlib",
  "rand 0.8.7",
@@ -1122,7 +1119,7 @@ dependencies = [
  "group",
  "itertools 0.15.0",
  "lazy_static",
- "midnight-curves 0.4.0-rc.1",
+ "midnight-curves",
  "midnight-proofs",
  "num-bigint",
  "num-integer",
@@ -1133,33 +1130,6 @@ dependencies = [
  "rustc-hash 2.1.3",
  "serde",
  "serde_json",
- "sha2",
- "subtle",
-]
-
-[[package]]
-name = "midnight-curves"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "71a947535f03578bdc6401354accbf515257dcbaca7fb6a73c48fb0c17281a6c"
-dependencies = [
- "bitvec",
- "blst",
- "byte-slice-cast",
- "digest 0.10.7",
- "ff",
- "getrandom 0.2.17",
- "group",
- "halo2derive",
- "hex",
- "lazy_static",
- "num-bigint",
- "pairing",
- "paste",
- "rand_core 0.6.4",
- "rayon",
- "serde",
- "serde_arrays",
  "sha2",
  "subtle",
 ]
@@ -1206,7 +1176,7 @@ dependencies = [
  "group",
  "itertools 0.15.0",
  "midnight-circuits",
- "midnight-curves 0.4.0-rc.1",
+ "midnight-curves",
  "midnight-zk-stdlib",
  "num-bigint",
  "proptest",
@@ -1241,7 +1211,7 @@ dependencies = [
  "hex-literal",
  "itertools 0.15.0",
  "midnight-circuits",
- "midnight-curves 0.4.0-rc.1",
+ "midnight-curves",
  "midnight-proofs",
  "num-bigint",
  "num-traits",
@@ -1752,15 +1722,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "serde_arrays"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "94a16b99c5ea4fe3daccd14853ad260ec00ea043b2708d1fd1da3106dcd8d9df"
-dependencies = [
- "serde",
-]
-
-[[package]]
 name = "serde_core"
 version = "1.0.229"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1843,11 +1804,11 @@ dependencies = [
 [[package]]
 name = "sha3-circuit"
 version = "0.1.0"
-source = "git+https://github.com/alexandroszacharakis8/sha3-circuit?rev=1a3ef7d#1a3ef7d2ce603a26081f428fa74b4a631e243f25"
+source = "git+https://github.com/alexandroszacharakis8/sha3-circuit?rev=38f7492#38f7492b74453ed712e9cd335d1bf781967f0de9"
 dependencies = [
  "blake2b_simd",
  "ff",
- "midnight-curves 0.2.1",
+ "midnight-curves",
  "midnight-proofs",
  "num-bigint",
  "rand 0.8.7",
