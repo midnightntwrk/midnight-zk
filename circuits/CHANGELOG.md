@@ -20,6 +20,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 * The native Edwards `msm` panics when scalars and bases have different lengths, as documented, instead of dropping terms [#622](https://github.com/midnightntwrk/midnight-zk/issues/622)
+* The native Edwards `msm` returns the identity on empty input instead of panicking [#622](https://github.com/midnightntwrk/midnight-zk/issues/622)
 * The verifier gadget accepts an empty instance column, which evaluates to zero, instead of panicking [#569](https://github.com/midnightntwrk/midnight-zk/pull/569)
 * The verifier gadget no longer misreads the fixed evaluations of a circuit with a fixed column queried at more than one rotation [#547](https://github.com/midnightntwrk/midnight-zk/pull/547)
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
