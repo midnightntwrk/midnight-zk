@@ -36,8 +36,6 @@ type SpongeState<F> =
 pub struct PoseidonTranscriptGadget<F: PoseidonField> {
     sponge_chip: PoseidonChip<F>,
     sponge_state: Option<SpongeState<F>>,
-    // Track the number of field elements we have in the buffer.
-    input_len: usize,
     // Transcript reader is included, to help parse the proof. This parsing
     // *does not* need to be verified in-circuit.
     transcript_reader: Option<CircuitTranscript<PoseidonState<F>>>,
@@ -49,7 +47,6 @@ impl<F: PoseidonField> PoseidonTranscriptGadget<F> {
         Self {
             sponge_chip: sponge_chip.clone(),
             sponge_state: None,
-            input_len: 0,
             transcript_reader: None,
         }
     }
@@ -196,7 +193,6 @@ impl<F: PoseidonField> InCircuitTranscript<F> for PoseidonTranscriptGadget<F> {
         V::Element: Hashable<Self::Hash>,
     {
         let inputs = value.to_input(layouter, chip)?;
-        self.input_len += inputs.len();
         let state = self.sponge_state.as_mut().expect("You must init the transcript gadget");
         self.sponge_chip.absorb(layouter, state, &inputs)
     }
