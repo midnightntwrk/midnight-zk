@@ -8,6 +8,11 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 ### Added
+### Changed
+### Removed
+
+## [8.0.0-rc.1]
+### Added
 * `ScalarChip<F>`, `CurveChip<E>` and `AssignedG1<E>`, the chip and point types of the in-circuit verifier [#638](https://github.com/midnightntwrk/midnight-zk/pull/638)
 * `InCircuitPCS::squeeze_evaluation_point`, mirroring `PolynomialCommitmentScheme::squeeze_evaluation_point`, and `InCircuitPCS::OffCircuitPCS`, the off-circuit scheme of the proofs the gadget verifies [#570](https://github.com/midnightntwrk/midnight-zk/pull/570)
 * `CommitmentBases`, the labelled points of an off-circuit commitment [#570](https://github.com/midnightntwrk/midnight-zk/pull/570)

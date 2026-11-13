@@ -18,15 +18,15 @@ workspace = true
 [dependencies]
 group = { workspace = true }
 ff = { workspace = true }
-midnight-curves = "0.3.0"
-midnight-proofs = { version = "0.8.0", default-features = false, features = [
+midnight-curves = "0.4.0-rc.1"
+midnight-proofs = { version = "0.9.0-rc.1", default-features = false, features = [
     "circuit-params",
     "committed-instances",
 ] }
-midnight-circuits = { version = "7.0.0", default-features = false, features = [
+midnight-circuits = { version = "8.0.0-rc.1", default-features = false, features = [
     "testing",
 ] }
-midnight-zk-stdlib = { path = "../zk_stdlib", version = "2.1.0" }
+midnight-zk-stdlib = { path = "../zk_stdlib", version = "3.0.0-rc.1" }
 
 rand = { workspace = true }
 blake2b_simd = { workspace = true }

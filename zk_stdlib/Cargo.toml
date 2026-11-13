@@ -1,6 +1,6 @@
 [package]
 name = "midnight-zk-stdlib"
-version = "2.4.0"
+version = "3.0.0-rc.1"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -15,15 +15,15 @@ workspace = true
 group = { workspace = true }
 ff = { workspace = true }
 blake2b_simd = { workspace = true }
-midnight-circuits = { version = "7.0.0", features = ["testing"] }
-midnight-curves = { version = "0.3.0" }
-midnight-proofs = { version = "0.8.0", default-features = false, features = [
+midnight-circuits = { version = "8.0.0-rc.1", features = ["testing"] }
+midnight-curves = { version = "0.4.0-rc.1" }
+midnight-proofs = { version = "0.9.0-rc.1", default-features = false, features = [
     "circuit-params",
     "committed-instances",
 ] }
 
 keccak_sha3 = { package = "sha3-circuit", git = "https://github.com/alexandroszacharakis8/sha3-circuit", rev = "1a3ef7d" }
-blake2b = { package = "blake2b_halo2", git = "https://github.com/eryxcoop/blake2b_halo2", rev = "257ae18" }
+blake2b = { package = "blake2b_halo2", git = "https://github.com/eryxcoop/blake2b_halo2", rev = "9cc1f4f" }
 
 serde = { workspace = true, optional = true }
 sha2 = { workspace = true }
@@ -50,7 +50,7 @@ sha3 = "0.12.0"
 blake2 = "0.10.6"
 
 [target.'cfg(ci_build)'.dependencies]
-midnight-curves = { version = "0.3.0", features = ["portable"] }
+midnight-curves = { version = "0.4.0-rc.1", features = ["portable"] }
 
 [features]
 default = []

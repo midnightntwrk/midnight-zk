@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 
 ## [Unreleased]
 ### Added
+### Changed
+### Removed
+
+## 0.4.0-rc.1
+### Added
 * Affine MSM path `G1Affine::multi_exp_affine` [#350](https://github.com/midnightntwrk/midnight-zk/pull/350)
 * Cached-twiddle FFT (`best_fft_with_twiddles`, `compute_twiddles`) and pruned DIF FFT (`fft_coeff_to_extended`) [#352](https://github.com/midnightntwrk/midnight-zk/pull/352)
 * Add Curve25519 [#181](https://github.com/midnightntwrk/midnight-zk/pull/181)
@@ -23,7 +28,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 * `h_commit` bench [#560](https://github.com/midnightntwrk/midnight-zk/pull/560)
 * Removed `serde::{Serialize, Deserialize}` impls and the `serde` feature [#412](https://github.com/midnightntwrk/midnight-zk/pull/412)
 * Removed unused public API: `unique_messages`/`PairingG1G2`/`PairingG2G1`, `CurveExt::{endo, jacobian_coordinates, new_jacobian, hash_to_curve}`, `Coordinates::{u, v}`, `hash_to_curve` module (+ BLS inherent `hash_to_curve`), the `__private_bench` feature (`Fp12`/`Fp2`); the unused `halo2curves` dep [#412](https://github.com/midnightntwrk/midnight-zk/pull/412)
-*
+
 ## 0.3.1
 ### Fixed
 * Add prime-order subgroup check in `G1Affine::from_uncompressed` [#425](https://github.com/midnightntwrk/midnight-zk/pull/425)

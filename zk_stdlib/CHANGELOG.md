@@ -8,6 +8,11 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 ### Added
+### Changed
+### Removed
+
+## [3.0.0-rc.1]
+### Added
 * `ZkStdLib::verifier_transcript`, the in-circuit transcript of the proofs verified with `ZkStdLib::verifier`, and `ZkStdLib::poseidon_chip` [#638](https://github.com/midnightntwrk/midnight-zk/pull/638)
 * Improved SRS loading for tests [#276](https://github.com/midnightntwrk/midnight-zk/pull/276)
 * Expose the Merkle Mountain Range gadget through `ZkStdLib::mmr` [#509](https://github.com/midnightntwrk/midnight-zk/pull/509)
