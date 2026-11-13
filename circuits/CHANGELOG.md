@@ -20,6 +20,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 * The foreign `assigned_to_le_chunks` enforces `nb_chunks` when `nb_bits_per_chunk` does not divide the limb size [#625](https://github.com/midnightntwrk/midnight-zk/issues/625)
+* The foreign `assigned_to_le_bits` with `enforce_canonical = false` normalizes its input, so it is satisfiable on non-canonical limbs [#625](https://github.com/midnightntwrk/midnight-zk/issues/625)
 * The verifier gadget accepts an empty instance column, which evaluates to zero, instead of panicking [#569](https://github.com/midnightntwrk/midnight-zk/pull/569)
 * The verifier gadget no longer misreads the fixed evaluations of a circuit with a fixed column queried at more than one rotation [#547](https://github.com/midnightntwrk/midnight-zk/pull/547)
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)

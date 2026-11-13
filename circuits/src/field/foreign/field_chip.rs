@@ -1181,7 +1181,9 @@ where
         let mut x = self.add_constant(layouter, x, K::ONE)?;
         if enforce_canonical {
             x = self.make_canonical(layouter, &x)?;
-        };
+        } else {
+            x = self.normalize(layouter, &x)?;
+        }
         let mut bits = vec![];
         x.limb_values
             .iter()
