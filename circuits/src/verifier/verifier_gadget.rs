@@ -278,7 +278,7 @@ impl<F: CircuitField, PCS: InCircuitPCS<F>> VerifierGadget<F, PCS> {
             .collect::<Vec<_>>();
 
         let phase1_committed =
-            argument::read_committed(layouter, &self.commitment_chip, transcript, &phase1_labels)?;
+            argument::read_committed(layouter, &self.commitment_chip, &phase1_labels, transcript)?;
 
         // Sample theta challenge for keeping lookup columns linearly independent
         let theta = transcript.squeeze_challenge(layouter)?;
@@ -305,7 +305,7 @@ impl<F: CircuitField, PCS: InCircuitPCS<F>> VerifierGadget<F, PCS> {
         }
 
         let phase2_committed =
-            argument::read_committed(layouter, &self.commitment_chip, transcript, &phase2_labels)?;
+            argument::read_committed(layouter, &self.commitment_chip, &phase2_labels, transcript)?;
 
         // Sample y challenge, which keeps the gates linearly independent
         let y = transcript.squeeze_challenge(layouter)?;
@@ -366,8 +366,8 @@ impl<F: CircuitField, PCS: InCircuitPCS<F>> VerifierGadget<F, PCS> {
         let quotient_committed = argument::read_committed(
             layouter,
             &self.commitment_chip,
-            transcript,
             &quotient_labels,
+            transcript,
         )?;
 
         // Sample x challenge, which is used to ensure the circuit is satisfied with
@@ -444,17 +444,17 @@ impl<F: CircuitField, PCS: InCircuitPCS<F>> VerifierGadget<F, PCS> {
         }
 
         let phase0_evaluated =
-            phase0_committed.evaluate(layouter, &self.scalar_chip, transcript, cs, &x_rotations)?;
+            phase0_committed.evaluate(layouter, &self.scalar_chip, cs, &x_rotations, transcript)?;
         let phase1_evaluated =
-            phase1_committed.evaluate(layouter, &self.scalar_chip, transcript, cs, &x_rotations)?;
+            phase1_committed.evaluate(layouter, &self.scalar_chip, cs, &x_rotations, transcript)?;
         let phase2_evaluated =
-            phase2_committed.evaluate(layouter, &self.scalar_chip, transcript, cs, &x_rotations)?;
+            phase2_committed.evaluate(layouter, &self.scalar_chip, cs, &x_rotations, transcript)?;
         let mut quotient_evaluated = quotient_committed.evaluate(
             layouter,
             &self.scalar_chip,
-            transcript,
             cs,
             &x_rotations,
+            transcript,
         )?;
 
         let phase0_evals = &phase0_evaluated.evals_map;
@@ -669,8 +669,8 @@ impl<F: CircuitField, PCS: InCircuitPCS<F>> VerifierGadget<F, PCS> {
             layouter,
             &self.commitment_chip,
             &self.scalar_chip,
-            transcript,
             &queries,
+            transcript,
         )
     }
 

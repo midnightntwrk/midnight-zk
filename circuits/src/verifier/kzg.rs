@@ -294,9 +294,9 @@ where
         Self::assign(layouter, curve_chip, Value::known(com), labels)
     }
 
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if the commitment contains fixed points or linear combinations.
+    /// If the commitment contains fixed points or linear combinations.
     fn to_input(
         &self,
         layouter: &mut impl Layouter<E::Fr>,
@@ -308,7 +308,16 @@ where
                 AssignedKZGCommitment::Simple(AssignedPoint::Variable(point), _) => {
                     inputs.extend(curve_chip.as_public_input(layouter, point)?)
                 }
-                _ => panic!("only commitments to assigned points can be absorbed"),
+                AssignedKZGCommitment::Simple(AssignedPoint::Fixed, label) => {
+                    return Err(Error::Synthesis(format!(
+                        "fixed commitments cannot be hashed in-circuit: {label}"
+                    )));
+                }
+                AssignedKZGCommitment::Linear(_, _, labels) => {
+                    return Err(Error::Synthesis(format!(
+                        "linear commitments cannot be hashed in-circuit: {labels:?}"
+                    )));
+                }
             }
         }
         Ok(inputs)
@@ -531,8 +540,8 @@ pub(crate) fn multi_prepare_kzg<E: MultiMillerLoop, T: InCircuitTranscript<E::Fr
     layouter: &mut impl Layouter<E::Fr>,
     curve_chip: &CurveChip<E>,
     scalar_chip: &ScalarChip<E::Fr>,
-    transcript_gadget: &mut T,
     queries: &[VerifierQuery<E::Fr, KZGCommitmentScheme<E>>],
+    transcript: &mut T,
 ) -> Result<AssignedAccumulator<E>, Error>
 where
     E::Fr: Hashable<T::Hash>,
@@ -546,8 +555,8 @@ where
 {
     let one = AssignedBoundedScalar::one(layouter, scalar_chip)?;
 
-    let x1 = transcript_gadget.squeeze_challenge(layouter)?;
-    let x2 = transcript_gadget.squeeze_challenge(layouter)?;
+    let x1 = transcript.squeeze_challenge(layouter)?;
+    let x2 = transcript.squeeze_challenge(layouter)?;
 
     // Peel each query's multi-commitment down to the single inner commitment it
     // targets, keyed by the query label. The `Linear` quotient commitment
@@ -627,17 +636,17 @@ where
     let f_com = <KZGCommitmentScheme<E> as InCircuitPCS<E::Fr>>::read_commitment(
         layouter,
         curve_chip,
-        transcript_gadget,
+        transcript,
         &[PolynomialLabel::Custom("kzg_batch".into())],
     )?
     .into_single();
 
-    let x3 = transcript_gadget.squeeze_challenge(layouter)?;
+    let x3 = transcript.squeeze_challenge(layouter)?;
     let x3 = truncate::<E::Fr>(layouter, scalar_chip, &x3)?;
 
     let mut q_evals_on_x3 = Vec::with_capacity(q_eval_sets.len());
     for _ in 0..q_eval_sets.len() {
-        q_evals_on_x3.push(transcript_gadget.read(layouter, scalar_chip, &())?);
+        q_evals_on_x3.push(transcript.read(layouter, scalar_chip, &())?);
     }
 
     let zero = scalar_chip.assign_fixed(layouter, E::Fr::ZERO)?;
@@ -671,7 +680,7 @@ where
             mul_add(layouter, scalar_chip, &acc_eval, &x2, &eval)
         })?;
 
-    let x4 = transcript_gadget.squeeze_challenge(layouter)?;
+    let x4 = transcript.squeeze_challenge(layouter)?;
     let truncated_x4_powers =
         truncated_powers::<E::Fr>(layouter, scalar_chip, &x4, q_coms.len() + 1)?;
 
@@ -708,7 +717,7 @@ where
     let pi = <KZGCommitmentScheme<E> as InCircuitPCS<E::Fr>>::read_commitment(
         layouter,
         curve_chip,
-        transcript_gadget,
+        transcript,
         &[PolynomialLabel::Custom("π".into())],
     )?
     .into_single();
@@ -812,13 +821,13 @@ where
         layouter: &mut impl Layouter<E::Fr>,
         curve_chip: &CurveChip<E>,
         scalar_chip: &ScalarChip<E::Fr>,
-        transcript: &mut T,
         queries: &[VerifierQuery<'_, E::Fr, Self>],
+        transcript: &mut T,
     ) -> Result<Self::AssignedVerificationGuard, Error>
     where
         E::Fr: Hashable<T::Hash>,
         Self::Commitment: Hashable<T::Hash>,
     {
-        multi_prepare_kzg(layouter, curve_chip, scalar_chip, transcript, queries)
+        multi_prepare_kzg(layouter, curve_chip, scalar_chip, queries, transcript)
     }
 }

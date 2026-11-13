@@ -146,8 +146,8 @@ pub(crate) fn committed_from_key<F: CircuitField, PCS: InCircuitPCS<F>>(
 pub(crate) fn read_committed<F: CircuitField, PCS: InCircuitPCS<F>, T: InCircuitTranscript<F>>(
     layouter: &mut impl Layouter<F>,
     commitment_chip: &PCS::CommitmentChip,
-    transcript_gadget: &mut T,
     labels: &[PolynomialLabel],
+    transcript: &mut T,
 ) -> Result<Committed<F, PCS>, Error>
 where
     PCS::Commitment: Hashable<T::Hash>,
@@ -156,7 +156,7 @@ where
         commitment: <PCS as InCircuitPCS<F>>::read_commitment(
             layouter,
             commitment_chip,
-            transcript_gadget,
+            transcript,
             labels,
         )?,
         polynomial_labels: labels.to_vec(),
@@ -178,9 +178,9 @@ impl<F: CircuitField, PCS: InCircuitPCS<F>> Committed<F, PCS> {
         self,
         layouter: &mut impl Layouter<F>,
         scalar_chip: &ScalarChip<F>,
-        transcript_gadget: &mut T,
         cs: &ConstraintSystem<F>,
         x_rotations: &BTreeMap<Rotation, AssignedNative<F>>,
+        transcript: &mut T,
     ) -> Result<Evaluated<F, PCS>, Error>
     where
         F: Hashable<T::Hash>,
@@ -193,7 +193,7 @@ impl<F: CircuitField, PCS: InCircuitPCS<F>> Committed<F, PCS> {
             for point in eval_points {
                 evals.push(Evaluation {
                     point,
-                    eval: transcript_gadget.read(layouter, scalar_chip, &())?,
+                    eval: transcript.read(layouter, scalar_chip, &())?,
                 });
             }
 

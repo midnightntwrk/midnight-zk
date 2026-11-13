@@ -191,8 +191,8 @@ pub trait InCircuitPCS<F: CircuitField>:
         layouter: &mut impl Layouter<F>,
         commitment_chip: &Self::CommitmentChip,
         scalar_chip: &ScalarChip<F>,
-        transcript: &mut T,
         queries: &[VerifierQuery<'_, F, Self>],
+        transcript: &mut T,
     ) -> Result<Self::AssignedVerificationGuard, Error>
     where
         F: Hashable<T::Hash>,
