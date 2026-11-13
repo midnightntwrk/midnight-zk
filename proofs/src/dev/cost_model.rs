@@ -299,12 +299,12 @@ pub fn circuit_model_with<F: Ord + Field + FromUniformBytes<64>>(
 
 /// Given a Plonk circuit, this function returns a [CircuitModel].
 ///
-/// Commitment and scalar field sizes (in bytes) are both derived from `CS`.
-pub fn circuit_model<F: Ord + Field + FromUniformBytes<64>, CS: PolynomialCommitmentScheme<F>>(
+/// Commitment and scalar field sizes (in bytes) are both derived from `PCS`.
+pub fn circuit_model<F: Ord + Field + FromUniformBytes<64>, PCS: PolynomialCommitmentScheme<F>>(
     circuit: &impl Circuit<F>,
     nb_committed_instances: usize,
 ) -> CircuitModel {
-    circuit_model_with(circuit, nb_committed_instances, CS::commitment_byte_length)
+    circuit_model_with(circuit, nb_committed_instances, PCS::commitment_byte_length)
 }
 
 /// Namespace marker that signals the start of the region to measure.

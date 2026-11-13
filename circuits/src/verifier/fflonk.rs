@@ -20,7 +20,6 @@
 
 use std::collections::{BTreeMap, HashMap, hash_map::Entry};
 
-use ff::WithSmallOrderMulGroup;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
@@ -48,7 +47,7 @@ use crate::{
 /// In circuit implementation of Fflonk.
 impl<F, PCS, const LOG2_T_MAX: u32> InCircuitPCS<F> for Fflonk<PCS, LOG2_T_MAX>
 where
-    F: CircuitField + WithSmallOrderMulGroup<3>,
+    F: CircuitField,
     PCS: InCircuitPCS<F> + InterleavedCommit<F>,
 {
     type CommitmentChip = PCS::CommitmentChip;
@@ -77,7 +76,7 @@ where
         )
     }
 
-    fn read_commitment<T: InCircuitTranscript<F>>(
+    fn read_commitment<T>(
         layouter: &mut impl Layouter<F>,
         commitment_chip: &Self::CommitmentChip,
         transcript: &mut T,
@@ -85,6 +84,7 @@ where
     ) -> Result<Self::AssignedCommitment, Error>
     where
         Self::Commitment: Hashable<T::Hash>,
+        T: InCircuitTranscript<F>,
     {
         let labels = Self::chunk_labels(labels);
         <PCS as InCircuitPCS<F>>::read_commitment(layouter, commitment_chip, transcript, &labels)
@@ -110,7 +110,7 @@ where
             .collect()
     }
 
-    fn multi_prepare<T: InCircuitTranscript<F>>(
+    fn multi_prepare<T>(
         layouter: &mut impl Layouter<F>,
         commitment_chip: &Self::CommitmentChip,
         scalar_chip: &ScalarChip<F>,
@@ -120,6 +120,7 @@ where
     where
         F: Hashable<T::Hash>,
         Self::Commitment: Hashable<T::Hash>,
+        T: InCircuitTranscript<F>,
     {
         // Maps the labels of every queried chunk to its commitment and the points
         // its polynomials are queried at, in query order: `labels -> (commitment,

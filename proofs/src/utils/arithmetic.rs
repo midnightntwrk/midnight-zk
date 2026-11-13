@@ -103,8 +103,10 @@ pub fn compute_inner_product<F: Field>(a: &[F], b: &[F]) -> F {
 
 /// Divides polynomial `a` in `X` by `X - b` with
 /// no remainder.
-pub fn kate_division<'a, F: Field, I: IntoIterator<Item = &'a F>>(a: I, mut b: F) -> Vec<F>
+pub fn kate_division<'a, F, I>(a: I, mut b: F) -> Vec<F>
 where
+    F: Field,
+    I: IntoIterator<Item = &'a F>,
     I::IntoIter: DoubleEndedIterator + ExactSizeIterator,
 {
     b = -b;

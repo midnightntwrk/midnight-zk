@@ -1,4 +1,4 @@
-use ff::WithSmallOrderMulGroup;
+use ff::PrimeField;
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelIterator,
 };
@@ -104,7 +104,7 @@ impl Assembly {
 
     /// The permutation polynomials in Lagrange form, one per column of the
     /// argument.
-    pub(crate) fn into_permutations<F: WithSmallOrderMulGroup<3>>(
+    pub(crate) fn into_permutations<F: PrimeField>(
         self,
         domain: &EvaluationDomain<F>,
         p: &Argument,
@@ -129,7 +129,7 @@ impl Assembly {
 /// argument. The polynomial of the `i`-th column sends `omega^j` to
 /// `delta^i' * omega^j'`, where `(i', j')` is the cell that the copy
 /// constraints map `(i, j)` to.
-pub(crate) fn compute_permutations<F: WithSmallOrderMulGroup<3>>(
+pub(crate) fn compute_permutations<F: PrimeField>(
     domain: &EvaluationDomain<F>,
     p: &Argument,
     mapping: &[Vec<(usize, usize)>],
@@ -179,7 +179,7 @@ pub(crate) fn compute_permutations<F: WithSmallOrderMulGroup<3>>(
 }
 
 #[allow(clippy::type_complexity)]
-pub(crate) fn compute_polys_and_cosets<F: WithSmallOrderMulGroup<3>>(
+pub(crate) fn compute_polys_and_cosets<F: PrimeField>(
     domain: &EvaluationDomain<F>,
     p: &Argument,
     permutations: &[Polynomial<F, LagrangeCoeff>],

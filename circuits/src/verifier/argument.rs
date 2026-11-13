@@ -143,14 +143,17 @@ pub(crate) fn committed_from_key<F: CircuitField, PCS: InCircuitPCS<F>>(
 }
 
 /// Reads the commitment to the polynomials of the given labels.
-pub(crate) fn read_committed<F: CircuitField, PCS: InCircuitPCS<F>, T: InCircuitTranscript<F>>(
+pub(crate) fn read_committed<F, PCS, T>(
     layouter: &mut impl Layouter<F>,
     commitment_chip: &PCS::CommitmentChip,
     labels: &[PolynomialLabel],
     transcript: &mut T,
 ) -> Result<Committed<F, PCS>, Error>
 where
+    F: CircuitField,
+    PCS: InCircuitPCS<F>,
     PCS::Commitment: Hashable<T::Hash>,
+    T: InCircuitTranscript<F>,
 {
     Ok(Committed {
         commitment: <PCS as InCircuitPCS<F>>::read_commitment(
@@ -174,7 +177,7 @@ pub(crate) struct Evaluated<F: CircuitField, PCS: InCircuitPCS<F>> {
 impl<F: CircuitField, PCS: InCircuitPCS<F>> Committed<F, PCS> {
     /// Reads the evaluation of every polynomial of the group at each of its
     /// evaluation points.
-    pub(crate) fn evaluate<T: InCircuitTranscript<F>>(
+    pub(crate) fn evaluate<T>(
         self,
         layouter: &mut impl Layouter<F>,
         scalar_chip: &ScalarChip<F>,
@@ -184,6 +187,7 @@ impl<F: CircuitField, PCS: InCircuitPCS<F>> Committed<F, PCS> {
     ) -> Result<Evaluated<F, PCS>, Error>
     where
         F: Hashable<T::Hash>,
+        T: InCircuitTranscript<F>,
     {
         let mut evals_map: BTreeMap<PolynomialLabel, Vec<Evaluation<F>>> = BTreeMap::new();
 

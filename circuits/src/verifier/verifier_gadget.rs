@@ -17,7 +17,6 @@
 //! column. (This is the norm throughout our whole codebase anyway.)
 use std::{collections::BTreeMap, fmt::Debug, iter, marker::PhantomData};
 
-use ff::WithSmallOrderMulGroup;
 use midnight_proofs::{
     circuit::{Chip, Layouter, Value},
     plonk::{ConstraintSystem, Error},
@@ -83,8 +82,8 @@ impl<F: CircuitField, PCS: InCircuitPCS<F>> VerifierGadget<F, PCS> {
     }
 }
 
-impl<F: CircuitField + WithSmallOrderMulGroup<3>, PCS: InCircuitPCS<F>>
-    PublicInputInstructions<F, AssignedVk<F, PCS>> for VerifierGadget<F, PCS>
+impl<F: CircuitField, PCS: InCircuitPCS<F>> PublicInputInstructions<F, AssignedVk<F, PCS>>
+    for VerifierGadget<F, PCS>
 {
     fn as_public_input(
         &self,
@@ -111,7 +110,7 @@ impl<F: CircuitField + WithSmallOrderMulGroup<3>, PCS: InCircuitPCS<F>>
     }
 }
 
-impl<F: CircuitField + WithSmallOrderMulGroup<3>, PCS: InCircuitPCS<F>> VerifierGadget<F, PCS> {
+impl<F: CircuitField, PCS: InCircuitPCS<F>> VerifierGadget<F, PCS> {
     /// Assigns a verifying key as a public input: its `transcript_repr` and its
     /// evaluation domain (`k` and `omega`) are assigned in-circuit, the rest is
     /// taken off-circuit from `cs`. Since `cs` suffices to lay out the circuit,
@@ -230,7 +229,7 @@ impl<F: CircuitField, PCS: InCircuitPCS<F>> VerifierGadget<F, PCS> {
     /// constraints](crate::verifier::VerifierGadget::verify_algebraic_constraints),
     /// and the resulting accumulator satisfies the
     /// [invariant](crate::verifier::Accumulator::check).
-    pub fn parse_trace<T: InCircuitTranscript<F>>(
+    pub fn parse_trace<T>(
         &self,
         layouter: &mut impl Layouter<F>,
         assigned_vk: &AssignedVk<F, PCS>,
@@ -241,6 +240,7 @@ impl<F: CircuitField, PCS: InCircuitPCS<F>> VerifierGadget<F, PCS> {
     where
         F: Hashable<T::Hash>,
         PCS::Commitment: Hashable<T::Hash>,
+        T: InCircuitTranscript<F>,
     {
         let cs = &assigned_vk.cs;
 
@@ -329,7 +329,7 @@ impl<F: CircuitField, PCS: InCircuitPCS<F>> VerifierGadget<F, PCS> {
     /// The proof is considered to be valid if the resulting accumulator
     /// satisfies the [invariant](crate::verifier::Accumulator::check)
     /// with respect to the relevant `tau_in_g2`.
-    pub fn verify_algebraic_constraints<T: InCircuitTranscript<F>>(
+    pub fn verify_algebraic_constraints<T>(
         &self,
         layouter: &mut impl Layouter<F>,
         assigned_vk: &AssignedVk<F, PCS>,
@@ -341,6 +341,7 @@ impl<F: CircuitField, PCS: InCircuitPCS<F>> VerifierGadget<F, PCS> {
     where
         F: Hashable<T::Hash>,
         PCS::Commitment: Hashable<T::Hash>,
+        T: InCircuitTranscript<F>,
     {
         let cs = &assigned_vk.cs;
         let k = &assigned_vk.domain.k;
@@ -684,7 +685,7 @@ impl<F: CircuitField, PCS: InCircuitPCS<F>> VerifierGadget<F, PCS> {
     /// The proof is considered to be valid if the resulting accumulator
     /// satisfies the [invariant](crate::verifier::Accumulator::check)
     /// with respect to the relevant `tau_in_g2`.
-    pub fn prepare<T: InCircuitTranscript<F>>(
+    pub fn prepare<T>(
         &self,
         layouter: &mut impl Layouter<F>,
         assigned_vk: &AssignedVk<F, PCS>,
@@ -695,6 +696,7 @@ impl<F: CircuitField, PCS: InCircuitPCS<F>> VerifierGadget<F, PCS> {
     where
         F: Hashable<T::Hash>,
         PCS::Commitment: Hashable<T::Hash>,
+        T: InCircuitTranscript<F>,
     {
         let trace = self.parse_trace(
             layouter,

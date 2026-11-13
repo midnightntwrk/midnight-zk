@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use ff::{PrimeField, WithSmallOrderMulGroup};
+use ff::PrimeField;
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
@@ -63,7 +63,7 @@ impl<F: PrimeField, B: PolynomialRepresentation> Committed<F, B> {
     }
 }
 
-impl<F: WithSmallOrderMulGroup<3>, B: PolynomialRepresentation> Committed<F, B> {
+impl<F: PrimeField, B: PolynomialRepresentation> Committed<F, B> {
     pub fn into_coeff(self, domain: &EvaluationDomain<F>) -> Committed<F, Coeff> {
         Committed {
             labels: self.labels,
@@ -75,24 +75,24 @@ impl<F: WithSmallOrderMulGroup<3>, B: PolynomialRepresentation> Committed<F, B> 
 impl<F: PrimeField, B: PolynomialRepresentation> Committed<F, B> {
     /// Commits to the polynomials of `polys_map` in the representation given by
     /// `encode`. The group keeps them as given.
-    pub fn commit<CS, T, E>(
-        params: &CS::Parameters,
+    pub fn commit<PCS, T, E>(
+        params: &PCS::Parameters,
         polys_map: BTreeMap<PolynomialLabel, Polynomial<F, B>>,
         encode: impl Fn(&Polynomial<F, B>) -> Polynomial<F, E> + Send + Sync,
         transcript: &mut T,
     ) -> Result<Self, Error>
     where
-        CS: PolynomialCommitmentScheme<F>,
-        CS::Commitment: Hashable<T::Hash>,
+        PCS: PolynomialCommitmentScheme<F>,
+        PCS::Commitment: Hashable<T::Hash>,
         T: Transcript,
         E: PolynomialRepresentation,
     {
         let group = Self::from_map(polys_map);
         let encoded: Vec<_> = group.polys.par_iter().map(encode).collect();
         let commitment =
-            CS::commit_many(params, &encoded.iter().collect::<Vec<_>>(), &group.labels);
+            PCS::commit_many(params, &encoded.iter().collect::<Vec<_>>(), &group.labels);
 
-        CS::write_commitment(transcript, &commitment)?;
+        PCS::write_commitment(transcript, &commitment)?;
 
         Ok(group)
     }
@@ -129,9 +129,9 @@ impl<F: PrimeField> KeyGroup<F> {
     /// # Panics
     ///
     /// Panics if `vk` is the witness of a different verifying key.
-    pub(crate) fn committed<CS: PolynomialCommitmentScheme<F>>(
+    pub(crate) fn committed<PCS: PolynomialCommitmentScheme<F>>(
         &self,
-        vk: &AbsorbedVk<'_, F, CS>,
+        vk: &AbsorbedVk<'_, F, PCS>,
     ) -> &Committed<F, Coeff> {
         assert!(
             vk.transcript_repr() == self.vk_repr,
@@ -159,7 +159,7 @@ impl<F: PrimeField> Committed<F, Coeff> {
         transcript: &mut T,
     ) -> Result<Evaluated<'_, F>, Error>
     where
-        F: Hashable<T::Hash> + WithSmallOrderMulGroup<3>,
+        F: Hashable<T::Hash> + PrimeField,
         T: Transcript,
     {
         let evaluate = |poly: &Polynomial<F, Coeff>, x: F| -> Evaluation<F> {

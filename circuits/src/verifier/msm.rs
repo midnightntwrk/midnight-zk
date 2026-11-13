@@ -19,7 +19,7 @@
 use std::collections::{BTreeMap, btree_map::Entry};
 
 use ff::Field;
-use midnight_curves::{CurveAffine, msm::msm_best, pairing::MultiMillerLoop};
+use midnight_curves::{msm::msm_best, pairing::MultiMillerLoop};
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
@@ -27,14 +27,13 @@ use midnight_proofs::{
 };
 
 use crate::{
-    CircuitField,
-    ecc::curves::{CircuitCurve, WeierstrassCurve},
-    field::{AssignedNative, foreign::params::FieldEmulationParams},
+    field::AssignedNative,
     instructions::{
         PublicInputInstructions, ecc::EccInstructions, public_input::CommittedInstanceInstructions,
     },
     types::{InnerValue, Instantiable},
     verifier::{
+        kzg::InCircuitKZGEngine,
         types::{AssignedG1, CurveChip, ScalarChip},
         utils::{
             AssignedBoundedScalar, add_bounded_scalars, assign_bounded_scalars, mul_bounded_scalars,
@@ -64,24 +63,14 @@ pub enum Point<E: MultiMillerLoop> {
 /// SRS element, or the negated generator); no cell is allocated for it in the
 /// layout.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum AssignedPoint<E: MultiMillerLoop>
-where
-    E::Fr: CircuitField,
-    E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
-        + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
-{
+pub enum AssignedPoint<E: InCircuitKZGEngine> {
     /// A circuit-assigned variable-base point.
     Variable(AssignedG1<E>),
     /// A globally-known constant point that lives outside the circuit witness.
     Fixed,
 }
 
-impl<E: MultiMillerLoop> Point<E>
-where
-    E::Fr: CircuitField,
-    E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
-        + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
-{
+impl<E: InCircuitKZGEngine> Point<E> {
     /// Returns a reference to the inner curve point.
     ///
     /// # Panics
@@ -98,12 +87,7 @@ where
     }
 }
 
-impl<E: MultiMillerLoop> InnerValue for AssignedPoint<E>
-where
-    E::Fr: CircuitField,
-    E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
-        + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
-{
+impl<E: InCircuitKZGEngine> InnerValue for AssignedPoint<E> {
     type Element = Point<E>;
 
     fn value(&self) -> Value<Self::Element> {
@@ -114,12 +98,7 @@ where
     }
 }
 
-impl<E: MultiMillerLoop> Instantiable<E::Fr> for AssignedPoint<E>
-where
-    E::Fr: CircuitField,
-    E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
-        + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
-{
+impl<E: InCircuitKZGEngine> Instantiable<E::Fr> for AssignedPoint<E> {
     fn as_public_input(point: &Point<E>) -> Vec<E::Fr> {
         match point {
             Point::Variable(p) => AssignedG1::<E>::as_public_input(p),
@@ -136,12 +115,7 @@ where
     }
 }
 
-impl<E: MultiMillerLoop> AssignedPoint<E>
-where
-    E::Fr: CircuitField,
-    E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
-        + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
-{
+impl<E: InCircuitKZGEngine> AssignedPoint<E> {
     pub(crate) fn in_circuit_as_public_input(
         &self,
         layouter: &mut impl Layouter<E::Fr>,
@@ -187,24 +161,13 @@ pub struct Msm<E: MultiMillerLoop> {
 ///
 /// This is the in-circuit analog of `Msm<C>`.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct AssignedMsm<E: MultiMillerLoop>
-where
-    E::Fr: CircuitField,
-    E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
-        + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
-{
+pub struct AssignedMsm<E: InCircuitKZGEngine> {
     scalars: Vec<AssignedBoundedScalar<E::Fr>>,
     bases: Vec<AssignedPoint<E>>,
     labels: Vec<PolynomialLabel>,
 }
 
-impl<E: MultiMillerLoop> Msm<E>
-where
-    E::Fr: CircuitField,
-    E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
-        + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
-    E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
-{
+impl<E: InCircuitKZGEngine> Msm<E> {
     /// Creates a new MSM from the given slice of bases, scalars and labels.
     ///
     /// # Panics
@@ -368,12 +331,7 @@ where
     }
 }
 
-impl<E: MultiMillerLoop> InnerValue for AssignedMsm<E>
-where
-    E::Fr: CircuitField,
-    E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
-        + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
-{
+impl<E: InCircuitKZGEngine> InnerValue for AssignedMsm<E> {
     type Element = Msm<E>;
 
     fn value(&self) -> Value<Self::Element> {
@@ -393,12 +351,7 @@ where
     }
 }
 
-impl<E: MultiMillerLoop> Instantiable<E::Fr> for AssignedMsm<E>
-where
-    E::Fr: CircuitField,
-    E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
-        + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
-{
+impl<E: InCircuitKZGEngine> Instantiable<E::Fr> for AssignedMsm<E> {
     fn as_public_input(msm: &Msm<E>) -> Vec<E::Fr> {
         [
             msm.bases
@@ -420,12 +373,7 @@ where
     }
 }
 
-impl<E: MultiMillerLoop> AssignedMsm<E>
-where
-    E::Fr: CircuitField,
-    E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
-        + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
-{
+impl<E: InCircuitKZGEngine> AssignedMsm<E> {
     /// Creates a new in-circuit MSM from parallel slices of scalars, bases,
     /// and labels.
     ///
@@ -476,12 +424,7 @@ where
     }
 }
 
-impl<E: MultiMillerLoop> AssignedMsm<E>
-where
-    E::Fr: CircuitField,
-    E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
-        + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
-{
+impl<E: InCircuitKZGEngine> AssignedMsm<E> {
     /// Converts the off-circuit MSM into two vectors of scalars. The first
     /// will be used as a normal instance, whereas the second will be plugged-in
     /// in as a committed instance.
@@ -497,12 +440,7 @@ where
     }
 }
 
-impl<E: MultiMillerLoop> AssignedMsm<E>
-where
-    E::Fr: CircuitField,
-    E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
-        + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
-{
+impl<E: InCircuitKZGEngine> AssignedMsm<E> {
     pub(crate) fn in_circuit_as_public_input(
         &self,
         layouter: &mut impl Layouter<E::Fr>,
@@ -552,12 +490,7 @@ where
     }
 }
 
-impl<E: MultiMillerLoop> AssignedMsm<E>
-where
-    E::Fr: CircuitField,
-    E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
-        + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
-{
+impl<E: InCircuitKZGEngine> AssignedMsm<E> {
     /// Assigns a collapsed MSM: one term per label of `fixed_base_labels`, with
     /// a witnessed scalar and a fixed base, followed by a single witnessed
     /// variable-base point labeled `NoLabel`, with the constant scalar 1.

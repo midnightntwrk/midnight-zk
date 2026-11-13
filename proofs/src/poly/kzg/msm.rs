@@ -10,13 +10,10 @@ use midnight_curves::{
 };
 use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 
-use super::params::ParamsVerifierKZG;
+use super::{KZGEngine, params::ParamsVerifierKZG};
 use crate::{
     poly::{Error, PolynomialLabel, commitment::Guard},
-    utils::{
-        arithmetic::{CurveExt, MSM},
-        helpers::ProcessedSerdeObject,
-    },
+    utils::arithmetic::MSM,
 };
 
 /// A multi-scalar multiplication in the polynomial commitment scheme.
@@ -80,8 +77,9 @@ impl<E: Engine> MSMKZG<E> {
     }
 }
 
-impl<E: Engine + Debug> MSMKZG<E>
+impl<E> MSMKZG<E>
 where
+    E: Engine + Debug,
     E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
 {
     /// Evaluates the terms whose label is not
@@ -108,8 +106,9 @@ where
     }
 }
 
-impl<E: Engine + Debug> MSM<E::G1Affine> for MSMKZG<E>
+impl<E> MSM<E::G1Affine> for MSMKZG<E>
 where
+    E: Engine + Debug,
     E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
 {
     fn append_term(&mut self, scalar: E::Fr, point: E::G1, label: PolynomialLabel) {
@@ -215,8 +214,9 @@ pub type SplitDualMSM<'a, E> = (
     )>,
 );
 
-impl<E: MultiMillerLoop + Debug> Default for DualMSM<E>
+impl<E> Default for DualMSM<E>
 where
+    E: MultiMillerLoop + Debug,
     E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
 {
     fn default() -> Self {
@@ -224,18 +224,15 @@ where
     }
 }
 
-impl<E: MultiMillerLoop> Guard<ParamsVerifierKZG<E>> for DualMSM<E>
-where
-    E::G1: Default + CurveExt<ScalarExt = E::Fr> + ProcessedSerdeObject,
-    E::G1Affine: Default + CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
-{
+impl<E: KZGEngine> Guard<ParamsVerifierKZG<E>> for DualMSM<E> {
     fn verify(self, params: &ParamsVerifierKZG<E>) -> Result<(), Error> {
         self.check(params).then_some(()).ok_or(Error::OpeningError)
     }
 }
 
-impl<E: MultiMillerLoop + Debug> DualMSM<E>
+impl<E> DualMSM<E>
 where
+    E: MultiMillerLoop + Debug,
     E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
 {
     /// Create an empty two channel MSM accumulator instance

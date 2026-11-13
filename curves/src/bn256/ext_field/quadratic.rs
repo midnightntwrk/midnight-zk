@@ -47,13 +47,15 @@ pub trait QuadSparseMul {
 }
 
 // Algorithm 9 of https://eprint.iacr.org/2012/685.pdf
-pub fn sqrt_algo9<F: ExtField, S: AsRef<[u64]>>(
+pub fn sqrt_algo9<F, S>(
     e: &QuadExtField<F>,
     q_minus_3_over_4: S,
     q_minus_1_over_2: S,
 ) -> subtle::CtOption<QuadExtField<F>>
 where
+    F: ExtField,
     QuadExtField<F>: QuadExtFieldArith<Base = F> + ExtField,
+    S: AsRef<[u64]>,
 {
     if e.is_zero().into() {
         subtle::CtOption::new(QuadExtField::ZERO, subtle::Choice::from(1))
@@ -93,14 +95,16 @@ where
 }
 
 // Algorithm 10 of https://eprint.iacr.org/2012/685.pdf
-pub fn sqrt_algo10<F: ExtField, S: AsRef<[u64]>>(
+pub fn sqrt_algo10<F, S>(
     el: &QuadExtField<F>,
     precompute_e: &QuadExtField<F>,
     precompute_f: &QuadExtField<F>,
     q_minus_1_over_4: S,
 ) -> subtle::CtOption<QuadExtField<F>>
 where
+    F: ExtField,
     QuadExtField<F>: QuadExtFieldArith<Base = F> + ExtField,
+    S: AsRef<[u64]>,
 {
     let b = el.pow_vartime(q_minus_1_over_4);
 
@@ -231,9 +235,10 @@ impl<F: ff::Field> QuadExtField<F> {
     }
 }
 
-impl<F: ExtField> QuadExtField<F>
+impl<F> QuadExtField<F>
 where
     Self: QuadExtFieldArith<Base = F>,
+    F: ExtField,
 {
     pub fn mul(&self, rhs: &Self) -> Self {
         let mut lhs = *self;
@@ -260,8 +265,9 @@ where
     }
 }
 
-impl<F: ExtField> Field for QuadExtField<F>
+impl<F> Field for QuadExtField<F>
 where
+    F: ExtField,
     QuadExtField<F>: QuadExtFieldArith<Base = F> + ExtField,
 {
     const ZERO: Self = Self::zero();

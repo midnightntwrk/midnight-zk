@@ -31,7 +31,7 @@ use std::collections::BTreeMap;
 
 use ff::Field;
 use group::Group;
-use midnight_curves::{CurveAffine, pairing::MultiMillerLoop};
+use midnight_curves::pairing::MultiMillerLoop;
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
@@ -47,13 +47,12 @@ use num_bigint::BigUint;
 use num_traits::One;
 
 use crate::{
-    CircuitField,
-    ecc::curves::{CircuitCurve, WeierstrassCurve},
-    field::{AssignedNative, foreign::params::FieldEmulationParams},
+    field::AssignedNative,
     instructions::{HashInstructions, hash::HashCPU},
     types::{AssignedBit, InnerValue, Instantiable},
     verifier::{
         ScalarChip,
+        kzg::InCircuitKZGEngine,
         msm::{AssignedMsm, Msm, Point},
         types::{AssignedG1, CurveChip},
         utils::{AssignedBoundedScalar, truncate_off_circuit, truncated_powers},
@@ -73,23 +72,12 @@ pub struct Accumulator<E: MultiMillerLoop> {
 
 /// Type for in-circuit accumulators (in-circuit analog of `Accumulator`).
 #[derive(Clone, Debug)]
-pub struct AssignedAccumulator<E: MultiMillerLoop>
-where
-    E::Fr: CircuitField,
-    E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
-        + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
-{
+pub struct AssignedAccumulator<E: InCircuitKZGEngine> {
     pub(crate) lhs: AssignedMsm<E>,
     pub(crate) rhs: AssignedMsm<E>,
 }
 
-impl<E: MultiMillerLoop> Accumulator<E>
-where
-    E::Fr: CircuitField,
-    E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
-        + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
-    E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
-{
+impl<E: InCircuitKZGEngine> Accumulator<E> {
     /// Converts an off-circuit [`DualMSM`] produced by the KZG verifier into an
     /// [`Accumulator`].
     ///
@@ -211,12 +199,7 @@ where
     }
 }
 
-impl<E: MultiMillerLoop> InnerValue for AssignedAccumulator<E>
-where
-    E::Fr: CircuitField,
-    E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
-        + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
-{
+impl<E: InCircuitKZGEngine> InnerValue for AssignedAccumulator<E> {
     type Element = Accumulator<E>;
 
     fn value(&self) -> Value<Accumulator<E>> {
@@ -226,12 +209,7 @@ where
     }
 }
 
-impl<E: MultiMillerLoop> Instantiable<E::Fr> for AssignedAccumulator<E>
-where
-    E::Fr: CircuitField,
-    E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
-        + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
-{
+impl<E: InCircuitKZGEngine> Instantiable<E::Fr> for AssignedAccumulator<E> {
     fn as_public_input(acc: &Accumulator<E>) -> Vec<E::Fr> {
         [
             AssignedMsm::as_public_input(&acc.lhs),
@@ -250,12 +228,7 @@ where
     }
 }
 
-impl<E: MultiMillerLoop> AssignedAccumulator<E>
-where
-    E::Fr: CircuitField,
-    E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
-        + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
-{
+impl<E: InCircuitKZGEngine> AssignedAccumulator<E> {
     /// Converts the off-circuit accumulator into two vectors of scalars. The
     /// first will be used as a normal instance, whereas the second will be
     /// plugged-in in as a committed instance.
@@ -277,12 +250,7 @@ where
     }
 }
 
-impl<E: MultiMillerLoop> AssignedAccumulator<E>
-where
-    E::Fr: CircuitField,
-    E::G1: WeierstrassCurve<ScalarField = E::Fr, CryptographicGroup = E::G1>
-        + FieldEmulationParams<E::Fr, <E::G1 as CircuitCurve>::Base>,
-{
+impl<E: InCircuitKZGEngine> AssignedAccumulator<E> {
     /// An `AssignedAccumulator` a given lhs and rhs terms respectively.
     pub fn new(lhs: AssignedMsm<E>, rhs: AssignedMsm<E>) -> Self {
         Self { lhs, rhs }

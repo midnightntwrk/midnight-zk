@@ -7,7 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+* `kzg::KZGEngine`, the pairing engines over which KZG commitments can be made, bounding `KZGCommitmentScheme<E>` [#644](https://github.com/midnightntwrk/midnight-zk/pull/644)
+* `transcript::TranscriptField<H>` (`Hashable<H> + Sampleable<H>`) and `plonk::ProofField<H>` (`TranscriptField<H> + WithSmallOrderMulGroup<3> + FromUniformBytes<64> + Hash + Ord`), which the prover, verifier and commitment schemes are bounded by [#644](https://github.com/midnightntwrk/midnight-zk/pull/644)
 ### Changed
+* Only the code that needs `ZETA` (building an `EvaluationDomain`, and reading or creating keys) requires `WithSmallOrderMulGroup<3>`; the getters of `EvaluationDomain`, `VerifyingKey` and `ProvingKey`, and the prover and verifier internals, require `PrimeField` [#644](https://github.com/midnightntwrk/midnight-zk/pull/644)
 ### Removed
 
 ## [0.9.0-rc.1]

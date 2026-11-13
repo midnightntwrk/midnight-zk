@@ -12,7 +12,7 @@ use crate::{
         Error, Polynomial, PolynomialRepresentation, ProverQuery, VerifierQuery,
         query::PolynomialLabel,
     },
-    transcript::{Hashable, Sampleable, Transcript},
+    transcript::{Hashable, Sampleable, Transcript, TranscriptField},
     utils::helpers::{ProcessedSerdeObject, SerdeFormat},
 };
 
@@ -98,12 +98,13 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
     /// Panics if a label is repeated. Labels name the polynomials the
     /// verifying key expects, so a repeat is a caller bug, not a malformed
     /// proof.
-    fn read_commitment<T: Transcript>(
+    fn read_commitment<T>(
         transcript: &mut T,
         labels: &[PolynomialLabel],
     ) -> io::Result<Self::Commitment>
     where
-        Self::Commitment: Hashable<T::Hash>;
+        Self::Commitment: Hashable<T::Hash>,
+        T: Transcript;
 
     /// Write a commitment produced by [`commit_many`](Self::commit_many) to the
     /// proof transcript, absorbing it in exactly the granularity in which
@@ -111,12 +112,10 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
     ///
     /// A commitment to no polynomials writes and absorbs nothing, and
     /// [`read_commitment`](Self::read_commitment) with no labels reads nothing.
-    fn write_commitment<T: Transcript>(
-        transcript: &mut T,
-        commitment: &Self::Commitment,
-    ) -> io::Result<()>
+    fn write_commitment<T>(transcript: &mut T, commitment: &Self::Commitment) -> io::Result<()>
     where
         Self::Commitment: Hashable<T::Hash>,
+        T: Transcript,
     {
         transcript.write(commitment)
     }
@@ -144,9 +143,10 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
     /// `t`-th power in the field.
     ///
     /// The protocol must squeeze evaluation points through this method.
-    fn squeeze_evaluation_point<T: Transcript>(transcript: &mut T) -> F
+    fn squeeze_evaluation_point<T>(transcript: &mut T) -> F
     where
         F: Sampleable<T::Hash>,
+        T: Transcript,
     {
         transcript.squeeze_challenge()
     }
@@ -154,14 +154,15 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
     /// Create a multi-opening proof at a set of [ProverQuery]'s.
     ///
     /// The evaluations of the queries are already in the transcript.
-    fn multi_open<T: Transcript>(
+    fn multi_open<T>(
         params: &Self::Parameters,
         prover_query: &[ProverQuery<F>],
         transcript: &mut T,
     ) -> Result<(), Error>
     where
-        F: Sampleable<T::Hash> + Hash + Ord + Hashable<T::Hash>,
-        Self::Commitment: Hashable<T::Hash>;
+        F: TranscriptField<T::Hash> + Hash + Ord,
+        Self::Commitment: Hashable<T::Hash>,
+        T: Transcript;
 
     /// The labels `commitment` tags its polynomials with.
     fn commitment_labels(commitment: &Self::Commitment) -> Vec<PolynomialLabel>;
@@ -178,13 +179,14 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
 
     /// Verify an multi-opening proof for a given set of [VerifierQuery]'s.
     /// The function fails if the transcript has trailing bytes.
-    fn multi_prepare<'com, T: Transcript>(
+    fn multi_prepare<'com, T>(
         verifier_query: &[VerifierQuery<'com, F, Self>],
         transcript: &mut T,
     ) -> Result<Self::VerificationGuard, Error>
     where
-        F: Sampleable<T::Hash> + Hash + Ord + Hashable<T::Hash>,
-        Self::Commitment: Hashable<T::Hash> + 'com;
+        F: TranscriptField<T::Hash> + Hash + Ord,
+        Self::Commitment: Hashable<T::Hash> + 'com,
+        T: Transcript;
 }
 
 /// A [`PolynomialCommitmentScheme`] that commits to polynomials interleaved

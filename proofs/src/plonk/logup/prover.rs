@@ -22,7 +22,7 @@
 
 use std::{hash::Hash, iter};
 
-use ff::{BatchInvert, FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
+use ff::{BatchInvert, FromUniformBytes, PrimeField};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::{
@@ -56,7 +56,7 @@ pub(crate) struct ComputedLogderivative<F: PrimeField> {
     pub(crate) aggregator_poly: Polynomial<F, LagrangeCoeff>,
 }
 
-impl<F: WithSmallOrderMulGroup<3> + Hash> ChunkedArgument<F> {
+impl<F: PrimeField + Hash> ChunkedArgument<F> {
     /// Evaluates the input and table expressions and computes the
     /// multiplicities, comparing the input and table tuples directly. The
     /// multiplicities are neither committed nor written to the transcript: the
@@ -67,17 +67,18 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ChunkedArgument<F> {
     /// blinding rows, so this method does not need `&mut rng` and can be
     /// called in parallel across lookups.
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn compute_multiplicities_parallel<'a, CS: PolynomialCommitmentScheme<F>>(
+    pub(crate) fn compute_multiplicities_parallel<'a, PCS>(
         &self,
         argument_index: usize,
-        pk: &ProvingKey<F, CS>,
+        pk: &ProvingKey<F, PCS>,
         advice_values: &'a [Polynomial<F, LagrangeCoeff>],
         fixed_values: &'a [Polynomial<F, LagrangeCoeff>],
         instance_values: &'a [Polynomial<F, LagrangeCoeff>],
         blinding_values: &[F],
     ) -> Result<ComputedMultiplicities<F>, Error>
     where
-        F: WithSmallOrderMulGroup<3> + FromUniformBytes<64>,
+        F: FromUniformBytes<64>,
+        PCS: PolynomialCommitmentScheme<F>,
     {
         assert_eq!(blinding_values.len(), pk.vk.cs.blinding_factors() + 1);
         let domain = pk.vk.get_domain();
@@ -130,7 +131,7 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ChunkedArgument<F> {
     }
 }
 
-impl<F: WithSmallOrderMulGroup<3> + Hash> ComputedMultiplicities<F> {
+impl<F: PrimeField + Hash> ComputedMultiplicities<F> {
     /// Constructs and commits to the LogUp prover polynomials, but does NOT
     /// write to the transcript or convert to coefficient form. The caller
     /// handles transcript ordering and can batch the FFTs.
@@ -140,15 +141,16 @@ impl<F: WithSmallOrderMulGroup<3> + Hash> ComputedMultiplicities<F> {
     /// `blinding_values` must contain exactly `blinding_factors` random field
     /// elements. They are provided externally so the caller can pre-generate
     /// them from `&mut rng` and then invoke multiple lookups in parallel.
-    pub(crate) fn compute_logderivative<CS: PolynomialCommitmentScheme<F>>(
+    pub(crate) fn compute_logderivative<PCS>(
         self,
-        pk: &ProvingKey<F, CS>,
+        pk: &ProvingKey<F, PCS>,
         theta: F,
         beta: F,
         blinding_values: Vec<F>,
     ) -> Result<ComputedLogderivative<F>, Error>
     where
-        F: WithSmallOrderMulGroup<3> + FromUniformBytes<64>,
+        F: FromUniformBytes<64>,
+        PCS: PolynomialCommitmentScheme<F>,
     {
         let blinding_factors = pk.vk.cs.blinding_factors();
         assert_eq!(blinding_values.len(), blinding_factors);

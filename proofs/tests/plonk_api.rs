@@ -1,7 +1,7 @@
 #![allow(clippy::many_single_char_names)]
 #![allow(clippy::op_ref)]
 
-use std::{hash::Hash, marker::PhantomData};
+use std::marker::PhantomData;
 
 use assert_matches::assert_matches;
 use blake2b_simd::State;
@@ -11,9 +11,9 @@ use midnight_proofs::{
     circuit::{Cell, Layouter, SimpleFloorPlanner, Value},
     dev::MockProver,
     plonk::{
-        Advice, Circuit, Column, ConstraintSystem, Constraints, Error, Fixed, ProvingKey,
-        TableColumn, VerifyingKey, create_proof as create_plonk_proof, keygen_pk, keygen_vk,
-        keygen_vk_with_k, prepare as prepare_plonk_proof,
+        Advice, Circuit, Column, ConstraintSystem, Constraints, Error, Fixed, ProofField,
+        ProvingKey, TableColumn, VerifyingKey, create_proof as create_plonk_proof, keygen_pk,
+        keygen_vk, keygen_vk_with_k, prepare as prepare_plonk_proof,
     },
     poly::{
         Rotation,
@@ -21,7 +21,7 @@ use midnight_proofs::{
         fflonk::Fflonk,
         kzg::{KZGCommitmentScheme, params::ParamsKZG},
     },
-    transcript::{CircuitTranscript, Hashable, Sampleable, Transcript},
+    transcript::{CircuitTranscript, Hashable, Transcript},
     utils::{arithmetic::Field, rational::Rational},
 };
 use rand_core::{CryptoRng, OsRng, RngCore};
@@ -436,11 +436,10 @@ fn plonk_api() {
         }};
     }
 
-    fn keygen<F, Scheme: PolynomialCommitmentScheme<F>>(
-        params: &mut Scheme::Parameters,
-    ) -> ProvingKey<F, Scheme>
+    fn keygen<F, Scheme>(params: &mut Scheme::Parameters) -> ProvingKey<F, Scheme>
     where
         F: FromUniformBytes<64> + WithSmallOrderMulGroup<3> + Ord,
+        Scheme: PolynomialCommitmentScheme<F>,
     {
         let (_, _, lookup_table) = common!(F);
         let empty_circuit: MyCircuit<F> = MyCircuit {
@@ -454,25 +453,17 @@ fn plonk_api() {
         keygen_pk(vk, &empty_circuit).expect("keygen_pk should not fail")
     }
 
-    fn create_proof<
-        F,
-        Scheme: PolynomialCommitmentScheme<F>,
-        T: Transcript,
-        R: RngCore + CryptoRng,
-    >(
+    fn create_proof<F, Scheme, T, R>(
         rng: R,
         params: &Scheme::Parameters,
         pk: &ProvingKey<F, Scheme>,
     ) -> Vec<u8>
     where
-        F: Ord
-            + WithSmallOrderMulGroup<3>
-            + FromUniformBytes<64>
-            + Sampleable<T::Hash>
-            + Hashable<T::Hash>
-            + Hash
-            + SerdeObject,
+        F: ProofField<T::Hash> + SerdeObject,
+        Scheme: PolynomialCommitmentScheme<F>,
         Scheme::Commitment: Hashable<T::Hash>,
+        T: Transcript,
+        R: RngCore + CryptoRng,
     {
         let (a, instance, lookup_table) = common!(F);
 
@@ -505,19 +496,15 @@ fn plonk_api() {
         transcript.finalize()
     }
 
-    fn verify_proof<F, Scheme: PolynomialCommitmentScheme<F>, T: Transcript>(
+    fn verify_proof<F, Scheme, T>(
         params_verifier: &Scheme::VerifierParameters,
         vk: &VerifyingKey<F, Scheme>,
         proof: &[u8],
     ) where
-        F: Ord
-            + WithSmallOrderMulGroup<3>
-            + FromUniformBytes<64>
-            + Sampleable<T::Hash>
-            + Hashable<T::Hash>
-            + Hash
-            + SerdeObject,
+        F: ProofField<T::Hash> + SerdeObject,
+        Scheme: PolynomialCommitmentScheme<F>,
         Scheme::Commitment: Hashable<T::Hash>,
+        T: Transcript,
     {
         let (_, instance, _) = common!(F);
         let pubinputs = [instance];

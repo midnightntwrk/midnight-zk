@@ -20,11 +20,11 @@ use crate::{
 /// proof. The field is private to this module, so the only way to obtain one is
 /// through [`VerifyingKey::absorb_into`].
 #[derive(Debug)]
-pub(crate) struct AbsorbedVk<'a, F: PrimeField, CS: PolynomialCommitmentScheme<F>>(
-    &'a VerifyingKey<F, CS>,
+pub(crate) struct AbsorbedVk<'a, F: PrimeField, PCS: PolynomialCommitmentScheme<F>>(
+    &'a VerifyingKey<F, PCS>,
 );
 
-impl<'a, F: PrimeField, CS: PolynomialCommitmentScheme<F>> AbsorbedVk<'a, F, CS> {
+impl<'a, F: PrimeField, PCS: PolynomialCommitmentScheme<F>> AbsorbedVk<'a, F, PCS> {
     /// The `transcript_repr` of the absorbed key.
     pub(crate) fn transcript_repr(&self) -> F {
         self.0.transcript_repr
@@ -32,7 +32,7 @@ impl<'a, F: PrimeField, CS: PolynomialCommitmentScheme<F>> AbsorbedVk<'a, F, CS>
 
     /// The commitment the absorbed key holds to its phase-0 group; see
     /// [`VerifyingKey::phase0_commitment`].
-    pub(crate) fn phase0_commitment(&self) -> &'a CS::Commitment {
+    pub(crate) fn phase0_commitment(&self) -> &'a PCS::Commitment {
         &self.0.phase0_commitment
     }
 
@@ -43,15 +43,13 @@ impl<'a, F: PrimeField, CS: PolynomialCommitmentScheme<F>> AbsorbedVk<'a, F, CS>
     }
 }
 
-impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> VerifyingKey<F, CS> {
+impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> VerifyingKey<F, PCS> {
     /// Absorbs this verifying key into `transcript`, returning the witness that
     /// it was.
-    pub(crate) fn absorb_into<T: Transcript>(
-        &self,
-        transcript: &mut T,
-    ) -> io::Result<AbsorbedVk<'_, F, CS>>
+    pub(crate) fn absorb_into<T>(&self, transcript: &mut T) -> io::Result<AbsorbedVk<'_, F, PCS>>
     where
         F: Hashable<T::Hash>,
+        T: Transcript,
     {
         transcript.common(&self.transcript_repr)?;
         Ok(AbsorbedVk(self))

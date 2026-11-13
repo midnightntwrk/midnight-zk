@@ -1,45 +1,40 @@
 use std::{
     collections::BTreeMap,
-    hash::Hash,
     iter::{self},
 };
 
-use ff::{FromUniformBytes, WithSmallOrderMulGroup};
+use ff::FromUniformBytes;
 
 use super::{Error, VerifyingKey};
 use crate::{
-    plonk::{argument, evaluate_identities, traces::VerifierTrace},
+    plonk::{ProofField, argument, evaluate_identities, traces::VerifierTrace},
     poly::{PolynomialLabel, Rotation, VerifierQuery, commitment::PolynomialCommitmentScheme},
-    transcript::{Hashable, Sampleable, Transcript},
+    transcript::{Hashable, Transcript, TranscriptField},
     utils::arithmetic::compute_inner_product,
 };
 
 /// Given a plonk proof, this function parses it to extract the verifying trace.
 /// This function computes all Fiat-Shamir challenges, with the exception of
 /// `x`, which is computed in [verify_algebraic_constraints]
-pub fn parse_trace<F, CS, T>(
-    vk: &VerifyingKey<F, CS>,
+pub fn parse_trace<F, PCS, T>(
+    vk: &VerifyingKey<F, PCS>,
     // Unlike the prover, the verifier gets their instances in two arguments:
     // committed and normal (non-committed). Note that the total number of
     // instance columns is expected to be the sum of committed instances and
     // normal instances. (Committed instances go first, that is, the first
     // instance columns are devoted to committed instances.)
-    #[cfg(feature = "committed-instances")] committed_instances: &[CS::Commitment],
+    #[cfg(feature = "committed-instances")] committed_instances: &[PCS::Commitment],
     instances: &[&[F]],
     transcript: &mut T,
-) -> Result<VerifierTrace<F, CS>, Error>
+) -> Result<VerifierTrace<F, PCS>, Error>
 where
-    CS: PolynomialCommitmentScheme<F>,
+    F: TranscriptField<T::Hash> + FromUniformBytes<64> + Ord,
+    PCS: PolynomialCommitmentScheme<F>,
+    PCS::Commitment: Hashable<T::Hash>,
     T: Transcript,
-    F: WithSmallOrderMulGroup<3>
-        + Hashable<T::Hash>
-        + Sampleable<T::Hash>
-        + FromUniformBytes<64>
-        + Ord,
-    CS::Commitment: Hashable<T::Hash>,
 {
     #[cfg(not(feature = "committed-instances"))]
-    let committed_instances: Vec<CS::Commitment> = vec![];
+    let committed_instances: Vec<PCS::Commitment> = vec![];
 
     // Check that instances matches the expected number of instance columns
     if committed_instances.len() + instances.len() != vk.cs.num_instance_columns {
@@ -97,29 +92,26 @@ where
 /// evaluations. This function does not verify the PCS proof.
 ///
 /// The verifier will error if there are trailing bits in the transcript.
-pub fn verify_algebraic_constraints<F, CS: PolynomialCommitmentScheme<F>, T: Transcript>(
-    vk: &VerifyingKey<F, CS>,
-    trace: VerifierTrace<F, CS>,
+pub fn verify_algebraic_constraints<F, PCS, T>(
+    vk: &VerifyingKey<F, PCS>,
+    trace: VerifierTrace<F, PCS>,
     // Unlike the prover, the verifier gets their instances in two arguments:
     // committed and normal (non-committed). Note that the total number of
     // instance columns is expected to be the sum of committed instances and
     // normal instances. (Committed instances go first, that is, the first
     // instance columns are devoted to committed instances.)
-    #[cfg(feature = "committed-instances")] committed_instances: &[CS::Commitment],
+    #[cfg(feature = "committed-instances")] committed_instances: &[PCS::Commitment],
     instances: &[&[F]],
     transcript: &mut T,
-) -> Result<CS::VerificationGuard, Error>
+) -> Result<PCS::VerificationGuard, Error>
 where
-    F: WithSmallOrderMulGroup<3>
-        + Hashable<T::Hash>
-        + Sampleable<T::Hash>
-        + FromUniformBytes<64>
-        + Hash
-        + Ord,
-    CS::Commitment: Hashable<T::Hash>,
+    F: ProofField<T::Hash>,
+    PCS: PolynomialCommitmentScheme<F>,
+    PCS::Commitment: Hashable<T::Hash>,
+    T: Transcript,
 {
     #[cfg(not(feature = "committed-instances"))]
-    let committed_instances: Vec<CS::Commitment> = vec![];
+    let committed_instances: Vec<PCS::Commitment> = vec![];
 
     let nb_committed_instances = committed_instances.len();
 
@@ -144,7 +136,7 @@ where
 
     // Sample x challenge, which is used to ensure the circuit is
     // satisfied with high probability.
-    let x: F = CS::squeeze_evaluation_point(transcript);
+    let x: F = PCS::squeeze_evaluation_point(transcript);
 
     let splitting_factor = x.pow_vartime([vk.n() - 2]);
     let xn = splitting_factor * x.square();
@@ -263,7 +255,7 @@ where
     // We are now convinced the circuit is satisfied so long as the
     // polynomial commitments open to the correct values, which is true as long
     // as the following accumulator passes the invariant.
-    CS::multi_prepare(&queries, transcript).map_err(|_| Error::Opening)
+    PCS::multi_prepare(&queries, transcript).map_err(|_| Error::Opening)
 }
 
 /// Prepares a plonk proof into a PCS instance that can be finalized or
@@ -271,25 +263,22 @@ where
 /// instance columns.
 ///
 /// The verifier will error if there are trailing bytes in the transcript.
-pub fn prepare<F, CS: PolynomialCommitmentScheme<F>, T: Transcript>(
-    vk: &VerifyingKey<F, CS>,
+pub fn prepare<F, PCS, T>(
+    vk: &VerifyingKey<F, PCS>,
     // Unlike the prover, the verifier gets their instances in two arguments:
     // committed and normal (non-committed). Note that the total number of
     // instance columns is expected to be the sum of committed instances and
     // normal instances. (Committed instances go first, that is, the first
     // instance columns are devoted to committed instances.)
-    #[cfg(feature = "committed-instances")] committed_instances: &[CS::Commitment],
+    #[cfg(feature = "committed-instances")] committed_instances: &[PCS::Commitment],
     instances: &[&[F]],
     transcript: &mut T,
-) -> Result<CS::VerificationGuard, Error>
+) -> Result<PCS::VerificationGuard, Error>
 where
-    F: WithSmallOrderMulGroup<3>
-        + Hashable<T::Hash>
-        + Sampleable<T::Hash>
-        + FromUniformBytes<64>
-        + Hash
-        + Ord,
-    CS::Commitment: Hashable<T::Hash>,
+    F: ProofField<T::Hash>,
+    PCS: PolynomialCommitmentScheme<F>,
+    PCS::Commitment: Hashable<T::Hash>,
+    T: Transcript,
 {
     let trace = parse_trace(
         vk,

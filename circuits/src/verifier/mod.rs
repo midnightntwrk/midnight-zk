@@ -15,7 +15,6 @@
 
 use std::collections::BTreeMap;
 
-use ff::WithSmallOrderMulGroup;
 use group::Group;
 use midnight_curves::pairing::MultiMillerLoop;
 use midnight_proofs::{
@@ -46,7 +45,7 @@ mod utils;
 mod verifier_gadget;
 
 pub use accumulator::{Accumulator, AssignedAccumulator};
-pub use kzg::{AssignedKZGCommitment, AssignedKZGMultiCommitment};
+pub use kzg::{AssignedKZGCommitment, AssignedKZGMultiCommitment, InCircuitKZGEngine};
 pub use msm::{AssignedMsm, AssignedPoint, Msm, Point};
 pub use pcs::{AssignedCommitment, CommitmentBases, InCircuitPCS};
 pub use transcript_gadget::{InCircuitHashable, InCircuitTranscript, PoseidonTranscriptGadget};
@@ -113,9 +112,7 @@ impl<F: CircuitField, PCS: InCircuitPCS<F>> InnerValue for AssignedVk<F, PCS> {
     }
 }
 
-impl<F: CircuitField + WithSmallOrderMulGroup<3>, PCS: InCircuitPCS<F>> Instantiable<F>
-    for AssignedVk<F, PCS>
-{
+impl<F: CircuitField, PCS: InCircuitPCS<F>> Instantiable<F> for AssignedVk<F, PCS> {
     fn as_public_input(vk: &VerifyingKey<F, PCS>) -> Vec<F> {
         let domain = vk.get_domain();
         [
@@ -163,7 +160,7 @@ impl<F: CircuitField, PCS: InCircuitPCS<F>> AssignedVk<F, PCS> {
 /// Pass this map to [`Accumulator::check`] or [`Msm::eval`].
 pub fn fixed_bases<E, PCS>(vk: &plonk::VerifyingKey<E::Fr, PCS>) -> BTreeMap<PolynomialLabel, E::G1>
 where
-    E: MultiMillerLoop<Fr: WithSmallOrderMulGroup<3>>,
+    E: MultiMillerLoop,
     PCS: PolynomialCommitmentScheme<E::Fr, Commitment: CommitmentBases<E::G1>>,
 {
     let mut fixed_bases: BTreeMap<_, _> = vk.phase0_commitment().bases().into_iter().collect();

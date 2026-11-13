@@ -51,7 +51,7 @@ impl<'a, F: CircuitField, PCS: InCircuitPCS<F>> AbsorbedVk<'a, F, PCS> {
 impl<F: CircuitField, PCS: InCircuitPCS<F>> AssignedVk<F, PCS> {
     /// Absorbs this verifying key into `transcript`, returning the witness that
     /// it was.
-    pub(crate) fn absorb_into<T: InCircuitTranscript<F>>(
+    pub(crate) fn absorb_into<T>(
         &self,
         layouter: &mut impl Layouter<F>,
         scalar_chip: &ScalarChip<F>,
@@ -59,6 +59,7 @@ impl<F: CircuitField, PCS: InCircuitPCS<F>> AssignedVk<F, PCS> {
     ) -> Result<AbsorbedVk<'_, F, PCS>, Error>
     where
         F: Hashable<T::Hash>,
+        T: InCircuitTranscript<F>,
     {
         transcript.common(layouter, scalar_chip, &self.transcript_repr)?;
         Ok(AbsorbedVk(self))

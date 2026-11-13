@@ -2,7 +2,7 @@
 
 use std::ops::Range;
 
-use ff::{Field, FromUniformBytes, WithSmallOrderMulGroup};
+use ff::{Field, FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
 
 use super::{
     Error, LagrangeCoeff, Polynomial, ProvingKey, VerifyingKey,
@@ -204,18 +204,18 @@ pub fn k_from_circuit<F: Ord + Field + FromUniformBytes<64>, C: Circuit<F>>(circ
 /// Automatically determines the smallest `k` required for the given circuit
 /// and adjusts the received parameters to match the circuit's size.
 /// Use `keygen_vk_with_k` to specify a custom `k` value.
-pub fn keygen_vk<F, CS, ConcreteCircuit>(
-    params: &CS::Parameters,
+pub fn keygen_vk<F, PCS, ConcreteCircuit>(
+    params: &PCS::Parameters,
     circuit: &ConcreteCircuit,
-) -> Result<VerifyingKey<F, CS>, Error>
+) -> Result<VerifyingKey<F, PCS>, Error>
 where
     F: WithSmallOrderMulGroup<3> + FromUniformBytes<64> + Ord,
-    CS: PolynomialCommitmentScheme<F>,
+    PCS: PolynomialCommitmentScheme<F>,
     ConcreteCircuit: Circuit<F>,
 {
     let k = k_from_circuit(circuit);
 
-    let max_k = CS::max_k(params);
+    let max_k = PCS::max_k(params);
     if max_k != k {
         return Err(Error::SrsError(max_k as usize, k as usize));
     }
@@ -224,17 +224,17 @@ where
 }
 
 /// Generate a `VerifyingKey` from an instance of `Circuit`.
-pub fn keygen_vk_with_k<F, CS, ConcreteCircuit>(
-    params: &CS::Parameters,
+pub fn keygen_vk_with_k<F, PCS, ConcreteCircuit>(
+    params: &PCS::Parameters,
     circuit: &ConcreteCircuit,
     k: u32,
-) -> Result<VerifyingKey<F, CS>, Error>
+) -> Result<VerifyingKey<F, PCS>, Error>
 where
     F: WithSmallOrderMulGroup<3> + FromUniformBytes<64> + Ord,
-    CS: PolynomialCommitmentScheme<F>,
+    PCS: PolynomialCommitmentScheme<F>,
     ConcreteCircuit: Circuit<F>,
 {
-    let max_k = CS::max_k(params);
+    let max_k = PCS::max_k(params);
     if max_k < k {
         return Err(Error::NotEnoughRowsAvailable { current_k: max_k });
     }
@@ -276,19 +276,19 @@ where
     let permutations = assembly.permutation.into_permutations::<F>(&domain, &cs.permutation);
 
     let fixed_polys: Vec<_> = fixed.iter().chain(permutations.iter()).collect();
-    let phase0_commitment = CS::commit_many(params, &fixed_polys, &cs.fixed_polys_labels());
+    let phase0_commitment = PCS::commit_many(params, &fixed_polys, &cs.fixed_polys_labels());
 
     Ok(VerifyingKey::from_parts(domain, phase0_commitment, cs))
 }
 
 /// Generate a `ProvingKey` from a `VerifyingKey` and an instance of `Circuit`.
-pub fn keygen_pk<F, CS, ConcreteCircuit>(
-    vk: VerifyingKey<F, CS>,
+pub fn keygen_pk<F, PCS, ConcreteCircuit>(
+    vk: VerifyingKey<F, PCS>,
     circuit: &ConcreteCircuit,
-) -> Result<ProvingKey<F, CS>, Error>
+) -> Result<ProvingKey<F, PCS>, Error>
 where
-    F: WithSmallOrderMulGroup<3>,
-    CS: PolynomialCommitmentScheme<F>,
+    F: PrimeField,
+    PCS: PolynomialCommitmentScheme<F>,
     ConcreteCircuit: Circuit<F>,
 {
     let mut cs = ConstraintSystem::default();
@@ -343,13 +343,13 @@ where
     })
 }
 
-pub(crate) fn compute_lagrange_polys<F, CS>(
-    vk: &VerifyingKey<F, CS>,
+pub(crate) fn compute_lagrange_polys<F, PCS>(
+    vk: &VerifyingKey<F, PCS>,
     cs: &ConstraintSystem<F>,
 ) -> [Polynomial<F, ExtendedLagrangeCoeff>; 3]
 where
-    F: WithSmallOrderMulGroup<3>,
-    CS: PolynomialCommitmentScheme<F>,
+    F: PrimeField,
+    PCS: PolynomialCommitmentScheme<F>,
 {
     // Compute l_0(X)
     // TODO: this can be done more efficiently

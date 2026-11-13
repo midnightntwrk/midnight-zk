@@ -218,8 +218,9 @@ pub(crate) fn permutation_expressions<F: CircuitField>(
     Ok([vec![id_1, id_2], ids_3, ids_4].concat())
 }
 
-fn get_query_index<C: ColumnType>(column: Column<Any>, queries: &[(Column<C>, Rotation)]) -> usize
+fn get_query_index<C>(column: Column<Any>, queries: &[(Column<C>, Rotation)]) -> usize
 where
+    C: ColumnType,
     Column<C>: TryFrom<Column<Any>>,
     <Column<C> as TryFrom<Column<Any>>>::Error: std::fmt::Debug,
 {

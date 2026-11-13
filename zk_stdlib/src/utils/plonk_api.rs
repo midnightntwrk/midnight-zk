@@ -35,7 +35,7 @@ use midnight_proofs::{
             params::{ParamsKZG, ParamsVerifierKZG},
         },
     },
-    transcript::{CircuitTranscript, Hashable, Sampleable, Transcript, TranscriptHash},
+    transcript::{CircuitTranscript, Hashable, Transcript, TranscriptField, TranscriptHash},
     utils::SerdeFormat,
 };
 use rand::{CryptoRng, RngCore};
@@ -94,9 +94,9 @@ macro_rules! plonk_api {
                 rng: impl RngCore + CryptoRng,
             ) -> Result<Vec<u8>, Error>
             where
-                H: TranscriptHash,
                 $projective: Hashable<H>,
-                $native: Hashable<H> + Sampleable<H>,
+                $native: TranscriptField<H>,
+                H: TranscriptHash,
             {
                 #[cfg(test)]
                 let start = Instant::now();
@@ -132,9 +132,9 @@ macro_rules! plonk_api {
                 proof: &[u8],
             ) -> Result<(), Error>
             where
-                H: TranscriptHash,
                 $projective: Hashable<H>,
-                $native: Hashable<H> + Sampleable<H>,
+                $native: TranscriptField<H>,
+                H: TranscriptHash,
             {
                 let mut transcript = CircuitTranscript::init_from_bytes(proof);
 
