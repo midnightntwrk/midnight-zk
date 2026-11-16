@@ -311,7 +311,10 @@ pub(crate) mod tests {
                 Operation::Coordinates => {
                     let px = ecc_chip.x(&mut layouter, &p)?;
                     let py = ecc_chip.y(&mut layouter, &p)?;
-                    ecc_chip.point_from_coordinates(&mut layouter, &px, &py)
+                    let res = ecc_chip.point_from_coordinates(&mut layouter, &px, &py)?;
+                    // The off-circuit value must agree with the assigned coordinates.
+                    res.value().error_if_known_and(|v| *v != self.inputs[0])?;
+                    Ok(res)
                 }
             }?;
             cost_measure_end(&mut layouter);
@@ -712,6 +715,32 @@ pub(crate) mod tests {
             );
             cost_model = false;
         })
+    }
+
+    /// Tests that `point_from_coordinates` accepts the coordinates of `point`
+    /// and returns an assigned point whose value is `point`.
+    pub fn test_point_from_coordinates_of<F, C, EccChip>(point: C::CryptographicGroup, name: &str)
+    where
+        F: CircuitField + FromUniformBytes<64> + Ord,
+        C: CircuitCurve,
+        EccChip: EccInstructions<F, C>
+            + AssignmentInstructions<F, EccChip::Point>
+            + AssignmentInstructions<F, EccChip::Scalar>
+            + AssertionInstructions<F, EccChip::Point>
+            + Chip<F>
+            + FromScratch<F>,
+        EccChip::Point: InnerValue<Element = C::CryptographicGroup> + Clone,
+    {
+        run::<F, C, EccChip>(
+            &[point],
+            None,
+            &point,
+            Operation::Coordinates,
+            true,
+            false,
+            name,
+            "coordinates",
+        );
     }
 
     pub fn test_coordinates<F, C, EccChip>(name: &str)

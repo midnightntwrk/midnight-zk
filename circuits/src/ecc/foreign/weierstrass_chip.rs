@@ -2041,11 +2041,12 @@ where
 
 #[cfg(test)]
 mod tests {
-    use group::Group;
+    use group::{Curve, Group};
     use midnight_curves::{Fq as BlsScalar, G1Projective as BlsG1, k256::K256, p256::P256};
 
     use super::*;
     use crate::{
+        ecc::curves::CircuitCurve,
         field::{
             NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip,
             foreign::params::MultiEmulationParams,
@@ -2137,4 +2138,35 @@ mod tests {
     ecc_tests!(test_msm_by_bounded_scalars);
     ecc_tests!(test_mul_by_constant);
     ecc_tests!(test_coordinates);
+
+    /// Points of BLS12-381 outside the prime-order subgroup are accepted by
+    /// `point_from_coordinates`, which does not enforce subgroup membership.
+    #[test]
+    fn test_coordinates_outside_subgroup() {
+        type Fp = <BlsG1 as CircuitCurve>::Base;
+        let b = <BlsG1 as WeierstrassCurve>::B;
+        // (0, 2) is a point of order 3.
+        let low_order = (Fp::ZERO, Fp::from(2));
+        // A generic point of the curve, the one with the smallest x > 0.
+        let generic = (1..)
+            .map(Fp::from)
+            .find_map(|x| (x.square() * x + b).sqrt().into_option().map(|y| (x, y)))
+            .unwrap();
+        let points = [low_order, generic];
+        points.into_iter().for_each(|(x, y)| {
+            let point = BlsG1::from_xy(x, y).unwrap();
+            assert!(!bool::from(point.to_affine().is_torsion_free()));
+            ecc::tests::test_point_from_coordinates_of::<
+                BlsScalar,
+                BlsG1,
+                ForeignWeierstrassEccChip<
+                    BlsScalar,
+                    BlsG1,
+                    MultiEmulationParams,
+                    Native<BlsScalar>,
+                    Native<BlsScalar>,
+                >,
+            >(point, "foreign_ecc_bls_over_bls");
+        });
+    }
 }

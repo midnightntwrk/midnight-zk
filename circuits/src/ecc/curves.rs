@@ -16,9 +16,9 @@
 use ff::Field;
 use group::{Curve, Group};
 #[cfg(feature = "dev-curves")]
-use midnight_curves::bn256;
+use midnight_curves::{CurveAffine, bn256};
 use midnight_curves::{
-    CurveAffine, Fq as BlsScalar, JubjubAffine, JubjubExtended, JubjubSubgroup,
+    Fq as BlsScalar, JubjubAffine, JubjubExtended, JubjubSubgroup,
     curve25519::{CURVE_A as CURVE25519_A, CURVE_D as CURVE25519_D, Curve25519, Curve25519Affine},
 };
 
@@ -288,14 +288,14 @@ impl CircuitCurve for G1Projective {
 
     fn from_xy(x: Self::Base, y: Self::Base) -> Option<Self> {
         // Check the (short) Weierstrass curve equation: y² = x³ + Ax + B
-        // The underlying `CurveAffine::from_xy` handles the identity coordinates
-        // without errors via a short-circuit check.
         let a = <Self as WeierstrassCurve>::A;
         let b = <Self as WeierstrassCurve>::B;
         if y.square() != x.square() * x + a * x + b {
             return None;
         }
-        <G1Affine as CurveAffine>::from_xy(x, y).into_option().map(|p| p.into())
+        // The point is not required to be in the prime-order subgroup, so we
+        // cannot use `CurveAffine::from_xy`, which rejects points outside of it.
+        Some(G1Affine::from_xy_unchecked(x, y).into())
     }
 
     fn try_into_subgroup(self) -> Option<Self::CryptographicGroup> {
@@ -416,6 +416,23 @@ mod tests {
         check::<G1Projective>();
         #[cfg(feature = "dev-curves")]
         check::<bn256::G1>();
+    }
+
+    /// Tests that `from_xy` accepts points of BLS12-381 that satisfy the curve
+    /// equation but lie outside the prime-order subgroup, preserving their
+    /// coordinates.
+    #[test]
+    fn test_bls_from_xy_outside_subgroup() {
+        // (0, 2) is a point of order 3.
+        let (x, y) = (BlsBase::ZERO, BlsBase::from(2));
+        let p = G1Projective::from_xy(x, y).expect("(0, 2) satisfies the curve equation");
+        assert!(!bool::from(p.to_affine().is_torsion_free()));
+        assert_eq!(p.coordinates(), Some((x, y)));
+        assert!(bool::from((p.double() + p).is_identity()));
+
+        // A point in the subgroup is still accepted.
+        let (x, y) = G1Projective::generator().coordinates().unwrap();
+        assert_eq!(G1Projective::from_xy(x, y), Some(G1Projective::generator()));
     }
 
     /// Tests that `from_xy` on the identity coordinates returns `Some` only
