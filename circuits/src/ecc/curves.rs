@@ -244,7 +244,7 @@ impl CircuitCurve for P256 {
 
     fn coordinates(&self) -> Option<(Self::Base, Self::Base)> {
         if bool::from(self.is_identity()) {
-            return Some((P256Fp::ZERO, P256Fp::ZERO));
+            return None;
         }
         let affine = self.to_affine();
         Some((affine_x(&affine), affine_y(&affine)))
@@ -393,6 +393,7 @@ mod tests {
 
         // Weierstrass curves
         check::<K256>(false);
+        check::<P256>(false);
         check::<G1Projective>(false);
         #[cfg(feature = "dev-curves")]
         check::<bn256::G1>(false);
@@ -467,6 +468,7 @@ mod tests {
 
         // Weierstrass curves
         check::<K256>(false);
+        check::<P256>(false);
         check::<G1Projective>(false);
         #[cfg(feature = "dev-curves")]
         check::<bn256::G1>(false);

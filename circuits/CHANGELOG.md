@@ -10,8 +10,9 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 * `verifier::InCircuitKZGEngine`, the `KZGEngine`s whose KZG proofs can be verified in-circuit, bounding the KZG types of the in-circuit verifier [#644](https://github.com/midnightntwrk/midnight-zk/pull/644)
 ### Fixed
-* `CircuitCurve::from_xy` for BLS12-381 accepts points outside the prime-order subgroup, so the foreign Weierstrass `point_from_coordinates` assigns them with their actual value [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
-* `CircuitCurve::from_xy` for Jubjub checks the curve equation on both coordinates. [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
+* `CircuitCurve::from_xy` for BLS12-381 accepts points outside the prime-order subgroup, so the foreign Weierstrass `point_from_coordinates` assigns them with their actual value [#654](https://github.com/midnightntwrk/midnight-zk/pull/654)
+* `CircuitCurve::coordinates` for P256 returns `None` on the identity, as on the other Weierstrass curves [#654](https://github.com/midnightntwrk/midnight-zk/pull/654)
+* `CircuitCurve::from_xy` for Jubjub checks the curve equation on both coordinates. [#654](https://github.com/midnightntwrk/midnight-zk/pull/654)
 ### Changed
 ### Removed
 

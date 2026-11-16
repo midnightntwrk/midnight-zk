@@ -178,10 +178,6 @@ where
 /// The identity is represented with field `is_id`, whose value is `1` iff the
 /// point is the identity. If `is_id` is set, the values of `x` and `y` are
 /// irrelevant and can be anything.
-/// x2 is a ModInt encoding the square of x, which is computed once and stored.
-/// This value is used by our custom gates, it allows us to implement all
-/// custom gates without degree-3 terms, so we can reuse the same auxiliary
-/// moduli as for ModArith.mul.
 #[derive(Clone, Debug)]
 #[must_use]
 pub struct AssignedForeignPoint<F, C, B>
@@ -976,8 +972,8 @@ where
     S::Scalar: InnerValue<Element = C::ScalarField>,
     N: NativeInstructions<F>,
 {
-    /// Given config creates new chip that implements foreign ECC
-    /// The RNG is used to sample a random point used for incomplete addition
+    /// Given config creates new chip that implements foreign ECC.
+    /// A random point, used for incomplete addition, is sampled internally.
     /// Soundness does not rely on this point being random, but completeness
     /// does.
     pub fn new(
