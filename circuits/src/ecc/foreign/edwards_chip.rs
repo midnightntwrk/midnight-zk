@@ -1620,11 +1620,12 @@ mod tests {
         MultiEmulationParams: FieldEmulationParams<BlsScalar, C::Base>
             + FieldEmulationParams<BlsScalar, C::ScalarField>,
     {
-        fn assert_not_on_curve<C: EdwardsCurve>(x: C::Base, y: C::Base)
+        fn assert_not_on_curve<C>(x: C::Base, y: C::Base)
         where
-            C::Base: Legendre,
             MultiEmulationParams: FieldEmulationParams<BlsScalar, C::Base>
                 + FieldEmulationParams<BlsScalar, C::ScalarField>,
+            C: EdwardsCurve,
+            C::Base: Legendre,
         {
             let circuit = OnCurveCheckCircuit::<C> { x, y };
             let prover = MockProver::run(&circuit, vec![vec![], vec![]])

@@ -1,6 +1,6 @@
 [package]
 name = "midnight-proofs"
-version = "0.8.3"
+version = "0.9.0-rc.1"
 edition.workspace = true
 rust-version.workspace = true
 description = """
@@ -34,7 +34,7 @@ workspace = true
 [dependencies]
 ff = { workspace = true }
 group = { workspace = true }
-midnight-curves = "0.3.0"
+midnight-curves = "0.4.0-rc.1"
 rand_core = { workspace = true, features = ["getrandom"] }
 tracing = { workspace = true }
 blake2b_simd = { workspace = true }
@@ -64,7 +64,7 @@ criterion = "0.8"
 getrandom = { version = "0.2", features = ["js"] }
 
 [target.'cfg(ci_build)'.dependencies]
-midnight-curves = { version = "0.3.0", features = ["portable"] }
+midnight-curves = { version = "0.4.0-rc.1", features = ["portable"] }
 
 [features]
 default = ["committed-instances"]

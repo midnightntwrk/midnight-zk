@@ -129,26 +129,26 @@ impl<'com, F: PrimeField> ProverQuery<'com, F> {
 
 /// A polynomial query at a point.
 #[derive(Debug, Clone)]
-pub struct VerifierQuery<'com, F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
+pub struct VerifierQuery<'com, F: PrimeField, PCS: PolynomialCommitmentScheme<F>> {
     /// Point at which polynomial is queried.
     pub(crate) point: F,
     /// Commitment containing the queried polynomial.
-    pub(crate) commitment: &'com CS::Commitment,
+    pub(crate) commitment: &'com PCS::Commitment,
     /// Label identifying which polynomial within the commitment is queried.
     pub(crate) label: PolynomialLabel,
     /// Evaluation of polynomial at query point.
     pub(crate) eval: F,
 }
 
-impl<'com, F, CS> VerifierQuery<'com, F, CS>
+impl<'com, F, PCS> VerifierQuery<'com, F, PCS>
 where
     F: PrimeField,
-    CS: PolynomialCommitmentScheme<F>,
+    PCS: PolynomialCommitmentScheme<F>,
 {
     /// Create a new verifier query.
     pub fn new(
         point: F,
-        commitment: &'com CS::Commitment,
+        commitment: &'com PCS::Commitment,
         label: PolynomialLabel,
         eval: F,
     ) -> Self {

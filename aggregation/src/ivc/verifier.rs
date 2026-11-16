@@ -5,7 +5,10 @@
 //! to the claimed state exists. Verification is constant-time regardless
 //! of how many steps the prover has performed.
 
-use midnight_circuits::{hash::poseidon::PoseidonState, verifier::Accumulator};
+use midnight_circuits::{
+    hash::poseidon::{PoseidonChip, PoseidonState},
+    verifier::Accumulator,
+};
 use midnight_proofs::{
     plonk::{self},
     poly::kzg::params::ParamsVerifierKZG,
@@ -13,7 +16,7 @@ use midnight_proofs::{
 };
 use midnight_zk_stdlib::{MidnightVK, Relation};
 
-use super::{E, F, Ivc, IvcCircuit, IvcError, IvcInstance, PCS, S, circuit::IvcExtendedInstance};
+use super::{E, F, Ivc, IvcCircuit, IvcError, IvcInstance, PCS, circuit::IvcExtendedInstance};
 
 /// Lightweight IVC verifier carrying:
 /// - the application context (for the decider check),
@@ -56,7 +59,7 @@ impl<T: Ivc> IvcVerifier<T> {
             return Err(IvcError::DeciderFailed);
         }
 
-        let fixed_bases = midnight_circuits::verifier::fixed_bases::<S, PCS>(self.vk.vk());
+        let fixed_bases = midnight_circuits::verifier::fixed_bases::<E, PCS>(self.vk.vk());
 
         let pi = IvcCircuit::<T>::format_instance(&IvcExtendedInstance::new(
             self.vk.vk(),
@@ -79,7 +82,8 @@ impl<T: Ivc> IvcVerifier<T> {
 
         // Verify that both `proof_acc` and `instance.acc` satisfy the pairing
         // invariant, with a single pairing, by accumulating them first.
-        let final_acc = Accumulator::<S>::accumulate(&[proof_acc, instance.acc.clone()]);
+        let final_acc =
+            Accumulator::accumulate::<PoseidonChip<F>>(&[proof_acc, instance.acc.clone()]);
         if !final_acc.check(&self.params_verifier, &fixed_bases) {
             return Err(IvcError::InvalidProof);
         };

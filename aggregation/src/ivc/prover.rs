@@ -8,7 +8,7 @@
 //! stores everything internally so the next step can build on it.
 
 use midnight_circuits::{
-    hash::poseidon::PoseidonState,
+    hash::poseidon::{PoseidonChip, PoseidonState},
     types::Instantiable,
     verifier::{Accumulator, AssignedAccumulator, AssignedVk},
 };
@@ -21,7 +21,7 @@ use midnight_zk_stdlib::MidnightPK;
 use rand::rngs::OsRng;
 
 use super::{
-    E, F, Ivc, IvcCircuit, IvcError, IvcInstance, IvcWitness, PCS, S, circuit::IvcExtendedInstance,
+    E, F, Ivc, IvcCircuit, IvcError, IvcInstance, IvcWitness, PCS, circuit::IvcExtendedInstance,
 };
 
 /// Stateful IVC prover holding:
@@ -39,13 +39,13 @@ pub struct IvcProver<T: Ivc> {
     pub(crate) pk: MidnightPK<IvcCircuit<T>, PCS>,
     pub(crate) state: T::State,
     pub(crate) proof: Vec<u8>,
-    pub(crate) acc: Accumulator<S>,
+    pub(crate) acc: Accumulator<E>,
 }
 
 impl<T: Ivc> IvcProver<T> {
     /// Resets the prover to a previously saved state, allowing it to resume
     /// proving from an intermediate point in the chain.
-    pub fn resume_from(&mut self, state: T::State, proof: Vec<u8>, acc: Accumulator<S>) {
+    pub fn resume_from(&mut self, state: T::State, proof: Vec<u8>, acc: Accumulator<E>) {
         self.state = state;
         self.proof = proof;
         self.acc = acc;
@@ -64,7 +64,7 @@ impl<T: Ivc> IvcProver<T> {
 
         let vk = self.pk.pk().get_vk();
 
-        let fixed_bases = midnight_circuits::verifier::fixed_bases::<S, PCS>(vk);
+        let fixed_bases = midnight_circuits::verifier::fixed_bases::<E, PCS>(vk);
 
         // Off-circuit verification of the previous proof.
         let proof_acc = if T::is_genesis(self.relation.ctx(), &self.state) {
@@ -82,13 +82,13 @@ impl<T: Ivc> IvcProver<T> {
             // essentially because `0 + r * 0` equals `0` for any `r` so the resulting
             // accumulator (so-called `next_acc`) will be the same in both (in-circuit and
             // off-circuit) executions after `collapse`.
-            Accumulator::<S>::trivial(&fixed_bases.keys().cloned().collect::<Vec<_>>())
+            Accumulator::<E>::trivial(&fixed_bases.keys().cloned().collect::<Vec<_>>())
         } else {
             // Construct the public inputs of the previous proof.
             let prev_pi = [
-                AssignedVk::<S, PCS>::as_public_input(vk),
+                AssignedVk::<F, PCS>::as_public_input(vk),
                 T::format_public_input(&self.state),
-                AssignedAccumulator::<S>::as_public_input(&self.acc),
+                AssignedAccumulator::<E>::as_public_input(&self.acc),
             ]
             .concat();
 
@@ -109,7 +109,8 @@ impl<T: Ivc> IvcProver<T> {
         };
 
         // Accumulate the proof accumulator with the previous accumulator.
-        let mut next_acc = Accumulator::accumulate(&[proof_acc, self.acc.clone()]);
+        let mut next_acc =
+            Accumulator::accumulate::<PoseidonChip<F>>(&[proof_acc, self.acc.clone()]);
         next_acc.collapse();
 
         let next_instance = IvcInstance {

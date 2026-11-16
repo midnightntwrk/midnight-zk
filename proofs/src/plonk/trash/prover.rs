@@ -1,4 +1,4 @@
-use ff::WithSmallOrderMulGroup;
+use ff::PrimeField;
 
 use super::Argument;
 use crate::{
@@ -6,7 +6,7 @@ use crate::{
     poly::{EvaluationDomain, LagrangeCoeff, Polynomial},
 };
 
-impl<F: WithSmallOrderMulGroup<3>> Argument<F> {
+impl<F: PrimeField> Argument<F> {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn compute_trash_poly<'a>(
         &self,

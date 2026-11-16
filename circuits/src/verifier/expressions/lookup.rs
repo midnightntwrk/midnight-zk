@@ -18,7 +18,6 @@
 
 use std::collections::BTreeMap;
 
-use ff::Field;
 use midnight_proofs::{
     circuit::Layouter,
     plonk::{Error, Expression},
@@ -26,53 +25,54 @@ use midnight_proofs::{
 };
 
 use crate::{
+    CircuitField,
     field::AssignedNative,
     instructions::{ArithInstructions, AssignmentInstructions},
     verifier::{
-        SelfEmulation,
+        ScalarChip,
         argument::Evaluation,
         expressions::{compress_expressions, eval_at, eval_expression},
     },
 };
 
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn lookup_expressions<S: SelfEmulation>(
-    layouter: &mut impl Layouter<S::F>,
-    scalar_chip: &S::ScalarChip,
+pub(crate) fn lookup_expressions<F: CircuitField>(
+    layouter: &mut impl Layouter<F>,
+    scalar_chip: &ScalarChip<F>,
     argument_index: usize,
-    phase1_evals_map: &BTreeMap<PolynomialLabel, Vec<Evaluation<S>>>,
-    phase2_evals_map: &BTreeMap<PolynomialLabel, Vec<Evaluation<S>>>,
-    selector_expression: &Expression<S::F>,
-    per_flat_input_expressions: &[&[Vec<Expression<S::F>>]],
-    table_expressions: &[Expression<S::F>],
-    advice_evals: &[AssignedNative<S::F>],
-    fixed_evals: &[AssignedNative<S::F>],
-    instance_evals: &[AssignedNative<S::F>],
-    l_0: &AssignedNative<S::F>,
-    l_last: &AssignedNative<S::F>,
-    l_blind: &AssignedNative<S::F>,
-    theta: &AssignedNative<S::F>,
-    beta: &AssignedNative<S::F>,
-) -> Result<Vec<AssignedNative<S::F>>, Error> {
-    let multiplicities_eval = eval_at::<S>(
+    phase1_evals_map: &BTreeMap<PolynomialLabel, Vec<Evaluation<F>>>,
+    phase2_evals_map: &BTreeMap<PolynomialLabel, Vec<Evaluation<F>>>,
+    selector_expression: &Expression<F>,
+    per_flat_input_expressions: &[&[Vec<Expression<F>>]],
+    table_expressions: &[Expression<F>],
+    advice_evals: &[AssignedNative<F>],
+    fixed_evals: &[AssignedNative<F>],
+    instance_evals: &[AssignedNative<F>],
+    l_0: &AssignedNative<F>,
+    l_last: &AssignedNative<F>,
+    l_blind: &AssignedNative<F>,
+    theta: &AssignedNative<F>,
+    beta: &AssignedNative<F>,
+) -> Result<Vec<AssignedNative<F>>, Error> {
+    let multiplicities_eval = eval_at::<F>(
         phase1_evals_map,
         &PolynomialLabel::LogupMultiplicities(argument_index),
         0,
     )?;
 
     let aggregator_label = PolynomialLabel::LogupAggregator(argument_index);
-    let accumulator_eval = eval_at::<S>(phase2_evals_map, &aggregator_label, 0)?;
-    let accumulator_next_eval = eval_at::<S>(phase2_evals_map, &aggregator_label, 1)?;
+    let accumulator_eval = eval_at::<F>(phase2_evals_map, &aggregator_label, 0)?;
+    let accumulator_next_eval = eval_at::<F>(phase2_evals_map, &aggregator_label, 1)?;
 
     let active_rows = {
         scalar_chip.linear_combination(
             layouter,
-            &[(-S::F::ONE, l_last.clone()), (-S::F::ONE, l_blind.clone())],
-            S::F::ONE,
+            &[(-F::ONE, l_last.clone()), (-F::ONE, l_blind.clone())],
+            F::ONE,
         )?
     };
 
-    let selector = eval_expression::<S>(
+    let selector = eval_expression::<F>(
         layouter,
         scalar_chip,
         advice_evals,
@@ -81,7 +81,7 @@ pub(crate) fn lookup_expressions<S: SelfEmulation>(
         selector_expression,
     )?;
 
-    let compressed_table = compress_expressions::<S>(
+    let compressed_table = compress_expressions::<F>(
         layouter,
         scalar_chip,
         advice_evals,
@@ -97,10 +97,10 @@ pub(crate) fn lookup_expressions<S: SelfEmulation>(
     let boundary = scalar_chip.mul(layouter, &l_0_plus_l_last, accumulator_eval, None)?;
 
     let mut result = vec![boundary];
-    let mut sum_helpers: Option<AssignedNative<S::F>> = None;
+    let mut sum_helpers: Option<AssignedNative<F>> = None;
 
     for (j, input_expressions) in per_flat_input_expressions.iter().enumerate() {
-        let h_eval = eval_at::<S>(
+        let h_eval = eval_at::<F>(
             phase2_evals_map,
             &PolynomialLabel::LogupHelper(argument_index, j),
             0,
@@ -109,7 +109,7 @@ pub(crate) fn lookup_expressions<S: SelfEmulation>(
         let compressed_inputs_with_beta = input_expressions
             .iter()
             .map(|input| {
-                let compressed = compress_expressions::<S>(
+                let compressed = compress_expressions::<F>(
                     layouter,
                     scalar_chip,
                     advice_evals,
@@ -122,9 +122,9 @@ pub(crate) fn lookup_expressions<S: SelfEmulation>(
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        let partial_products: Vec<AssignedNative<S::F>> = (0..compressed_inputs_with_beta.len())
+        let partial_products: Vec<AssignedNative<F>> = (0..compressed_inputs_with_beta.len())
             .map(|i| {
-                let mut acc = scalar_chip.assign_fixed(layouter, S::F::ONE)?;
+                let mut acc = scalar_chip.assign_fixed(layouter, F::ONE)?;
                 for (j, input) in compressed_inputs_with_beta.iter().enumerate() {
                     if j != i {
                         acc = scalar_chip.mul(layouter, &acc, input, None)?;
@@ -137,14 +137,14 @@ pub(crate) fn lookup_expressions<S: SelfEmulation>(
         // Helper constraint: h(x) · ∏ⱼ(fⱼ(x) + β) = Σⱼ ∏_{k≠j}(fₖ(x) + β)
         // This is enforced at every row so that the constraint degree stays low —
         // multiplying by the selector would raise it.
-        let product: AssignedNative<S::F> = {
+        let product: AssignedNative<F> = {
             let mut iter = compressed_inputs_with_beta.into_iter();
             let first = iter.next().expect("compressed_inputs_with_beta should not be empty");
             iter.try_fold(first, |acc, input| {
                 scalar_chip.mul(layouter, &acc, &input, None)
             })?
         };
-        let sum_pp: AssignedNative<S::F> = {
+        let sum_pp: AssignedNative<F> = {
             let mut iter = partial_products.into_iter();
             let first = iter.next().expect("partial_products should not be empty");
             iter.try_fold(first, |acc, input| scalar_chip.add(layouter, &acc, &input))?
@@ -154,11 +154,11 @@ pub(crate) fn lookup_expressions<S: SelfEmulation>(
         let helper_constraint = {
             scalar_chip.add_and_mul(
                 layouter,
-                (S::F::ZERO, h_eval),
-                (S::F::ZERO, &product),
-                (-S::F::ONE, &sum_pp),
-                S::F::ZERO,
-                S::F::ONE,
+                (F::ZERO, h_eval),
+                (F::ZERO, &product),
+                (-F::ONE, &sum_pp),
+                F::ZERO,
+                F::ONE,
             )?
         };
         result.push(helper_constraint);

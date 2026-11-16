@@ -143,9 +143,10 @@ impl<F: ff::Field> CubicExtField<F> {
     }
 }
 
-impl<F: ff::Field> CubicExtField<F>
+impl<F> CubicExtField<F>
 where
     Self: CubicExtFieldArith<Base = F>,
+    F: ff::Field,
 {
     pub fn mul(&self, rhs: &Self) -> Self {
         let mut lhs = *self;
@@ -168,8 +169,9 @@ where
     }
 }
 
-impl<F: ExtField> ff::Field for CubicExtField<F>
+impl<F> ff::Field for CubicExtField<F>
 where
+    F: ExtField,
     CubicExtField<F>: CubicExtFieldArith<Base = F> + ExtField, /* kind of cyclic being
                                                                 * `ExtField: Field` but it seems
                                                                 * alright */

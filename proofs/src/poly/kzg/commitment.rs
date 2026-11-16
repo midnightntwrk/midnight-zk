@@ -45,8 +45,9 @@ pub enum KZGCommitment<E: MultiMillerLoop> {
 //
 // This comparison is literal. Two equivalent commitments are considered
 // different if their representation is different.
-impl<E: MultiMillerLoop> PartialEq for KZGCommitment<E>
+impl<E> PartialEq for KZGCommitment<E>
 where
+    E: MultiMillerLoop,
     E::G1: PartialEq,
     E::Fr: PartialEq,
 {
@@ -72,8 +73,9 @@ impl<E: MultiMillerLoop> KZGCommitment<E> {
     }
 }
 
-impl<E: MultiMillerLoop> KZGCommitment<E>
+impl<E> KZGCommitment<E>
 where
+    E: MultiMillerLoop,
     E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
 {
     /// Collapses a `Linear` combination as [`MSMKZG::collapse`] does: the
@@ -107,8 +109,9 @@ impl<E: MultiMillerLoop> From<KZGCommitment<E>> for MSMKZG<E> {
     }
 }
 
-impl<E: MultiMillerLoop> Default for KZGCommitment<E>
+impl<E> Default for KZGCommitment<E>
 where
+    E: MultiMillerLoop,
     E::G1: Default,
 {
     fn default() -> Self {
@@ -123,8 +126,9 @@ where
 /// deserializing a commitment without its labels would produce a value that
 /// cannot reach the MSM layer. Use `deserialize_commitment` instead, which
 /// labels each polynomial as it reads it.
-impl<E: MultiMillerLoop> ProcessedSerdeObject for KZGCommitment<E>
+impl<E> ProcessedSerdeObject for KZGCommitment<E>
 where
+    E: MultiMillerLoop,
     E::G1: Default + ProcessedSerdeObject,
 {
     fn read<R: io::Read>(_reader: &mut R, _format: SerdeFormat) -> io::Result<Self> {
@@ -151,8 +155,10 @@ where
 /// Only `Simple` commitments are hashed into transcripts; see the type-level
 /// doc for why `Linear` is never hashed directly. Labels are not part of the
 /// transcript.
-impl<H: TranscriptHash, E: MultiMillerLoop> Hashable<H> for KZGCommitment<E>
+impl<H, E> Hashable<H> for KZGCommitment<E>
 where
+    H: TranscriptHash,
+    E: MultiMillerLoop,
     E::G1: Hashable<H>,
 {
     fn to_input(&self) -> H::Input {
@@ -236,8 +242,9 @@ impl<E: MultiMillerLoop> KZGMultiCommitment<E> {
     }
 }
 
-impl<E: MultiMillerLoop> PartialEq for KZGMultiCommitment<E>
+impl<E> PartialEq for KZGMultiCommitment<E>
 where
+    E: MultiMillerLoop,
     E::G1: PartialEq,
     E::Fr: PartialEq,
 {
@@ -246,8 +253,9 @@ where
     }
 }
 
-impl<E: MultiMillerLoop> Default for KZGMultiCommitment<E>
+impl<E> Default for KZGMultiCommitment<E>
 where
+    E: MultiMillerLoop,
     E::G1: Default,
 {
     fn default() -> Self {
@@ -260,8 +268,9 @@ where
 /// therefore unimplemented; commitments are read through `read_commitment`
 /// (from a transcript) or `deserialize_commitment` (from keys), whose `labels`
 /// argument supplies the count and tags each polynomial.
-impl<E: MultiMillerLoop> ProcessedSerdeObject for KZGMultiCommitment<E>
+impl<E> ProcessedSerdeObject for KZGMultiCommitment<E>
 where
+    E: MultiMillerLoop,
     E::G1: Default + ProcessedSerdeObject,
 {
     fn read<R: io::Read>(_reader: &mut R, _format: SerdeFormat) -> io::Result<Self> {
@@ -288,8 +297,10 @@ where
 /// `Hashable::read`.
 pub(crate) const NB_POLYS_PREFIX_BYTES: usize = 4;
 
-impl<H: TranscriptHash, E: MultiMillerLoop> Hashable<H> for KZGMultiCommitment<E>
+impl<H, E> Hashable<H> for KZGMultiCommitment<E>
 where
+    H: TranscriptHash,
+    E: MultiMillerLoop,
     E::G1: Hashable<H>,
 {
     fn to_input(&self) -> H::Input {

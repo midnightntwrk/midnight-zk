@@ -1,4 +1,4 @@
-use ff::{PrimeField, WithSmallOrderMulGroup};
+use ff::PrimeField;
 use group::ff::Field;
 use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
@@ -653,7 +653,7 @@ impl<F: PrimeField> FlatGraphEvaluator<F> {
     }
 }
 
-impl<F: WithSmallOrderMulGroup<3>> Evaluator<F> {
+impl<F: PrimeField> Evaluator<F> {
     /// Creates a new evaluation structure
     pub fn new(cs: &ConstraintSystem<F>) -> Self {
         let dummy_flat = FlatGraphEvaluator {

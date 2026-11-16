@@ -197,7 +197,7 @@ where
     }
 }
 
-impl<F: CircuitField, K: CircuitField, P> InnerConstants for AssignedField<F, K, P>
+impl<F, K, P> InnerConstants for AssignedField<F, K, P>
 where
     F: CircuitField,
     K: CircuitField,

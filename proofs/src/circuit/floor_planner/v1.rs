@@ -232,8 +232,9 @@ impl MeasurementPass {
         MeasurementPass { regions: vec![] }
     }
 
-    fn assign_region<F: Field, A, AR>(&mut self, mut assignment: A) -> Result<AR, Error>
+    fn assign_region<F, A, AR>(&mut self, mut assignment: A) -> Result<AR, Error>
     where
+        F: Field,
         A: FnMut(Region<'_, F>) -> Result<AR, Error>,
     {
         let region_index = self.regions.len();
