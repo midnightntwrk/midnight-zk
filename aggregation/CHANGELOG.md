@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 ### Added
 * `fewer-point-sets` feature [#281](https://github.com/midnightntwrk/midnight-zk/pull/281)
 ### Changed
+* `IvcVerifier::verify` rejects instances whose public inputs do not have the length expected by the verifying key
 * Adapt to the removal of `SelfEmulation` from `midnight-circuits`: the circuits take the transcript and the accumulator chips from `ZkStdLib` [#638](https://github.com/midnightntwrk/midnight-zk/pull/638)
 * BREAKING: The IVC and the multi-circuit aggregator prove and verify with `FflonkKZG<3>` (exposed as `ivc::PCS`), the commitment scheme they verify in-circuit. They hold `MidnightVK<FflonkKZG<3>>` and `MidnightPK<_, FflonkKZG<3>>`, and need an SRS of `2^(k+3)` points
 * The multi-circuit aggregator witnesses the inner verifying keys privately, with `VerifierGadget::assign_unbound_vk` and binds each of them to its hash with `bind_vk_to_hash`: the aggregator state no longer exposes the last inner verifying key [#572](https://github.com/midnightntwrk/midnight-zk/pull/572)
