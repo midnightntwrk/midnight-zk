@@ -2067,7 +2067,7 @@ mod tests {
             NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip,
             foreign::params::MultiEmulationParams,
         },
-        instructions::{assertions, control_flow, ecc, equality, public_input, zero},
+        instructions::{assertions, assignments, control_flow, ecc, equality, public_input, zero},
     };
 
     type Native<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
@@ -2106,6 +2106,8 @@ mod tests {
     test!(assertions, test_assertions);
 
     test!(public_input, test_public_inputs);
+
+    test!(assignments, test_as_constant);
 
     test!(equality, test_is_equal);
 

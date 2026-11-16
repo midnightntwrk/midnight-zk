@@ -1706,7 +1706,7 @@ mod tests {
 
     use super::*;
     use crate::instructions::{
-        arithmetic, assertions, binary, canonicity, control_flow,
+        arithmetic, assertions, assignments, binary, canonicity, control_flow,
         conversions::{
             self,
             tests::Operation::{Convert, UnsafeConvert},
@@ -1727,6 +1727,8 @@ mod tests {
     test!(assertions, test_assertions);
 
     test!(public_input, test_public_inputs);
+
+    test!(assignments, test_as_constant);
 
     test!(arithmetic, test_add);
     test!(arithmetic, test_sub);

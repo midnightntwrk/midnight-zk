@@ -1896,7 +1896,8 @@ mod tests {
             foreign::params::MultiEmulationParams,
         },
         instructions::{
-            arithmetic, assertions, control_flow, decomposition, equality, public_input, zero,
+            arithmetic, assertions, assignments, control_flow, decomposition, equality,
+            public_input, zero,
         },
     };
 
@@ -1930,6 +1931,8 @@ mod tests {
     test!(assertions, test_assertions);
 
     test!(public_input, test_public_inputs);
+
+    test!(assignments, test_as_constant);
 
     test!(equality, test_is_equal);
 

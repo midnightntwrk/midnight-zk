@@ -1420,7 +1420,7 @@ mod tests {
     use crate::{
         ecc::hash_to_curve::HashToCurveGadget,
         hash::poseidon::PoseidonChip,
-        instructions::{ecc, hash_to_curve::tests::test_hash_to_curve},
+        instructions::{assignments, ecc, hash_to_curve::tests::test_hash_to_curve},
     };
 
     macro_rules! test_generic {
@@ -1441,6 +1441,8 @@ mod tests {
     test!(assertions, test_assertions);
 
     test!(public_input, test_public_inputs);
+
+    test!(assignments, test_as_constant);
 
     test!(equality, test_is_equal);
 
@@ -1467,6 +1469,8 @@ mod tests {
     test_scalar!(assertions, test_assertions, scalar_assertions);
 
     test_scalar!(public_input, test_public_inputs, scalar_public_inputs);
+
+    test_scalar!(assignments, test_as_constant, scalar_as_constant);
 
     test_scalar!(equality, test_is_equal, scalar_is_equal);
 
