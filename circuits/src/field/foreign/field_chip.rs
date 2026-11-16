@@ -808,12 +808,12 @@ where
         x: &AssignedField<F, K, P>,
         y: &AssignedField<F, K, P>,
     ) -> Result<AssignedField<F, K, P>, Error> {
-        if self.as_constant(x) == Some(K::ZERO) {
-            return Ok(y.clone());
+        if let Some(c) = self.as_constant(x) {
+            return self.add_constant(layouter, y, c);
         }
 
-        if self.as_constant(y) == Some(K::ZERO) {
-            return Ok(x.clone());
+        if let Some(c) = self.as_constant(y) {
+            return self.add_constant(layouter, x, c);
         }
 
         // Note that x := 1 + sum_i base^i xi and y := 1 + sum_i base^i yi.
@@ -917,34 +917,17 @@ where
         y: &AssignedField<F, K, P>,
         multiplying_constant: Option<K>,
     ) -> Result<AssignedField<F, K, P>, Error> {
-        let (x_constant, y_constant) = (self.as_constant(x), self.as_constant(y));
+        let m = multiplying_constant.unwrap_or(K::ONE);
 
-        if x_constant == Some(K::ZERO) {
-            return Ok(x.clone());
+        if let Some(c) = self.as_constant(x) {
+            return self.mul_by_constant(layouter, y, c * m);
         }
 
-        if y_constant == Some(K::ZERO) {
-            return Ok(y.clone());
+        if let Some(c) = self.as_constant(y) {
+            return self.mul_by_constant(layouter, x, c * m);
         }
 
-        if x_constant == Some(K::ONE) {
-            return match multiplying_constant {
-                None => Ok(y.clone()),
-                Some(k) => self.mul_by_constant(layouter, y, k),
-            };
-        }
-
-        if y_constant == Some(K::ONE) {
-            return match multiplying_constant {
-                None => Ok(x.clone()),
-                Some(k) => self.mul_by_constant(layouter, x, k),
-            };
-        }
-
-        let y = match multiplying_constant {
-            None => y.clone(),
-            Some(k) => self.mul_by_constant(layouter, y, k)?,
-        };
+        let y = self.mul_by_constant(layouter, y, m)?;
         self.assign_mul(layouter, x, &y, false)
     }
 
@@ -954,8 +937,8 @@ where
         x: &AssignedField<F, K, P>,
         y: &AssignedField<F, K, P>,
     ) -> Result<AssignedField<F, K, P>, Error> {
-        if self.as_constant(y) == Some(K::ONE) {
-            return Ok(x.clone());
+        if let Some(c_inv) = self.as_constant(y).and_then(|c| Option::from(c.invert())) {
+            return self.mul_by_constant(layouter, x, c_inv);
         }
 
         let y = self.normalize(layouter, y)?;
@@ -968,8 +951,8 @@ where
         layouter: &mut impl Layouter<F>,
         x: &AssignedField<F, K, P>,
     ) -> Result<AssignedField<F, K, P>, Error> {
-        if self.as_constant(x) == Some(K::ZERO) {
-            return Ok(x.clone());
+        if let Some(c) = self.as_constant(x) {
+            return self.assign_fixed(layouter, -c);
         }
 
         // Note that x := 1 + sum_i base^i xi.
@@ -1008,8 +991,8 @@ where
         layouter: &mut impl Layouter<F>,
         x: &AssignedField<F, K, P>,
     ) -> Result<AssignedField<F, K, P>, Error> {
-        if self.as_constant(x) == Some(K::ONE) {
-            return Ok(x.clone());
+        if let Some(c_inv) = self.as_constant(x).and_then(|c| Option::from(c.invert())) {
+            return self.assign_fixed(layouter, c_inv);
         }
 
         let one: AssignedField<F, K, P> = self.assign_fixed(layouter, K::ONE)?;

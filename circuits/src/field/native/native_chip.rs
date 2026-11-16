@@ -859,9 +859,17 @@ where
         terms: &[(F, AssignedNative<F>)],
         constant: F,
     ) -> Result<AssignedNative<F>, Error> {
+        // Constant terms are folded into the constant.
+        let mut constant = constant;
         let terms: Vec<_> = terms
             .iter()
-            .filter(|(c, x)| !F::is_zero_vartime(c) && self.as_constant(x) != Some(F::ZERO))
+            .filter(|(c, x)| match self.as_constant(x) {
+                Some(v) => {
+                    constant += *c * v;
+                    false
+                }
+                None => !F::is_zero_vartime(c),
+            })
             .cloned()
             .collect();
 
@@ -927,11 +935,11 @@ where
 
         let m = multiplying_constant.unwrap_or(F::ONE);
 
-        if m == F::ONE && self.as_constant(x) == Some(F::ONE) {
-            return Ok(y.clone());
+        if let Some(c) = self.as_constant(x) {
+            return self.linear_combination(layouter, &[(c * m, y.clone())], F::ZERO);
         }
-        if m == F::ONE && self.as_constant(y) == Some(F::ONE) {
-            return Ok(x.clone());
+        if let Some(c) = self.as_constant(y) {
+            return self.linear_combination(layouter, &[(c * m, x.clone())], F::ZERO);
         }
 
         self.add_and_mul(
@@ -959,6 +967,9 @@ where
         layouter: &mut impl Layouter<F>,
         x: &AssignedNative<F>,
     ) -> Result<AssignedNative<F>, Error> {
+        if let Some(c_inv) = self.as_constant(x).and_then(|c| Option::from(c.invert())) {
+            return self.assign_fixed(layouter, c_inv);
+        }
         let (y, inv) = self.assign_with_shifted_inverse(layouter, x.value().copied(), F::ZERO)?;
         self.assert_equal(layouter, x, &y)?;
         Ok(inv)
