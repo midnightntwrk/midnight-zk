@@ -10,6 +10,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 * `verifier::InCircuitKZGEngine`, the `KZGEngine`s whose KZG proofs can be verified in-circuit, bounding the KZG types of the in-circuit verifier [#644](https://github.com/midnightntwrk/midnight-zk/pull/644)
 ### Fixed
+* `BigUintGadget::mod_exp` reduces its result modulo `m` for every exponent, also when `n = 0` or `n = 1`, and rejects `m = 0` for every exponent [#595](https://github.com/midnightntwrk/midnight-zk/issues/595)
 * `BigUintGadget::div_rem` returns a synthesis error on a zero divisor instead of panicking [#595](https://github.com/midnightntwrk/midnight-zk/issues/595)
 ### Changed
 ### Removed
