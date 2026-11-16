@@ -506,12 +506,22 @@ where
     /// `(q, r)` satisfying:
     ///  - `r in [0, y)`
     ///  - `x = q * y + r`.
+    ///
+    /// # Unsatisfiable Circuit
+    ///
+    /// If `y = 0`. In that case, synthesis fails with an error if the value of
+    /// `y` is known.
     pub fn div_rem(
         &self,
         layouter: &mut impl Layouter<F>,
         x: &AssignedBigUint<F>,
         y: &AssignedBigUint<F>,
     ) -> Result<(AssignedBigUint<F>, AssignedBigUint<F>), Error> {
+        // Division by zero gives a synthesis error.
+        y.value()
+            .error_if_known_and(|y| *y == BigUint::ZERO)
+            .map_err(|_| Error::Synthesis("div_rem: division by zero".into()))?;
+
         let (q_value, r_value) = x.value().zip(y.value()).map(|(x, y)| x.div_rem(&y)).unzip();
 
         let q = self.assign_bounded(layouter, q_value, x.nb_bits())?;
@@ -1251,7 +1261,12 @@ mod tests {
             run::<F>(&x, &one, &zero, Operation::Rem, true);
             run::<F>(&x, &x, &zero, Operation::Rem, true);
             run::<F>(&x, &x_plus_one, &x, Operation::Rem, true);
-            run::<F>(&x, &y, &random_biguint(1024), Operation::Rem, false)
+            run::<F>(&x, &y, &random_biguint(1024), Operation::Rem, false);
+
+            // Division by zero is rejected.
+            run::<F>(&x, &zero, &zero, Operation::Div, false);
+            run::<F>(&x, &zero, &x, Operation::Rem, false);
+            run::<F>(&zero, &zero, &zero, Operation::Rem, false)
         }
     }
 
