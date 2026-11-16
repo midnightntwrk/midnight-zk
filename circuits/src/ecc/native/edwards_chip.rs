@@ -791,8 +791,8 @@ impl<C: EdwardsCurve> EccInstructions<C::Base, C> for EccChip<C> {
         x: &Self::Coordinate,
         y: &Self::Coordinate,
     ) -> Result<Self::Point, Error> {
-        // Invalid coordinates default to the identity, which makes the circuit
-        // unsatisfiable below.
+        // Coordinates off the curve or outside the subgroup default to the
+        // identity (0, 1).
         let point_val = x.value().zip(y.value()).map(|(x, y)| {
             C::from_xy(*x, *y)
                 .and_then(|p| p.try_into_subgroup())
