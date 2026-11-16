@@ -879,6 +879,12 @@ impl<C: EdwardsCurve> AssignmentInstructions<C::Base, AssignedNativePoint<C>> fo
             checked_in_subgroup: true,
         })
     }
+
+    fn as_constant(&self, p: &AssignedNativePoint<C>) -> Option<C::CryptographicGroup> {
+        let x = self.native_gadget.as_constant(&p.x)?;
+        let y = self.native_gadget.as_constant(&p.y)?;
+        C::from_xy(x, y)?.try_into_subgroup()
+    }
 }
 
 impl<C: EdwardsCurve> AssignmentInstructions<C::Base, AssignedScalarOfNativeCurve<C>>
@@ -907,6 +913,13 @@ impl<C: EdwardsCurve> AssignmentInstructions<C::Base, AssignedScalarOfNativeCurv
             bits: self.native_gadget.assign_many_fixed(layouter, &constant.to_bits_le(None))?,
             enforced_canonical: true,
         })
+    }
+
+    fn as_constant(&self, s: &AssignedScalarOfNativeCurve<C>) -> Option<C::ScalarField> {
+        let bits = (s.bits.iter())
+            .map(|b| self.native_gadget.as_constant(b))
+            .collect::<Option<Vec<bool>>>()?;
+        C::ScalarField::try_from_bits_le(&bits)
     }
 }
 

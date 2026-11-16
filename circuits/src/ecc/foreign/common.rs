@@ -75,23 +75,21 @@ where
 
     // Filter out bases that are known to be the identity at compile time.
     // These contribute nothing to the MSM result.
-    let identity = ec_chip.assign_fixed(layouter, C::CryptographicGroup::identity())?;
     let (scalars, bases): (Vec<_>, Vec<_>) = scalars
         .iter()
         .zip(bases.iter())
-        .filter(|(_, base)| *base != &identity)
+        .filter(|(_, base)| ec_chip.as_constant(base) != Some(C::CryptographicGroup::identity()))
         .map(|(s, b)| (s.clone(), b.clone()))
         .unzip();
 
     // If any of the scalars is known to be 1, or has a bound of 1 (i.e. it is
     // known to be either 0 or 1) remove it (with its base) from the list and
     // simply add it at the end.
-    let one: EI::Scalar = scalar_chip.assign_fixed(layouter, C::ScalarField::ONE)?;
     let mut bases_with_1bit_scalar = vec![];
     let mut filtered_scalars = vec![];
     let mut filtered_bases = vec![];
     for (scalar, base) in scalars.iter().zip(bases.iter()) {
-        if scalar.0 == one || scalar.1 == 1 {
+        if scalar_chip.as_constant(&scalar.0) == Some(C::ScalarField::ONE) || scalar.1 == 1 {
             bases_with_1bit_scalar.push((base.clone(), scalar.0.clone()));
         } else {
             filtered_scalars.push(scalar.clone());
@@ -168,10 +166,9 @@ where
     SFI::Scalar: InnerValue<Element = C::ScalarField>,
 {
     let identity = ec_chip.assign_fixed(layouter, C::CryptographicGroup::identity())?;
-    let one: EI::Scalar = scalar_chip.assign_fixed(layouter, C::ScalarField::ONE)?;
 
     bases_with_1bit_scalar.iter().try_fold(acc, |acc, (b, s)| {
-        let s_times_b = if s == &one {
+        let s_times_b = if scalar_chip.as_constant(s) == Some(C::ScalarField::ONE) {
             b.clone()
         } else {
             let s_is_zero = scalar_chip.is_zero(layouter, s)?;
