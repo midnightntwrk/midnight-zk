@@ -160,12 +160,12 @@ where
         let mut k = [0u8; 1];
         reader.read_exact(&mut k)?;
         let k = u8::from_le_bytes(k);
-        // The extended domain, of size 2^k * (degree - 1), must fit in F.
-        let extended_k = k as u32 + (cs.degree() as u32 - 1).next_power_of_two().ilog2();
-        if k == 0 || extended_k > F::S {
+        // Largest k whose extended domain, of size 2^k * (degree - 1), fits in F.
+        let max_k = F::S - (cs.degree() as u32 - 1).next_power_of_two().ilog2();
+        if k == 0 || k as u32 > max_k {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                format!("circuit size value (k): {k} is out of range"),
+                format!("circuit size value (k): {k} is out of range [1, {max_k}]"),
             ));
         }
 
