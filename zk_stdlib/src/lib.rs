@@ -52,7 +52,7 @@ use midnight_circuits::{
         foreign::{
             FieldChip, FieldChipConfig, nb_field_chip_columns, params::MultiEmulationParams as MEP,
         },
-        native::NB_EXTRA_ARITH_FIXED_COLS,
+        native::{MIN_NB_ARITH_COLS, NB_EXTRA_ARITH_FIXED_COLS},
     },
     hash::{
         poseidon::{
@@ -225,8 +225,15 @@ impl ZkStdLibArch {
                 ),
             ));
         }
-        bincode::decode_from_std_read(reader, standard())
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+        let arch: Self = bincode::decode_from_std_read(reader, standard())
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+        if (arch.nb_arith_cols as usize) < MIN_NB_ARITH_COLS
+            || arch.nr_pow2range_cols >= arch.nb_arith_cols
+        {
+            let msg = "invalid nb_arith_cols or nr_pow2range_cols";
+            return Err(io::Error::new(io::ErrorKind::InvalidData, msg));
+        }
+        Ok(arch)
     }
 
     /// Reads the ZkStdLib architecture from a buffer where a MidnightVK was

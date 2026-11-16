@@ -44,6 +44,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `InterleavedCommit`, a `PolynomialCommitmentScheme` that commits to `Σ_i X^i f_i(X^t)` for chunks of polynomials `f_0, ..., f_{k-1}`, implemented by KZG from per-residue bases cached in `ParamsKZG` [#565](https://github.com/midnightntwrk/midnight-zk/pull/565)
 
 ### Fixed
+* `VerifyingKey::read` rejects `k = 0` and a `k` whose extended domain does not fit in `F`, instead of panicking [#640](https://github.com/midnightntwrk/midnight-zk/pull/640)
+* The verifier rejects instances longer than the prover accepts with `Error::InstanceTooLarge` [#640](https://github.com/midnightntwrk/midnight-zk/pull/640)
 * `ParamsKZG::read_custom` rejects a serialized `k` above `E::Fr::S` with `InvalidData` before allocating, instead of sizing the point vectors from an unchecked header [#615](https://github.com/midnightntwrk/midnight-zk/pull/615)
 * LogUp verifier no longer panics when the prover makes some `fⱼ(x) + β` zero: the helper constraint folds products instead of inverting each term, which also saves the inversions [#562](https://github.com/midnightntwrk/midnight-zk/pull/562)
 * `KZGCommitmentScheme::multi_prepare` returns `Error::OpeningError` instead of panicking when a query names a polynomial its commitment group lacks [#562](https://github.com/midnightntwrk/midnight-zk/pull/562)
