@@ -7,7 +7,7 @@ use midnight_proofs::{
 };
 use midnight_zk_stdlib::ZkStdLib;
 
-use super::{E, Ivc, IvcCircuit, IvcProver, IvcVerifier, PCS, S};
+use super::{E, Ivc, IvcCircuit, IvcProver, IvcVerifier, PCS};
 
 /// Sets up the IVC context: compiles the circuit, generates keys,
 /// and initializes the prover at the genesis state.
@@ -38,7 +38,7 @@ pub fn setup<T: Ivc>(
     let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
 
     let fixed_base_labels: Vec<PolynomialLabel> =
-        fixed_bases::<S, PCS>(vk.vk()).keys().cloned().collect();
+        fixed_bases::<E, PCS>(vk.vk()).keys().cloned().collect();
 
     let verifier = IvcVerifier {
         ctx: ctx.clone(),
@@ -52,7 +52,7 @@ pub fn setup<T: Ivc>(
         pk,
         state: T::genesis(&ctx),
         proof: vec![],
-        acc: Accumulator::<S>::trivial(&fixed_base_labels),
+        acc: Accumulator::<E>::trivial(&fixed_base_labels),
     };
 
     (prover, verifier)

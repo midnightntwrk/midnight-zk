@@ -627,8 +627,9 @@ impl<F: Field> Mul<F> for Value<&Rational<F>> {
 
 impl<V> Value<V> {
     /// Returns the field element corresponding to this value.
-    pub fn to_field<F: Field>(&self) -> Value<Rational<F>>
+    pub fn to_field<F>(&self) -> Value<Rational<F>>
     where
+        F: Field,
         for<'v> Rational<F>: From<&'v V>,
     {
         Value {
@@ -637,9 +638,10 @@ impl<V> Value<V> {
     }
 
     /// Returns the field element corresponding to this value.
-    pub fn into_field<F: Field>(self) -> Value<Rational<F>>
+    pub fn into_field<F>(self) -> Value<Rational<F>>
     where
         V: Into<Rational<F>>,
+        F: Field,
     {
         Value {
             inner: self.inner.map(|v| v.into()),
@@ -660,9 +662,10 @@ impl<V> Value<V> {
     /// let v: Value<Rational<F>> = v.into();
     /// v.double();
     /// ```
-    pub fn double<F: Field>(&self) -> Value<Rational<F>>
+    pub fn double<F>(&self) -> Value<Rational<F>>
     where
         V: Borrow<Rational<F>>,
+        F: Field,
     {
         Value {
             inner: self.inner.as_ref().map(|v| v.borrow().double()),
@@ -670,9 +673,10 @@ impl<V> Value<V> {
     }
 
     /// Squares this field element.
-    pub fn square<F: Field>(&self) -> Value<Rational<F>>
+    pub fn square<F>(&self) -> Value<Rational<F>>
     where
         V: Borrow<Rational<F>>,
+        F: Field,
     {
         Value {
             inner: self.inner.as_ref().map(|v| v.borrow().square()),
@@ -680,9 +684,10 @@ impl<V> Value<V> {
     }
 
     /// Cubes this field element.
-    pub fn cube<F: Field>(&self) -> Value<Rational<F>>
+    pub fn cube<F>(&self) -> Value<Rational<F>>
     where
         V: Borrow<Rational<F>>,
+        F: Field,
     {
         Value {
             inner: self.inner.as_ref().map(|v| v.borrow().cube()),
@@ -690,9 +695,10 @@ impl<V> Value<V> {
     }
 
     /// Inverts this assigned value (taking the inverse of zero to be zero).
-    pub fn invert<F: Field>(&self) -> Value<Rational<F>>
+    pub fn invert<F>(&self) -> Value<Rational<F>>
     where
         V: Borrow<Rational<F>>,
+        F: Field,
     {
         Value {
             inner: self.inner.as_ref().map(|v| v.borrow().invert()),

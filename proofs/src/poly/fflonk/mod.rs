@@ -45,7 +45,7 @@ use std::{
     slice,
 };
 
-use ff::WithSmallOrderMulGroup;
+use ff::PrimeField;
 pub use utils::{balanced_chunks, roots};
 use utils::{cached_roots, compute_g};
 
@@ -56,7 +56,7 @@ use crate::{
         PolynomialRepresentation, ProverQuery, VerifierQuery,
         commitment::{InterleavedCommit, PolynomialCommitmentScheme},
     },
-    transcript::{Hashable, Sampleable, Transcript},
+    transcript::{Hashable, Sampleable, Transcript, TranscriptField},
     utils::{
         arithmetic::{eval_polynomial, eval_polynomial_seq},
         helpers::SerdeFormat,
@@ -85,7 +85,7 @@ impl<PCS, const LOG2_T_MAX: u32> Fflonk<PCS, LOG2_T_MAX> {
 
 impl<F, PCS, const LOG2_T_MAX: u32> PolynomialCommitmentScheme<F> for Fflonk<PCS, LOG2_T_MAX>
 where
-    F: WithSmallOrderMulGroup<3>,
+    F: PrimeField,
     PCS: InterleavedCommit<F>,
 {
     type Parameters = PCS::Parameters;
@@ -123,23 +123,22 @@ where
         PCS::commit_interleaved(params, &chunks, &g_labels)
     }
 
-    fn read_commitment<T: Transcript>(
+    fn read_commitment<T>(
         transcript: &mut T,
         labels: &[PolynomialLabel],
     ) -> io::Result<Self::Commitment>
     where
         Self::Commitment: Hashable<T::Hash>,
+        T: Transcript,
     {
         let g_labels = Self::chunk_labels(labels);
         PCS::read_commitment(transcript, &g_labels)
     }
 
-    fn write_commitment<T: Transcript>(
-        transcript: &mut T,
-        commitment: &Self::Commitment,
-    ) -> io::Result<()>
+    fn write_commitment<T>(transcript: &mut T, commitment: &Self::Commitment) -> io::Result<()>
     where
         Self::Commitment: Hashable<T::Hash>,
+        T: Transcript,
     {
         PCS::write_commitment(transcript, commitment)
     }
@@ -153,21 +152,23 @@ where
         PCS::deserialize_commitment(reader, format, &g_labels)
     }
 
-    fn squeeze_evaluation_point<T: Transcript>(transcript: &mut T) -> F
+    fn squeeze_evaluation_point<T>(transcript: &mut T) -> F
     where
         F: Sampleable<T::Hash>,
+        T: Transcript,
     {
         PCS::squeeze_evaluation_point(transcript).pow_vartime([Self::T_MAX as u64])
     }
 
-    fn multi_open<T: Transcript>(
+    fn multi_open<T>(
         params: &Self::Parameters,
         queries: &[ProverQuery<F>],
         transcript: &mut T,
     ) -> Result<(), Error>
     where
-        F: Sampleable<T::Hash> + Hash + Ord + Hashable<T::Hash>,
+        F: TranscriptField<T::Hash> + Hash + Ord,
         Self::Commitment: Hashable<T::Hash>,
+        T: Transcript,
     {
         // Maps the labels of every queried chunk to its polynomials and the
         // points they are queried at, in query order: `labels -> (polys, points)`.
@@ -240,13 +241,14 @@ where
         PCS::commitment_byte_length(n.div_ceil(Self::T_MAX))
     }
 
-    fn multi_prepare<'com, T: Transcript>(
+    fn multi_prepare<'com, T>(
         queries: &[VerifierQuery<'com, F, Self>],
         transcript: &mut T,
     ) -> Result<Self::VerificationGuard, Error>
     where
-        F: Sampleable<T::Hash> + Hash + Ord + Hashable<T::Hash>,
+        F: TranscriptField<T::Hash> + Hash + Ord,
         Self::Commitment: Hashable<T::Hash> + 'com,
+        T: Transcript,
     {
         // Maps the labels of every queried chunk to its commitment and the points
         // its polynomials are queried at, in query order: `labels -> (commitment,
@@ -325,16 +327,17 @@ mod tests {
     /// before `q`, whichever of `p` and `q` is the larger field element.
     #[test]
     fn test_implicit_evals_in_query_order() {
-        type CS = Fflonk<Kzg, 1>;
+        #[allow(clippy::upper_case_acronyms)]
+        type PCS = Fflonk<Kzg, 1>;
         type T = CircuitTranscript<Blake2bState>;
         let k = 3;
-        let params = CS::gen_params(k);
+        let params = PCS::gen_params(k);
         let domain = EvaluationDomain::<Fq>::new(1, k);
         let labels = [PolynomialLabel::Advice(0), PolynomialLabel::Advice(1)];
         let polys: Vec<_> = (0..2)
             .map(|_| domain.coeff_from_vec((0..1 << k).map(|_| Fq::random(OsRng)).collect()))
             .collect();
-        let commitment = CS::commit_many(&params, &polys.iter().collect::<Vec<_>>(), &labels);
+        let commitment = PCS::commit_many(&params, &polys.iter().collect::<Vec<_>>(), &labels);
 
         let (mut seen_lt, mut seen_gt) = (false, false);
         while !(seen_lt && seen_gt) {
@@ -350,7 +353,7 @@ mod tests {
                 ProverQuery::new(&labels, &polys, p, labels[0].clone()),
                 ProverQuery::new(&labels, &polys, q, labels[1].clone()),
             ];
-            CS::multi_open(&params, &queries, &mut transcript).unwrap();
+            PCS::multi_open(&params, &queries, &mut transcript).unwrap();
             let proof = transcript.finalize();
 
             let mut transcript = T::init_from_bytes(&proof);
@@ -364,7 +367,7 @@ mod tests {
                 VerifierQuery::new(p, &commitment, labels[0].clone(), evals[0]),
                 VerifierQuery::new(q, &commitment, labels[1].clone(), evals[1]),
             ];
-            let guard = CS::multi_prepare(&queries, &mut transcript).unwrap();
+            let guard = PCS::multi_prepare(&queries, &mut transcript).unwrap();
             transcript.assert_empty().unwrap();
             guard.verify(&params.verifier_params()).unwrap();
         }
@@ -374,7 +377,8 @@ mod tests {
     /// Lagrange form, in its delta forms and in coefficient form, and checks
     /// that the commitments agree.
     fn assert_lagrange_matches_coeff(params: &ParamsKZG<Bls12>, k: u32, nb_polys: usize) {
-        type CS = Fflonk<Kzg, 2>;
+        #[allow(clippy::upper_case_acronyms)]
+        type PCS = Fflonk<Kzg, 2>;
         let domain = EvaluationDomain::<Fq>::new(1, k);
         let lagrange: Vec<_> = (0..nb_polys)
             .map(|_| {
@@ -394,17 +398,17 @@ mod tests {
         let delta: Vec<_> = lagrange.iter().map(|p| p.to_delta()).collect();
         let double_delta: Vec<_> = lagrange.iter().map(|p| p.to_double_delta()).collect();
         let labels: Vec<_> = (0..nb_polys).map(PolynomialLabel::Advice).collect();
-        let expected = CS::commit_many(params, &coeff.iter().collect::<Vec<_>>(), &labels);
+        let expected = PCS::commit_many(params, &coeff.iter().collect::<Vec<_>>(), &labels);
         assert_eq!(
-            CS::commit_many(params, &lagrange.iter().collect::<Vec<_>>(), &labels),
+            PCS::commit_many(params, &lagrange.iter().collect::<Vec<_>>(), &labels),
             expected
         );
         assert_eq!(
-            CS::commit_many(params, &delta.iter().collect::<Vec<_>>(), &labels),
+            PCS::commit_many(params, &delta.iter().collect::<Vec<_>>(), &labels),
             expected
         );
         assert_eq!(
-            CS::commit_many(params, &double_delta.iter().collect::<Vec<_>>(), &labels),
+            PCS::commit_many(params, &double_delta.iter().collect::<Vec<_>>(), &labels),
             expected
         );
     }

@@ -11,7 +11,7 @@ use std::{
     },
 };
 
-use ff::{BatchInvert, PrimeField, WithSmallOrderMulGroup};
+use ff::{BatchInvert, PrimeField};
 use group::ff::Field;
 use midnight_curves::serde::SerdeObject;
 
@@ -80,13 +80,11 @@ pub trait PolynomialRepresentation: Copy + Debug + Send + Sync {
 
     /// Computes the number of field elements needed to encode a polynomial
     /// in this representation for a given evaluation domain.
-    fn len<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> usize;
+    fn len<F: PrimeField>(evaluation_domain: &EvaluationDomain<F>) -> usize;
 
     /// Constructs an empty (zero) polynomial in this representation,
     /// appropriate for the given domain.
-    fn empty<F: WithSmallOrderMulGroup<3>>(
-        evaluation_domain: &EvaluationDomain<F>,
-    ) -> Polynomial<F, Self> {
+    fn empty<F: PrimeField>(evaluation_domain: &EvaluationDomain<F>) -> Polynomial<F, Self> {
         Polynomial {
             values: vec![F::ZERO; Self::len(evaluation_domain)],
             _marker: Default::default(),
@@ -94,28 +92,28 @@ pub trait PolynomialRepresentation: Copy + Debug + Send + Sync {
     }
 
     /// Returns the generator `ω` associated with the evaluation domain.
-    fn omega<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> F;
+    fn omega<F: PrimeField>(evaluation_domain: &EvaluationDomain<F>) -> F;
 
     /// Returns the logarithmic size parameter `k` of the evaluation domain,
     /// where the domain size is `2^k`.
-    fn k<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> u32;
+    fn k<F: PrimeField>(evaluation_domain: &EvaluationDomain<F>) -> u32;
 
     /// Converts a polynomial from coefficient form into this representation
     /// over the given evaluation domain.
-    fn coeff_to_self<F: WithSmallOrderMulGroup<3>>(
+    fn coeff_to_self<F: PrimeField>(
         evaluation_domain: &EvaluationDomain<F>,
         poly: Polynomial<F, Coeff>,
     ) -> Polynomial<F, Self>;
 
     /// Converts a polynomial from its own representation to coefficient form.
-    fn self_to_coeff<F: WithSmallOrderMulGroup<3>>(
+    fn self_to_coeff<F: PrimeField>(
         evaluation_domain: &EvaluationDomain<F>,
         poly: Polynomial<F, Self>,
     ) -> Polynomial<F, Coeff>;
 
     /// Returns the multiplicative coset generator `g_coset` if this
     /// representation uses an extended domain.
-    fn g_coset<F: WithSmallOrderMulGroup<3>>(_evaluation_domain: &EvaluationDomain<F>) -> F;
+    fn g_coset<F: PrimeField>(_evaluation_domain: &EvaluationDomain<F>) -> F;
 }
 
 /// The polynomial is defined as coefficients
@@ -124,33 +122,33 @@ pub struct Coeff;
 impl PolynomialRepresentation for Coeff {
     const BASIS: PolynomialBasis = PolynomialBasis::Coeff;
 
-    fn len<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> usize {
+    fn len<F: PrimeField>(evaluation_domain: &EvaluationDomain<F>) -> usize {
         evaluation_domain.n as usize
     }
 
-    fn omega<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> F {
+    fn omega<F: PrimeField>(evaluation_domain: &EvaluationDomain<F>) -> F {
         evaluation_domain.get_omega()
     }
 
-    fn k<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> u32 {
+    fn k<F: PrimeField>(evaluation_domain: &EvaluationDomain<F>) -> u32 {
         evaluation_domain.k()
     }
 
-    fn coeff_to_self<F: WithSmallOrderMulGroup<3>>(
+    fn coeff_to_self<F: PrimeField>(
         _evaluation_domain: &EvaluationDomain<F>,
         poly: Polynomial<F, Coeff>,
     ) -> Polynomial<F, Self> {
         poly
     }
 
-    fn self_to_coeff<F: WithSmallOrderMulGroup<3>>(
+    fn self_to_coeff<F: PrimeField>(
         _evaluation_domain: &EvaluationDomain<F>,
         poly: Polynomial<F, Self>,
     ) -> Polynomial<F, Coeff> {
         poly
     }
 
-    fn g_coset<F: WithSmallOrderMulGroup<3>>(_evaluation_domain: &EvaluationDomain<F>) -> F {
+    fn g_coset<F: PrimeField>(_evaluation_domain: &EvaluationDomain<F>) -> F {
         F::ONE
     }
 }
@@ -161,33 +159,33 @@ pub struct LagrangeCoeff;
 impl PolynomialRepresentation for LagrangeCoeff {
     const BASIS: PolynomialBasis = PolynomialBasis::Lagrange;
 
-    fn len<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> usize {
+    fn len<F: PrimeField>(evaluation_domain: &EvaluationDomain<F>) -> usize {
         evaluation_domain.n as usize
     }
 
-    fn omega<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> F {
+    fn omega<F: PrimeField>(evaluation_domain: &EvaluationDomain<F>) -> F {
         evaluation_domain.get_omega()
     }
 
-    fn k<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> u32 {
+    fn k<F: PrimeField>(evaluation_domain: &EvaluationDomain<F>) -> u32 {
         evaluation_domain.k()
     }
 
-    fn coeff_to_self<F: WithSmallOrderMulGroup<3>>(
+    fn coeff_to_self<F: PrimeField>(
         evaluation_domain: &EvaluationDomain<F>,
         poly: Polynomial<F, Coeff>,
     ) -> Polynomial<F, Self> {
         evaluation_domain.coeff_to_lagrange(poly)
     }
 
-    fn self_to_coeff<F: WithSmallOrderMulGroup<3>>(
+    fn self_to_coeff<F: PrimeField>(
         evaluation_domain: &EvaluationDomain<F>,
         poly: Polynomial<F, Self>,
     ) -> Polynomial<F, Coeff> {
         evaluation_domain.lagrange_to_coeff(poly)
     }
 
-    fn g_coset<F: WithSmallOrderMulGroup<3>>(_evaluation_domain: &EvaluationDomain<F>) -> F {
+    fn g_coset<F: PrimeField>(_evaluation_domain: &EvaluationDomain<F>) -> F {
         F::ONE
     }
 }
@@ -199,33 +197,33 @@ pub struct ExtendedLagrangeCoeff;
 impl PolynomialRepresentation for ExtendedLagrangeCoeff {
     const BASIS: PolynomialBasis = PolynomialBasis::ExtendedLagrange;
 
-    fn len<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> usize {
+    fn len<F: PrimeField>(evaluation_domain: &EvaluationDomain<F>) -> usize {
         evaluation_domain.extended_len()
     }
 
-    fn omega<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> F {
+    fn omega<F: PrimeField>(evaluation_domain: &EvaluationDomain<F>) -> F {
         evaluation_domain.get_extended_omega()
     }
 
-    fn k<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> u32 {
+    fn k<F: PrimeField>(evaluation_domain: &EvaluationDomain<F>) -> u32 {
         evaluation_domain.extended_k()
     }
 
-    fn coeff_to_self<F: WithSmallOrderMulGroup<3>>(
+    fn coeff_to_self<F: PrimeField>(
         evaluation_domain: &EvaluationDomain<F>,
         poly: Polynomial<F, Coeff>,
     ) -> Polynomial<F, Self> {
         evaluation_domain.coeff_to_extended(poly)
     }
 
-    fn self_to_coeff<F: WithSmallOrderMulGroup<3>>(
+    fn self_to_coeff<F: PrimeField>(
         evaluation_domain: &EvaluationDomain<F>,
         poly: Polynomial<F, Self>,
     ) -> Polynomial<F, Coeff> {
         evaluation_domain.coeff_from_vec(evaluation_domain.extended_to_coeff(poly))
     }
 
-    fn g_coset<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> F {
+    fn g_coset<F: PrimeField>(evaluation_domain: &EvaluationDomain<F>) -> F {
         evaluation_domain.g_coset
     }
 }
@@ -243,33 +241,33 @@ pub struct LagrangeDeltaCoeff;
 impl PolynomialRepresentation for LagrangeDeltaCoeff {
     const BASIS: PolynomialBasis = PolynomialBasis::LagrangeDelta;
 
-    fn len<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> usize {
+    fn len<F: PrimeField>(evaluation_domain: &EvaluationDomain<F>) -> usize {
         evaluation_domain.n as usize
     }
 
-    fn omega<F: WithSmallOrderMulGroup<3>>(_evaluation_domain: &EvaluationDomain<F>) -> F {
+    fn omega<F: PrimeField>(_evaluation_domain: &EvaluationDomain<F>) -> F {
         unimplemented!("LagrangeDelta is a commit-only basis and has no evaluation point.")
     }
 
-    fn k<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> u32 {
+    fn k<F: PrimeField>(evaluation_domain: &EvaluationDomain<F>) -> u32 {
         evaluation_domain.k()
     }
 
-    fn coeff_to_self<F: WithSmallOrderMulGroup<3>>(
+    fn coeff_to_self<F: PrimeField>(
         _evaluation_domain: &EvaluationDomain<F>,
         _poly: Polynomial<F, Coeff>,
     ) -> Polynomial<F, Self> {
         unimplemented!("LagrangeDelta is constructed from LagrangeCoeff via `to_delta`.")
     }
 
-    fn self_to_coeff<F: WithSmallOrderMulGroup<3>>(
+    fn self_to_coeff<F: PrimeField>(
         _evaluation_domain: &EvaluationDomain<F>,
         _poly: Polynomial<F, Self>,
     ) -> Polynomial<F, Coeff> {
         unimplemented!("Cannot convert LagrangeDelta basis to coefficient form.")
     }
 
-    fn g_coset<F: WithSmallOrderMulGroup<3>>(_evaluation_domain: &EvaluationDomain<F>) -> F {
+    fn g_coset<F: PrimeField>(_evaluation_domain: &EvaluationDomain<F>) -> F {
         unimplemented!("g_coset is undefined for the commit-only LagrangeDelta basis.")
     }
 }
@@ -289,19 +287,19 @@ pub struct LagrangeDoubleDeltaCoeff;
 impl PolynomialRepresentation for LagrangeDoubleDeltaCoeff {
     const BASIS: PolynomialBasis = PolynomialBasis::LagrangeDoubleDelta;
 
-    fn len<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> usize {
+    fn len<F: PrimeField>(evaluation_domain: &EvaluationDomain<F>) -> usize {
         evaluation_domain.n as usize
     }
 
-    fn omega<F: WithSmallOrderMulGroup<3>>(_evaluation_domain: &EvaluationDomain<F>) -> F {
+    fn omega<F: PrimeField>(_evaluation_domain: &EvaluationDomain<F>) -> F {
         unimplemented!("LagrangeDoubleDelta is a commit-only basis and has no evaluation point.")
     }
 
-    fn k<F: WithSmallOrderMulGroup<3>>(evaluation_domain: &EvaluationDomain<F>) -> u32 {
+    fn k<F: PrimeField>(evaluation_domain: &EvaluationDomain<F>) -> u32 {
         evaluation_domain.k()
     }
 
-    fn coeff_to_self<F: WithSmallOrderMulGroup<3>>(
+    fn coeff_to_self<F: PrimeField>(
         _evaluation_domain: &EvaluationDomain<F>,
         _poly: Polynomial<F, Coeff>,
     ) -> Polynomial<F, Self> {
@@ -310,14 +308,14 @@ impl PolynomialRepresentation for LagrangeDoubleDeltaCoeff {
         )
     }
 
-    fn self_to_coeff<F: WithSmallOrderMulGroup<3>>(
+    fn self_to_coeff<F: PrimeField>(
         _evaluation_domain: &EvaluationDomain<F>,
         _poly: Polynomial<F, Self>,
     ) -> Polynomial<F, Coeff> {
         unimplemented!("Cannot convert LagrangeDoubleDelta basis to coefficient form.")
     }
 
-    fn g_coset<F: WithSmallOrderMulGroup<3>>(_evaluation_domain: &EvaluationDomain<F>) -> F {
+    fn g_coset<F: PrimeField>(_evaluation_domain: &EvaluationDomain<F>) -> F {
         unimplemented!("g_coset is undefined for the commit-only LagrangeDoubleDelta basis.")
     }
 }

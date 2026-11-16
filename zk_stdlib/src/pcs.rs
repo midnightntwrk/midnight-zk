@@ -13,7 +13,7 @@
 
 //! The polynomial commitment schemes of zk_stdlib.
 
-use midnight_circuits::verifier::{BlstrsEmulation, InCircuitPCS};
+use midnight_circuits::verifier::{AssignedAccumulator, CurveChip, InCircuitPCS};
 use midnight_curves::{Bls12, Fq};
 use midnight_proofs::poly::{
     commitment::PolynomialCommitmentScheme,
@@ -43,8 +43,11 @@ mod sealed {
 /// implement this trait.
 pub trait MidnightPCS:
     sealed::Sealed
-    + InCircuitPCS<BlstrsEmulation>
-    + PolynomialCommitmentScheme<
+    + InCircuitPCS<
+        Fq,
+        CommitmentChip = CurveChip<Bls12>,
+        AssignedVerificationGuard = AssignedAccumulator<Bls12>,
+    > + PolynomialCommitmentScheme<
         Fq,
         Parameters = ParamsKZG<Bls12>,
         VerifierParameters = ParamsVerifierKZG<Bls12>,

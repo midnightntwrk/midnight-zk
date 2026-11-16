@@ -1,4 +1,3 @@
-use std::hash::Hash;
 /// Here we construct two circuits one for adding two vectors and one for
 /// multiplying and we check that their transcripts have the same inputs
 /// by way of the unblinded inputs.
@@ -7,22 +6,16 @@ use std::hash::Hash;
 use std::marker::PhantomData;
 
 use blake2b_simd::State;
-use ff::{FromUniformBytes, WithSmallOrderMulGroup};
-use midnight_curves::{
-    CurveAffine, CurveExt,
-    pairing::{Engine, MultiMillerLoop},
-    serde::SerdeObject,
-};
 use midnight_proofs::{
     circuit::{AssignedCell, Chip, Layouter, Region, SimpleFloorPlanner, Value},
-    plonk::*,
+    plonk::{ProofField, *},
     poly::{
         Rotation,
         commitment::Guard,
-        kzg::{KZGCommitmentScheme, params::ParamsKZG},
+        kzg::{KZGCommitmentScheme, KZGEngine, params::ParamsKZG},
     },
-    transcript::{CircuitTranscript, Hashable, Sampleable, Transcript},
-    utils::{arithmetic::Field, helpers::ProcessedSerdeObject},
+    transcript::{CircuitTranscript, Hashable, Transcript},
+    utils::arithmetic::Field,
 };
 use rand_core::OsRng;
 
@@ -494,22 +487,16 @@ impl<F: Field> Circuit<F> for AddCircuit<F> {
 }
 // ANCHOR_END: circuit
 
-fn test_prover<E: Engine + MultiMillerLoop>(
+fn test_prover<E>(
     k: u32,
     circuit: impl Circuit<E::Fr>,
     expected: bool,
     instances: Vec<E::Fr>,
 ) -> Vec<u8>
 where
-    E::G1: Default + Hashable<State> + CurveExt<ScalarExt = E::Fr> + ProcessedSerdeObject,
-    E::G1Affine: Default + SerdeObject + CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
-    E::G2: ProcessedSerdeObject,
-    E::Fr: WithSmallOrderMulGroup<3>
-        + FromUniformBytes<64>
-        + Sampleable<State>
-        + Hashable<State>
-        + Hash
-        + Ord,
+    E: KZGEngine,
+    E::G1: Hashable<State>,
+    E::Fr: ProofField<State>,
 {
     let params: ParamsKZG<E> = ParamsKZG::unsafe_setup(k, OsRng);
     let vk = keygen_vk_with_k(&params, &circuit, k).unwrap();
