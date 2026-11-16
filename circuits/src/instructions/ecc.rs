@@ -125,9 +125,15 @@ where
 
     /// Creates an assigned point from a pair of coordinates, asserting that
     /// they satisfy the curve equation.
-    /// If the curve has non-prime order, the point is guaranteed to be in the
-    /// prime order subgroup. (In case of Weierstrass curves, the identity
-    /// cannot be constructed through this function.)
+    ///
+    /// Subgroup membership is only enforced on Edwards curves, where the
+    /// point is guaranteed to be in the prime-order subgroup. On Weierstrass
+    /// curves no subgroup check is performed: if the curve has a non-trivial
+    /// cofactor (e.g. BLS12-381), the point may lie outside the prime-order
+    /// subgroup.
+    ///
+    /// In case of Weierstrass curves, the identity cannot be constructed
+    /// through this function.
     fn point_from_coordinates(
         &self,
         layouter: &mut impl Layouter<F>,

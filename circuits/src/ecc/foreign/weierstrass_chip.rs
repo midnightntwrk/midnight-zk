@@ -12,11 +12,16 @@
 // limitations under the License.
 
 //! Elliptic curve (in Weierstrass form) operations over foreign fields.
-//! This module supports curves of the form y^2 = x^3 + b (i.e. with a = 0).
+//! This module supports curves of the form y^2 = x^3 + ax + b.
 //!
-//! We require that the emulated elliptic curve do not have low-order points.
-//! In particular, the curve (or the relevant subgroup) must have a large prime
-//! order.
+//! The curve (or the relevant subgroup) must have a large prime order.
+//!
+//! If the curve has a non-trivial cofactor (e.g. BLS12-381), assigned points
+//! are only guaranteed to be in the prime-order subgroup when they are
+//! created with [`AssignmentInstructions::assign`]. Points created with
+//! [`EccInstructions::point_from_coordinates`] or
+//! [`EccInstructions::assign_without_subgroup_check`] are only constrained to
+//! satisfy the curve equation, so they may lie outside the subgroup.
 
 use std::{
     cell::RefCell,
@@ -168,6 +173,8 @@ where
 }
 
 /// Type for foreign EC points.
+/// The point satisfies the curve equation, but it is not necessarily in the
+/// prime-order subgroup if the curve has a non-trivial cofactor.
 /// The identity is represented with field `is_id`, whose value is `1` iff the
 /// point is the identity. If `is_id` is set, the values of `x` and `y` are
 /// irrelevant and can be anything.
@@ -898,6 +905,11 @@ where
         self.msm_by_le_bits(layouter, &[scalar_bits], std::slice::from_ref(base))
     }
 
+    /// Creates an assigned point from a pair of coordinates, asserting that
+    /// they satisfy the curve equation. The point cannot be the identity.
+    ///
+    /// The point is not checked to be in the prime-order subgroup, which
+    /// matters on curves with a non-trivial cofactor (e.g. BLS12-381).
     fn point_from_coordinates(
         &self,
         layouter: &mut impl Layouter<F>,

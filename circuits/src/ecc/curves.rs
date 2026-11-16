@@ -34,6 +34,11 @@ pub trait CircuitCurve: Curve + Default {
     type ScalarField: CircuitField;
 
     /// Cryptographic group.
+    ///
+    /// On Edwards curves this is a dedicated type for the prime-order
+    /// subgroup. On Weierstrass curves it is the curve type itself, so if the
+    /// cofactor is non-trivial (e.g. BLS12-381) its values are not guaranteed
+    /// to be in the prime-order subgroup.
     type CryptographicGroup: Group<Scalar = Self::ScalarField> + Into<Self>;
 
     /// Cofactor of the curve.
@@ -50,6 +55,7 @@ pub trait CircuitCurve: Curve + Default {
 
     /// Constructs a point in the curve from its coordinates.
     /// Returns `None` if the coordinates do not satisfy the curve equation.
+    /// The point is not required to be in the prime-order subgroup.
     ///
     /// NB: Edwards identity coordinates, (0, 1), satisfy the equation, whereas
     /// Weierstrass identity coordinates, typically (0, 0), do not.
@@ -57,10 +63,15 @@ pub trait CircuitCurve: Curve + Default {
 
     /// Checks that the point is part of the subgroup and returns the
     /// [Self::CryptographicGroup] type. Returns `None` if the check fails.
+    ///
+    /// On Weierstrass curves, where [Self::CryptographicGroup] is the curve
+    /// type itself, this is a plain conversion that performs no check, even
+    /// if the cofactor is non-trivial (e.g. BLS12-381).
     fn try_into_subgroup(self) -> Option<Self::CryptographicGroup>;
 
     /// Checks that the point is part of the subgroup and returns the
-    /// [Self::CryptographicGroup] type.
+    /// [Self::CryptographicGroup] type. As in [Self::try_into_subgroup], no
+    /// check is performed on Weierstrass curves.
     ///
     /// # Panics
     ///

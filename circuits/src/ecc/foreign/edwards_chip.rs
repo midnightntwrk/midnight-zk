@@ -15,9 +15,11 @@
 //! This module supports curves of the form `a*x^2 + y^2 = 1 + d*x^2*y^2`, where
 //! `a` is square and `d` is non-square.
 //!
-//! We require that the emulated elliptic curve do not have low-order points.
-//! In particular, the curve (or the relevant subgroup) must have a large prime
-//! order.
+//! The relevant subgroup of the curve must have a large prime order.
+//!
+//! Assigned points are guaranteed to be in the prime-order subgroup, unless
+//! they are created with [`EccInstructions::assign_without_subgroup_check`],
+//! which only constrains them to satisfy the curve equation.
 
 use std::{
     cell::RefCell,
