@@ -80,6 +80,13 @@ where
         constant: Assigned::Element,
     ) -> Result<Assigned, Error>;
 
+    /// The constant that the given element is known to encode at
+    /// circuit-construction time, if any. `None` does not mean that the
+    /// element is not constant.
+    fn as_constant(&self, _x: &Assigned) -> Option<Assigned::Element> {
+        None
+    }
+
     /// Assigns several elements as private inputs to the circuit.
     ///
     /// This is potentially more efficient than calling
