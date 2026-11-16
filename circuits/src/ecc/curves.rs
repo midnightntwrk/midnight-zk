@@ -118,23 +118,14 @@ impl CircuitCurve for JubjubExtended {
     }
 
     fn from_xy(x: Self::Base, y: Self::Base) -> Option<Self> {
-        // The only way to check that the coordinates are in the curve is via
-        // the `from_bytes` interface
-        // FIXME: change JubJub implementation to get a `from_coords_checked`
-        // https://github.com/davidnevadoc/blstrs/issues/13c
-        let mut bytes = y.to_bytes_le();
-        let x_sign = x.to_bytes_le()[0] << 7;
-
-        // Encode the sign of the u-coordinate in the most
-        // significant bit.
-        bytes[31] |= x_sign;
-
-        let point = JubjubAffine::from_bytes(bytes).into_option()?;
-        if point.get_v() == y {
-            Some(point.into())
-        } else {
-            None
+        // Check the twisted Edwards curve equation: A x² + y² = 1 + D x² y².
+        let a = <Self as EdwardsCurve>::A;
+        let d = <Self as EdwardsCurve>::D;
+        let (x2, y2) = (x.square(), y.square());
+        if a * x2 + y2 != Self::Base::ONE + d * x2 * y2 {
+            return None;
         }
+        Some(JubjubAffine::from_raw_unchecked(x, y).into())
     }
 
     fn try_into_subgroup(self) -> Option<Self::CryptographicGroup> {
@@ -394,6 +385,37 @@ mod tests {
         check::<G1Projective>(false);
         #[cfg(feature = "dev-curves")]
         check::<bn256::G1>(false);
+    }
+
+    /// Tests that `from_xy` rejects coordinates that do not satisfy the curve
+    /// equation, and that accepted points have exactly the given coordinates.
+    #[test]
+    fn test_from_xy_checks_both_coordinates() {
+        fn check<C: CircuitCurve>() {
+            let two = C::Base::from(2);
+            let mut p = C::generator();
+            for _ in 0..10 {
+                let (x, y) = p.coordinates().unwrap();
+                assert_eq!(C::from_xy(x, y).unwrap().coordinates(), Some((x, y)));
+                // Perturbations that preserve the parity of the coordinates.
+                assert!(C::from_xy(x + two, y).is_none());
+                assert!(C::from_xy(x, y + two).is_none());
+                // (-x, y) is on Edwards curves and off Weierstrass ones; either
+                // way it must not be mapped to a point with other coordinates.
+                if let Some(q) = C::from_xy(-x, y) {
+                    assert_eq!(q.coordinates(), Some((-x, y)));
+                }
+                p = p.double() + C::generator();
+            }
+        }
+
+        check::<JubjubExtended>();
+        check::<Curve25519>();
+        check::<K256>();
+        check::<P256>();
+        check::<G1Projective>();
+        #[cfg(feature = "dev-curves")]
+        check::<bn256::G1>();
     }
 
     /// Tests that `from_xy` on the identity coordinates returns `Some` only
