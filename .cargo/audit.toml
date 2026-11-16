@@ -1,0 +1,9 @@
+# crypto-bigint 0.5 is pulled in via elliptic-curve 0.13 (k256 0.13), which
+# midnight-curves depends on. The fix (crypto-bigint >= 0.7.6) requires
+# migrating to the elliptic-curve 0.14 crate line (k256 0.14), which has no
+# stable release yet.
+# TODO: drop once midnight-curves moves to elliptic-curve 0.14.
+[advisories]
+ignore = [
+    "RUSTSEC-2026-0387", # crypto-bigint 0.5: timing variability in constant-time ops
+]

@@ -8,6 +8,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 ### Added
+* `MidnightVK::nb_public_inputs`, the number of public inputs expected by the key
 ### Changed
 * Point `sha3-circuit` at a revision that requires `midnight-proofs` and `midnight-curves` by crates.io version instead of from the midnight-zk main branch, so that crates patching them to a midnight-zk tag get a single copy of each
 ### Removed
@@ -31,6 +32,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Fixed
 * Fix cost model proof size check to account for committed instance columns [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 * `MidnightVK::read` and `MidnightPK::read` reject a `k` outside `1..=F::S` instead of underflowing on `k = 0` [#581](https://github.com/midnightntwrk/midnight-zk/pull/581)
+* `ZkStdLibArch::read` rejects out-of-range `nb_arith_cols` and `nr_pow2range_cols` instead of panicking in `ZkStdLib::configure` [#640](https://github.com/midnightntwrk/midnight-zk/pull/640)
 
 ### Changed
 * BREAKING: `ZkStdLib::verifier::<PCS>()` returns a `VerifierGadget<F, PCS>`, and `MidnightPCS` requires `InCircuitPCS<Fq>` with `CurveChip<Bls12>` as its commitment chip and `AssignedAccumulator<Bls12>` as its verification guard [#638](https://github.com/midnightntwrk/midnight-zk/pull/638)

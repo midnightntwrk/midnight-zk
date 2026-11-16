@@ -1,6 +1,7 @@
 name: CI checks
 
 on:
+  workflow_dispatch: # so cargo-audit-fix.yml can dispatch CI on its fix branch
   pull_request:
     # Draft runs skip the test jobs, and a skipped required check counts as
     # passing, so re-run when a draft is marked ready.
@@ -37,6 +38,43 @@ jobs:
           mkdir -p zk_stdlib/examples/assets
           curl -L -o zk_stdlib/examples/assets/bls_filecoin_2p19 \
             https://midnight-s3-fileshare-dev-eu-west-1.s3.eu-west-1.amazonaws.com/bls_filecoin_2p19
+
+  audit:
+    # Not in the merge queue: the advisory DB is fetched live, so a new
+    # advisory published after approval would eject every queued PR.
+    if: github.event_name != 'merge_group'
+    name: Cargo audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Checkout base branch Cargo.lock
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: base
+          sparse-checkout: Cargo.lock
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
+        with:
+          tool: cargo-audit
+
+      # PRs fail only on advisories they introduce. Ones already on the base
+      # branch are warnings here and get fixed there by cargo-audit-fix.yml,
+      # so an unrelated new advisory never forces a PR to be re-reviewed.
+      - name: Cargo audit (advisories introduced by this PR)
+        if: github.event_name == 'pull_request'
+        run: .github/scripts/cargo-audit-diff.sh base/Cargo.lock
+
+      - name: Cargo audit
+        if: github.event_name != 'pull_request'
+        run: cargo audit
 
   test-blstrs:
     if: github.event.pull_request.draft == false
