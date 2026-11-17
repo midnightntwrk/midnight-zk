@@ -42,13 +42,14 @@ use std::{
 };
 
 use automaton::Automaton;
+use indexmap::IndexMap;
 use midnight_proofs::{
     circuit::{Chip, Layouter},
     plonk::{Advice, Column, ConstraintSystem, Error, Expression, Fixed, Selector, TableColumn},
     poly::Rotation,
 };
 use regex::Regex;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxBuildHasher, FxHashMap};
 pub use static_specs::StdLibParser;
 
 /// A test vector pairing an input with expected marker-grouped outputs.
@@ -255,16 +256,16 @@ type CachedSub<F> = (
 );
 
 /// Cache of assigned sequences passed as arguments to `check_subsequence` or
-/// `check_subsequence_varlen`. Each sequence (keyed by its cells) is mapped to
-/// the list of sub entries and the cumulative sub length.
+/// `check_subsequence_varlen`. Each sequence (keyed by its elements) is mapped
+/// to the list of sub entries and the cumulative sub length.
 ///
-/// **Cell-identity assumption**: the cache key is based on
-/// [`AssignedCell`](`midnight_proofs::circuit::AssignedCell`) identity (column
-/// and row), not on the cell's value. This means two sequences holding the same
-/// byte values but assigned at different circuit positions are distinct cache
-/// entries. Callers that introduce new ways to build sequences must ensure
-/// fresh cells are produced if a distinct cache entry is intended.
-type SequenceCache<F> = FxHashMap<Sequence<F>, (Vec<CachedSub<F>>, usize)>;
+/// **Pointer-equality assumption**: the cache key is based on
+/// [`AssignedNative`] pointers (see its `PartialEq`), not on the elements'
+/// values. This means two sequences holding the same byte values but built
+/// from different elements are distinct cache entries. Callers that introduce
+/// new ways to build sequences must ensure fresh elements are produced if a
+/// distinct cache entry is intended. Entries are iterated in insertion order.
+type SequenceCache<F> = IndexMap<Sequence<F>, (Vec<CachedSub<F>>, usize), FxBuildHasher>;
 
 /// Scanner gate configuration.
 #[derive(Clone, Debug)]
@@ -364,7 +365,7 @@ where
             native_gadget: deps.clone(),
             automaton_cache: Rc::new(RefCell::new(FxHashMap::default())),
             max_state: Rc::new(RefCell::new(1)),
-            sequence_cache: Rc::new(RefCell::new(FxHashMap::default())),
+            sequence_cache: Rc::new(RefCell::new(Default::default())),
         }
     }
 

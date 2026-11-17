@@ -86,8 +86,9 @@ impl<F: CircuitField> Blake2bWrapper<F> {
         key: &[AssignedByte<F>],
         output_size: usize,
     ) -> Result<[AssignedByte<F>; 64], Error> {
-        let input = &input.iter().map(AssignedNative::from).collect::<Vec<_>>();
-        let key = &key.iter().map(AssignedNative::from).collect::<Vec<_>>();
+        let to_cell = |b: &AssignedByte<F>| AssignedCell::from(&AssignedNative::from(b));
+        let input = &input.iter().map(to_cell).collect::<Vec<_>>();
+        let key = &key.iter().map(to_cell).collect::<Vec<_>>();
         let output = &self
             .blake2b_chip
             .hash(layouter, input, key, output_size)?

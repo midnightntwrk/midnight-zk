@@ -105,8 +105,12 @@ use super::{
     varlen::ScannerVec,
 };
 use crate::{
-    CircuitField, field::AssignedNative, instructions::AssignmentInstructions,
-    parsing::scanner::AutomatonParser, types::AssignedByte, vec::AssignedVector,
+    CircuitField,
+    field::{AssignNative, AssignedNative},
+    instructions::AssignmentInstructions,
+    parsing::scanner::AutomatonParser,
+    types::AssignedByte,
+    vec::AssignedVector,
 };
 
 impl<F> NativeAutomaton<F>
@@ -230,7 +234,7 @@ where
 
         let (next_state_val, output_val) = automaton.next_transition(state, letter)?;
 
-        let output = region.assign_advice(
+        let output = region.assign_native(
             || format!("output batch {batch}"),
             self.config.advice_cols[base + 2],
             *offset,
@@ -244,7 +248,7 @@ where
         } else {
             base + NB_AUTOMATON_COLS
         };
-        *state = region.assign_advice(
+        *state = region.assign_native(
             || format!("next state batch {batch}"),
             self.config.advice_cols[target_col],
             *offset,

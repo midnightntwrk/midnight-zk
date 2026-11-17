@@ -49,7 +49,7 @@ use num_integer::Integer;
 
 use crate::{
     CircuitField,
-    field::{NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip},
+    field::{AssignNative, NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip},
     hash::sha512::{
         types::{
             AssignedMessageWord, AssignedPlain, AssignedPlainSpreaded, AssignedSpreaded,
@@ -1022,7 +1022,7 @@ impl<F: CircuitField> Sha512Chip<F> {
 
                 let ret_val = odd_EF.0.value().copied() + odd_nEG.0.value().copied();
                 region
-                    .assign_advice(|| "Ret", adv_cols[6], 1, || ret_val)
+                    .assign_native(|| "Ret", adv_cols[6], 1, || ret_val)
                     .map(AssignedPlain::<F, 64>)
             },
         )
@@ -1458,10 +1458,10 @@ impl<F: CircuitField> Sha512Chip<F> {
         let out_col = self.config().advice_cols[4];
         match even_or_odd {
             Parity::Evn => {
-                region.assign_advice(|| "Evn", out_col, offset, || evn_val.map(u64_to_fe))
+                region.assign_native(|| "Evn", out_col, offset, || evn_val.map(u64_to_fe))
             }
             Parity::Odd => {
-                region.assign_advice(|| "Odd", out_col, offset, || odd_val.map(u64_to_fe))
+                region.assign_native(|| "Odd", out_col, offset, || odd_val.map(u64_to_fe))
             }
         }
         .map(AssignedPlain)
@@ -1522,7 +1522,7 @@ impl<F: CircuitField> Sha512Chip<F> {
                 let a_sprdd_val =
                     a_plain.0.value().copied().map(fe_to_u64).map(spread).map(u128_to_fe);
                 let a_sprdd = region
-                    .assign_advice(|| "~A", self.config().advice_cols[4], 1, || a_sprdd_val)
+                    .assign_native(|| "~A", self.config().advice_cols[4], 1, || a_sprdd_val)
                     .map(AssignedSpreaded)?;
 
                 let [val_13a, val_12, val_05, val_06, val_13b, val_13c, val_02] = a_plain
@@ -1612,7 +1612,7 @@ impl<F: CircuitField> Sha512Chip<F> {
                 let e_sprdd_val =
                     e_plain.0.value().copied().map(fe_to_u64).map(spread).map(u128_to_fe);
                 let e_sprdd = region
-                    .assign_advice(|| "~E", self.config().advice_cols[4], 1, || e_sprdd_val)
+                    .assign_native(|| "~E", self.config().advice_cols[4], 1, || e_sprdd_val)
                     .map(AssignedSpreaded)?;
 
                 let [val_13a, val_10a, val_13b, val_10b, val_04, val_13c, val_01] = e_plain
@@ -1728,11 +1728,11 @@ impl<F: CircuitField> Sha512Chip<F> {
                 // The spreaded forms of 1-bit values W.01a, W.01b and W.01c equal themselves.
                 let col = self.config().advice_cols[7];
                 let limb_01a =
-                    region.assign_advice(|| "W.01a", col, 0, || val_01a.map(u64_to_fe))?;
+                    region.assign_native(|| "W.01a", col, 0, || val_01a.map(u64_to_fe))?;
                 let limb_01b =
-                    region.assign_advice(|| "W.01b", col, 1, || val_01b.map(u64_to_fe))?;
+                    region.assign_native(|| "W.01b", col, 1, || val_01b.map(u64_to_fe))?;
                 let limb_01c =
-                    region.assign_advice(|| "W.01c", col, 2, || val_01c.map(u64_to_fe))?;
+                    region.assign_native(|| "W.01c", col, 2, || val_01c.map(u64_to_fe))?;
 
                 Ok(AssignedMessageWord {
                     combined_plain: w_i_plain,
@@ -1784,8 +1784,8 @@ impl<F: CircuitField> Sha512Chip<F> {
         let plain_val = plain_val.map(u64_to_fe);
 
         region.assign_fixed(|| "nbits", nbits_col, offset, || nbits_val)?;
-        let plain = region.assign_advice(|| "plain", plain_col, offset, || plain_val)?;
-        let spreaded = region.assign_advice(|| "sprdd", sprdd_col, offset, || sprdd_val)?;
+        let plain = region.assign_native(|| "plain", plain_col, offset, || plain_val)?;
+        let spreaded = region.assign_native(|| "sprdd", sprdd_col, offset, || sprdd_val)?;
 
         Ok(AssignedPlainSpreaded {
             plain: AssignedPlain(plain),
@@ -1846,7 +1846,7 @@ impl<F: CircuitField> Sha512Chip<F> {
         summands[6].0.copy_advice(|| "S6", region, adv_cols[6], 2)?;
         let _carry: AssignedPlainSpreaded<F, 3> =
             self.assign_plain_and_spreaded(region, carry_val, 3, 1)?;
-        region.assign_advice(|| "sum", adv_cols[4], 0, || sum_val).map(AssignedPlain)
+        region.assign_native(|| "sum", adv_cols[4], 0, || sum_val).map(AssignedPlain)
     }
 }
 

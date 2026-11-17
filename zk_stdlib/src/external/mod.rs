@@ -50,7 +50,10 @@ where
     for<'v> Rational<F>: From<&'v V>,
 {
     (bytes.iter())
-        .map(|b| native_gadget.convert_unsafe(layouter, &b.clone().convert_to_native()))
+        .map(|b| {
+            native_gadget
+                .convert_unsafe(layouter, &AssignedNative::from_cell(b.convert_to_native()))
+        })
         .collect()
 }
 
@@ -69,8 +72,10 @@ where
     V: Clone,
     for<'v> Rational<F>: From<&'v V>,
 {
-    let bytes_as_native: &[AssignedNative<F>] =
-        &bytes.iter().map(|b| b.convert_to_native()).collect::<Vec<_>>();
+    let bytes_as_native: &[AssignedNative<F>] = &bytes
+        .iter()
+        .map(|b| AssignedNative::from_cell(b.convert_to_native()))
+        .collect::<Vec<_>>();
 
     // Instead of using `native_gadget.convert` on each individual cell, we extract
     // their value, reassign them in a batched way using `assign_many` (more

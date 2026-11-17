@@ -56,7 +56,7 @@ use std::{
 };
 
 use midnight_proofs::{
-    circuit::{Chip, Layouter, Region, Value},
+    circuit::{Cell, Chip, Layouter, Region, Value},
     plonk::{Advice, Column, ConstraintSystem, Constraints, Error, Fixed, Instance, Selector},
     poly::Rotation,
 };
@@ -67,6 +67,7 @@ use num_traits::Zero;
 use crate::testing_utils::FromScratch;
 use crate::{
     CircuitField,
+    field::AssignNative,
     instructions::{
         ArithInstructions, AssertionInstructions, AssignmentInstructions, BinaryInstructions,
         CanonicityInstructions, ControlFlowInstructions, ConversionInstructions,
@@ -140,6 +141,7 @@ impl NativeConfig {
 pub struct NativeChip<F: CircuitField> {
     config: NativeConfig,
     cached_fixed: Rc<RefCell<HashMap<BigUint, AssignedNative<F>>>>,
+    fixed_constants: Rc<RefCell<HashMap<Cell, F>>>,
     committed_instance_offset: Rc<RefCell<usize>>,
     instance_offset: Rc<RefCell<usize>>,
 }
@@ -170,6 +172,7 @@ impl<F: CircuitField> ComposableChip<F> for NativeChip<F> {
         Self {
             config: config.clone(),
             cached_fixed: Default::default(),
+            fixed_constants: Default::default(),
             instance_offset: Rc::new(RefCell::new(0)),
             committed_instance_offset: Rc::new(RefCell::new(0)),
         }
@@ -351,6 +354,39 @@ impl<F: CircuitField> NativeChip<F> {
         Ok(())
     }
 
+    /// Assigns the given elements that are not assigned to a cell yet in rows
+    /// of their own.
+    pub fn materialize(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        xs: &[AssignedNative<F>],
+    ) -> Result<(), Error> {
+        let free: Vec<_> = xs.iter().filter(|x| !x.is_materialized()).collect();
+        if free.is_empty() {
+            return Ok(());
+        }
+        let cols = &self.config.value_cols;
+        layouter.assign_region(
+            || "materialize",
+            |mut region| {
+                (free.iter().enumerate()).try_for_each(|(i, x)| {
+                    x.copy_advice(|| "x", &mut region, cols[i % cols.len()], i / cols.len())
+                        .map(|_| ())
+                })
+            },
+        )
+    }
+
+    /// The cell of the given element, which is assigned if it is not yet.
+    fn cell_of(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &AssignedNative<F>,
+    ) -> Result<Cell, Error> {
+        self.materialize(layouter, std::slice::from_ref(x))?;
+        Ok(x.cell())
+    }
+
     /// Copies the given assigned value in the current row and the given column.
     fn copy_in_row(
         &self,
@@ -359,13 +395,7 @@ impl<F: CircuitField> NativeChip<F> {
         column: &Column<Advice>,
         offset: usize,
     ) -> Result<(), Error> {
-        let y = region.assign_advice(
-            || "arith copy_in_row",
-            *column,
-            offset,
-            || x.value().copied(),
-        )?;
-        region.constrain_equal(x.cell(), y.cell())?;
+        x.copy_advice(|| "arith copy_in_row", region, *column, offset)?;
         Ok(())
     }
 
@@ -385,8 +415,8 @@ impl<F: CircuitField> NativeChip<F> {
             |mut region| {
                 // x * r - shift * r - 1 = 0
                 let r_value = value.map(|x| (x - shift).invert().unwrap_or(F::ZERO));
-                let x = region.assign_advice(|| "x", self.config.value_cols[0], 0, || value)?;
-                let r = region.assign_advice(|| "r", self.config.value_cols[1], 0, || r_value)?;
+                let x = region.assign_native(|| "x", self.config.value_cols[0], 0, || value)?;
+                let r = region.assign_native(|| "r", self.config.value_cols[1], 0, || r_value)?;
                 let mut coeffs = vec![F::ZERO; self.config.coeff_cols.len()];
                 coeffs[1] = -shift; // coeff of r
                 self.custom(&mut region, &coeffs, F::ZERO, (F::ONE, F::ZERO), -F::ONE, 0)?;
@@ -442,7 +472,7 @@ impl<F: CircuitField> NativeChip<F> {
         let mut coeffs = vec![F::ZERO; self.config.coeff_cols.len()];
 
         // assign the lc result in the first advice column
-        let assigned_result = region.assign_advice(
+        let assigned_result = region.assign_native(
             || "assign linear combination term",
             self.config.value_cols[0],
             *offset,
@@ -456,7 +486,7 @@ impl<F: CircuitField> NativeChip<F> {
             .enumerate()
             .map(|(i, term)| {
                 coeffs[i + 1] = term.0;
-                region.assign_advice(
+                region.assign_native(
                     || "assign linear combination term",
                     self.config.value_cols[i + 1],
                     *offset,
@@ -553,7 +583,7 @@ impl<F: CircuitField> NativeChip<F> {
 
         res_values
             .zip(self.config.value_cols.iter())
-            .map(|(val, col)| region.assign_advice(|| "add_consts", *col, *offset, || val))
+            .map(|(val, col)| region.assign_native(|| "add_consts", *col, *offset, || val))
             .collect::<Result<Vec<_>, Error>>()
     }
 }
@@ -562,17 +592,13 @@ impl<F> AssignmentInstructions<F, AssignedNative<F>> for NativeChip<F>
 where
     F: CircuitField,
 {
+    /// The element is not assigned to a cell until it is used.
     fn assign(
         &self,
-        layouter: &mut impl Layouter<F>,
+        _layouter: &mut impl Layouter<F>,
         value: Value<F>,
     ) -> Result<AssignedNative<F>, Error> {
-        layouter.assign_region(
-            || "Assign native value",
-            |mut region| {
-                region.assign_advice(|| "assign element", self.config.value_cols[0], 0, || value)
-            },
-        )
+        Ok(AssignedNative::free(value))
     }
 
     fn assign_fixed(
@@ -597,36 +623,20 @@ where
                 // This is hacky but necessary because we are treating a fixed cell as an
                 // assigned one. Fixed cells do not get properly filled until the end.
                 x.update_value(constant)?;
-                Ok(x)
+                Ok(AssignedNative::from_cell(x))
             },
         )?;
 
         // Save the assigned constant in the cache.
         self.cached_fixed.borrow_mut().insert(constant_big, x.clone());
+        self.fixed_constants.borrow_mut().insert(x.cell(), constant);
 
         Ok(x)
     }
 
-    // This is more efficient than the blanket implementation.
-    fn assign_many(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        values: &[Value<F>],
-    ) -> Result<Vec<AssignedNative<F>>, Error> {
-        let nb_arith_cols = self.config.value_cols.len();
-        layouter.assign_region(
-            || "assign_many (native)",
-            |mut region| {
-                let mut assigned = vec![];
-                for (i, chunk_values) in values.chunks(nb_arith_cols).enumerate() {
-                    for (value, col) in chunk_values.iter().zip(self.config.value_cols.iter()) {
-                        let cell = region.assign_advice(|| "assign", *col, i, || *value)?;
-                        assigned.push(cell);
-                    }
-                }
-                Ok(assigned)
-            },
-        )
+    fn as_constant(&self, x: &AssignedNative<F>) -> Option<F> {
+        x.is_materialized()
+            .then(|| self.fixed_constants.borrow().get(&x.cell()).copied())?
     }
 }
 
@@ -648,7 +658,8 @@ where
         assigned: &AssignedNative<F>,
     ) -> Result<(), Error> {
         let mut offset = self.instance_offset.borrow_mut();
-        layouter.constrain_instance(assigned.cell(), self.config.instance_col, *offset)?;
+        let cell = self.cell_of(layouter, assigned)?;
+        layouter.constrain_instance(cell, self.config.instance_col, *offset)?;
         *offset += 1;
         Ok(())
     }
@@ -664,11 +675,8 @@ where
         assigned: &AssignedNative<F>,
     ) -> Result<(), Error> {
         let mut offset = self.committed_instance_offset.borrow_mut();
-        layouter.constrain_instance(
-            assigned.cell(),
-            self.config.committed_instance_col,
-            *offset,
-        )?;
+        let cell = self.cell_of(layouter, assigned)?;
+        layouter.constrain_instance(cell, self.config.committed_instance_col, *offset)?;
         *offset += 1;
         Ok(())
     }
@@ -688,7 +696,7 @@ where
             |mut region| {
                 // Enforce x * x - x = 0
                 let b_value = value.map(|b| if b { F::ONE } else { F::ZERO });
-                let b = region.assign_advice(|| "b", self.config.value_cols[0], 0, || b_value)?;
+                let b = region.assign_native(|| "b", self.config.value_cols[0], 0, || b_value)?;
                 self.copy_in_row(&mut region, &b, &self.config.value_cols[1], 0)?;
                 let mut coeffs = vec![F::ZERO; self.config.coeff_cols.len()];
                 coeffs[0] = -F::ONE; // coeff of x
@@ -706,6 +714,10 @@ where
         let constant = if bit { F::ONE } else { F::ZERO };
         let x = self.assign_fixed(layouter, constant)?;
         Ok(AssignedBit(x))
+    }
+
+    fn as_constant(&self, x: &AssignedBit<F>) -> Option<bool> {
+        self.as_constant(&x.0).map(|c| c == F::ONE)
     }
 }
 
@@ -741,9 +753,14 @@ where
         x: &AssignedNative<F>,
         y: &AssignedNative<F>,
     ) -> Result<(), Error> {
+        // Two elements that are not assigned to a cell cannot be constrained to
+        // be equal, so one of them is assigned first.
+        if !x.is_materialized() && !y.is_materialized() {
+            self.materialize(layouter, std::slice::from_ref(x))?;
+        }
         layouter.assign_region(
             || "Assert equal",
-            |mut region| region.constrain_equal(x.cell(), y.cell()),
+            |mut region| x.constrain_equal(&mut region, y),
         )
     }
 
@@ -848,11 +865,17 @@ where
         terms: &[(F, AssignedNative<F>)],
         constant: F,
     ) -> Result<AssignedNative<F>, Error> {
-        let zero: AssignedNative<F> = self.assign_fixed(layouter, F::ZERO)?;
-
+        // Constant terms are folded into the constant.
+        let mut constant = constant;
         let terms: Vec<_> = terms
             .iter()
-            .filter(|(c, x)| !F::is_zero_vartime(c) && *x != zero)
+            .filter(|(c, x)| match self.as_constant(x) {
+                Some(v) => {
+                    constant += *c * v;
+                    false
+                }
+                None => !F::is_zero_vartime(c),
+            })
             .cloned()
             .collect();
 
@@ -896,9 +919,10 @@ where
                 assert_eq!(assigned_limbs.len(), terms.len());
 
                 // assert the newly assigned values are equal to the one given as input
-                assigned_limbs.iter().zip(terms.iter()).try_for_each(|(new_av, (_, av))| {
-                    region.constrain_equal(new_av.cell(), av.cell())
-                })?;
+                assigned_limbs
+                    .iter()
+                    .zip(terms.iter())
+                    .try_for_each(|(new_av, (_, av))| av.constrain_equal(&mut region, new_av))?;
 
                 Ok(assigned_result)
             },
@@ -918,12 +942,11 @@ where
 
         let m = multiplying_constant.unwrap_or(F::ONE);
 
-        let one: AssignedNative<F> = self.assign_fixed(layouter, F::ONE)?;
-        if m == F::ONE && x.clone() == one {
-            return Ok(y.clone());
+        if let Some(c) = self.as_constant(x) {
+            return self.linear_combination(layouter, &[(c * m, y.clone())], F::ZERO);
         }
-        if m == F::ONE && y.clone() == one {
-            return Ok(x.clone());
+        if let Some(c) = self.as_constant(y) {
+            return self.linear_combination(layouter, &[(c * m, x.clone())], F::ZERO);
         }
 
         self.add_and_mul(
@@ -951,6 +974,9 @@ where
         layouter: &mut impl Layouter<F>,
         x: &AssignedNative<F>,
     ) -> Result<AssignedNative<F>, Error> {
+        if let Some(c_inv) = self.as_constant(x).and_then(|c| Option::from(c.invert())) {
+            return self.assign_fixed(layouter, c_inv);
+        }
         let (y, inv) = self.assign_with_shifted_inverse(layouter, x.value().copied(), F::ZERO)?;
         self.assert_equal(layouter, x, &y)?;
         Ok(inv)
@@ -1003,7 +1029,7 @@ where
                 self.copy_in_row(&mut region, y, &self.config.value_cols[1], 0)?;
                 self.copy_in_row(&mut region, z, &self.config.value_cols[2], 0)?;
                 let res =
-                    region.assign_advice(|| "res", self.config.value_cols[4], 0, || res_value)?;
+                    region.assign_native(|| "res", self.config.value_cols[4], 0, || res_value)?;
                 let mut coeffs = vec![F::ZERO; self.config.coeff_cols.len()];
                 coeffs[0] = a; // coeff of x
                 coeffs[1] = b; // coeff of y
@@ -1283,7 +1309,7 @@ where
                 region.assign_advice(|| "aux", value_cols[0], 0, || aux_val)?;
                 self.copy_in_row(&mut region, x, &value_cols[1], 0)?;
                 self.copy_in_row(&mut region, y, &value_cols[2], 0)?;
-                let res = region.assign_advice(|| "res", value_cols[4], 0, || res_val)?;
+                let res = region.assign_native(|| "res", value_cols[4], 0, || res_val)?;
                 let mut coeffs = vec![F::ZERO; self.config.coeff_cols.len()];
                 coeffs[4] = F::ONE; // coeff of res
                 self.custom(&mut region, &coeffs, F::ZERO, (F::ONE, -F::ONE), -F::ONE, 0)?;
@@ -1328,7 +1354,7 @@ where
                 region.assign_advice(|| "aux", value_cols[0], 0, || aux_val)?;
                 self.copy_in_row(&mut region, x, &value_cols[1], 0)?;
                 self.copy_in_row(&mut region, y, &value_cols[2], 0)?;
-                let res = region.assign_advice(|| "res", value_cols[4], 0, || res_val)?;
+                let res = region.assign_native(|| "res", value_cols[4], 0, || res_val)?;
                 let mut coeffs = vec![F::ZERO; self.config.coeff_cols.len()];
                 coeffs[4] = -F::ONE; // coeff of res
                 self.custom(&mut region, &coeffs, F::ZERO, (F::ONE, -F::ONE), F::ZERO, 0)?;
@@ -1372,7 +1398,7 @@ where
             |mut region| {
                 region.assign_advice(|| "aux", value_cols[0], 0, || aux_val)?;
                 self.copy_in_row(&mut region, x, &value_cols[1], 0)?;
-                let res = region.assign_advice(|| "res", value_cols[4], 0, || res_val)?;
+                let res = region.assign_native(|| "res", value_cols[4], 0, || res_val)?;
                 let mut coeffs = vec![F::ZERO; self.config.coeff_cols.len()];
                 coeffs[0] = -c; // coeff of aux
                 coeffs[4] = F::ONE; // coeff of res
@@ -1417,7 +1443,7 @@ where
             |mut region| {
                 region.assign_advice(|| "aux", value_cols[0], 0, || aux_val)?;
                 self.copy_in_row(&mut region, x, &value_cols[1], 0)?;
-                let res = region.assign_advice(|| "res", value_cols[4], 0, || res_val)?;
+                let res = region.assign_native(|| "res", value_cols[4], 0, || res_val)?;
                 let mut coeffs = vec![F::ZERO; self.config.coeff_cols.len()];
                 coeffs[0] = -c; // coeff of aux
                 coeffs[4] = -F::ONE; // coeff of res
@@ -1547,8 +1573,8 @@ where
                 self.copy_in_row(&mut region, &cond.0, &self.config.value_cols[0], 0)?;
                 self.copy_in_row(&mut region, x, &self.config.value_cols[1], 0)?;
                 self.copy_in_row(&mut region, y, &self.config.value_cols[2], 0)?;
-                let fst = region.assign_advice(|| "fst", self.config.value_cols[3], 0, || val1)?;
-                let snd = region.assign_advice(|| "snd", self.config.value_cols[4], 0, || val2)?;
+                let fst = region.assign_native(|| "fst", self.config.value_cols[3], 0, || val1)?;
+                let snd = region.assign_native(|| "snd", self.config.value_cols[4], 0, || val2)?;
                 let mut coeffs = vec![F::ZERO; self.config.coeff_cols.len()];
                 coeffs[2] = F::ONE; // coeff of y
                 coeffs[4] = -F::ONE; // coeff of snd
@@ -1698,7 +1724,7 @@ mod tests {
 
     use super::*;
     use crate::instructions::{
-        arithmetic, assertions, binary, canonicity, control_flow,
+        arithmetic, assertions, assignments, binary, canonicity, control_flow,
         conversions::{
             self,
             tests::Operation::{Convert, UnsafeConvert},
@@ -1719,6 +1745,8 @@ mod tests {
     test!(assertions, test_assertions);
 
     test!(public_input, test_public_inputs);
+
+    test!(assignments, test_as_constant);
 
     test!(arithmetic, test_add);
     test!(arithmetic, test_sub);
