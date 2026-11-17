@@ -538,8 +538,8 @@ where
 
     /// Modular exponentiation (by a constant). Returns `x^n % m`.
     ///
-    /// The result is always reduced, i.e. it is in the range `[0, m)`, for
-    /// every exponent `n` (including `n = 0` and `n = 1`).
+    /// The result is reduced for every exponent `n`, i.e. it is in the 
+    /// range `[0, m)`.
     ///
     /// # Unsatisfiable Circuit
     ///
