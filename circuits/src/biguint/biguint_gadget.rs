@@ -538,13 +538,12 @@ where
 
     /// Modular exponentiation (by a constant). Returns `x^n % m`.
     ///
-    /// The result is reduced for every exponent `n`, i.e. it is in the 
+    /// The result is reduced for every exponent `n`, it is in the
     /// range `[0, m)`.
     ///
     /// # Unsatisfiable Circuit
     ///
-    /// If `m = 0`, for every exponent `n`. When `n > 0`, synthesis also fails
-    /// with an error if the value of `m` is known.
+    /// If `m = 0`, for every exponent `n`.
     pub fn mod_exp(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -552,8 +551,6 @@ where
         n: u64,
         m: &AssignedBigUint<F>,
     ) -> Result<AssignedBigUint<F>, Error> {
-        // The square-and-multiply below performs no modular reduction when
-        // n <= 1, so we reduce explicitly in those cases.
         if n == 0 {
             // 1 % m is 1, except when m = 1, where it is 0. No division is
             // involved here, so the modulus is explicitly required to be non-zero.
