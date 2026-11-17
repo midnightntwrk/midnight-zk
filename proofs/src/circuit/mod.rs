@@ -146,8 +146,9 @@ impl<V, F: Field> AssignedCell<V, F> {
     }
 }
 
-impl<V, F: Field> AssignedCell<V, F>
+impl<V, F> AssignedCell<V, F>
 where
+    F: Field,
     for<'v> Rational<F>: From<&'v V>,
 {
     /// Returns the field element value of the [`AssignedCell`].
@@ -170,8 +171,10 @@ impl<F: Field> AssignedCell<Rational<F>, F> {
     }
 }
 
-impl<V: Clone, F: Field> AssignedCell<V, F>
+impl<V, F> AssignedCell<V, F>
 where
+    V: Clone,
+    F: Field,
     for<'v> Rational<F>: From<&'v V>,
 {
     /// Converts any `AssignedCell<V,F>` to an `AssignedNative<F>`, using
@@ -189,8 +192,10 @@ where
     }
 }
 
-impl<V: Clone, F: Field> AssignedCell<V, F>
+impl<V, F> AssignedCell<V, F>
 where
+    V: Clone,
+    F: Field,
     for<'v> Rational<F>: From<&'v V>,
 {
     /// Copies the value to a given advice cell and constrains them to be equal.

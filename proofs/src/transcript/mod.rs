@@ -46,6 +46,12 @@ pub trait Sampleable<H: TranscriptHash> {
     fn sample(hash_output: H::Output) -> Self;
 }
 
+/// A field whose elements can be absorbed into a transcript with hash `H` and
+/// sampled from it.
+pub trait TranscriptField<H: TranscriptHash>: Hashable<H> + Sampleable<H> {}
+
+impl<H: TranscriptHash, F: Hashable<H> + Sampleable<H>> TranscriptField<H> for F {}
+
 /// Generic transcript view
 pub trait Transcript: Clone {
     /// Hash function

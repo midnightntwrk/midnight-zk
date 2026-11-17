@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
+* `kzg::KZGEngine`, the pairing engines over which KZG commitments can be made, bounding `KZGCommitmentScheme<E>` [#644](https://github.com/midnightntwrk/midnight-zk/pull/644)
+* `transcript::TranscriptField<H>` (`Hashable<H> + Sampleable<H>`) and `plonk::ProofField<H>` (`TranscriptField<H> + WithSmallOrderMulGroup<3> + FromUniformBytes<64> + Hash + Ord`), which the prover, verifier and commitment schemes are bounded by [#644](https://github.com/midnightntwrk/midnight-zk/pull/644)
+### Changed
+* Only the code that needs `ZETA` (building an `EvaluationDomain`, and reading or creating keys) requires `WithSmallOrderMulGroup<3>`; the getters of `EvaluationDomain`, `VerifyingKey` and `ProvingKey`, and the prover and verifier internals, require `PrimeField` [#644](https://github.com/midnightntwrk/midnight-zk/pull/644)
+### Removed
+
+## [0.9.0-rc.1]
+### Added
 * `Fflonk::T_MAX` is public, and `Fflonk::chunk_labels` gives the labels of the chunks of a group [#634](https://github.com/midnightntwrk/midnight-zk/pull/634)
 * `kzg::point_set_order`, the order in which the KZG multi-open takes its point sets [#583](https://github.com/midnightntwrk/midnight-zk/pull/583)
 * `fflonk::balanced_chunks`, the split of a group into the fewest chunks of at most `T_MAX`, of balanced sizes [#579](https://github.com/midnightntwrk/midnight-zk/pull/579)
@@ -36,6 +44,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `InterleavedCommit`, a `PolynomialCommitmentScheme` that commits to `Σ_i X^i f_i(X^t)` for chunks of polynomials `f_0, ..., f_{k-1}`, implemented by KZG from per-residue bases cached in `ParamsKZG` [#565](https://github.com/midnightntwrk/midnight-zk/pull/565)
 
 ### Fixed
+* `msm_specific` panics when coefficients and bases have different lengths, instead of dropping terms [#622](https://github.com/midnightntwrk/midnight-zk/issues/622)
+* `commit_to_instances` panics on instances longer than the domain, instead of dropping the excess [#622](https://github.com/midnightntwrk/midnight-zk/issues/622)
+* `VerifyingKey::read` rejects `k = 0` and a `k` whose extended domain does not fit in `F`, instead of panicking [#640](https://github.com/midnightntwrk/midnight-zk/pull/640)
+* The verifier rejects instances longer than the prover accepts with `Error::InstanceTooLarge` [#640](https://github.com/midnightntwrk/midnight-zk/pull/640)
+* `ParamsKZG::read_custom` rejects a serialized `k` above `E::Fr::S` with `InvalidData` before allocating, instead of sizing the point vectors from an unchecked header [#615](https://github.com/midnightntwrk/midnight-zk/pull/615)
 * LogUp verifier no longer panics when the prover makes some `fⱼ(x) + β` zero: the helper constraint folds products instead of inverting each term, which also saves the inversions [#562](https://github.com/midnightntwrk/midnight-zk/pull/562)
 * `KZGCommitmentScheme::multi_prepare` returns `Error::OpeningError` instead of panicking when a query names a polynomial its commitment group lacks [#562](https://github.com/midnightntwrk/midnight-zk/pull/562)
 * Under `truncated-challenges`, the collapse in the KZG verifier now keeps the terms of fixed and permutation columns apart, as the in-circuit verifier does, instead of folding them. The off-circuit accumulator no longer drops a fixed column queried at several rotations [#569](https://github.com/midnightntwrk/midnight-zk/pull/569)

@@ -3,7 +3,7 @@
 
 use std::marker::PhantomData;
 
-use ff::WithSmallOrderMulGroup;
+use ff::{PrimeField, WithSmallOrderMulGroup};
 use group::ff::{BatchInvert, Field};
 use midnight_curves::fft::{best_fft_with_twiddles, compute_twiddles, fft_coeff_to_extended};
 
@@ -165,7 +165,9 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
             twiddles,
         }
     }
+}
 
+impl<F: PrimeField> EvaluationDomain<F> {
     /// Obtains a polynomial in Lagrange form when given a vector of Lagrange
     /// coefficients of size `n`; panics if the provided vector is the wrong
     /// length.

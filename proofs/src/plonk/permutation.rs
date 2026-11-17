@@ -122,8 +122,8 @@ pub(crate) struct Sigmas<F: PrimeField> {
 /// every set but the last, at `omega^last * x` as well; see
 /// [`eval_points`](crate::plonk::argument::eval_points).
 #[allow(clippy::too_many_arguments)]
-pub(in crate::plonk) fn expressions<F: PrimeField, CS: PolynomialCommitmentScheme<F>>(
-    vk: &plonk::VerifyingKey<F, CS>,
+pub(in crate::plonk) fn expressions<F: PrimeField, PCS: PolynomialCommitmentScheme<F>>(
+    vk: &plonk::VerifyingKey<F, PCS>,
     p: &Argument,
     phase0_evals: &BTreeMap<PolynomialLabel, Vec<argument::Evaluation<F>>>,
     phase2_evals: &BTreeMap<PolynomialLabel, Vec<argument::Evaluation<F>>>,

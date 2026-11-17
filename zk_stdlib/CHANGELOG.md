@@ -8,6 +8,14 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 ### Added
+* `MidnightVK::nb_public_inputs`, the number of public inputs expected by the key
+### Changed
+* Point `sha3-circuit` at a revision that requires `midnight-proofs` and `midnight-curves` by crates.io version instead of from the midnight-zk main branch, so that crates patching them to a midnight-zk tag get a single copy of each
+### Removed
+
+## [3.0.0-rc.1]
+### Added
+* `ZkStdLib::verifier_transcript`, the in-circuit transcript of the proofs verified with `ZkStdLib::verifier`, and `ZkStdLib::poseidon_chip` [#638](https://github.com/midnightntwrk/midnight-zk/pull/638)
 * Improved SRS loading for tests [#276](https://github.com/midnightntwrk/midnight-zk/pull/276)
 * Expose the Merkle Mountain Range gadget through `ZkStdLib::mmr` [#509](https://github.com/midnightntwrk/midnight-zk/pull/509)
 * `single-h-commitment` feature and improved SRS loading for tests [#276](https://github.com/midnightntwrk/midnight-zk/pull/276)
@@ -24,8 +32,10 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Fixed
 * Fix cost model proof size check to account for committed instance columns [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 * `MidnightVK::read` and `MidnightPK::read` reject a `k` outside `1..=F::S` instead of underflowing on `k = 0` [#581](https://github.com/midnightntwrk/midnight-zk/pull/581)
+* `ZkStdLibArch::read` rejects out-of-range `nb_arith_cols` and `nr_pow2range_cols` instead of panicking in `ZkStdLib::configure` [#640](https://github.com/midnightntwrk/midnight-zk/pull/640)
 
 ### Changed
+* BREAKING: `ZkStdLib::verifier::<PCS>()` returns a `VerifierGadget<F, PCS>`, and `MidnightPCS` requires `InCircuitPCS<Fq>` with `CurveChip<Bls12>` as its commitment chip and `AssignedAccumulator<Bls12>` as its verification guard [#638](https://github.com/midnightntwrk/midnight-zk/pull/638)
 * BREAKING: `MidnightVK`, `MidnightPK`, `setup_vk`, `setup_pk`, `prove`, `verify`, `batch_verify` and `cost_model` are generic over the commitment scheme `PCS: MidnightPCS`, which must be given explicitly (e.g. `setup_vk::<_, KZG>`). Serialized verifying keys record their PCS and fail to read under another one. Their format version is 3, and `MidnightVK::read` and `ZkStdLibArch::read` reject other versions, which belong to other proof systems
 * BREAKING: `ZkStdLib::verifier::<PCS>()` is generic over `PCS: MidnightPCS` and verifies proofs committed with `PCS`, which `MidnightPCS` requires to implement `InCircuitPCS<BlstrsEmulation>`. It returns a `VerifierGadget<BlstrsEmulation, PCS>` by value
 * BREAKING: serialized `MidnightPK`s record their PCS, as `MidnightVK`s do, and fail to read under another one

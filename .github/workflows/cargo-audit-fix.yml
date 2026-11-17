@@ -1,0 +1,136 @@
+name: Cargo Audit Fix
+
+# Resolves RustSec advisories on the default branch (main), so feature PRs
+# don't have to.
+#
+# PR-level `cargo audit` (ci.yaml) only fails on advisories a PR introduces;
+# ones already on the base branch - typically a newly published advisory -
+# are just warnings there. This workflow runs `cargo audit fix` on the default
+# branch and proposes the resulting Cargo.lock update as a single PR against
+# it. Once it merges, nothing in the open PRs needs to change, so their
+# approvals stand.
+#
+# Running with write permissions is safe: only the default branch is ever
+# checked out, never PR code. The fix is still proposed as a PR
+# rather than pushed directly, because a lockfile bump pulls in new
+# third-party code and should go through the same branch protection.
+#
+# The fix PR is opened with GITHUB_TOKEN, which does not trigger
+# `pull_request` workflows, so CI and Scan are dispatched on the fix branch.
+# Its checks land on the PR's head commit and satisfy the required checks.
+
+on:
+  schedule:
+    - cron: '17 5 * * *' # daily
+  workflow_dispatch: {}
+
+# no top level default permissions for security reasons
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write      # create/update the fix branch
+      pull-requests: write # open/update/close the fix PR
+      actions: write       # dispatch CI on the fix branch
+    env:
+      # Always the default branch (main), even when dispatched from another
+      # branch.
+      BASE: ${{ github.event.repository.default_branch }}
+      BRANCH: automation/cargo-audit-fix/${{ github.event.repository.default_branch }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          # Changes go through the GitHub API (gh-commit.sh), never git push.
+          persist-credentials: false
+
+      - name: Install rust-toolchain.toml
+        run: rustup toolchain install
+
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
+        with:
+          tool: cargo-audit
+
+      - name: Cargo audit fix
+        id: fix
+        run: |
+          set -euo pipefail
+          rc=0
+          .github/scripts/cargo-audit-fix.sh "${RUNNER_TEMP}/summary.md" || rc=$?
+          case "$rc" in
+            0) echo "remaining=false" >> "$GITHUB_OUTPUT" ;;
+            3) echo "remaining=true" >> "$GITHUB_OUTPUT" ;;
+            *) exit "$rc" ;;
+          esac
+          if git diff --quiet -- Cargo.lock; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            git diff --stat -- Cargo.lock
+          fi
+
+      - name: Open or update fix PR
+        if: steps.fix.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          # Skip re-committing (and re-running CI) when the open fix already
+          # carries exactly this lockfile.
+          if git fetch --quiet --depth=1 origin "refs/heads/${BRANCH}" 2>/dev/null \
+             && git diff --quiet FETCH_HEAD -- Cargo.lock; then
+            echo "${BRANCH} already has this Cargo.lock."
+          else
+            # (Re)start the branch from the current base so the PR is exactly
+            # the lockfile update.
+            HEAD_SHA="$(git rev-parse HEAD)"
+            gh api --method POST "/repos/${GITHUB_REPOSITORY}/git/refs" \
+                -f ref="refs/heads/${BRANCH}" -f sha="$HEAD_SHA" > /dev/null 2>&1 \
+              || gh api --method PATCH "/repos/${GITHUB_REPOSITORY}/git/refs/heads/${BRANCH}" \
+                -f sha="$HEAD_SHA" -F force=true > /dev/null
+            git add Cargo.lock
+            .github/scripts/gh-commit.sh "$BRANCH" "fix(deps): resolve RustSec advisories" \
+              "Signed-off-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"
+            gh workflow run ci.yaml --ref "$BRANCH"
+            gh workflow run scan.yaml --ref "$BRANCH"
+          fi
+
+          PR="$(gh pr list --head "$BRANCH" --base "$BASE" --state open --json number --jq '.[0].number // empty')"
+          if [ -n "$PR" ]; then
+            gh pr edit "$PR" --body-file "${RUNNER_TEMP}/summary.md"
+          else
+            gh pr create --base "$BASE" --head "$BRANCH" \
+              --title "fix(deps): resolve RustSec advisories" \
+              --body-file "${RUNNER_TEMP}/summary.md"
+          fi
+          # Merge as soon as branch protection allows (e.g. one approval).
+          # Needs "Allow auto-merge" in the repo settings; harmless otherwise.
+          gh pr merge "$BRANCH" --auto --squash \
+            || echo "::notice::Could not enable auto-merge on the fix PR; merge it manually."
+
+      - name: Close stale fix PR
+        if: steps.fix.outputs.changed == 'false'
+        run: |
+          set -euo pipefail
+          PR="$(gh pr list --head "$BRANCH" --base "$BASE" --state open --json number --jq '.[0].number // empty')"
+          if [ -n "$PR" ]; then
+            gh pr close "$PR" --delete-branch \
+              --comment "No longer needed: \`cargo audit fix\` finds nothing to update on \`${BASE}\`."
+          fi
+
+      # Fail the run, so it gets noticed, when something needs a human:
+      # a breaking upgrade or a justified ignore in .cargo/audit.toml.
+      - name: Report unfixable advisories
+        if: steps.fix.outputs.remaining == 'true'
+        run: |
+          cat "${RUNNER_TEMP}/summary.md" >> "$GITHUB_STEP_SUMMARY"
+          echo "::error::Some advisories have no semver-compatible fix; see the job summary."
+          exit 1

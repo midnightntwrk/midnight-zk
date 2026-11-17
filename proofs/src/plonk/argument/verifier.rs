@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use ff::{PrimeField, WithSmallOrderMulGroup};
+use ff::PrimeField;
 
 use crate::{
     plonk::{
@@ -12,50 +12,52 @@ use crate::{
 };
 
 #[derive(Debug)]
-pub struct Committed<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
-    commitment: CS::Commitment,
+pub struct Committed<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> {
+    commitment: PCS::Commitment,
     polynomial_labels: Vec<PolynomialLabel>,
 }
 
-impl<F: PrimeField, CS: PolynomialCommitmentScheme<F>> Committed<F, CS> {
+impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> Committed<F, PCS> {
     /// Builds the fixed group of the absorbed verifying key, which binds it to
     /// the transcript as reading a commitment from the proof does.
-    pub(crate) fn from_key(vk: &AbsorbedVk<'_, F, CS>) -> Committed<F, CS> {
+    pub(crate) fn from_key(vk: &AbsorbedVk<'_, F, PCS>) -> Committed<F, PCS> {
         Committed {
             commitment: vk.phase0_commitment().clone(),
             polynomial_labels: vk.phase0_labels(),
         }
     }
 
-    pub(crate) fn read<T: Transcript>(
+    pub(crate) fn read<T>(
         labels: &[PolynomialLabel],
         transcript: &mut T,
-    ) -> Result<Committed<F, CS>, Error>
+    ) -> Result<Committed<F, PCS>, Error>
     where
-        CS::Commitment: Hashable<T::Hash>,
+        PCS::Commitment: Hashable<T::Hash>,
+        T: Transcript,
     {
         Ok(Committed {
-            commitment: CS::read_commitment(transcript, labels)?,
+            commitment: PCS::read_commitment(transcript, labels)?,
             polynomial_labels: labels.to_vec(),
         })
     }
 }
 
 #[derive(Debug)]
-pub struct Evaluated<F: PrimeField, CS: PolynomialCommitmentScheme<F>> {
-    pub(crate) committed: Committed<F, CS>,
+pub struct Evaluated<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> {
+    pub(crate) committed: Committed<F, PCS>,
     pub(crate) evals_map: BTreeMap<PolynomialLabel, Vec<Evaluation<F>>>,
 }
 
-impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Committed<F, CS> {
-    pub(crate) fn evaluate<T: Transcript>(
+impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> Committed<F, PCS> {
+    pub(crate) fn evaluate<T>(
         self,
         cs: &ConstraintSystem<F>,
         x_rotations: &BTreeMap<Rotation, F>,
         transcript: &mut T,
-    ) -> Result<Evaluated<F, CS>, Error>
+    ) -> Result<Evaluated<F, PCS>, Error>
     where
         F: Hashable<T::Hash>,
+        T: Transcript,
     {
         let mut evals_map: BTreeMap<PolynomialLabel, Vec<Evaluation<F>>> = BTreeMap::new();
 
@@ -81,14 +83,14 @@ impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Committed<
     }
 }
 
-impl<F: WithSmallOrderMulGroup<3>, CS: PolynomialCommitmentScheme<F>> Evaluated<F, CS> {
+impl<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> Evaluated<F, PCS> {
     /// Adds the evaluation `eval` at `point` of the group's polynomial `label`,
     /// one derived rather than read from the proof.
     pub(crate) fn insert(&mut self, label: PolynomialLabel, point: F, eval: F) {
         self.evals_map.insert(label, vec![Evaluation { point, eval }]);
     }
 
-    pub(crate) fn queries(&self) -> impl Iterator<Item = VerifierQuery<'_, F, CS>> + Clone {
+    pub(crate) fn queries(&self) -> impl Iterator<Item = VerifierQuery<'_, F, PCS>> + Clone {
         self.evals_map.iter().flat_map(|(label, evaluations)| {
             evaluations.iter().map(|evaluation| {
                 VerifierQuery::new(

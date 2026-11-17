@@ -756,13 +756,17 @@ impl<C: EdwardsCurve> EccInstructions<C::Base, C> for EccChip<C> {
         scalars: &[Self::Scalar],
         bases: &[Self::Point],
     ) -> Result<Self::Point, Error> {
+        assert_eq!(scalars.len(), bases.len());
         let scaled_points = scalars
             .iter()
             .zip(bases.iter())
             .map(|(scalar, point)| self.mul(layouter, scalar, point))
             .collect::<Result<Vec<Self::Point>, Error>>()?;
 
-        scaled_points[1..].iter().try_fold(scaled_points[0].clone(), |acc, e| {
+        let Some((first, rest)) = scaled_points.split_first() else {
+            return self.assign_fixed(layouter, C::CryptographicGroup::identity());
+        };
+        rest.iter().try_fold(first.clone(), |acc, e| {
             EccInstructions::add(self, layouter, &acc, e)
         })
     }

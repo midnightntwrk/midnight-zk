@@ -52,7 +52,7 @@ use midnight_circuits::{
         foreign::{
             FieldChip, FieldChipConfig, nb_field_chip_columns, params::MultiEmulationParams as MEP,
         },
-        native::NB_EXTRA_ARITH_FIXED_COLS,
+        native::{MIN_NB_ARITH_COLS, NB_EXTRA_ARITH_FIXED_COLS},
     },
     hash::{
         poseidon::{
@@ -74,7 +74,7 @@ use midnight_circuits::{
     },
     types::{AssignedBit, AssignedByte, AssignedNative, AssignedNativePoint, ComposableChip},
     vec::{AssignedVector, vector_gadget::VectorGadget},
-    verifier::{BlstrsEmulation, VerifierGadget},
+    verifier::{PoseidonTranscriptGadget, VerifierGadget},
 };
 use midnight_curves::{
     Fq,
@@ -225,8 +225,15 @@ impl ZkStdLibArch {
                 ),
             ));
         }
-        bincode::decode_from_std_read(reader, standard())
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+        let arch: Self = bincode::decode_from_std_read(reader, standard())
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+        if (arch.nb_arith_cols as usize) < MIN_NB_ARITH_COLS
+            || arch.nr_pow2range_cols >= arch.nb_arith_cols
+        {
+            let msg = "invalid nb_arith_cols or nr_pow2range_cols";
+            return Err(io::Error::new(io::ErrorKind::InvalidData, msg));
+        }
+        Ok(arch)
     }
 
     /// Reads the ZkStdLib architecture from a buffer where a MidnightVK was
@@ -794,17 +801,26 @@ impl ZkStdLib {
     }
 
     /// Chip for performing in-circuit verification of proofs committed with
-    /// `PCS` (generated with Poseidon as the Fiat-Shamir transcript hash).
-    pub fn verifier<PCS: MidnightPCS>(&self) -> VerifierGadget<BlstrsEmulation, PCS> {
-        *self.used_bls12_381.borrow_mut() = true;
-        let (curve_chip, sponge_chip) = (self.bls12_381_chip.as_ref())
-            .zip(self.poseidon_gadget.as_ref())
-            .unwrap_or_else(|| panic!("ZkStdLibArch must enable bls12_381 & poseidon"));
+    /// `PCS`. The proofs are read from a [`Self::verifier_transcript`].
+    pub fn verifier<PCS: MidnightPCS>(&self) -> VerifierGadget<F, PCS> {
         // Building the gadget on every call is cheap: `VerifierGadget` has no
         // configuration of its own (no extra columns or gates), it only clones
         // the existing chips, whose state (caches, instance offsets) is shared
         // behind `Rc`.
-        VerifierGadget::new(curve_chip, &self.native_gadget, sponge_chip)
+        VerifierGadget::new(self.bls12_381(), &self.native_gadget)
+    }
+
+    /// A fresh in-circuit transcript for the proofs verified with
+    /// [`Self::verifier`] (generated with Poseidon as the Fiat-Shamir
+    /// transcript hash).
+    pub fn verifier_transcript(&self) -> PoseidonTranscriptGadget<F> {
+        PoseidonTranscriptGadget::new(self.poseidon_chip())
+    }
+
+    /// Chip for computing Poseidon hashes.
+    pub fn poseidon_chip(&self) -> &PoseidonChip<F> {
+        (self.poseidon_gadget.as_ref())
+            .unwrap_or_else(|| panic!("ZkStdLibArch must enable poseidon"))
     }
 
     /// Assert that a given assigned bit is true.

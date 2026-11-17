@@ -12,7 +12,7 @@
 use midnight_circuits::{
     instructions::{BinaryInstructions, PublicInputInstructions},
     types::Instantiable,
-    verifier::{Accumulator, AssignedAccumulator, AssignedVk},
+    verifier::{Accumulator, AssignedAccumulator, AssignedVk, InCircuitTranscript},
 };
 use midnight_proofs::{
     circuit::{Layouter, Value},
@@ -21,7 +21,7 @@ use midnight_proofs::{
 };
 use midnight_zk_stdlib::{Relation, ZkStdLib, ZkStdLibArch};
 
-use super::{F, Ivc, IvcError, PCS, S};
+use super::{E, F, Ivc, IvcError, PCS};
 
 /// The public instance (statement) of an IVC proof.
 ///
@@ -31,7 +31,7 @@ use super::{F, Ivc, IvcError, PCS, S};
 #[derive(Clone, Debug)]
 pub struct IvcInstance<T: Ivc> {
     pub(crate) state: T::State,
-    pub(crate) acc: Accumulator<S>,
+    pub(crate) acc: Accumulator<E>,
 }
 
 impl<T: Ivc> IvcInstance<T> {
@@ -41,7 +41,7 @@ impl<T: Ivc> IvcInstance<T> {
     }
 
     /// Returns the accumulator summarising all steps up to [`Self::state`].
-    pub fn acc(&self) -> &Accumulator<S> {
+    pub fn acc(&self) -> &Accumulator<E> {
         &self.acc
     }
 }
@@ -58,7 +58,7 @@ impl<T: Ivc> IvcInstance<T> {
 pub struct IvcExtendedInstance<T: Ivc> {
     pub(crate) vk: VerifyingKey<F, PCS>,
     pub(crate) state: T::State,
-    pub(crate) acc: Accumulator<S>,
+    pub(crate) acc: Accumulator<E>,
 }
 
 impl<T: Ivc> IvcExtendedInstance<T> {
@@ -82,7 +82,7 @@ impl<T: Ivc> IvcExtendedInstance<T> {
 #[derive(Clone, Debug)]
 pub struct IvcWitness<T: Ivc> {
     pub(crate) prev_state: T::State,
-    pub(crate) prev_acc: Accumulator<S>,
+    pub(crate) prev_acc: Accumulator<E>,
     pub(crate) prev_proof: Vec<u8>,
     pub(crate) transition_witness: T::Witness,
 }
@@ -146,9 +146,9 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
 
     fn format_instance(instance: &Self::Instance) -> Result<Vec<F>, IvcError> {
         Ok([
-            AssignedVk::<S, PCS>::as_public_input(&instance.vk),
+            AssignedVk::<F, PCS>::as_public_input(&instance.vk),
             T::format_public_input(&instance.state),
-            AssignedAccumulator::<S>::as_public_input(&instance.acc),
+            AssignedAccumulator::<E>::as_public_input(&instance.acc),
         ]
         .concat())
     }
@@ -163,7 +163,7 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
         let verifier_gadget = std_lib.verifier::<PCS>();
         let ivc_gadget = T::new(std_lib.clone(), &self.ctx);
 
-        let assigned_self_vk: AssignedVk<S, PCS> = verifier_gadget.assign_vk_as_public_input(
+        let assigned_self_vk: AssignedVk<F, PCS> = verifier_gadget.assign_vk_as_public_input(
             layouter,
             instance.as_ref().map(|x| &x.vk),
             &self.cs,
@@ -179,11 +179,13 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
         )?;
         ivc_gadget.constrain_as_public_input(layouter, &next_state)?;
 
-        let fixed_base_labels = midnight_circuits::verifier::fixed_base_labels::<S, PCS>(&self.cs);
+        let fixed_base_labels = midnight_circuits::verifier::fixed_base_labels::<F, PCS>(&self.cs);
 
         let prev_acc_value = witness.as_ref().map(|w| w.prev_acc.clone());
-        let prev_acc = verifier_gadget.assign_collapsed_accumulator(
+        let prev_acc = AssignedAccumulator::assign_collapsed(
             layouter,
+            std_lib.bls12_381(),
+            std_lib.bls12_381().scalar_field_chip(),
             &fixed_base_labels,
             prev_acc_value,
         )?;
@@ -191,18 +193,20 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
         let prev_proof_pi = [
             verifier_gadget.as_public_input(layouter, &assigned_self_vk)?,
             ivc_gadget.as_public_input(layouter, &prev_state)?,
-            verifier_gadget.as_public_input(layouter, &prev_acc)?,
+            prev_acc.in_circuit_as_public_input(layouter, std_lib.bls12_381())?,
         ]
         .concat();
 
         // Verify a witnessed proof that ensures the validity of `prev_state`.
         // The proof is valid iff `prev_proof_acc` satisfies the invariant.
+        let mut transcript = std_lib.verifier_transcript();
+        transcript.init_with_proof(layouter, witness.map(|w| w.prev_proof))?;
         let mut prev_proof_acc = verifier_gadget.prepare(
             layouter,
             &assigned_self_vk,
             &[],
             &[&[], &prev_proof_pi],
-            witness.map(|w| w.prev_proof),
+            &mut transcript,
         )?;
 
         // If `prev_state` is genesis, the provided accumulator is discarded/multiplied
@@ -219,7 +223,13 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
             &mut prev_proof_acc,
         )?;
 
-        let mut next_acc = verifier_gadget.accumulate(layouter, &[prev_proof_acc, prev_acc])?;
+        let mut next_acc = AssignedAccumulator::accumulate(
+            layouter,
+            std_lib.bls12_381(),
+            std_lib.bls12_381().scalar_field_chip(),
+            std_lib.poseidon_chip(),
+            &[prev_proof_acc, prev_acc],
+        )?;
 
         next_acc.collapse(
             layouter,
@@ -227,7 +237,11 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
             std_lib.bls12_381().scalar_field_chip(),
         )?;
 
-        verifier_gadget.constrain_as_public_input(layouter, &next_acc)?;
+        next_acc.constrain_as_public_input(
+            layouter,
+            std_lib.bls12_381(),
+            std_lib.bls12_381().scalar_field_chip(),
+        )?;
         Ok(())
     }
 

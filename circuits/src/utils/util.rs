@@ -88,7 +88,9 @@ fn from_u64_le_digits<F: CircuitField>(digits: &[u64]) -> F {
     acc
 }
 
-pub fn bigint_to_fe<F: CircuitField>(value: &BI) -> F where
+pub fn bigint_to_fe<F>(value: &BI) -> F
+where
+    F: CircuitField,
 {
     let (sign, u64_chunks) = value.to_u64_digits();
     let res = from_u64_le_digits::<F>(&u64_chunks);
