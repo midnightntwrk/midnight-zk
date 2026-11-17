@@ -21,7 +21,6 @@
 
 use std::{
     cell::RefCell,
-    collections::HashMap,
     fmt::Debug,
     hash::{Hash, Hasher},
     rc::Rc,
@@ -97,11 +96,6 @@ where
     tag_col_multi_select: Column<Fixed>,
 }
 
-/// Cache of assigned constant points to their known group element values.
-type ConstantPointCache<F, C, B> = Rc<
-    RefCell<HashMap<AssignedForeignEdwardsPoint<F, C, B>, <C as CircuitCurve>::CryptographicGroup>>,
->;
-
 /// ECC chip to perform foreign Edwards EC operations.
 #[derive(Clone, Debug)]
 pub struct ForeignEdwardsEccChip<F, C, B, S, N>
@@ -119,8 +113,6 @@ where
     scalar_field_chip: S,
     /// Per-chip tag counter for dynamic lookup tables (tag 0 is reserved).
     tag_cnt: Rc<RefCell<u64>>,
-    /// Cache mapping assigned constant points to their known values.
-    constant_cache: ConstantPointCache<F, C, B>,
 }
 
 impl<F, C, B, S, N> ForeignEdwardsEccChip<F, C, B, S, N>
@@ -188,22 +180,12 @@ where
             base_field_chip,
             scalar_field_chip: scalar_field_chip.clone(),
             tag_cnt: Rc::new(RefCell::new(1)),
-            constant_cache: Rc::new(RefCell::new(HashMap::new())),
         }
     }
 
     /// The emulated base field chip of this foreign Edwards ECC chip.
     pub fn base_field_chip(&self) -> &FieldChip<F, C::Base, B, N> {
         &self.base_field_chip
-    }
-
-    /// Returns the constant value of `point` if it was created via
-    /// `assign_fixed`, or `None` otherwise.
-    pub fn as_known_constant(
-        &self,
-        point: &AssignedForeignEdwardsPoint<F, C, B>,
-    ) -> Option<C::CryptographicGroup> {
-        self.constant_cache.borrow().get(point).copied()
     }
 
     /// A chip with instructions for the scalar field of this ECC chip.
@@ -493,7 +475,7 @@ where
         q_val: C::CryptographicGroup,
     ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
         // If both operands are known constants, compute off-circuit.
-        if let Some(pv) = self.as_known_constant(p) {
+        if let Some(pv) = self.as_constant(p) {
             return self.assign_fixed(layouter, pv + q_val);
         }
 
@@ -579,13 +561,20 @@ where
         let x = self.base_field_chip().assign_fixed(layouter, x)?;
         let y = self.base_field_chip().assign_fixed(layouter, y)?;
 
-        let p = AssignedForeignEdwardsPoint::<F, C, B> {
+        Ok(AssignedForeignEdwardsPoint::<F, C, B> {
             point: Value::known(constant),
             x,
             y,
-        };
-        self.constant_cache.borrow_mut().insert(p.clone(), constant);
-        Ok(p)
+        })
+    }
+
+    fn as_constant(
+        &self,
+        p: &AssignedForeignEdwardsPoint<F, C, B>,
+    ) -> Option<C::CryptographicGroup> {
+        let x = self.base_field_chip().as_constant(&p.x)?;
+        let y = self.base_field_chip().as_constant(&p.y)?;
+        C::from_xy(x, y)?.try_into_subgroup()
     }
 }
 
@@ -648,6 +637,10 @@ where
         constant: <S::Scalar as InnerValue>::Element,
     ) -> Result<S::Scalar, Error> {
         self.scalar_field_chip().assign_fixed(layouter, constant)
+    }
+
+    fn as_constant(&self, x: &S::Scalar) -> Option<<S::Scalar as InnerValue>::Element> {
+        self.scalar_field_chip().as_constant(x)
     }
 }
 
@@ -826,10 +819,10 @@ where
         }
 
         // If one operand is constant, use the cheaper `add_constant` path.
-        if let Some(qv) = self.as_known_constant(q) {
+        if let Some(qv) = self.as_constant(q) {
             return self.add_constant(layouter, p, qv);
         }
-        if let Some(pv) = self.as_known_constant(p) {
+        if let Some(pv) = self.as_constant(p) {
             return self.add_constant(layouter, q, pv);
         }
 
@@ -896,7 +889,7 @@ where
         layouter: &mut impl Layouter<F>,
         p: &AssignedForeignEdwardsPoint<F, C, B>,
     ) -> Result<AssignedForeignEdwardsPoint<F, C, B>, Error> {
-        if let Some(pv) = self.as_known_constant(p) {
+        if let Some(pv) = self.as_constant(p) {
             return self.assign_fixed(layouter, pv + pv);
         }
 
@@ -971,7 +964,7 @@ where
         layouter: &mut impl Layouter<F>,
         p: &Self::Point,
     ) -> Result<Self::Point, Error> {
-        if let Some(pv) = self.as_known_constant(p) {
+        if let Some(pv) = self.as_constant(p) {
             return self.assign_fixed(layouter, -pv);
         }
 
@@ -1043,7 +1036,7 @@ where
         }
 
         // If the base is a known constant, compute off-circuit.
-        if let Some(base_val) = self.as_known_constant(base) {
+        if let Some(base_val) = self.as_constant(base) {
             return self.assign_fixed(layouter, base_val * scalar);
         }
 
@@ -1525,7 +1518,7 @@ mod tests {
             NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip,
             foreign::params::MultiEmulationParams,
         },
-        instructions::{assertions, control_flow, ecc, equality, public_input, zero},
+        instructions::{assertions, assignments, control_flow, ecc, equality, public_input, zero},
     };
 
     type F = BlsScalar;
@@ -1561,6 +1554,8 @@ mod tests {
     test!(assertions, test_assertions);
 
     test!(public_input, test_public_inputs);
+
+    test!(assignments, test_as_constant);
 
     test!(equality, test_is_equal);
 

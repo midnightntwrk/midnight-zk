@@ -56,7 +56,7 @@ use std::{
 };
 
 use midnight_proofs::{
-    circuit::{Chip, Layouter, Region, Value},
+    circuit::{Cell, Chip, Layouter, Region, Value},
     plonk::{Advice, Column, ConstraintSystem, Constraints, Error, Fixed, Instance, Selector},
     poly::Rotation,
 };
@@ -140,6 +140,7 @@ impl NativeConfig {
 pub struct NativeChip<F: CircuitField> {
     config: NativeConfig,
     cached_fixed: Rc<RefCell<HashMap<BigUint, AssignedNative<F>>>>,
+    fixed_constants: Rc<RefCell<HashMap<Cell, F>>>,
     committed_instance_offset: Rc<RefCell<usize>>,
     instance_offset: Rc<RefCell<usize>>,
 }
@@ -170,6 +171,7 @@ impl<F: CircuitField> ComposableChip<F> for NativeChip<F> {
         Self {
             config: config.clone(),
             cached_fixed: Default::default(),
+            fixed_constants: Default::default(),
             instance_offset: Rc::new(RefCell::new(0)),
             committed_instance_offset: Rc::new(RefCell::new(0)),
         }
@@ -603,8 +605,13 @@ where
 
         // Save the assigned constant in the cache.
         self.cached_fixed.borrow_mut().insert(constant_big, x.clone());
+        self.fixed_constants.borrow_mut().insert(x.cell(), constant);
 
         Ok(x)
+    }
+
+    fn as_constant(&self, x: &AssignedNative<F>) -> Option<F> {
+        self.fixed_constants.borrow().get(&x.cell()).copied()
     }
 
     // This is more efficient than the blanket implementation.
@@ -706,6 +713,10 @@ where
         let constant = if bit { F::ONE } else { F::ZERO };
         let x = self.assign_fixed(layouter, constant)?;
         Ok(AssignedBit(x))
+    }
+
+    fn as_constant(&self, x: &AssignedBit<F>) -> Option<bool> {
+        self.as_constant(&x.0).map(|c| c == F::ONE)
     }
 }
 
@@ -848,11 +859,17 @@ where
         terms: &[(F, AssignedNative<F>)],
         constant: F,
     ) -> Result<AssignedNative<F>, Error> {
-        let zero: AssignedNative<F> = self.assign_fixed(layouter, F::ZERO)?;
-
+        // Constant terms are folded into the constant.
+        let mut constant = constant;
         let terms: Vec<_> = terms
             .iter()
-            .filter(|(c, x)| !F::is_zero_vartime(c) && *x != zero)
+            .filter(|(c, x)| match self.as_constant(x) {
+                Some(v) => {
+                    constant += *c * v;
+                    false
+                }
+                None => !F::is_zero_vartime(c),
+            })
             .cloned()
             .collect();
 
@@ -918,12 +935,11 @@ where
 
         let m = multiplying_constant.unwrap_or(F::ONE);
 
-        let one: AssignedNative<F> = self.assign_fixed(layouter, F::ONE)?;
-        if m == F::ONE && x.clone() == one {
-            return Ok(y.clone());
+        if let Some(c) = self.as_constant(x) {
+            return self.linear_combination(layouter, &[(c * m, y.clone())], F::ZERO);
         }
-        if m == F::ONE && y.clone() == one {
-            return Ok(x.clone());
+        if let Some(c) = self.as_constant(y) {
+            return self.linear_combination(layouter, &[(c * m, x.clone())], F::ZERO);
         }
 
         self.add_and_mul(
@@ -951,6 +967,9 @@ where
         layouter: &mut impl Layouter<F>,
         x: &AssignedNative<F>,
     ) -> Result<AssignedNative<F>, Error> {
+        if let Some(c_inv) = self.as_constant(x).and_then(|c| Option::from(c.invert())) {
+            return self.assign_fixed(layouter, c_inv);
+        }
         let (y, inv) = self.assign_with_shifted_inverse(layouter, x.value().copied(), F::ZERO)?;
         self.assert_equal(layouter, x, &y)?;
         Ok(inv)
@@ -1698,7 +1717,7 @@ mod tests {
 
     use super::*;
     use crate::instructions::{
-        arithmetic, assertions, binary, canonicity, control_flow,
+        arithmetic, assertions, assignments, binary, canonicity, control_flow,
         conversions::{
             self,
             tests::Operation::{Convert, UnsafeConvert},
@@ -1719,6 +1738,8 @@ mod tests {
     test!(assertions, test_assertions);
 
     test!(public_input, test_public_inputs);
+
+    test!(assignments, test_as_constant);
 
     test!(arithmetic, test_add);
     test!(arithmetic, test_sub);

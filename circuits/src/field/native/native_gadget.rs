@@ -574,6 +574,10 @@ where
         Ok(AssignedByte(assigned))
     }
 
+    fn as_constant(&self, x: &AssignedByte<F>) -> Option<u8> {
+        self.as_constant(&x.0).and_then(|c: F| c.to_biguint().try_into().ok())
+    }
+
     fn assign_many(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -1050,6 +1054,10 @@ where
         self.native_chip.assign_fixed(layouter, constant)
     }
 
+    fn as_constant(&self, x: &AssignedNative<F>) -> Option<F> {
+        self.native_chip.as_constant(x)
+    }
+
     fn assign_many(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -1109,6 +1117,10 @@ where
         constant: bool,
     ) -> Result<AssignedBit<F>, Error> {
         self.native_chip.assign_fixed(layouter, constant)
+    }
+
+    fn as_constant(&self, x: &AssignedBit<F>) -> Option<bool> {
+        self.native_chip.as_constant(x)
     }
 
     fn assign_many(

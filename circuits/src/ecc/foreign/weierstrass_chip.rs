@@ -380,6 +380,15 @@ where
         };
         Ok(p)
     }
+
+    fn as_constant(&self, p: &AssignedForeignPoint<F, C, B>) -> Option<C::CryptographicGroup> {
+        if self.native_gadget.as_constant(&p.is_id)? {
+            return Some(C::CryptographicGroup::identity());
+        }
+        let x = self.base_field_chip().as_constant(&p.x)?;
+        let y = self.base_field_chip().as_constant(&p.y)?;
+        C::from_xy(x, y)?.try_into_subgroup()
+    }
 }
 
 impl<F, C, B, S, N> PublicInputInstructions<F, AssignedForeignPoint<F, C, B>>
@@ -453,6 +462,10 @@ where
     ) -> Result<S::Scalar, Error> {
         self.scalar_field_chip().assign_fixed(layouter, constant)
     }
+
+    fn as_constant(&self, x: &S::Scalar) -> Option<<S::Scalar as InnerValue>::Element> {
+        self.scalar_field_chip().as_constant(x)
+    }
 }
 
 /// Inherit assignment instructions for [AssignedField], from the
@@ -484,6 +497,10 @@ where
         constant: <S::Scalar as InnerValue>::Element,
     ) -> Result<S::Scalar, Error> {
         self.scalar_field_chip().assign_fixed(layouter, constant)
+    }
+
+    fn as_constant(&self, x: &S::Scalar) -> Option<<S::Scalar as InnerValue>::Element> {
+        self.scalar_field_chip().as_constant(x)
     }
 }
 
@@ -2050,7 +2067,7 @@ mod tests {
             NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip,
             foreign::params::MultiEmulationParams,
         },
-        instructions::{assertions, control_flow, ecc, equality, public_input, zero},
+        instructions::{assertions, assignments, control_flow, ecc, equality, public_input, zero},
     };
 
     type Native<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
@@ -2089,6 +2106,8 @@ mod tests {
     test!(assertions, test_assertions);
 
     test!(public_input, test_public_inputs);
+
+    test!(assignments, test_as_constant);
 
     test!(equality, test_is_equal);
 

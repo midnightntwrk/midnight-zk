@@ -883,6 +883,12 @@ impl<C: EdwardsCurve> AssignmentInstructions<C::Base, AssignedNativePoint<C>> fo
             checked_in_subgroup: true,
         })
     }
+
+    fn as_constant(&self, p: &AssignedNativePoint<C>) -> Option<C::CryptographicGroup> {
+        let x = self.native_gadget.as_constant(&p.x)?;
+        let y = self.native_gadget.as_constant(&p.y)?;
+        C::from_xy(x, y)?.try_into_subgroup()
+    }
 }
 
 impl<C: EdwardsCurve> AssignmentInstructions<C::Base, AssignedScalarOfNativeCurve<C>>
@@ -911,6 +917,13 @@ impl<C: EdwardsCurve> AssignmentInstructions<C::Base, AssignedScalarOfNativeCurv
             bits: self.native_gadget.assign_many_fixed(layouter, &constant.to_bits_le(None))?,
             enforced_canonical: true,
         })
+    }
+
+    fn as_constant(&self, s: &AssignedScalarOfNativeCurve<C>) -> Option<C::ScalarField> {
+        let bits = (s.bits.iter())
+            .map(|b| self.native_gadget.as_constant(b))
+            .collect::<Option<Vec<bool>>>()?;
+        C::ScalarField::try_from_bits_le(&bits)
     }
 }
 
@@ -1411,7 +1424,7 @@ mod tests {
     use crate::{
         ecc::hash_to_curve::HashToCurveGadget,
         hash::poseidon::PoseidonChip,
-        instructions::{ecc, hash_to_curve::tests::test_hash_to_curve},
+        instructions::{assignments, ecc, hash_to_curve::tests::test_hash_to_curve},
     };
 
     macro_rules! test_generic {
@@ -1432,6 +1445,8 @@ mod tests {
     test!(assertions, test_assertions);
 
     test!(public_input, test_public_inputs);
+
+    test!(assignments, test_as_constant);
 
     test!(equality, test_is_equal);
 
@@ -1458,6 +1473,8 @@ mod tests {
     test_scalar!(assertions, test_assertions, scalar_assertions);
 
     test_scalar!(public_input, test_public_inputs, scalar_public_inputs);
+
+    test_scalar!(assignments, test_as_constant, scalar_as_constant);
 
     test_scalar!(equality, test_is_equal, scalar_is_equal);
 

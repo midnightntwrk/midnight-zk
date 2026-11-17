@@ -176,24 +176,31 @@ where
     type Element = K;
 
     fn value(&self) -> Value<K> {
-        let bi_limbs = self
-            .limb_values
-            .iter()
-            .zip(self.limb_bounds.iter())
+        let limbs: Value<Vec<F>> =
+            Value::from_iter(self.limb_values.iter().map(|xi| xi.value().copied()));
+        limbs.map(|limbs| self.element_from_limbs(&limbs))
+    }
+}
+
+impl<F, K, P> AssignedField<F, K, P>
+where
+    F: CircuitField,
+    K: CircuitField,
+    P: FieldEmulationParams<F, K>,
+{
+    /// The emulated element represented by the given limb values.
+    fn element_from_limbs(&self, limbs: &[F]) -> K {
+        let bi_limbs = (limbs.iter().zip(self.limb_bounds.iter()))
             .map(|(xi, (lower_bound, _))| {
                 // We add a shift of |lbound| to correct possible wrap-arounds below 0, and
                 // shift back after the conversion from F to BigInt
                 let shift = BI::abs(lower_bound);
-                let fe_shift = bigint_to_fe::<F>(&shift);
-                xi.value().map(|xv| {
-                    let bi: BI = (*xv + fe_shift).to_biguint().into();
-                    bi - &shift
-                })
+                let bi: BI = (*xi + bigint_to_fe::<F>(&shift)).to_biguint().into();
+                bi - &shift
             })
             .collect::<Vec<_>>();
-        let bi_limbs: Value<Vec<BI>> = Value::from_iter(bi_limbs);
         let base = BI::from(2).pow(P::LOG2_BASE);
-        bi_limbs.map(|limbs| bigint_to_fe::<K>(&(BI::one() + bi_from_limbs(&base, &limbs))))
+        bigint_to_fe::<K>(&(BI::one() + bi_from_limbs(&base, &bi_limbs)))
     }
 }
 
@@ -484,6 +491,13 @@ where
             limb_bounds: well_formed_bounds::<F, K, P>(),
             _marker: PhantomData,
         })
+    }
+
+    fn as_constant(&self, x: &AssignedField<F, K, P>) -> Option<K> {
+        let limbs = (x.limb_values.iter())
+            .map(|xi| self.native_gadget.as_constant(xi))
+            .collect::<Option<Vec<_>>>()?;
+        Some(x.element_from_limbs(&limbs))
     }
 }
 
@@ -794,14 +808,12 @@ where
         x: &AssignedField<F, K, P>,
         y: &AssignedField<F, K, P>,
     ) -> Result<AssignedField<F, K, P>, Error> {
-        let zero: AssignedField<F, K, P> = self.assign_fixed(layouter, K::ZERO)?;
-
-        if x == &zero {
-            return Ok(y.clone());
+        if let Some(c) = self.as_constant(x) {
+            return self.add_constant(layouter, y, c);
         }
 
-        if y == &zero {
-            return Ok(x.clone());
+        if let Some(c) = self.as_constant(y) {
+            return self.add_constant(layouter, x, c);
         }
 
         // Note that x := 1 + sum_i base^i xi and y := 1 + sum_i base^i yi.
@@ -852,9 +864,7 @@ where
         x: &AssignedField<F, K, P>,
         y: &AssignedField<F, K, P>,
     ) -> Result<AssignedField<F, K, P>, Error> {
-        let zero: AssignedField<F, K, P> = self.assign_fixed(layouter, K::ZERO)?;
-
-        if y == &zero {
+        if self.as_constant(y) == Some(K::ZERO) {
             return Ok(x.clone());
         }
 
@@ -907,31 +917,17 @@ where
         y: &AssignedField<F, K, P>,
         multiplying_constant: Option<K>,
     ) -> Result<AssignedField<F, K, P>, Error> {
-        let zero: AssignedField<F, K, P> = self.assign_fixed(layouter, K::ZERO)?;
-        let one: AssignedField<F, K, P> = self.assign_fixed(layouter, K::ONE)?;
+        let m = multiplying_constant.unwrap_or(K::ONE);
 
-        if x == &zero || y == &zero {
-            return Ok(zero);
+        if let Some(c) = self.as_constant(x) {
+            return self.mul_by_constant(layouter, y, c * m);
         }
 
-        if x == &one {
-            return match multiplying_constant {
-                None => Ok(y.clone()),
-                Some(k) => self.mul_by_constant(layouter, y, k),
-            };
+        if let Some(c) = self.as_constant(y) {
+            return self.mul_by_constant(layouter, x, c * m);
         }
 
-        if y == &one {
-            return match multiplying_constant {
-                None => Ok(x.clone()),
-                Some(k) => self.mul_by_constant(layouter, x, k),
-            };
-        }
-
-        let y = match multiplying_constant {
-            None => y.clone(),
-            Some(k) => self.mul_by_constant(layouter, y, k)?,
-        };
+        let y = self.mul_by_constant(layouter, y, m)?;
         self.assign_mul(layouter, x, &y, false)
     }
 
@@ -941,9 +937,8 @@ where
         x: &AssignedField<F, K, P>,
         y: &AssignedField<F, K, P>,
     ) -> Result<AssignedField<F, K, P>, Error> {
-        let one: AssignedField<F, K, P> = self.assign_fixed(layouter, K::ONE)?;
-        if y == &one {
-            return Ok(x.clone());
+        if let Some(c_inv) = self.as_constant(y).and_then(|c| Option::from(c.invert())) {
+            return self.mul_by_constant(layouter, x, c_inv);
         }
 
         let y = self.normalize(layouter, y)?;
@@ -956,10 +951,8 @@ where
         layouter: &mut impl Layouter<F>,
         x: &AssignedField<F, K, P>,
     ) -> Result<AssignedField<F, K, P>, Error> {
-        let zero: AssignedField<F, K, P> = self.assign_fixed(layouter, K::ZERO)?;
-
-        if x == &zero {
-            return Ok(zero);
+        if let Some(c) = self.as_constant(x) {
+            return self.assign_fixed(layouter, -c);
         }
 
         // Note that x := 1 + sum_i base^i xi.
@@ -998,12 +991,11 @@ where
         layouter: &mut impl Layouter<F>,
         x: &AssignedField<F, K, P>,
     ) -> Result<AssignedField<F, K, P>, Error> {
-        let one: AssignedField<F, K, P> = self.assign_fixed(layouter, K::ONE)?;
-
-        if x == &one {
-            return Ok(one);
+        if let Some(c_inv) = self.as_constant(x).and_then(|c| Option::from(c.invert())) {
+            return self.assign_fixed(layouter, c_inv);
         }
 
+        let one: AssignedField<F, K, P> = self.assign_fixed(layouter, K::ONE)?;
         // We do not need to assert that x != 0 because the equation enforced by
         // [assign_mul] will be 1 = z * x, which is unsatisfiable if x = 0.
         self.assign_mul(layouter, &one, x, true)
@@ -1684,6 +1676,10 @@ where
     ) -> Result<AssignedBit<F>, Error> {
         self.native_gadget.assign_fixed(layouter, constant)
     }
+
+    fn as_constant(&self, x: &AssignedBit<F>) -> Option<bool> {
+        self.native_gadget.as_constant(x)
+    }
 }
 
 // Inherit Bit Assertion Instructions from NativeGadget.
@@ -1883,7 +1879,8 @@ mod tests {
             foreign::params::MultiEmulationParams,
         },
         instructions::{
-            arithmetic, assertions, control_flow, decomposition, equality, public_input, zero,
+            arithmetic, assertions, assignments, control_flow, decomposition, equality,
+            public_input, zero,
         },
     };
 
@@ -1917,6 +1914,8 @@ mod tests {
     test!(assertions, test_assertions);
 
     test!(public_input, test_public_inputs);
+
+    test!(assignments, test_as_constant);
 
     test!(equality, test_is_equal);
 
