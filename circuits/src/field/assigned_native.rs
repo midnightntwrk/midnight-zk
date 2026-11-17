@@ -55,28 +55,30 @@ impl<F: Field> From<&AssignedNative<F>> for AssignedCell<F, F> {
     }
 }
 
-/// Two elements are equal iff they are assigned to the same cell, or neither
-/// is assigned to a cell and one is a clone of the other.
+/// Equality compares pointers: two elements are equal iff one is a clone of
+/// the other (they point to the same `Rc`), whether they are assigned to a cell
+/// or not.
+///
+/// In particular, two elements assigned to the same cell are NOT equal if they
+/// were created separately, e.g. by two calls to [AssignedNative::from_cell] on
+/// the same cell, or when a free element is assigned to the cell of another one
+/// by [AssignedNative::constrain_equal]. Hence `x != y` does not mean that `x`
+/// and `y` are in different cells, and a cache keyed by [AssignedNative] may
+/// miss an element that is in the same cell as a cached one (which costs extra
+/// constraints, but is sound).
 impl<F: Field> PartialEq for AssignedNative<F> {
     fn eq(&self, other: &Self) -> bool {
-        match (self.cell.get(), other.cell.get()) {
-            (Some(x), Some(y)) => x.cell() == y.cell(),
-            (None, None) => Rc::ptr_eq(&self.cell, &other.cell),
-            _ => false,
-        }
+        Rc::ptr_eq(&self.cell, &other.cell)
     }
 }
 
 impl<F: Field> Eq for AssignedNative<F> {}
 
-/// Hashes the cell of the element, or the identity of its shared cell if it is
-/// not assigned to a cell.
+/// Hashes the pointer of the element (to its shared `Rc`), consistently with
+/// [PartialEq].
 impl<F: Field> Hash for AssignedNative<F> {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        match self.cell.get() {
-            Some(cell) => cell.cell().hash(state),
-            None => Rc::as_ptr(&self.cell).hash(state),
-        }
+        Rc::as_ptr(&self.cell).hash(state)
     }
 }
 

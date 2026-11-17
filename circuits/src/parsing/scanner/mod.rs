@@ -256,15 +256,15 @@ type CachedSub<F> = (
 );
 
 /// Cache of assigned sequences passed as arguments to `check_subsequence` or
-/// `check_subsequence_varlen`. Each sequence (keyed by its cells) is mapped to
-/// the list of sub entries and the cumulative sub length.
+/// `check_subsequence_varlen`. Each sequence (keyed by its elements) is mapped
+/// to the list of sub entries and the cumulative sub length.
 ///
-/// **Element-identity assumption**: the cache key is based on
-/// [`AssignedNative`] identity, not on the element's value. This means two
-/// sequences holding the same byte values but built from different elements
-/// are distinct cache entries. Callers that introduce new ways to build
-/// sequences must ensure fresh elements are produced if a distinct cache entry
-/// is intended. Entries are iterated in insertion order.
+/// **Pointer-equality assumption**: the cache key is based on
+/// [`AssignedNative`] pointers (see its `PartialEq`), not on the elements'
+/// values. This means two sequences holding the same byte values but built
+/// from different elements are distinct cache entries. Callers that introduce
+/// new ways to build sequences must ensure fresh elements are produced if a
+/// distinct cache entry is intended. Entries are iterated in insertion order.
 type SequenceCache<F> = IndexMap<Sequence<F>, (Vec<CachedSub<F>>, usize), FxBuildHasher>;
 
 /// Scanner gate configuration.
