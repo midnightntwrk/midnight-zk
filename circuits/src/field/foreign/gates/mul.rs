@@ -23,11 +23,14 @@ use num_traits::One;
 
 use crate::{
     CircuitField,
-    field::foreign::{
-        params::FieldEmulationParams,
-        util::{
-            compute_u, compute_vj, get_advice_vec, get_identity_auxiliary_bounds,
-            karatsuba_bilinear_sum, pair_wise_prod, sum_bigints, sum_exprs, urem,
+    field::{
+        AssignNative,
+        foreign::{
+            params::FieldEmulationParams,
+            util::{
+                compute_u, compute_vj, get_advice_vec, get_identity_auxiliary_bounds,
+                karatsuba_bilinear_sum, pair_wise_prod, sum_bigints, sum_exprs, urem,
+            },
         },
     },
     instructions::RangeCheckInstructions,
@@ -285,7 +288,7 @@ where
                 .collect::<Result<Vec<_>, _>>()?;
 
             let u_value = u.clone().map(|u| bigint_to_fe::<F>(&u));
-            let u_cell = region.assign_advice(
+            let u_cell = region.assign_native(
                 || "assert_mul u",
                 mul_config.z_cols[0],
                 offset,
@@ -296,7 +299,7 @@ where
                 .zip(mul_config.z_cols[1..=mul_config.vs_bounds.len()].iter())
                 .map(|(vj, &vj_col)| {
                     let vj_value = vj.map(|vj| bigint_to_fe::<F>(&vj));
-                    region.assign_advice(|| "assert_mul vj", vj_col, offset, || vj_value)
+                    region.assign_native(|| "assert_mul vj", vj_col, offset, || vj_value)
                 })
                 .collect::<Result<Vec<_>, _>>()?;
 

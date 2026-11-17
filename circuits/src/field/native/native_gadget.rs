@@ -99,6 +99,11 @@ where
             .and_modify(|v| *v = min(v.clone(), bound.clone()))
             .or_insert(bound);
     }
+
+    /// The (strict) upper-bound of the given element, if any.
+    fn bound(&self, x: &AssignedNative<F>) -> Option<BigUint> {
+        self.constrained_cells.borrow().get(x).cloned()
+    }
 }
 
 impl<F: CircuitField> Instantiable<F> for AssignedByte<F> {
@@ -277,12 +282,9 @@ where
         x: &AssignedNative<F>,
         bound: &BigUint,
     ) -> Result<(), Error> {
-        if let Some(current_bound) = self.constrained_cells.borrow().get(x)
-            && current_bound <= bound
-        {
+        if self.bound(x).is_some_and(|current_bound| current_bound <= *bound) {
             return Ok(());
         }
-        self.update_bound(x, bound.clone());
 
         // compute largest k such that 2^k <= bound
         let k = (bound.bits() - 1) as usize;
@@ -290,19 +292,21 @@ where
 
         // if the bound is a power of 2, the check is easier
         if two_pow_k == *bound {
-            return self.core_decomposition_chip.assert_less_than_pow2(layouter, x, k);
+            self.core_decomposition_chip.assert_less_than_pow2(layouter, x, k)?;
+        } else {
+            // b := x in [0, 2^k)
+            let b_value = x.value().map(|x| x.to_biguint() < two_pow_k);
+            let b: AssignedBit<F> = self.assign(layouter, b_value)?;
+
+            let diff: F = big_to_fe(bound - two_pow_k);
+
+            // x in [0, bound) <=> x in [0, 2^k) or (x - diff) in [0, 2^k)
+            let shifted_x = self.add_constant(layouter, x, -diff)?;
+            let y = self.select(layouter, &b, x, &shifted_x)?;
+            self.core_decomposition_chip.assert_less_than_pow2(layouter, &y, k)?;
         }
-
-        // b := x in [0, 2^k)
-        let b_value = x.value().map(|x| x.to_biguint() < two_pow_k);
-        let b: AssignedBit<F> = self.assign(layouter, b_value)?;
-
-        let diff: F = big_to_fe(bound - two_pow_k);
-
-        // x in [0, bound) <=> x in [0, 2^k) or (x - diff) in [0, 2^k)
-        let shifted_x = self.add_constant(layouter, x, -diff)?;
-        let y = self.select(layouter, &b, x, &shifted_x)?;
-        self.core_decomposition_chip.assert_less_than_pow2(layouter, &y, k)
+        self.update_bound(x, bound.clone());
+        Ok(())
     }
 }
 
@@ -362,8 +366,9 @@ where
         x: &AssignedBounded<F>,
         y: F,
     ) -> Result<AssignedBit<F>, Error> {
-        if let Some(current_bound) = self.constrained_cells.borrow().get(&x.value)
-            && *current_bound <= y.to_biguint()
+        if self
+            .bound(&x.value)
+            .is_some_and(|current_bound| current_bound <= y.to_biguint())
         {
             return self.assign_fixed(layouter, true);
         }
@@ -777,18 +782,19 @@ where
         layouter: &mut impl Layouter<F>,
         x: &AssignedNative<F>,
     ) -> Result<AssignedByte<F>, Error> {
-        if let Some(current_bound) = self.constrained_cells.borrow().get(x)
-            && *current_bound <= BigUint::from(256u32)
+        if self
+            .bound(x)
+            .is_some_and(|current_bound| current_bound <= BigUint::from(256u32))
         {
             return self.convert_unsafe(layouter, x);
         }
-        self.update_bound(x, BigUint::from(256u32));
         let b_value = x.value().map(|x| {
             <Self as ConversionInstructions<_, _, AssignedByte<F>>>::convert_value(self, x)
                 .unwrap_or(0u8)
         });
         let b: AssignedByte<F> = self.assign(layouter, b_value)?;
         self.assert_equal(layouter, x, &b.0)?;
+        self.update_bound(x, BigUint::from(256u32));
         Ok(b)
     }
 }
@@ -1057,14 +1063,6 @@ where
     fn as_constant(&self, x: &AssignedNative<F>) -> Option<F> {
         self.native_chip.as_constant(x)
     }
-
-    fn assign_many(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        value: &[Value<F>],
-    ) -> Result<Vec<AssignedNative<F>>, Error> {
-        self.native_chip.assign_many(layouter, value)
-    }
 }
 
 // Inherit Bit Public Input Instructions.
@@ -1152,17 +1150,16 @@ where
         x: &AssignedNative<F>,
         y: &AssignedNative<F>,
     ) -> Result<(), Error> {
-        let x_bound_opt = self.constrained_cells.borrow().get(x).cloned();
+        let (x_bound_opt, y_bound_opt) = (self.bound(x), self.bound(y));
+        self.native_chip.assert_equal(layouter, x, y)?;
+
         if let Some(x_bound) = x_bound_opt {
             self.update_bound(y, x_bound);
         }
-
-        let y_bound_opt = self.constrained_cells.borrow().get(y).cloned();
         if let Some(y_bound) = y_bound_opt {
             self.update_bound(x, y_bound);
         }
-
-        self.native_chip.assert_equal(layouter, x, y)
+        Ok(())
     }
 
     fn assert_not_equal(
@@ -1344,13 +1341,12 @@ where
         layouter: &mut impl Layouter<F>,
         x: &AssignedNative<F>,
     ) -> Result<AssignedBit<F>, Error> {
-        if let Some(current_bound) = self.constrained_cells.borrow().get(x)
-            && *current_bound <= BigUint::from(2u32)
-        {
+        if self.bound(x).is_some_and(|current_bound| current_bound <= BigUint::from(2u32)) {
             return self.native_chip.convert_unsafe(layouter, x);
         }
+        let b = self.native_chip.convert(layouter, x)?;
         self.update_bound(x, BigUint::from(2u32));
-        self.native_chip.convert(layouter, x)
+        Ok(b)
     }
 }
 

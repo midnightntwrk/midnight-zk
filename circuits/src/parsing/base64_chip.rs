@@ -30,7 +30,10 @@ use midnight_proofs::{
 
 use crate::{
     CircuitField,
-    field::{AssignedNative, NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip},
+    field::{
+        AssignNative, AssignedNative, NativeChip, NativeGadget,
+        decomposition::chip::P2RDecompositionChip,
+    },
     instructions::{
         ArithInstructions, AssignmentInstructions, Base64Instructions, ControlFlowInstructions,
         DecompositionInstructions, EqualityInstructions, RangeCheckInstructions,
@@ -372,7 +375,7 @@ impl<F: CircuitField> Base64Chip<F> {
                     .into_iter()
                     .zip(positions)
                     .map(|(output, pos)| {
-                        region.assign_advice(
+                        region.assign_native(
                             || "Base64 decoded values",
                             advice_cols[pos[0].0 + 2], /* same position as inputs, just 2
                                                         * columns right */

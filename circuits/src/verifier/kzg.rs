@@ -330,6 +330,7 @@ type IntermediateSets<F> = (Vec<CommitmentData<F>>, Vec<Vec<AssignedNative<F>>>)
 
 /// Groups `points` and their `evals` by the coset they were given as roots of,
 /// if every point was, each coset is whole and `t > 1`.
+#[allow(clippy::mutable_key_type)]
 fn as_cosets<F: CircuitField>(
     points: &[AssignedNative<F>],
     evals: &[AssignedNative<F>],
@@ -352,6 +353,7 @@ fn as_cosets<F: CircuitField>(
 }
 
 #[allow(clippy::type_complexity)]
+#[allow(clippy::mutable_key_type)]
 fn construct_intermediate_sets<F: CircuitField>(
     queries: &[(PolynomialLabel, AssignedNative<F>, AssignedNative<F>)],
     default_eval: AssignedNative<F>,
@@ -510,6 +512,7 @@ fn evals_inner_product<F: CircuitField>(
 
 /// Verifies a bunch of KZG queries in a multi-open argument.
 /// The resulting accumulator satisfies the invariant iff all queries are valid.
+#[allow(clippy::mutable_key_type)]
 pub(crate) fn multi_prepare_kzg<E, T>(
     layouter: &mut impl Layouter<E::Fr>,
     curve_chip: &CurveChip<E>,
