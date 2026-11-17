@@ -126,14 +126,39 @@ where
     /// Creates an assigned point from a pair of coordinates, asserting that
     /// they satisfy the curve equation.
     /// If the curve has non-prime order, the point is guaranteed to be in the
-    /// prime order subgroup. (In case of Weierstrass curves, the identity
+    /// prime-order subgroup. (In case of Weierstrass curves, the identity
     /// cannot be constructed through this function.)
+    ///
+    /// If the subgroup guarantee is not required, consider using
+    /// [Self::point_from_coordinates_without_subgroup_check], which may be
+    /// cheaper.
     fn point_from_coordinates(
         &self,
         layouter: &mut impl Layouter<F>,
         x: &Self::Coordinate,
         y: &Self::Coordinate,
     ) -> Result<Self::Point, Error>;
+
+    /// Same as [Self::point_from_coordinates], but possibly skipping the
+    /// subgroup-membership check: the coordinates are only guaranteed to
+    /// satisfy the curve equation. We enforce honest users to operate over
+    /// the prime-order subgroup, but allow the circuit to skip enforcing this
+    /// constraint where this guarantee is not required.
+    ///
+    /// For curves with a non-trivial cofactor this skips the expensive
+    /// cofactor-based subgroup check. Note that some operations (e.g.
+    /// multi-scalar multiplications) are only guaranteed to be correct on
+    /// points of the prime-order subgroup.
+    ///
+    /// The default implementation performs the subgroup check.
+    fn point_from_coordinates_without_subgroup_check(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &Self::Coordinate,
+        y: &Self::Coordinate,
+    ) -> Result<Self::Point, Error> {
+        self.point_from_coordinates(layouter, x, y)
+    }
 
     /// Assigns a private curve point, checking it is on the curve but skipping
     /// any subgroup-membership check. We enforce honest users to operate over
@@ -204,6 +229,7 @@ pub(crate) mod tests {
         MsmBounded,
         MulByConstant,
         Coordinates,
+        CoordinatesWithoutSubgroupCheck,
     }
 
     #[derive(Clone, Debug)]
@@ -311,7 +337,22 @@ pub(crate) mod tests {
                 Operation::Coordinates => {
                     let px = ecc_chip.x(&mut layouter, &p)?;
                     let py = ecc_chip.y(&mut layouter, &p)?;
-                    ecc_chip.point_from_coordinates(&mut layouter, &px, &py)
+                    let res = ecc_chip.point_from_coordinates(&mut layouter, &px, &py)?;
+                    // The off-circuit value must agree with the assigned coordinates.
+                    res.value().error_if_known_and(|v| *v != self.inputs[0])?;
+                    Ok(res)
+                }
+                Operation::CoordinatesWithoutSubgroupCheck => {
+                    let px = ecc_chip.x(&mut layouter, &p)?;
+                    let py = ecc_chip.y(&mut layouter, &p)?;
+                    let res = ecc_chip.point_from_coordinates_without_subgroup_check(
+                        &mut layouter,
+                        &px,
+                        &py,
+                    )?;
+                    // The off-circuit value must agree with the assigned coordinates.
+                    res.value().error_if_known_and(|v| *v != self.inputs[0])?;
+                    Ok(res)
                 }
             }?;
             cost_measure_end(&mut layouter);
@@ -726,6 +767,40 @@ pub(crate) mod tests {
             + FromScratch<F>,
         EccChip::Point: InnerValue<Element = C::CryptographicGroup> + Clone,
     {
+        run_coordinates::<F, C, EccChip>(name, Operation::Coordinates, "coordinates");
+    }
+
+    pub fn test_coordinates_without_subgroup_check<F, C, EccChip>(name: &str)
+    where
+        F: CircuitField + FromUniformBytes<64> + Ord,
+        C: CircuitCurve,
+        EccChip: EccInstructions<F, C>
+            + AssignmentInstructions<F, EccChip::Point>
+            + AssignmentInstructions<F, EccChip::Scalar>
+            + AssertionInstructions<F, EccChip::Point>
+            + Chip<F>
+            + FromScratch<F>,
+        EccChip::Point: InnerValue<Element = C::CryptographicGroup> + Clone,
+    {
+        run_coordinates::<F, C, EccChip>(
+            name,
+            Operation::CoordinatesWithoutSubgroupCheck,
+            "coordinates_without_subgroup_check",
+        );
+    }
+
+    fn run_coordinates<F, C, EccChip>(name: &str, operation: Operation, op_name: &str)
+    where
+        F: CircuitField + FromUniformBytes<64> + Ord,
+        C: CircuitCurve,
+        EccChip: EccInstructions<F, C>
+            + AssignmentInstructions<F, EccChip::Point>
+            + AssignmentInstructions<F, EccChip::Scalar>
+            + AssertionInstructions<F, EccChip::Point>
+            + Chip<F>
+            + FromScratch<F>,
+        EccChip::Point: InnerValue<Element = C::CryptographicGroup> + Clone,
+    {
         let mut rng = ChaCha8Rng::seed_from_u64(0xc0ffee);
         let wrong = C::CryptographicGroup::random(&mut rng);
         let id_from_coord_ok = {
@@ -747,25 +822,16 @@ pub(crate) mod tests {
                 &inputs,
                 None,
                 &x,
-                Operation::Coordinates,
+                operation,
                 must_pass,
                 cost_model & must_pass,
                 name,
-                "coordinates",
+                op_name,
             );
             if must_pass {
                 cost_model = false
             }
-            run::<F, C, EccChip>(
-                &inputs,
-                None,
-                &wrong,
-                Operation::Coordinates,
-                false,
-                false,
-                "",
-                "",
-            );
+            run::<F, C, EccChip>(&inputs, None, &wrong, operation, false, false, "", "");
         });
     }
 }

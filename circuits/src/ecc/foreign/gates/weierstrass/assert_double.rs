@@ -50,10 +50,13 @@ use super::{
 use crate::{
     CircuitField,
     ecc::curves::WeierstrassCurve,
-    field::foreign::{
-        FieldChip,
-        params::FieldEmulationParams,
-        util::{compute_u, compute_vj, pair_wise_prod, signed_mod, sum_bigints},
+    field::{
+        AssignNative,
+        foreign::{
+            FieldChip,
+            params::FieldEmulationParams,
+            util::{compute_u, compute_vj, pair_wise_prod, signed_mod, sum_bigints},
+        },
     },
     instructions::NativeInstructions,
     types::{AssignedBit, AssignedField, InnerValue},
@@ -277,7 +280,7 @@ where
                 &config.coeff_bounds,
                 [&a_w, &b_w, &d_w, &e_w, &ca_w, &cd_w, &BI::zero()],
             )?;
-            let u_w_cell = region.assign_advice(
+            let u_w_cell = region.assign_native(
                 || "u_W",
                 fcc.u_col,
                 1,
@@ -288,7 +291,7 @@ where
                 .zip(fcc.v_cols.iter())
                 .map(|(vj, &col)| {
                     let val = vj.clone().map(|v| bigint_to_fe::<F>(&v));
-                    region.assign_advice(|| "vj_W", col, 1, || val)
+                    region.assign_native(|| "vj_W", col, 1, || val)
                 })
                 .collect::<Result<Vec<_>, _>>()?;
             cond.0.copy_advice(|| "cond", &mut region, config.cond_col, 1)?;
@@ -307,7 +310,7 @@ where
                 &config.coeff_bounds,
                 [&a_t, &b_t, &d_t, &e_t, &ca_t, &cd_t, &BI::one()],
             )?;
-            let u_t_cell = region.assign_advice(
+            let u_t_cell = region.assign_native(
                 || "u_T",
                 fcc.u_col,
                 3,
@@ -318,7 +321,7 @@ where
                 .zip(fcc.v_cols.iter())
                 .map(|(vj, &col)| {
                     let val = vj.clone().map(|v| bigint_to_fe::<F>(&v));
-                    region.assign_advice(|| "vj_T", col, 3, || val)
+                    region.assign_native(|| "vj_T", col, 3, || val)
                 })
                 .collect::<Result<Vec<_>, _>>()?;
             cond.0.copy_advice(|| "cond", &mut region, config.cond_col, 3)?;
@@ -337,7 +340,7 @@ where
                 &config.coeff_bounds,
                 [&a_ls, &b_ls, &d_ls, &e_ls, &ca_ls, &cd_ls, &BI::zero()],
             )?;
-            let u_ls_cell = region.assign_advice(
+            let u_ls_cell = region.assign_native(
                 || "u_LS",
                 fcc.u_col,
                 5,
@@ -348,7 +351,7 @@ where
                 .zip(fcc.v_cols.iter())
                 .map(|(vj, &col)| {
                     let val = vj.clone().map(|v| bigint_to_fe::<F>(&v));
-                    region.assign_advice(|| "vj_LS", col, 5, || val)
+                    region.assign_native(|| "vj_LS", col, 5, || val)
                 })
                 .collect::<Result<Vec<_>, _>>()?;
             cond.0.copy_advice(|| "cond", &mut region, config.cond_col, 5)?;

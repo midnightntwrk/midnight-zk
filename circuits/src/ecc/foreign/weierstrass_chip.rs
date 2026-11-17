@@ -12,11 +12,15 @@
 // limitations under the License.
 
 //! Elliptic curve (in Weierstrass form) operations over foreign fields.
-//! This module supports curves of the form y^2 = x^3 + b (i.e. with a = 0).
+//! This module supports curves of the form y^2 = x^3 + ax + b.
 //!
-//! We require that the emulated elliptic curve do not have low-order points.
-//! In particular, the curve (or the relevant subgroup) must have a large prime
-//! order.
+//! The curve (or the relevant subgroup) must have a large prime order.
+//!
+//! If the curve has a non-trivial cofactor (e.g. BLS12-381), assigned points
+//! are constrained to be in the prime-order subgroup, unless they are created
+//! with [`EccInstructions::assign_without_subgroup_check`] or
+//! [`EccInstructions::point_from_coordinates_without_subgroup_check`], which
+//! only constrain them to satisfy the curve equation.
 
 use std::{
     cell::RefCell,
@@ -168,13 +172,13 @@ where
 }
 
 /// Type for foreign EC points.
+/// The off-circuit value of the point is always in the prime-order subgroup.
+/// If the curve has a non-trivial cofactor, this is only enforced with
+/// constraints if the point was not created with one of the
+/// `*_without_subgroup_check` functions.
 /// The identity is represented with field `is_id`, whose value is `1` iff the
 /// point is the identity. If `is_id` is set, the values of `x` and `y` are
 /// irrelevant and can be anything.
-/// x2 is a ModInt encoding the square of x, which is computed once and stored.
-/// This value is used by our custom gates, it allows us to implement all
-/// custom gates without degree-3 terms, so we can reuse the same auxiliary
-/// moduli as for ModArith.mul.
 #[derive(Clone, Debug)]
 #[must_use]
 pub struct AssignedForeignPoint<F, C, B>
@@ -344,7 +348,7 @@ where
         if C::COFACTOR > 1 {
             let cofactor = C::ScalarField::from_u128(C::COFACTOR);
             // Exhibit a cofactor-root Q and assert h * Q = p in-circuit.
-            // This guarantees that p ∈ C::CryptographicGroup = h · E(Fp).
+            // This guarantees that p is in the prime-order subgroup.
             let cofactor_root = self.assign_without_subgroup_check(
                 layouter,
                 value.map(|point| point * cofactor.invert().unwrap()),
@@ -379,6 +383,15 @@ where
             y,
         };
         Ok(p)
+    }
+
+    fn as_constant(&self, p: &AssignedForeignPoint<F, C, B>) -> Option<C::CryptographicGroup> {
+        if self.native_gadget.as_constant(&p.is_id)? {
+            return Some(C::CryptographicGroup::identity());
+        }
+        let x = self.base_field_chip().as_constant(&p.x)?;
+        let y = self.base_field_chip().as_constant(&p.y)?;
+        C::from_xy(x, y)?.try_into_subgroup()
     }
 }
 
@@ -453,6 +466,10 @@ where
     ) -> Result<S::Scalar, Error> {
         self.scalar_field_chip().assign_fixed(layouter, constant)
     }
+
+    fn as_constant(&self, x: &S::Scalar) -> Option<<S::Scalar as InnerValue>::Element> {
+        self.scalar_field_chip().as_constant(x)
+    }
 }
 
 /// Inherit assignment instructions for [AssignedField], from the
@@ -484,6 +501,10 @@ where
         constant: <S::Scalar as InnerValue>::Element,
     ) -> Result<S::Scalar, Error> {
         self.scalar_field_chip().assign_fixed(layouter, constant)
+    }
+
+    fn as_constant(&self, x: &S::Scalar) -> Option<<S::Scalar as InnerValue>::Element> {
+        self.scalar_field_chip().as_constant(x)
     }
 }
 
@@ -870,48 +891,80 @@ where
         scalar: C::ScalarField,
         base: &Self::Point,
     ) -> Result<Self::Point, Error> {
+        // `mul_by_u128` and `msm_by_le_bits` are incomplete (they cannot take the
+        // identity). Change the base in case it is the identity and then change
+        // the result back when necessary.
+        let id = self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
+        let g = self.assign_fixed(layouter, C::CryptographicGroup::generator())?;
+        let p = self.select(layouter, &base.is_id, &g, base)?;
+
         // We leverage the existing implementation for `mul_by_u128` when the scalar has
         // 128 bits. Otherwise, we just default to a standard multiplication by an
         // assigned-fixed scalar.
         let scalar_as_big = scalar.to_biguint();
-        if scalar_as_big.bits() <= 128 {
+        let r = if scalar_as_big.bits() <= 128 {
             let n = scalar_as_big
                 .to_u64_digits()
                 .iter()
                 .rev()
                 .fold(0u128, |acc, limb| (acc << 64) | (*limb as u128));
-
-            // `mul_by_u128` is incomplete (it cannot take the identity).
-            // Change the base in case it is the identity and then change
-            // the result back when necessary.
-            let id = self.assign_fixed(layouter, C::CryptographicGroup::identity())?;
-            let g = self.assign_fixed(layouter, C::CryptographicGroup::generator())?;
-            let p = self.select(layouter, &base.is_id, &g, base)?;
-            let r = self.mul_by_u128(layouter, n, &p)?;
-            return self.select(layouter, &base.is_id, &id, &r);
-        }
-        let scalar_bits = scalar
-            .to_bits_le(None)
-            .iter()
-            .map(|b| self.native_gadget.assign_fixed(layouter, *b))
-            .collect::<Result<Vec<_>, Error>>()?;
-        self.msm_by_le_bits(layouter, &[scalar_bits], std::slice::from_ref(base))
+            self.mul_by_u128(layouter, n, &p)?
+        } else {
+            let scalar_bits = scalar
+                .to_bits_le(None)
+                .iter()
+                .map(|b| self.native_gadget.assign_fixed(layouter, *b))
+                .collect::<Result<Vec<_>, Error>>()?;
+            self.msm_by_le_bits(layouter, &[scalar_bits], &[p])?
+        };
+        self.select(layouter, &base.is_id, &id, &r)
     }
 
+    /// Creates an assigned point from a pair of coordinates, asserting that
+    /// they satisfy the curve equation and that the point is in the
+    /// prime-order subgroup. The point cannot be the identity.
     fn point_from_coordinates(
         &self,
         layouter: &mut impl Layouter<F>,
         x: &AssignedField<F, C::Base, B>,
         y: &AssignedField<F, C::Base, B>,
     ) -> Result<Self::Point, Error> {
+        let p = self.point_from_coordinates_without_subgroup_check(layouter, x, y)?;
+        if C::COFACTOR > 1 {
+            let cofactor = C::ScalarField::from_u128(C::COFACTOR);
+            // Exhibit a cofactor-root Q and assert h * Q = p in-circuit.
+            // This guarantees that p is in the prime-order subgroup.
+            let cofactor_root = self.assign_without_subgroup_check(
+                layouter,
+                p.value().map(|point| point * cofactor.invert().unwrap()),
+            )?;
+            let q = self.mul_by_constant(layouter, cofactor, &cofactor_root)?;
+            self.assert_equal(layouter, &p, &q)?;
+        }
+        Ok(p)
+    }
+
+    /// Creates an assigned point from a pair of coordinates, asserting that
+    /// they satisfy the curve equation. The point cannot be the identity.
+    ///
+    /// The point is not constrained to be in the prime-order subgroup, which
+    /// matters on curves with a non-trivial cofactor (e.g. BLS12-381). On
+    /// such curves, a synthesis error is returned if the given coordinates
+    /// are known and they correspond to a point outside the subgroup.
+    fn point_from_coordinates_without_subgroup_check(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &AssignedField<F, C::Base, B>,
+        y: &AssignedField<F, C::Base, B>,
+    ) -> Result<Self::Point, Error> {
         let is_id = self.native_gadget.assign_fixed(layouter, false)?;
-        // If from_xy fails, we give the identity as a default value, but note that
-        // the constraints below will make the circuit unsatisfiable.
-        // This is intentional.
-        let point = x
-            .value()
-            .zip(y.value())
-            .map(|(x, y)| C::from_xy(x, y).unwrap_or(C::identity()).into_subgroup());
+        // The off-circuit value of a point is always in the prime-order subgroup,
+        // even if this is not enforced with constraints.
+        let point = x.value().zip(y.value()).map_with_result(|(x, y)| {
+            C::from_xy(x, y)
+                .map(|p| p.into_subgroup())
+                .ok_or(Error::Synthesis("invalid coordinates".into()))
+        })?;
         let p = AssignedForeignPoint::<F, C, B> {
             point,
             is_id,
@@ -964,8 +1017,8 @@ where
     S::Scalar: InnerValue<Element = C::ScalarField>,
     N: NativeInstructions<F>,
 {
-    /// Given config creates new chip that implements foreign ECC
-    /// The RNG is used to sample a random point used for incomplete addition
+    /// Given config creates new chip that implements foreign ECC.
+    /// A random point, used for incomplete addition, is sampled internally.
     /// Soundness does not rely on this point being random, but completeness
     /// does.
     pub fn new(
@@ -2043,14 +2096,21 @@ where
 mod tests {
     use group::Group;
     use midnight_curves::{Fq as BlsScalar, G1Projective as BlsG1, k256::K256, p256::P256};
+    use midnight_proofs::{
+        circuit::SimpleFloorPlanner,
+        dev::MockProver,
+        plonk::{Circuit, ConstraintSystem},
+    };
 
     use super::*;
     use crate::{
+        ecc::curves::CircuitCurve,
         field::{
             NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip,
             foreign::params::MultiEmulationParams,
         },
-        instructions::{assertions, control_flow, ecc, equality, public_input, zero},
+        instructions::{assertions, assignments, control_flow, ecc, equality, public_input, zero},
+        testing_utils::FromScratch,
     };
 
     type Native<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
@@ -2089,6 +2149,8 @@ mod tests {
     test!(assertions, test_assertions);
 
     test!(public_input, test_public_inputs);
+
+    test!(assignments, test_as_constant);
 
     test!(equality, test_is_equal);
 
@@ -2137,4 +2199,97 @@ mod tests {
     ecc_tests!(test_msm_by_bounded_scalars);
     ecc_tests!(test_mul_by_constant);
     ecc_tests!(test_coordinates);
+    ecc_tests!(test_coordinates_without_subgroup_check);
+
+    type BlsOverBlsChip = ForeignWeierstrassEccChip<
+        BlsScalar,
+        BlsG1,
+        MultiEmulationParams,
+        Native<BlsScalar>,
+        Native<BlsScalar>,
+    >;
+
+    /// A circuit that creates a point of BLS12-381 from the given coordinates.
+    #[derive(Clone, Debug)]
+    struct FromCoordinatesCircuit {
+        x: <BlsG1 as CircuitCurve>::Base,
+        y: <BlsG1 as CircuitCurve>::Base,
+        subgroup_check: bool,
+    }
+
+    impl Circuit<BlsScalar> for FromCoordinatesCircuit {
+        type Config = <BlsOverBlsChip as FromScratch<BlsScalar>>::Config;
+        type FloorPlanner = SimpleFloorPlanner;
+        type Params = ();
+
+        fn without_witnesses(&self) -> Self {
+            unreachable!()
+        }
+
+        fn configure(meta: &mut ConstraintSystem<BlsScalar>) -> Self::Config {
+            let committed_instance_column = meta.instance_column();
+            let instance_column = meta.instance_column();
+            BlsOverBlsChip::configure_from_scratch(
+                meta,
+                &mut vec![],
+                &mut vec![],
+                &[committed_instance_column, instance_column],
+            )
+        }
+
+        fn synthesize(
+            &self,
+            config: Self::Config,
+            mut layouter: impl Layouter<BlsScalar>,
+        ) -> Result<(), Error> {
+            let chip = BlsOverBlsChip::new_from_scratch(&config);
+            let x = chip.base_field_chip().assign(&mut layouter, Value::known(self.x))?;
+            let y = chip.base_field_chip().assign(&mut layouter, Value::known(self.y))?;
+            if self.subgroup_check {
+                let _ = chip.point_from_coordinates(&mut layouter, &x, &y)?;
+            } else {
+                let _ =
+                    chip.point_from_coordinates_without_subgroup_check(&mut layouter, &x, &y)?;
+            }
+            chip.load_from_scratch(&mut layouter)
+        }
+    }
+
+    /// The off-circuit value of a point is always in the prime-order subgroup,
+    /// so coordinates of points of BLS12-381 outside of it are rejected, even
+    /// when the subgroup check is not enforced with constraints.
+    #[test]
+    fn test_coordinates_outside_subgroup() {
+        type Fp = <BlsG1 as CircuitCurve>::Base;
+        let b = <BlsG1 as WeierstrassCurve>::B;
+        let run = |(x, y): (Fp, Fp), subgroup_check: bool| {
+            let circuit = FromCoordinatesCircuit {
+                x,
+                y,
+                subgroup_check,
+            };
+            MockProver::run(&circuit, vec![vec![], vec![]]).and_then(|prover| {
+                prover.verify().map_err(|_| Error::Synthesis("unsatisfied circuit".into()))
+            })
+        };
+
+        // (0, 2) is a point of order 3.
+        let low_order = (Fp::ZERO, Fp::from(2));
+        // A generic point of the curve, the one with the smallest x > 0.
+        let generic = (1..)
+            .map(Fp::from)
+            .find_map(|x| (x.square() * x + b).sqrt().into_option().map(|y| (x, y)))
+            .unwrap();
+        let in_subgroup = BlsG1::generator().coordinates().unwrap();
+
+        for subgroup_check in [true, false] {
+            assert!(run(in_subgroup, subgroup_check).is_ok());
+            for point in [low_order, generic] {
+                // The point is in the curve, but not in the subgroup.
+                assert_eq!(point.1.square(), point.0.square() * point.0 + b);
+                assert!(BlsG1::from_xy(point.0, point.1).is_none());
+                assert!(run(point, subgroup_check).is_err());
+            }
+        }
+    }
 }

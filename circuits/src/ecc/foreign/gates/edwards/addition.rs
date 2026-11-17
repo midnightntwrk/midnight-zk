@@ -24,12 +24,15 @@ use num_traits::One;
 use crate::{
     CircuitField,
     ecc::curves::CircuitCurve,
-    field::foreign::{
-        FieldChip, FieldChipConfig,
-        params::FieldEmulationParams,
-        util::{
-            compute_u, compute_vj, get_advice_vec, get_identity_auxiliary_bounds, pair_wise_prod,
-            sum_bigints, sum_exprs, urem,
+    field::{
+        AssignNative,
+        foreign::{
+            FieldChip, FieldChipConfig,
+            params::FieldEmulationParams,
+            util::{
+                compute_u, compute_vj, get_advice_vec, get_identity_auxiliary_bounds,
+                pair_wise_prod, sum_bigints, sum_exprs, urem,
+            },
         },
     },
     instructions::NativeInstructions,
@@ -390,7 +393,7 @@ where
                 .collect::<Result<Vec<_>, _>>()?;
 
             let u_value = u.clone().map(|u| bigint_to_fe::<F>(&u));
-            let u_cell = region.assign_advice(
+            let u_cell = region.assign_native(
                 || "Edwards.addition u",
                 field_chip_config.u_col,
                 offset,
@@ -401,7 +404,7 @@ where
                 .zip(field_chip_config.v_cols.iter())
                 .map(|(vj, &col)| {
                     let vj_value = vj.map(|vj| bigint_to_fe::<F>(&vj));
-                    region.assign_advice(|| "Edwards.addition vj", col, offset, || vj_value)
+                    region.assign_native(|| "Edwards.addition vj", col, offset, || vj_value)
                 })
                 .collect::<Result<Vec<_>, _>>()?;
 

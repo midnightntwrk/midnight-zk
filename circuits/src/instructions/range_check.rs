@@ -44,6 +44,10 @@ where
     /// )?;
     /// # });
     /// ```
+    ///
+    /// # Panics
+    ///
+    /// If `bound` is zero.
     fn assign_lower_than_fixed(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -55,6 +59,10 @@ where
     ///
     /// This function is potentially more efficient than calling
     /// [self.lower_than] and asserting that the output is `1`.
+    ///
+    /// # Panics
+    ///
+    /// If `bound` is zero.
     fn assert_lower_than_fixed(
         &self,
         layouter: &mut impl Layouter<F>,

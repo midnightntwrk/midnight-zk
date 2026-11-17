@@ -1117,6 +1117,7 @@ dependencies = [
  "ff",
  "goldenfile",
  "group",
+ "indexmap",
  "itertools 0.15.0",
  "lazy_static",
  "midnight-curves",

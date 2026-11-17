@@ -11,6 +11,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * `MidnightVK::nb_public_inputs`, the number of public inputs expected by the key
 ### Changed
 * Point `sha3-circuit` at a revision that requires `midnight-proofs` and `midnight-curves` by crates.io version instead of from the midnight-zk main branch, so that crates patching them to a midnight-zk tag get a single copy of each
+* The circuits assign native elements lazily, in the first cell that uses them, which saves rows. This changes the verifying keys of every circuit [#620](https://github.com/midnightntwrk/midnight-zk/pull/620)
 ### Removed
 
 ## [3.0.0-rc.1]
