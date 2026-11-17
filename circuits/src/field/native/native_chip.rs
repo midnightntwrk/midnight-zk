@@ -354,6 +354,39 @@ impl<F: CircuitField> NativeChip<F> {
         Ok(())
     }
 
+    /// Assigns the given elements that are not assigned to a cell yet in rows
+    /// of their own.
+    pub fn materialize(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        xs: &[AssignedNative<F>],
+    ) -> Result<(), Error> {
+        let free: Vec<_> = xs.iter().filter(|x| !x.is_materialized()).collect();
+        if free.is_empty() {
+            return Ok(());
+        }
+        let cols = &self.config.value_cols;
+        layouter.assign_region(
+            || "materialize",
+            |mut region| {
+                (free.iter().enumerate()).try_for_each(|(i, x)| {
+                    x.copy_advice(|| "x", &mut region, cols[i % cols.len()], i / cols.len())
+                        .map(|_| ())
+                })
+            },
+        )
+    }
+
+    /// The cell of the given element, which is assigned if it is not yet.
+    fn cell_of(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &AssignedNative<F>,
+    ) -> Result<Cell, Error> {
+        self.materialize(layouter, std::slice::from_ref(x))?;
+        Ok(x.cell())
+    }
+
     /// Copies the given assigned value in the current row and the given column.
     fn copy_in_row(
         &self,
@@ -362,13 +395,7 @@ impl<F: CircuitField> NativeChip<F> {
         column: &Column<Advice>,
         offset: usize,
     ) -> Result<(), Error> {
-        let y = region.assign_advice(
-            || "arith copy_in_row",
-            *column,
-            offset,
-            || x.value().copied(),
-        )?;
-        region.constrain_equal(x.cell(), y.cell())?;
+        x.copy_advice(|| "arith copy_in_row", region, *column, offset)?;
         Ok(())
     }
 
@@ -565,17 +592,13 @@ impl<F> AssignmentInstructions<F, AssignedNative<F>> for NativeChip<F>
 where
     F: CircuitField,
 {
+    /// The element is not assigned to a cell until it is used.
     fn assign(
         &self,
-        layouter: &mut impl Layouter<F>,
+        _layouter: &mut impl Layouter<F>,
         value: Value<F>,
     ) -> Result<AssignedNative<F>, Error> {
-        layouter.assign_region(
-            || "Assign native value",
-            |mut region| {
-                region.assign_native(|| "assign element", self.config.value_cols[0], 0, || value)
-            },
-        )
+        Ok(AssignedNative::free(value))
     }
 
     fn assign_fixed(
@@ -612,29 +635,8 @@ where
     }
 
     fn as_constant(&self, x: &AssignedNative<F>) -> Option<F> {
-        self.fixed_constants.borrow().get(&x.cell()).copied()
-    }
-
-    // This is more efficient than the blanket implementation.
-    fn assign_many(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        values: &[Value<F>],
-    ) -> Result<Vec<AssignedNative<F>>, Error> {
-        let nb_arith_cols = self.config.value_cols.len();
-        layouter.assign_region(
-            || "assign_many (native)",
-            |mut region| {
-                let mut assigned = vec![];
-                for (i, chunk_values) in values.chunks(nb_arith_cols).enumerate() {
-                    for (value, col) in chunk_values.iter().zip(self.config.value_cols.iter()) {
-                        let cell = region.assign_native(|| "assign", *col, i, || *value)?;
-                        assigned.push(cell);
-                    }
-                }
-                Ok(assigned)
-            },
-        )
+        x.is_materialized()
+            .then(|| self.fixed_constants.borrow().get(&x.cell()).copied())?
     }
 }
 
@@ -656,7 +658,8 @@ where
         assigned: &AssignedNative<F>,
     ) -> Result<(), Error> {
         let mut offset = self.instance_offset.borrow_mut();
-        layouter.constrain_instance(assigned.cell(), self.config.instance_col, *offset)?;
+        let cell = self.cell_of(layouter, assigned)?;
+        layouter.constrain_instance(cell, self.config.instance_col, *offset)?;
         *offset += 1;
         Ok(())
     }
@@ -672,11 +675,8 @@ where
         assigned: &AssignedNative<F>,
     ) -> Result<(), Error> {
         let mut offset = self.committed_instance_offset.borrow_mut();
-        layouter.constrain_instance(
-            assigned.cell(),
-            self.config.committed_instance_col,
-            *offset,
-        )?;
+        let cell = self.cell_of(layouter, assigned)?;
+        layouter.constrain_instance(cell, self.config.committed_instance_col, *offset)?;
         *offset += 1;
         Ok(())
     }
@@ -753,9 +753,14 @@ where
         x: &AssignedNative<F>,
         y: &AssignedNative<F>,
     ) -> Result<(), Error> {
+        // Two elements that are not assigned to a cell cannot be constrained to
+        // be equal, so one of them is assigned first.
+        if !x.is_materialized() && !y.is_materialized() {
+            self.materialize(layouter, std::slice::from_ref(x))?;
+        }
         layouter.assign_region(
             || "Assert equal",
-            |mut region| region.constrain_equal(x.cell(), y.cell()),
+            |mut region| x.constrain_equal(&mut region, y),
         )
     }
 
@@ -914,9 +919,10 @@ where
                 assert_eq!(assigned_limbs.len(), terms.len());
 
                 // assert the newly assigned values are equal to the one given as input
-                assigned_limbs.iter().zip(terms.iter()).try_for_each(|(new_av, (_, av))| {
-                    region.constrain_equal(new_av.cell(), av.cell())
-                })?;
+                assigned_limbs
+                    .iter()
+                    .zip(terms.iter())
+                    .try_for_each(|(new_av, (_, av))| av.constrain_equal(&mut region, new_av))?;
 
                 Ok(assigned_result)
             },

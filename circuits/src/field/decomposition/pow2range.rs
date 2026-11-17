@@ -127,13 +127,7 @@ impl<F: CircuitField> Pow2RangeInstructions<F> for Pow2RangeChip<F> {
                 |mut region| {
                     // Assign the chunk of values at the current offset.
                     for (assigned, col) in chunk.iter().zip(self.config.val_cols.iter()) {
-                        let x = region.assign_advice(
-                            || "pow2range val",
-                            *col,
-                            0,
-                            || assigned.value().copied(),
-                        )?;
-                        region.constrain_equal(x.cell(), assigned.cell())?
+                        assigned.copy_advice(|| "pow2range val", &mut region, *col, 0)?;
                     }
                     // Assign zeros in the unassigned lookup columns in case |chunk| <
                     // ZkStdLibArch::nr_pow2range_cols.
