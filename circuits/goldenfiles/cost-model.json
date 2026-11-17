@@ -567,6 +567,17 @@
       "rows": "482",
       "table_rows": "417"
     },
+    "coordinates_without_subgroup_check": {
+      "advice_columns": "10",
+      "column_queries": "61",
+      "fixed_columns": "46",
+      "lookups": "3",
+      "max_deg": "5",
+      "permutations": "14",
+      "point_sets": "5",
+      "rows": "482",
+      "table_rows": "417"
+    },
     "double": {
       "advice_columns": "10",
       "column_queries": "61",
@@ -2202,6 +2213,17 @@
       "max_deg": "5",
       "permutations": "19",
       "point_sets": "4",
+      "rows": "15308",
+      "table_rows": "417"
+    },
+    "coordinates_without_subgroup_check": {
+      "advice_columns": "15",
+      "column_queries": "66",
+      "fixed_columns": "49",
+      "lookups": "3",
+      "max_deg": "5",
+      "permutations": "19",
+      "point_sets": "4",
       "rows": "142",
       "table_rows": "417"
     },
@@ -2471,6 +2493,17 @@
       "rows": "88",
       "table_rows": "449"
     },
+    "coordinates_without_subgroup_check": {
+      "advice_columns": "9",
+      "column_queries": "60",
+      "fixed_columns": "45",
+      "lookups": "3",
+      "max_deg": "5",
+      "permutations": "13",
+      "point_sets": "4",
+      "rows": "88",
+      "table_rows": "449"
+    },
     "double": {
       "advice_columns": "9",
       "column_queries": "60",
@@ -2727,6 +2760,17 @@
       "table_rows": "17"
     },
     "coordinates": {
+      "advice_columns": "9",
+      "column_queries": "60",
+      "fixed_columns": "45",
+      "lookups": "3",
+      "max_deg": "5",
+      "permutations": "13",
+      "point_sets": "4",
+      "rows": "132",
+      "table_rows": "449"
+    },
+    "coordinates_without_subgroup_check": {
       "advice_columns": "9",
       "column_queries": "60",
       "fixed_columns": "45",
@@ -3402,6 +3446,17 @@
       "table_rows": "4"
     },
     "coordinates": {
+      "advice_columns": "9",
+      "column_queries": "41",
+      "fixed_columns": "30",
+      "lookups": "1",
+      "max_deg": "5",
+      "permutations": "10",
+      "point_sets": "3",
+      "rows": "5",
+      "table_rows": "4"
+    },
+    "coordinates_without_subgroup_check": {
       "advice_columns": "9",
       "column_queries": "41",
       "fixed_columns": "30",

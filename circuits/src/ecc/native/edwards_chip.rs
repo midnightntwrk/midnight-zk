@@ -51,8 +51,8 @@ pub const NB_EDWARDS_COLS: usize = 9;
 /// A twisted Edwards curve point represented in affine (x, y) coordinates, the
 /// identity represented as (0, 1).
 /// The represented point may or may not lie in the prime order subgroup. If
-/// `in_subgroup` is true, then the point has been constrained to be in the
-/// prime order subgroup.
+/// `checked_in_subgroup` is true, then the point has been constrained to be in
+/// the prime order subgroup.
 /// Since in most use cases we want to ensure the point is in the subgroup,
 /// the implementation of `InnerValue` and `AssignmentInstructions` require
 /// subgroup membership. To use arbitrary points of the curve there are
@@ -1519,6 +1519,7 @@ mod tests {
     ecc_tests!(test_msm_by_bounded_scalars);
     ecc_tests!(test_mul_by_constant);
     ecc_tests!(test_coordinates);
+    ecc_tests!(test_coordinates_without_subgroup_check);
 
     #[test]
     fn test_htc() {
