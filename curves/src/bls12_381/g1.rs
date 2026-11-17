@@ -409,16 +409,6 @@ impl G1Affine {
         Fp(self.0.y)
     }
 
-    /// Constructs a point from its affine coordinates, without checking that
-    /// it is on the curve or in the correct subgroup.
-    ///
-    /// **This is dangerous to call unless you trust the coordinates;
-    /// otherwise, API invariants may be broken.** Please consider using
-    /// [`CurveAffine::from_xy`] instead.
-    pub fn from_xy_unchecked(x: Fp, y: Fp) -> Self {
-        Self::from_raw_unchecked(x, y, false)
-    }
-
     // Internal wrapper for `blst_p1_affine`.
     fn from_raw_unchecked(x: Fp, y: Fp, _infinity: bool) -> Self {
         // FIXME: what about infinity?

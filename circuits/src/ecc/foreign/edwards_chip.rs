@@ -1607,6 +1607,7 @@ mod tests {
     ecc_tests!(test_msm_by_bounded_scalars);
     ecc_tests!(test_mul_by_constant);
     ecc_tests!(test_coordinates);
+    ecc_tests!(test_coordinates_without_subgroup_check);
 
     #[test]
     fn test_assert_on_curve() {

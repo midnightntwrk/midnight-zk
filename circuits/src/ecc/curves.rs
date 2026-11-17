@@ -16,9 +16,9 @@
 use ff::Field;
 use group::{Curve, Group};
 #[cfg(feature = "dev-curves")]
-use midnight_curves::{CurveAffine, bn256};
+use midnight_curves::bn256;
 use midnight_curves::{
-    Fq as BlsScalar, JubjubAffine, JubjubExtended, JubjubSubgroup,
+    CurveAffine, Fq as BlsScalar, JubjubAffine, JubjubExtended, JubjubSubgroup,
     curve25519::{CURVE_A as CURVE25519_A, CURVE_D as CURVE25519_D, Curve25519, Curve25519Affine},
 };
 
@@ -33,12 +33,11 @@ pub trait CircuitCurve: Curve + Default {
     /// Scalar field with CircuitField bound (same type as Group::Scalar).
     type ScalarField: CircuitField;
 
-    /// Cryptographic group.
+    /// Cryptographic group: the prime-order subgroup of the curve.
     ///
-    /// On Edwards curves this is a dedicated type for the prime-order
-    /// subgroup. On Weierstrass curves it is the curve type itself, so if the
-    /// cofactor is non-trivial (e.g. BLS12-381) its values are not guaranteed
-    /// to be in the prime-order subgroup.
+    /// On Edwards curves this is a dedicated type. On Weierstrass curves it
+    /// is the curve type itself, whose values are always in the prime-order
+    /// subgroup, even if the cofactor is non-trivial (e.g. BLS12-381).
     type CryptographicGroup: Group<Scalar = Self::ScalarField> + Into<Self>;
 
     /// Cofactor of the curve.
@@ -55,7 +54,12 @@ pub trait CircuitCurve: Curve + Default {
 
     /// Constructs a point in the curve from its coordinates.
     /// Returns `None` if the coordinates do not satisfy the curve equation.
-    /// The point is not required to be in the prime-order subgroup.
+    ///
+    /// On Edwards curves the point is not required to be in the prime-order
+    /// subgroup. On Weierstrass curves, where `Self` only represents points
+    /// of the prime-order subgroup, `None` is also returned for points
+    /// outside of it (this is only possible if the cofactor is non-trivial,
+    /// e.g. BLS12-381).
     ///
     /// NB: Edwards identity coordinates, (0, 1), satisfy the equation, whereas
     /// Weierstrass identity coordinates, typically (0, 0), do not.
@@ -65,13 +69,13 @@ pub trait CircuitCurve: Curve + Default {
     /// [Self::CryptographicGroup] type. Returns `None` if the check fails.
     ///
     /// On Weierstrass curves, where [Self::CryptographicGroup] is the curve
-    /// type itself, this is a plain conversion that performs no check, even
-    /// if the cofactor is non-trivial (e.g. BLS12-381).
+    /// type itself and its values are always in the prime-order subgroup,
+    /// this is a plain conversion that never fails.
     fn try_into_subgroup(self) -> Option<Self::CryptographicGroup>;
 
     /// Checks that the point is part of the subgroup and returns the
-    /// [Self::CryptographicGroup] type. As in [Self::try_into_subgroup], no
-    /// check is performed on Weierstrass curves.
+    /// [Self::CryptographicGroup] type. As in [Self::try_into_subgroup], this
+    /// never fails on Weierstrass curves.
     ///
     /// # Panics
     ///
@@ -304,9 +308,9 @@ impl CircuitCurve for G1Projective {
         if y.square() != x.square() * x + a * x + b {
             return None;
         }
-        // The point is not required to be in the prime-order subgroup, so we
-        // cannot use `CurveAffine::from_xy`, which rejects points outside of it.
-        Some(G1Affine::from_xy_unchecked(x, y).into())
+        // `G1Projective` only represents points of the prime-order subgroup, so
+        // points of the curve outside of it are rejected by `CurveAffine::from_xy`.
+        <G1Affine as CurveAffine>::from_xy(x, y).into_option().map(|p| p.into())
     }
 
     fn try_into_subgroup(self) -> Option<Self::CryptographicGroup> {
@@ -430,19 +434,20 @@ mod tests {
         check::<bn256::G1>();
     }
 
-    /// Tests that `from_xy` accepts points of BLS12-381 that satisfy the curve
-    /// equation but lie outside the prime-order subgroup, preserving their
-    /// coordinates.
+    /// Tests that `from_xy` rejects points of BLS12-381 that satisfy the curve
+    /// equation but lie outside the prime-order subgroup, since `G1Projective`
+    /// only represents points of the subgroup.
     #[test]
     fn test_bls_from_xy_outside_subgroup() {
         // (0, 2) is a point of order 3.
         let (x, y) = (BlsBase::ZERO, BlsBase::from(2));
-        let p = G1Projective::from_xy(x, y).expect("(0, 2) satisfies the curve equation");
-        assert!(!bool::from(p.to_affine().is_torsion_free()));
-        assert_eq!(p.coordinates(), Some((x, y)));
-        assert!(bool::from((p.double() + p).is_identity()));
+        assert_eq!(
+            y.square(),
+            x.square() * x + <G1Projective as WeierstrassCurve>::B
+        );
+        assert!(G1Projective::from_xy(x, y).is_none());
 
-        // A point in the subgroup is still accepted.
+        // A point in the subgroup is accepted.
         let (x, y) = G1Projective::generator().coordinates().unwrap();
         assert_eq!(G1Projective::from_xy(x, y), Some(G1Projective::generator()));
     }

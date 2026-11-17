@@ -7,7 +7,6 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 
 ## [Unreleased]
 ### Added
-* `G1Affine::from_xy_unchecked`, which builds a point from its affine coordinates without curve or subgroup checks [#654](https://github.com/midnightntwrk/midnight-zk/pull/654)
 ### Changed
 ### Removed
 

@@ -17,11 +17,10 @@
 //! The curve (or the relevant subgroup) must have a large prime order.
 //!
 //! If the curve has a non-trivial cofactor (e.g. BLS12-381), assigned points
-//! are only guaranteed to be in the prime-order subgroup when they are
-//! created with [`AssignmentInstructions::assign`]. Points created with
-//! [`EccInstructions::point_from_coordinates`] or
-//! [`EccInstructions::assign_without_subgroup_check`] are only constrained to
-//! satisfy the curve equation, so they may lie outside the subgroup.
+//! are constrained to be in the prime-order subgroup, unless they are created
+//! with [`EccInstructions::assign_without_subgroup_check`] or
+//! [`EccInstructions::point_from_coordinates_without_subgroup_check`], which
+//! only constrain them to satisfy the curve equation.
 
 use std::{
     cell::RefCell,
@@ -173,8 +172,10 @@ where
 }
 
 /// Type for foreign EC points.
-/// The point satisfies the curve equation, but it is not necessarily in the
-/// prime-order subgroup if the curve has a non-trivial cofactor.
+/// The off-circuit value of the point is always in the prime-order subgroup.
+/// If the curve has a non-trivial cofactor, this is only enforced with
+/// constraints if the point was not created with one of the
+/// `*_without_subgroup_check` functions.
 /// The identity is represented with field `is_id`, whose value is `1` iff the
 /// point is the identity. If `is_id` is set, the values of `x` and `y` are
 /// irrelevant and can be anything.
@@ -347,7 +348,7 @@ where
         if C::COFACTOR > 1 {
             let cofactor = C::ScalarField::from_u128(C::COFACTOR);
             // Exhibit a cofactor-root Q and assert h * Q = p in-circuit.
-            // This guarantees that p ∈ C::CryptographicGroup = h · E(Fp).
+            // This guarantees that p is in the prime-order subgroup.
             let cofactor_root = self.assign_without_subgroup_check(
                 layouter,
                 value.map(|point| point * cofactor.invert().unwrap()),
@@ -902,24 +903,50 @@ where
     }
 
     /// Creates an assigned point from a pair of coordinates, asserting that
-    /// they satisfy the curve equation. The point cannot be the identity.
-    ///
-    /// The point is not checked to be in the prime-order subgroup, which
-    /// matters on curves with a non-trivial cofactor (e.g. BLS12-381).
+    /// they satisfy the curve equation and that the point is in the
+    /// prime-order subgroup. The point cannot be the identity.
     fn point_from_coordinates(
         &self,
         layouter: &mut impl Layouter<F>,
         x: &AssignedField<F, C::Base, B>,
         y: &AssignedField<F, C::Base, B>,
     ) -> Result<Self::Point, Error> {
+        let p = self.point_from_coordinates_without_subgroup_check(layouter, x, y)?;
+        if C::COFACTOR > 1 {
+            let cofactor = C::ScalarField::from_u128(C::COFACTOR);
+            // Exhibit a cofactor-root Q and assert h * Q = p in-circuit.
+            // This guarantees that p is in the prime-order subgroup.
+            let cofactor_root = self.assign_without_subgroup_check(
+                layouter,
+                p.value().map(|point| point * cofactor.invert().unwrap()),
+            )?;
+            let q = self.mul_by_constant(layouter, cofactor, &cofactor_root)?;
+            self.assert_equal(layouter, &p, &q)?;
+        }
+        Ok(p)
+    }
+
+    /// Creates an assigned point from a pair of coordinates, asserting that
+    /// they satisfy the curve equation. The point cannot be the identity.
+    ///
+    /// The point is not constrained to be in the prime-order subgroup, which
+    /// matters on curves with a non-trivial cofactor (e.g. BLS12-381). On
+    /// such curves, a synthesis error is returned if the given coordinates
+    /// are known and they correspond to a point outside the subgroup.
+    fn point_from_coordinates_without_subgroup_check(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &AssignedField<F, C::Base, B>,
+        y: &AssignedField<F, C::Base, B>,
+    ) -> Result<Self::Point, Error> {
         let is_id = self.native_gadget.assign_fixed(layouter, false)?;
-        // If from_xy fails, we give the identity as a default value, but note that
-        // the constraints below will make the circuit unsatisfiable.
-        // This is intentional.
-        let point = x
-            .value()
-            .zip(y.value())
-            .map(|(x, y)| C::from_xy(x, y).unwrap_or(C::identity()).into_subgroup());
+        // The off-circuit value of a point is always in the prime-order subgroup,
+        // even if this is not enforced with constraints.
+        let point = x.value().zip(y.value()).map_with_result(|(x, y)| {
+            C::from_xy(x, y)
+                .map(|p| p.into_subgroup())
+                .ok_or(Error::Synthesis("invalid coordinates".into()))
+        })?;
         let p = AssignedForeignPoint::<F, C, B> {
             point,
             is_id,
@@ -2049,8 +2076,13 @@ where
 
 #[cfg(test)]
 mod tests {
-    use group::{Curve, Group};
+    use group::Group;
     use midnight_curves::{Fq as BlsScalar, G1Projective as BlsG1, k256::K256, p256::P256};
+    use midnight_proofs::{
+        circuit::SimpleFloorPlanner,
+        dev::MockProver,
+        plonk::{Circuit, ConstraintSystem},
+    };
 
     use super::*;
     use crate::{
@@ -2060,6 +2092,7 @@ mod tests {
             foreign::params::MultiEmulationParams,
         },
         instructions::{assertions, control_flow, ecc, equality, public_input, zero},
+        testing_utils::FromScratch,
     };
 
     type Native<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
@@ -2146,13 +2179,80 @@ mod tests {
     ecc_tests!(test_msm_by_bounded_scalars);
     ecc_tests!(test_mul_by_constant);
     ecc_tests!(test_coordinates);
+    ecc_tests!(test_coordinates_without_subgroup_check);
 
-    /// Points of BLS12-381 outside the prime-order subgroup are accepted by
-    /// `point_from_coordinates`, which does not enforce subgroup membership.
+    type BlsOverBlsChip = ForeignWeierstrassEccChip<
+        BlsScalar,
+        BlsG1,
+        MultiEmulationParams,
+        Native<BlsScalar>,
+        Native<BlsScalar>,
+    >;
+
+    /// A circuit that creates a point of BLS12-381 from the given coordinates.
+    #[derive(Clone, Debug)]
+    struct FromCoordinatesCircuit {
+        x: <BlsG1 as CircuitCurve>::Base,
+        y: <BlsG1 as CircuitCurve>::Base,
+        subgroup_check: bool,
+    }
+
+    impl Circuit<BlsScalar> for FromCoordinatesCircuit {
+        type Config = <BlsOverBlsChip as FromScratch<BlsScalar>>::Config;
+        type FloorPlanner = SimpleFloorPlanner;
+        type Params = ();
+
+        fn without_witnesses(&self) -> Self {
+            unreachable!()
+        }
+
+        fn configure(meta: &mut ConstraintSystem<BlsScalar>) -> Self::Config {
+            let committed_instance_column = meta.instance_column();
+            let instance_column = meta.instance_column();
+            BlsOverBlsChip::configure_from_scratch(
+                meta,
+                &mut vec![],
+                &mut vec![],
+                &[committed_instance_column, instance_column],
+            )
+        }
+
+        fn synthesize(
+            &self,
+            config: Self::Config,
+            mut layouter: impl Layouter<BlsScalar>,
+        ) -> Result<(), Error> {
+            let chip = BlsOverBlsChip::new_from_scratch(&config);
+            let x = chip.base_field_chip().assign(&mut layouter, Value::known(self.x))?;
+            let y = chip.base_field_chip().assign(&mut layouter, Value::known(self.y))?;
+            if self.subgroup_check {
+                let _ = chip.point_from_coordinates(&mut layouter, &x, &y)?;
+            } else {
+                let _ =
+                    chip.point_from_coordinates_without_subgroup_check(&mut layouter, &x, &y)?;
+            }
+            chip.load_from_scratch(&mut layouter)
+        }
+    }
+
+    /// The off-circuit value of a point is always in the prime-order subgroup,
+    /// so coordinates of points of BLS12-381 outside of it are rejected, even
+    /// when the subgroup check is not enforced with constraints.
     #[test]
     fn test_coordinates_outside_subgroup() {
         type Fp = <BlsG1 as CircuitCurve>::Base;
         let b = <BlsG1 as WeierstrassCurve>::B;
+        let run = |(x, y): (Fp, Fp), subgroup_check: bool| {
+            let circuit = FromCoordinatesCircuit {
+                x,
+                y,
+                subgroup_check,
+            };
+            MockProver::run(&circuit, vec![vec![], vec![]]).and_then(|prover| {
+                prover.verify().map_err(|_| Error::Synthesis("unsatisfied circuit".into()))
+            })
+        };
+
         // (0, 2) is a point of order 3.
         let low_order = (Fp::ZERO, Fp::from(2));
         // A generic point of the curve, the one with the smallest x > 0.
@@ -2160,21 +2260,16 @@ mod tests {
             .map(Fp::from)
             .find_map(|x| (x.square() * x + b).sqrt().into_option().map(|y| (x, y)))
             .unwrap();
-        let points = [low_order, generic];
-        points.into_iter().for_each(|(x, y)| {
-            let point = BlsG1::from_xy(x, y).unwrap();
-            assert!(!bool::from(point.to_affine().is_torsion_free()));
-            ecc::tests::test_point_from_coordinates_of::<
-                BlsScalar,
-                BlsG1,
-                ForeignWeierstrassEccChip<
-                    BlsScalar,
-                    BlsG1,
-                    MultiEmulationParams,
-                    Native<BlsScalar>,
-                    Native<BlsScalar>,
-                >,
-            >(point, "foreign_ecc_bls_over_bls");
-        });
+        let in_subgroup = BlsG1::generator().coordinates().unwrap();
+
+        for subgroup_check in [true, false] {
+            assert!(run(in_subgroup, subgroup_check).is_ok());
+            for point in [low_order, generic] {
+                // The point is in the curve, but not in the subgroup.
+                assert_eq!(point.1.square(), point.0.square() * point.0 + b);
+                assert!(BlsG1::from_xy(point.0, point.1).is_none());
+                assert!(run(point, subgroup_check).is_err());
+            }
+        }
     }
 }
