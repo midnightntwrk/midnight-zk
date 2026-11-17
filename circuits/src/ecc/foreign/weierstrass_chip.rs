@@ -21,7 +21,7 @@
 //! with [`EccInstructions::assign_without_subgroup_check`] or
 //! [`EccInstructions::point_from_coordinates_without_subgroup_check`], which
 //! only constrain them to satisfy the curve equation.
-//! 
+//!
 //! We require that the emulated elliptic curve do not have low-order points.
 //! In particular, the curve (or the relevant subgroup) must have a large prime
 //! order.

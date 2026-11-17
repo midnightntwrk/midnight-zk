@@ -16,6 +16,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * `CircuitCurve::from_xy` for Jubjub checks the curve equation on both coordinates. [#654](https://github.com/midnightntwrk/midnight-zk/pull/654)
 ### Changed
 * Foreign Weierstrass `point_from_coordinates` enforces membership in the prime-order subgroup on curves with a non-trivial cofactor (BLS12-381), as documented in `EccInstructions` [#654](https://github.com/midnightntwrk/midnight-zk/pull/654)
+* Document that `EccInstructions` (and the foreign ECC chips) are only well-defined on the prime-order subgroup component of a point and may misbehave on its torsion component, e.g. the GLV-based MSM [#659](https://github.com/midnightntwrk/midnight-zk/pull/659)
 * `AssignmentInstructions::as_constant`, the constant an assigned element is known to encode at circuit-construction time, if any [#655](https://github.com/midnightntwrk/midnight-zk/pull/655)
 ### Changed
 * Native and emulated field arithmetic and the foreign MSM use `as_constant` to simplify operations with constant operands, which changes the VKs of circuits that use them [#655](https://github.com/midnightntwrk/midnight-zk/pull/655)
