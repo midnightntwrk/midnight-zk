@@ -16,7 +16,13 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * `CircuitCurve::from_xy` for Jubjub checks the curve equation on both coordinates. [#654](https://github.com/midnightntwrk/midnight-zk/pull/654)
 ### Changed
 * Foreign Weierstrass `point_from_coordinates` enforces membership in the prime-order subgroup on curves with a non-trivial cofactor (BLS12-381), as documented in `EccInstructions` [#654](https://github.com/midnightntwrk/midnight-zk/pull/654)
+* `AssignmentInstructions::as_constant`, the constant an assigned element is known to encode at circuit-construction time, if any [#655](https://github.com/midnightntwrk/midnight-zk/pull/655)
+### Changed
+* Native and emulated field arithmetic and the foreign MSM use `as_constant` to simplify operations with constant operands, which changes the VKs of circuits that use them [#655](https://github.com/midnightntwrk/midnight-zk/pull/655)
+* `NativeChip::assign` and `assign_many` create elements that are not assigned to a cell yet: an element is assigned to the first cell it is copied to (or to the cell of an element it is constrained to be equal to), saving the rows of the assignment. Unused elements are never assigned. This changes the verifying keys of all circuits [#620](https://github.com/midnightntwrk/midnight-zk/pull/620)
+* `AssignedNative<F>` is a struct instead of an alias of `AssignedCell<F, F>`; convert from `AssignedCell<F, F>` with `AssignedNative::from_cell` and to it with `From`. Two `AssignedNative`s are equal iff they are assigned to the same cell, or neither is assigned to a cell and one is a clone of the other [#620](https://github.com/midnightntwrk/midnight-zk/pull/620)
 ### Removed
+* BREAKING: `ForeignEdwardsEccChip::as_known_constant`. Use `AssignmentInstructions::as_constant` [#655](https://github.com/midnightntwrk/midnight-zk/pull/655)
 
 ## [8.0.0-rc.1]
 ### Added
@@ -32,6 +38,8 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Add tests compile time generics checks for `VectorGadget` and tests for `resize` [#464](https://github.com/midnightntwrk/midnight-zk/pull/465)
 
 ### Fixed
+* The native Edwards `msm` panics when scalars and bases have different lengths, as documented, instead of dropping terms [#622](https://github.com/midnightntwrk/midnight-zk/issues/622)
+* The native Edwards `msm` returns the identity on empty input instead of panicking [#622](https://github.com/midnightntwrk/midnight-zk/issues/622)
 * The verifier gadget accepts an empty instance column, which evaluates to zero, instead of panicking [#569](https://github.com/midnightntwrk/midnight-zk/pull/569)
 * The verifier gadget no longer misreads the fixed evaluations of a circuit with a fixed column queried at more than one rotation [#547](https://github.com/midnightntwrk/midnight-zk/pull/547)
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)

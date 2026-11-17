@@ -110,6 +110,7 @@ where
             .collect()
     }
 
+    #[allow(clippy::mutable_key_type)]
     fn multi_prepare<T>(
         layouter: &mut impl Layouter<F>,
         commitment_chip: &Self::CommitmentChip,

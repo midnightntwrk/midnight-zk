@@ -36,7 +36,7 @@ use crate::{
     CircuitField,
     biguint::BigUintGadget,
     ecc::curves::{CircuitCurve, EdwardsCurve},
-    field::{NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip},
+    field::{AssignNative, NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip},
     instructions::*,
     types::{
         AssignedBigUint, AssignedBit, AssignedByte, AssignedNative, InnerConstants, InnerValue,
@@ -520,8 +520,8 @@ impl<C: EdwardsCurve> EccChip<C> {
         let in_subgroup = q.checked_in_subgroup && s.checked_in_subgroup;
 
         let (xr_val, yr_val) = Self::p_plus_b_q(q_val, s_val, b.value());
-        let xr = region.assign_advice(|| "xr", config.advice_cols[5], offset, || xr_val)?;
-        let yr = region.assign_advice(|| "yr", config.advice_cols[6], offset, || yr_val)?;
+        let xr = region.assign_native(|| "xr", config.advice_cols[5], offset, || xr_val)?;
+        let yr = region.assign_native(|| "yr", config.advice_cols[6], offset, || yr_val)?;
 
         let (xq, yq) = q_val.map(|q| q.coordinates().unwrap()).unzip();
         let (xs, ys) = s_val.map(|s| s.coordinates().unwrap()).unzip();
@@ -574,8 +574,8 @@ impl<C: EdwardsCurve> EccChip<C> {
         let xr_val = r_val.map(|r: C| r.coordinates().unwrap().0);
         let yr_val = r_val.map(|r: C| r.coordinates().unwrap().1);
 
-        let xr = region.assign_advice(|| "xr", config.advice_cols[0], offset + 1, || xr_val)?;
-        let yr = region.assign_advice(|| "yr", config.advice_cols[1], offset + 1, || yr_val)?;
+        let xr = region.assign_native(|| "xr", config.advice_cols[0], offset + 1, || xr_val)?;
+        let yr = region.assign_native(|| "yr", config.advice_cols[1], offset + 1, || yr_val)?;
 
         region.assign_advice(
             || "xs_xs",
@@ -756,13 +756,17 @@ impl<C: EdwardsCurve> EccInstructions<C::Base, C> for EccChip<C> {
         scalars: &[Self::Scalar],
         bases: &[Self::Point],
     ) -> Result<Self::Point, Error> {
+        assert_eq!(scalars.len(), bases.len());
         let scaled_points = scalars
             .iter()
             .zip(bases.iter())
             .map(|(scalar, point)| self.mul(layouter, scalar, point))
             .collect::<Result<Vec<Self::Point>, Error>>()?;
 
-        scaled_points[1..].iter().try_fold(scaled_points[0].clone(), |acc, e| {
+        let Some((first, rest)) = scaled_points.split_first() else {
+            return self.assign_fixed(layouter, C::CryptographicGroup::identity());
+        };
+        rest.iter().try_fold(first.clone(), |acc, e| {
             EccInstructions::add(self, layouter, &acc, e)
         })
     }
@@ -816,8 +820,8 @@ impl<C: EdwardsCurve> EccInstructions<C::Base, C> for EccChip<C> {
             || "assign point without subgroup check",
             |mut region: Region<'_, C::Base>| {
                 config.q_mem.enable(&mut region, 0)?;
-                let x = region.assign_advice(|| "x", config.advice_cols[0], 0, || x_val)?;
-                let y = region.assign_advice(|| "y", config.advice_cols[1], 0, || y_val)?;
+                let x = region.assign_native(|| "x", config.advice_cols[0], 0, || x_val)?;
+                let y = region.assign_native(|| "y", config.advice_cols[1], 0, || y_val)?;
                 Ok(AssignedNativePoint {
                     x,
                     y,
@@ -879,6 +883,12 @@ impl<C: EdwardsCurve> AssignmentInstructions<C::Base, AssignedNativePoint<C>> fo
             checked_in_subgroup: true,
         })
     }
+
+    fn as_constant(&self, p: &AssignedNativePoint<C>) -> Option<C::CryptographicGroup> {
+        let x = self.native_gadget.as_constant(&p.x)?;
+        let y = self.native_gadget.as_constant(&p.y)?;
+        C::from_xy(x, y)?.try_into_subgroup()
+    }
 }
 
 impl<C: EdwardsCurve> AssignmentInstructions<C::Base, AssignedScalarOfNativeCurve<C>>
@@ -907,6 +917,13 @@ impl<C: EdwardsCurve> AssignmentInstructions<C::Base, AssignedScalarOfNativeCurv
             bits: self.native_gadget.assign_many_fixed(layouter, &constant.to_bits_le(None))?,
             enforced_canonical: true,
         })
+    }
+
+    fn as_constant(&self, s: &AssignedScalarOfNativeCurve<C>) -> Option<C::ScalarField> {
+        let bits = (s.bits.iter())
+            .map(|b| self.native_gadget.as_constant(b))
+            .collect::<Option<Vec<bool>>>()?;
+        C::ScalarField::try_from_bits_le(&bits)
     }
 }
 
@@ -1407,7 +1424,7 @@ mod tests {
     use crate::{
         ecc::hash_to_curve::HashToCurveGadget,
         hash::poseidon::PoseidonChip,
-        instructions::{ecc, hash_to_curve::tests::test_hash_to_curve},
+        instructions::{assignments, ecc, hash_to_curve::tests::test_hash_to_curve},
     };
 
     macro_rules! test_generic {
@@ -1428,6 +1445,8 @@ mod tests {
     test!(assertions, test_assertions);
 
     test!(public_input, test_public_inputs);
+
+    test!(assignments, test_as_constant);
 
     test!(equality, test_is_equal);
 
@@ -1454,6 +1473,8 @@ mod tests {
     test_scalar!(assertions, test_assertions, scalar_assertions);
 
     test_scalar!(public_input, test_public_inputs, scalar_public_inputs);
+
+    test_scalar!(assignments, test_as_constant, scalar_as_constant);
 
     test_scalar!(equality, test_is_equal, scalar_is_equal);
 

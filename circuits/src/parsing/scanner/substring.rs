@@ -346,7 +346,7 @@ where
         layouter: &mut impl Layouter<F>,
     ) -> Result<SubstringCheckLayout<F>, Error> {
         let ng = &self.native_gadget;
-        let mut calls: Vec<_> = self.sequence_cache.borrow_mut().drain().collect();
+        let mut calls: Vec<_> = self.sequence_cache.borrow_mut().drain(..).collect();
         calls.sort_by(|a, b| b.0.len().cmp(&a.0.len()).then(b.1.1.cmp(&a.1.1)));
 
         // Padding for tables: a value that cannot be a valid byte.

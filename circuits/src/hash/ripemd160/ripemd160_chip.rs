@@ -20,7 +20,10 @@ use num_integer::Integer;
 
 use crate::{
     CircuitField,
-    field::{AssignedNative, NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip},
+    field::{
+        AssignNative, AssignedNative, NativeChip, NativeGadget,
+        decomposition::chip::P2RDecompositionChip,
+    },
     hash::ripemd160::{
         types::{AssignedSpreaded, AssignedWord, State},
         utils::{
@@ -607,7 +610,7 @@ impl<F: CircuitField> RipeMD160Chip<F> {
                 self.config().q_spr_sum_evn.enable(&mut region, 1)?;
 
                 let sprdd_word = region
-                    .assign_advice(|| "sprdd_word", adv_cols[5], 0, || sprdd_val.map(u64_to_fe))
+                    .assign_native(|| "sprdd_word", adv_cols[5], 0, || sprdd_val.map(u64_to_fe))
                     .map(AssignedSpreaded)?;
                 zero.copy_advice(|| "sprdd_ZERO", &mut region, adv_cols[6], 0)?;
                 zero.copy_advice(|| "sprdd_ZERO", &mut region, adv_cols[7], 0)?;
@@ -848,7 +851,7 @@ impl<F: CircuitField> RipeMD160Chip<F> {
                 odd_nXZ.0.copy_advice(|| "Odd_nXZ", &mut region, adv_cols[5], 1)?;
 
                 let ret_val = odd_XY.0.value().copied() + odd_nXZ.0.value().copied();
-                region.assign_advice(|| "Ret", adv_cols[6], 1, || ret_val).map(AssignedWord)
+                region.assign_native(|| "Ret", adv_cols[6], 1, || ret_val).map(AssignedWord)
             },
         )
     }
@@ -930,7 +933,7 @@ impl<F: CircuitField> RipeMD160Chip<F> {
                     .copy_advice(|| "Word", &mut region, self.config().advice_cols[4], 0)
                     .map(AssignedWord)?;
                 let rotated_word = region
-                    .assign_advice(
+                    .assign_native(
                         || "Rotated word",
                         self.config().advice_cols[4],
                         1,
@@ -1015,7 +1018,7 @@ impl<F: CircuitField> RipeMD160Chip<F> {
                 self.assign_plain_and_spreaded::<11>(&mut region, R_11b, 1, 0)?;
                 self.assign_plain_and_spreaded::<10>(&mut region, R_10, 2, 0)?;
                 region
-                    .assign_advice(|| "res", adv_cols[4], 0, || res_val.map(u32_to_fe))
+                    .assign_native(|| "res", adv_cols[4], 0, || res_val.map(u32_to_fe))
                     .map(AssignedWord)
             },
         )
@@ -1088,10 +1091,10 @@ impl<F: CircuitField> RipeMD160Chip<F> {
         let out_col = self.config().advice_cols[4];
         match even_or_odd {
             Parity::Evn => {
-                region.assign_advice(|| "Evn", out_col, offset, || evn_val.map(u32_to_fe))
+                region.assign_native(|| "Evn", out_col, offset, || evn_val.map(u32_to_fe))
             }
             Parity::Odd => {
-                region.assign_advice(|| "Odd", out_col, offset, || odd_val.map(u32_to_fe))
+                region.assign_native(|| "Odd", out_col, offset, || odd_val.map(u32_to_fe))
             }
         }
         .map(AssignedWord)

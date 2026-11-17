@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 ### Added
 * `fewer-point-sets` feature [#281](https://github.com/midnightntwrk/midnight-zk/pull/281)
 ### Changed
+* `IvcVerifier::verify` rejects instances whose public inputs do not have the length expected by the verifying key
 * Adapt to the removal of `SelfEmulation` from `midnight-circuits`: the circuits take the transcript and the accumulator chips from `ZkStdLib` [#638](https://github.com/midnightntwrk/midnight-zk/pull/638)
 * BREAKING: The IVC and the multi-circuit aggregator prove and verify with `FflonkKZG<3>` (exposed as `ivc::PCS`), the commitment scheme they verify in-circuit. They hold `MidnightVK<FflonkKZG<3>>` and `MidnightPK<_, FflonkKZG<3>>`, and need an SRS of `2^(k+3)` points
 * The multi-circuit aggregator witnesses the inner verifying keys privately, with `VerifierGadget::assign_unbound_vk` and binds each of them to its hash with `bind_vk_to_hash`: the aggregator state no longer exposes the last inner verifying key [#572](https://github.com/midnightntwrk/midnight-zk/pull/572)
@@ -27,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 * Adapt to configurable `NB_ARITH_COLS` [#287](https://github.com/midnightntwrk/midnight-zk/pull/287)
 
 ### Fixed
+* `Ivc::circuit_is_genesis` panics if the state's public input and the genesis one have different lengths, instead of comparing only a prefix [#622](https://github.com/midnightntwrk/midnight-zk/issues/622)
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 * Run 'prepare' function in-circuit for the multi-circuit aggregator [416](https://github.com/midnightntwrk/midnight-zk/pull/416)
 * The single-circuit aggregation example passes the finalized constraint system of the inner verifying key to `assign_fixed_vk`, instead of a constraint system that still has selectors, which made the in-circuit verifier panic [#546](https://github.com/midnightntwrk/midnight-zk/pull/546)
