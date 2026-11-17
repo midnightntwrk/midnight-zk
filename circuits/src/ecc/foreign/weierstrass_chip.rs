@@ -80,6 +80,11 @@ where
     q_multi_select: Selector,
     idx_col_multi_select: Column<Advice>,
     tag_col_multi_select: Column<Fixed>,
+    // A table tag counter to make sure all dynamic lookup tables are independent.
+    // This counter is always increased after loading a new table.
+    // It lives in the config (not the chip) so that all chips built from this
+    // config share it, since they share the same lookup argument.
+    tag_cnt: Rc<RefCell<u64>>,
 }
 
 /// Number of fixed columns required by the custom gates of this chip.
@@ -148,11 +153,6 @@ where
     native_gadget: N,
     base_field_chip: FieldChip<F, C::Base, B, N>,
     scalar_field_chip: S,
-    // A table tag counter to make sure all dynamic lookup tables are independent.
-    // This counter is always increased after loading a new table.
-    // It will never overflow unless you include more than 2^64 tables, will you?
-    // Even in that case, we would get a compile-time error.
-    tag_cnt: Rc<RefCell<u64>>,
     // Shared random point `r` for the windowed MSM double-and-add algorithm.
     // The value of `r` can be chosen by the prover (who will choose it uniformly
     // at random for statistical completeness) and this is not a problem for
@@ -983,7 +983,6 @@ where
             native_gadget: native_gadget.clone(),
             base_field_chip,
             scalar_field_chip: scalar_field_chip.clone(),
-            tag_cnt: Rc::new(RefCell::new(1)),
             msm_randomness: Rc::new(RefCell::new(HashMap::new())),
             random_point,
         }
@@ -1054,6 +1053,7 @@ where
             q_multi_select,
             idx_col_multi_select,
             tag_col_multi_select,
+            tag_cnt: Rc::new(RefCell::new(1)),
         }
     }
 
@@ -1441,8 +1441,8 @@ where
         // TODO: Having an independent function for loading the table of points would
         // allow us to share the table if this function is invoked several times on
         // a common table.
-        let tag_cnt = *self.tag_cnt.borrow();
-        self.tag_cnt.replace(tag_cnt + 1);
+        let tag_cnt = *self.config.tag_cnt.borrow();
+        self.config.tag_cnt.replace(tag_cnt + 1);
         self.load_multi_select_table(layouter, table, F::from(tag_cnt))?;
 
         // Find the index for each of the `k` selected points.
@@ -1758,8 +1758,8 @@ where
         let l_times_r = self.mul_by_u128(layouter, bases.len() as u128, &r)?;
 
         // Get the global tag counter and increase it with |bases|
-        let tag_cnt = *self.tag_cnt.clone().borrow();
-        self.tag_cnt.replace(tag_cnt + bases.len() as u64);
+        let tag_cnt = *self.config.tag_cnt.borrow();
+        self.config.tag_cnt.replace(tag_cnt + bases.len() as u64);
 
         // Compute table, [-α, p-α, 2p-α, ..., (2^WS-1)p-α] for every p in bases.
         let mut tables = vec![];
@@ -2137,4 +2137,24 @@ mod tests {
     ecc_tests!(test_msm_by_bounded_scalars);
     ecc_tests!(test_mul_by_constant);
     ecc_tests!(test_coordinates);
+
+    // Chips built with separate `new()` calls on the same config share one lookup
+    // argument, so they must share the dynamic-lookup tag counter.
+    #[test]
+    fn test_tag_counter_shared_across_chips() {
+        type Chip = ForeignWeierstrassEccChip<
+            BlsScalar,
+            K256,
+            MultiEmulationParams,
+            EmulatedField<BlsScalar, K256>,
+            Native<BlsScalar>,
+        >;
+        let mut meta = ConstraintSystem::<BlsScalar>::default();
+        let instance_columns = [meta.instance_column(), meta.instance_column()];
+        let config =
+            Chip::configure_from_scratch(&mut meta, &mut vec![], &mut vec![], &instance_columns);
+        let chip1 = Chip::new_from_scratch(&config);
+        let chip2 = Chip::new_from_scratch(&config);
+        assert!(Rc::ptr_eq(&chip1.config.tag_cnt, &chip2.config.tag_cnt));
+    }
 }
