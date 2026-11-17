@@ -795,10 +795,12 @@ impl<C: EdwardsCurve> EccInstructions<C::Base, C> for EccChip<C> {
         x: &Self::Coordinate,
         y: &Self::Coordinate,
     ) -> Result<Self::Point, Error> {
+        // Coordinates off the curve or outside the subgroup default to the
+        // identity (0, 1).
         let point_val = x.value().zip(y.value()).map(|(x, y)| {
             C::from_xy(*x, *y)
-                .expect("Affine coordinates must satisfy Jubjub equation.")
-                .into_subgroup()
+                .and_then(|p| p.try_into_subgroup())
+                .unwrap_or(C::CryptographicGroup::identity())
         });
         let point: Self::Point = self.assign(layouter, point_val)?;
         self.native_gadget.assert_equal(layouter, x, &point.x)?;

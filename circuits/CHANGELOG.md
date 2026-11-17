@@ -38,6 +38,13 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Add tests compile time generics checks for `VectorGadget` and tests for `resize` [#464](https://github.com/midnightntwrk/midnight-zk/pull/465)
 
 ### Fixed
+* The foreign `assigned_to_le_chunks` enforces `nb_chunks` when `nb_bits_per_chunk` does not divide the limb size [#625](https://github.com/midnightntwrk/midnight-zk/issues/625)
+* The foreign `assigned_to_le_bits` with `enforce_canonical = false` normalizes its input, so it is satisfiable on non-canonical limbs [#625](https://github.com/midnightntwrk/midnight-zk/issues/625)
+* The foreign `msm` caps the bound of merged scalars at the scalar field size, so `p256().msm` no longer panics when a base appears twice [#625](https://github.com/midnightntwrk/midnight-zk/issues/625)
+* The foreign Weierstrass `mul_by_constant` accepts the identity base with a scalar wider than 128 bits [#625](https://github.com/midnightntwrk/midnight-zk/issues/625)
+* `assign_lower_than_fixed` and `assert_lower_than_fixed` panic on a zero bound, instead of returning 0 or underflowing [#625](https://github.com/midnightntwrk/midnight-zk/issues/625)
+* The native Edwards `point_from_coordinates` makes the circuit unsatisfiable on a point off the curve or outside the subgroup, instead of panicking [#625](https://github.com/midnightntwrk/midnight-zk/issues/625)
+* The Poseidon partial rounds propagate the errors of assigning their auxiliary advice [#625](https://github.com/midnightntwrk/midnight-zk/issues/625)
 * The native Edwards `msm` panics when scalars and bases have different lengths, as documented, instead of dropping terms [#622](https://github.com/midnightntwrk/midnight-zk/issues/622)
 * The native Edwards `msm` returns the identity on empty input instead of panicking [#622](https://github.com/midnightntwrk/midnight-zk/issues/622)
 * The verifier gadget accepts an empty instance column, which evaluates to zero, instead of panicking [#569](https://github.com/midnightntwrk/midnight-zk/pull/569)

@@ -2323,7 +2323,7 @@
       "max_deg": "5",
       "permutations": "19",
       "point_sets": "4",
-      "rows": "30776",
+      "rows": "30806",
       "table_rows": "417"
     },
     "neg": {
@@ -2600,7 +2600,7 @@
       "max_deg": "5",
       "permutations": "13",
       "point_sets": "4",
-      "rows": "19174",
+      "rows": "19192",
       "table_rows": "481"
     },
     "neg": {
@@ -2877,7 +2877,7 @@
       "max_deg": "5",
       "permutations": "13",
       "point_sets": "4",
-      "rows": "27450",
+      "rows": "27468",
       "table_rows": "481"
     },
     "neg": {

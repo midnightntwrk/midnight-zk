@@ -262,9 +262,7 @@ where
         value: Value<F>,
         bound: &BigUint,
     ) -> Result<AssignedNative<F>, Error> {
-        if bound.is_zero() {
-            return self.assign_fixed(layouter, F::ZERO);
-        }
+        assert!(!bound.is_zero(), "the bound must be positive");
 
         // compute largest k such that 2^k <= bound
         let k = (bound.bits() - 1) as usize;
@@ -282,6 +280,8 @@ where
         x: &AssignedNative<F>,
         bound: &BigUint,
     ) -> Result<(), Error> {
+        assert!(!bound.is_zero(), "the bound must be positive");
+
         if self.bound(x).is_some_and(|current_bound| current_bound <= *bound) {
             return Ok(());
         }
