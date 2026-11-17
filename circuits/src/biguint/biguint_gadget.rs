@@ -506,12 +506,22 @@ where
     /// `(q, r)` satisfying:
     ///  - `r in [0, y)`
     ///  - `x = q * y + r`.
+    ///
+    /// # Unsatisfiable Circuit
+    ///
+    /// If `y = 0`. In that case, synthesis fails with an error if the value of
+    /// `y` is known.
     pub fn div_rem(
         &self,
         layouter: &mut impl Layouter<F>,
         x: &AssignedBigUint<F>,
         y: &AssignedBigUint<F>,
     ) -> Result<(AssignedBigUint<F>, AssignedBigUint<F>), Error> {
+        // Division by zero gives a synthesis error.
+        y.value()
+            .error_if_known_and(|y| *y == BigUint::ZERO)
+            .map_err(|_| Error::Synthesis("div_rem: division by zero".into()))?;
+
         let (q_value, r_value) = x.value().zip(y.value()).map(|(x, y)| x.div_rem(&y)).unzip();
 
         let q = self.assign_bounded(layouter, q_value, x.nb_bits())?;
@@ -527,6 +537,13 @@ where
     }
 
     /// Modular exponentiation (by a constant). Returns `x^n % m`.
+    ///
+    /// The result is reduced for every exponent `n`, it is in the
+    /// range `[0, m)`.
+    ///
+    /// # Unsatisfiable Circuit
+    ///
+    /// If `m = 0`, for every exponent `n`.
     pub fn mod_exp(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -535,7 +552,15 @@ where
         m: &AssignedBigUint<F>,
     ) -> Result<AssignedBigUint<F>, Error> {
         if n == 0 {
-            return self.assign_fixed_biguint(layouter, BigUint::one());
+            // 1 % m is 1, except when m = 1, where it is 0. No division is
+            // involved here, so the modulus is explicitly required to be non-zero.
+            let m = self.normalize(layouter, m)?;
+            self.assert_non_zero(layouter, &m)?;
+            let m_is_not_one = self.is_not_equal_to_fixed(layouter, &m, BigUint::one())?;
+            return self.from_le_bits(layouter, &[m_is_not_one]);
+        }
+        if n == 1 {
+            return Ok(self.div_rem(layouter, x, m)?.1);
         }
 
         let mut n = n;
@@ -1063,7 +1088,7 @@ mod tests {
         Square,
         Div,
         Rem,
-        ModExp,
+        ModExp(u64),
         Bits,
         Bytes,
         Lower,
@@ -1120,7 +1145,7 @@ mod tests {
                 Operation::Square => biguint_gadget.square(&mut layouter, &x)?,
                 Operation::Div => biguint_gadget.div_rem(&mut layouter, &x, &y)?.0,
                 Operation::Rem => biguint_gadget.div_rem(&mut layouter, &x, &y)?.1,
-                Operation::ModExp => biguint_gadget.mod_exp(&mut layouter, &x, 3, &y)?,
+                Operation::ModExp(n) => biguint_gadget.mod_exp(&mut layouter, &x, n, &y)?,
                 Operation::Bits => {
                     let bits = biguint_gadget.to_le_bits(&mut layouter, &x)?;
                     biguint_gadget.from_le_bits(&mut layouter, &bits)?
@@ -1251,7 +1276,12 @@ mod tests {
             run::<F>(&x, &one, &zero, Operation::Rem, true);
             run::<F>(&x, &x, &zero, Operation::Rem, true);
             run::<F>(&x, &x_plus_one, &x, Operation::Rem, true);
-            run::<F>(&x, &y, &random_biguint(1024), Operation::Rem, false)
+            run::<F>(&x, &y, &random_biguint(1024), Operation::Rem, false);
+
+            // Division by zero is rejected.
+            run::<F>(&x, &zero, &zero, Operation::Div, false);
+            run::<F>(&x, &zero, &x, Operation::Rem, false);
+            run::<F>(&zero, &zero, &zero, Operation::Rem, false)
         }
     }
 
@@ -1260,14 +1290,26 @@ mod tests {
         type F = midnight_curves::Fq;
         let zero = BigUint::ZERO;
         let one = BigUint::one();
-        for _ in 0..10 {
+        for _ in 0..5 {
             let x: BigUint = random_biguint(1024);
-            let m: BigUint = random_biguint(1024);
-            let res = (&x * &x * &x).div_rem(&m).1;
-            run::<F>(&x, &m, &res, Operation::ModExp, true);
-            run::<F>(&zero, &m, &zero, Operation::ModExp, true);
-            run::<F>(&one, &m, &one, Operation::ModExp, true);
-            run::<F>(&x, &m, &BigUint::ZERO, Operation::ModExp, false)
+            // A modulus smaller than x, so that x itself is not reduced.
+            let m: BigUint = random_biguint(1000) + &one;
+            for n in [0u64, 1, 2, 3, 4, 5] {
+                let op = Operation::ModExp(n);
+                let res = x.modpow(&BigUint::from(n), &m);
+                run::<F>(&x, &m, &res, op.clone(), true);
+                run::<F>(&one, &m, &(&one % &m), op.clone(), true);
+                run::<F>(&x, &one, &zero, op.clone(), true);
+                run::<F>(&x, &m, &(&res + &m), op.clone(), false);
+                // The modulus must not be zero.
+                run::<F>(&x, &zero, &zero, op.clone(), false);
+                run::<F>(&x, &zero, &one, op, false);
+            }
+            // The result is reduced modulo m also when n = 1.
+            run::<F>(&x, &m, &x, Operation::ModExp(1), false);
+            run::<F>(&zero, &m, &zero, Operation::ModExp(1), true);
+            run::<F>(&zero, &m, &zero, Operation::ModExp(3), true);
+            run::<F>(&x, &m, &zero, Operation::ModExp(3), false);
         }
     }
 

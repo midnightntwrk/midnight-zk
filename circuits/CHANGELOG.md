@@ -11,6 +11,8 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * `EccInstructions::point_from_coordinates_without_subgroup_check`, which creates a point from its coordinates without enforcing subgroup membership with constraints [#654](https://github.com/midnightntwrk/midnight-zk/pull/654)
 * `verifier::InCircuitKZGEngine`, the `KZGEngine`s whose KZG proofs can be verified in-circuit, bounding the KZG types of the in-circuit verifier [#644](https://github.com/midnightntwrk/midnight-zk/pull/644)
 ### Fixed
+* `BigUintGadget::mod_exp` reduces its result modulo `m` for every exponent, also when `n = 0` or `n = 1`, and rejects `m = 0` for every exponent [#595](https://github.com/midnightntwrk/midnight-zk/issues/595)
+* `BigUintGadget::div_rem` returns a synthesis error on a zero divisor instead of panicking [#595](https://github.com/midnightntwrk/midnight-zk/issues/595)
 * Foreign Weierstrass `point_from_coordinates` no longer assigns the identity as the off-circuit value of points outside the prime-order subgroup (BLS12-381); such coordinates are now rejected [#654](https://github.com/midnightntwrk/midnight-zk/pull/654)
 * `CircuitCurve::coordinates` for P256 returns `None` on the identity, as on the other Weierstrass curves [#654](https://github.com/midnightntwrk/midnight-zk/pull/654)
 * `CircuitCurve::from_xy` for Jubjub checks the curve equation on both coordinates. [#654](https://github.com/midnightntwrk/midnight-zk/pull/654)
