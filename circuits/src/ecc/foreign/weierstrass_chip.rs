@@ -21,6 +21,19 @@
 //! with [`EccInstructions::assign_without_subgroup_check`] or
 //! [`EccInstructions::point_from_coordinates_without_subgroup_check`], which
 //! only constrain them to satisfy the curve equation.
+//! 
+//! We require that the emulated elliptic curve do not have low-order points.
+//! In particular, the curve (or the relevant subgroup) must have a large prime
+//! order.
+//!
+//! If the curve has a non-trivial cofactor (e.g. BLS12-381 G1), the
+//! instructions of this chip are only well-defined on the prime-order subgroup
+//! component of a point, and may misbehave on its torsion component. For
+//! instance, the GLV split used in MSMs only constrains
+//! `x1 + zeta * x2 = s (mod q)`, so on a base with a torsion component the MSM
+//! result is only determined up to torsion. Unless you know what you are doing,
+//! always enforce subgroup membership by assigning points with `assign` rather
+//! than [`EccInstructions::assign_without_subgroup_check`].
 
 use std::{
     cell::RefCell,

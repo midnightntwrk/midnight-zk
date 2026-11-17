@@ -28,7 +28,14 @@ use crate::{
     types::{InnerConstants, InnerValue, Instantiable},
 };
 
-/// The  set of circuit instructions for EC operations.
+/// The set of circuit instructions for EC operations.
+///
+/// On curves with a non-trivial cofactor, these instructions are only
+/// well-defined on the prime-order subgroup component of a point; on its
+/// torsion component they may misbehave. For instance, an MSM over a base
+/// with a torsion component determines the result only up to torsion. Points
+/// obtained via [`Self::assign_without_subgroup_check`] may have such a
+/// component.
 pub trait EccInstructions<F: CircuitField, C: CircuitCurve>:
     AssertionInstructions<F, Self::Point>
 where
@@ -161,12 +168,13 @@ where
     }
 
     /// Assigns a private curve point, checking it is on the curve but skipping
-    /// any subgroup-membership check. We enforce honest users to operate over
-    /// the prime-order subgroup, but allow the circuit to skip enforcing this
-    /// constraint where this guarantee is not required.
+    /// any subgroup-membership check. For curves with a non-trivial cofactor
+    /// this skips the expensive cofactor-based subgroup check.
     ///
-    /// For curves with a non-trivial cofactor this skips the expensive
-    /// cofactor-based subgroup check.
+    /// The returned point may have a torsion component, on which the other
+    /// instructions of this trait may misbehave (see the trait docs). Unless
+    /// your application tolerates this, use `assign`, which enforces subgroup
+    /// membership.
     fn assign_without_subgroup_check(
         &self,
         layouter: &mut impl Layouter<F>,
