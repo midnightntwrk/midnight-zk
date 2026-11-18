@@ -314,7 +314,7 @@ impl CredentialProperty {
 }
 
 fn main() {
-    const K: u32 = 16;
+    const K: u32 = 15;
     let credential_blob = read_credential::<4096>(CRED_PATH).expect("Path to credential file.");
 
     let relation = CredentialProperty;

@@ -85,7 +85,7 @@ impl Relation for EccExample {
 }
 
 fn main() {
-    const K: u32 = 11;
+    const K: u32 = 10;
     let relation = EccExample;
     let srs = srs_for_test(&relation, Some(K));
     let vk = midnight_zk_stdlib::setup_vk::<_, midnight_zk_stdlib::KZG>(&srs, &relation);
