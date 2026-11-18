@@ -300,8 +300,7 @@ impl<F: CircuitField> RangeCheckChip<F> {
     /// Whether the chip lays out `x < 2^n` directly, see
     /// [RangeCheckChip::assert_lower_than_pow2].
     fn is_supported_bound(&self, n: usize) -> bool {
-        let t = self.config.max_bit_len;
-        n <= t || (3 * t < n && n <= 4 * t) || n.is_multiple_of(4 * t)
+        is_supported_bound(self.config.max_bit_len, n)
     }
 }
 
@@ -536,6 +535,13 @@ impl<F: CircuitField> RangeCheckChip<F> {
             },
         )
     }
+}
+
+/// Whether a chip of the given `max_bit_len` lays out `x < 2^n` directly,
+/// see [RangeCheckChip::assert_lower_than_pow2].
+pub(crate) fn is_supported_bound(max_bit_len: usize, n: usize) -> bool {
+    let t = max_bit_len;
+    n <= t || (3 * t < n && n <= 4 * t) || n.is_multiple_of(4 * t)
 }
 
 /// The tag of the sentinel row, which differs from every limb size.
