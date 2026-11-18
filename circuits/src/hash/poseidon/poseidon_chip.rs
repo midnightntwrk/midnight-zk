@@ -697,13 +697,9 @@ mod tests {
             ">> Testing Poseidon Sponge (field {field}, {} partial-round skips)",
             NB_SKIPS_CIRCUIT
         );
-        test_sponge::<
-            F,
-            AssignedNative<F>,
-            AssignedNative<F>,
-            PoseidonChip<F>,
-            NativeGadget<F, _, _>,
-        >(cost_model, "Poseidon");
+        test_sponge::<F, AssignedNative<F>, AssignedNative<F>, PoseidonChip<F>, NativeGadget<F>>(
+            cost_model, "Poseidon",
+        );
         println!("=> Done.\n")
     }
 

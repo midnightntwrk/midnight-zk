@@ -74,7 +74,11 @@ fn main() {
 
     // The inner circuits may have different sizes, as long as they share the
     // constraint system configured by `InnerCircuitsContext::new`.
-    let max_bit_len = 8;
+    let max_bit_len = inner_arch().range_check_bit_len(SHA_CIRCUIT_K);
+    assert_eq!(
+        max_bit_len,
+        inner_arch().range_check_bit_len(POSEIDON_CIRCUIT_K)
+    );
     let inner_ctx = InnerCircuitsContext::new(inner_arch(), max_bit_len, inner_verifier_params);
 
     let aggregator_srs = load_srs::<PCS>(SrsSource::Midnight, IVC_K);

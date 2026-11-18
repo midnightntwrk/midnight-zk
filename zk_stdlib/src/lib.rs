@@ -44,11 +44,7 @@ use midnight_circuits::{
         native::{EccChip, EccConfig, NB_EDWARDS_COLS},
     },
     field::{
-        NativeChip, NativeConfig, NativeGadget,
-        decomposition::{
-            chip::{P2RDecompositionChip, P2RDecompositionConfig},
-            pow2range::Pow2RangeChip,
-        },
+        NativeChip, NativeConfig, NativeGadget, RangeCheckChip, RangeCheckConfig,
         foreign::{
             FieldChip, FieldChipConfig, nb_field_chip_columns, params::MultiEmulationParams as MEP,
         },
@@ -94,7 +90,7 @@ type C = midnight_curves::JubjubExtended;
 type F = midnight_curves::Fq;
 
 // Type aliases, for readability.
-type NG = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
+type NG = NativeGadget<F>;
 type Secp256k1BaseChip = FieldChip<F, k256_mod::Fp, MEP, NG>;
 type Secp256k1ScalarChip = FieldChip<F, k256_mod::Fq, MEP, NG>;
 type Secp256k1Chip = ForeignWeierstrassEccChip<F, K256, MEP, Secp256k1ScalarChip, NG>;
@@ -113,7 +109,7 @@ type Curve25519BaseChip = FieldChip<F, curve25519_mod::Fp, MEP, NG>;
 type Curve25519ScalarChip = FieldChip<F, curve25519_mod::Scalar, MEP, NG>;
 type Curve25519Chip = ForeignEdwardsEccChip<F, Curve25519, MEP, Curve25519ScalarChip, NG>;
 
-const ZKSTD_VERSION: u32 = 3;
+const ZKSTD_VERSION: u32 = 4;
 
 /// Architecture of the standard library. Specifies what chips need to be
 /// configured.
@@ -167,16 +163,18 @@ pub struct ZkStdLibArch {
     pub automaton: bool,
 
     /// Number of columns for the arithmetic identity. The higher, the more
-    /// terms can be added in a single row. This number also limits the number
-    /// of range-check parallel lookups.
+    /// terms can be added in a single row.
     ///
     /// Must be at least 5.
     pub nb_arith_cols: u8,
 
-    /// Number of parallel lookups for range checks.
-    ///
-    /// Must be strictly smaller than `nb_arith_cols`.
-    pub nr_pow2range_cols: u8,
+    /// Number of groups of the range-check chip, each taking 5 advice
+    /// columns.
+    pub nb_range_check_groups: u8,
+
+    /// Bit size `T` of the range-check lanes. If `None`, it is `k - 1`, see
+    /// [ZkStdLibArch::range_check_bit_len()].
+    pub range_check_bit_len: Option<u8>,
 }
 
 impl Default for ZkStdLibArch {
@@ -196,12 +194,20 @@ impl Default for ZkStdLibArch {
             base64: false,
             automaton: false,
             nb_arith_cols: 5,
-            nr_pow2range_cols: 1,
+            nb_range_check_groups: 1,
+            range_check_bit_len: None,
         }
     }
 }
 
 impl ZkStdLibArch {
+    /// The bit size `T` of the range-check lanes of a circuit of size `2^k`:
+    /// the `range_check_bit_len` field if given, and otherwise `k - 1` (at
+    /// least 1), so that the range-check table fits in the circuit.
+    pub fn range_check_bit_len(&self, k: u32) -> u8 {
+        self.range_check_bit_len.unwrap_or(k.saturating_sub(1).max(1) as u8)
+    }
+
     /// Writes the ZKStd architecture to a buffer.
     pub fn write<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
         writer.write_all(&ZKSTD_VERSION.to_le_bytes())?;
@@ -228,9 +234,12 @@ impl ZkStdLibArch {
         let arch: Self = bincode::decode_from_std_read(reader, standard())
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
         if (arch.nb_arith_cols as usize) < MIN_NB_ARITH_COLS
-            || arch.nr_pow2range_cols >= arch.nb_arith_cols
+            || arch.nb_range_check_groups == 0
+            || arch
+                .range_check_bit_len
+                .is_some_and(|t| t == 0 || 4 * t as u32 >= <F as ff::PrimeField>::NUM_BITS)
         {
-            let msg = "invalid nb_arith_cols or nr_pow2range_cols";
+            let msg = "invalid nb_arith_cols, nb_range_check_groups or range_check_bit_len";
             return Err(io::Error::new(io::ErrorKind::InvalidData, msg));
         }
         Ok(arch)
@@ -252,7 +261,7 @@ impl ZkStdLibArch {
 /// Configured chips for [ZkStdLib].
 pub struct ZkStdLibConfig {
     native_config: NativeConfig,
-    core_decomposition_config: P2RDecompositionConfig,
+    range_check_config: RangeCheckConfig,
     jubjub_config: Option<EccConfig>,
     sha2_256_config: Option<Sha256Config>,
     sha2_512_config: Option<Sha512Config>,
@@ -278,7 +287,7 @@ pub struct ZkStdLibConfig {
 pub struct ZkStdLib {
     // Internal chips and gadgets.
     native_gadget: NG,
-    core_decomposition_chip: P2RDecompositionChip<F>,
+    range_check_chip: RangeCheckChip<F>,
     jubjub_chip: Option<EccChip<C>>,
     sha2_256_chip: Option<Sha256Chip<F>>,
     varlen_sha2_256_gadget: Option<VarLenSha256Gadget<F>>,
@@ -319,11 +328,10 @@ pub struct ZkStdLib {
 
 impl ZkStdLib {
     /// Creates a new [ZkStdLib] given its config.
-    pub fn new(config: &ZkStdLibConfig, max_bit_len: usize) -> Self {
+    pub fn new(config: &ZkStdLibConfig) -> Self {
         let native_chip = NativeChip::new(&config.native_config, &());
-        let core_decomposition_chip =
-            P2RDecompositionChip::new(&config.core_decomposition_config, &max_bit_len);
-        let native_gadget = NativeGadget::new(core_decomposition_chip.clone(), native_chip.clone());
+        let range_check_chip = RangeCheckChip::new(&config.range_check_config, &());
+        let native_gadget = NativeGadget::new(native_chip.clone(), range_check_chip.clone());
         let jubjub_chip = (config.jubjub_config.as_ref())
             .map(|jubjub_config| EccChip::new(jubjub_config, &native_gadget));
         let sha2_256_chip = (config.sha2_256_config.as_ref())
@@ -389,7 +397,7 @@ impl ZkStdLib {
 
         Self {
             native_gadget,
-            core_decomposition_chip,
+            range_check_chip,
             jubjub_chip,
             sha2_256_chip,
             varlen_sha2_256_gadget,
@@ -430,7 +438,7 @@ impl ZkStdLib {
     ) -> ZkStdLibConfig {
         let nb_advice_cols = [
             arch.nb_arith_cols as usize,
-            arch.nr_pow2range_cols as usize,
+            5 * arch.nb_range_check_groups as usize,
             arch.jubjub as usize * NB_EDWARDS_COLS,
             arch.poseidon as usize * NB_POSEIDON_ADVICE_COLS,
             arch.sha2_256 as usize * NB_SHA256_ADVICE_COLS,
@@ -473,6 +481,7 @@ impl ZkStdLib {
 
         let nb_fixed_cols = [
             nb_arith_fixed_cols,
+            arch.nb_range_check_groups as usize + 3,
             arch.poseidon as usize * NB_POSEIDON_FIXED_COLS,
             arch.sha2_256 as usize * NB_SHA256_FIXED_COLS,
             arch.sha2_512 as usize * NB_SHA512_FIXED_COLS,
@@ -499,14 +508,15 @@ impl ZkStdLib {
             ),
         );
 
-        let nb_parallel_range_checks = arch.nr_pow2range_cols as usize;
-        let max_bit_len = max_bit_len as u32;
-
-        let pow2range_config =
-            Pow2RangeChip::configure(meta, &advice_columns[1..=arch.nr_pow2range_cols as usize]);
-
-        let core_decomposition_config =
-            P2RDecompositionChip::configure(meta, &(native_config.clone(), pow2range_config));
+        let nb_groups = arch.nb_range_check_groups as usize;
+        let range_check_config = RangeCheckChip::configure(
+            meta,
+            &(
+                advice_columns[..5 * nb_groups].to_vec(),
+                fixed_columns[..nb_groups + 3].to_vec(),
+                max_bit_len as usize,
+            ),
+        );
 
         let jubjub_config = arch.jubjub.then(|| {
             EccChip::<C>::configure(meta, &advice_columns[..NB_EDWARDS_COLS].try_into().unwrap())
@@ -542,94 +552,33 @@ impl ZkStdLib {
             )
         });
 
-        let secp256k1_scalar_config = arch.secp256k1.then(|| {
-            Secp256k1ScalarChip::configure(
-                meta,
-                &advice_columns,
-                nb_parallel_range_checks,
-                max_bit_len,
-            )
-        });
+        let secp256k1_scalar_config =
+            arch.secp256k1.then(|| Secp256k1ScalarChip::configure(meta, &advice_columns));
 
         let secp256k1_config = arch.secp256k1.then(|| {
-            let base_config = Secp256k1BaseChip::configure(
-                meta,
-                &advice_columns,
-                nb_parallel_range_checks,
-                max_bit_len,
-            );
-            Secp256k1Chip::configure(
-                meta,
-                &base_config,
-                &advice_columns,
-                &fixed_columns,
-                nb_parallel_range_checks,
-                max_bit_len,
-            )
+            let base_config = Secp256k1BaseChip::configure(meta, &advice_columns);
+            Secp256k1Chip::configure(meta, &base_config, &advice_columns, &fixed_columns)
         });
 
-        let p256_scalar_config = arch.p256.then(|| {
-            P256ScalarChip::configure(meta, &advice_columns, nb_parallel_range_checks, max_bit_len)
-        });
+        let p256_scalar_config =
+            arch.p256.then(|| P256ScalarChip::configure(meta, &advice_columns));
 
         let p256_config = arch.p256.then(|| {
-            let base_config = P256BaseChip::configure(
-                meta,
-                &advice_columns,
-                nb_parallel_range_checks,
-                max_bit_len,
-            );
-            P256Chip::configure(
-                meta,
-                &base_config,
-                &advice_columns,
-                &fixed_columns,
-                nb_parallel_range_checks,
-                max_bit_len,
-            )
+            let base_config = P256BaseChip::configure(meta, &advice_columns);
+            P256Chip::configure(meta, &base_config, &advice_columns, &fixed_columns)
         });
 
         let bls12_381_config = arch.bls12_381.then(|| {
-            let base_config = Bls12381BaseChip::configure(
-                meta,
-                &advice_columns,
-                nb_parallel_range_checks,
-                max_bit_len,
-            );
-            Bls12381Chip::configure(
-                meta,
-                &base_config,
-                &advice_columns,
-                &fixed_columns,
-                nb_parallel_range_checks,
-                max_bit_len,
-            )
+            let base_config = Bls12381BaseChip::configure(meta, &advice_columns);
+            Bls12381Chip::configure(meta, &base_config, &advice_columns, &fixed_columns)
         });
 
-        let curve25519_scalar_config = arch.curve25519.then(|| {
-            Curve25519ScalarChip::configure(
-                meta,
-                &advice_columns,
-                nb_parallel_range_checks,
-                max_bit_len,
-            )
-        });
+        let curve25519_scalar_config =
+            arch.curve25519.then(|| Curve25519ScalarChip::configure(meta, &advice_columns));
 
         let curve25519_config = arch.curve25519.then(|| {
-            let base_config = Curve25519BaseChip::configure(
-                meta,
-                &advice_columns,
-                nb_parallel_range_checks,
-                max_bit_len,
-            );
-            Curve25519Chip::configure(
-                meta,
-                &base_config,
-                &advice_columns,
-                &fixed_columns,
-                nb_parallel_range_checks,
-                max_bit_len,
-            )
+            let base_config = Curve25519BaseChip::configure(meta, &advice_columns);
+            Curve25519Chip::configure(meta, &base_config, &advice_columns, &fixed_columns)
         });
 
         let base64_config = arch.base64.then(|| {
@@ -673,7 +622,7 @@ impl ZkStdLib {
 
         ZkStdLibConfig {
             native_config,
-            core_decomposition_config,
+            range_check_config,
             jubjub_config,
             sha2_256_config,
             sha2_512_config,
