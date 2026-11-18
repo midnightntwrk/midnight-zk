@@ -696,7 +696,7 @@
       "max_deg": "5",
       "permutations": "14",
       "point_sets": "5",
-      "rows": "1138",
+      "rows": "528",
       "table_rows": "443"
     },
     "select": {
@@ -995,7 +995,7 @@
       "max_deg": "5",
       "permutations": "11",
       "point_sets": "3",
-      "rows": "331",
+      "rows": "23",
       "table_rows": "259"
     },
     "select": {
@@ -1338,7 +1338,7 @@
       "max_deg": "5",
       "permutations": "11",
       "point_sets": "3",
-      "rows": "331",
+      "rows": "23",
       "table_rows": "259"
     },
     "select": {
@@ -1681,7 +1681,7 @@
       "max_deg": "5",
       "permutations": "11",
       "point_sets": "3",
-      "rows": "331",
+      "rows": "23",
       "table_rows": "259"
     },
     "select": {
@@ -2024,7 +2024,7 @@
       "max_deg": "5",
       "permutations": "11",
       "point_sets": "3",
-      "rows": "331",
+      "rows": "23",
       "table_rows": "259"
     },
     "select": {
@@ -2345,7 +2345,7 @@
       "max_deg": "5",
       "permutations": "19",
       "point_sets": "4",
-      "rows": "19756",
+      "rows": "18858",
       "table_rows": "507"
     },
     "select": {
@@ -2622,7 +2622,7 @@
       "max_deg": "5",
       "permutations": "14",
       "point_sets": "4",
-      "rows": "762",
+      "rows": "148",
       "table_rows": "271"
     },
     "select": {
@@ -2899,7 +2899,7 @@
       "max_deg": "5",
       "permutations": "16",
       "point_sets": "4",
-      "rows": "808",
+      "rows": "194",
       "table_rows": "287"
     },
     "select": {
