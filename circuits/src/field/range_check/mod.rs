@@ -77,9 +77,11 @@
 //! built on it share them: loading any of them lays out what all of them
 //! recorded. A configuration must therefore serve a single synthesis.
 
+mod layout;
+mod state;
+
 use std::{
     cell::{RefCell, RefMut},
-    collections::{BTreeMap, HashMap},
     rc::Rc,
 };
 
@@ -88,13 +90,12 @@ use midnight_proofs::{
     plonk::{Advice, Column, ConstraintSystem, Constraints, Error, Fixed, Selector, TableColumn},
     poly::Rotation,
 };
-use num_bigint::BigUint;
 
-use crate::{
-    CircuitField,
-    types::AssignedNative,
-    utils::{ComposableChip, util::big_to_fe},
+use self::{
+    layout::bit_slice,
+    state::{Decomposition, Pending, State},
 };
+use crate::{CircuitField, types::AssignedNative, utils::ComposableChip};
 
 /// [RangeCheckChip] configuration, with the columns of the module
 /// documentation.
@@ -431,11 +432,6 @@ impl<F: CircuitField> ComposableChip<F> for RangeCheckChip<F> {
     }
 }
 
-/// Groups to lay out, by the `(tag, tag_msl, shift)` of their rows.
-///
-/// The base of the rows is `b = 2^shift`.
-type Groups<F> = BTreeMap<(usize, usize, usize), Vec<Group<F>>>;
-
 impl<F: CircuitField> RangeCheckChip<F> {
     /// Returns an error if the chip has already been loaded.
     ///
@@ -463,135 +459,6 @@ impl<F: CircuitField> RangeCheckChip<F> {
     /// The state shared by the chips built on this configuration.
     fn state(&self) -> RefMut<'_, State<F>> {
         self.config.state.borrow_mut()
-    }
-
-    /// Lays out in groups the given assertions and decompositions.
-    ///
-    /// With `T` the chip's `max_bit_len`:
-    ///
-    /// - `n <= T`: four checks per group, with `tag = tag_msl = n`, whose
-    ///   output holds the sum of its lanes.
-    /// - `3T < n <= 4T`: one group, with `tag = T` and `tag_msl = n - 3T`, and
-    ///   `x` as output.
-    /// - `n = 4Tj`: `j` linked groups, with `tag = tag_msl = T`, `x` as the
-    ///   output of the first one and `x >> 4Ti` as the output of the `i`-th
-    ///   one.
-    /// - a decomposition in limbs of `s` bits: the limbs in linked groups, with
-    ///   `tag = tag_msl = s` and `b = 2^s`, and `x` as the output of the first
-    ///   one.
-    fn layout(&self, pending: &Pending<F>) -> Groups<F> {
-        let t = self.config.max_bit_len;
-        let zero = || AssignedNative::free(Value::known(F::ZERO));
-        let mut groups = Groups::new();
-        // The checks with `n <= T`, by `n`, which take a single lane each.
-        let mut single_lane: BTreeMap<usize, Vec<AssignedNative<F>>> = BTreeMap::new();
-        for &(ref x, n) in &pending.checks {
-            if n <= t {
-                single_lane.entry(n).or_default().push(x.clone());
-                continue;
-            }
-            let span = n.div_ceil(4 * t);
-            let tag_msl = n - 4 * t * (span - 1) - 3 * t;
-            for i in 0..span {
-                groups.entry((t, tag_msl, t)).or_default().push(Group {
-                    lanes: std::array::from_fn(|j| {
-                        AssignedNative::free(bit_slice(x, 4 * t * i + t * j, Some(t)))
-                    }),
-                    out: match i {
-                        0 => x.clone(),
-                        _ => AssignedNative::free(bit_slice(x, 4 * t * i, None)),
-                    },
-                    link: (i + 1) < span,
-                });
-            }
-        }
-
-        for (n, xs) in single_lane {
-            for chunk in xs.chunks(4) {
-                let out = chunk.iter().rev().fold(Value::known(F::ZERO), |acc, x| {
-                    acc * Value::known(pow2::<F>(t)) + x.value().copied()
-                });
-                groups.entry((n, n, t)).or_default().push(Group {
-                    lanes: std::array::from_fn(|j| chunk.get(j).cloned().unwrap_or_else(zero)),
-                    out: AssignedNative::free(out),
-                    link: false,
-                });
-            }
-        }
-
-        for d in &pending.decompositions {
-            let (x, limbs, size) = (&d.x, &d.limbs, d.size);
-            let span = limbs.len().div_ceil(4);
-            for i in 0..span {
-                let rest = limbs[4 * i..].iter().rev().fold(Value::known(F::ZERO), |acc, l| {
-                    acc * Value::known(pow2::<F>(size)) + l.value().copied()
-                });
-                groups.entry((size, size, size)).or_default().push(Group {
-                    lanes: std::array::from_fn(|j| {
-                        limbs.get(4 * i + j).cloned().unwrap_or_else(zero)
-                    }),
-                    out: match i {
-                        0 => x.clone(),
-                        _ => AssignedNative::free(rest),
-                    },
-                    link: (i + 1) < span,
-                });
-            }
-        }
-        groups
-    }
-
-    /// Lays out the given groups in a region of their own.
-    ///
-    /// Groups take `G` per row, in rows of their `(tag, tag_msl, shift)`. The
-    /// last row of each `(tag, tag_msl, shift)` is padded with zero groups.
-    fn assign_groups(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        groups: &Groups<F>,
-    ) -> Result<(), Error> {
-        if groups.is_empty() {
-            return Ok(());
-        }
-        let config = &self.config;
-        let num_groups = config.outs.len();
-        layouter.assign_region(
-            || "range checks",
-            |mut region| {
-                let mut row = 0;
-                for (&(tag, tag_msl, shift), groups) in groups {
-                    let padding: Vec<_> = (groups.len()..groups.len().next_multiple_of(num_groups))
-                        .map(|_| Group::zero())
-                        .collect();
-                    for (i, group) in groups.iter().chain(&padding).enumerate() {
-                        let (r, k) = (row + i / num_groups, i % num_groups);
-                        let cols = config.lanes[k].iter().chain([&config.outs[k]]);
-                        for (col, x) in cols.zip(group.lanes.iter().chain([&group.out])) {
-                            x.copy_advice(|| "range check", &mut region, *col, r)?;
-                        }
-                        let link = if group.link {
-                            pow2::<F>(4 * shift)
-                        } else {
-                            F::ZERO
-                        };
-                        let mut fixed = vec![(config.links[k], link)];
-                        if k == 0 {
-                            config.q_range_check.enable(&mut region, r)?;
-                            fixed.extend([
-                                (config.tag, F::from(tag as u64)),
-                                (config.tag_msl, F::from(tag_msl as u64)),
-                                (config.base, pow2::<F>(shift)),
-                            ]);
-                        }
-                        for (col, v) in fixed {
-                            region.assign_fixed(|| "range check", col, r, || Value::known(v))?;
-                        }
-                    }
-                    row += groups.len().div_ceil(num_groups);
-                }
-                Ok(())
-            },
-        )
     }
 
     /// Places the sentinel row, unless it is already placed.
@@ -630,86 +497,6 @@ impl<F: CircuitField> RangeCheckChip<F> {
     }
 }
 
-/// The state shared by the chips built on a configuration.
-#[derive(Debug, Default)]
-struct State<F: CircuitField> {
-    /// The assertions and decompositions recorded outside of any cost-model
-    /// measurement window.
-    pending: Pending<F>,
-    /// Cost model only: the assertions and decompositions recorded inside a
-    /// cost-model measurement window, see [RangeCheckChip::load].
-    pending_in_cost_window: Pending<F>,
-    /// Whether the sentinel row is placed.
-    sentinel_placed: bool,
-    /// Whether the chip is loaded.
-    loaded: bool,
-}
-
-/// Assertions and decompositions recorded and not yet laid out.
-///
-/// They are kept in recording order.
-#[derive(Debug, Default)]
-struct Pending<F: CircuitField> {
-    /// The assertions `x ∈ [0, 2^n)`, as `(x, n)`.
-    checks: Vec<(AssignedNative<F>, usize)>,
-    /// The decompositions.
-    decompositions: Vec<Decomposition<F>>,
-    /// The position in `checks` of the assertion on each element.
-    ///
-    /// An element asserted several times, directly or through its clones,
-    /// keeps a single assertion, of its tightest bound.
-    index: HashMap<AssignedNative<F>, usize>,
-}
-
-/// A decomposition of `x` in little-endian limbs of `size` bits:
-///
-/// - `x = sum_i 2^(size i) limbs[i]`,
-/// - `limbs[i] ∈ [0, 2^size)` for every `i`.
-#[derive(Debug)]
-struct Decomposition<F: CircuitField> {
-    x: AssignedNative<F>,
-    limbs: Vec<AssignedNative<F>>,
-    size: usize,
-}
-
-/// A group: its four lanes, its output, and whether it links to the next
-/// group.
-///
-/// Elements that are not assigned to a cell yet are assigned to the cells of
-/// the group.
-#[derive(Debug)]
-struct Group<F: CircuitField> {
-    lanes: [AssignedNative<F>; 4],
-    out: AssignedNative<F>,
-    link: bool,
-}
-
-impl<F: CircuitField> Group<F> {
-    /// A group of zeros, not linked to the next group.
-    fn zero() -> Self {
-        let zero = || AssignedNative::free(Value::known(F::ZERO));
-        Group {
-            lanes: std::array::from_fn(|_| zero()),
-            out: zero(),
-            link: false,
-        }
-    }
-}
-
-/// The value of the bits of `x` from position `from` on: `len` of them if
-/// given, and all of them otherwise.
-fn bit_slice<F: CircuitField>(x: &AssignedNative<F>, from: usize, len: Option<usize>) -> Value<F> {
-    x.value().map(|x| {
-        let x = x.to_biguint() >> from;
-        big_to_fe(len.map_or(x.clone(), |len| x % (BigUint::from(1u8) << len)))
-    })
-}
-
-/// `2^k` as a field element.
-fn pow2<F: CircuitField>(k: usize) -> F {
-    big_to_fe(BigUint::from(1u8) << k)
-}
-
 /// The tag of the sentinel row, which differs from every limb size.
 fn sentinel_tag<F: CircuitField>() -> F {
     -F::ONE
@@ -724,147 +511,4 @@ fn in_cost_window() -> bool {
 }
 
 #[cfg(test)]
-mod tests {
-    use ff::Field;
-    use midnight_curves::Fq as F;
-    use midnight_proofs::{
-        circuit::SimpleFloorPlanner,
-        dev::MockProver,
-        plonk::{Circuit, ConstraintSystem},
-    };
-
-    use super::*;
-    use crate::field::AssignNative;
-
-    const T: usize = 8;
-    const NUM_GROUPS: usize = 2;
-
-    #[derive(Clone, Copy, PartialEq, Eq)]
-    enum Mode {
-        Load,
-        SkipLoad,
-        RecordAfterLoad,
-        LoadTwice,
-        /// Another chip built on the same configuration loads.
-        LoadOther,
-    }
-
-    /// Values with the bounds `n` they are asserted against, in order.
-    struct TestCircuit {
-        inputs: Vec<(F, Vec<usize>)>,
-        mode: Mode,
-    }
-
-    impl Circuit<F> for TestCircuit {
-        type Config = (RangeCheckConfig<F>, Column<Advice>);
-        type FloorPlanner = SimpleFloorPlanner;
-        type Params = ();
-
-        fn without_witnesses(&self) -> Self {
-            unreachable!()
-        }
-
-        fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
-            let advice = (0..5 * NUM_GROUPS).map(|_| meta.advice_column()).collect();
-            let fixed = (0..NUM_GROUPS + 3).map(|_| meta.fixed_column()).collect();
-            let input = meta.advice_column();
-            meta.enable_equality(input);
-            (RangeCheckChip::configure(meta, &(advice, fixed, T)), input)
-        }
-
-        fn synthesize(
-            &self,
-            (config, input): Self::Config,
-            mut layouter: impl Layouter<F>,
-        ) -> Result<(), Error> {
-            let chip = RangeCheckChip::<F>::new(&config, &());
-            let xs = layouter.assign_region(
-                || "inputs",
-                |mut region| {
-                    (self.inputs.iter().enumerate())
-                        .map(|(i, (x, _))| {
-                            region.assign_native(|| "x", input, i, || Value::known(*x))
-                        })
-                        .collect::<Result<Vec<_>, _>>()
-                },
-            )?;
-            let record = |layouter: &mut _| {
-                (xs.iter().zip(&self.inputs)).try_for_each(|(x, (_, ns))| {
-                    ns.iter().try_for_each(|&n| chip.assert_lower_than_pow2(layouter, x, n))
-                })
-            };
-            match self.mode {
-                Mode::Load => record(&mut layouter).and_then(|_| chip.load(&mut layouter)),
-                Mode::SkipLoad => record(&mut layouter),
-                Mode::RecordAfterLoad => {
-                    chip.load(&mut layouter).and_then(|_| record(&mut layouter))
-                }
-                Mode::LoadTwice => {
-                    record(&mut layouter)?;
-                    chip.load(&mut layouter).and_then(|_| chip.load(&mut layouter))
-                }
-                Mode::LoadOther => {
-                    record(&mut layouter)?;
-                    RangeCheckChip::<F>::new(&config, &()).load(&mut layouter)
-                }
-            }
-        }
-    }
-
-    fn satisfied(inputs: Vec<(F, Vec<usize>)>, mode: Mode) -> bool {
-        MockProver::run(&TestCircuit { inputs, mode }, vec![])
-            .is_ok_and(|prover| prover.verify().is_ok())
-    }
-
-    /// Short checks, values of one group with every kind of top limb, and
-    /// chains of up to three rows.
-    const SIZES: [usize; 9] = [0, 1, 5, 8, 25, 26, 32, 64, 96];
-
-    #[test]
-    fn in_range() {
-        let inputs = SIZES
-            .iter()
-            .flat_map(|&n| {
-                [
-                    (F::ZERO, vec![n]),
-                    (pow2::<F>(n) - F::ONE, vec![n]),
-                    (F::from((n > 0) as u64), vec![n]),
-                ]
-            })
-            .chain([(pow2::<F>(25) - F::ONE, vec![32, 25]), (F::ZERO, vec![0])])
-            .collect();
-        assert!(satisfied(inputs, Mode::Load));
-    }
-
-    #[test]
-    fn out_of_range() {
-        for n in SIZES {
-            assert!(
-                !satisfied(vec![(pow2::<F>(n), vec![n])], Mode::Load),
-                "2^{n} < 2^{n}"
-            );
-        }
-        // The tightest of several bounds is enforced.
-        assert!(!satisfied(vec![(pow2::<F>(25), vec![32, 25])], Mode::Load));
-    }
-
-    #[test]
-    fn loading() {
-        let inputs = vec![(F::ONE, vec![1])];
-        assert!(!satisfied(inputs.clone(), Mode::SkipLoad));
-        assert!(!satisfied(inputs.clone(), Mode::RecordAfterLoad));
-        assert!(satisfied(inputs, Mode::LoadTwice));
-    }
-
-    #[test]
-    fn shared_between_chips() {
-        assert!(satisfied(vec![(F::ONE, vec![8])], Mode::LoadOther));
-        assert!(!satisfied(vec![(pow2::<F>(8), vec![8])], Mode::LoadOther));
-    }
-
-    #[test]
-    #[should_panic(expected = "cannot assert x < 2^9")]
-    fn unsupported_size() {
-        satisfied(vec![(F::ONE, vec![9])], Mode::Load);
-    }
-}
+mod tests;
