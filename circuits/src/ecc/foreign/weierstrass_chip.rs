@@ -1488,6 +1488,20 @@ where
         // Assert that the table points are not the identity.
         table.iter().try_for_each(|point| self.assert_non_zero(layouter, point))?;
 
+        // The selected points are rebuilt from the table limbs and marked as
+        // well-formed, so the table coordinates must be well-formed.
+        // (Normalization is free on already well-formed coordinates.)
+        let table = table
+            .iter()
+            .map(|point| {
+                Ok(AssignedForeignPoint::<F, C, B> {
+                    x: self.base_field_chip().normalize(layouter, &point.x)?,
+                    y: self.base_field_chip().normalize(layouter, &point.y)?,
+                    ..point.clone()
+                })
+            })
+            .collect::<Result<Vec<_>, Error>>()?;
+
         // Load the table with a fresh tag, and increase the tag for the next use.
         // This associates index i from 0 to k-1 to the i-th table entry.
         //
@@ -1496,7 +1510,7 @@ where
         // a common table.
         let tag_cnt = *self.tag_cnt.borrow();
         self.tag_cnt.replace(tag_cnt + 1);
-        self.load_multi_select_table(layouter, table, F::from(tag_cnt))?;
+        self.load_multi_select_table(layouter, &table, F::from(tag_cnt))?;
 
         // Find the index for each of the `k` selected points.
         let table_values =
@@ -2291,5 +2305,76 @@ mod tests {
                 assert!(run(point, subgroup_check).is_err());
             }
         }
+    }
+
+    type P256Chip = ForeignWeierstrassEccChip<
+        BlsScalar,
+        P256,
+        MultiEmulationParams,
+        EmulatedField<BlsScalar, P256>,
+        Native<BlsScalar>,
+    >;
+
+    /// A circuit that selects, with `k_out_of_n_points`, a table point whose
+    /// x-coordinate is not well-formed, and compares it to the canonical one.
+    #[derive(Clone, Debug)]
+    struct KOutOfNCircuit;
+
+    impl Circuit<BlsScalar> for KOutOfNCircuit {
+        type Config = <P256Chip as FromScratch<BlsScalar>>::Config;
+        type FloorPlanner = SimpleFloorPlanner;
+        type Params = ();
+
+        fn without_witnesses(&self) -> Self {
+            unreachable!()
+        }
+
+        fn configure(meta: &mut ConstraintSystem<BlsScalar>) -> Self::Config {
+            let committed_instance_column = meta.instance_column();
+            let instance_column = meta.instance_column();
+            P256Chip::configure_from_scratch(
+                meta,
+                &mut vec![],
+                &mut vec![],
+                &[committed_instance_column, instance_column],
+            )
+        }
+
+        fn synthesize(
+            &self,
+            config: Self::Config,
+            mut layouter: impl Layouter<BlsScalar>,
+        ) -> Result<(), Error> {
+            type G = <P256 as CircuitCurve>::CryptographicGroup;
+            type Fp = <P256 as CircuitCurve>::Base;
+            let chip = P256Chip::new_from_scratch(&config);
+            let base_chip = chip.base_field_chip();
+
+            let values = [G::generator(), G::generator().double()];
+            let p0 = chip.assign(&mut layouter, Value::known(values[0]))?;
+            let p1: AssignedForeignPoint<_, P256, _> =
+                chip.assign(&mut layouter, Value::known(values[1]))?;
+
+            // Rebuild p1 from an x-coordinate (x + 0) that is not well-formed.
+            let zero = base_chip.assign(&mut layouter, Value::known(Fp::ZERO))?;
+            let x = base_chip.add(&mut layouter, &p1.x, &zero)?;
+            assert!(!x.is_well_formed());
+            let p1_unreduced = chip.point_from_coordinates(&mut layouter, &x, &p1.y)?;
+
+            let selected = chip.k_out_of_n_points(
+                &mut layouter,
+                &[p0, p1_unreduced],
+                &[Value::known(values[1])],
+            )?;
+            base_chip.assert_equal(&mut layouter, &selected[0].x, &p1.x)?;
+
+            chip.load_from_scratch(&mut layouter)
+        }
+    }
+
+    #[test]
+    fn test_k_out_of_n_points_unreduced_table() {
+        let prover = MockProver::run(&KOutOfNCircuit, vec![vec![], vec![]]).unwrap();
+        prover.assert_satisfied();
     }
 }
