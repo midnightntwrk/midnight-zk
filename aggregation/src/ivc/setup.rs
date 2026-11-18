@@ -27,7 +27,8 @@ pub fn setup<T: Ivc>(
     ctx: T::Context,
 ) -> (IvcProver<T>, IvcVerifier<T>) {
     let mut cs = ConstraintSystem::default();
-    ZkStdLib::configure(&mut cs, (IvcCircuit::<T>::arch(), (k - 1) as u8));
+    let arch = IvcCircuit::<T>::arch();
+    ZkStdLib::configure(&mut cs, (arch, arch.range_check_bit_len(k)));
     let domain = EvaluationDomain::new(cs.degree() as u32, k);
     let relation = IvcCircuit::<T>::new(domain, cs.into_finalized(), ctx.clone());
 

@@ -21,10 +21,7 @@ use num_bigint::BigUint;
 
 use crate::{
     CircuitField,
-    field::{
-        AssignedBounded, AssignedNative, NativeChip, NativeGadget,
-        decomposition::chip::P2RDecompositionChip,
-    },
+    field::{AssignedBounded, AssignedNative, NativeGadget},
     instructions::{
         ArithInstructions, AssertionInstructions, AssignmentInstructions, BinaryInstructions,
         ComparisonInstructions, ControlFlowInstructions, EqualityInstructions,
@@ -36,7 +33,7 @@ use crate::{
     vec::get_lims,
 };
 
-type NG<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
+type NG<F> = NativeGadget<F>;
 
 #[derive(Clone, Debug)]
 /// A gadget for vector operations of elements that are or fit within a native
@@ -467,10 +464,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        field::{
-            AssignedNative, NativeChip, NativeGadget,
-            decomposition::chip::{P2RDecompositionChip, P2RDecompositionConfig},
-        },
+        field::{AssignedNative, NativeGadget, NativeGadgetConfig},
         testing_utils::FromScratch,
         utils::circuit_modeling::{circuit_to_json, cost_measure_end, cost_measure_start},
     };
@@ -492,10 +486,10 @@ mod tests {
         Trim { trim_size: usize },
     }
 
-    type NG<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
+    type NG<F> = NativeGadget<F>;
 
     impl<F: CircuitField, const M: usize, const A: usize> Circuit<F> for TestCircuit<F, M, A> {
-        type Config = P2RDecompositionConfig;
+        type Config = NativeGadgetConfig;
 
         type FloorPlanner = SimpleFloorPlanner;
 
@@ -623,7 +617,7 @@ mod tests {
     impl<F: CircuitField, const M: usize, const A: usize, const L: usize> Circuit<F>
         for ResizeTestCircuit<F, M, A, L>
     {
-        type Config = P2RDecompositionConfig;
+        type Config = NativeGadgetConfig;
 
         type FloorPlanner = SimpleFloorPlanner;
 

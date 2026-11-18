@@ -81,12 +81,11 @@ pub struct InnerCircuitsContext {
 
 impl InnerCircuitsContext {
     /// Creates a new [`InnerCircuitsContext`] from the shared architecture, the
-    /// `max_bit_len` the inner circuits were configured with (`k - 1` in
-    /// zk_stdlib), and SRS verifier parameters.
+    /// `max_bit_len` the inner circuits were configured with (see
+    /// [`ZkStdLibArch::range_check_bit_len()`]), and SRS verifier parameters.
     ///
-    /// `max_bit_len` only affects foreign-field chips: inner circuits that use
-    /// them must all have been configured with this value, whereas the others
-    /// may have any size.
+    /// All the inner circuits must have been configured with this
+    /// `max_bit_len`, which the range-check chip depends on.
     pub fn new(arch: ZkStdLibArch, max_bit_len: u8, params_verifier: ParamsVerifierKZG<E>) -> Self {
         let mut cs = ConstraintSystem::default();
         ZkStdLib::configure(&mut cs, (arch, max_bit_len));
@@ -245,7 +244,7 @@ impl IvcTransition for ProofAggregation {
     fn arch() -> ZkStdLibArch {
         ZkStdLibArch {
             poseidon: true,
-            nr_pow2range_cols: 4,
+            nb_range_check_groups: 1,
             ..ZkStdLibArch::default()
         }
     }

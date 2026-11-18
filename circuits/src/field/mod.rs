@@ -13,11 +13,11 @@
 
 //! Native and non-native arithmetic
 mod assigned_native;
-pub mod decomposition;
 pub mod foreign;
 pub mod native;
 pub mod range_check;
 
 pub(crate) use assigned_native::AssignNative;
 pub use assigned_native::AssignedNative;
-pub use native::{AssignedBounded, NativeChip, NativeConfig, NativeGadget};
+pub use native::{AssignedBounded, NativeChip, NativeConfig, NativeGadget, NativeGadgetConfig};
+pub use range_check::{RangeCheckChip, RangeCheckConfig};

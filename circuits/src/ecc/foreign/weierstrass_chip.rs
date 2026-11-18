@@ -1064,8 +1064,6 @@ where
         base_field_config: &FieldChipConfig,
         advice_columns: &[Column<Advice>],
         fixed_columns: &[Column<Fixed>],
-        nb_parallel_range_checks: usize,
-        max_bit_len: u32,
     ) -> ForeignWeierstrassEccConfig<C> {
         // Assert that there is room for the cond_col in the existing columns of the
         // field_chip configurations.
@@ -1094,8 +1092,6 @@ where
             &cond_col,
             fixed_columns[..NB_FOREIGN_WEIERSTRASS_FIXED_COLS].try_into().unwrap(),
             &unified_coeff_bounds,
-            nb_parallel_range_checks,
-            max_bit_len,
         );
 
         let (q_multi_select, idx_col_multi_select, tag_col_multi_select) =
@@ -2067,22 +2063,13 @@ where
         while fixed_columns.len() < NB_FOREIGN_WEIERSTRASS_FIXED_COLS {
             fixed_columns.push(meta.fixed_column());
         }
-        // Use hard-coded pow2range values matching NativeGadget::configure_from_scratch
-        let nb_parallel_range_checks = 4;
-        let max_bit_len = 8;
-        let base_field_config = FieldChip::<F, C::Base, B, N>::configure(
-            meta,
-            &advice_columns[..nb_advice_cols],
-            nb_parallel_range_checks,
-            max_bit_len,
-        );
+        let base_field_config =
+            FieldChip::<F, C::Base, B, N>::configure(meta, &advice_columns[..nb_advice_cols]);
         let ff_ecc_config = ForeignWeierstrassEccChip::<F, C, B, S, N>::configure(
             meta,
             &base_field_config,
             &advice_columns[..nb_advice_cols],
             fixed_columns,
-            nb_parallel_range_checks,
-            max_bit_len,
         );
         ForeignEccTestConfig {
             native_gadget_config,
@@ -2105,15 +2092,12 @@ mod tests {
     use super::*;
     use crate::{
         ecc::curves::CircuitCurve,
-        field::{
-            NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip,
-            foreign::params::MultiEmulationParams,
-        },
+        field::{NativeGadget, foreign::params::MultiEmulationParams},
         instructions::{assertions, assignments, control_flow, ecc, equality, public_input, zero},
         testing_utils::FromScratch,
     };
 
-    type Native<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
+    type Native<F> = NativeGadget<F>;
 
     type EmulatedField<F, C> = FieldChip<F, <C as Group>::Scalar, MultiEmulationParams, Native<F>>;
 

@@ -673,7 +673,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        field::{NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip},
+        field::NativeGadget,
         hash::poseidon::PoseidonChip,
         instructions::hash::HashCPU,
         mmr::cpu::Mmr,
@@ -681,7 +681,7 @@ mod tests {
     };
 
     const CAPACITY: usize = 5;
-    type Ng<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
+    type Ng<F> = NativeGadget<F>;
 
     #[derive(Clone, Debug)]
     enum MmrTests {

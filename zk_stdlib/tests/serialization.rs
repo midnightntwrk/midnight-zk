@@ -91,7 +91,8 @@ const ARCHITECTURES: [ZkStdLibArch; 4] = [
         curve25519: true,
         base64: false,
         nb_arith_cols: 5,
-        nr_pow2range_cols: 4,
+        nb_range_check_groups: 1,
+        range_check_bit_len: None,
         automaton: false,
     },
     ZkStdLibArch {
@@ -108,7 +109,8 @@ const ARCHITECTURES: [ZkStdLibArch; 4] = [
         curve25519: false,
         base64: false,
         nb_arith_cols: 5,
-        nr_pow2range_cols: 4,
+        nb_range_check_groups: 1,
+        range_check_bit_len: None,
         automaton: false,
     },
     ZkStdLibArch {
@@ -125,7 +127,8 @@ const ARCHITECTURES: [ZkStdLibArch; 4] = [
         curve25519: true,
         base64: false,
         nb_arith_cols: 5,
-        nr_pow2range_cols: 4,
+        nb_range_check_groups: 1,
+        range_check_bit_len: None,
         automaton: false,
     },
     ZkStdLibArch {
@@ -142,7 +145,8 @@ const ARCHITECTURES: [ZkStdLibArch; 4] = [
         curve25519: true,
         base64: true,
         nb_arith_cols: 5,
-        nr_pow2range_cols: 4,
+        nb_range_check_groups: 1,
+        range_check_bit_len: Some(4),
         automaton: false,
     },
 ];
@@ -324,7 +328,7 @@ fn vk_version_and_pcs_are_checked_on_read() {
     let err = MidnightVK::<FflonkKZG<4>>::read(&mut &vk_bytes[..], SerdeFormat::Processed).err();
     assert_eq!(err.map(|e| e.kind()), Some(ErrorKind::InvalidData));
 
-    for version in [1u32, 2, 4] {
+    for version in [1u32, 2, 3, 5] {
         let mut bytes = vk_bytes.clone();
         bytes[1..5].copy_from_slice(&version.to_le_bytes());
         let err = MidnightVK::<KZG>::read(&mut &bytes[..], SerdeFormat::Processed).err();

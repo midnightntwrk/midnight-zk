@@ -1364,8 +1364,6 @@ where
     pub fn configure(
         meta: &mut ConstraintSystem<F>,
         advice_columns: &[Column<Advice>],
-        nb_parallel_range_checks: usize,
-        max_bit_len: u32,
     ) -> FieldChipConfig {
         check_params::<F, K, P>();
 
@@ -1381,20 +1379,8 @@ where
             [(nb_limbs as usize + 1)..(nb_limbs as usize + 1 + P::moduli().len())]
             .to_vec();
 
-        let mul_config = MulConfig::configure::<F, K, P>(
-            meta,
-            &x_cols,
-            &z_cols,
-            nb_parallel_range_checks,
-            max_bit_len,
-        );
-        let norm_config = NormConfig::configure::<F, K, P>(
-            meta,
-            &x_cols,
-            &z_cols,
-            nb_parallel_range_checks,
-            max_bit_len,
-        );
+        let mul_config = MulConfig::configure::<F, K, P>(meta, &x_cols, &z_cols);
+        let norm_config = NormConfig::configure::<F, K, P>(meta, &x_cols, &z_cols);
 
         FieldChipConfig {
             mul_config,
@@ -1842,20 +1828,12 @@ where
             fixed_columns,
             instance_columns,
         );
-        // Use hard-coded pow2range values matching NativeGadget::configure_from_scratch
-        let nb_parallel_range_checks = 4;
-        let max_bit_len = 8;
         let field_chip_config = {
             let nb_fc_cols = nb_field_chip_columns::<F, K, P>();
             while advice_columns.len() < nb_fc_cols {
                 advice_columns.push(meta.advice_column());
             }
-            FieldChip::<F, K, P, N>::configure(
-                meta,
-                &advice_columns[..nb_fc_cols],
-                nb_parallel_range_checks,
-                max_bit_len,
-            )
+            FieldChip::<F, K, P, N>::configure(meta, &advice_columns[..nb_fc_cols])
         };
         FieldChipConfigForTests {
             native_gadget_config,
@@ -1874,10 +1852,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        field::{
-            NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip,
-            foreign::params::MultiEmulationParams,
-        },
+        field::{NativeGadget, foreign::params::MultiEmulationParams},
         instructions::{
             arithmetic, assertions, assignments, control_flow, decomposition, equality,
             public_input, zero,
@@ -1889,12 +1864,7 @@ mod tests {
             $mod::tests::$op::<
                 $native,
                 AssignedField<$native, $emulated, MultiEmulationParams>,
-                FieldChip<
-                    $native,
-                    $emulated,
-                    MultiEmulationParams,
-                    NativeGadget<$native, P2RDecompositionChip<$native>, NativeChip<$native>>,
-                >,
+                FieldChip<$native, $emulated, MultiEmulationParams, NativeGadget<$native>>,
             >($name);
         };
     }
@@ -1941,13 +1911,8 @@ mod tests {
             $mod::tests::$op::<
                 $native,
                 AssignedField<$native, $emulated, MultiEmulationParams>,
-                FieldChip<
-                    $native,
-                    $emulated,
-                    MultiEmulationParams,
-                    NativeGadget<$native, P2RDecompositionChip<$native>, NativeChip<$native>>,
-                >,
-                NativeGadget<$native, P2RDecompositionChip<$native>, NativeChip<$native>>,
+                FieldChip<$native, $emulated, MultiEmulationParams, NativeGadget<$native>>,
+                NativeGadget<$native>,
             >($name);
         };
     }
