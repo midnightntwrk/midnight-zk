@@ -117,10 +117,6 @@ where
     native_gadget: N,
     base_field_chip: FieldChip<F, C::Base, B, N>,
     scalar_field_chip: S,
-    /// Cache mapping assigned constant points to their known values.
-    constant_cache: ConstantPointCache<F, C, B>,
-    /// Per-chip tag counter for dynamic lookup tables (tag 0 is reserved).
-    tag_cnt: Rc<RefCell<u64>>,
 }
 
 impl<F, C, B, S, N> ForeignEdwardsEccChip<F, C, B, S, N>
@@ -188,8 +184,6 @@ where
             native_gadget: native_gadget.clone(),
             base_field_chip,
             scalar_field_chip: scalar_field_chip.clone(),
-            constant_cache: Rc::new(RefCell::new(HashMap::new())),
-            tag_cnt: Rc::new(RefCell::new(1)),
         }
     }
 

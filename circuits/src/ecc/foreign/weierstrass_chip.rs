@@ -2220,7 +2220,7 @@ mod tests {
         let chip2 = Chip::new_from_scratch(&config);
         assert!(Rc::ptr_eq(&chip1.config.tag_cnt, &chip2.config.tag_cnt));
     }
-  
+
     type BlsOverBlsChip = ForeignWeierstrassEccChip<
         BlsScalar,
         BlsG1,
