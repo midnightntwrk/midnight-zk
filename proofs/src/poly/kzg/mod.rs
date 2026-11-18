@@ -36,7 +36,7 @@ use rand_core::OsRng;
 
 use crate::{
     poly::{
-        Coeff, Error, Polynomial, PolynomialRepresentation, ProverQuery,
+        Coeff, CommitPolynomial, Error, Polynomial, ProverQuery,
         commitment::{InterleavedCommit, PolynomialCommitmentScheme},
         kzg::{
             commitment::NB_POLYS_PREFIX_BYTES,
@@ -133,9 +133,9 @@ impl<E: KZGEngine> PolynomialCommitmentScheme<E::Fr> for KZGCommitmentScheme<E> 
         params.verifier_params()
     }
 
-    fn commit_many<B: PolynomialRepresentation>(
+    fn commit_many(
         params: &Self::Parameters,
-        polynomials: &[&Polynomial<E::Fr, B>],
+        polynomials: &[CommitPolynomial<E::Fr>],
         labels: &[PolynomialLabel],
     ) -> Self::Commitment {
         assert_eq!(
@@ -145,14 +145,14 @@ impl<E: KZGEngine> PolynomialCommitmentScheme<E::Fr> for KZGCommitmentScheme<E> 
         );
         PolynomialLabel::assert_distinct(labels);
 
-        let bases = params.bases::<B>();
         KZGMultiCommitment(
-            (polynomials.iter().zip(labels))
+            (polynomials.par_iter().zip(labels.par_iter()))
                 .map(|(polynomial, label)| {
-                    let size = polynomial.values.len();
-                    assert!(bases.len() >= size);
+                    let bases = params.bases(polynomial.basis);
+                    let values = &polynomial.values;
+                    assert!(bases.len() >= values.len());
                     KZGCommitment::Simple(
-                        msm_specific::<E::G1Affine>(&polynomial.values, &bases[..size]),
+                        msm_specific::<E::G1Affine>(values, &bases[..values.len()]),
                         label.clone(),
                     )
                 })
@@ -555,9 +555,9 @@ impl<E: KZGEngine> PolynomialCommitmentScheme<E::Fr> for KZGCommitmentScheme<E> 
 }
 
 impl<E: KZGEngine> InterleavedCommit<E::Fr> for KZGCommitmentScheme<E> {
-    fn commit_interleaved<B: PolynomialRepresentation>(
+    fn commit_interleaved(
         params: &Self::Parameters,
-        chunks: &[&[&Polynomial<E::Fr, B>]],
+        chunks: &[&[CommitPolynomial<E::Fr>]],
         labels: &[PolynomialLabel],
     ) -> Self::Commitment {
         assert_eq!(
@@ -568,7 +568,7 @@ impl<E: KZGEngine> InterleavedCommit<E::Fr> for KZGCommitmentScheme<E> {
         PolynomialLabel::assert_distinct(labels);
 
         KZGMultiCommitment(
-            (chunks.iter().zip(labels))
+            (chunks.par_iter().zip(labels.par_iter()))
                 .map(|(chunk, label)| {
                     KZGCommitment::Simple(commit_chunk(params, chunk), label.clone())
                 })
@@ -578,22 +578,30 @@ impl<E: KZGEngine> InterleavedCommit<E::Fr> for KZGCommitmentScheme<E> {
 }
 
 /// Commitment to `Σ_i X^i f_i(X^t)`, for `chunk` the polynomials `f_i` and
-/// `t` the next power of two of their number.
-fn commit_chunk<E, B>(params: &ParamsKZG<E>, chunk: &[&Polynomial<E::Fr, B>]) -> E::G1
+/// `t` the next power of two of their number: one MSM of the values of every
+/// `f_i` against the bases of its residue.
+fn commit_chunk<E>(params: &ParamsKZG<E>, chunk: &[CommitPolynomial<E::Fr>]) -> E::G1
 where
     E: MultiMillerLoop,
     E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
-    B: PolynomialRepresentation,
 {
     let t = chunk.len().next_power_of_two();
-    let n = chunk[0].len();
+    let n = chunk[0].values.len();
     assert!(
-        chunk.iter().all(|poly| poly.len() == n),
+        chunk.iter().all(|poly| poly.values.len() == n),
         "the polynomials of a chunk have different lengths"
     );
-    (chunk.iter().enumerate())
-        .map(|(i, poly)| msm_specific(&poly.values, &params.residue_bases::<B>(t, n, i)))
-        .sum()
+    let (scalars, points): (Vec<E::Fr>, Vec<E::G1Affine>) = (chunk.par_iter().enumerate())
+        .map(|(i, poly)| {
+            let bases = params.residue_bases(poly.basis, t, n, i);
+            (poly.values.clone(), bases.to_vec())
+        })
+        .reduce(Default::default, |(mut scalars, mut points), (s, p)| {
+            scalars.extend(s);
+            points.extend(p);
+            (scalars, points)
+        });
+    msm_specific(&scalars, &points)
 }
 
 #[cfg(test)]
@@ -606,7 +614,7 @@ mod tests {
 
     use crate::{
         poly::{
-            Coeff, EvaluationDomain, PolynomialLabel,
+            EvaluationDomain, PolynomialLabel,
             commitment::{Guard, PolynomialCommitmentScheme},
             kzg::{
                 KZGCommitmentScheme, KZGEngine,
@@ -644,7 +652,7 @@ mod tests {
         type T = CircuitTranscript<Blake2bState>;
 
         let params: ParamsKZG<Bls12> = ParamsKZG::unsafe_setup(4, OsRng);
-        let commitment = PCS::commit_many::<Coeff>(&params, &[], &[]);
+        let commitment = PCS::commit_many(&params, &[], &[]);
         assert!(commitment.0.is_empty());
 
         let fresh_challenge: Fq = T::init().squeeze_challenge();

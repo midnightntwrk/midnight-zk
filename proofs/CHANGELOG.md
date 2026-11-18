@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `transcript::TranscriptField<H>` (`Hashable<H> + Sampleable<H>`) and `plonk::ProofField<H>` (`TranscriptField<H> + WithSmallOrderMulGroup<3> + FromUniformBytes<64> + Hash + Ord`), which the prover, verifier and commitment schemes are bounded by [#644](https://github.com/midnightntwrk/midnight-zk/pull/644)
 ### Changed
 * Only the code that needs `ZETA` (building an `EvaluationDomain`, and reading or creating keys) requires `WithSmallOrderMulGroup<3>`; the getters of `EvaluationDomain`, `VerifyingKey` and `ProvingKey`, and the prover and verifier internals, require `PrimeField` [#644](https://github.com/midnightntwrk/midnight-zk/pull/644)
+* Commits to several bases within one batched commit, by introducing `poly::CommitPolynomial` [#639](https://github.com/midnightntwrk/midnight-zk/pull/639)
 ### Removed
 
 ## [0.9.0-rc.1]
