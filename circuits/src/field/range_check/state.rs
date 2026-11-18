@@ -25,8 +25,8 @@ pub(super) struct State<F: CircuitField> {
     /// measurement window.
     pub(super) pending: Pending<F>,
     /// Cost model only: the assertions and decompositions recorded inside a
-    /// cost-model measurement window, see
-    /// [RangeCheckChip::load](super::RangeCheckChip::load).
+    /// cost-model measurement window, see the `load` of
+    /// [RangeCheckChip](super::RangeCheckChip).
     pub(super) pending_in_cost_window: Pending<F>,
     /// Whether the sentinel row is placed.
     pub(super) sentinel_placed: bool,
