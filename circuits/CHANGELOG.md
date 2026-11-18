@@ -20,11 +20,15 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 * Foreign Weierstrass `point_from_coordinates` enforces membership in the prime-order subgroup on curves with a non-trivial cofactor (BLS12-381), as documented in `EccInstructions` [#654](https://github.com/midnightntwrk/midnight-zk/pull/654)
 * `AssignmentInstructions::as_constant`, the constant an assigned element is known to encode at circuit-construction time, if any [#655](https://github.com/midnightntwrk/midnight-zk/pull/655)
+* `RangeCheckChip`, which records assertions `x < 2^n` during synthesis and lays them out when loaded, in rows of `G` groups of four lanes looked up against a tag shared by the row, one output per group and a link between consecutive groups; the chips built on a configuration share their recorded assertions, and loading any of them lays out all of them [#631](https://github.com/midnightntwrk/midnight-zk/pull/631)
 ### Changed
 * Native and emulated field arithmetic and the foreign MSM use `as_constant` to simplify operations with constant operands, which changes the VKs of circuits that use them [#655](https://github.com/midnightntwrk/midnight-zk/pull/655)
 * `NativeChip::assign` and `assign_many` create elements that are not assigned to a cell yet: an element is assigned to the first cell it is copied to (or to the cell of an element it is constrained to be equal to), saving the rows of the assignment. Unused elements are never assigned. This changes the verifying keys of all circuits [#620](https://github.com/midnightntwrk/midnight-zk/pull/620)
 * `AssignedNative<F>` is a struct instead of an alias of `AssignedCell<F, F>`; convert from `AssignedCell<F, F>` with `AssignedNative::from_cell` and to it with `From`. Two `AssignedNative`s are equal iff they are assigned to the same cell, or neither is assigned to a cell and one is a clone of the other [#620](https://github.com/midnightntwrk/midnight-zk/pull/620)
+* `NativeGadget` has no generic chips: it holds a `NativeChip` and a `RangeCheckChip`, which performs all of its range checks, decompositions included; its `FromScratch` configuration is the pair of their configurations. This changes the verifying keys of every circuit [#631](https://github.com/midnightntwrk/midnight-zk/pull/631)
+* BREAKING: the `configure` functions of `FieldChip`, `ForeignWeierstrassEccChip` and `ForeignEdwardsEccChip`, and the `bounds` of their gates, no longer take `nb_parallel_range_checks` and `max_bit_len`: the carry bounds are the next powers of two [#631](https://github.com/midnightntwrk/midnight-zk/pull/631)
 ### Removed
+* The `decomposition` module: `P2RDecompositionChip`, `Pow2RangeChip`, `CoreDecompositionInstructions` and `Pow2RangeInstructions`, replaced by `RangeCheckChip` [#631](https://github.com/midnightntwrk/midnight-zk/pull/631)
 * BREAKING: `ForeignEdwardsEccChip::as_known_constant`. Use `AssignmentInstructions::as_constant` [#655](https://github.com/midnightntwrk/midnight-zk/pull/655)
 
 ## [8.0.0-rc.1]

@@ -176,7 +176,7 @@ impl Relation for CredentialProperty {
             secp256k1: true,
             base64: true,
             automaton: true,
-            nr_pow2range_cols: 3,
+            nb_range_check_groups: 1,
             ..ZkStdLibArch::default()
         }
     }
@@ -314,7 +314,7 @@ impl CredentialProperty {
 }
 
 fn main() {
-    const K: u32 = 16;
+    const K: u32 = 15;
     let credential_blob = read_credential::<4096>(CRED_PATH).expect("Path to credential file.");
 
     let relation = CredentialProperty;

@@ -12,6 +12,7 @@
 // limitations under the License.
 
 use std::{
+    cell::Cell,
     collections::BTreeMap,
     fs, io,
     io::Write,
@@ -50,6 +51,7 @@ use serde_json::{Map, Value, json};
 /// }
 /// ```
 pub fn cost_measure_start<F: Field>(layouter: &mut impl Layouter<F>) {
+    IN_COST_MEASURE.set(true);
     let _ = layouter.namespace(|| COST_MEASURE_START);
 }
 
@@ -58,7 +60,27 @@ pub fn cost_measure_start<F: Field>(layouter: &mut impl Layouter<F>) {
 ///
 /// See [`cost_measure_start`].
 pub fn cost_measure_end<F: Field>(layouter: &mut impl Layouter<F>) {
+    IN_COST_MEASURE.set(false);
     let _ = layouter.namespace(|| COST_MEASURE_END);
+}
+
+thread_local! {
+    /// Whether synthesis is between [`cost_measure_start`] and
+    /// [`cost_measure_end`]. The markers are layouter namespaces, which chips
+    /// cannot query, so this flag tracks them.
+    static IN_COST_MEASURE: Cell<bool> = const { Cell::new(false) };
+}
+
+/// Whether synthesis is between [`cost_measure_start`] and
+/// [`cost_measure_end`].
+///
+/// A chip that records constraints during synthesis and lays them out when it
+/// is loaded (after the measurement window has been closed) reads this flag
+/// when recording each constraint. It then lays out the constraints recorded
+/// inside the window between their own pair of markers, so that the
+/// cost-model counts their rows in the measured operation.
+pub(crate) fn in_cost_measure() -> bool {
+    IN_COST_MEASURE.get()
 }
 
 /// Obtains the cost-model provided by `[ModelCircuit] of `circuit` .

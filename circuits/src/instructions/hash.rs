@@ -72,10 +72,7 @@ pub(crate) mod tests {
 
     use super::*;
     #[cfg(test)]
-    use crate::{
-        field::{NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip},
-        vec::vector_gadget::VectorGadget,
-    };
+    use crate::{field::NativeGadget, vec::vector_gadget::VectorGadget};
     use crate::{
         instructions::{AssertionInstructions, AssignmentInstructions},
         testing_utils::{FromScratch, Sampleable},
@@ -201,7 +198,7 @@ pub(crate) mod tests {
     }
 
     #[cfg(test)]
-    type NG<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
+    type NG<F> = NativeGadget<F>;
 
     #[cfg(test)]
     #[derive(Clone, Debug, Default)]

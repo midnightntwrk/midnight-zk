@@ -22,9 +22,7 @@ use blake2b::{
 };
 use midnight_circuits::{CircuitField, ComposableChip, field::AssignedNative, types::AssignedByte};
 #[cfg(test)]
-use midnight_circuits::{
-    field::decomposition::chip::P2RDecompositionConfig, testing_utils::FromScratch,
-};
+use midnight_circuits::{field::NativeGadget, testing_utils::FromScratch};
 #[cfg(test)]
 use midnight_proofs::plonk::Instance;
 use midnight_proofs::{
@@ -86,6 +84,11 @@ impl<F: CircuitField> Blake2bWrapper<F> {
         key: &[AssignedByte<F>],
         output_size: usize,
     ) -> Result<[AssignedByte<F>; 64], Error> {
+        // The external chip takes cells, so bytes that are not assigned to a cell
+        // yet are assigned first.
+        let bytes: Vec<AssignedNative<F>> =
+            input.iter().chain(key).map(AssignedNative::from).collect();
+        self.native_gadget.native_chip.materialize(layouter, &bytes)?;
         let to_cell = |b: &AssignedByte<F>| AssignedCell::from(&AssignedNative::from(b));
         let input = &input.iter().map(to_cell).collect::<Vec<_>>();
         let key = &key.iter().map(to_cell).collect::<Vec<_>>();
@@ -121,7 +124,7 @@ impl<F: CircuitField> Blake2bWrapper<F> {
 
 #[cfg(test)]
 impl<F: CircuitField> FromScratch<F> for Blake2bWrapper<F> {
-    type Config = (Blake2bConfig, P2RDecompositionConfig);
+    type Config = (Blake2bConfig, <NativeGadget<F> as FromScratch<F>>::Config);
 
     fn new_from_scratch(config: &Self::Config) -> Self {
         let native_gadget = NG::new_from_scratch(&config.1);
@@ -285,7 +288,7 @@ mod test {
                 AssignedByte<Fq>,
                 [AssignedByte<Fq>; 64],
                 Blake2b512<Fq>,
-                NativeGadget<Fq, _, _>,
+                NativeGadget<Fq>,
             >(cost_model, "Blake2b_512", input_size);
         }
 
@@ -318,7 +321,7 @@ mod test {
                 AssignedByte<Fq>,
                 [AssignedByte<Fq>; 32],
                 Blake2b256<Fq>,
-                NativeGadget<Fq, _, _>,
+                NativeGadget<Fq>,
             >(cost_model, "Blake2b_256", input_size);
         }
 

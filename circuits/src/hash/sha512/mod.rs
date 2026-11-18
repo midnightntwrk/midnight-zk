@@ -73,7 +73,7 @@ mod tests {
                 AssignedByte<Scalar>,
                 [AssignedByte<Scalar>; 64],
                 Sha512Chip<Scalar>,
-                NativeGadget<Scalar, _, _>,
+                NativeGadget<Scalar>,
             >(cost_model, "SHA512", input_size)
         }
 

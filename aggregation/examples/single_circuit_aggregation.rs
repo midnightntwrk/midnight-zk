@@ -214,7 +214,7 @@ impl IvcTransition for ProofAggregation {
     fn arch() -> ZkStdLibArch {
         ZkStdLibArch {
             poseidon: true,
-            nr_pow2range_cols: 4,
+            nb_range_check_groups: 1,
             ..ZkStdLibArch::default()
         }
     }
@@ -355,7 +355,7 @@ fn main() {
     let inner_ctx = {
         let k = sha_preimage::K;
         let mut cs = midnight_proofs::plonk::ConstraintSystem::default();
-        ZkStdLib::configure(&mut cs, (inner_arch, (k - 1) as u8));
+        ZkStdLib::configure(&mut cs, (inner_arch, inner_arch.range_check_bit_len(k)));
         let domain = midnight_proofs::poly::EvaluationDomain::new(cs.degree() as u32, k);
 
         InnerCircuitContext {

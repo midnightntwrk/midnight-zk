@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 * KZG commitments (`commit`, `commit_many` and `commit_interleaved`, hence the prover, keygen and `commit_to_instances`) use the Rust `msm_pippenger` instead of blst's `multi_exp_affine` for BLS12-381 G1, with the same results. The verifier's MSM (`msm_specific`) is unchanged [#594](https://github.com/midnightntwrk/midnight-zk/pull/594)
 * Only the code that needs `ZETA` (building an `EvaluationDomain`, and reading or creating keys) requires `WithSmallOrderMulGroup<3>`; the getters of `EvaluationDomain`, `VerifyingKey` and `ProvingKey`, and the prover and verifier internals, require `PrimeField` [#644](https://github.com/midnightntwrk/midnight-zk/pull/644)
+* The cost model with `COST_MEASURE_START`/`COST_MEASURE_END` markers reports the number of rows of the measured regions, which chips laying out constraints at load time may place apart, instead of their span [#631](https://github.com/midnightntwrk/midnight-zk/pull/631)
+
 ### Removed
 
 ## [0.9.0-rc.1]
