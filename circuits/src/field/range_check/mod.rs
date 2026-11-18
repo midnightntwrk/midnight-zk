@@ -170,8 +170,7 @@ impl<F: CircuitField> RangeCheckChip<F> {
     /// Other bounds are not taken: `x` must be split in pieces with supported
     /// bounds, as [NativeGadget](crate::field::NativeGadget) does.
     pub fn is_supported_bound(&self, n: usize) -> bool {
-        let t = self.config.max_bit_len;
-        n <= t || (3 * t < n && n <= 4 * t) || n.is_multiple_of(4 * t)
+        is_supported_bound(self.config.max_bit_len, n)
     }
 
     /// Asserts that `x` lies in `[0, 2^n)`.
@@ -495,6 +494,13 @@ impl<F: CircuitField> RangeCheckChip<F> {
             },
         )
     }
+}
+
+/// Whether a chip of the given `max_bit_len` takes the bound `2^n`, see
+/// [RangeCheckChip::is_supported_bound].
+pub fn is_supported_bound(max_bit_len: usize, n: usize) -> bool {
+    let t = max_bit_len;
+    n <= t || (3 * t < n && n <= 4 * t) || n.is_multiple_of(4 * t)
 }
 
 /// The tag of the sentinel row, which differs from every limb size.
