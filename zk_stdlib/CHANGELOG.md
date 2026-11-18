@@ -16,6 +16,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Proving with `FflonkKZG` returns an error instead of panicking when a query's label is not among its group's labels, and rejects a polynomial queried twice at the same point [#671](https://github.com/midnightntwrk/midnight-zk/pull/671)
 * The JWT identity examples pass the committed instance column (0) to `commit_to_instances`, which now takes it [#671](https://github.com/midnightntwrk/midnight-zk/pull/671)
 * BREAKING: `ZkStdLibArch::nr_pow2range_cols` is replaced by `nb_range_check_groups`, the number of groups of the range-check chip, of 5 advice columns each, at the same position in the serialized architecture; `ZkStdLib::new` no longer takes `max_bit_len`, which the configuration carries. This changes the verifying keys of every circuit [#631](https://github.com/midnightntwrk/midnight-zk/pull/631)
+* The RSA example sets `range_check_bit_len` to 10, so that its range-check table fits in `k = 12`, and the examples run at their optimal `k` [#631](https://github.com/midnightntwrk/midnight-zk/pull/631)
 
 ### Removed
 ### Fixed
