@@ -16,6 +16,7 @@ mod assigned_native;
 pub mod decomposition;
 pub mod foreign;
 pub mod native;
+pub mod range_check;
 
 pub(crate) use assigned_native::AssignNative;
 pub use assigned_native::AssignedNative;
