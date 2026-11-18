@@ -71,9 +71,14 @@
 //! The first assertion or decomposition places a sentinel row that looks up
 //! `(sentinel, 0)`, which the table only contains once the chip is loaded, so a
 //! circuit that records assertions but never loads the chip is unsatisfiable.
+//!
+//! The recorded assertions and decompositions, and whether the sentinel is
+//! placed and the chip loaded, are kept in the configuration, so all the chips
+//! built on it share them: loading any of them lays out what all of them
+//! recorded. A configuration must therefore serve a single synthesis.
 
 use std::{
-    cell::{Cell, RefCell, RefMut},
+    cell::{RefCell, RefMut},
     collections::{BTreeMap, HashMap},
     rc::Rc,
 };
@@ -93,8 +98,8 @@ use crate::{
 
 /// [RangeCheckChip] configuration, with the columns of the module
 /// documentation.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct RangeCheckConfig {
+#[derive(Clone, Debug)]
+pub struct RangeCheckConfig<F: CircuitField> {
     /// The four lanes of each of the `G` groups.
     lanes: Vec<[Column<Advice>; 4]>,
     /// The `G` outputs.
@@ -115,6 +120,8 @@ pub struct RangeCheckConfig {
     t_val: TableColumn,
     /// The largest limb size `T`, set when configuring the chip.
     max_bit_len: usize,
+    /// The state shared by all the chips built on this configuration.
+    state: Rc<RefCell<State<F>>>,
 }
 
 /// [RangeCheckChip] asserts that native values lie in `[0, 2^n)`, and
@@ -125,17 +132,11 @@ pub struct RangeCheckConfig {
 /// in use.
 #[derive(Clone, Debug)]
 pub struct RangeCheckChip<F: CircuitField> {
-    config: RangeCheckConfig,
-    pending: Rc<RefCell<Pending<F>>>,
-    /// Cost model only: the assertions and decompositions recorded inside a
-    /// cost-model measurement window, see [RangeCheckChip::load].
-    pending_in_cost_window: Rc<RefCell<Pending<F>>>,
-    sentinel_placed: Rc<Cell<bool>>,
-    loaded: Rc<Cell<bool>>,
+    config: RangeCheckConfig<F>,
 }
 
 impl<F: CircuitField> Chip<F> for RangeCheckChip<F> {
-    type Config = RangeCheckConfig;
+    type Config = RangeCheckConfig<F>;
     type Loaded = ();
     fn config(&self) -> &Self::Config {
         &self.config
@@ -272,20 +273,16 @@ impl<F: CircuitField> ComposableChip<F> for RangeCheckChip<F> {
 
     type InstructionDeps = ();
 
-    fn new(config: &RangeCheckConfig, _: &()) -> Self {
+    fn new(config: &RangeCheckConfig<F>, _: &()) -> Self {
         Self {
             config: config.clone(),
-            pending: Rc::new(RefCell::new(Pending::default())),
-            pending_in_cost_window: Rc::new(RefCell::new(Pending::default())),
-            sentinel_placed: Rc::new(Cell::new(false)),
-            loaded: Rc::new(Cell::new(false)),
         }
     }
 
     fn configure(
         meta: &mut ConstraintSystem<F>,
         (advice, fixed, max_bit_len): &Self::SharedResources,
-    ) -> RangeCheckConfig {
+    ) -> RangeCheckConfig<F> {
         let t = *max_bit_len;
         assert!(
             0 < t && t < 64 && 4 * t < F::NUM_BITS as usize,
@@ -365,14 +362,17 @@ impl<F: CircuitField> ComposableChip<F> for RangeCheckChip<F> {
             t_tag,
             t_val,
             max_bit_len: t,
+            state: Rc::default(),
         }
     }
 
-    /// Lays out all the recorded assertions and decompositions.
+    /// Lays out all the assertions and decompositions recorded by the chips
+    /// built on this configuration.
     ///
     /// Then lays out the lookup table, with the limb sizes in use.
     ///
-    /// Returns an error if the chip has already been loaded.
+    /// Loading again, through this chip or another one built on the same
+    /// configuration, does nothing.
     ///
     /// Cost model only: the cost model counts the rows of an operation by the
     /// regions laid out between a pair of measurement markers, while the chip
@@ -381,13 +381,19 @@ impl<F: CircuitField> ComposableChip<F> for RangeCheckChip<F> {
     /// markers are kept apart, and laid out in a region of their own between
     /// a new pair of markers. Outside of tests, there are none.
     fn load(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
-        if self.loaded.replace(true) {
-            return Err(Error::Synthesis("RangeCheckChip loaded twice".into()));
-        }
-        let outside = self.layout(&self.pending.borrow());
+        let (outside, in_window) = {
+            let state = &mut *self.state();
+            if std::mem::replace(&mut state.loaded, true) {
+                return Ok(());
+            }
+            let layout = |pending| self.layout(pending);
+            (
+                layout(&state.pending),
+                layout(&state.pending_in_cost_window),
+            )
+        };
         self.assign_groups(layouter, &outside)?;
 
-        let in_window = self.layout(&self.pending_in_cost_window.borrow());
         if !in_window.is_empty() {
             #[cfg(any(test, feature = "testing"))]
             crate::utils::circuit_modeling::cost_measure_start(layouter);
@@ -436,7 +442,7 @@ impl<F: CircuitField> RangeCheckChip<F> {
     /// Assertions and decompositions recorded after loading would never be
     /// laid out.
     fn assert_not_loaded(&self) -> Result<(), Error> {
-        if self.loaded.get() {
+        if self.state().loaded {
             return Err(Error::Synthesis(
                 "RangeCheckChip: range check recorded after the chip was loaded".into(),
             ));
@@ -448,10 +454,15 @@ impl<F: CircuitField> RangeCheckChip<F> {
     /// cost-model measurement window if synthesis is inside one, and the
     /// others otherwise.
     fn pending(&self) -> RefMut<'_, Pending<F>> {
-        match in_cost_window() {
-            true => self.pending_in_cost_window.borrow_mut(),
-            false => self.pending.borrow_mut(),
-        }
+        RefMut::map(self.state(), |state| match in_cost_window() {
+            true => &mut state.pending_in_cost_window,
+            false => &mut state.pending,
+        })
+    }
+
+    /// The state shared by the chips built on this configuration.
+    fn state(&self) -> RefMut<'_, State<F>> {
+        self.config.state.borrow_mut()
     }
 
     /// Lays out in groups the given assertions and decompositions.
@@ -591,7 +602,7 @@ impl<F: CircuitField> RangeCheckChip<F> {
     /// It is placed on the first recording, as it needs a layouter, and as a
     /// chip that records nothing must not need to be loaded.
     fn place_sentinel_once(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
-        if self.sentinel_placed.replace(true) {
+        if std::mem::replace(&mut self.state().sentinel_placed, true) {
             return Ok(());
         }
         let config = &self.config;
@@ -617,6 +628,21 @@ impl<F: CircuitField> RangeCheckChip<F> {
             },
         )
     }
+}
+
+/// The state shared by the chips built on a configuration.
+#[derive(Debug, Default)]
+struct State<F: CircuitField> {
+    /// The assertions and decompositions recorded outside of any cost-model
+    /// measurement window.
+    pending: Pending<F>,
+    /// Cost model only: the assertions and decompositions recorded inside a
+    /// cost-model measurement window, see [RangeCheckChip::load].
+    pending_in_cost_window: Pending<F>,
+    /// Whether the sentinel row is placed.
+    sentinel_placed: bool,
+    /// Whether the chip is loaded.
+    loaded: bool,
 }
 
 /// Assertions and decompositions recorded and not yet laid out.
@@ -719,6 +745,8 @@ mod tests {
         SkipLoad,
         RecordAfterLoad,
         LoadTwice,
+        /// Another chip built on the same configuration loads.
+        LoadOther,
     }
 
     /// Values with the bounds `n` they are asserted against, in order.
@@ -728,7 +756,7 @@ mod tests {
     }
 
     impl Circuit<F> for TestCircuit {
-        type Config = (RangeCheckConfig, Column<Advice>);
+        type Config = (RangeCheckConfig<F>, Column<Advice>);
         type FloorPlanner = SimpleFloorPlanner;
         type Params = ();
 
@@ -774,6 +802,10 @@ mod tests {
                 Mode::LoadTwice => {
                     record(&mut layouter)?;
                     chip.load(&mut layouter).and_then(|_| chip.load(&mut layouter))
+                }
+                Mode::LoadOther => {
+                    record(&mut layouter)?;
+                    RangeCheckChip::<F>::new(&config, &()).load(&mut layouter)
                 }
             }
         }
@@ -821,7 +853,13 @@ mod tests {
         let inputs = vec![(F::ONE, vec![1])];
         assert!(!satisfied(inputs.clone(), Mode::SkipLoad));
         assert!(!satisfied(inputs.clone(), Mode::RecordAfterLoad));
-        assert!(!satisfied(inputs, Mode::LoadTwice));
+        assert!(satisfied(inputs, Mode::LoadTwice));
+    }
+
+    #[test]
+    fn shared_between_chips() {
+        assert!(satisfied(vec![(F::ONE, vec![8])], Mode::LoadOther));
+        assert!(!satisfied(vec![(pow2::<F>(8), vec![8])], Mode::LoadOther));
     }
 
     #[test]

@@ -1505,7 +1505,7 @@ impl<F: CircuitField> BitwiseInstructions<F, AssignedNative<F>> for NativeGadget
 
 #[cfg(any(test, feature = "testing"))]
 impl<F: CircuitField> FromScratch<F> for NativeGadget<F> {
-    type Config = (NativeConfig, RangeCheckConfig);
+    type Config = (NativeConfig, RangeCheckConfig<F>);
 
     fn new_from_scratch((native_config, range_check_config): &Self::Config) -> Self {
         let native_chip = NativeChip::new_from_scratch(native_config);

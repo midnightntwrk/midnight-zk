@@ -261,7 +261,7 @@ impl ZkStdLibArch {
 /// Configured chips for [ZkStdLib].
 pub struct ZkStdLibConfig {
     native_config: NativeConfig,
-    range_check_config: RangeCheckConfig,
+    range_check_config: RangeCheckConfig<midnight_curves::Fq>,
     jubjub_config: Option<EccConfig>,
     sha2_256_config: Option<Sha256Config>,
     sha2_512_config: Option<Sha512Config>,
