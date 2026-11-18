@@ -525,23 +525,9 @@ where
     ) -> Result<Vec<AssignedNative<F>>, Error> {
         let assigned = self.normalize(layouter, assigned)?;
 
-        // Well-formed limbs encode an integer in [0, 2^k), where 2^k is the smallest
-        // power of 2 bigger than m, so it may be non-canonical. Assert canonicity so
-        // that the output is uniquely determined by the value.
-        let bits = (assigned.limb_values.iter())
-            .zip(well_formed_log2_bounds::<F, K, P>())
-            .map(|(limb, nb_bits)| {
-                self.native_gadget
-                    .assigned_to_le_bits(layouter, limb, Some(nb_bits as usize), true)
-            })
-            .collect::<Result<Vec<_>, Error>>()?
-            .concat();
-        let is_canonical = self.is_canonical(layouter, &bits)?;
-        self.assert_equal_to_fixed(layouter, &is_canonical, true)?;
-
         let nb_limbs_per_batch = (F::CAPACITY / P::LOG2_BASE) as usize;
         let base = BI::from(2).pow(P::LOG2_BASE);
-        assigned
+        let batches = assigned
             .limb_values
             .chunks(nb_limbs_per_batch)
             .map(|chunk| {
@@ -552,7 +538,17 @@ where
                     .collect();
                 self.native_gadget.linear_combination(layouter, &terms, F::ZERO)
             })
-            .collect()
+            .collect::<Result<Vec<_>, Error>>()?;
+
+        // Well-formed limbs encode an integer X in [0, 2^k), where 2^k is the smallest
+        // power of 2 bigger than m, so several X may encode the same field element.
+        // Asserting X < m makes the public input uniquely determined by the value.
+        let batch_sizes = (well_formed_log2_bounds::<F, K, P>().chunks(nb_limbs_per_batch))
+            .map(|limb_sizes| limb_sizes.iter().sum())
+            .collect::<Vec<_>>();
+        self.assert_canonical_batches(layouter, &batches, &batch_sizes)?;
+
+        Ok(batches)
     }
 
     fn constrain_as_public_input(
@@ -1471,6 +1467,79 @@ where
     P: FieldEmulationParams<F, K>,
     N: NativeInstructions<F>,
 {
+    /// Asserts that the given batches, of the given bit sizes, encode (in
+    /// little-endian) an integer lower than the emulated modulus `m`.
+    ///
+    /// Precondition: every batch is in `[0, 2^size)`, with `size <
+    /// F::CAPACITY`.
+    ///
+    /// Like [CanonicityInstructions::is_canonical] on bits, it compares the
+    /// batches with `m - 1` lexicographically, from the least significant one,
+    /// carrying a flag `gt` telling whether the batches processed so far are
+    /// greater than the corresponding part of `m - 1`.
+    fn assert_canonical_batches(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        batches: &[AssignedNative<F>],
+        sizes: &[u32],
+    ) -> Result<(), Error> {
+        let mut m_minus_1 = K::modulus() - BigUint::one();
+        // None stands for gt = 0.
+        let mut gt: Option<AssignedBit<F>> = None;
+        for (i, (batch, size)) in batches.iter().zip(sizes).enumerate() {
+            assert!(*size < F::CAPACITY, "the batches must not wrap around");
+            let m_i = &m_minus_1 % (BigUint::one() << size);
+            m_minus_1 >>= size;
+            let is_top_batch = i + 1 == batches.len();
+            gt = self.batch_greater_than(layouter, batch, *size, gt, &m_i, is_top_batch)?;
+        }
+        Ok(())
+    }
+
+    /// Returns the bit `batch + gt > bound`, for `batch` and `bound` in
+    /// `[0, 2^size)`, where `None` stands for `gt = 0`. This is the
+    /// lexicographic step "greater on this batch, or equal and greater on the
+    /// previous ones". If `assert_false`, it asserts the bit is 0 and returns
+    /// None.
+    ///
+    /// The bit `gt'` is witnessed and enforced by asserting that
+    /// `bound - batch - gt + 2^size * gt'` is in `[0, 2^size)`.
+    fn batch_greater_than(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        batch: &AssignedNative<F>,
+        size: u32,
+        gt: Option<AssignedBit<F>>,
+        bound: &BigUint,
+        assert_false: bool,
+    ) -> Result<Option<AssignedBit<F>>, Error> {
+        let ng = &self.native_gadget;
+        let two_pow_size = BigUint::one() << size;
+        let mut terms = vec![(-F::ONE, batch.clone())];
+        let gt_value = match &gt {
+            Some(gt) => {
+                terms.push((-F::ONE, gt.clone().into()));
+                gt.value()
+            }
+            None => Value::known(false),
+        };
+        let new_gt = if assert_false {
+            None
+        } else {
+            let new_gt_value = (batch.value().zip(gt_value))
+                .map(|(batch, gt)| batch.to_biguint() + BigUint::from(gt as u8) > *bound);
+            let new_gt: AssignedBit<F> = ng.assign(layouter, new_gt_value)?;
+            terms.push((
+                bigint_to_fe(&BI::from(two_pow_size.clone())),
+                new_gt.clone().into(),
+            ));
+            Some(new_gt)
+        };
+        let d = ng.linear_combination(layouter, &terms, bigint_to_fe(&BI::from(bound.clone())))?;
+        ng.assert_lower_than_fixed(layouter, &d, &two_pow_size)?;
+        Ok(new_gt)
+    }
+
     /// Computes `sum(positives) - sum(negatives) + constant` in the emulated
     /// field. Each result limb is produced in a single native
     /// `linear_combination` call, avoiding the per-term overhead of the
