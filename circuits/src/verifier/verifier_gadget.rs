@@ -853,7 +853,7 @@ pub(crate) mod tests {
     {
         type Config = (
             NativeConfig,
-            RangeCheckConfig,
+            RangeCheckConfig<F>,
             ForeignWeierstrassEccConfig<C>,
             PoseidonConfig<F>,
         );
