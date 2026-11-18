@@ -25,6 +25,7 @@ use num_traits::Zero;
 #[cfg(any(test, feature = "testing"))]
 use {
     crate::field::native::NB_EXTRA_ARITH_FIXED_COLS,
+    crate::field::{NativeConfig, RangeCheckConfig},
     crate::testing_utils::{FromScratch, Sampleable},
     crate::utils::ComposableChip,
     midnight_proofs::plonk::{Advice, Column, ConstraintSystem, Fixed, Instance},
@@ -33,10 +34,7 @@ use {
 
 use crate::{
     CircuitField,
-    field::{
-        NativeChip, NativeConfig,
-        range_check::{RangeCheckChip, RangeCheckConfig},
-    },
+    field::{NativeChip, range_check::RangeCheckChip},
     instructions::{
         ArithInstructions, AssertionInstructions, AssignmentInstructions, BinaryInstructions,
         BitwiseInstructions, CanonicityInstructions, ComparisonInstructions,
@@ -49,15 +47,6 @@ use crate::{
     types::{AssignedBit, AssignedNative, InnerValue, Instantiable},
     utils::util::big_to_fe,
 };
-
-/// The configuration of the chips of a [NativeGadget].
-#[derive(Clone, Debug)]
-pub struct NativeGadgetConfig {
-    /// The configuration of the native arithmetic chip.
-    pub native_config: NativeConfig,
-    /// The configuration of the range-check chip.
-    pub range_check_config: RangeCheckConfig,
-}
 
 #[derive(Debug, Clone)]
 /// A gadget that implements all basic operations on the Native field:
@@ -1516,11 +1505,11 @@ impl<F: CircuitField> BitwiseInstructions<F, AssignedNative<F>> for NativeGadget
 
 #[cfg(any(test, feature = "testing"))]
 impl<F: CircuitField> FromScratch<F> for NativeGadget<F> {
-    type Config = NativeGadgetConfig;
+    type Config = (NativeConfig, RangeCheckConfig);
 
-    fn new_from_scratch(config: &Self::Config) -> Self {
-        let native_chip = NativeChip::new_from_scratch(&config.native_config);
-        let range_check_chip = RangeCheckChip::new(&config.range_check_config, &());
+    fn new_from_scratch((native_config, range_check_config): &Self::Config) -> Self {
+        let native_chip = NativeChip::new_from_scratch(native_config);
+        let range_check_chip = RangeCheckChip::new(range_check_config, &());
         NativeGadget::new(native_chip, range_check_chip)
     }
 
@@ -1558,10 +1547,7 @@ impl<F: CircuitField> FromScratch<F> for NativeGadget<F> {
             &(advice_columns[..5].to_vec(), fixed_columns[..4].to_vec(), 8),
         );
 
-        NativeGadgetConfig {
-            native_config,
-            range_check_config,
-        }
+        (native_config, range_check_config)
     }
 }
 

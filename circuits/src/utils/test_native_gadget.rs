@@ -27,7 +27,7 @@ macro_rules! run_test_native_gadget {
             types::{AssignedBit, AssignedByte, AssignedNative, ComposableChip},
             instructions::*,
             field::{
-                AssignedBounded, NativeChip, NativeGadget, NativeGadgetConfig, RangeCheckChip,
+                AssignedBounded, NativeChip, NativeGadget, RangeCheckChip,
                 native::NB_EXTRA_ARITH_FIXED_COLS,
             },
         };
@@ -35,7 +35,7 @@ macro_rules! run_test_native_gadget {
         struct TestCircuit;
 
         impl<F: CircuitField> Circuit<F> for TestCircuit {
-            type Config = NativeGadgetConfig;
+            type Config = <NativeGadget<F> as FromScratch<F>>::Config;
             type FloorPlanner = SimpleFloorPlanner;
             type Params = ();
 
@@ -67,7 +67,7 @@ macro_rules! run_test_native_gadget {
                     meta,
                     &(advice_columns.to_vec(), fixed_columns[..4].to_vec(), 8),
                 );
-                NativeGadgetConfig { native_config, range_check_config }
+                (native_config, range_check_config)
             }
 
             fn synthesize(
@@ -75,8 +75,8 @@ macro_rules! run_test_native_gadget {
                 config: Self::Config,
                 mut $layouter: impl Layouter<F>,
             ) -> Result<(), Error> {
-                let native_chip = NativeChip::new(&config.native_config, &());
-                let range_check_chip = RangeCheckChip::new(&config.range_check_config, &());
+                let native_chip = NativeChip::new(&config.0, &());
+                let range_check_chip = RangeCheckChip::new(&config.1, &());
                 let $chip = NativeGadget::new(native_chip.clone(), range_check_chip.clone());
 
                 $synthesize_body
