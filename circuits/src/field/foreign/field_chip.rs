@@ -525,23 +525,9 @@ where
     ) -> Result<Vec<AssignedNative<F>>, Error> {
         let assigned = self.normalize(layouter, assigned)?;
 
-        // Well-formed limbs encode an integer in [0, 2^k), where 2^k is the smallest
-        // power of 2 bigger than m, so it may be non-canonical. Assert canonicity so
-        // that the output is uniquely determined by the value.
-        let bits = (assigned.limb_values.iter())
-            .zip(well_formed_log2_bounds::<F, K, P>())
-            .map(|(limb, nb_bits)| {
-                self.native_gadget
-                    .assigned_to_le_bits(layouter, limb, Some(nb_bits as usize), true)
-            })
-            .collect::<Result<Vec<_>, Error>>()?
-            .concat();
-        let is_canonical = self.is_canonical(layouter, &bits)?;
-        self.assert_equal_to_fixed(layouter, &is_canonical, true)?;
-
         let nb_limbs_per_batch = (F::CAPACITY / P::LOG2_BASE) as usize;
         let base = BI::from(2).pow(P::LOG2_BASE);
-        assigned
+        let batches = assigned
             .limb_values
             .chunks(nb_limbs_per_batch)
             .map(|chunk| {
@@ -552,7 +538,17 @@ where
                     .collect();
                 self.native_gadget.linear_combination(layouter, &terms, F::ZERO)
             })
-            .collect()
+            .collect::<Result<Vec<_>, Error>>()?;
+
+        // Well-formed limbs encode an integer X in [0, 2^k), where 2^k is the smallest
+        // power of 2 bigger than m, so several X may encode the same field element.
+        // Asserting X < m makes the public input uniquely determined by the value.
+        let batch_sizes = (well_formed_log2_bounds::<F, K, P>().chunks(nb_limbs_per_batch))
+            .map(|limb_sizes| limb_sizes.iter().sum())
+            .collect::<Vec<_>>();
+        self.assert_canonical_batches(layouter, &batches, &batch_sizes)?;
+
+        Ok(batches)
     }
 
     fn constrain_as_public_input(
@@ -1471,6 +1467,78 @@ where
     P: FieldEmulationParams<F, K>,
     N: NativeInstructions<F>,
 {
+    /// Asserts that the given batches, of the given bit sizes, encode (in
+    /// little-endian) an integer lower than the emulated modulus `m`.
+    ///
+    /// # Precondition
+    ///
+    /// Every batch is in `[0, 2^size)`, with `size < F::CAPACITY`.
+    fn assert_canonical_batches(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        batches: &[AssignedNative<F>],
+        sizes: &[u32],
+    ) -> Result<(), Error> {
+        // We compute the subtraction (m - 1) - x batch by batch, from the least
+        // significant one, and assert that it does not underflow (i.e. the
+        // final borrow is 0).
+        let ng = &self.native_gadget;
+        let mut m_minus_1 = K::modulus() - BigUint::one();
+        let mut borrow: AssignedBit<F> = ng.assign_fixed(layouter, false)?;
+        for (i, (batch, size)) in batches.iter().zip(sizes).enumerate() {
+            assert!(*size < F::CAPACITY, "the batches must not wrap around");
+            let m_i = &m_minus_1 % (BigUint::one() << size);
+            m_minus_1 >>= size;
+            let borrow_out: AssignedBit<F> = if i + 1 == batches.len() {
+                ng.assign_fixed(layouter, false)?
+            } else {
+                let value = (batch.value().zip(borrow.value()))
+                    .map(|(x, b)| x.to_biguint() + BigUint::from(b as u8) > m_i);
+                ng.assign(layouter, value)?
+            };
+            self.assert_sub_with_borrow(layouter, &m_i, batch, *size, &borrow, &borrow_out)?;
+            borrow = borrow_out;
+        }
+        Ok(())
+    }
+
+    /// Asserts that `minuend - subtrahend - borrow_in + 2^size * borrow_out`
+    /// is in `[0, 2^size)`.
+    ///
+    /// Under the preconditions below, this enforces that `borrow_out` is the
+    /// outgoing borrow of the subtraction `minuend - subtrahend - borrow_in`
+    /// in base `2^size`, i.e. `borrow_out = 1` iff
+    /// `subtrahend + borrow_in > minuend`.
+    ///
+    /// # Preconditions
+    ///
+    /// - `minuend` and `subtrahend` are in `[0, 2^size)`
+    /// - `size < F::CAPACITY`, so that the above expression does not wrap
+    ///   around
+    fn assert_sub_with_borrow(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        minuend: &BigUint,
+        subtrahend: &AssignedNative<F>,
+        size: u32,
+        borrow_in: &AssignedBit<F>,
+        borrow_out: &AssignedBit<F>,
+    ) -> Result<(), Error> {
+        let ng = &self.native_gadget;
+        let two_pow_size = BigUint::one() << size;
+        let terms = [
+            (-F::ONE, subtrahend.clone()),
+            (-F::ONE, borrow_in.clone().into()),
+            (
+                bigint_to_fe(&BI::from(two_pow_size.clone())),
+                borrow_out.clone().into(),
+            ),
+        ];
+        let diff =
+            ng.linear_combination(layouter, &terms, bigint_to_fe(&BI::from(minuend.clone())))?;
+        ng.assert_lower_than_fixed(layouter, &diff, &two_pow_size)
+    }
+
     /// Computes `sum(positives) - sum(negatives) + constant` in the emulated
     /// field. Each result limb is produced in a single native
     /// `linear_combination` call, avoiding the per-term overhead of the
