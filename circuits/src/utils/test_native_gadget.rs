@@ -27,7 +27,8 @@ macro_rules! run_test_native_gadget {
             types::{AssignedBit, AssignedByte, AssignedNative, ComposableChip},
             instructions::*,
             field::{
-                AssignedBounded, NativeChip, NativeGadget, RangeCheckChip,
+                AssignedBounded, NativeChip, NativeConfig, NativeGadget, RangeCheckChip,
+                RangeCheckConfig,
                 native::NB_EXTRA_ARITH_FIXED_COLS,
             },
         };
@@ -35,7 +36,7 @@ macro_rules! run_test_native_gadget {
         struct TestCircuit;
 
         impl<F: CircuitField> Circuit<F> for TestCircuit {
-            type Config = <NativeGadget<F> as FromScratch<F>>::Config;
+            type Config = (NativeConfig, RangeCheckConfig<F>);
             type FloorPlanner = SimpleFloorPlanner;
             type Params = ();
 
