@@ -8,11 +8,23 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 ### Added
+* `EccInstructions::point_from_coordinates_without_subgroup_check`, which creates a point from its coordinates without enforcing subgroup membership with constraints [#654](https://github.com/midnightntwrk/midnight-zk/pull/654)
 * `verifier::InCircuitKZGEngine`, the `KZGEngine`s whose KZG proofs can be verified in-circuit, bounding the KZG types of the in-circuit verifier [#644](https://github.com/midnightntwrk/midnight-zk/pull/644)
 ### Fixed
 * The foreign Weierstrass and Edwards ECC chips keep the dynamic-lookup tag counter in their config, so chips built with separate `new()` calls on the same config no longer reuse table tags [#658](https://github.com/midnightntwrk/midnight-zk/pull/658)
+* `BigUintGadget::mod_exp` reduces its result modulo `m` for every exponent, also when `n = 0` or `n = 1`, and rejects `m = 0` for every exponent [#595](https://github.com/midnightntwrk/midnight-zk/issues/595)
+* `BigUintGadget::div_rem` returns a synthesis error on a zero divisor instead of panicking [#595](https://github.com/midnightntwrk/midnight-zk/issues/595)
+* Foreign Weierstrass `point_from_coordinates` no longer assigns the identity as the off-circuit value of points outside the prime-order subgroup (BLS12-381); such coordinates are now rejected [#654](https://github.com/midnightntwrk/midnight-zk/pull/654)
+* `CircuitCurve::coordinates` for P256 returns `None` on the identity, as on the other Weierstrass curves [#654](https://github.com/midnightntwrk/midnight-zk/pull/654)
+* `CircuitCurve::from_xy` for Jubjub checks the curve equation on both coordinates. [#654](https://github.com/midnightntwrk/midnight-zk/pull/654)
 ### Changed
+* Foreign Weierstrass `point_from_coordinates` enforces membership in the prime-order subgroup on curves with a non-trivial cofactor (BLS12-381), as documented in `EccInstructions` [#654](https://github.com/midnightntwrk/midnight-zk/pull/654)
+* `AssignmentInstructions::as_constant`, the constant an assigned element is known to encode at circuit-construction time, if any [#655](https://github.com/midnightntwrk/midnight-zk/pull/655)
+* Native and emulated field arithmetic and the foreign MSM use `as_constant` to simplify operations with constant operands, which changes the VKs of circuits that use them [#655](https://github.com/midnightntwrk/midnight-zk/pull/655)
+* `NativeChip::assign` and `assign_many` create elements that are not assigned to a cell yet: an element is assigned to the first cell it is copied to (or to the cell of an element it is constrained to be equal to), saving the rows of the assignment. Unused elements are never assigned. This changes the verifying keys of all circuits [#620](https://github.com/midnightntwrk/midnight-zk/pull/620)
+* `AssignedNative<F>` is a struct instead of an alias of `AssignedCell<F, F>`; convert from `AssignedCell<F, F>` with `AssignedNative::from_cell` and to it with `From`. Two `AssignedNative`s are equal iff they are assigned to the same cell, or neither is assigned to a cell and one is a clone of the other [#620](https://github.com/midnightntwrk/midnight-zk/pull/620)
 ### Removed
+* BREAKING: `ForeignEdwardsEccChip::as_known_constant`. Use `AssignmentInstructions::as_constant` [#655](https://github.com/midnightntwrk/midnight-zk/pull/655)
 
 ## [8.0.0-rc.1]
 ### Added
@@ -28,6 +40,15 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Add tests compile time generics checks for `VectorGadget` and tests for `resize` [#464](https://github.com/midnightntwrk/midnight-zk/pull/465)
 
 ### Fixed
+* The foreign `assigned_to_le_chunks` enforces `nb_chunks` when `nb_bits_per_chunk` does not divide the limb size [#625](https://github.com/midnightntwrk/midnight-zk/issues/625)
+* The foreign `assigned_to_le_bits` with `enforce_canonical = false` normalizes its input, so it is satisfiable on non-canonical limbs [#625](https://github.com/midnightntwrk/midnight-zk/issues/625)
+* The foreign `msm` caps the bound of merged scalars at the scalar field size, so `p256().msm` no longer panics when a base appears twice [#625](https://github.com/midnightntwrk/midnight-zk/issues/625)
+* The foreign Weierstrass `mul_by_constant` accepts the identity base with a scalar wider than 128 bits [#625](https://github.com/midnightntwrk/midnight-zk/issues/625)
+* `assign_lower_than_fixed` and `assert_lower_than_fixed` panic on a zero bound, instead of returning 0 or underflowing [#625](https://github.com/midnightntwrk/midnight-zk/issues/625)
+* The native Edwards `point_from_coordinates` makes the circuit unsatisfiable on a point off the curve or outside the subgroup, instead of panicking [#625](https://github.com/midnightntwrk/midnight-zk/issues/625)
+* The Poseidon partial rounds propagate the errors of assigning their auxiliary advice [#625](https://github.com/midnightntwrk/midnight-zk/issues/625)
+* The native Edwards `msm` panics when scalars and bases have different lengths, as documented, instead of dropping terms [#622](https://github.com/midnightntwrk/midnight-zk/issues/622)
+* The native Edwards `msm` returns the identity on empty input instead of panicking [#622](https://github.com/midnightntwrk/midnight-zk/issues/622)
 * The verifier gadget accepts an empty instance column, which evaluates to zero, instead of panicking [#569](https://github.com/midnightntwrk/midnight-zk/pull/569)
 * The verifier gadget no longer misreads the fixed evaluations of a circuit with a fixed column queried at more than one rotation [#547](https://github.com/midnightntwrk/midnight-zk/pull/547)
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)

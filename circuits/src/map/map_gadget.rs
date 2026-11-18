@@ -425,12 +425,9 @@ mod test {
                 _marker: PhantomData::<N>,
             };
 
-            let prover = MockProver::run(&circuit, vec![vec![], pi.clone()]).unwrap();
-            if test_passes {
-                assert!(prover.verify().is_ok());
-            } else {
-                assert!(prover.verify().is_err());
-            }
+            let accepted = MockProver::run(&circuit, vec![vec![], pi.clone()])
+                .is_ok_and(|prover| prover.verify().is_ok());
+            assert_eq!(accepted, test_passes);
 
             if cost_model {
                 circuit_to_json::<F>("Map gadget", &format!("{:?}", mode), circuit);

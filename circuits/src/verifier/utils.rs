@@ -465,18 +465,19 @@ pub(crate) fn mul_add<F: CircuitField>(
     )
 }
 
-/// The `t`-th roots of the points computed so far, keyed by the cell of the
-/// point and `t`.
+/// The `t`-th roots of the points computed so far, keyed by the point (by
+/// pointer, see [AssignedNative]) and `t`.
 ///
-/// Two chunks opened at the same point must share the very same root cells:
-/// the inner multi-open groups the queries by point cell, so distinct cells for
-/// equal roots would split a point set that the off-circuit verifier keeps
-/// whole.
+/// Two chunks opened at the same point must share the very same roots: the
+/// inner multi-open groups the queries by point (by pointer), so distinct
+/// elements for equal roots would split a point set that the off-circuit
+/// verifier keeps whole.
 pub(crate) type RootsCache<F> = HashMap<(AssignedNative<F>, usize), Vec<AssignedNative<F>>>;
 
 /// The roots `[z, z ω_t, ..., z ω_t^{t-1}]` of `x`, for a witness `z`
 /// constrained by `z^t = x`, in the order of [`roots`], computed once per `x`
 /// and `t` and kept in `cache`.
+#[allow(clippy::mutable_key_type)]
 pub(crate) fn cached_roots<'c, F: CircuitField>(
     layouter: &mut impl Layouter<F>,
     scalar_chip: &impl ArithInstructions<F, AssignedNative<F>>,
@@ -516,13 +517,14 @@ fn root_of_unity<F: CircuitField>(t: usize) -> F {
     F::ROOT_OF_UNITY.pow_vartime([1u64 << (F::S - t.trailing_zeros())])
 }
 
-/// The powers `[z, z^2, ...]` computed so far, keyed by the cell of `z`.
+/// The powers `[z, z^2, ...]` computed so far, keyed by `z` (by pointer).
 pub(crate) type PowersCache<F> = HashMap<AssignedNative<F>, Vec<AssignedNative<F>>>;
 
 /// `Σ_i r^i coeffs[i]` for every root `r = z ω_t^j` (`j < t`) of
 /// [`cached_roots`], computed as `Σ_i ω_t^{ij} (z^i coeffs[i])`: one product
 /// per coefficient and one linear combination per root. The powers of `z` are
 /// kept in `z_powers`.
+#[allow(clippy::mutable_key_type)]
 pub(crate) fn eval_polynomial_on_roots<F: CircuitField>(
     layouter: &mut impl Layouter<F>,
     scalar_chip: &impl ArithInstructions<F, AssignedNative<F>>,

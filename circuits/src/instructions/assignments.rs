@@ -80,6 +80,13 @@ where
         constant: Assigned::Element,
     ) -> Result<Assigned, Error>;
 
+    /// The constant that the given element is known to encode at
+    /// circuit-construction time, if any. `None` does not mean that the
+    /// element is not constant.
+    fn as_constant(&self, _x: &Assigned) -> Option<Assigned::Element> {
+        None
+    }
+
     /// Assigns several elements as private inputs to the circuit.
     ///
     /// This is potentially more efficient than calling
@@ -108,5 +115,102 @@ where
             .iter()
             .map(|v| self.assign_fixed(layouter, v.clone()))
             .collect::<Result<Vec<Assigned>, Error>>()
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod tests {
+    use std::marker::PhantomData;
+
+    use ff::FromUniformBytes;
+    use midnight_proofs::{
+        circuit::SimpleFloorPlanner,
+        dev::MockProver,
+        plonk::{Circuit, ConstraintSystem},
+    };
+    use rand::SeedableRng;
+    use rand_chacha::ChaCha8Rng;
+
+    use super::*;
+    use crate::{
+        testing_utils::{FromScratch, Sampleable},
+        types::InnerConstants,
+    };
+
+    #[derive(Clone, Debug)]
+    struct TestCircuit<F, Assigned, Chip>
+    where
+        Assigned: InnerValue,
+    {
+        x: Assigned::Element,
+        _marker: PhantomData<(F, Assigned, Chip)>,
+    }
+
+    impl<F, Assigned, Chip> Circuit<F> for TestCircuit<F, Assigned, Chip>
+    where
+        F: CircuitField,
+        Assigned: InnerValue,
+        Assigned::Element: PartialEq + std::fmt::Debug,
+        Chip: AssignmentInstructions<F, Assigned> + FromScratch<F>,
+    {
+        type Config = <Chip as FromScratch<F>>::Config;
+        type FloorPlanner = SimpleFloorPlanner;
+        type Params = ();
+
+        fn without_witnesses(&self) -> Self {
+            unreachable!()
+        }
+
+        fn configure(meta: &mut ConstraintSystem<F>) -> Self::Config {
+            let committed_instance_column = meta.instance_column();
+            let instance_column = meta.instance_column();
+            Chip::configure_from_scratch(
+                meta,
+                &mut vec![],
+                &mut vec![],
+                &[committed_instance_column, instance_column],
+            )
+        }
+
+        fn synthesize(
+            &self,
+            config: Self::Config,
+            mut layouter: impl Layouter<F>,
+        ) -> Result<(), Error> {
+            let chip = Chip::new_from_scratch(&config);
+
+            let fixed = chip.assign_fixed(&mut layouter, self.x.clone())?;
+            assert_eq!(chip.as_constant(&fixed), Some(self.x.clone()));
+
+            let witnessed = chip.assign(&mut layouter, Value::known(self.x.clone()))?;
+            assert_eq!(chip.as_constant(&witnessed), None);
+
+            chip.load_from_scratch(&mut layouter)
+        }
+    }
+
+    pub fn test_as_constant<F, Assigned, Chip>(_name: &str)
+    where
+        F: CircuitField + FromUniformBytes<64> + Ord,
+        Assigned: InnerConstants + Sampleable,
+        Assigned::Element: PartialEq + std::fmt::Debug,
+        Chip: AssignmentInstructions<F, Assigned> + FromScratch<F>,
+    {
+        let mut rng = ChaCha8Rng::seed_from_u64(0xc0ffee);
+        [
+            Assigned::sample_inner(&mut rng),
+            Assigned::inner_zero(),
+            Assigned::inner_one(),
+        ]
+        .into_iter()
+        .for_each(|x| {
+            let circuit = TestCircuit::<F, Assigned, Chip> {
+                x,
+                _marker: PhantomData,
+            };
+            MockProver::run(&circuit, vec![vec![], vec![]])
+                .expect("synthesis failed")
+                .assert_satisfied();
+        });
     }
 }

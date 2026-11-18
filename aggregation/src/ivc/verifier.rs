@@ -67,6 +67,10 @@ impl<T: Ivc> IvcVerifier<T> {
         ))
         .map_err(|_| IvcError::InvalidInstance)?;
 
+        if pi.len() != self.vk.nb_public_inputs() {
+            return Err(IvcError::InvalidInstance);
+        }
+
         let mut transcript = CircuitTranscript::<PoseidonState<F>>::init_from_bytes(proof);
         let dual_msm = plonk::prepare::<F, PCS, CircuitTranscript<PoseidonState<F>>>(
             self.vk.vk(),

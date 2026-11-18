@@ -49,6 +49,10 @@ where
         self.native_gadget.assign_fixed(layouter, constant)
     }
 
+    fn as_constant(&self, x: &T) -> Option<T::Element> {
+        self.native_gadget.as_constant(x)
+    }
+
     fn assign_many(
         &self,
         layouter: &mut impl Layouter<F>,

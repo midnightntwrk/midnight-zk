@@ -60,10 +60,7 @@ pub trait CoreDecompositionInstructions<F: CircuitField>: Clone + Debug {
         bit_length: usize,
     ) -> Result<(), Error> {
         let y = self.assign_less_than_pow2(layouter, x.value().copied(), bit_length)?;
-        layouter.assign_region(
-            || "copy",
-            |mut region| region.constrain_equal(x.cell(), y.cell()),
-        )
+        layouter.assign_region(|| "copy", |mut region| x.constrain_equal(&mut region, &y))
     }
 
     /// Assigns several values and asserts that they are all strictly lower than

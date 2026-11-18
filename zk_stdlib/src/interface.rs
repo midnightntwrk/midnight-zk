@@ -166,6 +166,11 @@ impl<PCS: MidnightPCS> MidnightVK<PCS> {
         self.k
     }
 
+    /// The number of public inputs expected by this verifying key.
+    pub fn nb_public_inputs(&self) -> usize {
+        self.nb_public_inputs
+    }
+
     /// The underlying midnight-proofs verifying key.
     pub fn vk(&self) -> &VerifyingKey<midnight_curves::Fq, PCS> {
         &self.vk
