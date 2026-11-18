@@ -62,7 +62,7 @@ pub(crate) type MarkerTestVector<'a> = (&'a [u8], &'a [(usize, &'a [u8])]);
 pub(crate) type OutputTestVector<'a> = (&'a [u8], &'a [usize]);
 #[cfg(test)]
 use {
-    crate::field::{NativeChip, NativeGadgetConfig, RangeCheckChip},
+    crate::field::{NativeChip, RangeCheckChip},
     crate::testing_utils::FromScratch,
     midnight_proofs::plonk::Instance,
     regex::RegexInstructions,
@@ -570,7 +570,7 @@ impl<F> FromScratch<F> for ScannerChip<F>
 where
     F: CircuitField + Ord,
 {
-    type Config = (NativeGadgetConfig, ScannerConfig);
+    type Config = (<NativeGadget<F> as FromScratch<F>>::Config, ScannerConfig);
 
     fn new_from_scratch(config: &Self::Config) -> Self {
         let native_gadget = NG::<F>::new_from_scratch(&config.0);
@@ -617,12 +617,7 @@ where
             meta,
             &(advice_columns[..5].to_vec(), fixed_columns[..4].to_vec(), 8),
         );
-        let native_gadget_config = NativeGadgetConfig {
-            native_config,
-            range_check_config,
-        };
-
-        (native_gadget_config, scanner_config)
+        ((native_config, range_check_config), scanner_config)
     }
 
     fn load_from_scratch(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {

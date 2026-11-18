@@ -19,5 +19,5 @@ pub mod range_check;
 
 pub(crate) use assigned_native::AssignNative;
 pub use assigned_native::AssignedNative;
-pub use native::{AssignedBounded, NativeChip, NativeConfig, NativeGadget, NativeGadgetConfig};
+pub use native::{AssignedBounded, NativeChip, NativeConfig, NativeGadget};
 pub use range_check::{RangeCheckChip, RangeCheckConfig};

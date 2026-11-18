@@ -180,14 +180,12 @@ impl<F: PoseidonField> VarLenPoseidonGadget<F> {
 use midnight_proofs::plonk::{Advice, Column, ConstraintSystem, Fixed, Instance};
 
 #[cfg(any(test, feature = "testing"))]
-use crate::field::NativeGadgetConfig;
-#[cfg(any(test, feature = "testing"))]
 use crate::testing_utils::FromScratch;
 
 #[cfg(any(test, feature = "testing"))]
 impl<F: PoseidonField> FromScratch<F> for VarLenPoseidonGadget<F> {
     type Config = (
-        NativeGadgetConfig,
+        <NativeGadget<F> as FromScratch<F>>::Config,
         <PoseidonChip<F> as FromScratch<F>>::Config,
     );
 

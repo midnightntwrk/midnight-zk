@@ -481,7 +481,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        field::NativeGadgetConfig,
+        field::NativeGadget,
         instructions::{AssertionInstructions, AssignmentInstructions},
         testing_utils::FromScratch,
         vec::vector_gadget::VectorGadget,
@@ -526,7 +526,7 @@ mod tests {
     }
 
     impl<F: CircuitField> Circuit<F> for TestCircuit<F> {
-        type Config = (NativeGadgetConfig, Base64Config);
+        type Config = (<NativeGadget<F> as FromScratch<F>>::Config, Base64Config);
         type FloorPlanner = SimpleFloorPlanner;
         type Params = ();
 
@@ -552,8 +552,7 @@ mod tests {
                 &mut vec![],
                 &[committed_instance_column, instance_column],
             );
-            let sr =
-                &ng_config.native_config.value_cols[..NB_BASE64_ADVICE_COLS].try_into().unwrap();
+            let sr = &ng_config.0.value_cols[..NB_BASE64_ADVICE_COLS].try_into().unwrap();
             let b64_config = Base64Chip::configure(meta, sr);
 
             (ng_config, b64_config)

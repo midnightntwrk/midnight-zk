@@ -1887,14 +1887,11 @@ impl<F: CircuitField> CompressionState<F> {
 use midnight_proofs::plonk::Instance;
 
 #[cfg(any(test, feature = "testing"))]
-use crate::{
-    field::{NativeGadgetConfig, native::NB_EXTRA_ARITH_FIXED_COLS},
-    testing_utils::FromScratch,
-};
+use crate::{field::native::NB_EXTRA_ARITH_FIXED_COLS, testing_utils::FromScratch};
 
 #[cfg(any(test, feature = "testing"))]
 impl<F: CircuitField> FromScratch<F> for Sha512Chip<F> {
-    type Config = (Sha512Config, NativeGadgetConfig);
+    type Config = (Sha512Config, <NativeGadget<F> as FromScratch<F>>::Config);
 
     fn new_from_scratch(config: &Self::Config) -> Self {
         Self {

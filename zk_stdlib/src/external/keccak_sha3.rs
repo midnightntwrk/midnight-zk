@@ -23,7 +23,7 @@ use midnight_circuits::{
     types::{AssignedByte, InnerValue},
 };
 #[cfg(test)]
-use midnight_circuits::{field::NativeGadgetConfig, testing_utils::FromScratch};
+use midnight_circuits::{field::NativeGadget, testing_utils::FromScratch};
 #[cfg(test)]
 use midnight_proofs::plonk::Instance;
 use midnight_proofs::{
@@ -145,7 +145,7 @@ impl<F: CircuitField> KeccakSha3Wrapper<F> {
 
 #[cfg(test)]
 impl<F: CircuitField> FromScratch<F> for KeccakSha3Wrapper<F> {
-    type Config = (PackedConfig, NativeGadgetConfig);
+    type Config = (PackedConfig, <NativeGadget<F> as FromScratch<F>>::Config);
 
     fn new_from_scratch(config: &Self::Config) -> Self {
         let native_gadget = NG::new_from_scratch(&config.1);
