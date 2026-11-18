@@ -22,7 +22,7 @@ use blake2b::{
 };
 use midnight_circuits::{CircuitField, ComposableChip, field::AssignedNative, types::AssignedByte};
 #[cfg(test)]
-use midnight_circuits::{field::NativeGadgetConfig, testing_utils::FromScratch};
+use midnight_circuits::{field::NativeGadget, testing_utils::FromScratch};
 #[cfg(test)]
 use midnight_proofs::plonk::Instance;
 use midnight_proofs::{
@@ -124,7 +124,7 @@ impl<F: CircuitField> Blake2bWrapper<F> {
 
 #[cfg(test)]
 impl<F: CircuitField> FromScratch<F> for Blake2bWrapper<F> {
-    type Config = (Blake2bConfig, NativeGadgetConfig);
+    type Config = (Blake2bConfig, <NativeGadget<F> as FromScratch<F>>::Config);
 
     fn new_from_scratch(config: &Self::Config) -> Self {
         let native_gadget = NG::new_from_scratch(&config.1);

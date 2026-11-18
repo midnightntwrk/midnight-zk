@@ -464,7 +464,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        field::{AssignedNative, NativeGadget, NativeGadgetConfig},
+        field::{AssignedNative, NativeGadget},
         testing_utils::FromScratch,
         utils::circuit_modeling::{circuit_to_json, cost_measure_end, cost_measure_start},
     };
@@ -489,7 +489,7 @@ mod tests {
     type NG<F> = NativeGadget<F>;
 
     impl<F: CircuitField, const M: usize, const A: usize> Circuit<F> for TestCircuit<F, M, A> {
-        type Config = NativeGadgetConfig;
+        type Config = <NativeGadget<F> as FromScratch<F>>::Config;
 
         type FloorPlanner = SimpleFloorPlanner;
 
@@ -617,7 +617,7 @@ mod tests {
     impl<F: CircuitField, const M: usize, const A: usize, const L: usize> Circuit<F>
         for ResizeTestCircuit<F, M, A, L>
     {
-        type Config = NativeGadgetConfig;
+        type Config = <NativeGadget<F> as FromScratch<F>>::Config;
 
         type FloorPlanner = SimpleFloorPlanner;
 

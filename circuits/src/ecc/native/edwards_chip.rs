@@ -26,7 +26,6 @@ use midnight_proofs::{
 use num_bigint::{BigUint, ToBigUint};
 #[cfg(any(test, feature = "testing"))]
 use {
-    crate::field::NativeGadgetConfig,
     crate::testing_utils::{FromScratch, Sampleable},
     midnight_proofs::plonk::{Fixed, Instance},
     rand::RngCore,
@@ -1318,7 +1317,10 @@ impl<C: EdwardsCurve> ControlFlowInstructions<C::Base, AssignedScalarOfNativeCur
 
 #[cfg(any(test, feature = "testing"))]
 impl<C: EdwardsCurve> FromScratch<C::Base> for EccChip<C> {
-    type Config = (EccConfig, NativeGadgetConfig);
+    type Config = (
+        EccConfig,
+        <NativeGadget<C::Base> as FromScratch<C::Base>>::Config,
+    );
 
     fn new_from_scratch(config: &Self::Config) -> Self {
         let native_gadget = NativeGadget::new_from_scratch(&config.1);
