@@ -744,13 +744,8 @@ pub(crate) mod tests {
             },
         },
         field::{
-            NativeChip, NativeConfig, NativeGadget,
-            decomposition::{
-                chip::{P2RDecompositionChip, P2RDecompositionConfig},
-                pow2range::Pow2RangeChip,
-            },
-            foreign::FieldChip,
-            native::NB_EXTRA_ARITH_FIXED_COLS,
+            NativeChip, NativeConfig, NativeGadget, RangeCheckChip, RangeCheckConfig,
+            foreign::FieldChip, native::NB_EXTRA_ARITH_FIXED_COLS,
         },
         hash::poseidon::{
             NB_POSEIDON_ADVICE_COLS, NB_POSEIDON_FIXED_COLS, PoseidonChip, PoseidonConfig,
@@ -773,7 +768,7 @@ pub(crate) mod tests {
     type C = midnight_curves::G1Projective;
     type CBase = <C as CircuitCurve>::Base;
 
-    type NG = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
+    type NG = NativeGadget<F>;
 
     const NB_INNER_INSTANCES: usize = 1;
 
@@ -858,7 +853,7 @@ pub(crate) mod tests {
     {
         type Config = (
             NativeConfig,
-            P2RDecompositionConfig,
+            RangeCheckConfig,
             ForeignWeierstrassEccConfig<C>,
             PoseidonConfig<F>,
         );
@@ -890,28 +885,21 @@ pub(crate) mod tests {
                     [committed_instance_column, instance_column],
                 ),
             );
-
-            let nb_parallel_range_checks = NB_ARITH_COLS - 1;
-            let max_bit_len = 16;
-            let core_decomp_config = {
-                let pow2_config =
-                    Pow2RangeChip::configure(meta, &advice_columns[1..=nb_parallel_range_checks]);
-                P2RDecompositionChip::configure(meta, &(native_config.clone(), pow2_config))
-            };
-
-            let base_config = FieldChip::<F, CBase, C, NG>::configure(
+            let range_check_config = RangeCheckChip::configure(
                 meta,
-                &advice_columns,
-                nb_parallel_range_checks,
-                max_bit_len,
+                &(
+                    advice_columns[..5].to_vec(),
+                    fixed_columns[..4].to_vec(),
+                    16,
+                ),
             );
+
+            let base_config = FieldChip::<F, CBase, C, NG>::configure(meta, &advice_columns);
             let curve_config = ForeignWeierstrassEccChip::<F, C, C, NG, NG>::configure(
                 meta,
                 &base_config,
                 &advice_columns,
                 &fixed_columns,
-                nb_parallel_range_checks,
-                max_bit_len,
             );
 
             let poseidon_config = PoseidonChip::configure(
@@ -924,7 +912,7 @@ pub(crate) mod tests {
 
             (
                 native_config,
-                core_decomp_config,
+                range_check_config,
                 curve_config,
                 poseidon_config,
             )
@@ -936,8 +924,8 @@ pub(crate) mod tests {
             mut layouter: impl Layouter<F>,
         ) -> Result<(), Error> {
             let native_chip = <NativeChip<F> as ComposableChip<F>>::new(&config.0, &());
-            let core_decomp_chip = P2RDecompositionChip::new(&config.1, &16);
-            let native_gadget = NativeGadget::new(core_decomp_chip.clone(), native_chip.clone());
+            let range_check_chip = RangeCheckChip::new(&config.1, &());
+            let native_gadget = NativeGadget::new(native_chip.clone(), range_check_chip.clone());
             let curve_chip =
                 ForeignWeierstrassEccChip::new(&config.2, &native_gadget, &native_gadget);
             let poseidon_chip = PoseidonChip::new(&config.3, &native_chip);
@@ -971,7 +959,7 @@ pub(crate) mod tests {
                 &native_gadget,
             )?;
 
-            core_decomp_chip.load(&mut layouter)
+            range_check_chip.load(&mut layouter)
         }
     }
 

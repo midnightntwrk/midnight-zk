@@ -16,13 +16,12 @@
 use midnight_curves::pairing::Engine;
 
 use crate::{
-    ecc::foreign::weierstrass_chip::ForeignWeierstrassEccChip,
-    field::{NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip},
+    ecc::foreign::weierstrass_chip::ForeignWeierstrassEccChip, field::NativeGadget,
     types::AssignedForeignPoint,
 };
 
 /// The chip implementing native field arithmetic in the in-circuit verifier.
-pub type ScalarChip<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
+pub type ScalarChip<F> = NativeGadget<F>;
 
 /// The chip operating on the (emulated) G1 points of the pairing engine `E`.
 pub type CurveChip<E> = ForeignWeierstrassEccChip<

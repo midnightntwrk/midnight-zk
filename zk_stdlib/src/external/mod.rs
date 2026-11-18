@@ -17,7 +17,7 @@
 //! match that of `midnight-circuits`, unsafe type conversions are performed.
 
 use midnight_circuits::{
-    field::{AssignedNative, NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip},
+    field::{AssignedNative, NativeGadget},
     instructions::{
         AssertionInstructions, AssignmentInstructions, ConversionInstructions,
         UnsafeConversionInstructions,
@@ -34,7 +34,7 @@ pub mod blake2b;
 pub mod keccak_sha3;
 
 /// Native gadget shortcut.
-type NG<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
+type NG<F> = NativeGadget<F>;
 
 /// Converts a slice of assigned cell to a slice of Midnight `AssignedByte<F>`.
 /// This function is unsafe in that it assumes that the values have

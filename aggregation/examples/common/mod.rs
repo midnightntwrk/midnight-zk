@@ -20,7 +20,7 @@ pub fn constraint_system(
     EvaluationDomain<F>,
 ) {
     let mut cs = midnight_proofs::plonk::ConstraintSystem::default();
-    ZkStdLib::configure(&mut cs, (arch, (k - 1) as u8));
+    ZkStdLib::configure(&mut cs, (arch, arch.range_check_bit_len(k)));
     let domain = EvaluationDomain::new(cs.degree() as u32, k);
     (cs, domain)
 }
