@@ -557,7 +557,13 @@ impl ZkStdLib {
 
         let secp256k1_config = arch.secp256k1.then(|| {
             let base_config = Secp256k1BaseChip::configure(meta, &advice_columns);
-            Secp256k1Chip::configure(meta, &base_config, &advice_columns, &fixed_columns)
+            Secp256k1Chip::configure(
+                meta,
+                &base_config,
+                &advice_columns,
+                &fixed_columns,
+                max_bit_len as usize,
+            )
         });
 
         let p256_scalar_config =
@@ -565,12 +571,24 @@ impl ZkStdLib {
 
         let p256_config = arch.p256.then(|| {
             let base_config = P256BaseChip::configure(meta, &advice_columns);
-            P256Chip::configure(meta, &base_config, &advice_columns, &fixed_columns)
+            P256Chip::configure(
+                meta,
+                &base_config,
+                &advice_columns,
+                &fixed_columns,
+                max_bit_len as usize,
+            )
         });
 
         let bls12_381_config = arch.bls12_381.then(|| {
             let base_config = Bls12381BaseChip::configure(meta, &advice_columns);
-            Bls12381Chip::configure(meta, &base_config, &advice_columns, &fixed_columns)
+            Bls12381Chip::configure(
+                meta,
+                &base_config,
+                &advice_columns,
+                &fixed_columns,
+                max_bit_len as usize,
+            )
         });
 
         let curve25519_scalar_config =
