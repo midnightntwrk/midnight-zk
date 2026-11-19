@@ -20,7 +20,10 @@ use midnight_proofs::{
 };
 
 use super::{layout::pow2, *};
-use crate::field::AssignNative;
+use crate::{
+    field::{AssignNative, NativeConfig},
+    utils::util::FromScratch,
+};
 
 const T: usize = 8;
 const NUM_GROUPS: usize = 2;
@@ -42,7 +45,7 @@ struct TestCircuit {
 }
 
 impl Circuit<F> for TestCircuit {
-    type Config = (RangeCheckConfig<F>, Column<Advice>);
+    type Config = (RangeCheckConfig<F>, Column<Advice>, NativeConfig);
     type FloorPlanner = SimpleFloorPlanner;
     type Params = ();
 
@@ -55,15 +58,21 @@ impl Circuit<F> for TestCircuit {
         let fixed = (0..NUM_GROUPS + 3).map(|_| meta.fixed_column()).collect();
         let input = meta.advice_column();
         meta.enable_equality(input);
-        (RangeCheckChip::configure(meta, &(advice, fixed, T)), input)
+        let instances = [meta.instance_column(), meta.instance_column()];
+        let native = NativeChip::configure_from_scratch(meta, &mut vec![], &mut vec![], &instances);
+        (
+            RangeCheckChip::configure(meta, &(advice, fixed, T)),
+            input,
+            native,
+        )
     }
 
     fn synthesize(
         &self,
-        (config, input): Self::Config,
+        (config, input, native): Self::Config,
         mut layouter: impl Layouter<F>,
     ) -> Result<(), Error> {
-        let chip = RangeCheckChip::<F>::new(&config, &());
+        let chip = RangeCheckChip::<F>::new(&config, &NativeChip::new_from_scratch(&native));
         let xs = layouter.assign_region(
             || "inputs",
             |mut region| {
@@ -87,14 +96,15 @@ impl Circuit<F> for TestCircuit {
             }
             Mode::LoadOther => {
                 record(&mut layouter)?;
-                RangeCheckChip::<F>::new(&config, &()).load(&mut layouter)
+                RangeCheckChip::<F>::new(&config, &NativeChip::new_from_scratch(&native))
+                    .load(&mut layouter)
             }
         }
     }
 }
 
 fn satisfied(inputs: Vec<(F, Vec<usize>)>, mode: Mode) -> bool {
-    MockProver::run(&TestCircuit { inputs, mode }, vec![])
+    MockProver::run(&TestCircuit { inputs, mode }, vec![vec![], vec![]])
         .is_ok_and(|prover| prover.verify().is_ok())
 }
 

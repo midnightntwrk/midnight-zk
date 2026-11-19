@@ -213,7 +213,7 @@ mod tests {
             mut layouter: impl Layouter<F>,
         ) -> Result<(), Error> {
             let native_chip = <NativeChip<F> as ComposableChip<F>>::new(&config.0, &());
-            let range_check_chip = RangeCheckChip::new(&config.1, &());
+            let range_check_chip = RangeCheckChip::new(&config.1, &native_chip);
             let native_gadget = NativeGadget::new(native_chip.clone(), range_check_chip.clone());
             let curve_chip =
                 ForeignWeierstrassEccChip::new(&config.2, &native_gadget, &native_gadget);

@@ -1509,7 +1509,7 @@ impl<F: CircuitField> FromScratch<F> for NativeGadget<F> {
 
     fn new_from_scratch((native_config, range_check_config): &Self::Config) -> Self {
         let native_chip = NativeChip::new_from_scratch(native_config);
-        let range_check_chip = RangeCheckChip::new(range_check_config, &());
+        let range_check_chip = RangeCheckChip::new(range_check_config, &native_chip);
         NativeGadget::new(native_chip, range_check_chip)
     }
 

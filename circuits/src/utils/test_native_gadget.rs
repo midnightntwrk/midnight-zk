@@ -77,7 +77,7 @@ macro_rules! run_test_native_gadget {
                 mut $layouter: impl Layouter<F>,
             ) -> Result<(), Error> {
                 let native_chip = NativeChip::new(&config.0, &());
-                let range_check_chip = RangeCheckChip::new(&config.1, &());
+                let range_check_chip = RangeCheckChip::new(&config.1, &native_chip);
                 let $chip = NativeGadget::new(native_chip.clone(), range_check_chip.clone());
 
                 $synthesize_body

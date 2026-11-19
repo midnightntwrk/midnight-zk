@@ -95,7 +95,10 @@ use self::{
     layout::bit_slice,
     state::{Decomposition, Pending, State},
 };
-use crate::{CircuitField, types::AssignedNative, utils::ComposableChip};
+use crate::{
+    CircuitField, field::NativeChip, instructions::AssignmentInstructions, types::AssignedNative,
+    utils::ComposableChip,
+};
 
 /// [RangeCheckChip] configuration, with the columns of the module
 /// documentation.
@@ -131,9 +134,14 @@ pub struct RangeCheckConfig<F: CircuitField> {
 /// Assertions and decompositions both go through a lookup table with all the
 /// pairs `(t, v)` with `0 <= v < 2^t`, for every limb size `t <= max_bit_len`
 /// in use.
+///
+/// The lanes of a decomposition that have no limb are copies of a fixed zero
+/// of the underlying [NativeChip]: otherwise, they could take any value of
+/// `s` bits, and the limbs would not add up to `x`.
 #[derive(Clone, Debug)]
 pub struct RangeCheckChip<F: CircuitField> {
     config: RangeCheckConfig<F>,
+    native_chip: NativeChip<F>,
 }
 
 impl<F: CircuitField> Chip<F> for RangeCheckChip<F> {
@@ -272,11 +280,12 @@ impl<F: CircuitField> ComposableChip<F> for RangeCheckChip<F> {
     /// - `max_bit_len`.
     type SharedResources = (Vec<Column<Advice>>, Vec<Column<Fixed>>, usize);
 
-    type InstructionDeps = ();
+    type InstructionDeps = NativeChip<F>;
 
-    fn new(config: &RangeCheckConfig<F>, _: &()) -> Self {
+    fn new(config: &RangeCheckConfig<F>, native_chip: &NativeChip<F>) -> Self {
         Self {
             config: config.clone(),
+            native_chip: native_chip.clone(),
         }
     }
 
@@ -382,12 +391,13 @@ impl<F: CircuitField> ComposableChip<F> for RangeCheckChip<F> {
     /// markers are kept apart, and laid out in a region of their own between
     /// a new pair of markers. Outside of tests, there are none.
     fn load(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error> {
+        if std::mem::replace(&mut self.state().loaded, true) {
+            return Ok(());
+        }
+        let zero = self.native_chip.assign_fixed(layouter, F::ZERO)?;
         let (outside, in_window) = {
-            let state = &mut *self.state();
-            if std::mem::replace(&mut state.loaded, true) {
-                return Ok(());
-            }
-            let layout = |pending| self.layout(pending);
+            let state = self.state();
+            let layout = |pending| self.layout(pending, &zero);
             (
                 layout(&state.pending),
                 layout(&state.pending_in_cost_window),
