@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * The FFTs `lagrange_to_coeff`, `coeff_to_lagrange`, `coeff_to_extended`, `extended_to_coeff` and `extended_to_lagrange` move from `EvaluationDomain` to `FftDomain`, and `PolynomialRepresentation::{coeff_to_self, self_to_coeff}` take an `FftDomain`. `EvaluationDomain`, hence `VerifyingKey`, no longer computes nor stores twiddle factors. Serialized keys and proofs are unchanged
 * KZG commitments (`commit`, `commit_many` and `commit_interleaved`, hence the prover, keygen and `commit_to_instances`) use the Rust `msm_pippenger` instead of blst's `multi_exp_affine` for BLS12-381 G1, with the same results. The verifier's MSM (`msm_specific`) is unchanged [#594](https://github.com/midnightntwrk/midnight-zk/pull/594)
 * Only the code that needs `ZETA` (building an `EvaluationDomain`, and reading or creating keys) requires `WithSmallOrderMulGroup<3>`; the getters of `EvaluationDomain`, `VerifyingKey` and `ProvingKey`, and the prover and verifier internals, require `PrimeField` [#644](https://github.com/midnightntwrk/midnight-zk/pull/644)
+* Remove outdated references to the removed `Polynomial::padded_add` from the docs of the `Add` and `AddAssign` impls of `Polynomial` [#666](https://github.com/midnightntwrk/midnight-zk/pull/666)
 ### Removed
 
 ## [0.9.0-rc.1]
