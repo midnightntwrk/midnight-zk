@@ -2,9 +2,9 @@
 
 Tree `9070a373` on base `4bea43d4`. NVIDIA GeForce RTX 5090 Laptop GPU, 24463 MiB, 615.78.08, 3090 MHz, 14001 MHz, [N/A]. CPU: Intel(R) Core(TM) Ultra 9 275HX cores=24. 24 prover threads. Every proof was checked by the stock CPU verifier.
 
-Clocks: CPU mean core clock 1409 to 4112 MHz (median 3148); GPU SM clock 172 to 2497 MHz (median 180), memory clock 405 to 14001 MHz (median 405).
+Clocks: CPU mean core clock 1409 to 4422 MHz (median 3175); GPU SM clock 172 to 2497 MHz (median 180), memory clock 405 to 14001 MHz (median 405).
 
-Temperatures: CPU package 53 to 102 C (median 70), 57 C at the start; GPU 44 to 60 C (median 47).
+Temperatures: CPU package 51 to 102 C (median 71), 57 C at the start; GPU 44 to 60 C (median 47).
 
 ## Single proofs by size (seconds)
 
@@ -39,4 +39,8 @@ Temperatures: CPU package 53 to 102 C (median 70), 57 C at the start; GPU 44 to 
 
 ## Alternating comparisons
 
-In progress: the parallel inversion (prover-par) at k = 21, base against final, five pairs. The table follows when the session finishes.
+Ratio = warm median without the change / warm median with it, per pair; median over pairs.
+
+| Change | Bench | k | Pairs | Ratio (min-max) |
+|---|---|---|---|---|
+| Parallel batch inversion | rc1-gpu | 21 | 5 | 1.022 (1.011-1.031) |

@@ -31,3 +31,16 @@
 2026-11-18T18:32:25-07:00 batch cpu n=4 rc=0
 2026-11-18T18:32:42-07:00 batch gpu n=8 rc=0
 2026-11-18T18:33:01-07:00 batch cpu n=8 rc=0
+2026-11-18T18:33:01-07:00 phase abab
+2026-11-18T18:36:23-07:00 abab parinv A pair 1 rc=0
+2026-11-18T18:38:56-07:00 abab parinv B pair 1 rc=0
+2026-11-18T18:41:28-07:00 abab parinv A pair 2 rc=0
+2026-11-18T18:44:00-07:00 abab parinv B pair 2 rc=0
+2026-11-18T18:46:33-07:00 abab parinv A pair 3 rc=0
+2026-11-18T18:50:10-07:00 abab parinv B pair 3 rc=0
+2026-11-18T18:52:43-07:00 abab parinv A pair 4 rc=0
+2026-11-18T18:55:15-07:00 abab parinv B pair 4 rc=0
+2026-11-18T18:57:47-07:00 abab parinv A pair 5 rc=0
+2026-11-18T19:00:33-07:00 abab parinv B pair 5 rc=0
+2026-11-18T19:00:33-07:00 phase done
+2026-11-18T19:00:33-07:00 session done: results/session.json

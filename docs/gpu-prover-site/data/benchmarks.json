@@ -1,7 +1,7 @@
 {
   "schema": 2,
   "results_h2h": {
-    "caption": "By circuit size, on one {device} GPU and its host CPU with {threads} prover threads. The CPU column is stock midnight-proofs main at {base}, built without the feature gpu; the GPU column is this pull request. Measured at {tree}, based on {base}. One process per path and size: one cold proof, then {warm}. {verified}",
+    "caption": "By circuit size, on one {device} GPU and its host CPU with {threads} prover threads. The CPU column is midnight-proofs of this pull request built without the feature gpu, which compiles the stock code of main at {base}; the GPU column is the same tree with the feature gpu. Measured at {tree}, based on {base}. One process per path and size: one cold proof, then {warm}. {verified}",
     "columns": {
       "gpu": "Circuit size",
       "cpu": "vs midnight-proofs main 4bea43d4 CPU",
@@ -381,11 +381,10 @@
     ],
     "source": "",
     "empty": "",
-    "stack": true,
-    "pending": "Parallel batch inversion of the permutation and LogUp denominators: the interleaved comparison at k = 21 (base against final, five pairs) is in progress in the measurement session. Its ratio follows when the session finishes."
+    "stack": true
   },
   "sequential": {
-    "label": "k = {k}, one process per path, one cold proof and then {n} warm proofs on the same key. The rows for fewer proofs are the first proofs of the same run. Proofs per second is the number of proofs divided by their summed proving time. {device} GPU; the CPU path is stock midnight-proofs main at {base}.",
+    "label": "k = {k}, one process per path, one cold proof and then {n} warm proofs on the same key. The rows for fewer proofs are the first proofs of the same run. Proofs per second is the number of proofs divided by their summed proving time. {device} GPU; the CPU path is the same tree without the feature gpu (the stock code of main at {base}).",
     "columns": [
       {
         "key": "n",

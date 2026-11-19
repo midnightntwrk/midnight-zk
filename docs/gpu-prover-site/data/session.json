@@ -6,8 +6,8 @@
     "device": "RTX 5090 Laptop",
     "threads": 24,
     "date": "2026-11-18",
-    "clocks": "CPU mean core clock 1409 to 4112 MHz (median 3148); GPU SM clock 172 to 2497 MHz (median 180), memory clock 405 to 14001 MHz (median 405)",
-    "temperatures": "CPU package 53 to 102 C (median 70), 57 C at the start; GPU 44 to 60 C (median 47)",
+    "clocks": "CPU mean core clock 1409 to 4422 MHz (median 3175); GPU SM clock 172 to 2497 MHz (median 180), memory clock 405 to 14001 MHz (median 405)",
+    "temperatures": "CPU package 51 to 102 C (median 71), 57 C at the start; GPU 44 to 60 C (median 47)",
     "cpu": "Intel(R) Core(TM) Ultra 9 275HX cores=24",
     "gpu": "NVIDIA GeForce RTX 5090 Laptop GPU, 24463 MiB, 615.78.08, 3090 MHz, 14001 MHz, [N/A]"
   },
@@ -568,5 +568,47 @@
       }
     }
   },
-  "ratios": null
+  "ratios": [
+    {
+      "change": "Parallel batch inversion",
+      "what": "parallel batch inversion of the permutation and LogUp denominators",
+      "kind": "rc1-gpu",
+      "k": 21,
+      "ratio": 1.021571528895248,
+      "min": 1.0112521831900845,
+      "max": 1.0305351181055349,
+      "pairs": [
+        {
+          "pair": 1,
+          "a_median_s": 4.527412742,
+          "b_median_s": 4.431811786,
+          "ratio": 1.021571528895248
+        },
+        {
+          "pair": 2,
+          "a_median_s": 4.541589359,
+          "b_median_s": 4.450033923,
+          "ratio": 1.020574098441541
+        },
+        {
+          "pair": 3,
+          "a_median_s": 4.53317435,
+          "b_median_s": 4.482733808,
+          "ratio": 1.0112521831900845
+        },
+        {
+          "pair": 4,
+          "a_median_s": 4.524128024,
+          "b_median_s": 4.390076519,
+          "ratio": 1.0305351181055349
+        },
+        {
+          "pair": 5,
+          "a_median_s": 4.522349805,
+          "b_median_s": 4.405526684,
+          "ratio": 1.026517401750006
+        }
+      ]
+    }
+  ]
 }
