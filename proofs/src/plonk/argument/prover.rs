@@ -98,6 +98,53 @@ impl<F: PrimeField, B: PolynomialRepresentation> Committed<F, B> {
     }
 }
 
+#[cfg(feature = "gpu")]
+impl<F: PrimeField, B: PolynomialRepresentation> Committed<F, B> {
+    /// Commits to the polynomials of `polys_map` as given, from
+    /// references to the group's own polynomials: like
+    /// [`commit`](Self::commit) with the identity encoding, but without
+    /// the copy of every polynomial that an encoding step would make
+    /// (the commitment scheme takes references). The group keeps the
+    /// polynomials as given. For witness-dependent polynomials, such as
+    /// the quotient limbs, whose copies would have to be erased.
+    pub fn commit_without_copy<PCS, T>(
+        params: &PCS::Parameters,
+        polys_map: BTreeMap<PolynomialLabel, Polynomial<F, B>>,
+        transcript: &mut T,
+    ) -> Result<Self, Error>
+    where
+        PCS: PolynomialCommitmentScheme<F>,
+        PCS::Commitment: Hashable<T::Hash>,
+        T: Transcript,
+    {
+        let mut group = Self::from_map(polys_map);
+        let polys: Vec<_> = group.polys.iter().collect();
+        let commitment = PCS::commit_many(params, &polys, &group.labels);
+
+        if let Err(err) = PCS::write_commitment(transcript, &commitment) {
+            // The group is released here, so its polynomials are erased
+            // before they are freed, as on the release of a group that
+            // was returned to the caller.
+            group.erase_polys();
+            return Err(err.into());
+        }
+
+        Ok(group)
+    }
+
+    /// Zeroes the coefficients of every polynomial of the group over
+    /// the whole capacity of each allocation, with volatile writes and
+    /// a compiler fence. The allocations keep their lengths and are
+    /// freed by the stock drop that follows, holding only zeros. For
+    /// witness-dependent groups, such as the quotient limbs, at the
+    /// point where the group is released.
+    pub(crate) fn erase_polys(&mut self) {
+        for poly in &mut self.polys {
+            crate::gpu::erasing::zero_vec(&mut poly.values);
+        }
+    }
+}
+
 /// A group whose polynomials are committed to in the verifying key rather than
 /// in the proof. It takes part in a proof, as a [`Committed`], only once that
 /// verifying key has been absorbed into the transcript; see

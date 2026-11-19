@@ -1,0 +1,340 @@
+{
+ "h2h": [
+  {
+   "k": 14,
+   "cpu": {
+    "warm_runs": 3,
+    "warm_median_s": 0.166743951,
+    "warm_min_s": 0.164233498,
+    "warm_max_s": 0.168466982,
+    "cold_s": 0.147262405,
+    "all_verified": true,
+    "verified_values": [
+     "true"
+    ],
+    "threads": "24",
+    "fallbacks": [
+     "0"
+    ],
+    "device_errors": [
+     "0"
+    ],
+    "peak_device_bytes": null,
+    "msm_calls": "0",
+    "ntt_calls": "0",
+    "quotient_calls": "0",
+    "gpu_model": "NA",
+    "verify_median_s": 0.003170406
+   },
+   "gpu": {
+    "warm_runs": 3,
+    "warm_median_s": 0.105974026,
+    "warm_min_s": 0.105024181,
+    "warm_max_s": 0.107796228,
+    "cold_s": 0.212149826,
+    "all_verified": true,
+    "verified_values": [
+     "true"
+    ],
+    "threads": "24",
+    "fallbacks": [
+     "2"
+    ],
+    "device_errors": [
+     "0"
+    ],
+    "peak_device_bytes": 42501128,
+    "msm_calls": "9",
+    "ntt_calls": "7",
+    "quotient_calls": "1",
+    "gpu_model": "NVIDIA GeForce RTX 5090 Laptop GPU",
+    "verify_median_s": 0.0030385209999999998
+   },
+   "speedup": 1.5734416940996467
+  },
+  {
+   "k": 16,
+   "cpu": {
+    "warm_runs": 3,
+    "warm_median_s": 0.56157056,
+    "warm_min_s": 0.559830307,
+    "warm_max_s": 0.566437724,
+    "cold_s": 0.5555947,
+    "all_verified": true,
+    "verified_values": [
+     "true"
+    ],
+    "threads": "24",
+    "fallbacks": [
+     "0"
+    ],
+    "device_errors": [
+     "0"
+    ],
+    "peak_device_bytes": null,
+    "msm_calls": "0",
+    "ntt_calls": "0",
+    "quotient_calls": "0",
+    "gpu_model": "NA",
+    "verify_median_s": 0.002477142
+   },
+   "gpu": {
+    "warm_runs": 3,
+    "warm_median_s": 0.216916372,
+    "warm_min_s": 0.214560541,
+    "warm_max_s": 0.219790518,
+    "cold_s": 0.338451691,
+    "all_verified": true,
+    "verified_values": [
+     "true"
+    ],
+    "threads": "24",
+    "fallbacks": [
+     "0"
+    ],
+    "device_errors": [
+     "0"
+    ],
+    "peak_device_bytes": 89883656,
+    "msm_calls": "11",
+    "ntt_calls": "7",
+    "quotient_calls": "1",
+    "gpu_model": "NVIDIA GeForce RTX 5090 Laptop GPU",
+    "verify_median_s": 0.0022963775000000002
+   },
+   "speedup": 2.5888804741764724
+  },
+  {
+   "k": 18,
+   "cpu": {
+    "warm_runs": 3,
+    "warm_median_s": 2.109185079,
+    "warm_min_s": 2.080497153,
+    "warm_max_s": 2.345131107,
+    "cold_s": 2.05042972,
+    "all_verified": true,
+    "verified_values": [
+     "true"
+    ],
+    "threads": "24",
+    "fallbacks": [
+     "0"
+    ],
+    "device_errors": [
+     "0"
+    ],
+    "peak_device_bytes": null,
+    "msm_calls": "0",
+    "ntt_calls": "0",
+    "quotient_calls": "0",
+    "gpu_model": "NA",
+    "verify_median_s": 0.0016718739999999998
+   },
+   "gpu": {
+    "warm_runs": 3,
+    "warm_median_s": 0.689955854,
+    "warm_min_s": 0.684826273,
+    "warm_max_s": 0.697916691,
+    "cold_s": 0.886678934,
+    "all_verified": true,
+    "verified_values": [
+     "true"
+    ],
+    "threads": "24",
+    "fallbacks": [
+     "0"
+    ],
+    "device_errors": [
+     "0"
+    ],
+    "peak_device_bytes": 272335880,
+    "msm_calls": "11",
+    "ntt_calls": "7",
+    "quotient_calls": "1",
+    "gpu_model": "NVIDIA GeForce RTX 5090 Laptop GPU",
+    "verify_median_s": 0.0017247995000000001
+   },
+   "speedup": 3.0569855546149185
+  },
+  {
+   "k": 20,
+   "cpu": {
+    "warm_runs": 3,
+    "warm_median_s": 8.58372123,
+    "warm_min_s": 8.556481527,
+    "warm_max_s": 8.612011587,
+    "cold_s": 8.548179393,
+    "all_verified": true,
+    "verified_values": [
+     "true"
+    ],
+    "threads": "24",
+    "fallbacks": [
+     "0"
+    ],
+    "device_errors": [
+     "0"
+    ],
+    "peak_device_bytes": null,
+    "msm_calls": "0",
+    "ntt_calls": "0",
+    "quotient_calls": "0",
+    "gpu_model": "NA",
+    "verify_median_s": 0.0015797135000000001
+   },
+   "gpu": {
+    "warm_runs": 3,
+    "warm_median_s": 2.351753915,
+    "warm_min_s": 2.315163665,
+    "warm_max_s": 2.746623352,
+    "cold_s": 2.490309687,
+    "all_verified": true,
+    "verified_values": [
+     "true"
+    ],
+    "threads": "24",
+    "fallbacks": [
+     "0"
+    ],
+    "device_errors": [
+     "0"
+    ],
+    "peak_device_bytes": 1002144776,
+    "msm_calls": "11",
+    "ntt_calls": "7",
+    "quotient_calls": "1",
+    "gpu_model": "NVIDIA GeForce RTX 5090 Laptop GPU",
+    "verify_median_s": 0.0017056559999999998
+   },
+   "speedup": 3.649923223365825
+  },
+  {
+   "k": 21,
+   "cpu": {
+    "warm_runs": 3,
+    "warm_median_s": 17.484650397,
+    "warm_min_s": 17.402846267,
+    "warm_max_s": 17.537539451,
+    "cold_s": 17.252810998,
+    "all_verified": true,
+    "verified_values": [
+     "true"
+    ],
+    "threads": "24",
+    "fallbacks": [
+     "0"
+    ],
+    "device_errors": [
+     "0"
+    ],
+    "peak_device_bytes": null,
+    "msm_calls": "0",
+    "ntt_calls": "0",
+    "quotient_calls": "0",
+    "gpu_model": "NA",
+    "verify_median_s": 0.0018066905
+   },
+   "gpu": {
+    "warm_runs": 3,
+    "warm_median_s": 4.35100615,
+    "warm_min_s": 4.292176439,
+    "warm_max_s": 4.414923764,
+    "cold_s": 4.629172563,
+    "all_verified": true,
+    "verified_values": [
+     "true"
+    ],
+    "threads": "24",
+    "fallbacks": [
+     "0"
+    ],
+    "device_errors": [
+     "0"
+    ],
+    "peak_device_bytes": 1975223304,
+    "msm_calls": "11",
+    "ntt_calls": "7",
+    "quotient_calls": "1",
+    "gpu_model": "NVIDIA GeForce RTX 5090 Laptop GPU",
+    "verify_median_s": 0.0019920645
+   },
+   "speedup": 4.018530379921435
+  }
+ ],
+ "seq": {
+  "gpu": {
+   "warm_proofs": 64,
+   "all_verified": true,
+   "verified_values": [
+    "true"
+   ],
+   "peak_device_bytes": 89883656,
+   "fallbacks": [
+    "0"
+   ],
+   "prefix": {
+    "1": {
+     "total_s": 0.199669499,
+     "proofs_per_s": 5.008276201464301,
+     "median_latency_s": 0.199669499,
+     "max_latency_s": 0.199669499
+    },
+    "4": {
+     "total_s": 0.7882131210000001,
+     "proofs_per_s": 5.074769619319747,
+     "median_latency_s": 0.19712410800000002,
+     "max_latency_s": 0.200630863
+    },
+    "16": {
+     "total_s": 3.144512738,
+     "proofs_per_s": 5.088228712400274,
+     "median_latency_s": 0.19712549899999998,
+     "max_latency_s": 0.202080712
+    },
+    "64": {
+     "total_s": 12.616451145,
+     "proofs_per_s": 5.072741872056764,
+     "median_latency_s": 0.195839607,
+     "max_latency_s": 0.219103336
+    }
+   }
+  },
+  "cpu": {
+   "warm_proofs": 64,
+   "all_verified": true,
+   "verified_values": [
+    "true"
+   ],
+   "peak_device_bytes": null,
+   "fallbacks": [
+    "0"
+   ],
+   "prefix": {
+    "1": {
+     "total_s": 0.598451417,
+     "proofs_per_s": 1.6709794171980379,
+     "median_latency_s": 0.598451417,
+     "max_latency_s": 0.598451417
+    },
+    "4": {
+     "total_s": 2.2945990480000003,
+     "proofs_per_s": 1.743223942974459,
+     "median_latency_s": 0.5680514795,
+     "max_latency_s": 0.598451417
+    },
+    "16": {
+     "total_s": 9.231179642,
+     "proofs_per_s": 1.7332562706507448,
+     "median_latency_s": 0.5661845625,
+     "max_latency_s": 0.643278667
+    },
+    "64": {
+     "total_s": 36.859843015,
+     "proofs_per_s": 1.7363069065149135,
+     "median_latency_s": 0.5670893845,
+     "max_latency_s": 0.646473639
+    }
+   }
+  }
+ }
+}

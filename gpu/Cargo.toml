@@ -1,0 +1,48 @@
+[package]
+name = "midnight-gpu"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+description = """
+CUDA kernels for the midnight-proofs accelerator hooks: BLS12-381 G1 MSM, NTT, coset transforms and the quotient
+"""
+license = "Apache-2.0"
+categories = ["cryptography"]
+keywords = ["cuda", "gpu", "msm", "ntt", "zkp"]
+build = "build.rs"
+
+[lints]
+workspace = true
+
+[features]
+default = []
+# Compile the CUDA core with nvcc. Without nvcc the build prints a warning and
+# compiles a stub that declines every device call (MIDNIGHT_GPU_REQUIRE_CUDA=1
+# makes a missing nvcc a build error).
+cuda = ["actor"]
+# The device-owner actor (`actor`): its channels, replies and memory budget
+# use std primitives only, so a caller's wait never depends on an async
+# runtime. The feature `cuda` enables it; a stub build does not compile it
+# unless asked.
+actor = []
+# Test only, never a default: fault injection into the device calls.
+test-fault = []
+
+[dependencies]
+blst = "0.3.15"
+
+[dev-dependencies]
+# only for the test that calls the actor from inside an async task
+tokio = { version = "1.54", default-features = false, features = ["rt"] }
+ff = { workspace = true }
+group = { workspace = true }
+midnight-curves = { path = "../curves" }
+midnight-proofs = { path = "../proofs", features = ["gpu-test", "circuit-params", "test-fault"] }
+proptest = "1"
+rand_chacha = { workspace = true }
+rand_core = { workspace = true }
+rayon = { workspace = true }
+serde_json = { workspace = true }
+
+[target.'cfg(all(target_os = "linux", target_pointer_width = "64"))'.dev-dependencies]
+libc = "0.2"

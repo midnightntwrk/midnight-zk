@@ -1,0 +1,86 @@
+# This file is part of midnight-zk.
+# Copyright (C) Midnight Foundation
+# SPDX-License-Identifier: Apache-2.0
+# Licensed under the Apache License, Version 2.0 (the "License");
+# You may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+# http://www.apache.org/licenses/LICENSE-2.0
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Example Compose file for midnight-gpu-proverd.
+#
+#   SRS_DIR=/path/to/srs SRS_FILE=<file name> \
+#     docker compose -f gpu-prover/container/compose.yaml up -d prover
+#
+# Two services are given. Start one of them:
+#   prover      GPU through the NVIDIA Container Toolkit (device reservation).
+#   prover-cdi  GPU through CDI (`nvidia-ctk cdi generate`); needs Docker 25+
+#               with CDI enabled, or Podman. Start it through the gate, which
+#               refuses a stale CDI spec (WSL2 driver update):
+#                 gpu-prover/container/run-gpu.sh docker compose \
+#                   -f gpu-prover/container/compose.yaml --profile cdi up -d prover-cdi
+#
+# Restart policy: on-failure, at most 3 restarts. Past the cap the container
+# stays stopped and clients use their CPU fallback.
+
+x-prover: &prover
+  image: ${PROVER_IMAGE:-midnight-gpu-prover:local}
+  build:
+    context: ../..
+    dockerfile: gpu-prover/container/Dockerfile
+  restart: on-failure:3
+  read_only: true
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  user: "${PROVER_UID:-10001}:${PROVER_GID:-10001}"
+  environment:
+    MIDNIGHT_GPU_PROVER_SOCKET: /run/midnight-gpu-prover/proverd.sock
+    MIDNIGHT_GPU_PROVER_SRS: /srv/midnight/srs/${SRS_FILE:?set SRS_FILE to the SRS file name in SRS_DIR}
+  volumes:
+    - type: bind
+      source: ${SRS_DIR:?set SRS_DIR to the directory that holds the SRS files}
+      target: /srv/midnight/srs
+      read_only: true
+    - type: volume
+      source: prover-socket
+      target: /run/midnight-gpu-prover
+  tmpfs:
+    - /tmp:size=64m,mode=1777
+  healthcheck:
+    test: ["CMD", "/usr/local/bin/healthcheck.sh"]
+    interval: 30s
+    timeout: 10s
+    start_period: 120s
+    retries: 3
+  deploy:
+    resources:
+      limits:
+        memory: ${PROVER_MEMORY_MAX:-32g}
+
+services:
+  prover:
+    <<: *prover
+    deploy:
+      resources:
+        limits:
+          memory: ${PROVER_MEMORY_MAX:-32g}
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu, compute, utility]
+
+  prover-cdi:
+    <<: *prover
+    profiles: ["cdi"]
+    devices:
+      - nvidia.com/gpu=all
+
+volumes:
+  prover-socket: {}

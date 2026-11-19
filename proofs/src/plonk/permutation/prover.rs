@@ -1,4 +1,5 @@
 use ff::PrimeField;
+#[cfg_attr(feature = "prover-par", allow(unused_imports))]
 use group::ff::BatchInvert;
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
@@ -78,7 +79,10 @@ impl Argument {
                 }
 
                 // Invert to obtain the denominator.
+                #[cfg(not(feature = "prover-par"))]
                 modified_values.batch_invert();
+                #[cfg(feature = "prover-par")]
+                crate::par::invert::parallel_batch_invert(&mut modified_values);
 
                 // Numerator: multiply all columns' contributions.
                 // delta power for first column of this set.

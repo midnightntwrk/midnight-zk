@@ -38,7 +38,7 @@ pub(crate) mod trash;
 #[cfg(feature = "bench-internal")]
 pub mod bench;
 
-mod prover;
+pub(crate) mod prover;
 mod verifier;
 
 use std::{collections::BTreeMap, hash::Hash, io};

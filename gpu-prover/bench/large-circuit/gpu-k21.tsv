@@ -1,0 +1,8 @@
+# midnight-proofs 0.8.3 with the GPU hooks of this design (pre-port), one k = 21 circuit, 23 MSMs of 2^21 terms per proof
+# timed set: 1 cold proof, then n_warm warm proofs; quiet gate (1-minute load below 2) before the set; phase and MSM columns are warm medians
+# cpu_only_prove_s_n1: one proof by a build without the CUDA toolkit on the same machine (n = 1)
+gpu_model	platform	driver	pcie_link	device_mib	n_warm	warm_median_s	warm_min_s	warm_max_s	cold_s	msm_s_median	msm_calls	ntt_calls	coset_calls	quotient_calls	fallbacks	phase1_advice_s	phase2_trace_s	phase3_quotient_s	phase4_finalise_s	device_peak_gib	host_hwm_gib	cpu_only_prove_s_n1	resident_gib	resident_uploads
+RTX 5080 Laptop GPU	Linux	615.78.08	not recorded	15924	5	9.35	9.29	9.47	10.47	1.44	23	35	17	1	0	3.26	2.94	0.37	2.71	12.85	18.34	43.17	7.5	30
+RTX 5090 Laptop GPU	Linux	615.78.08	PCIe 5.0 x16	24075	5	11.00	10.96	11.12	11.66	1.25	23	35	17	1	0	3.38	3.99	0.28	3.26	12.87	18.33	72.04	7.5	30
+RTX 5090	WSL2	616.92	PCIe 5.0 x16	32579	5	13.78	13.56	13.90	15.36	1.39	23	35	17	1	0	4.25	3.55	0.48	5.24	12.92	18.15	52.72	7.5	30
+RTX 5090 Laptop GPU	WSL2	616.92	PCIe 4.0 x4	24435	5	18.64	18.41	18.74	22.53	2.06	23	35	17	1	0	4.96	5.22	0.83	7.36	12.87	18.15	79.40	7.5	30

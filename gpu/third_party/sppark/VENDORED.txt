@@ -1,0 +1,6 @@
+sppark (https://github.com/supranational/sppark), Apache-2.0, Copyright Supranational LLC.
+Commit 08033103c14ff3c742e710b9463dde42acc0f058 (2026-11-09).
+Subset vendored: ff/ ec/ msm/ ntt/ util/ and LICENSE (HIP files removed), with the local
+patches listed in PATCHES.md (one file, msm/pippenger.cuh). Every other file is as published.
+The CUDA core of midnight-gpu (cuda/midnight_gpu.cu) compiles these templates; it redirects
+their device allocation calls to its own wrappers by macro, in its own translation unit.

@@ -1,0 +1,28 @@
+name: Genericity check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  merge_group:
+  push:
+    branches:
+      - main
+      - next
+
+permissions:
+  contents: read
+
+jobs:
+  check-generic:
+    name: No private names or machine-local paths
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Test the check
+        run: scripts/check-generic.test.sh
+
+      - name: Check the tracked tree
+        run: scripts/check-generic.sh

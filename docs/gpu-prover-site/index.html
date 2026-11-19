@@ -1,0 +1,1265 @@
+<!doctype html>
+<!--
+  This file is part of MIDNIGHT-ZK.
+  Copyright (C) Midnight Foundation
+  SPDX-License-Identifier: Apache-2.0
+  Licensed under the Apache License, Version 2.0 (the "License");
+  You may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <script>
+      document.documentElement.classList.add("js");
+      try {
+        document.querySelector('meta[name="color-scheme"]').content =
+          localStorage.getItem("color-scheme") ?? "light dark";
+      } catch {}
+    </script>
+    <title>GPU prover for midnight-proofs</title>
+    <meta
+      name="description"
+      content="How the GPU path of the midnight-proofs prover works, from the hooks and CUDA kernels to the resident daemon, the memory wipe, the CPU fallback and the zero-knowledge argument, with step-by-step animations."
+    />
+    <meta name="referrer" content="no-referrer" />
+    <!-- The one place that names the repository. Every link with data-repo is built from it. -->
+    <meta name="repo-base" content="https://github.com/midnightntwrk/midnight-zk/blob/main/" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <meta name="font-css" content="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" />
+    <noscript><link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap"
+    /></noscript>
+    <link rel="stylesheet" href="css/site.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "./vendor/three.module.min.js"
+        },
+        "integrity": {
+          "./vendor/three.module.min.js": "sha384-IDC7sAMAIMB/TZ6dgKKPPAKZ2bXXXP8+FBMBC8cU319eBhKITx+PaalhfDkDNH28"
+        }
+      }
+    </script>
+    <script type="module" src="js/main.js"></script>
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to the content</a>
+
+    <header class="topbar">
+      <a class="brand" href="#overview">midnight-proofs <span>GPU prover</span></a>
+      <button type="button" class="theme-toggle">
+        <span class="to-dark">
+          <svg viewBox="0 0 20 20" aria-hidden="true">
+            <path d="M16.5 12.2A7 7 0 0 1 7.8 3.5a7 7 0 1 0 8.7 8.7z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" />
+          </svg>
+          <span class="vh">Switch to the dark theme</span>
+        </span>
+        <span class="to-light">
+          <svg viewBox="0 0 20 20" aria-hidden="true">
+            <circle cx="10" cy="10" r="3.6" fill="none" stroke="currentColor" stroke-width="1.6" />
+            <path d="M10 1.8v2.2M10 16v2.2M1.8 10H4M16 10h2.2M4.2 4.2l1.6 1.6M14.2 14.2l1.6 1.6M4.2 15.8l1.6-1.6M14.2 5.8l1.6-1.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+          </svg>
+          <span class="vh">Switch to the light theme</span>
+        </span>
+      </button>
+    </header>
+
+    <div class="frame">
+      <nav class="toc" aria-label="On this page">
+        <ol>
+          <li><a href="#overview">Overview</a></li>
+          <li><a href="#try">Try it</a></li>
+          <li><a href="#changes">What the PR changes</a></li>
+          <li><a href="#features">Features and tests</a></li>
+          <li><a href="#hooks">Hook contract</a></li>
+          <li><a href="#zk">Zero knowledge</a></li>
+          <li><a href="#oracle">Oracle and checks</a></li>
+          <li><a href="#benchmarks">Benchmarks</a></li>
+          <li hidden><a href="#cpu-too">Prover changes</a></li>
+          <li><a href="#batch">Batch proving</a></li>
+          <li><a href="#architecture">Architecture</a></li>
+          <li class="toc-anim"><a href="#pipeline">Proving pipeline</a></li>
+          <li class="toc-anim"><a href="#ntt">NTT butterfly</a></li>
+          <li class="toc-anim"><a href="#msm">MSM buckets</a></li>
+          <li class="toc-anim"><a href="#memory">Memory and the wipe</a></li>
+          <li class="toc-anim"><a href="#fallback">Fallback path</a></li>
+          <li><a href="#operations">Operations</a></li>
+          <li><a href="#open">Open items</a></li>
+          <li><a href="#docs">Repository docs</a></li>
+        </ol>
+        <p class="toc-note"><i></i>Sections with a step animation</p>
+      </nav>
+
+      <main id="main">
+        <section class="intro" id="overview">
+          <h1>A GPU path for the midnight-proofs prover</h1>
+          <p class="lede">
+            midnight-proofs proves PLONK circuits with KZG commitments over BLS12‑381. Built with the feature <code>gpu</code>, it can run its heavy arithmetic on a CUDA device. The proof system, the keys, the transcript and the verifier stay as they are.
+          </p>
+
+          <div class="results" data-bench="results"></div>
+
+          <div class="prose">
+            <p>
+              The device takes the G1 multi-scalar multiplication (MSM), the number-theoretic transform (NTT), its inverse, and the quotient. An accepted quotient call does all of its work on the device: the cosets on the extended domain (a coset of a larger evaluation domain), the numerator, the division by Xⁿ − 1 and the inverse transform back to coefficients. The prover reaches each of the four through a hook: a function that it calls in place of the CPU routine. A hook returns exactly the value that the CPU routine returns, or it declines, and then the CPU routine runs on the unchanged input.
+            </p>
+            <p>
+              A resident daemon holds the SRS (the structured reference string, the public KZG parameters) and the proving key between requests. By default it frees its device copies of the key and its MSM base tables before each reply and uploads them again for the next request. Before a proof that may use the GPU, the daemon checks the device memory. On a native Linux host, the daemon first activates the device and then reads its free memory. If it gets no reading, it counts zero bytes free. Under WSL2 it uses a leased budget. It compares that figure with its estimate, and individual device calls can still decline. When the request ends it overwrites every witness-dependent device and staging buffer with zeros and confirms the cleanup; if it cannot confirm it, the daemon retires. It verifies every proof before it returns it.
+            </p>
+          </div>
+
+
+          <ul class="legend" aria-label="Colors used on this page">
+            <li><span class="sw cpu"></span>Runs on the CPU</li>
+            <li><span class="sw device"></span>Runs on the GPU</li>
+            <li><span class="sw rng"></span>Random draw</li>
+            <li><span class="sw secret"></span>Witness-dependent data</li>
+          </ul>
+        </section>
+
+        <section id="try">
+          <h2>Try it</h2>
+          <div class="prose">
+            <p>
+              The daemon and its client build with cargo. These commands serve the example relation of the crate with a test SRS and make one proof. Build with the feature
+              <code>cuda</code> to route proof phases to a CUDA device. Without a CUDA compiler the same command still builds, and the daemon proves on the CPU. The example circuit is small, below the size from which the device takes work by default, so this run checks the service and not the kernels.
+            </p>
+          </div>
+          <pre><code>cargo build --release -p midnight-gpu-prover --features cuda
+P=target/release
+
+# The socket lives in a fresh directory that only you can enter.
+D=$(mktemp -d) &amp;&amp; chmod 700 "$D"
+S="$D/prover.sock"
+
+# A test SRS is generated in-process. It is insecure: use --srs for real keys.
+$P/midnight-gpu-proverd --insecure-test-srs --socket "$S" &amp;
+
+# The socket opens after the SRS and the key are ready. Wait for it.
+for i in $(seq 1 120); do
+  $P/midnight-gpu-prover-client --socket "$S" health &amp;&amp; break
+  sleep 1
+done
+$P/midnight-gpu-prover-client --socket "$S" health || exit 1
+
+# 96 bytes: three canonical little-endian BLS12‑381 scalars. Mode 600.
+head -c 96 /dev/zero &gt; in.bin
+chmod 600 in.bin
+# --no-fallback: fail if the daemon does not serve the proof.
+$P/midnight-gpu-prover-client --socket "$S" prove in.bin proof.bin --no-fallback --insecure-test-srs
+
+$P/midnight-gpu-prover-client --socket "$S" stop</code></pre>
+          <div class="prose">
+            <h3>In a container</h3>
+            <p>
+              The image builds on a host without a GPU and without a CUDA install, because the CUDA toolkit comes from the builder image. The GPU enters the
+              container through CDI, and the SRS is mounted read-only.
+            </p>
+          </div>
+          <pre><code>docker buildx build -f gpu-prover/container/Dockerfile -t midnight-gpu-prover:local .
+
+# Generate the CDI spec once, and again after every driver update.
+sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
+
+# run-gpu.sh rejects a missing or unreadable spec and a spec whose host paths are missing;
+# for WSL driver paths it also rejects a driver directory that does not match the live one.
+SRS=bls_midnight_2p17   # the name of your SRS file
+docker volume create midnight-gpu-prover-socket
+gpu-prover/container/run-gpu.sh docker run -d --name midnight-gpu-prover \
+  --device nvidia.com/gpu=all \
+  --restart on-failure:3 \
+  -v /path/to/srs:/srv/midnight/srs:ro \
+  -e MIDNIGHT_GPU_PROVER_SRS="/srv/midnight/srs/$SRS" \
+  -v midnight-gpu-prover-socket:/run/midnight-gpu-prover \
+  midnight-gpu-prover:local</code></pre>
+          <div class="prose">
+            
+            <p>
+              <code>cargo test -p midnight-gpu-prover --all-features</code> runs the CPU-path tests:
+              admission arithmetic with fake device memory, the protocol, the queue, the fallback
+              labels, the circuit breaker and verify-before-return. Every feature compiles with
+              <code>--all-features</code> on a machine without CUDA.
+            </p>
+            <p>
+              The full steps are in the <a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-prover/README.md" data-repo="gpu-prover/README.md">crate readme</a> and the
+              <a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-prover/container/README.md" data-repo="gpu-prover/container/README.md">container readme</a>.
+            </p>
+          </div>
+        </section>
+
+        <section id="changes">
+          <h2>What the PR changes</h2>
+          <div class="prose">
+            <p>
+              The change to the existing prover is small and behind a feature that is off by default.
+              The rest is new code beside it.
+            </p>
+          </div>
+          <div class="table-wrap" role="region" tabindex="0" aria-labelledby="changes-caption">
+            <table class="stackable">
+              <caption id="changes-caption">The parts of the pull request</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Part</th>
+                  <th scope="col">Path</th>
+                  <th scope="col">What it is</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <th scope="row">Hooks in midnight-proofs</th>
+                  <td data-label="Path"><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/proofs/src/gpu" data-repo="proofs/src/gpu"><code>proofs/src/gpu/</code></a></td>
+                  <td data-label="What it is">
+                    The feature <code>gpu</code> adds the module <code>midnight_proofs::gpu</code> and call
+                    sites in <code>plonk/prover.rs</code>, <code>poly/domain.rs</code>, <code>poly/kzg/mod.rs</code> and
+                    <code>poly/kzg/msm.rs</code>. With the feature on and no hooks installed, the arithmetic runs on the CPU. The feature also changes two things outside the hooks: the quotient buffers live in owners that zero them on release, and the developer tools withhold assigned values in their output. With the feature off, the stock code runs.
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">midnight-gpu</th>
+                  <td data-label="Path"><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu" data-repo="gpu"><code>gpu/</code></a></td>
+                  <td data-label="What it is">
+                    The CUDA kernels behind the hooks. The MSM is a vendored copy of sppark with a <a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu/third_party/sppark/PATCHES.md" data-repo="gpu/third_party/sppark/PATCHES.md">record of the local changes</a> that an update must keep. With the feature <code>cuda</code>,
+                    <code>nvcc</code> compiles them. Without <code>nvcc</code> the crate builds a stub
+                    that declines every device call.
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">midnight-gpu-prover</th>
+                  <td data-label="Path"><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-prover/README.md" data-repo="gpu-prover/README.md"><code>gpu-prover/</code></a></td>
+                  <td data-label="What it is">The service library, the daemon <code>midnight-gpu-proverd</code> and the client.</td>
+                </tr>
+                <tr>
+                  <th scope="row">Specification</th>
+                  <td data-label="Path"><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-spec/README.md" data-repo="gpu-spec/README.md"><code>gpu-spec/</code></a></td>
+                  <td data-label="What it is">
+                    85 EARS requirements (GPU-001 to GPU-085), the design, an executable Lean 4 oracle with theorems, a Quint
+                    model of the request state machine, and golden vectors for the Rust tests.
+                  </td>
+                </tr>
+                <tr>
+                  <th scope="row">Container and service files</th>
+                  <td data-label="Path"><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-prover/container/README.md" data-repo="gpu-prover/container/README.md"><code>gpu-prover/container/</code></a></td>
+                  <td data-label="What it is">A pinned multi-stage image build, a Compose example and a systemd unit.</td>
+                </tr>
+                <tr>
+                  <th scope="row">Compact benchmark</th>
+                  <td data-label="Path"><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-prover/bench/compact/README.md" data-repo="gpu-prover/bench/compact/README.md"><code>gpu-prover/bench/compact/</code></a></td>
+                  <td data-label="What it is">A harness that proves real Compact contracts on the CPU and on the GPU path, with its results.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="prose">
+            
+            <p>
+              None of the new features is a default. A workspace build without them is the stock
+              prover. With every feature on, the workspace still compiles and its tests run on a machine
+              that has no CUDA toolkit and no GPU, because the kernel crate falls back to its stub.
+            </p>
+          </div>
+        </section>
+
+        <section id="features">
+          <h2 id="features-title">Features and their tests</h2>
+          <div class="prose">
+            <p>
+              Each feature of the pull request, with the test that checks it. A test marked with a CUDA device skips without one; the container records are in <a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-prover/container/TESTED.md" data-repo="gpu-prover/container/TESTED.md">TESTED.md</a>.
+            </p>
+          </div>
+          <div class="table-wrap" role="region" tabindex="0" aria-labelledby="features-caption">
+            <table class="stackable features">
+              <colgroup><col class="c-feature" /><col class="c-what" /><col class="c-test" /><col class="c-device" /></colgroup>
+              <caption id="features-caption">Features, what their tests check, and the tests</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Feature</th>
+                  <th scope="col">What the test checks</th>
+                  <th scope="col">Test</th>
+                  <th scope="col">CUDA device</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <th scope="row">Hooks behind the feature <code>gpu</code></th>
+                  <td data-label="What the test checks">Hooks that decline every call change no proof byte, and a second install is rejected.</td>
+                  <td data-label="Test" class="evidence"><span class="test"><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/proofs/tests/gpu_install.rs" data-repo="proofs/tests/gpu_install.rs"><code>proofs/<wbr />tests/<wbr />gpu_<wbr />install.rs</code></a> <code>install_<wbr />once_<wbr />and_<wbr />decline</code></span></td>
+                  <td data-label="CUDA device">no</td>
+                </tr>
+                <tr>
+                  <th scope="row">MSM cross-check</th>
+                  <td data-label="What the test checks">In a test build, every commitment MSM that the hook serves is compared with <code>msm_pippenger</code>; a hook that returns a wrong point panics at the first served commitment whose point differs.</td>
+                  <td data-label="Test" class="evidence"><span class="test"><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/proofs/tests/gpu_msm_crosscheck.rs" data-repo="proofs/tests/gpu_msm_crosscheck.rs"><code>proofs/<wbr />tests/<wbr />gpu_<wbr />msm_<wbr />crosscheck.rs</code></a> <code>wrong_<wbr />msm_<wbr />hook_<wbr />fails_<wbr />the_<wbr />cross_<wbr />check</code></span></td>
+                  <td data-label="CUDA device">no</td>
+                </tr>
+                <tr>
+                  <th scope="row">Stub build</th>
+                  <td data-label="What the test checks">Without <code>nvcc</code>, every hook declines and the CPU computes the value.</td>
+                  <td data-label="Test" class="evidence"><span class="test"><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu/tests/stub.rs" data-repo="gpu/tests/stub.rs"><code>gpu/<wbr />tests/<wbr />stub.rs</code></a> <code>stub_<wbr />hooks_<wbr />fall_<wbr />back_<wbr />to_<wbr />cpu</code></span></td>
+                  <td data-label="CUDA device">no</td>
+                </tr>
+                <tr>
+                  <th scope="row">midnight-gpu kernels</th>
+                  <td data-label="What the test checks">The device MSM and NTT return the CPU values; the device quotient matches the stock quotient, coefficient by coefficient, on 10,000 random constraint systems.</td>
+                  <td data-label="Test" class="evidence"><span class="test"><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu/tests/device.rs" data-repo="gpu/tests/device.rs"><code>gpu/<wbr />tests/<wbr />device.rs</code></a> <code>msm_<wbr />matches_<wbr />cpu</code></span><span class="test"><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu/tests/device.rs" data-repo="gpu/tests/device.rs"><code>gpu/<wbr />tests/<wbr />device.rs</code></a> <code>ntt_<wbr />matches_<wbr />cpu</code></span><span class="test"><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu/tests/prover.rs" data-repo="gpu/tests/prover.rs"><code>gpu/<wbr />tests/<wbr />prover.rs</code></a> <code>quotient_<wbr />fuzz_<wbr />10000</code></span></td>
+                  <td data-label="CUDA device">yes</td>
+                </tr>
+                <tr>
+                  <th scope="row">Readback set</th>
+                  <td data-label="What the test checks">The result copies are base-domain transform outputs and, when the device serves the quotient, its coefficients; no extended-domain vector comes back. The MSM partial bucket sums are copied to the host and counted apart.</td>
+                  <td data-label="Test" class="evidence"><span class="test"><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu/tests/prover.rs" data-repo="gpu/tests/prover.rs"><code>gpu/<wbr />tests/<wbr />prover.rs</code></a> <code>readback_<wbr />is_<wbr />base_<wbr />transforms_<wbr />and_<wbr />quotient</code></span></td>
+                  <td data-label="CUDA device">yes</td>
+                </tr>
+                <tr>
+                  <th scope="row">Admission and resident policy</th>
+                  <td data-label="What the test checks">On a native host, a cold request activates the device before it reads free memory. Under memory pressure, admission moves the quotient to the CPU or the whole proof. The default policy asks for an eviction after each proof, and <code>keep</code> skips that request.</td>
+                  <td data-label="Test" class="evidence"><span class="test"><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-prover/tests/qa3.rs" data-repo="gpu-prover/tests/qa3.rs"><code>gpu-prover/<wbr />tests/<wbr />qa3.rs</code></a> <code>cold_<wbr />admission_<wbr />reads_<wbr />free_<wbr />memory_<wbr />after_<wbr />activation</code></span><span class="test"><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-prover/tests/service.rs" data-repo="gpu-prover/tests/service.rs"><code>gpu-prover/<wbr />tests/<wbr />service.rs</code></a> <code>admission_<wbr />moves_<wbr />phases_<wbr />off_<wbr />the_<wbr />device_<wbr />when_<wbr />memory_<wbr />is_<wbr />short</code></span><span class="test"><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-prover/tests/service.rs" data-repo="gpu-prover/tests/service.rs"><code>gpu-prover/<wbr />tests/<wbr />service.rs</code></a> <code>resident_<wbr />policy_<wbr />evicts_<wbr />by_<wbr />default_<wbr />and_<wbr />keeps_<wbr />on_<wbr />request</code></span></td>
+                  <td data-label="CUDA device">no</td>
+                </tr>
+                <tr>
+                  <th scope="row">Daemon</th>
+                  <td data-label="What the test checks">Health, prove, stats, evict and stop over the socket; one request served, one waiting, a third gets <code>busy</code>.</td>
+                  <td data-label="Test" class="evidence"><span class="test"><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-prover/tests/daemon.rs" data-repo="gpu-prover/tests/daemon.rs"><code>gpu-prover/<wbr />tests/<wbr />daemon.rs</code></a> <code>round_<wbr />trip_<wbr />health_<wbr />prove_<wbr />stats_<wbr />evict_<wbr />stop</code></span><span class="test"><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-prover/tests/daemon.rs" data-repo="gpu-prover/tests/daemon.rs"><code>gpu-prover/<wbr />tests/<wbr />daemon.rs</code></a> <code>queue_<wbr />of_<wbr />one_<wbr />third_<wbr />request_<wbr />is_<wbr />busy_<wbr />and_<wbr />health_<wbr />answers_<wbr />during_<wbr />a_<wbr />proof</code></span></td>
+                  <td data-label="CUDA device">no</td>
+                </tr>
+                <tr>
+                  <th scope="row">Container and CDI</th>
+                  <td data-label="What the test checks">The launcher refuses a missing spec, a spec with missing referenced host paths, and a mismatched or unconfirmed WSL driver directory.</td>
+                  <td data-label="Test" class="evidence"><span class="test"><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-prover/container/check-cdi.test.sh" data-repo="gpu-prover/container/check-cdi.test.sh"><code>gpu-prover/<wbr />container/<wbr />check-cdi.test.sh</code></a></span></td>
+                  <td data-label="CUDA device">no</td>
+                </tr>
+                <tr>
+                  <th scope="row">Restart cap</th>
+                  <td data-label="What the test checks">systemd stops after <code>StartLimitBurst</code> starts; the container stops after <code>on-failure:3</code>.</td>
+                  <td data-label="Test" class="evidence"><span class="test"><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-prover/container/restart-cap.test.sh" data-repo="gpu-prover/container/restart-cap.test.sh"><code>gpu-prover/<wbr />container/<wbr />restart-cap.test.sh</code></a></span></td>
+                  <td data-label="CUDA device">no</td>
+                </tr>
+                <tr>
+                  <th scope="row">Client CPU fallback</th>
+                  <td data-label="What the test checks">After three connection failures the breaker opens and the next call skips the daemon; with the daemon stopped, the client proves on the CPU and labels the proof <code>cpu-fallback</code>.</td>
+                  <td data-label="Test" class="evidence"><span class="test"><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-prover/src/client.rs" data-repo="gpu-prover/src/client.rs"><code>gpu-prover/<wbr />src/<wbr />client.rs</code></a> <code>absent_<wbr />daemon_<wbr />falls_<wbr />back_<wbr />and_<wbr />opens_<wbr />the_<wbr />breaker</code></span><span class="test"><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-prover/tests/daemon.rs" data-repo="gpu-prover/tests/daemon.rs"><code>gpu-prover/<wbr />tests/<wbr />daemon.rs</code></a> <code>client_<wbr />labels_<wbr />daemon_<wbr />and_<wbr />fallback_<wbr />results</code></span></td>
+                  <td data-label="CUDA device">no</td>
+                </tr>
+                <tr>
+                  <th scope="row">Seeded determinism</th>
+                  <td data-label="What the test checks">With a test seed, the GPU proof has the bytes of the CPU proof.</td>
+                  <td data-label="Test" class="evidence"><span class="test"><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-prover/tests/gpu.rs" data-repo="gpu-prover/tests/gpu.rs"><code>gpu-prover/<wbr />tests/<wbr />gpu.rs</code></a> <code>seeded_<wbr />gpu_<wbr />proof_<wbr />equals_<wbr />cpu_<wbr />proof</code></span><span class="test"><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu/tests/prover.rs" data-repo="gpu/tests/prover.rs"><code>gpu/<wbr />tests/<wbr />prover.rs</code></a> <code>seeded_<wbr />proofs_<wbr />equal_<wbr />cpu</code></span></td>
+                  <td data-label="CUDA device">yes</td>
+                </tr>
+                <tr>
+                  <th scope="row">Erasing owners</th>
+                  <td data-label="What the test checks">An owner zeroes its whole capacity on drop and never reallocates; the final quotient limbs are zeroed on release.</td>
+                  <td data-label="Test" class="evidence"><span class="test"><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/proofs/src/gpu/tests.rs" data-repo="proofs/src/gpu/tests.rs"><code>proofs/<wbr />src/<wbr />gpu/<wbr />tests.rs</code></a> <code>erasing_<wbr />owner_<wbr />zeroes_<wbr />whole_<wbr />capacity_<wbr />on_<wbr />drop</code></span><span class="test"><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/proofs/src/gpu/tests.rs" data-repo="proofs/src/gpu/tests.rs"><code>proofs/<wbr />src/<wbr />gpu/<wbr />tests.rs</code></a> <code>quotient_<wbr />final_<wbr />limbs_<wbr />are_<wbr />zeroed_<wbr />on_<wbr />release</code></span><span class="test"><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/proofs/src/gpu/tests.rs" data-repo="proofs/src/gpu/tests.rs"><code>proofs/<wbr />src/<wbr />gpu/<wbr />tests.rs</code></a> <code>erasing_<wbr />owner_<wbr />never_<wbr />reallocates</code></span></td>
+                  <td data-label="CUDA device">no</td>
+                </tr>
+                <tr>
+                  <th scope="row">Device wipe check</th>
+                  <td data-label="What the test checks">In check mode, a device proof wipes device regions and bytes and the service stays healthy after it. On the test allocation the device check returns 0 after zeroing, 3 after writes to two 64-bit words and one tail byte, and 0 after the wipe.</td>
+                  <td data-label="Test" class="evidence"><span class="test"><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-prover/tests/gpu.rs" data-repo="gpu-prover/tests/gpu.rs"><code>gpu-prover/<wbr />tests/<wbr />gpu.rs</code></a> <code>zero_<wbr />check_<wbr />reads_<wbr />every_<wbr />wiped_<wbr />region_<wbr />back_<wbr />as_<wbr />zero</code></span><span class="test"><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu/src/wipe.rs" data-repo="gpu/src/wipe.rs"><code>gpu/<wbr />src/<wbr />wipe.rs</code></a> <code>device_<wbr />count_<wbr />finds_<wbr />non_<wbr />zero</code></span></td>
+                  <td data-label="CUDA device">yes</td>
+                </tr>
+                <tr>
+                  <th scope="row">Quarantine and <code>pending_erasure()</code></th>
+                  <td data-label="What the test checks">A block whose wipe fails is quarantined, retried, and counted as pending until the retry succeeds.</td>
+                  <td data-label="Test" class="evidence"><span class="test"><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu/tests/quarantine.rs" data-repo="gpu/tests/quarantine.rs"><code>gpu/<wbr />tests/<wbr />quarantine.rs</code></a> <code>failed_<wbr />lib_<wbr />wipe_<wbr />is_<wbr />quarantined_<wbr />and_<wbr />retried</code></span><span class="test"><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu/tests/pending_erasure.rs" data-repo="gpu/tests/pending_erasure.rs"><code>gpu/<wbr />tests/<wbr />pending_<wbr />erasure.rs</code></a> <code>failed_<wbr />lib_<wbr />wipe_<wbr />is_<wbr />pending_<wbr />until_<wbr />retried</code></span></td>
+                  <td data-label="CUDA device">yes</td>
+                </tr>
+                <tr>
+                  <th scope="row">Context reset after a failed drain</th>
+                  <td data-label="What the test checks">An unconfirmed drain retires the device before the device-owner thread runs anything else. Before the reset the device tries again to zero the quarantined blocks. A successful reset clears the quarantine and counts the quarantined blocks whose zeroing stayed unconfirmed as lost unerased.</td>
+                  <td data-label="Test" class="evidence"><span class="test"><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu/tests/drain_teardown.rs" data-repo="gpu/tests/drain_teardown.rs"><code>gpu/<wbr />tests/<wbr />drain_<wbr />teardown.rs</code></a> <code>unconfirmed_<wbr />drain_<wbr />in_<wbr />a_<wbr />device_<wbr />call_<wbr />retires_<wbr />the_<wbr />device</code></span><span class="test"><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu/tests/teardown_lost.rs" data-repo="gpu/tests/teardown_lost.rs"><code>gpu/<wbr />tests/<wbr />teardown_<wbr />lost.rs</code></a> <code>context_<wbr />teardown_<wbr />zeroes_<wbr />quarantine_<wbr />before_<wbr />reset</code></span><span class="test"><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu/tests/teardown_lost.rs" data-repo="gpu/tests/teardown_lost.rs"><code>gpu/<wbr />tests/<wbr />teardown_<wbr />lost.rs</code></a> <code>context_<wbr />teardown_<wbr />counts_<wbr />unerased_<wbr />quarantine</code></span></td>
+                  <td data-label="CUDA device">yes</td>
+                </tr>
+                <tr>
+                  <th scope="row">Staged copy drain</th>
+                  <td data-label="What the test checks">The test injects an error after a staged upload, with work still queued. The upload runs one drain before it returns. When that drain is not confirmed, the next request for the staging buffer is refused and records one erasure failure.</td>
+                  <td data-label="Test" class="evidence"><span class="test"><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu/tests/staged_drain.rs" data-repo="gpu/tests/staged_drain.rs"><code>gpu/<wbr />tests/<wbr />staged_<wbr />drain.rs</code></a> <code>staged_<wbr />copy_<wbr />sync_<wbr />failure_<wbr />drains_<wbr />and_<wbr />holds</code></span></td>
+                  <td data-label="CUDA device">yes</td>
+                </tr>
+                <tr>
+                  <th scope="row">Waiter across the reset</th>
+                  <td data-label="What the test checks">A call that waited for the device while the context was reset declines, its input is unchanged, and the context stays retired.</td>
+                  <td data-label="Test" class="evidence"><span class="test"><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu/tests/teardown_waiter.rs" data-repo="gpu/tests/teardown_waiter.rs"><code>gpu/<wbr />tests/<wbr />teardown_<wbr />waiter.rs</code></a> <code>a_<wbr />call_<wbr />waiting_<wbr />for_<wbr />the_<wbr />lock_<wbr />across_<wbr />the_<wbr />reset_<wbr />declines</code></span></td>
+                  <td data-label="CUDA device">yes</td>
+                </tr>
+                <tr>
+                  <th scope="row">Retire on an unconfirmed wipe</th>
+                  <td data-label="What the test checks">The service retires when it cannot confirm the erasure.</td>
+                  <td data-label="Test" class="evidence"><span class="test"><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-prover/tests/service.rs" data-repo="gpu-prover/tests/service.rs"><code>gpu-prover/<wbr />tests/<wbr />service.rs</code></a> <code>an_<wbr />unconfirmed_<wbr />wipe_<wbr />retires_<wbr />the_<wbr />service</code></span></td>
+                  <td data-label="CUDA device">no</td>
+                </tr>
+                <tr>
+                  <th scope="row">Device counters</th>
+                  <td data-label="What the test checks">After a device proof, a request withdrawn before its first device call gets the label <code>cpu</code>, 0 device quotient calls and 0 MSMs. A request admitted directly to the CPU reports a device peak of 0 and no wipe of the request before it.</td>
+                  <td data-label="Test" class="evidence"><span class="test"><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-prover/tests/gpu.rs" data-repo="gpu-prover/tests/gpu.rs"><code>gpu-prover/<wbr />tests/<wbr />gpu.rs</code></a> <code>counts_<wbr />and_<wbr />peak_<wbr />are_<wbr />request_<wbr />local</code></span><span class="test"><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-prover/tests/gpu.rs" data-repo="gpu-prover/tests/gpu.rs"><code>gpu-prover/<wbr />tests/<wbr />gpu.rs</code></a> <code>a_<wbr />cpu_<wbr />admitted_<wbr />request_<wbr />reports_<wbr />no_<wbr />device_<wbr />peak</code></span><span class="test"><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-prover/tests/gpu.rs" data-repo="gpu-prover/tests/gpu.rs"><code>gpu-prover/<wbr />tests/<wbr />gpu.rs</code></a> <code>a_<wbr />cpu_<wbr />admitted_<wbr />request_<wbr />reports_<wbr />no_<wbr />wipe_<wbr />of_<wbr />an_<wbr />earlier_<wbr />request</code></span></td>
+                  <td data-label="CUDA device">yes</td>
+                </tr>
+                <tr>
+                  <th scope="row">Decline counts</th>
+                  <td data-label="What the test checks">A below-minimum MSM shows in the reply as a decline by phase and reason, not as a fallback.</td>
+                  <td data-label="Test" class="evidence"><span class="test"><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-prover/tests/qa3.rs" data-repo="gpu-prover/tests/qa3.rs"><code>gpu-prover/<wbr />tests/<wbr />qa3.rs</code></a> <code>below_<wbr />min_<wbr />k_<wbr />msm_<wbr />shows_<wbr />in_<wbr />the_<wbr />reply_<wbr />as_<wbr />a_<wbr />decline</code></span></td>
+                  <td data-label="CUDA device">no</td>
+                </tr>
+                <tr>
+                  <th scope="row">Proof labels</th>
+                  <td data-label="What the test checks">A CPU proof is labelled <code>cpu</code>. A proof with a served call and a counted fallback is served as <code>gpu-degraded</code> and fails in acceptance mode. After a degraded admission, a proof with a served device call and zero counted fallbacks is labelled <code>gpu</code>, and its admission reasons stay in <code>degraded_reasons</code>.</td>
+                  <td data-label="Test" class="evidence"><span class="test"><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-prover/tests/service.rs" data-repo="gpu-prover/tests/service.rs"><code>gpu-prover/<wbr />tests/<wbr />service.rs</code></a> <code>cpu_<wbr />proof_<wbr />verifies_<wbr />and_<wbr />is_<wbr />labelled_<wbr />cpu</code></span><span class="test"><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-prover/tests/service.rs" data-repo="gpu-prover/tests/service.rs"><code>gpu-prover/<wbr />tests/<wbr />service.rs</code></a> <code>a_<wbr />counted_<wbr />fallback_<wbr />is_<wbr />served_<wbr />degraded_<wbr />in_<wbr />production_<wbr />and_<wbr />fails_<wbr />acceptance</code></span><span class="test"><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-prover/tests/service.rs" data-repo="gpu-prover/tests/service.rs"><code>gpu-prover/<wbr />tests/<wbr />service.rs</code></a> <code>a_<wbr />degraded_<wbr />admission_<wbr />without_<wbr />a_<wbr />fallback_<wbr />is_<wbr />labelled_<wbr />gpu</code></span></td>
+                  <td data-label="CUDA device">no</td>
+                </tr>
+                <tr>
+                  <th scope="row">Withheld values</th>
+                  <td data-label="What the test checks">With the feature <code>gpu</code>, the tested failure texts and the tracing floor planner print <code>&lt;withheld&gt;</code>. The tested forms of a witness marker are absent from two error replies and the daemon log. A marker the caller sends is absent from the replies, the client output and the daemon log.</td>
+                  <td data-label="Test" class="evidence"><span class="test"><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/proofs/src/dev/redact_tests.rs" data-repo="proofs/src/dev/redact_tests.rs"><code>proofs/<wbr />src/<wbr />dev/<wbr />redact_<wbr />tests.rs</code></a> <code>gate_<wbr />failure_<wbr />output_<wbr />withholds_<wbr />value</code></span><span class="test"><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/proofs/src/dev/redact_tests.rs" data-repo="proofs/src/dev/redact_tests.rs"><code>proofs/<wbr />src/<wbr />dev/<wbr />redact_<wbr />tests.rs</code></a> <code>tracing_<wbr />floor_<wbr />planner_<wbr />withholds_<wbr />value</code></span><span class="test"><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-prover/tests/b6.rs" data-repo="gpu-prover/tests/b6.rs"><code>gpu-prover/<wbr />tests/<wbr />b6.rs</code></a> <code>witness_<wbr />bytes_<wbr />reach_<wbr />neither_<wbr />reply_<wbr />nor_<wbr />log</code></span><span class="test"><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-prover/tests/echo.rs" data-repo="gpu-prover/tests/echo.rs"><code>gpu-prover/<wbr />tests/<wbr />echo.rs</code></a> <code>no_<wbr />caller_<wbr />value_<wbr />is_<wbr />echoed</code></span></td>
+                  <td data-label="CUDA device">no</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="hooks">
+          <h2>The hook contract</h2>
+          <div class="prose">
+            <p>
+              Every hook obeys the rules below, which the <a href="https://github.com/midnightntwrk/midnight-zk/blob/main/docs/gpu-prover/architecture.md#2-the-hook-contract" data-repo="docs/gpu-prover/architecture.md#2-the-hook-contract">architecture document</a> states in full. They are what keep a proof from the GPU path equal to the proof of the CPU prover for the same witness and the same random values.
+            </p>
+          </div>
+          <ol class="rules">
+            <li>
+              <div>
+                <strong>The stock value, or a decline.</strong>
+                A hook returns exactly the group element or the vector that the CPU routine returns for
+                the same input. There is no approximate result and no third outcome.
+              </div>
+            </li>
+            <li>
+              <div>
+                <strong>A decline leaves the input unchanged.</strong>
+                When a hook declines, the CPU routine runs on the same buffers, with the same content, as
+                if the hook did not exist. A hook can decline for any reason: an unsupported size, too
+                little device memory, a device error.
+              </div>
+            </li>
+            <li>
+              <div>
+                <strong>No randomness and no transcript access.</strong>
+                A hook draws no random value and reads or writes no transcript state. If it accepts the
+                call, its return value depends only on the arithmetic input.
+              </div>
+            </li>
+            <li>
+              <div>
+                <strong>Every decline is counted.</strong>
+                The device path counts each decline and the daemon reads the counters, so a proof that used the CPU for part of its arithmetic shows up in them.
+              </div>
+            </li>
+          </ol>
+
+          <div class="table-wrap" role="region" tabindex="0" aria-labelledby="hooks-caption">
+            <table class="stackable">
+              <caption id="hooks-caption">The hook points and the stock code they stand in for</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Hook</th>
+                  <th scope="col">Stock code in <code>proofs/src</code></th>
+                  <th scope="col">Result</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <th scope="row">G1 MSM</th>
+                  <td data-label="Stock code"><code>commit_msm</code> in <code>poly/kzg/mod.rs</code>, which every commitment calls and which runs <code>msm_pippenger</code> on a decline; also <code>msm_specific</code> in <code>poly/kzg/msm.rs</code></td>
+                  <td data-label="Result">One G1 point</td>
+                </tr>
+                <tr>
+                  <th scope="row">NTT</th>
+                  <td data-label="Stock code">The forward transform on the base domain, <code>best_fft_with_twiddles</code> as called from <code>poly/domain.rs</code></td>
+                  <td data-label="Result">A vector of n field elements, in the caller's buffer</td>
+                </tr>
+                <tr>
+                  <th scope="row">Inverse NTT</th>
+                  <td data-label="Stock code"><code>EvaluationDomain::ifft</code> in <code>poly/domain.rs</code>: the transform at the inverse root, then the scaling</td>
+                  <td data-label="Result">A vector of n field elements, in the caller's buffer</td>
+                </tr>
+                <tr>
+                  <th scope="row">Quotient</th>
+                  <td data-label="Stock code"><code>compute_nu_poly</code> with its coset transforms, <code>divide_by_vanishing_poly</code> and <code>extended_to_coeff</code>, as one call from <code>finalise_proof</code> in <code>plonk/prover.rs</code></td>
+                  <td data-label="Result">The coefficients of h(X). The cosets and the numerator stay on the device.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="zk">
+          <h2>The zero-knowledge argument</h2>
+          <div class="prose">
+            <p>
+              A proof from the GPU path has the same distribution as a proof from the CPU prover. After a request, the daemon zeroes and frees every device buffer and every staging buffer that held witness-dependent values, and it takes no further request unless it can confirm that.
+            </p>
+
+            <h3>Where the randomness is</h3>
+            <p>
+              A KZG commitment in midnight-proofs has no hiding scalar. Zero knowledge comes from random
+              values that the prover writes into the polynomials themselves:
+            </p>
+            <ul>
+              <li>the blinding rows of the advice columns, except columns that a circuit declares unblinded;</li>
+              <li>the blinding rows of the LogUp multiplicity and aggregator columns;</li>
+              <li>the blinding rows of the permutation products;</li>
+              <li>two random values at each boundary between quotient limbs.</li>
+            </ul>
+            <p>
+              The blinding rows come from the RNG that the caller passes to the prover. The advice
+              values are written right after synthesis. The others are drawn on one thread before the
+              parallel work that uses them. The limb values come from the operating
+              system RNG. All of this is stock code, and it runs on the CPU.
+            </p>
+
+            <h3>Why the hooks cannot change the distribution</h3>
+            <p>
+              A hook is deterministic arithmetic. For a given input it returns exactly the value that
+              the CPU routine returns, or it declines and leaves the input unchanged. It draws nothing
+              and does not see the transcript. The prover draws its blinding values and runs every transcript operation on the CPU, in the stock order. Circuit code can draw more randomness of its own on the host, as the foreign-curve chip does. The hooks draw none. For the same witness and the same random values, the transcript, the challenges
+              and the proof bytes are therefore those of the CPU prover.
+            </p>
+            <p class="result" data-bench="identity"></p>
+            <p>
+              A caller seed alone does not fix the proof bytes, because the limb values come from the operating system RNG. The Lean oracle of the <a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-spec/RESULTS.md" data-repo="gpu-spec/RESULTS.md">specification</a> proves the same property for the model: any two devices that obey the hook contract give the same transcript and the same number of random draws.
+            </p>
+
+            <h3>The skew mask is not a blinder</h3>
+            <p>The MSM backend computes</p>
+          </div>
+          <p class="formula">MSM(s) = MSM(s + r) − MSM(r)</p>
+          <div class="prose">
+            <p>
+              with a fixed public vector r. The identity holds because an MSM is linear in its scalars.
+              The purpose is to balance the bucket loads: a column with many equal values would put
+              most points into a few buckets. The mask is public, so it hides nothing, and the argument
+              above does not rely on it.
+            </p>
+
+            <h3>What crosses back from the device</h3>
+            <p>
+              The readback from the device is limited to the result point of each MSM, the partial bucket sums of the MSM kernel, the outputs of the transforms on the base domain (n values each, written into the caller's buffer), the coefficients of the quotient, and counters. The bucket sums are an intermediate of the vendored MSM: it copies them to the host for the final accumulation, counts the transfers and zeroes the host copies after use. The stock prover computes the same arithmetic results at the same points. The counters are extra: the daemon collects them for its request report. The numerator stays on the device: the division by the vanishing polynomial and the inverse transform run there, and no vector on the extended domain returns to the host.
+            </p>
+
+            <h3>What stays after a request</h3>
+            <p>
+              The daemon serves many witnesses, so residue matters. Before it takes the next request it
+              overwrites with zeros, and then frees, every device buffer and every staging buffer that
+              held <span class="secret key">witness-dependent</span> values. The copies that may stay on
+              the device are proving-key polynomials, which are public. On the host, the feature <code>gpu</code> keeps the quotient coefficients and the blinded limbs in owners that zero their whole allocation on release, on the device path and on the CPU path alike.
+            </p>
+
+            <h3>The trust boundary</h3>
+            <p>
+              The device, its driver and the host that runs the daemon sit inside the trust boundary, as the host does for the CPU prover. During a request the device holds witness-dependent vectors in the clear, so the design trusts whoever can read device memory while a request runs, as the CPU prover trusts whoever can read host memory. The wipe covers the time after a request: once the cleanup is confirmed, the witness-dependent device and staging buffers of the request are zeroed and freed. If the cleanup cannot be confirmed, the daemon retires. A daemon that crashes before the cleanup can leave witness data in device memory. On the host, the quotient coefficients and limbs are zeroed on release. The decoded witness, the other buffers of the stock prover and the intermediates of the stock quotient path are freed without zeroing, as on any CPU prover. The socket is local and owner only.
+            </p>
+          </div>
+        </section>
+
+        <section id="oracle">
+          <h2 id="oracle-title">The oracle and the checks</h2>
+          <div class="prose">
+            <p>
+              The specification exists in forms that check each other. The requirements say what
+              must hold. A Lean 4 oracle states the reference arithmetic and the request state machine
+              and proves theorems about them. A Quint model of the state machine, written from the
+              requirements and the design only, produces traces that are replayed through the oracle.
+              Rust tests run the hooks against vectors that the oracle writes.
+            </p>
+          </div>
+          <div data-bench="checks">
+            <p class="empty">The check results need JavaScript and an HTTP server.</p>
+          </div>
+          <p class="source">Source: <a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-spec/RESULTS.md" data-repo="gpu-spec/RESULTS.md">gpu-spec/RESULTS.md</a> and <a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-spec/COVERAGE.md" data-repo="gpu-spec/COVERAGE.md">gpu-spec/COVERAGE.md</a>.</p>
+          <div class="prose">
+            <p>
+              The theorems are about the models. That the code obeys the hook contract is a separate
+              claim, and the Rust tests carry it: the vectors go through the CPU routine, the stub and
+              the device hook, and faults are injected after upload and after launch.
+            </p>
+          </div>
+        </section>
+
+        <section id="benchmarks">
+          <h2>Benchmarks</h2>
+          <h3 id="compact-title">Compact program suite</h3>
+          <div data-bench="compact"></div>
+          <p class="source">Source: <a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-prover/bench/compact/README.md" data-repo="gpu-prover/bench/compact/README.md">gpu-prover/bench/compact</a>, with the raw results in <a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-prover/bench/compact/results" data-repo="gpu-prover/bench/compact/results">results/</a>.</p>
+
+          <h3 id="preview-title">Transactions on the Preview network</h3>
+          <div data-bench="preview"></div>
+          <p class="source">Source: <a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-prover/bench/compact/results/preview-rtx-5080-laptop.tsv" data-repo="gpu-prover/bench/compact/results/preview-rtx-5080-laptop.tsv">preview-rtx-5080-laptop.tsv</a>, with the hashes in the <a href="https://github.com/midnightntwrk/midnight-zk/blob/main/docs/gpu-prover/benchmarks.md" data-repo="docs/gpu-prover/benchmarks.md">benchmarks document</a>.</p>
+
+          <h3 id="large-title">One large circuit, k = 21, on midnight-proofs 0.8.3</h3>
+          <div data-bench="large"></div>
+          <p class="source">Source: <a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-prover/bench/large-circuit/README.md" data-repo="gpu-prover/bench/large-circuit/README.md">gpu-prover/bench/large-circuit</a>, with the method in the <a href="https://github.com/midnightntwrk/midnight-zk/blob/main/docs/gpu-prover/benchmarks.md" data-repo="docs/gpu-prover/benchmarks.md">benchmarks document</a>.</p>
+        </section>
+
+        <section id="cpu-too" hidden>
+          <h2 id="cpu-too-title">Prover changes</h2>
+          <div class="prose" data-cpu-accepted hidden>
+            <p>
+              The table shows, for each change, the GPU-path proof time without it divided by the time with it. <span data-cpu-faster hidden>The changes speed up the prover work that stays on the host.</span> Each sits behind the cargo feature <code>prover-par</code>, which is off by default and which the feature <code>gpu</code> enables.
+            </p>
+          </div>
+          <div data-bench="cpu-too"></div>
+          <div class="prose" data-bench="cpu-too-dropped"></div>
+        </section>
+
+        <section id="batch">
+          <h2>Batch proving</h2>
+          <div class="prose">
+            <p>
+              <code>midnight_proofs::gpu::batch::prove_batch</code> proves several circuits concurrently in waves sized by device memory, and the batch session of <code>midnight-gpu</code> gives an admitted batch the device backend to itself. After each batch MSM the MSM contexts are evicted and checked, and after each transform or quotient the shared scratch, bounce and read-back buffers go through the wipe path. A proof made in a batch is byte-identical to the same proof made alone with the same randomness. The daemon does not use the batch path: it proves one request at a time, one more request waits in the queue, and a further one gets <code>busy</code> at once.
+            </p>
+            <p>
+              The table below measures one proof at a time in one process. The benchmark installs the hooks in its own process, without the daemon, registers the SRS and the key with the device layer once, and proves in sequence. The daemon keeps its host SRS and proving key between requests; by default it drops the device-layer registrations after each request.
+            </p>
+          </div>
+          <h3 id="sequential-title">Resident context, one proof at a time</h3>
+          <div data-bench="sequential">
+            <p class="empty">The benchmark tables need JavaScript and an HTTP server.</p>
+          </div>
+          <p class="source" data-session-source>Source: <a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-prover/bench/h2h/results/RESULTS.md" data-repo="gpu-prover/bench/h2h/results/RESULTS.md">gpu-prover/bench/h2h/results/RESULTS.md</a>, with the raw rows in <a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-prover/bench/h2h/results/raw" data-repo="gpu-prover/bench/h2h/results/raw">raw/</a>.</p>
+          <h3 id="batch-session-title" data-batch-session hidden>Batch proving</h3>
+          <div data-bench="batch-session" data-batch-session hidden></div>
+        </section>
+
+        <section id="architecture">
+          <h2>Architecture</h2>
+          <div class="prose">
+            <p>
+              The layers below run from the client down to the CUDA kernels. The client and the daemon are binaries of the crate midnight-gpu-prover. With the feature <code>gpu</code>, the prover crate gains the hook points, erasing owners for the quotient buffers and withheld values in the developer tools. Built without the feature, it is the stock prover: the CPU code of midnight-proofs, unchanged.
+            </p>
+          </div>
+
+          <div class="stack">
+            <div class="layer">
+              <h3>client</h3>
+              <p>Sends a proof request. If the daemon does not answer, the client proves on the CPU.</p>
+            </div>
+            <div class="link">Local Unix socket, owner only</div>
+            <div class="layer is-cpu">
+              <h3>midnight-gpu-prover</h3>
+              <p>
+                The resident daemon. It holds the SRS and the proving key, decides admission from the computed memory need, wipes buffers and verifies each proof.
+              </p>
+            </div>
+            <div class="link">Calls <code>create_proof</code></div>
+            <div class="layer is-cpu">
+              <h3>midnight-proofs, feature gpu</h3>
+              <p>The stock prover. Its blinding draws and every transcript operation stay here, on the CPU. The hooks draw nothing.</p>
+              <ul class="chips" aria-label="Hook points">
+                <li>G1 MSM</li>
+                <li>NTT</li>
+                <li>Inverse NTT</li>
+                <li>Quotient</li>
+              </ul>
+            </div>
+            <div class="link">Hooks: the stock value, or a decline</div>
+            <div class="layer is-device">
+              <h3>midnight-gpu</h3>
+              <p>CUDA kernels. On a machine without a CUDA compiler the crate builds as a stub and every hook declines.</p>
+              <ul class="chips" aria-label="Kernels">
+                <li>sppark MSM, Pippenger buckets</li>
+                <li>NTT and inverse NTT</li>
+                <li>Quotient: cosets, numerator, division, inverse transform</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <section id="pipeline">
+          <h2>The proving pipeline</h2>
+          <div class="prose">
+            <p>
+              A proof is a fixed sequence of steps. The GPU path changes only where the hooked arithmetic runs. The sequence, the random draws and the transcript stay those of the CPU prover.
+            </p>
+          </div>
+          <figure class="anim" data-scene="pipeline" data-name="proving pipeline">
+            <div class="anim-view">
+              <div class="stage" data-height="140" role="img" aria-label="Animation of the proving pipeline. The same steps are written out as text beside it.">
+                <p class="stage-fail">The animation needs JavaScript and WebGL. The steps follow as text.</p>
+              </div>
+            </div>
+            <figcaption class="anim-text">
+              <div class="step-now"></div>
+              <details class="steps-text" open>
+                <summary>The steps as text</summary>
+                <ol class="steps">
+                  <li>
+                    <strong>Key and instances.</strong> The prover absorbs the verifying key into the
+                    transcript, on the CPU. For an ordinary instance column the transcript takes the length and the
+                    values. The stock prover can also take a committed instance column, which it commits with an MSM. The daemon accepts ordinary instances only. Each instance column then goes to coefficients with an inverse NTT. This step draws nothing.
+                  </li>
+                  <li>
+                    <strong>Synthesis, on the CPU.</strong> The circuit assigns the advice columns. The last
+                    rows of each blinded advice column receive random values from the caller's RNG.
+                  </li>
+                  <li>
+                    <strong>LogUp multiplicities, on the CPU.</strong> For each lookup the prover counts how
+                    often the selected inputs hit each table tuple. A tuple that fills several table rows
+shares its count between its usable rows. The blinding values of the multiplicity column come from
+                    the caller's RNG. They are drawn before the parallel loop starts.
+                  </li>
+                  <li>
+                    <strong>Commit group 1, MSMs on the GPU.</strong> The CPU takes the first differences of each advice and multiplicity column. One MSM for each column then commits them against the SRS bases in delta form, where each base is the sum of the Lagrange bases from its index to the end.
+                    The hook returns the same G1 point as the CPU code. The commitments enter the
+                    transcript, which returns θ, β, γ and the trash challenge. A trash argument holds constraints that apply only where a selector is on; an unrestricted column, the trash column, absorbs their random combination on the other rows, and the trash challenge is the base of that combination.
+                  </li>
+                  <li>
+                    <strong>Permutation and LogUp columns, on the CPU.</strong> The prover computes the
+                    permutation products, the LogUp helper and aggregator columns and the trash columns.
+                    The blinding values of the products and of the aggregators come from the caller's RNG.
+                  </li>
+                  <li>
+                    <strong>Commit group 2, MSMs on the GPU.</strong> The CPU takes the second differences of these columns, and the same hook commits them against the bases in double-delta form, the suffix sums of the delta bases. The transcript returns y, which combines all constraints
+                    into one identity.
+                  </li>
+                  <li>
+                    <strong>Transforms and quotient, on the GPU.</strong> The committed columns go to coefficients with inverse NTTs. The quotient is then one call. Inside it, the polynomials of this proof go to a coset of the extended domain. At each extended-domain point, the quotient kernel interprets compiled expressions and combines their results with the permutation, LogUp and trash checks. Device kernels then divide by the vanishing polynomial and run the extended inverse transform. Of the quotient, only the coefficients of h(X) return to the host.
+                  </li>
+                  <li>
+                    <strong>Limbs on the CPU, commit on the GPU.</strong> The CPU splits h(X) into limbs of
+                    n − 2 coefficients. At each limb boundary it appends two random values to the lower limb
+                    and subtracts them from the first two coefficients of the upper limb, so h(X) does not
+                    change. These values come from the operating system RNG. The limbs are committed with MSMs, and the transcript returns
+                    the evaluation point x.
+                  </li>
+                  <li>
+                    <strong>Evaluations, on the CPU.</strong> The CPU computes the queried evaluations at x and at its rotations. The proof leaves out those the verifier can compute itself: the evaluations of ordinary instance columns, from the public inputs, and the evaluation of the first quotient limb, from the quotient identity. The CPU writes the rest, and the transcript returns x₁ and x₂.
+                  </li>
+                  <li>
+                    <strong>Opening, first commitment.</strong> The CPU combines the polynomials of each
+                    point set with powers of x₁, each power truncated to 128 bits. It divides each
+                    combination by the vanishing polynomial of its point set and combines the quotients
+                    with powers of x₂ into f. Each division discards the remainder. One MSM commits f. The
+                    transcript takes the commitment and returns x₃.
+                  </li>
+                  <li>
+                    <strong>Evaluations at z, on the CPU.</strong> The opening point z is x₃ truncated to
+                    128 bits. The CPU evaluates the point-set combinations at z and writes the values.
+                    Only then does the transcript return x₄.
+                  </li>
+                  <li>
+                    <strong>Opening, second commitment.</strong> The CPU combines the point-set
+                    combinations and f with truncated powers of x₄ into one polynomial F and computes
+                    the opening quotient (F(X) − F(z)) / (X − z). One MSM commits it; the commitment is π. The opening draws no random
+                    value: x₁ to x₄ are transcript challenges.
+                  </li>
+                  <li>
+                    <strong>Verify and return, on the CPU.</strong> The daemon runs the verifier on the
+                    finished proof. It returns the proof only if the verifier accepts it.
+                  </li>
+                </ol>
+              </details>
+              <div class="prose">
+                <p>
+                  A <span class="rng key">diamond</span> marks a step that can draw random values. Every such step is in the CPU lane. A circuit without lookups, for example, draws no multiplicity
+                  blinding. A label between two rows names the challenges that the transcript returns
+                  after the row above it.
+                </p>
+              </div>
+            </figcaption>
+          </figure>
+        </section>
+
+        <section id="ntt">
+          <h2>The NTT butterfly</h2>
+          <div class="prose">
+            <p>
+              The number-theoretic transform turns the coefficients of a polynomial into its values at
+              the powers of a root of unity ω, an element of order exactly n. The radix-2 transform shown here is a bit reversal followed
+              by log₂ n stages of butterflies. The animation runs it on 8 points of a small field so that
+              every number can be checked by hand.
+            </p>
+          </div>
+          <figure class="anim" data-scene="ntt" data-name="NTT butterfly">
+            <div class="anim-view">
+              <div class="stage" role="img" aria-label="Animation of a radix-2 NTT on eight points. The same steps are written out as text beside it.">
+                <p class="stage-fail">The animation needs JavaScript and WebGL. The steps follow as text.</p>
+              </div>
+            </div>
+            <figcaption class="anim-text">
+              <div class="step-now"></div>
+              <details class="steps-text" open>
+                <summary>The steps as text</summary>
+                <ol class="steps">
+                  <li>
+                    <strong>Input.</strong> Eight coefficients a₀ to a₇ in the field of integers modulo 17.
+                    In this field ω = 2 has order 8. The prover works in the BLS12‑381 scalar field, on
+                    n = 2ᵏ points.
+                  </li>
+                  <li>
+                    <strong>Bit reversal.</strong> The element at index i moves to the index with the three
+                    bits of i reversed. Indices 1 and 4 swap, and 3 and 6 swap. After this step each stage
+                    combines elements that are close together.
+                  </li>
+                  <li>
+                    <strong>Stage 1, distance 1.</strong> A butterfly takes a pair (a, b) and writes
+                    (a + w·b, a − w·b). In this stage the twiddle factor w is 1 for every pair.
+                  </li>
+                  <li>
+                    <strong>Stage 2, distance 2.</strong> The pairs are two rows apart. The twiddle factors
+                    are 1 and ω² = 4.
+                  </li>
+                  <li>
+                    <strong>Stage 3, distance 4.</strong> The pairs are four rows apart. The twiddle
+                    factors are 1, ω, ω² and ω³, which are 1, 2, 4 and 8.
+                  </li>
+                  <li>
+                    <strong>Output.</strong> Row i now holds the value of the polynomial at ωⁱ. The inverse
+                    transform is the same network with ω⁻¹, followed by a multiplication by n⁻¹.
+                  </li>
+                </ol>
+                <div class="table-wrap" role="region" tabindex="0" aria-labelledby="ntt-values">
+                  <table>
+                    <caption id="ntt-values">The values of the example, modulo 17</caption>
+                    <thead>
+                      <tr><th scope="col">Row</th><th scope="col" class="num">Input</th><th scope="col" class="num">Bit reversal</th><th scope="col" class="num">Stage 1</th><th scope="col" class="num">Stage 2</th><th scope="col" class="num">Stage 3</th></tr>
+                    </thead>
+                    <tbody>
+                      <tr><th scope="row">0</th><td class="num">3</td><td class="num">3</td><td class="num">8</td><td class="num">14</td><td class="num">14</td></tr>
+                      <tr><th scope="row">1</th><td class="num">1</td><td class="num">5</td><td class="num">15</td><td class="num">6</td><td class="num">1</td></tr>
+                      <tr><th scope="row">2</th><td class="num">4</td><td class="num">4</td><td class="num">6</td><td class="num">2</td><td class="num">14</td></tr>
+                      <tr><th scope="row">3</th><td class="num">1</td><td class="num">2</td><td class="num">2</td><td class="num">7</td><td class="num">1</td></tr>
+                      <tr><th scope="row">4</th><td class="num">5</td><td class="num">1</td><td class="num">10</td><td class="num">0</td><td class="num">14</td></tr>
+                      <tr><th scope="row">5</th><td class="num">9</td><td class="num">9</td><td class="num">9</td><td class="num">6</td><td class="num">11</td></tr>
+                      <tr><th scope="row">6</th><td class="num">2</td><td class="num">1</td><td class="num">7</td><td class="num">3</td><td class="num">7</td></tr>
+                      <tr><th scope="row">7</th><td class="num">6</td><td class="num">6</td><td class="num">12</td><td class="num">12</td><td class="num">13</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </details>
+              <div class="prose">
+                <p>
+                  This is the order of the stock CPU routine for the NTT and its inverse: bit reversal
+                  first, then stages with pair distance 1, 2, 4. The twiddle factors of each domain are
+                  computed once and cached.
+                </p>
+                <p>
+                  Before those stages, the coset transform to the extended domain multiplies the coefficients by powers of the coset generator and pads the vector with zeros to the extended size. For the BLS12‑381 scalar field the stock routine then runs the stages in the other order: pairs
+                  far apart first, bit reversal last. This lets it skip the work on the zero padding. The
+                  way back is one inverse NTT of the extended size, with its single scaling, and then the
+                  removal of the coset powers.
+                </p>
+              </div>
+            </figcaption>
+          </figure>
+        </section>
+
+        <section id="msm">
+          <h2>MSM bucket accumulation</h2>
+          <div class="prose">
+            <p>
+              A commitment is a multi-scalar multiplication: the sum of sᵢ·Pᵢ over all scalars sᵢ of a
+              column and the SRS points Pᵢ. The bucket method replaces most of the scalar multiplications
+              with additions. The animation uses six terms and 6-bit scalars in a toy group of order 61,
+              where every point is a known multiple of a generator G.
+            </p>
+          </div>
+          <figure class="anim" data-scene="msm" data-name="MSM bucket">
+            <div class="anim-view">
+              <div class="stage" role="img" aria-label="Animation of an MSM with the bucket method. The same steps are written out as text beside it.">
+                <p class="stage-fail">The animation needs JavaScript and WebGL. The steps follow as text.</p>
+              </div>
+            </div>
+            <figcaption class="anim-text">
+              <div class="step-now"></div>
+              <details class="steps-text" open>
+                <summary>The steps as text</summary>
+                <ol class="steps">
+                  <li>
+                    <strong>Terms.</strong> Six scalars sᵢ and six points Pᵢ. The scalars are skewed: five
+                    of them are equal. Columns of a real witness often look like this.
+                  </li>
+                  <li>
+                    <strong>Skew mask.</strong> A fixed public vector r is added to the scalars:
+                    s′ᵢ = sᵢ + rᵢ. The mask spreads the points over the buckets when the original scalars repeat. It is public and hides nothing. Some inputs still load the buckets unevenly.
+                  </li>
+                  <li>
+                    <strong>Window decomposition.</strong> Each masked scalar is cut into windows of 3 bits.
+                    A 6-bit scalar has a low digit and a high digit, each from 0 to 7. For example,
+                    24 = 3·8 + 0 has the high digit 3 and the low digit 0.
+                  </li>
+                  <li>
+                    <strong>Bucket fill, low window.</strong> Each point is added to the bucket that has the
+                    number of its low digit. A digit of 0 adds nothing. Bucket j now holds the sum of all
+                    points with digit j.
+                  </li>
+                  <li>
+                    <strong>Bucket fill, high window.</strong> The same for the high digits, into the
+                    right-hand column of buckets.
+                  </li>
+                  <li>
+                    <strong>Running sum.</strong> A window needs the sum of j·Bⱼ over its buckets. A sweep
+                    from bucket 7 down to bucket 1 gives it with additions only: add the bucket to an
+                    accumulator, then add the accumulator to the window sum.
+                  </li>
+                  <li>
+                    <strong>Window combine.</strong> The high window sum is doubled three times, once for
+                    each bit of the window, and the low window sum is added. The result is MSM(s + r).
+                  </li>
+                  <li>
+                    <strong>Remove the mask.</strong> MSM(r) is known in advance, because r and the points
+                    are public. Subtracting it gives MSM(s), the same group element that the CPU code
+                    returns.
+                  </li>
+                </ol>
+                <div class="table-wrap" role="region" tabindex="0" aria-labelledby="msm-values">
+                  <table>
+                    <caption id="msm-values">The terms of the example. Point Pᵢ is [p]G in a group of order 61.</caption>
+                    <thead>
+                      <tr><th scope="col">Point</th><th scope="col" class="num">p</th><th scope="col" class="num">s</th><th scope="col" class="num">r</th><th scope="col" class="num">s + r</th><th scope="col" class="num">High digit</th><th scope="col" class="num">Low digit</th></tr>
+                    </thead>
+                    <tbody>
+                      <tr><th scope="row">P0</th><td class="num">5</td><td class="num">1</td><td class="num">23</td><td class="num">24</td><td class="num">3</td><td class="num">0</td></tr>
+                      <tr><th scope="row">P1</th><td class="num">11</td><td class="num">1</td><td class="num">44</td><td class="num">45</td><td class="num">5</td><td class="num">5</td></tr>
+                      <tr><th scope="row">P2</th><td class="num">17</td><td class="num">1</td><td class="num">9</td><td class="num">10</td><td class="num">1</td><td class="num">2</td></tr>
+                      <tr><th scope="row">P3</th><td class="num">23</td><td class="num">1</td><td class="num">58</td><td class="num">59</td><td class="num">7</td><td class="num">3</td></tr>
+                      <tr><th scope="row">P4</th><td class="num">31</td><td class="num">2</td><td class="num">37</td><td class="num">39</td><td class="num">4</td><td class="num">7</td></tr>
+                      <tr><th scope="row">P5</th><td class="num">40</td><td class="num">1</td><td class="num">12</td><td class="num">13</td><td class="num">1</td><td class="num">5</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+                <ul class="worked">
+                  <li>Low buckets: 2 holds P2, 3 holds P3, 5 holds P1 + P5, 7 holds P4. The window sum is [26]G.</li>
+                  <li>High buckets: 1 holds P2 + P5, 3 holds P0, 4 holds P4, 5 holds P1, 7 holds P3. The window sum is [46]G.</li>
+                  <li>Running sum of the low window, buckets 7 to 1. Accumulator: 31, 31, 21, 21, 44, 0, 0. Sum: 31, 1, 22, 43, 26, 26, 26. All values are multiples of G, modulo 61.</li>
+                  <li>Running sum of the high window, buckets 7 to 1. Accumulator: 23, 23, 34, 4, 9, 9, 5. Sum: 23, 46, 19, 23, 32, 41, 46.</li>
+                  <li>Combine: 8·[46]G + [26]G = [28]G, which is MSM(s + r).</li>
+                  <li>Remove the mask: MSM(r) = [53]G, and [28]G − [53]G = [36]G, which is MSM(s).</li>
+                </ul>
+              </details>
+              <div class="prose">
+                <p>
+                  A commitment to a full column has n = 2ᵏ input terms, with scalars in the 255-bit scalar
+                  field of BLS12‑381. In the stock routine, a term with a zero scalar contributes nothing. The commitments of the opening proof can have fewer terms. The kernel uses more windows, and signed digits, which halve the buckets of a window. It sums the buckets in parallel. The method is the one shown here.
+                </p>
+              </div>
+            </figcaption>
+          </figure>
+        </section>
+
+        <section id="memory">
+          <h2>Host and device memory, and the wipe</h2>
+          <div class="prose">
+            <p>
+              The daemon keeps public key material between requests. When a request ends, it overwrites
+              with zeros every device buffer and every staging buffer that held witness-dependent values. The animation follows one request, then a second request on a device that another program also uses.
+            </p>
+          </div>
+          <figure class="anim" data-scene="memory" data-name="memory">
+            <div class="anim-view">
+              <div class="stage" role="img" aria-label="Animation of host and device memory during one request. The same steps are written out as text beside it.">
+                <p class="stage-fail">The animation needs JavaScript and WebGL. The steps follow as text.</p>
+              </div>
+            </div>
+            <figcaption class="anim-text">
+              <div class="step-now"></div>
+              <details class="steps-text" open>
+                <summary>The steps as text</summary>
+                <ol class="steps">
+                  <li>
+                    <strong>Between requests.</strong> The host holds the SRS and the proving key. By
+                    default the device holds no copy of the key.
+                  </li>
+                  <li>
+                    <strong>Admission.</strong> A request arrives. On a native Linux host, the daemon first activates the device and then reads its free memory. If it gets no reading, it counts zero bytes free. Under WSL2 it uses a leased budget. It compares that figure with its estimate, and individual device calls can still decline. If the estimate fits, the request is admitted to the GPU path. Admission registers the public key on the host and uploads nothing yet.
+                  </li>
+                  <li>
+                    <strong>Commitment MSMs.</strong> The witness-dependent work starts with the
+                    commitments. For each MSM, a staging buffer on the host holds the masked scalars, and
+                    they go to the device. The MSM kernel copies its partial bucket sums back, the host
+                    adds them up into the result point, and the host copies of the sums are zeroed at
+                    once. The points stay with the prover.
+                  </li>
+                  <li>
+                    <strong>Quotient buffers and key copies.</strong> During an accepted quotient call, the backend first builds the extended cosets of this proof. They depend on the witness, except the cosets of ordinary instance columns. It then reuses or uploads the key cosets it needs: the fixed columns, the permutation polynomials and the Lagrange selectors on the extended domain, which are public and the same for every request that uses this key. Only then does it allocate the numerator and its scratch space, evaluate, divide and run the extended inverse transform.
+                  </li>
+                  <li>
+                    <strong>Readback.</strong> The quotient returns its coefficients, which still depend on
+                    the witness, and the CPU blinds the limbs afterwards. With the result points and the
+                    outputs of the base-domain transforms, they are what the stock prover computes too. The
+                    daemon also reads counters. No vector on the extended domain comes back.
+                  </li>
+                  <li>
+                    <strong>Overwrite with zeros.</strong> When the request ends, the daemon overwrites
+                    every witness-dependent device buffer and every staging buffer with zeros. On the host, the coefficients of h(X) are zeroed once they are split into limbs, and the blinded limbs when the proof releases them. The public key copies are not touched.
+                  </li>
+                  <li>
+                    <strong>Free.</strong> The zeroed buffers are freed before the daemon takes the next
+                    request. If the daemon cannot confirm the erasure, it replies with an error and exits.
+                    The other vectors of the stock prover on the host, the decoded witness among them, are freed without zeroing, as on the CPU path.
+                  </li>
+                  <li>
+                    <strong>Resident policy, the default.</strong> The daemon frees the key copies and its MSM base tables before each reply and uploads them again for the next request. Between
+                    requests it holds no key data on the device.
+                  </li>
+                  <li>
+                    <strong>Resident policy, keep.</strong> The other policy is a setting that keeps the
+                    uploaded key copies on the device, so later requests reuse them. It suits a device with
+                    no other user.
+                  </li>
+                  <li>
+                    <strong>Evict under pressure.</strong> With the copies kept, another program takes
+                    device memory, and the next request does not fit. The daemon first waits and checks
+                    again. If the request is still short, the daemon frees its resident key copies, moves the quotient to the CPU and checks the smaller need. In this example that
+                    need fits.
+                  </li>
+                </ol>
+              </details>
+              <div class="prose">
+                <p>
+                  The figure groups the buffers by class. The partial bucket sums are zeroed inside the MSM step. For the other classes it shows the latest point at which each is zeroed: the backend zeroes the staging vector right after its MSM, and the cosets and scratch space before the coefficients return. The heights are not to scale. 
+                </p>
+              </div>
+            </figcaption>
+          </figure>
+        </section>
+
+        <section id="fallback">
+          <h2>The fallback path</h2>
+          <div class="prose">
+            <p>
+              Every level has a CPU path: the build, the start of the daemon, each hook call and the client. A hook that declines hands its arithmetic back to the CPU routine. Before a proof starts, the daemon climbs an admission ladder (shown here for a native Linux host), a fixed order of memory checks that ends on the CPU. Whatever path a proof took, it leaves only after the verifier accepts it. The animation follows one hook call, the admission ladder and a client that cannot reach the daemon.
+            </p>
+          </div>
+          <figure class="anim" data-scene="fallback" data-band="hook" data-name="hook fallback">
+            <div class="anim-view">
+              <div class="stage" data-height="38" role="img" aria-label="Animation of one hook call that declines. The same steps are written out as text beside it.">
+                <p class="stage-fail">The animation needs JavaScript and WebGL. The steps follow as text.</p>
+              </div>
+            </div>
+            <figcaption class="anim-text">
+              <div class="step-now"></div>
+              <details class="steps-text" open>
+                <summary>The steps as text</summary>
+                <ol class="steps">
+                  <li>
+                    <strong>A hook call.</strong> The prover reaches an MSM, a base-domain transform or the quotient and calls the hook with the arguments of the stock routine.
+                  </li>
+                  <li>
+                    <strong>The hook declines.</strong> The device path cannot serve this call. The hook
+                    declines, and the caller's buffers hold what they held before the call.
+                  </li>
+                  <li>
+                    <strong>The CPU computes on the same input.</strong> The stock routine runs and returns
+                    the value. The prover continues, and the decline is counted. The rest of the proof can
+                    still use the device.
+                  </li>
+                </ol>
+              </details>
+            </figcaption>
+          </figure>
+          <figure class="anim" data-scene="fallback" data-band="ladder" data-name="admission ladder">
+            <div class="anim-view">
+              <div class="stage" data-height="42" role="img" aria-label="Animation of the admission ladder. The same steps are written out as text beside it.">
+                <p class="stage-fail">The animation needs JavaScript and WebGL. The steps follow as text.</p>
+              </div>
+            </div>
+            <figcaption class="anim-text">
+              <div class="step-now"></div>
+              <details class="steps-text" open>
+                <summary>The steps as text</summary>
+                <ol class="steps">
+                  <li>
+                    <strong>Admission, step gpu.</strong> On a native Linux host, the daemon first activates the device and then reads its free memory. If it gets no reading, it counts zero bytes free. Under WSL2 it uses a leased budget. It compares that figure with its estimate, and individual device calls can still decline. A check that finds room admits the request at once. In the example the estimate is 50% of the device memory and 58% is free, so the request is admitted to the GPU path.
+                  </li>
+                  <li>
+                    <strong>Step wait.</strong> A second request finds the memory short: another program
+                    holds 62% of the device, the key copies hold 30%, and 8% is free against a need of 50%.
+                    The daemon waits for the other device user, for at most 20 seconds by default, then checks again.
+                  </li>
+                  <li>
+                    <strong>Step evict.</strong> If the memory is still short, the daemon frees its
+                    resident key copies and checks again. At this step the whole quotient, with its cosets, moves to the CPU, while the MSM and the base-domain NTT stay eligible for the device. The need is therefore smaller: 20% in the example. With 38% free the request fits.
+                  </li>
+                  <li>
+                    <strong>Step cpu.</strong> If even the smaller need does not fit, as when another program holds 90% of the device, the proof runs on the CPU. In production mode the request is served all the same.
+                  </li>
+                </ol>
+              </details>
+            </figcaption>
+          </figure>
+          <figure class="anim" data-scene="fallback" data-band="client" data-name="client fallback">
+            <div class="anim-view">
+              <div class="stage" data-height="36" role="img" aria-label="Animation of a client that cannot reach the daemon. The same steps are written out as text beside it.">
+                <p class="stage-fail">The animation needs JavaScript and WebGL. The steps follow as text.</p>
+              </div>
+            </div>
+            <figcaption class="anim-text">
+              <div class="step-now"></div>
+              <details class="steps-text" open>
+                <summary>The steps as text</summary>
+                <ol class="steps">
+                  <li>
+                    <strong>The daemon is down.</strong> The client cannot reach the socket. It proves on
+                    the CPU.
+                  </li>
+                  <li>
+                    <strong>Circuit breaker.</strong> After 3 consecutive failures within 600 seconds the breaker opens. For the next 600 seconds the client skips the daemon and proves on the CPU at once. A served reply resets the count.
+                  </li>
+                  <li>
+                    <strong>Verify on every path.</strong> Whatever path a proof took, the verifier checks
+                    it before it is returned.
+                  </li>
+                </ol>
+              </details>
+            </figcaption>
+          </figure>
+
+          <div class="table-wrap" role="region" tabindex="0" aria-labelledby="fallback-caption">
+            <table class="stackable">
+              <caption id="fallback-caption">Where the CPU takes over</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Level</th>
+                  <th scope="col">Trigger</th>
+                  <th scope="col">Behavior</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <th scope="row">Build</th>
+                  <td data-label="Trigger">The feature <code>gpu</code> is off, or no CUDA compiler is present</td>
+                  <td data-label="Behavior">The stock CPU prover. No CUDA toolkit is needed.</td>
+                </tr>
+                <tr>
+                  <th scope="row">Start</th>
+                  <td data-label="Trigger">No usable device is found at run time</td>
+                  <td data-label="Behavior">Every phase runs on the CPU.</td>
+                </tr>
+                <tr>
+                  <th scope="row">Call</th>
+                  <td data-label="Trigger">A hook declines or a device call fails</td>
+                  <td data-label="Behavior">The stock routine computes that operation on the unchanged input.</td>
+                </tr>
+                <tr>
+                  <th scope="row">Client</th>
+                  <td data-label="Trigger">The daemon is absent or fails</td>
+                  <td data-label="Behavior">The client proves on the CPU. A breaker opens after 3 consecutive failures within 600 s.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="operations">
+          <h2>Operations</h2>
+          <div class="prose">
+            <p>
+              The daemon detects a CUDA device at run time and listens on a local Unix socket with mode
+              0600, where it serves only peers with its own user id. It serves one proof request at a time. One more waits, and a third gets <code>busy</code> at once. The resident policy,
+              the admission wait, the memory margin, the thread count and an optional device lock are
+              settings, each with a default in the
+              <a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-prover/README.md" data-repo="gpu-prover/README.md">crate readme</a>. With no usable device the daemon
+              still serves proofs, on the CPU.
+            </p>
+            <p>
+              Every proof carries a label. <code>cpu</code> means that the device served no call, and <code>cpu-fallback</code> that the client proved in its own process. After at least one served call, the label is <code>gpu-degraded</code> when the request counted a fallback, and <code>gpu</code> otherwise. A hook falls back for a lack of memory, a device error, a fault, an input that is not reduced, or a shape the device does not take. A request-level fallback, such as a hang-up or a lost lock lease, also counts, with the phase <code>request</code>. A degraded admission, which moves phases off the device as the evict step of the ladder does, is not a fallback: with a served device call and no counted fallback, the proof is labelled <code>gpu</code>, and the admission reasons are listed in <code>degraded_reasons</code>. Two declines are expected and leave a proof unmarked: a call below the minimum size, and no device. In acceptance mode the daemon fails a request with a degraded admission or a fallback.
+            </p>
+            <p>
+              The reply also holds the decline counts of the hook contract by phase and reason, the device peak of the request and the SHA-256 of the proof. The device-call counts, the decline counts, the wipe totals and the device peak are those of the request; a request that is admitted to the CPU reports a device peak of 0 and no wipe of an earlier request. The reply holds no witness value, no key and no seed. A request line that is valid UTF-8 but not a request of the protocol gets the error <code>bad-request</code> with the fixed text <code>not a valid request</code>; the reply does not echo the field name, the value or the path the caller sent. A line that is not UTF-8, and other framing failures, get <code>bad-request</code> with their own fixed text.
+            </p>
+            <p>
+              A benchmark of the GPU path turns off the client fallback, requires the label <code>gpu</code>, and reads <code>device_calls</code> for each operation to establish what ran on the device.
+            </p>
+            <p>
+              In a container, the image runs the daemon as a non-root user, mounts the SRS read-only
+              and receives the GPU through the NVIDIA Container Toolkit or the Container Device
+              Interface (CDI). Under systemd, an example unit runs the daemon as a service and restarts it on failure, with at most three starts in ten minutes. While the daemon is down, clients
+              prove on the CPU. The build, the run commands and the unit are in the
+              <a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-prover/container/README.md" data-repo="gpu-prover/container/README.md">container readme</a>.
+            </p>
+          </div>
+        </section>
+
+        <section id="open">
+          <h2>Open items</h2>
+          <div class="prose">
+            <p>
+              The pull request is a draft. An independent audit of the backend is in progress, and
+              the items below are not yet in the branch. They land as follow-up commits before the
+              pull request is marked ready for review.
+            </p>
+            <ul>
+              <li>Intermediates of the stock quotient. The hook layer keeps the quotient read-back, its check-mode copies and the pieces of h in owners that zero their whole capacity on drop. The intermediates of the stock quotient path, which the decline path and check mode run, are still plain vectors: the coset clones in <code>compute_nu_poly</code>, the resize in <code>coeff_to_extended</code> and the vector of <code>extended_to_coeff</code>.</li>
+              <li>MSM bucket memory. The constructor of the vendored MSM does not zero its bucket allocation. The production wrapper masks its scalars; the tree also holds a test probe that runs an unmasked sparse MSM on a reused context. The zeroing at construction waits for a run in this tree that shows an unwritten slot.</li>
+              <li>Oracle citations. Two citations from a requirement to a theorem are too strong. GPU-078 cites <code>acceptance_degraded_refused</code> without its confirmed-wipe condition, so a request can finish with a fallback and a wipe error and get no degraded refusal. GPU-058 cites <code>pin_wsl_budget</code> for replacing both memory readings, but its input exercises only the first admission branch.</li>
+              <li>Async wipe release. A block that is zeroed, has its free enqueued and then fails the stream synchronisation is neither quarantined nor visible in <code>pending_erasure()</code>.</li>
+              <li>Unsafe-code audit. Items UNSAFE-22, UNSAFE-23, UNSAFE-28 and UNSAFE-31 were open in the audit of the unsafe code and are not yet checked against this branch.</li>
+              </ul>
+            <h3>Coverage gaps</h3>
+            <p>
+              The coverage matrix marks 6 requirements as Gap: GPU-001, GPU-014, GPU-015, GPU-019,
+              GPU-051 and GPU-065. It marks 8 as Partial: GPU-002, GPU-004, GPU-022, GPU-025, GPU-033,
+              GPU-045, GPU-047 and GPU-053. The matrix is in
+              <a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-spec/COVERAGE.md" data-repo="gpu-spec/COVERAGE.md">gpu-spec/COVERAGE.md</a>.
+            </p>
+            <h3>Other notes</h3>
+            <ul>
+              <li>A drain that fails. When a recorded drain cannot confirm a stream, the CUDA core keeps the affected staging and read-back buffers and hands out no new host buffer. The device-owner thread then, before it runs anything else, disables the device, tries again to zero the quarantined blocks, and attempts one reset of the CUDA context. A successful reset ends every transfer, clears the quarantine and counts the quarantined blocks whose zeroing stayed unconfirmed as lost unerased. A failed reset leaves the device disabled, keeps the quarantine records and leaves the unconfirmed drains outstanding. Every later call declines; a call that reaches the retired-device check records <code>teardown</code>, and calls queued for the device when the teardown starts decline with <code>teardown</code> unrun. No test yet covers a failed reset. <code>pending_erasure()</code> counts the unconfirmed drains until a successful reset settles them. The library never exits, and the daemon does not read <code>pending_erasure()</code> yet.</li>
+              <li>Static teardown. The device list of the vendored code lives behind a pointer that is never destroyed, and its NTT tables are owned and freed by <code>teardown_ntt_tables()</code> on the device-owner thread. This removes the exit-time destructors of the vendored code. The daemon does not call the table teardown yet; at exit the driver releases the tables.</li>
+              <li>Error paths. Failed staged and direct copies run an error drain before they return. Failures of a device wipe or of a release have their own erasure accounting. The MSM error arms of the vendored code drain every stream and stop C++ exceptions at the C entry points. The MSM collector waits for every worker it started, and each worker and the collector scrub a 64 KiB stack region. The device fault tests check the drains, the exception handling and the recovery; the stack scrub was checked by reading the source.</li>
+              <li>The staging size is an atomic value. A device test polls it from a second thread while staged copies run; a data race is not deterministic, so this test is weak evidence. The kernel field arguments are copied with <code>memcpy</code>, and the error path frees the owned message of the vendored code.</li>
+              <li>The quarantine report, <code>pending_erasure()</code>, gives counts and bytes. It counts the blocks of the vendored code whose zeroing is unconfirmed apart from the zeroed blocks that wait for their free, and the device regions of the Rust crate apart from both. It also counts the quarantined blocks whose zeroing was still unconfirmed when a reset succeeded; the live buffers that the reset releases are not in that count. It reports the outstanding unconfirmed drains apart. It does not name a single block. A public buffer whose free failed is quarantined and retried like a witness buffer.</li>
+              <li>With the feature <code>gpu</code> on, <code>MockProver</code> failure text, the debug output of the dev types and the tracing floor planner print <code>&lt;withheld&gt;</code> in place of assigned cell values. With the feature off, they print values as before. The stock floor planners still put <code>Constant(&lt;value&gt;)</code> in assignment annotations outside the dev tools; that is left as a suggestion for upstream.</li>
+              <li>At the pinned versions, the zkir library logs private inputs at error level on malformed-witness paths, under the target <code>midnight_zkir</code>, when a tracing subscriber is installed. The stock proof server filters only <code>zkir</code>. The benchmark wrapper turns off both targets, and the daemon installs no subscriber. The <a href="https://github.com/midnightntwrk/midnight-zk/blob/main/docs/gpu-prover/security.md" data-repo="docs/gpu-prover/security.md">security document</a> gives the operator setting.</li>
+              <li>The stock proof server 9.0.1 binds all interfaces and has no bind option. The benchmark runs it in a loopback-only network namespace behind a Unix socket.</li>
+              <li>Two teardown tests have no run against the code before the fix: the second test in <code>gpu/tests/teardown_lost.rs</code>, and the device test that holders of a device pointer make no CUDA call after the reset.</li>
+              <li>The Quint model was checked by simulation and trace replay. Exhaustive model checking is future work.</li>
+              <li>The new CI workflows have not yet run on a GitHub runner. Their steps pass when run locally.</li>
+            </ul>
+          </div>
+        </section>
+
+        <section id="docs">
+          <h2>Repository docs and evidence</h2>
+          <ul class="doclinks">
+            <li><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/docs/gpu-prover/README.md" data-repo="docs/gpu-prover/README.md"><b>Documentation index</b><span>Where each document of the GPU prover is.</span></a></li>
+            <li><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/docs/gpu-prover/architecture.md" data-repo="docs/gpu-prover/architecture.md"><b>Architecture</b><span>The crates and the data flow between them.</span></a></li>
+            <li><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/docs/gpu-prover/operations.md" data-repo="docs/gpu-prover/operations.md"><b>Operations</b><span>Container, CDI, systemd and configuration.</span></a></li>
+            <li><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/docs/gpu-prover/security.md" data-repo="docs/gpu-prover/security.md"><b>Security</b><span>The zero-knowledge argument and the threat model.</span></a></li>
+            <li><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/docs/gpu-prover/benchmarks.md" data-repo="docs/gpu-prover/benchmarks.md"><b>Benchmarks</b><span>Method and results.</span></a></li>
+            <li><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/docs/gpu-prover/compact-suite.md" data-repo="docs/gpu-prover/compact-suite.md"><b>Compact suite</b><span>The Compact programs and how they are proved.</span></a></li>
+            <li><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-spec/README.md" data-repo="gpu-spec/README.md"><b>Specification</b><span>Requirements, design, Lean oracle, Quint model and golden vectors, which check each other.</span></a></li>
+            <li><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-spec/requirements.md" data-repo="gpu-spec/requirements.md"><b>Requirements</b><span>The EARS requirements, each with its verification.</span></a></li>
+            <li><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-spec/design.md" data-repo="gpu-spec/design.md"><b>Design</b><span>Pipeline, hook points, kernels, memory, wipe, fallback, zero knowledge and threat model.</span></a></li>
+            <li><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-spec/oracle" data-repo="gpu-spec/oracle"><b>Lean oracle</b><span>Reference arithmetic, device models with theorems, and the request state machine.</span></a></li>
+            <li><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-spec/quint" data-repo="gpu-spec/quint"><b>Quint model</b><span>The request state machine, written from the requirements and the design.</span></a></li>
+            <li><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-spec/RESULTS.md" data-repo="gpu-spec/RESULTS.md"><b>Check results</b><span>What the checks found and what is still open.</span></a></li>
+            <li><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-prover/README.md" data-repo="gpu-prover/README.md"><b>midnight-gpu-prover</b><span>Service, daemon, client, configuration and protocol.</span></a></li>
+            <li><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu" data-repo="gpu"><b>midnight-gpu</b><span>The CUDA kernels.</span></a></li>
+            <li><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-prover/container/README.md" data-repo="gpu-prover/container/README.md"><b>Container</b><span>Image build, CDI, SRS mount, restart policy and systemd unit.</span></a></li>
+            <li><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-prover/bench/compact/README.md" data-repo="gpu-prover/bench/compact/README.md"><b>Compact benchmark</b><span>Harness, programs and raw results.</span></a></li>
+          </ul>
+
+          <footer>
+            <p>
+              Licensed under Apache-2.0, like the repository. The animations use three.js 0.170.0 (MIT), which ships with the page. The fonts come from Google Fonts. The
+              page has no analytics and sets no cookies.
+            </p>
+          </footer>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

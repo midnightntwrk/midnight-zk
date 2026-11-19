@@ -1,0 +1,55 @@
+name: GPU prover specification
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - "gpu-spec/**"
+      - ".github/workflows/gpu-spec.yml"
+  merge_group:
+  push:
+    branches:
+      - main
+      - next
+    paths:
+      - "gpu-spec/**"
+
+permissions:
+  contents: read
+
+jobs:
+  oracle:
+    name: Lean oracle, golden vectors and requirements
+    runs-on: ubuntu-latest
+    env:
+      LEAN_ABORT_ON_PANIC: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Install elan (the toolchain is pinned in gpu-spec/oracle/lean-toolchain)
+        run: |
+          curl -sSf https://raw.githubusercontent.com/leanprover/elan/v4.3.0/elan-init.sh -o elan-init.sh
+          sh elan-init.sh -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Build the oracle (theorems, pins, axiom audit; a sorry fails)
+        working-directory: gpu-spec/oracle
+        run: lake build --wfail
+
+      - name: requirements.md matches requirements.json
+        working-directory: gpu-spec
+        run: python3 -I scripts/gen_requirements_md.py --check
+
+      - name: Every oracle, Quint and vector name in requirements.json exists
+        working-directory: gpu-spec
+        run: python3 -I scripts/check_refs.py
+
+      - name: The vector gate can fail (stale, hand-edited, missing and extra files)
+        working-directory: gpu-spec
+        run: scripts/check_vectors.test.sh
+
+      - name: Regenerated vectors equal the checked-in bytes; codec checks
+        working-directory: gpu-spec
+        run: scripts/check_vectors.sh

@@ -1,0 +1,76 @@
+[package]
+name = "midnight-gpu-prover"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = """
+Resident prover service for Midnight circuits: keeps the SRS, the proving key and the
+device state between requests, routes work to a CUDA device when one is present and
+admits it, and falls back to the CPU prover
+"""
+readme = "README.md"
+build = "build.rs"
+publish = false
+
+[lints]
+workspace = true
+
+[features]
+default = []
+rc1-bench = []
+# Direct benchmark hooks for rc.1. The benchmark runs without the daemon.
+rc1-bench-cuda = ["rc1-bench", "dep:midnight-gpu", "midnight-gpu/cuda", "midnight-proofs/gpu"]
+# Route proof phases to a CUDA device through `midnight-gpu`. A build without the CUDA
+# toolkit still compiles and proves on the CPU; the device layer reports no device.
+# Without nvcc at build time `midnight-gpu` builds a stub that declines every call.
+cuda = ["dep:midnight-gpu", "midnight-gpu/cuda", "midnight-proofs/gpu"]
+# The seeded prover entry `ProverService::prove_seeded`, for byte-identity tests only.
+# It turns on the test switches of the hook layer (seeded quotient blinding). The daemon
+# never takes a seed.
+test-seed = ["dep:rand_chacha", "midnight-proofs/gpu-test"]
+
+[dependencies]
+blake2b_simd = { workspace = true }
+ff = { workspace = true }
+hex = "0.4"
+libc = "0.2"
+midnight-curves = { version = "0.4.0-rc.1" }
+midnight-proofs = { version = "0.9.0-rc.1", default-features = false, features = [
+    "circuit-params",
+    "committed-instances",
+] }
+midnight-zk-stdlib = { version = "3.0.0-rc.1", path = "../zk_stdlib" }
+midnight-circuits = { version = "8.0.0-rc.1" }
+midnight-gpu = { version = "0.1.0", path = "../gpu", optional = true }
+rand = { workspace = true }
+rand_chacha = { workspace = true, optional = true }
+rayon = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+
+[dev-dependencies]
+midnight-gpu = { version = "0.1.0", path = "../gpu", features = ["test-fault"] }
+rand_chacha = { workspace = true }
+tempfile = "3"
+
+[[bin]]
+name = "midnight-gpu-proverd"
+path = "src/bin/midnight-gpu-proverd.rs"
+
+[[bin]]
+name = "midnight-gpu-prover-client"
+path = "src/bin/midnight-gpu-prover-client.rs"
+
+# Seeded proofs on the device and the CPU path, for byte-identity checks.
+# Test builds only: the release image is built without `test-seed`, and
+# `container/check-no-test-seed.sh` checks that.
+[[example]]
+name = "seeded_prove"
+required-features = ["test-seed"]
+
+[[bin]]
+name = "rc1-bench"
+path = "bench/rc1/main.rs"
+required-features = ["rc1-bench"]

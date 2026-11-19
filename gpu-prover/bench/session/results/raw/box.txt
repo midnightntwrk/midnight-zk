@@ -1,0 +1,4 @@
+date=2026-11-18T18:14:10-07:00
+tree=9070a373 base=4bea43d4 threads=24 warm=3
+cpu=Intel(R) Core(TM) Ultra 9 275HX cores=24
+gpu=NVIDIA GeForce RTX 5090 Laptop GPU, 24463 MiB, 615.78.08, 3090 MHz, 14001 MHz, [N/A]

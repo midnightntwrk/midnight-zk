@@ -1,0 +1,5 @@
+mode	rep	k	threads	start_load1	proof	state	prove_s	verify_s	verified	msm_calls	ntt_calls	quotient_calls	device_errors	fallbacks	declines	hook_declines	h2d_copies	h2d_bytes	d2h_copies	d2h_bytes	msm_d2h_copies	msm_d2h_bytes	stage	peak_device_bytes	gpu_model	device_total_bytes
+gpu	1	16	24	1.85	0	cold	0.338451691	0.002838513	true	11	7	1	0	0	[]	[]	47	138412968	8	18874304	38	50955264	[0,0,0,0,0,0,0,0]	89883656	NVIDIA GeForce RTX 5090 Laptop GPU	25244663808
+gpu	1	16	24	1.85	1	warm	0.216916372	0.002252341	true	11	7	1	0	0	[]	[]	45	134218696	8	18874304	34	45591552	[0,0,0,0,0,0,0,0]	89883656	NVIDIA GeForce RTX 5090 Laptop GPU	25244663808
+gpu	1	16	24	1.85	2	warm	0.214560541	0.002181068	true	11	7	1	0	0	[]	[]	45	134218696	8	18874304	34	45591552	[0,0,0,0,0,0,0,0]	89883656	NVIDIA GeForce RTX 5090 Laptop GPU	25244663808
+gpu	1	16	24	1.85	3	warm	0.219790518	0.002340414	true	11	7	1	0	0	[]	[]	45	134218696	8	18874304	34	45591552	[0,0,0,0,0,0,0,0]	89883656	NVIDIA GeForce RTX 5090 Laptop GPU	25244663808

@@ -1,0 +1,763 @@
+{
+  "version": 1,
+  "requirements": [
+    {
+      "id": "GPU-001",
+      "section": "build",
+      "statement": "Where the gpu feature of the midnight-proofs crate is disabled, the midnight-proofs crate shall compile the prover code of the release without the feature and produce byte-equal keys and proofs for equal inputs and equal random streams.",
+      "verification": [
+        "rust: feature-off build gives byte-equal keys and proofs to the release"
+      ]
+    },
+    {
+      "id": "GPU-002",
+      "section": "build",
+      "statement": "Where the gpu feature of the midnight-proofs crate is enabled and no hook is installed, the midnight-proofs crate shall produce keys and proofs byte-equal to the build without the feature for equal inputs and equal random streams.",
+      "verification": [
+        "rust: feature-on build without installed hooks gives byte-equal keys and proofs"
+      ]
+    },
+    {
+      "id": "GPU-003",
+      "section": "build",
+      "statement": "If the CUDA toolkit is absent at build time, then the midnight-gpu crate shall build without error a stub library whose every device operation declines.",
+      "verification": [
+        "ci: cargo build and clippy with --all-features on a runner without nvcc"
+      ]
+    },
+    {
+      "id": "GPU-004",
+      "section": "build",
+      "statement": "The midnight-gpu build script shall take the CUDA root from CUDA_PATH or CUDA_HOME and the device architectures from a configured list or the detected device, and contain no default that names a path of a particular machine.",
+      "verification": [
+        "review: build.rs reads CUDA_PATH, CUDA_HOME and the architecture list; scripts/check-generic.sh"
+      ]
+    },
+    {
+      "id": "GPU-005",
+      "section": "build",
+      "statement": "Where a binary runs on more than one GPU architecture, the midnight-gpu build script shall embed device code for every architecture of the configured list.",
+      "verification": [
+        "ci: cuobjdump lists every configured architecture"
+      ]
+    },
+    {
+      "id": "GPU-006",
+      "section": "build",
+      "statement": "The midnight-gpu crate shall hold its vendored third-party GPU source at a recorded upstream commit, with its licence file and a list of every local patch.",
+      "verification": [
+        "review: vendored source digest and licence file"
+      ]
+    },
+    {
+      "id": "GPU-007",
+      "section": "hooks",
+      "statement": "The midnight-gpu crate shall answer each MSM, forward NTT, inverse NTT and quotient request with the value of the stock CPU function on the same input or with a decline.",
+      "verification": [
+        "oracle: GpuSpec.fft_eq_ntt, GpuSpec.intt_ntt, GpuSpec.ntt_intt, GpuSpec.ifft_eq_intt, GpuSpec.fftCosetExt_eq, GpuSpec.cosetToCoeff_cosetExt, GpuSpec.fftCosetToCoeff_eq and their _bls forms, GpuSpec.msmBucket_eq_msm, GpuSpec.msmBooth_eq_msm, GpuSpec.msmBoothBy_blsR_topLimb, GpuSpec.compile_correct, GpuSpec.deviceNumerator_eq; consequence of the contract: GpuSpec.resolve_eq",
+        "vectors: ntt.json, coset.json, msm.json, quotient.json, threshold.json",
+        "rust: device results equal the vectors"
+      ]
+    },
+    {
+      "id": "GPU-008",
+      "section": "hooks",
+      "statement": "When a hook declines, the midnight-proofs crate shall compute that operation with the stock CPU code on the unchanged input.",
+      "verification": [
+        "oracle (consequence of the hook contract of GPU-007, which the Rust vector and fault tests check on the real hooks): GpuSpec.resolve_eq, GpuSpec.prove_any_schedule"
+      ]
+    },
+    {
+      "id": "GPU-009",
+      "section": "hooks",
+      "statement": "If a device operation fails after its upload or after its kernel launch, then the midnight-gpu crate shall leave the caller buffer unchanged and decline.",
+      "verification": [
+        "oracle (consequence of the hook contract of GPU-007, which the Rust vector and fault tests check on the real hooks): GpuSpec.runInPlace_eq, GpuSpec.dirtyDecline_breaks",
+        "rust: fault injection after upload and after launch"
+      ]
+    },
+    {
+      "id": "GPU-010",
+      "section": "hooks",
+      "statement": "If an input size, a domain root, a coset shift or a quotient shape is outside what a device kernel supports, then the midnight-gpu crate shall decline before it changes any caller buffer.",
+      "verification": [
+        "oracle: GpuSpec.gate_shape, GpuSpec.gate_none_iff, GpuSpec.gate_none_iff_deviceSize, GpuSpec.gateShift, GpuSpec.gateMsm2_mismatch, GpuSpec.gate_declines_before_write, GpuSpec.deviceSize pins",
+        "vectors: gate.json, decline cases of ntt.json, coset.json and msm.json",
+        "rust: decline tests for size and root"
+      ]
+    },
+    {
+      "id": "GPU-011",
+      "section": "hooks",
+      "statement": "If the hooks are installed a second time in one process, then the midnight-proofs crate shall reject the second installation and keep the first.",
+      "verification": [
+        "oracle: GpuSpec.install_twice",
+        "rust: second install rejected"
+      ]
+    },
+    {
+      "id": "GPU-012",
+      "section": "hooks",
+      "statement": "When a hooked operation declines with the reason shape, unreduced, memory, fault or device-error during a proof, the midnight-gpu-prover daemon shall count one fallback for that operation.",
+      "verification": [
+        "oracle: Service.decline_counted, Service.fallback_decline, GpuSpec.fallbacks_by_reason, GpuSpec.service_fallbacks_eq_fallbackOps",
+        "quint: inv_fallback, test_default::declineTest, replayed",
+        "vectors: service/decline-reasons.json"
+      ]
+    },
+    {
+      "id": "GPU-085",
+      "section": "hooks",
+      "statement": "When a hooked operation declines with the reason no-device or below-min-k during a proof, the midnight-gpu-prover daemon shall count the decline, count no fallback for it and leave the proof unmarked.",
+      "verification": [
+        "oracle: Service.decline_counted, Service.expected_decline_no_fallback, GpuSpec.fallbacks_by_reason",
+        "quint: inv_fallback, expected-decline test, replayed",
+        "vectors: service/decline-reasons.json, service/expected-decline-accepted.json",
+        "rust: below-min-k and no-device declines give fallback_count 0"
+      ]
+    },
+    {
+      "id": "GPU-013",
+      "section": "hooks",
+      "statement": "The midnight-gpu crate shall compute a masked MSM as MSM(s + r) - MSM(r) with a fixed public vector r and return the group element of the unmasked MSM.",
+      "verification": [
+        "oracle (the identity for every mask; that the mask is public, fixed and independent of the witness is a review item): GpuSpec.msmMasked_eq",
+        "vectors: msm.json mask fields"
+      ]
+    },
+    {
+      "id": "GPU-073",
+      "section": "hooks",
+      "statement": "When a device operation declines, the midnight-gpu crate shall add one to the decline count of its operation class and of exactly one reason out of no-device, below-min-k, shape, unreduced, memory, fault and device-error.",
+      "verification": [
+        "oracle: GpuSpec.declines_all_counted, GpuSpec.count_one_reason, GpuSpec.countDeclines_cell, Service.decline_counted, Service.invDeclines",
+        "quint: inv_declines, decline tests, replayed",
+        "vectors: service/decline-reasons.json",
+        "rust: decline map by class and reason equals the hook outcomes"
+      ]
+    },
+    {
+      "id": "GPU-074",
+      "section": "hooks",
+      "statement": "If an MSM input of at least one element or a transform input of a power-of-two length of at least two elements holds fewer than 2^min_k elements for the configured min_k, by default 14, then the midnight-gpu crate shall decline with the reason below-min-k before it changes any caller buffer.",
+      "verification": [
+        "oracle: GpuSpec.gate_below_min_k, GpuSpec.gateMsm_below_min_k, GpuSpec.gate_declines_before_write, pin_gate_14",
+        "vectors: gate.json, threshold.json, min_k of every case",
+        "rust: threshold tests at 2^14 - 1, 2^14 and 2^14 + 1"
+      ]
+    },
+    {
+      "id": "GPU-079",
+      "section": "hooks",
+      "statement": "Where the quotient kernel evaluates the extended domain in tiles, the midnight-gpu crate shall return the quotient coefficients of the untiled evaluation for every tile size.",
+      "verification": [
+        "oracle: GpuSpec.numeratorTiled_eq, GpuSpec.deviceNumeratorTiled_eq, GpuSpec.quotientCoeffs_tiled, pin_tile_border_ex8",
+        "vectors: quotient.json quotient_coeffs",
+        "rust: tiled kernel against the vectors for two tile sizes"
+      ]
+    },
+    {
+      "id": "GPU-080",
+      "section": "hooks",
+      "statement": "Where the midnight-gpu crate computes two or more MSMs over one base table in one batch, the midnight-gpu crate shall return for each scalar vector the group element of its separate MSM.",
+      "verification": [
+        "oracle: GpuSpec.msmBatch_eq, GpuSpec.msmBucketBatch_eq",
+        "vectors: msm.json cases over one base vector",
+        "rust: batched MSM equals the separate MSMs"
+      ]
+    },
+    {
+      "id": "GPU-014",
+      "section": "randomness",
+      "statement": "The midnight-proofs crate shall draw the same number of random bytes in the same order from each random source whether each hook accepts or declines.",
+      "verification": [
+        "oracle (consequence of the hook contract of GPU-007, which the Rust vector and fault tests check on the real hooks): GpuSpec.prove_any_schedule (drawn count and remaining stream), GpuSpec.draws_independent_of_device (two random sources)",
+        "rust: random-stream byte count and hash equal"
+      ]
+    },
+    {
+      "id": "GPU-015",
+      "section": "randomness",
+      "statement": "The midnight-proofs crate shall perform the same transcript writes and squeezes in the same order whether each hook accepts or declines.",
+      "verification": [
+        "oracle (consequence of the hook contract of GPU-007, which the Rust vector and fault tests check on the real hooks): GpuSpec.prove_any_schedule (transcript)",
+        "rust: transcript log equal"
+      ]
+    },
+    {
+      "id": "GPU-016",
+      "section": "randomness",
+      "statement": "The midnight-proofs crate shall draw every blinding value on the CPU, from the random source and at the point of the proof where the stock prover draws it.",
+      "verification": [
+        "oracle (consequence of the hook contract of GPU-007, which the Rust vector and fault tests check on the real hooks): GpuSpec.prove_any_schedule (blinding drawn by proveStep only), GpuSpec.draws_independent_of_device",
+        "review: hook patch adds no random draw; quotient limb blinding stays after the quotient hook"
+      ]
+    },
+    {
+      "id": "GPU-017",
+      "section": "randomness",
+      "statement": "Where the build has the test-seed feature, the midnight-gpu-prover daemon shall produce at one fixed thread count a seeded proof byte-equal to the seeded CPU proof for every set of enabled device phases.",
+      "verification": [
+        "rust: seeded identity at a fixed thread count, thread-count control differs"
+      ]
+    },
+    {
+      "id": "GPU-018",
+      "section": "randomness",
+      "statement": "If a seed variable or a test switch is set at run time in a build without the test-seed feature, then the midnight-gpu-prover daemon shall exit with an error and write no proof.",
+      "verification": [
+        "rust: binary built without test-seed exits on a seed variable"
+      ]
+    },
+    {
+      "id": "GPU-019",
+      "section": "randomness",
+      "statement": "Where key generation runs with the hooks installed, the midnight-gpu-prover daemon shall produce proving and verifying keys byte-equal to the CPU keys.",
+      "verification": [
+        "rust: hooked key generation equals CPU key generation"
+      ]
+    },
+    {
+      "id": "GPU-020",
+      "section": "fallback",
+      "statement": "If no CUDA device is present at start or the configuration disables the device, then the midnight-gpu-prover daemon shall run every phase on the CPU and report device false in its start record.",
+      "verification": [
+        "oracle: Service.invCtx, Service.admit (device false)",
+        "quint: inv_ctx, test_nodevice::noDeviceTest"
+      ]
+    },
+    {
+      "id": "GPU-021",
+      "section": "fallback",
+      "statement": "If the daemon is absent, refuses a request, answers busy or returns an error, then the midnight-gpu-prover client shall prove the request on the CPU and label the result as a CPU fallback.",
+      "verification": [
+        "oracle: Service.invAccounted, Service.inv_run",
+        "quint: inv_accounted, test_default::verifyRefusedTest"
+      ]
+    },
+    {
+      "id": "GPU-022",
+      "section": "fallback",
+      "statement": "While the daemon supervisor has stopped restarting the daemon, the midnight-gpu-prover client shall prove every request on the CPU.",
+      "verification": [
+        "oracle: Service.arrive",
+        "quint: test_default::restartLimitTest"
+      ]
+    },
+    {
+      "id": "GPU-023",
+      "section": "fallback",
+      "statement": "If a proof in production mode completes with a fallback count above zero or an admission step of evict or cpu, then the midnight-gpu-prover daemon shall serve the proof marked degraded with the phase, the reason and the request id.",
+      "verification": [
+        "oracle: Service.reply, Service.onDevice, Service.onCpu",
+        "quint: test_default::declineTest, ladderEvictTest, ladderCpuTest"
+      ]
+    },
+    {
+      "id": "GPU-024",
+      "section": "fallback",
+      "statement": "Where the run mode is bench or acceptance, the benchmark harness shall fail a run in which any proof is marked degraded and record no timing row for it.",
+      "verification": [
+        "oracle: Service.invBench",
+        "quint: inv_bench, test_keep::benchTest"
+      ]
+    },
+    {
+      "id": "GPU-075",
+      "section": "fallback",
+      "statement": "If the configured number of daemon failures, by default 3, occurs within the configured window, by default 600 s, then the midnight-gpu-prover client shall prove every request on the CPU without contacting the daemon until the configured cooldown, by default 600 s, has passed.",
+      "verification": [
+        "oracle (the transition to open at the limit, the skip while open and the closed-daemon failure classes; persistence of the client's record is a Rust client test): Service.invBreaker, Service.invSkips, Service.breaker_open_skips, Service.breaker_opens_at_limit, Service.arrive_failure_classes, breaker pins",
+        "quint: inv_breaker, inv_skips, breaker tests, replayed",
+        "vectors: service/breaker-open-cooldown.json, service/breaker-window-expiry.json",
+        "rust: client breaker replay through the adapter"
+      ]
+    },
+    {
+      "id": "GPU-076",
+      "section": "fallback",
+      "statement": "When the daemon serves a proof to the client, the midnight-gpu-prover client shall clear its record of daemon failures.",
+      "verification": [
+        "oracle: Service.served_clears_failures, Service.served_then_restart",
+        "quint: breaker reset test, replayed",
+        "vectors: service/breaker-reset-on-served.json"
+      ]
+    },
+    {
+      "id": "GPU-077",
+      "section": "fallback",
+      "statement": "The midnight-gpu-prover client shall count as a daemon failure only an absent daemon, a lost connection, a prove error, a verify error and a retired reply.",
+      "verification": [
+        "oracle: Service.busy_no_failure, Service.recordFailure call sites, breaker pins",
+        "quint: busy and degraded-error tests, replayed",
+        "rust: is_daemon_failure classes"
+      ]
+    },
+    {
+      "id": "GPU-078",
+      "section": "fallback",
+      "statement": "If a request in acceptance mode is admitted at step evict or cpu or completes with a fallback count above zero, then the midnight-gpu-prover daemon shall reply with a degraded error and write no proof.",
+      "verification": [
+        "oracle: Service.invAcceptance, Service.acceptance_no_degraded_proof, Service.acceptance_degraded_refused, acceptance pins",
+        "quint: inv_acceptance, acceptance tests, replayed",
+        "vectors: service/acceptance-evict.json, service/acceptance-decline.json",
+        "rust: acceptance replay through the adapter"
+      ]
+    },
+    {
+      "id": "GPU-025",
+      "section": "admission",
+      "statement": "When a prove request arrives, the midnight-gpu-prover daemon shall compute its device memory need from the loaded proving key and count every resident buffer once.",
+      "verification": [
+        "oracle (an upper bound on the recorded need and the once-only count of the resident copies; the need computation from the key is the Rust need test): Service.fullNeed, Service.invNeed, Service.pin_keep_need",
+        "quint: inv_need, test_keep::keepNeedTest"
+      ]
+    },
+    {
+      "id": "GPU-026",
+      "section": "admission",
+      "statement": "If the free device memory is below the computed need, then the midnight-gpu-prover daemon shall wait at most the configured wait time, by default 20 s, for the free memory to cover the need.",
+      "verification": [
+        "oracle (the two readings and the step taken; the wait deadline is a Rust admission test): Service.pin_wait",
+        "quint: test_default::ladderWaitTest"
+      ]
+    },
+    {
+      "id": "GPU-027",
+      "section": "admission",
+      "statement": "If the free device memory is below the need after the wait and covers the reduced need once the resident copies are freed, then the midnight-gpu-prover daemon shall free its resident proving-key copies, run the quotient numerator of the request on the CPU and run the MSM and NTT phases of the request on the device.",
+      "verification": [
+        "oracle: Service.pin_evict",
+        "quint: inv_evict_step, test_default::ladderEvictTest"
+      ]
+    },
+    {
+      "id": "GPU-028",
+      "section": "admission",
+      "statement": "If the free device memory after the eviction is below the reduced need, then the midnight-gpu-prover daemon shall free its MSM tables and run every phase of the request on the CPU.",
+      "verification": [
+        "oracle: Service.pin_cpu",
+        "quint: test_default::ladderCpuTest"
+      ]
+    },
+    {
+      "id": "GPU-029",
+      "section": "admission",
+      "statement": "The midnight-gpu-prover daemon shall start no device phase whose computed need exceeds the free device memory at the admission decision.",
+      "verification": [
+        "oracle: Service.invAdmit, Service.inv_run",
+        "quint: inv_admit"
+      ]
+    },
+    {
+      "id": "GPU-030",
+      "section": "admission",
+      "statement": "Where the resident policy is evict, the midnight-gpu-prover daemon shall free its resident proving-key copies and its MSM tables before it writes each reply.",
+      "verification": [
+        "oracle: Service.invEvictPolicy, Service.pin_evict_policy",
+        "quint: inv_evict_policy, test_default::evictPolicyTest"
+      ]
+    },
+    {
+      "id": "GPU-031",
+      "section": "admission",
+      "statement": "The midnight-gpu-prover daemon shall create the CUDA context no earlier than its first device operation.",
+      "verification": [
+        "oracle: Service.invCtx, Service.pin_ctx_at_start",
+        "quint: inv_ctx",
+        "rust: no compute context during key generation"
+      ]
+    },
+    {
+      "id": "GPU-032",
+      "section": "admission",
+      "statement": "If the host memory of a registered SRS base slice is freed, moved or changed, then the midnight-gpu crate shall serve no MSM from the device table of that slice.",
+      "verification": [
+        "rust: table keyed by SRS handle; a dropped handle serves no MSM"
+      ]
+    },
+    {
+      "id": "GPU-033",
+      "section": "admission",
+      "statement": "Where transfers use page-locked host memory, the midnight-gpu crate shall keep the page-locked total at or below the configured bound.",
+      "verification": [
+        "rust: page-locked total reported and bounded"
+      ]
+    },
+    {
+      "id": "GPU-081",
+      "section": "admission",
+      "statement": "Where the configuration names no resident policy, the midnight-gpu-prover daemon shall use the resident policy evict.",
+      "verification": [
+        "oracle: Service.defaultConfig pin (keep = false)",
+        "vectors: service/default-policy.json",
+        "rust: ResidentPolicy default"
+      ]
+    },
+    {
+      "id": "GPU-082",
+      "section": "admission",
+      "statement": "When a prove request ends, the midnight-gpu-prover daemon shall free every MSM device context under either resident policy.",
+      "verification": [
+        "oracle: Service.wipe_frees_tables, Service.wipe_frees_tables_step, Service.invTables",
+        "quint: keep-policy test, replayed",
+        "vectors: service/keep-tables-freed.json",
+        "rust: end_request frees every MSM context"
+      ]
+    },
+    {
+      "id": "GPU-034",
+      "section": "wipe",
+      "statement": "When a prove request ends, the midnight-gpu-prover daemon shall zero and free every device buffer and host staging buffer that held witness-dependent values before it reads the next request.",
+      "verification": [
+        "oracle (the state consequence, nothing dirty between requests; the order of socket reads is a Rust daemon test): Service.invWipe, Service.invPhase, Service.inv_run",
+        "quint: inv_wipe",
+        "rust: zero-check mode reads every region as zero"
+      ]
+    },
+    {
+      "id": "GPU-035",
+      "section": "wipe",
+      "statement": "If a wipe or a release of a request is not confirmed, then the midnight-gpu-prover daemon shall reply with an error and exit before it reads another request.",
+      "verification": [
+        "oracle (the state consequence, error reply then exit; what the daemon has read from a waiting connection by then is a Rust daemon test): Service.wipe_fail_retires, Service.pin_wipe_fail, Service.pin_wipe_fail_no_verify",
+        "quint: test_default::wipeUnconfirmedTest"
+      ]
+    },
+    {
+      "id": "GPU-036",
+      "section": "wipe",
+      "statement": "Where zero-check mode is requested, the midnight-gpu-prover daemon shall check on the device that every zeroed region reads as zero before it frees the region and report the count of non-zero regions.",
+      "verification": [
+        "oracle (the result of the check crosses as a counter and never as region contents; which regions are checked and the count they give is the Rust zero-check test): GpuSpec.DataMove.zeroCheck_readback_violates, zeroCheck_onDevice_ok",
+        "rust: zero-check control (a loaded buffer is not zero)"
+      ]
+    },
+    {
+      "id": "GPU-037",
+      "section": "wipe",
+      "statement": "If the client disconnects during a request, then the midnight-gpu-prover daemon shall run no further device phase of that request and still zero and free its buffers.",
+      "verification": [
+        "oracle: Service.leaseLoss, Service.invLease",
+        "quint: inv_lease, test_default::leaseLossTest"
+      ]
+    },
+    {
+      "id": "GPU-038",
+      "section": "readback",
+      "statement": "The midnight-gpu crate shall copy from device memory to host memory only base-domain transform outputs, MSM result points, the partial bucket sums of the vendored MSM, quotient coefficients and counters, and no vector on the extended domain.",
+      "verification": [
+        "oracle: GpuSpec.DataMove.gpu038_iff, specPlan_gpu038, oldPortPlan_violates, extended_readback_violates, mislabel_impossible, msmBucketPlan_gpu038, Service.invReadback, Service.pin_readback_kinds",
+        "quint: inv_readback",
+        "vectors: datamove.json, service/readback-kinds.json",
+        "rust: readback_is_base_transforms_and_quotient (size of every device-to-host result copy of one proof)"
+      ]
+    },
+    {
+      "id": "GPU-084",
+      "section": "readback",
+      "statement": "When the vendored MSM has reduced its partial bucket sums on the host, the midnight-gpu crate shall zero the host copy of those sums before it releases that memory.",
+      "verification": [
+        "oracle: GpuSpec.DataMove.msmBucketPlan_gpu084, msmBucketPlanFreeOnly_violates, msmBucketPlanNoZero_violates, gpu084_unzeroed_free_violates",
+        "rust: PATCHES.md wipe patches; host bucket rows read as zero after an MSM"
+      ]
+    },
+    {
+      "id": "GPU-039",
+      "section": "verify",
+      "statement": "The midnight-gpu-prover daemon shall verify every proof with the stock midnight-proofs verifier before it returns the proof.",
+      "verification": [
+        "oracle: Service.invVerified, Service.invVerifyPending",
+        "quint: inv_verified"
+      ]
+    },
+    {
+      "id": "GPU-040",
+      "section": "verify",
+      "statement": "If the verifier refuses a proof, then the midnight-gpu-prover daemon shall return an error, write no proof and log the request id.",
+      "verification": [
+        "oracle (error, no proof, CPU fallback; the logged request id is a Rust test): Service.pin_verify",
+        "quint: test_default::verifyRefusedTest",
+        "rust: corrupted numerator gives an error and no proof"
+      ]
+    },
+    {
+      "id": "GPU-041",
+      "section": "verify",
+      "statement": "If the verifying key that the daemon generates or loads differs from the configured expected verifying key, then the midnight-gpu-prover daemon shall exit before it opens its socket.",
+      "verification": [
+        "rust: daemon refuses a mismatched expected verifying key"
+      ]
+    },
+    {
+      "id": "GPU-042",
+      "section": "verify",
+      "statement": "If a request names a circuit size k above the configured maximum, then the midnight-gpu-prover daemon shall refuse it before any SRS load, key generation or device allocation.",
+      "verification": [
+        "rust: k above the maximum refused before allocation"
+      ]
+    },
+    {
+      "id": "GPU-043",
+      "section": "service",
+      "statement": "The midnight-gpu-prover daemon shall accept requests only on a local Unix socket that its own user alone can read and write.",
+      "verification": [
+        "rust: socket mode 0600 in a 0700 directory"
+      ]
+    },
+    {
+      "id": "GPU-044",
+      "section": "service",
+      "statement": "If a request names an input file that group or other can read, then the midnight-gpu-prover daemon shall refuse the request before it reads a byte of the file.",
+      "verification": [
+        "rust: group-readable input refused"
+      ]
+    },
+    {
+      "id": "GPU-045",
+      "section": "service",
+      "statement": "The midnight-gpu-prover daemon shall serve one prove request at a time and hold at most one waiting connection.",
+      "verification": [
+        "oracle: Service.invQueue, Service.pin_busy",
+        "quint: inv_queue, test_default::queueTest"
+      ]
+    },
+    {
+      "id": "GPU-046",
+      "section": "service",
+      "statement": "If a connection arrives while one request is served and one connection waits, then the midnight-gpu-prover daemon shall answer busy at once and read nothing from the connection.",
+      "verification": [
+        "oracle (the state consequence, busy counted and the caller on its CPU; which bytes are read before the busy reply is a Rust daemon test): Service.pin_busy",
+        "quint: test_default::queueTest"
+      ]
+    },
+    {
+      "id": "GPU-047",
+      "section": "service",
+      "statement": "If a request line exceeds the configured maximum size or does not arrive within the configured read deadline, then the midnight-gpu-prover daemon shall refuse the request.",
+      "verification": [
+        "rust: oversized and slow request lines refused"
+      ]
+    },
+    {
+      "id": "GPU-048",
+      "section": "service",
+      "statement": "If the daemon exits under systemd, then the daemon supervisor shall restart it at most the configured restart limit of times in the configured window, by default 3 restarts in 600 s.",
+      "verification": [
+        "oracle: Service.restart_cap, Service.invRestart, Service.pin_restart_window",
+        "quint: inv_restart, test_default::restartWindowTest"
+      ]
+    },
+    {
+      "id": "GPU-049",
+      "section": "service",
+      "statement": "If the daemon exits after the restart limit is reached in the window, then the daemon supervisor shall leave the daemon stopped.",
+      "verification": [
+        "oracle: Service.pin_restart_limit",
+        "quint: test_default::restartLimitTest"
+      ]
+    },
+    {
+      "id": "GPU-050",
+      "section": "service",
+      "statement": "If the device peak or the host high-water mark of a request exceeds its configured bound, then the daemon supervisor shall restart the daemon after the current request and label the next request cold.",
+      "verification": [
+        "oracle: Service.afterReply",
+        "quint: test_default::overBoundTest"
+      ]
+    },
+    {
+      "id": "GPU-051",
+      "section": "service",
+      "statement": "Where two or more daemons run on one host, the daemon supervisor shall give each daemon a disjoint CPU set and thread budget.",
+      "verification": [
+        "harness: two workers report disjoint CPU sets"
+      ]
+    },
+    {
+      "id": "GPU-052",
+      "section": "reporting",
+      "statement": "When the daemon starts, the midnight-gpu-prover daemon shall write a start record with the constraint degree, the extended k, the column, lookup and permutation counts, the resident polynomial count, the CUDA release, the device architecture, the driver version, the features, the phase mask, the resident policy, the computed need, the wsl flag and the binary sha256.",
+      "verification": [
+        "rust: start record fields"
+      ]
+    },
+    {
+      "id": "GPU-053",
+      "section": "reporting",
+      "statement": "The midnight-gpu-prover daemon shall report for every proof the prove time, the phase times, the device call counts, the fallback count, the admission step, the device peak and the host high-water mark.",
+      "verification": [
+        "rust: reply record fields"
+      ]
+    },
+    {
+      "id": "GPU-054",
+      "section": "reporting",
+      "statement": "The midnight-gpu-prover daemon shall write no witness value, key material or seed to any reply or log.",
+      "verification": [
+        "rust: log scan finds no witness, key or seed bytes"
+      ]
+    },
+    {
+      "id": "GPU-055",
+      "section": "reporting",
+      "statement": "The midnight-gpu-prover daemon shall change no GPU clock, power, mode or confidential-computing setting and make no confidential-computing query.",
+      "verification": [
+        "review: scripts/check-generic.sh and a source scan"
+      ]
+    },
+    {
+      "id": "GPU-056",
+      "section": "wsl",
+      "statement": "When the daemon starts, the midnight-gpu-prover daemon shall detect WSL2 from the presence of /dev/dxg or a kernel version string that names Microsoft.",
+      "verification": [
+        "rust: is_wsl unit test"
+      ]
+    },
+    {
+      "id": "GPU-057",
+      "section": "wsl",
+      "statement": "While the caller of a request on a WSL2 host does not hold the configured device lock, the midnight-gpu-prover daemon shall run no device phase of that request.",
+      "verification": [
+        "oracle: Service.admit, Service.pin_wsl_nolock, Service.invLease",
+        "quint: inv_lease, test_wsl::noLockTest"
+      ]
+    },
+    {
+      "id": "GPU-058",
+      "section": "wsl",
+      "statement": "Where the host runs under WSL2, the midnight-gpu-prover daemon shall admit a request against a budget of the card total minus the configured reserve in place of the free-memory query.",
+      "verification": [
+        "oracle (the budget replaces both readings; card total minus reserve is a Rust test): Service.pin_wsl_budget",
+        "quint: test_wsl::budgetTest"
+      ]
+    },
+    {
+      "id": "GPU-059",
+      "section": "wsl",
+      "statement": "Where the host runs under WSL2, the midnight-gpu-prover daemon shall refuse to start with the keep resident policy.",
+      "verification": [
+        "oracle (the start refusal, Service.pin_wsl_keep; the invariant is a configuration check that cannot fail after a start): Service.configRefusals, Service.pin_wsl_keep",
+        "quint: inv_wsl_keep"
+      ]
+    },
+    {
+      "id": "GPU-060",
+      "section": "wsl",
+      "statement": "Where the host runs under WSL2, the midnight-gpu-prover daemon shall hold no proving-key copy and no MSM table on the device between requests.",
+      "verification": [
+        "oracle: Service.invWslIdle",
+        "quint: inv_wsl_idle"
+      ]
+    },
+    {
+      "id": "GPU-061",
+      "section": "wsl",
+      "statement": "If the caller loses the device lock during a request, then the midnight-gpu-prover daemon shall run no further device phase of that request and compute the rest on the CPU.",
+      "verification": [
+        "oracle: Service.leaseLoss",
+        "quint: test_wsl::lockLossTest"
+      ]
+    },
+    {
+      "id": "GPU-062",
+      "section": "container",
+      "statement": "Where the daemon runs in a container, the container image shall run the daemon as a non-root user.",
+      "verification": [
+        "container: image user check"
+      ]
+    },
+    {
+      "id": "GPU-063",
+      "section": "container",
+      "statement": "Where the daemon runs in a container, the container launcher shall mount the SRS read-only.",
+      "verification": [
+        "container: mount table check"
+      ]
+    },
+    {
+      "id": "GPU-064",
+      "section": "container",
+      "statement": "Where the daemon runs in a container, the container launcher shall pass the GPU through the CDI device name nvidia.com/gpu or the NVIDIA Container Toolkit.",
+      "verification": [
+        "container: device request check"
+      ]
+    },
+    {
+      "id": "GPU-065",
+      "section": "container",
+      "statement": "Where the daemon runs in a container, the container launcher shall return no key, witness or seed file to the host.",
+      "verification": [
+        "container: output directory scan"
+      ]
+    },
+    {
+      "id": "GPU-066",
+      "section": "container",
+      "statement": "When the NVIDIA driver directory of a WSL2 host changes, the container launcher shall refuse to start a GPU container until the CDI spec names the live driver directory.",
+      "verification": [
+        "container: launcher refuses a stale CDI spec"
+      ]
+    },
+    {
+      "id": "GPU-083",
+      "section": "container",
+      "statement": "Where the daemon runs in a container, the container launcher shall cap the restarts of the daemon at the configured limit, by default 3, for the lifetime of the container.",
+      "verification": [
+        "container: compose restart policy on-failure:3",
+        "oracle: Service.lifetime_cap, Service.pin_restart_lifetime, Service.pin_restart_lifetime_any_tick (a window of 0)",
+        "quint: container cap tests, replayed",
+        "vectors: service/container-restart-cap.json"
+      ]
+    },
+    {
+      "id": "GPU-067",
+      "section": "harness",
+      "statement": "The benchmark harness shall report the warm median prove time over at least 5 warm repetitions in one process, the first proof apart, the ready time, the device peak and the host high-water mark.",
+      "verification": [
+        "harness: report fields"
+      ]
+    },
+    {
+      "id": "GPU-068",
+      "section": "harness",
+      "statement": "If a reported value exceeds its configured bound, then the benchmark harness shall fail the run.",
+      "verification": [
+        "harness: a bound breach fails the run"
+      ]
+    },
+    {
+      "id": "GPU-069",
+      "section": "harness",
+      "statement": "The midnight-gpu kernel harness shall report the device MSM time for repeated, 90 % zero and below-2^16 scalars as a ratio to the uniform-scalar time of the same length.",
+      "verification": [
+        "harness: MSM distribution report"
+      ]
+    },
+    {
+      "id": "GPU-070",
+      "section": "harness",
+      "statement": "The midnight-gpu kernel harness shall record a standalone microbenchmark of every device kernel, with equality to the CPU result, before an end-to-end timed set.",
+      "verification": [
+        "harness: microbenchmark before the timed set"
+      ]
+    },
+    {
+      "id": "GPU-071",
+      "section": "harness",
+      "statement": "The midnight-gpu test suite shall check the device quotient against the CPU quotient on random constraint systems that together reach every expression node type, 10,000 systems in the GPU gate and at least 14 in the default test run.",
+      "verification": [
+        "oracle (properties of the arithmetic oracle, not of the test suite; the counts are the GPU gate's): GpuSpec.compile_correct, GpuSpec.numeratorTiled_eq, hand-derived pins of the reference numerator (PinsExt)",
+        "rust: random constraint system fuzz"
+      ]
+    },
+    {
+      "id": "GPU-072",
+      "section": "harness",
+      "statement": "The midnight-gpu test suite shall check the device MSM, forward NTT, inverse NTT and the coset transform of the quotient hook against the golden vectors of gpu-spec/vectors.",
+      "verification": [
+        "rust: vector tests; vectors/README.md"
+      ]
+    }
+  ]
+}

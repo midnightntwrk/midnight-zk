@@ -83,5 +83,19 @@ committed-instances = []
 # Feature to expose internal prover types and benchmarking utilities.
 bench-internal = ["criterion"]
 
+# Accelerator hooks (`midnight_proofs::gpu`): the prover offers its BLS12-381
+# MSMs, FFTs and quotient to functions a process installs. Without installed
+# hooks the prover runs only the stock code.
+gpu = ["prover-par"]
+# Parallel CPU paths of the prover (`crate::par`): the same values as the stock
+# code, computed with more parallelism. Proof bytes do not change. Without the
+# feature the prover compiles only the stock lines.
+prover-par = []
+# Test-only switches of the hooks (suspend, forced quotient decline, quotient
+# check mode, seeded quotient blinding). Never enable it in a production build.
+gpu-test = ["gpu"]
+# Test adapter for the external quotient conformance fixtures.
+test-fault = ["gpu-test"]
+
 [lib]
 bench = false

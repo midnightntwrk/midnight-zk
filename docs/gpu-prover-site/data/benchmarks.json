@@ -1,0 +1,455 @@
+{
+  "schema": 2,
+  "results_h2h": {
+    "caption": "By circuit size, on one {device} GPU and its host CPU with {threads} prover threads. The CPU column is stock midnight-proofs main at {base}, built without the feature gpu; the GPU column is this pull request. Measured at {tree}, based on {base}. One process per path and size: one cold proof, then {warm}. {verified}",
+    "columns": {
+      "gpu": "Circuit size",
+      "cpu": "vs midnight-proofs main 4bea43d4 CPU",
+      "device": "GPU path",
+      "speedup": "Warm speed-up",
+      "cold": "cold"
+    },
+    "note": "Warm medians, with the cold proof below. The rows of one table come from one session, so compare ratios within a table, not seconds across tables: across three paired runs of the trees b0230e08 and ffa83b28, the median of five warm GPU proofs per process ranged from 4.73 to 4.85 s at k = 21 with 8 threads.",
+    "extra_sources": [
+      {
+        "text": "Paired runs of the two trees",
+        "path": "gpu-prover/bench/abab/README.md"
+      }
+    ]
+  },
+  "identity": "In the Compact suite, with the same job seed and 24 prover threads, every repetition of 39 of the 133 proofs gave the same bytes on the GPU path as on the CPU prover, on an RTX 5080 Laptop GPU with the midnight-proofs 0.8.3 hooks. For the other 94 proofs, which are not reproducible from a seed on either path, every GPU repetition passed the stock verifier with the same public inputs.",
+  "compact_programs": {
+    "label": "Measured with the midnight-proofs 0.8.3 hooks of this design; the PR carries the same design on 0.9.0-rc.1. RTX 5080 Laptop GPU, host CPU Intel Core Ultra 9 290HX Plus with 24 threads, 1 warm-up and 5 timed repetitions per proof. Every proof passes the stock verifier.",
+    "columns": [
+      {
+        "key": "k",
+        "label": "k"
+      },
+      {
+        "key": "proofs",
+        "label": "Proofs",
+        "numeric": true
+      },
+      {
+        "key": "cpu",
+        "label": "CPU prover, median",
+        "numeric": true
+      },
+      {
+        "key": "gpu",
+        "label": "GPU path, median",
+        "numeric": true
+      },
+      {
+        "key": "speedup",
+        "label": "Speed-up, sum",
+        "numeric": true
+      },
+      {
+        "key": "identity",
+        "label": "Byte-equal / verified",
+        "numeric": true
+      }
+    ],
+    "rows": [
+      {
+        "k": "6",
+        "proofs": "7",
+        "cpu": "0.024 s",
+        "gpu": "0.026 s",
+        "speedup": "0.92",
+        "identity": "7 / 0"
+      },
+      {
+        "k": "7",
+        "proofs": "15",
+        "cpu": "0.026 s",
+        "gpu": "0.027 s",
+        "speedup": "0.98",
+        "identity": "9 / 6"
+      },
+      {
+        "k": "8",
+        "proofs": "14",
+        "cpu": "0.030 s",
+        "gpu": "0.031 s",
+        "speedup": "0.99",
+        "identity": "11 / 3"
+      },
+      {
+        "k": "9",
+        "proofs": "9",
+        "cpu": "0.044 s",
+        "gpu": "0.040 s",
+        "speedup": "1.08",
+        "identity": "9 / 0"
+      },
+      {
+        "k": "10",
+        "proofs": "3",
+        "cpu": "0.064 s",
+        "gpu": "0.058 s",
+        "speedup": "1.14",
+        "identity": "3 / 0"
+      },
+      {
+        "k": "11",
+        "proofs": "2",
+        "cpu": "0.220 s",
+        "gpu": "0.202 s",
+        "speedup": "1.08",
+        "identity": "0 / 2"
+      },
+      {
+        "k": "13",
+        "proofs": "47",
+        "cpu": "0.400 s",
+        "gpu": "0.307 s",
+        "speedup": "1.29",
+        "identity": "0 / 47"
+      },
+      {
+        "k": "14",
+        "proofs": "16",
+        "cpu": "0.754 s",
+        "gpu": "0.470 s",
+        "speedup": "1.60",
+        "identity": "0 / 16"
+      },
+      {
+        "k": "15",
+        "proofs": "8",
+        "cpu": "1.397 s",
+        "gpu": "0.673 s",
+        "speedup": "2.06",
+        "identity": "0 / 8"
+      },
+      {
+        "k": "16",
+        "proofs": "11",
+        "cpu": "2.565 s",
+        "gpu": "1.103 s",
+        "speedup": "2.34",
+        "identity": "0 / 11"
+      },
+      {
+        "k": "17",
+        "proofs": "1",
+        "cpu": "4.726 s",
+        "gpu": "1.880 s",
+        "speedup": "2.51",
+        "identity": "0 / 1"
+      },
+      {
+        "k": "all",
+        "proofs": "133",
+        "cpu": "0.388 s",
+        "gpu": "0.297 s",
+        "speedup": "1.77",
+        "identity": "39 / 94"
+      }
+    ],
+    "notes": [
+      "Sum of per-proof medians: CPU 77.25 s, GPU path 43.74 s. Median: 0.388 s and 0.297 s. 95th percentile: 2.565 s and 1.103 s.",
+      "Small proofs gain little or lose: of the 45 proofs at k = 6 to 9, 24 were slower on the GPU. In this run the device took the NTT, coset and quotient work at every size and the MSM from 2¹⁴ terms. In the PR the default minimum is 2¹⁴ terms for an MSM and 2¹⁴ points for a transform; coset and quotient work use the size of the extended domain.",
+      "Byte-equal counts the proofs whose repetitions all give the same bytes, with the same seed and thread count, on both paths. Verified counts the others, which pass the stock verifier with equal public inputs.",
+      "All 798 GPU proofs pass their check, and no hook fell back to the CPU."
+    ],
+    "source": "gpu-prover/bench/compact/README.md",
+    "empty": "Benchmarks of Compact program proofs are a roadmap item, coming soon."
+  },
+  "preview": {
+    "label": "Two Compact programs deployed and called on the Preview network, with proofs from the proof server wrapper on an RTX 5080 Laptop GPU and the midnight-proofs 0.8.3 hooks. 3 calls with GPU proofs in 5 transactions. By label: 0 GPU-proven, 3 GPU below k=14, 2 CPU. A proof is labelled GPU-proven only when its MSM count is above 0.",
+    "columns": [
+      {
+        "key": "program",
+        "label": "Program"
+      },
+      {
+        "key": "call",
+        "label": "Call"
+      },
+      {
+        "key": "k",
+        "label": "k",
+        "numeric": true
+      },
+      {
+        "key": "proof",
+        "label": "Proof"
+      },
+      {
+        "key": "verdict",
+        "label": "Verdict"
+      }
+    ],
+    "rows": [
+      {
+        "program": "a01-adt-counter",
+        "call": "deploy",
+        "k": "-",
+        "proof": "CPU (0.7.3 dust path)",
+        "verdict": "SucceedEntirely"
+      },
+      {
+        "program": "a01-adt-counter",
+        "call": "test_all",
+        "k": "8",
+        "proof": "GPU (NTT/coset/quotient on device; MSM on CPU below k=14)",
+        "verdict": "SucceedEntirely"
+      },
+      {
+        "program": "d01-example-bboard",
+        "call": "deploy",
+        "k": "-",
+        "proof": "CPU (0.7.3 dust path)",
+        "verdict": "SucceedEntirely"
+      },
+      {
+        "program": "d01-example-bboard",
+        "call": "01-alice-post",
+        "k": "13",
+        "proof": "GPU (NTT/coset/quotient on device; MSM on CPU below k=14)",
+        "verdict": "SucceedEntirely"
+      },
+      {
+        "program": "d01-example-bboard",
+        "call": "04-alice-takedown",
+        "k": "13",
+        "proof": "GPU (NTT/coset/quotient on device; MSM on CPU below k=14)",
+        "verdict": "SucceedEntirely"
+      }
+    ],
+    "notes": [
+      "Below k = 14 the device runs the transforms and the quotient, and the CPU runs the MSMs: the MSM hook takes only MSMs of 2¹⁴ terms or more. No call of these two programs reaches k = 14, so none is GPU-proven.",
+      "A deploy carries only a dust-spend proof. In proof server 9.0.1 the dust keys are on midnight-proofs 0.7.3, which the hooks do not cover, so those proofs stay on the CPU.",
+      "The ledger verified every proof with the stock verifier when it included the transaction. Each GPU call had 0 fallbacks.",
+      "The transaction hashes, blocks and the CPU baseline transactions are in the benchmarks document."
+    ],
+    "source": "gpu-prover/bench/compact/results/preview-rtx-5080-laptop.tsv",
+    "empty": "No Preview transactions are recorded.",
+    "stack": true
+  },
+  "large_circuit": {
+    "label": "One k = 21 circuit, measured with the hooks of this design on midnight-proofs 0.8.3, before the port to 0.9.0-rc.1. Warm median of 5 proofs after one cold proof. The CPU column is one proof by a build without the CUDA toolkit on the same machine.",
+    "columns": [
+      {
+        "key": "gpu_model",
+        "label": "GPU"
+      },
+      {
+        "key": "platform",
+        "label": "Platform"
+      },
+      {
+        "key": "warm",
+        "label": "GPU path, warm median",
+        "numeric": true
+      },
+      {
+        "key": "cold",
+        "label": "Cold",
+        "numeric": true
+      },
+      {
+        "key": "cpu",
+        "label": "CPU-only build",
+        "numeric": true
+      },
+      {
+        "key": "peak",
+        "label": "Device peak",
+        "numeric": true
+      }
+    ],
+    "rows": [
+      {
+        "gpu_model": "RTX 5080 Laptop GPU, 16 GB",
+        "platform": "Linux",
+        "warm": "9.35 s",
+        "cold": "10.47 s",
+        "cpu": "43.17 s",
+        "peak": "12.85 GiB"
+      },
+      {
+        "gpu_model": "RTX 5090 Laptop GPU, 24 GB",
+        "platform": "Linux",
+        "warm": "11.00 s",
+        "cold": "11.66 s",
+        "cpu": "72.04 s",
+        "peak": "12.87 GiB"
+      },
+      {
+        "gpu_model": "RTX 5090, 32 GB",
+        "platform": "WSL2",
+        "warm": "13.78 s",
+        "cold": "15.36 s",
+        "cpu": "52.72 s",
+        "peak": "12.92 GiB"
+      },
+      {
+        "gpu_model": "RTX 5090 Laptop GPU, 24 GB",
+        "platform": "WSL2, PCIe 4.0 x4",
+        "warm": "18.64 s",
+        "cold": "22.53 s",
+        "cpu": "79.40 s",
+        "peak": "12.87 GiB"
+      }
+    ],
+    "notes": [
+      "The four machines have different CPUs, power limits and buses. Compare a GPU time with the CPU time of the same row only; the table does not rank the GPU models.",
+      "One proof makes 23 MSMs of 2²¹ terms. On the RTX 5080 Laptop GPU they take 1.44 s together, about 63 ms each.",
+      "Every proof had 0 fallbacks."
+    ],
+    "source": "gpu-prover/bench/large-circuit/gpu-k21.tsv",
+    "empty": "Measurements of one k = 21 circuit are a roadmap item, coming soon."
+  },
+  "checks": {
+    "label": "Results of the specification checks, from gpu-spec/RESULTS.md and gpu-spec/COVERAGE.md.",
+    "stack": true,
+    "columns": [
+      {
+        "key": "check",
+        "label": "Check"
+      },
+      {
+        "key": "result",
+        "label": "Result"
+      }
+    ],
+    "rows": [
+      {
+        "check": "Lean oracle build",
+        "result": "536 theorems in 19 modules, no sorry. No native_decide and no axiom, extern, partial, unsafe or opaque declaration."
+      },
+      {
+        "check": "FFT equals DFT",
+        "result": "Proved for every size 2^m and every root w with w^(2^(m-1)) = -1. The hypotheses are checked at BLS12-381 Fr for the sizes 2^1 to 2^32 and both coset shifts."
+      },
+      {
+        "check": "Bucket and signed-digit MSM equal the plain MSM",
+        "result": "The bucket method agrees with the plain MSM for positive window widths when the selected bits cover the scalars. The signed-digit (Booth) theorem covers positive widths with reduced scalars and enough bits for the modulus. The specialization to the vendored kernel at BLS12-381 covers widths 10 to 18."
+      },
+      {
+        "check": "Batched and tiled equivalences",
+        "result": "A batch of MSMs over one base table equals the separate MSMs. The numerator evaluated in tiles of any positive size equals the untiled numerator."
+      },
+      {
+        "check": "Quint traces replayed through the oracle",
+        "result": "1,078 traces, 40,473 transitions, 0 disagreements. A negative control with one changed field gives a disagreement."
+      },
+      {
+        "check": "Mutation run on the oracle",
+        "result": "67 one-line wrong changes: 66 killed by the build, 1 survivor that is equivalent on every input. The unchanged control survives."
+      },
+      {
+        "check": "Requirement coverage",
+        "result": "85 requirements, GPU-001 to GPU-085. 6 are marked Gap and 8 are marked Partial."
+      }
+    ],
+    "notes": [
+      "The Quint model was checked by simulation and trace replay. Exhaustive model checking is future work.",
+      "The models leave out what RESULTS.md lists under its fidelity gaps, such as the permutation, lookup and trash terms of the quotient kernel. Rust tests against the stock routines cover those."
+    ],
+    "source": "gpu-spec/RESULTS.md",
+    "empty": "No check results are recorded."
+  },
+  "cpu_changes": {
+    "label": "Each change sits behind the cargo feature prover-par, which is off by default and which the feature gpu enables. Each ratio is the GPU-path proof time without the change divided by the time with it (host-side prover work), from alternating runs in the measurement session of the tables above.",
+    "columns": [
+      {
+        "key": "change",
+        "label": "Change"
+      },
+      {
+        "key": "what",
+        "label": "What it does"
+      },
+      {
+        "key": "ratio",
+        "label": "Ratio",
+        "numeric": true
+      }
+    ],
+    "notes": [],
+    "dropped": [
+      "Independent column preparation. midnight-proofs 0.9.0-rc.1 already prepares columns in parallel. The one remaining part, pairing the MSMs of commit_many, conflicts with the commit_msm path of main and was off whenever a device MSM hook is installed.",
+      "Borrowed KZG multi-open. Most of it is already in 0.9.0-rc.1. Its call sites replaced stock tail expressions, so the source with the feature off was not the stock text.",
+      "Proving-key evaluations on the device. midnight-proofs 0.9.0-rc.1 evaluates the proving-key polynomials inside Committed::evaluate, which has no hook point. Moving them to the device needs a new hook in the stock prover, which is left as a follow-up.",
+      "Parallel scans for the permutation product and the LogUp sum. Neutral on the k = 21 benchmark and 1.009 (range 0.993 to 1.011, three pairs) on a k = 20 lookup circuit.",
+      "Device grand products for the permutation and LogUp arguments. They gave 1.03 on the k = 21 benchmark and add a read-back of unblinded rows; wipe coverage of the upload path is still open. Left for a follow-up."
+    ],
+    "source": "",
+    "empty": "",
+    "stack": true,
+    "pending": "Parallel batch inversion of the permutation and LogUp denominators: the interleaved comparison at k = 21 (base against final, five pairs) is in progress in the measurement session. Its ratio follows when the session finishes."
+  },
+  "sequential": {
+    "label": "k = {k}, one process per path, one cold proof and then {n} warm proofs on the same key. The rows for fewer proofs are the first proofs of the same run. Proofs per second is the number of proofs divided by their summed proving time. {device} GPU; the CPU path is stock midnight-proofs main at {base}.",
+    "columns": [
+      {
+        "key": "n",
+        "label": "Warm proofs",
+        "numeric": true
+      },
+      {
+        "key": "gpu_ps",
+        "label": "GPU proofs/s",
+        "numeric": true
+      },
+      {
+        "key": "gpu_lat",
+        "label": "GPU median latency",
+        "numeric": true
+      },
+      {
+        "key": "cpu_ps",
+        "label": "CPU proofs/s",
+        "numeric": true
+      },
+      {
+        "key": "cpu_lat",
+        "label": "CPU median latency",
+        "numeric": true
+      },
+      {
+        "key": "ratio",
+        "label": "Ratio",
+        "numeric": true
+      }
+    ],
+    "notes": [],
+    "empty": "No sequential run is recorded.",
+    "stack": true
+  },
+  "batch_session": {
+    "label": "Batch proving at k = {k}: proofs per second for batches of {sizes} proofs, {device} GPU, against the same batch run with no device (every job on the CPU).",
+    "columns": [
+      {
+        "key": "n",
+        "label": "Batch size",
+        "numeric": true
+      },
+      {
+        "key": "gpu_ps",
+        "label": "GPU proofs/s",
+        "numeric": true
+      },
+      {
+        "key": "cpu_ps",
+        "label": "CPU proofs/s",
+        "numeric": true
+      },
+      {
+        "key": "ratio",
+        "label": "Ratio",
+        "numeric": true
+      }
+    ],
+    "notes": [
+      "Each batch registers its keys afresh and evicts the MSM contexts after every batch MSM for isolation, so these rates are not comparable with the one-proof-at-a-time rates above. One run per batch size."
+    ],
+    "stack": true,
+    "empty": ""
+  }
+}

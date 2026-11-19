@@ -1,0 +1,68 @@
+name: GPU prover without CUDA
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  merge_group:
+  push:
+    branches:
+      - main
+      - next
+
+permissions:
+  contents: read
+
+jobs:
+  no-cuda:
+    name: No CUDA (${{ matrix.features }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        features: [default, gpu, all]
+    env:
+      FEATURE_SET: ${{ matrix.features }}
+      NVCC: /nonexistent
+      CARGO_BUILD_JOBS: 8
+      CARGO_PROFILE_DEV_DEBUG: 0
+      RAYON_NUM_THREADS: 4
+      RUST_TEST_THREADS: 2
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Assert nvcc is absent
+        run: .github/scripts/gpu-nocuda.sh "$FEATURE_SET" preflight
+
+      - name: Install rust-toolchain.toml
+        run: rustup toolchain install
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          shared-key: gpu-nocuda-${{ matrix.features }}
+
+      - name: Fetch locked dependencies
+        run: cargo fetch --locked
+
+      - name: Check that required CUDA refuses a missing toolkit
+        if: matrix.features == 'gpu'
+        run: .github/scripts/gpu-nocuda.sh "$FEATURE_SET" require-cuda
+
+      - name: Build workspace
+        run: .github/scripts/gpu-nocuda.sh "$FEATURE_SET" build
+
+      - name: Run Clippy on all targets
+        run: .github/scripts/gpu-nocuda.sh "$FEATURE_SET" clippy
+
+      - name: Check GPU crate documentation
+        run: .github/scripts/gpu-nocuda.sh "$FEATURE_SET" doc
+
+      - name: Test proofs and both GPU crates
+        run: .github/scripts/gpu-nocuda.sh "$FEATURE_SET" test
+
+      - name: Check for private names and paths
+        run: |
+          scripts/check-generic.test.sh
+          scripts/check-generic.sh

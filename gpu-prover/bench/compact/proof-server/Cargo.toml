@@ -1,0 +1,49 @@
+[package]
+name = "midnight-gpu-proof-server"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+license = "Apache-2.0"
+description = """
+The Midnight proof server 9.0.1 with the GPU hooks of midnight-proofs 0.8 installed
+before it starts: same routes, flags and environment variables as the stock server
+"""
+publish = false
+
+[[bin]]
+name = "gpu-proof-server"
+path = "src/main.rs"
+
+[workspace]
+
+[features]
+default = []
+# Links the backend crate `compact-bench-gpu`. The stub in ../gpu-backend-stub installs
+# nothing; scripts/build.sh hooked replaces it and midnight-proofs through `[patch]`.
+gpu = ["dep:compact-bench-gpu"]
+
+[dependencies]
+midnight-proof-server = { git = "https://github.com/midnightntwrk/midnight-ledger", rev = "a2b30128ca4b660b73a068e29b56b48ede8c9a74" }
+ledger = { git = "https://github.com/midnightntwrk/midnight-ledger", rev = "a2b30128ca4b660b73a068e29b56b48ede8c9a74", package = "midnight-ledger-v9", default-features = false, features = ["proving"] }
+base-crypto = { git = "https://github.com/midnightntwrk/midnight-ledger", rev = "a2b30128ca4b660b73a068e29b56b48ede8c9a74", package = "midnight-base-crypto" }
+transient-crypto = { git = "https://github.com/midnightntwrk/midnight-ledger", rev = "a2b30128ca4b660b73a068e29b56b48ede8c9a74", package = "midnight-transient-crypto" }
+compact-bench-gpu = { version = "0.1", optional = true }
+actix-web = { version = "^4.13.0", default-features = false, features = ["macros"] }
+clap = { version = "^4.5.40", features = ["derive", "env"] }
+futures = "^0.3.31"
+tracing = "^0.1.41"
+tracing-subscriber = "^0.3.19"
+
+[dev-dependencies]
+zkir-v3 = { git = "https://github.com/midnightntwrk/midnight-zkir", tag = "zkir-3.2.0", package = "midnight-zkir" }
+
+# The same entries as the midnight-ledger workspace at this revision (its own [patch] does
+# not apply to a git dependency), plus the backend stub.
+[patch.crates-io]
+compact-bench-gpu = { path = "../gpu-backend-stub" }
+midnight-base-crypto = { git = "https://github.com/midnightntwrk/midnight-ledger", rev = "a2b30128ca4b660b73a068e29b56b48ede8c9a74" }
+midnight-serialize = { git = "https://github.com/midnightntwrk/midnight-ledger", rev = "a2b30128ca4b660b73a068e29b56b48ede8c9a74" }
+midnight-transient-crypto = { git = "https://github.com/midnightntwrk/midnight-ledger", rev = "a2b30128ca4b660b73a068e29b56b48ede8c9a74" }
+
+[profile.release]
+debug = 1

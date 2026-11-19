@@ -229,8 +229,13 @@ impl<F: Field, L: Layouter<F>> Layouter<F> for TracingLayouter<F, L> {
 }
 
 fn debug_value_and_return_cell<F: Field, V: fmt::Debug>(value: AssignedCell<V, F>) -> Cell {
+    #[cfg(not(feature = "gpu"))]
     if let Some(v) = value.value().into_option() {
         debug!(target: "assigned", value = ?v);
+    }
+    #[cfg(feature = "gpu")]
+    if value.value().into_option().is_some() {
+        debug!(target: "assigned", value = super::redact::WITHHELD);
     }
     value.cell()
 }
@@ -281,11 +286,20 @@ impl<F: Field> RegionLayouter<F> for TracingRegion<'_, F> {
         offset: usize,
         constant: Rational<F>,
     ) -> Result<Cell, Error> {
+        #[cfg(not(feature = "gpu"))]
         let _guard = debug_span!("assign_advice_from_constant",
             name = annotation(),
             column = ?column,
             offset = offset,
             constant = ?constant,
+        )
+        .entered();
+        #[cfg(feature = "gpu")]
+        let _guard = debug_span!("assign_advice_from_constant",
+            name = annotation(),
+            column = ?column,
+            offset = offset,
+            constant = super::redact::WITHHELD,
         )
         .entered();
         debug!(target: "layouter", "Entered");
@@ -314,8 +328,13 @@ impl<F: Field> RegionLayouter<F> for TracingRegion<'_, F> {
         self.0
             .assign_advice_from_instance(annotation, instance, row, advice, offset)
             .map(|value| {
+                #[cfg(not(feature = "gpu"))]
                 if let Some(v) = value.value().into_option() {
                     debug!(target: "assigned", value = ?v);
+                }
+                #[cfg(feature = "gpu")]
+                if value.value().into_option().is_some() {
+                    debug!(target: "assigned", value = super::redact::WITHHELD);
                 }
                 (value.cell(), value.value().cloned())
             })
@@ -346,7 +365,10 @@ impl<F: Field> RegionLayouter<F> for TracingRegion<'_, F> {
     }
 
     fn constrain_constant(&mut self, cell: Cell, constant: Rational<F>) -> Result<(), Error> {
+        #[cfg(not(feature = "gpu"))]
         debug!(target: "constrain_constant", cell = ?cell, constant = ?constant);
+        #[cfg(feature = "gpu")]
+        debug!(target: "constrain_constant", cell = ?cell, constant = super::redact::WITHHELD);
         self.0.constrain_constant(cell, constant)
     }
 
@@ -410,7 +432,10 @@ impl<F: Field, CS: Assignment<F>> Assignment<F> for TracingAssignment<'_, F, CS>
         if self.in_region {
             debug!(target: "position", row = row);
         } else {
+            #[cfg(not(feature = "gpu"))]
             debug!(target: "enable_selector", name = annotation, row = row);
+            #[cfg(feature = "gpu")]
+            debug!(target: "enable_selector", name = super::redact::scrub_annotation(&annotation), row = row);
         }
         self.cs.enable_selector(|| annotation, selector, row)
     }
@@ -438,7 +463,10 @@ impl<F: Field, CS: Assignment<F>> Assignment<F> for TracingAssignment<'_, F, CS>
         if self.in_region {
             debug!(target: "position", row = row);
         } else {
+            #[cfg(not(feature = "gpu"))]
             debug!(target: "assign_advice", name = annotation, column = ?column, row = row);
+            #[cfg(feature = "gpu")]
+            debug!(target: "assign_advice", name = super::redact::scrub_annotation(&annotation), column = ?column, row = row);
         }
         self.cs.assign_advice(|| annotation, column, row, to)
     }
@@ -460,7 +488,10 @@ impl<F: Field, CS: Assignment<F>> Assignment<F> for TracingAssignment<'_, F, CS>
         if self.in_region {
             debug!(target: "position", row = row);
         } else {
+            #[cfg(not(feature = "gpu"))]
             debug!(target: "assign_fixed", name = annotation, column = ?column, row = row);
+            #[cfg(feature = "gpu")]
+            debug!(target: "assign_fixed", name = super::redact::scrub_annotation(&annotation), column = ?column, row = row);
         }
         self.cs.assign_fixed(|| annotation, column, row, to)
     }

@@ -581,6 +581,20 @@ impl<E: KZGEngine> InterleavedCommit<E::Fr> for KZGCommitmentScheme<E> {
 /// [`msm_pippenger`]. Test builds also compute it with the verifier's MSM
 /// ([`msm_specific`](msm::msm_specific)) and check that both agree.
 fn commit_msm<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
+    // With the feature `gpu`, a BLS12-381 G1 MSM is offered to the installed
+    // hooks first, on the caller's slices (the result is the same group
+    // element). Test builds (and the test-only feature `gpu-test`) check a
+    // served MSM against `msm_pippenger`.
+    #[cfg(feature = "gpu")]
+    if let Some(res) = crate::gpu::msm::<C, C::Scalar, C::Curve>(coeffs, bases) {
+        #[cfg(any(test, feature = "gpu-test"))]
+        assert!(
+            res == msm_pippenger(coeffs, bases),
+            "the MSM hook disagrees with msm_pippenger on {} terms",
+            coeffs.len()
+        );
+        return res;
+    }
     let res = msm_pippenger(coeffs, bases);
     #[cfg(test)]
     assert_eq!(
