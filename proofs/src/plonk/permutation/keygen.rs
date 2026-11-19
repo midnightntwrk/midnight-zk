@@ -6,7 +6,7 @@ use rayon::iter::{
 use super::Argument;
 use crate::{
     plonk::{Any, Column, Error},
-    poly::{Coeff, EvaluationDomain, ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial},
+    poly::{Coeff, EvaluationDomain, ExtendedLagrangeCoeff, FftDomain, LagrangeCoeff, Polynomial},
     utils::arithmetic::parallelize,
 };
 
@@ -180,20 +180,21 @@ pub(crate) fn compute_permutations<F: PrimeField>(
 
 #[allow(clippy::type_complexity)]
 pub(crate) fn compute_polys_and_cosets<F: PrimeField>(
-    domain: &EvaluationDomain<F>,
+    fft_domain: &FftDomain<F>,
     p: &Argument,
     permutations: &[Polynomial<F, LagrangeCoeff>],
 ) -> (
     Vec<Polynomial<F, Coeff>>,
     Vec<Polynomial<F, ExtendedLagrangeCoeff>>,
 ) {
+    let domain = fft_domain.domain();
     let mut polys = vec![domain.empty_coeff(); p.columns.len()];
     {
         parallelize(&mut polys, |o, start| {
             for (x, poly) in o.iter_mut().enumerate() {
                 let i = start + x;
                 let permutation_poly = permutations[i].clone();
-                *poly = domain.lagrange_to_coeff(permutation_poly);
+                *poly = fft_domain.lagrange_to_coeff(permutation_poly);
             }
         });
     }
@@ -203,7 +204,7 @@ pub(crate) fn compute_polys_and_cosets<F: PrimeField>(
             for (x, coset) in o.iter_mut().enumerate() {
                 let i = start + x;
                 let poly = polys[i].clone();
-                *coset = domain.coeff_to_extended(poly);
+                *coset = fft_domain.coeff_to_extended(poly);
             }
         });
     }

@@ -23,8 +23,9 @@ use crate::{
     circuit::Value,
     plonk::{ProofField, argument, traces::ProverTrace},
     poly::{
-        Coeff, EvaluationDomain, ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial, PolynomialLabel,
-        ProverQuery, Rotation, batch_invert_rational, commitment::PolynomialCommitmentScheme,
+        Coeff, EvaluationDomain, ExtendedLagrangeCoeff, FftDomain, LagrangeCoeff, Polynomial,
+        PolynomialLabel, ProverQuery, Rotation, batch_invert_rational,
+        commitment::PolynomialCommitmentScheme,
     },
     transcript::{Hashable, Transcript},
     utils::{
@@ -268,10 +269,10 @@ where
         instance_values,
     } = instance;
 
-    let domain = pk.vk.get_domain();
+    let fft_domain = &pk.fft_domain;
 
-    let phase1_committed = phase1_committed.into_coeff(domain);
-    let phase2_committed = phase2_committed.into_coeff(domain);
+    let phase1_committed = phase1_committed.into_coeff(fft_domain);
+    let phase2_committed = phase2_committed.into_coeff(fft_domain);
 
     Ok(ProverTrace {
         instance_polys,
@@ -316,7 +317,7 @@ where
     // Construct the quotient polynomial h(X) = nu(X)/(X^n-1), split it into limbs,
     // and commit to the limbs as one group
     let quotient_committed =
-        compute_h_poly::<F, PCS, T>(params, pk.get_vk().get_domain(), nu_poly, transcript)?;
+        compute_h_poly::<F, PCS, T>(params, &pk.fft_domain, nu_poly, transcript)?;
 
     let ProverTrace {
         instance_polys,
@@ -470,7 +471,7 @@ where
         .iter()
         .map(|poly| {
             let lagrange_vec = pk.vk.domain.lagrange_from_vec(poly.to_vec());
-            pk.vk.domain.lagrange_to_coeff(lagrange_vec)
+            pk.fft_domain.lagrange_to_coeff(lagrange_vec)
         })
         .collect();
 
@@ -562,23 +563,23 @@ pub(super) fn compute_nu_poly<F: PrimeField, PCS: PolynomialCommitmentScheme<F>>
         y,
         ..
     } = &trace;
-    let domain = pk.vk.get_domain();
+    let fft_domain = &pk.fft_domain;
     // Calculate the advice and instance cosets
     let advice_cosets: Vec<Polynomial<F, ExtendedLagrangeCoeff>> = phase1_committed
         .polys_of(&pk.vk.cs.advice_labels())
         .par_iter()
-        .map(|poly| domain.coeff_to_extended(poly.clone()))
+        .map(|poly| fft_domain.coeff_to_extended(poly.clone()))
         .collect();
     let instance_cosets: Vec<Polynomial<F, ExtendedLagrangeCoeff>> = instance_polys
         .par_iter()
-        .map(|poly| domain.coeff_to_extended(poly.clone()))
+        .map(|poly| fft_domain.coeff_to_extended(poly.clone()))
         .collect();
 
     // Evaluate the numerator polynomial nu(X) of the quotient polynomial
     // h(X) = nu(X) / (X^n-1): nu(X) is a random linear combination of all
     // independent identities
     pk.ev.evaluate_numerator::<ExtendedLagrangeCoeff>(
-        &pk.vk.domain,
+        fft_domain,
         &pk.vk.cs,
         &advice_cosets,
         &instance_cosets,
@@ -611,7 +612,7 @@ pub(super) fn compute_nu_poly<F: PrimeField, PCS: PolynomialCommitmentScheme<F>>
 /// If `n < quotient_poly_degree + 2`, as the limbs could not hold `h(X)`.
 pub(crate) fn compute_h_poly<F, PCS, T>(
     params: &PCS::Parameters,
-    domain: &EvaluationDomain<F>,
+    fft_domain: &FftDomain<F>,
     nu_poly: Polynomial<F, ExtendedLagrangeCoeff>,
     transcript: &mut T,
 ) -> Result<argument::prover::Committed<F, Coeff>, Error>
@@ -621,11 +622,12 @@ where
     PCS::Commitment: Hashable<T::Hash>,
     T: Transcript,
 {
+    let domain = fft_domain.domain();
     // Construct quotient polynomial h(X) = nu(X) / (X^n - 1) in evaluation form
     let h_poly = domain.divide_by_vanishing_poly(nu_poly);
 
     // Convert h(X) to coefficient form
-    let mut h_poly = domain.extended_to_coeff(h_poly);
+    let mut h_poly = fft_domain.extended_to_coeff(h_poly);
 
     // Let n := size of evaluation domain
     // Let d := degree of constraint system

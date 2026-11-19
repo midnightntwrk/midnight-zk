@@ -5,9 +5,7 @@ use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterato
 use super::{ConstraintSystem, Expression};
 use crate::{
     plonk::{Any, argument},
-    poly::{
-        Coeff, EvaluationDomain, Polynomial, PolynomialLabel, PolynomialRepresentation, Rotation,
-    },
+    poly::{Coeff, FftDomain, Polynomial, PolynomialLabel, PolynomialRepresentation, Rotation},
     utils::arithmetic::parallelize,
 };
 
@@ -819,7 +817,7 @@ impl<F: PrimeField> Evaluator<F> {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn evaluate_numerator<B: PolynomialRepresentation>(
         &self,
-        domain: &EvaluationDomain<F>,
+        fft_domain: &FftDomain<F>,
         cs: &ConstraintSystem<F>,
         advice: &[Polynomial<F, B>],
         instance: &[Polynomial<F, B>],
@@ -836,6 +834,7 @@ impl<F: PrimeField> Evaluator<F> {
         l_active_row: &Polynomial<F, B>,
         permutation_cosets: &[Polynomial<F, B>],
     ) -> Polynomial<F, B> {
+        let domain = fft_domain.domain();
         let log_scale = B::k(domain) - domain.k();
         let omega = B::omega(domain);
         let log_n = B::k(domain);
@@ -874,7 +873,7 @@ impl<F: PrimeField> Evaluator<F> {
                         phase2_committed.poly(&PolynomialLabel::PermutationAccumulator(i)).expect(
                             "the phase-2 group has no polynomial for a permutation accumulator",
                         );
-                    B::coeff_to_self(domain, poly.clone())
+                    B::coeff_to_self(fft_domain, poly.clone())
                 })
                 .collect();
 
@@ -979,12 +978,15 @@ impl<F: PrimeField> Evaluator<F> {
 
                 // Compute cosets
 
-                let multiplicities_coset = B::coeff_to_self(domain, multiplicities_poly.clone());
+                let multiplicities_coset =
+                    B::coeff_to_self(fft_domain, multiplicities_poly.clone());
 
-                let helper_cosets: Vec<_> =
-                    helper_polys.into_iter().map(|h| B::coeff_to_self(domain, h.clone())).collect();
+                let helper_cosets: Vec<_> = helper_polys
+                    .into_iter()
+                    .map(|h| B::coeff_to_self(fft_domain, h.clone()))
+                    .collect();
 
-                let aggregator_poly = B::coeff_to_self(domain, aggregator_poly.clone());
+                let aggregator_poly = B::coeff_to_self(fft_domain, aggregator_poly.clone());
 
                 (helper_cosets, aggregator_poly, multiplicities_coset)
             })
@@ -995,7 +997,7 @@ impl<F: PrimeField> Evaluator<F> {
         let trash_cosets: Vec<_> = phase2_committed
             .par_polys()
             .filter_map(|(label, trash_poly)| match label {
-                PolynomialLabel::Trash(_) => Some(B::coeff_to_self(domain, trash_poly.clone())),
+                PolynomialLabel::Trash(_) => Some(B::coeff_to_self(fft_domain, trash_poly.clone())),
                 _ => None,
             })
             .collect();

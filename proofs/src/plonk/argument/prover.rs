@@ -11,8 +11,8 @@ use crate::{
         argument::{self, Evaluation},
     },
     poly::{
-        Coeff, EvaluationDomain, Polynomial, PolynomialLabel, PolynomialRepresentation,
-        ProverQuery, Rotation, commitment::PolynomialCommitmentScheme,
+        Coeff, FftDomain, Polynomial, PolynomialLabel, PolynomialRepresentation, ProverQuery,
+        Rotation, commitment::PolynomialCommitmentScheme,
     },
     transcript::{Hashable, Transcript},
     utils::arithmetic::eval_polynomial,
@@ -64,10 +64,10 @@ impl<F: PrimeField, B: PolynomialRepresentation> Committed<F, B> {
 }
 
 impl<F: PrimeField, B: PolynomialRepresentation> Committed<F, B> {
-    pub fn into_coeff(self, domain: &EvaluationDomain<F>) -> Committed<F, Coeff> {
+    pub fn into_coeff(self, fft_domain: &FftDomain<F>) -> Committed<F, Coeff> {
         Committed {
             labels: self.labels,
-            polys: self.polys.into_par_iter().map(|p| B::self_to_coeff(domain, p)).collect(),
+            polys: self.polys.into_par_iter().map(|p| B::self_to_coeff(fft_domain, p)).collect(),
         }
     }
 }

@@ -17,7 +17,7 @@ use crate::{
     circuit::Value,
     dev::cost_model::cost_model_options,
     poly::{
-        EvaluationDomain, ExtendedLagrangeCoeff, batch_invert_rational,
+        EvaluationDomain, ExtendedLagrangeCoeff, FftDomain, batch_invert_rational,
         commitment::PolynomialCommitmentScheme,
     },
     utils::{arithmetic::parallelize, rational::Rational},
@@ -323,14 +323,16 @@ where
     fixed.extend(selector_polys.into_iter().map(|poly| vk.domain.lagrange_from_vec(poly)));
 
     let permutations = assembly.permutation.into_permutations::<F>(&vk.domain, &cs.permutation);
+    let fft_domain = FftDomain::new(&vk.domain);
     let (phase0_polys, fixed_cosets, sigmas) =
-        super::build_phase0_polys(&vk.domain, &cs, vk.transcript_repr, &fixed, permutations);
+        super::build_phase0_polys(&fft_domain, &cs, vk.transcript_repr, &fixed, permutations);
 
-    let [l0, l_last, l_active_row] = compute_lagrange_polys(&vk, &cs);
+    let [l0, l_last, l_active_row] = compute_lagrange_polys(&vk, &fft_domain, &cs);
     // Compute the optimized evaluation data structure
     let ev = Evaluator::new(&vk.cs);
     Ok(ProvingKey {
         vk,
+        fft_domain,
         l0,
         l_last,
         l_active_row,
@@ -345,6 +347,7 @@ where
 
 pub(crate) fn compute_lagrange_polys<F, PCS>(
     vk: &VerifyingKey<F, PCS>,
+    fft_domain: &FftDomain<F>,
     cs: &ConstraintSystem<F>,
 ) -> [Polynomial<F, ExtendedLagrangeCoeff>; 3]
 where
@@ -355,8 +358,8 @@ where
     // TODO: this can be done more efficiently
     let mut l0 = vk.domain.empty_lagrange();
     l0[0] = F::ONE;
-    let l0 = vk.domain.lagrange_to_coeff(l0);
-    let l0 = vk.domain.coeff_to_extended(l0);
+    let l0 = fft_domain.lagrange_to_coeff(l0);
+    let l0 = fft_domain.coeff_to_extended(l0);
 
     // Compute l_blind(X) which evaluates to 1 for each blinding factor row
     // and 0 otherwise over the domain.
@@ -364,16 +367,16 @@ where
     for evaluation in l_blind[..].iter_mut().rev().take(cs.blinding_factors()) {
         *evaluation = F::ONE;
     }
-    let l_blind = vk.domain.lagrange_to_coeff(l_blind);
-    let l_blind = vk.domain.coeff_to_extended(l_blind);
+    let l_blind = fft_domain.lagrange_to_coeff(l_blind);
+    let l_blind = fft_domain.coeff_to_extended(l_blind);
 
     // Compute l_last(X) which evaluates to 1 on the first inactive row (just
     // before the blinding factors) and 0 otherwise over the domain
     let mut l_last = vk.domain.empty_lagrange();
     let n = vk.domain.n as usize;
     l_last[n - cs.blinding_factors() - 1] = F::ONE;
-    let l_last = vk.domain.lagrange_to_coeff(l_last);
-    let l_last = vk.domain.coeff_to_extended(l_last);
+    let l_last = fft_domain.lagrange_to_coeff(l_last);
+    let l_last = fft_domain.coeff_to_extended(l_last);
 
     // Compute l_active_row(X)
     let one = F::ONE;
