@@ -44,10 +44,9 @@ impl<F: CircuitField> RangeCheckChip<F> {
     ///   one.
     /// - a decomposition in limbs of `s` bits: the limbs in linked groups, with
     ///   `tag = tag_msl = s` and `b = 2^s`, and `x` as the output of the first
-    ///   one.
-    pub(super) fn layout(&self, pending: &Pending<F>) -> Groups<F> {
+    ///   one. The lanes without a limb are copies of the fixed `zero`.
+    pub(super) fn layout(&self, pending: &Pending<F>, zero: &AssignedNative<F>) -> Groups<F> {
         let t = self.config.max_bit_len;
-        let zero = || AssignedNative::free(Value::known(F::ZERO));
         let mut groups = Groups::new();
         // The checks with `n <= T`, by `n`, which take a single lane each.
         let mut single_lane: BTreeMap<usize, Vec<AssignedNative<F>>> = BTreeMap::new();
@@ -78,7 +77,7 @@ impl<F: CircuitField> RangeCheckChip<F> {
                     acc * Value::known(pow2::<F>(t)) + x.value().copied()
                 });
                 groups.entry((n, n, t)).or_default().push(Group {
-                    lanes: std::array::from_fn(|j| chunk.get(j).cloned().unwrap_or_else(zero)),
+                    lanes: std::array::from_fn(|j| chunk.get(j).unwrap_or(zero).clone()),
                     out: AssignedNative::free(out),
                     link: false,
                 });
@@ -93,9 +92,7 @@ impl<F: CircuitField> RangeCheckChip<F> {
                     acc * Value::known(pow2::<F>(size)) + l.value().copied()
                 });
                 groups.entry((size, size, size)).or_default().push(Group {
-                    lanes: std::array::from_fn(|j| {
-                        limbs.get(4 * i + j).cloned().unwrap_or_else(zero)
-                    }),
+                    lanes: std::array::from_fn(|j| limbs.get(4 * i + j).unwrap_or(zero).clone()),
                     out: match i {
                         0 => x.clone(),
                         _ => AssignedNative::free(rest),

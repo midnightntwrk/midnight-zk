@@ -330,7 +330,7 @@ impl ZkStdLib {
     /// Creates a new [ZkStdLib] given its config.
     pub fn new(config: &ZkStdLibConfig) -> Self {
         let native_chip = NativeChip::new(&config.native_config, &());
-        let range_check_chip = RangeCheckChip::new(&config.range_check_config, &());
+        let range_check_chip = RangeCheckChip::new(&config.range_check_config, &native_chip);
         let native_gadget = NativeGadget::new(native_chip.clone(), range_check_chip.clone());
         let jubjub_chip = (config.jubjub_config.as_ref())
             .map(|jubjub_config| EccChip::new(jubjub_config, &native_gadget));
