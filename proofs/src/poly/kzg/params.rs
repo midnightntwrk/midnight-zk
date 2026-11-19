@@ -473,7 +473,7 @@ mod test {
 
         use midnight_curves::{Bls12, Fq};
 
-        use crate::poly::EvaluationDomain;
+        use crate::poly::{EvaluationDomain, FftDomain};
 
         let params: ParamsKZG<Bls12> = ParamsKZG::unsafe_setup(K, OsRng);
         let domain = EvaluationDomain::new(1, K);
@@ -484,7 +484,7 @@ mod test {
             *a = Fq::from(i as u64);
         }
 
-        let b = domain.lagrange_to_coeff(a.clone());
+        let b = FftDomain::new(&domain).lagrange_to_coeff(a.clone());
 
         let tmp = KZGCommitmentScheme::commit(&params, &a, PolynomialLabel::NoLabel);
         let com = KZGCommitmentScheme::commit(&params, &b, PolynomialLabel::NoLabel);

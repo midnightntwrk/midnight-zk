@@ -403,8 +403,8 @@ where
     let instance_polys = instance.instance_polys;
     let instance_values = instance.instance_values;
 
-    let phase1_committed = phase1_committed.into_coeff(domain);
-    let phase2_committed = phase2_committed.into_coeff(domain);
+    let phase1_committed = phase1_committed.into_coeff(&pk.fft_domain);
+    let phase2_committed = phase2_committed.into_coeff(&pk.fft_domain);
 
     Ok(ProverTrace {
         instance_polys,
@@ -465,7 +465,7 @@ where
                 |mut t| {
                     let _ = compute_h_poly::<F, PCS, T>(
                         params,
-                        pk.get_vk().get_domain(),
+                        &pk.fft_domain,
                         nu_poly.clone(),
                         &mut t,
                     );
@@ -473,7 +473,7 @@ where
                 criterion::BatchSize::SmallInput,
             )
         });
-        compute_h_poly::<F, PCS, T>(params, pk.get_vk().get_domain(), nu_poly, transcript)?
+        compute_h_poly::<F, PCS, T>(params, &pk.fft_domain, nu_poly, transcript)?
     };
 
     let ProverTrace {

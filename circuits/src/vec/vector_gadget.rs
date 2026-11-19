@@ -190,6 +190,8 @@ where
         input: &AssignedVector<F, T, M, A>,
         n_elems: usize,
     ) -> Result<AssignedVector<F, T, M, A>, Error> {
+        assert!(n_elems <= M, "Cannot trim more than {M} elements.");
+
         let ng = &self.native_gadget;
         let a_max_bits = (usize::BITS - A.leading_zeros()) as usize;
 

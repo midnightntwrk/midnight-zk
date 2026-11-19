@@ -312,7 +312,7 @@ mod tests {
     use super::Fflonk;
     use crate::{
         poly::{
-            EvaluationDomain, PolynomialLabel, ProverQuery, VerifierQuery,
+            EvaluationDomain, FftDomain, PolynomialLabel, ProverQuery, VerifierQuery,
             commitment::{Guard, PolynomialCommitmentScheme},
             kzg::{KZGCommitmentScheme, params::ParamsKZG},
         },
@@ -394,7 +394,9 @@ mod tests {
                 domain.lagrange_from_vec(values)
             })
             .collect();
-        let coeff: Vec<_> = lagrange.iter().map(|p| domain.lagrange_to_coeff(p.clone())).collect();
+        let fft_domain = FftDomain::new(&domain);
+        let coeff: Vec<_> =
+            lagrange.iter().map(|p| fft_domain.lagrange_to_coeff(p.clone())).collect();
         let delta: Vec<_> = lagrange.iter().map(|p| p.to_delta()).collect();
         let double_delta: Vec<_> = lagrange.iter().map(|p| p.to_double_delta()).collect();
         let labels: Vec<_> = (0..nb_polys).map(PolynomialLabel::Advice).collect();

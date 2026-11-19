@@ -92,6 +92,7 @@ pub fn get_lims<const M: usize, const A: usize>(len: usize) -> Range<usize> {
             "AssignedVector requires 0 < A <= M and A | M."
         )
     };
+    assert!(len <= M, "Length of the vector must be at most {M}");
     let final_pad_len = (A - (len % A)) % A;
     M - len - final_pad_len..M - final_pad_len
 }

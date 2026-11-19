@@ -12,15 +12,16 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * `verifier::InCircuitKZGEngine`, the `KZGEngine`s whose KZG proofs can be verified in-circuit, bounding the KZG types of the in-circuit verifier [#644](https://github.com/midnightntwrk/midnight-zk/pull/644)
 ### Fixed
 * Foreign Weierstrass `k_out_of_n_points` normalizes the table coordinates, so the selected points are well-formed [#668](https://github.com/midnightntwrk/midnight-zk/pull/668)
+* The foreign Weierstrass and Edwards ECC chips keep the dynamic-lookup tag counter in their config, so chips built with separate `new()` calls on the same config no longer reuse table tags [#658](https://github.com/midnightntwrk/midnight-zk/pull/658)
 * `BigUintGadget::mod_exp` reduces its result modulo `m` for every exponent, also when `n = 0` or `n = 1`, and rejects `m = 0` for every exponent [#595](https://github.com/midnightntwrk/midnight-zk/issues/595)
 * `BigUintGadget::div_rem` returns a synthesis error on a zero divisor instead of panicking [#595](https://github.com/midnightntwrk/midnight-zk/issues/595)
 * Foreign Weierstrass `point_from_coordinates` no longer assigns the identity as the off-circuit value of points outside the prime-order subgroup (BLS12-381); such coordinates are now rejected [#654](https://github.com/midnightntwrk/midnight-zk/pull/654)
 * `CircuitCurve::coordinates` for P256 returns `None` on the identity, as on the other Weierstrass curves [#654](https://github.com/midnightntwrk/midnight-zk/pull/654)
 * `CircuitCurve::from_xy` for Jubjub checks the curve equation on both coordinates. [#654](https://github.com/midnightntwrk/midnight-zk/pull/654)
+* `VectorInstructions::trim_beginning` with `n_elems > M` and the `AssignedVector` comparisons with a constant longer than `M` (`is_equal_to_fixed`, `assert_equal_to_fixed` and their negations) panic with a descriptive message instead of underflowing. [#662](https://github.com/midnightntwrk/midnight-zk/pull/662)
 ### Changed
 * Foreign Weierstrass `point_from_coordinates` enforces membership in the prime-order subgroup on curves with a non-trivial cofactor (BLS12-381), as documented in `EccInstructions` [#654](https://github.com/midnightntwrk/midnight-zk/pull/654)
 * `AssignmentInstructions::as_constant`, the constant an assigned element is known to encode at circuit-construction time, if any [#655](https://github.com/midnightntwrk/midnight-zk/pull/655)
-### Changed
 * Native and emulated field arithmetic and the foreign MSM use `as_constant` to simplify operations with constant operands, which changes the VKs of circuits that use them [#655](https://github.com/midnightntwrk/midnight-zk/pull/655)
 * `NativeChip::assign` and `assign_many` create elements that are not assigned to a cell yet: an element is assigned to the first cell it is copied to (or to the cell of an element it is constrained to be equal to), saving the rows of the assignment. Unused elements are never assigned. This changes the verifying keys of all circuits [#620](https://github.com/midnightntwrk/midnight-zk/pull/620)
 * `AssignedNative<F>` is a struct instead of an alias of `AssignedCell<F, F>`; convert from `AssignedCell<F, F>` with `AssignedNative::from_cell` and to it with `From`. Two `AssignedNative`s are equal iff they are assigned to the same cell, or neither is assigned to a cell and one is a clone of the other [#620](https://github.com/midnightntwrk/midnight-zk/pull/620)

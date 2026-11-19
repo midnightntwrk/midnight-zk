@@ -10,7 +10,8 @@ use midnight_curves::fft::{best_fft_with_twiddles, compute_twiddles, fft_coeff_t
 use super::{Coeff, ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial, Rotation};
 use crate::utils::{arithmetic::parallelize, rational::Rational};
 
-/// Precomputed twiddle factors for the FFT.
+/// An [`EvaluationDomain`] with the precomputed twiddle factors of its FFTs.
+/// Only the prover runs FFTs, so a `ProvingKey` holds one.
 ///
 /// Twiddle factors are the powers of the root of unity used in the
 /// butterfly operations of the Cooley-Tukey FFT:
@@ -20,7 +21,8 @@ use crate::utils::{arithmetic::parallelize, rational::Rational};
 /// Four sets are stored: forward and inverse for both the base domain (size
 /// 2^k) and the extended domain (size 2^extended_k).
 #[derive(Clone, Debug)]
-struct CachedTwiddles<F: Field> {
+pub struct FftDomain<F: Field> {
+    domain: EvaluationDomain<F>,
     omega: Vec<F>,
     omega_inv: Vec<F>,
     extended_omega: Vec<F>,
@@ -38,6 +40,7 @@ pub struct EvaluationDomain<F: Field> {
     omega: F,
     omega_inv: F,
     extended_omega: F,
+    extended_omega_inv: F,
     pub(crate) g_coset: F,
     g_coset_inv: F,
     quotient_poly_degree: u64,
@@ -45,7 +48,6 @@ pub struct EvaluationDomain<F: Field> {
     extended_ifft_divisor: F,
     t_evaluations: Vec<F>,
     barycentric_weight: F,
-    twiddles: CachedTwiddles<F>,
 }
 
 impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
@@ -140,14 +142,6 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
             .chain(Some(&mut omega_inv))
             .batch_invert();
 
-        // Precompute twiddle factors for all FFT configurations.
-        let twiddles = CachedTwiddles {
-            omega: compute_twiddles(&omega, k),
-            omega_inv: compute_twiddles(&omega_inv, k),
-            extended_omega: compute_twiddles(&extended_omega, extended_k),
-            extended_omega_inv: compute_twiddles(&extended_omega_inv, extended_k),
-        };
-
         EvaluationDomain {
             n,
             k,
@@ -155,6 +149,7 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
             omega,
             omega_inv,
             extended_omega,
+            extended_omega_inv,
             g_coset,
             g_coset_inv,
             quotient_poly_degree,
@@ -162,7 +157,6 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
             extended_ifft_divisor,
             t_evaluations,
             barycentric_weight,
-            twiddles,
         }
     }
 }
@@ -243,20 +237,38 @@ impl<F: PrimeField> EvaluationDomain<F> {
             _marker: PhantomData,
         }
     }
+}
+
+impl<F: PrimeField> FftDomain<F> {
+    /// Precomputes the twiddle factors of the FFTs over `domain`.
+    pub fn new(domain: &EvaluationDomain<F>) -> Self {
+        FftDomain {
+            domain: domain.clone(),
+            omega: compute_twiddles(&domain.omega, domain.k),
+            omega_inv: compute_twiddles(&domain.omega_inv, domain.k),
+            extended_omega: compute_twiddles(&domain.extended_omega, domain.extended_k),
+            extended_omega_inv: compute_twiddles(&domain.extended_omega_inv, domain.extended_k),
+        }
+    }
+
+    /// The evaluation domain of these FFTs.
+    pub fn domain(&self) -> &EvaluationDomain<F> {
+        &self.domain
+    }
 
     /// This takes us from an n-length vector into the coefficient form.
     ///
     /// This function will panic if the provided vector does not have the
     /// correct length.
     pub fn lagrange_to_coeff(&self, mut a: Polynomial<F, LagrangeCoeff>) -> Polynomial<F, Coeff> {
-        assert_eq!(a.values.len(), 1 << self.k);
+        assert_eq!(a.values.len(), 1 << self.domain.k);
 
         // Perform inverse FFT using cached twiddle factors.
-        Self::ifft(
+        EvaluationDomain::ifft(
             &mut a.values,
-            &self.twiddles.omega_inv,
-            self.k,
-            self.ifft_divisor,
+            &self.omega_inv,
+            self.domain.k,
+            self.domain.ifft_divisor,
         );
 
         Polynomial {
@@ -268,9 +280,9 @@ impl<F: PrimeField> EvaluationDomain<F> {
     /// This takes us from an n-length coefficient vector into the
     /// lagrange evaluation domain.
     pub fn coeff_to_lagrange(&self, mut a: Polynomial<F, Coeff>) -> Polynomial<F, LagrangeCoeff> {
-        assert_eq!(a.values.len(), 1 << self.k);
+        assert_eq!(a.values.len(), 1 << self.domain.k);
 
-        best_fft_with_twiddles(&mut a.values, &self.twiddles.omega, self.k);
+        best_fft_with_twiddles(&mut a.values, &self.omega, self.domain.k);
 
         Polynomial {
             values: a.values,
@@ -289,14 +301,14 @@ impl<F: PrimeField> EvaluationDomain<F> {
         mut a: Polynomial<F, Coeff>,
     ) -> Polynomial<F, ExtendedLagrangeCoeff> {
         let n_real = a.values.len();
-        assert_eq!(n_real, 1 << self.k);
+        assert_eq!(n_real, 1 << self.domain.k);
 
-        self.distribute_powers_zeta(&mut a.values, true);
-        a.values.resize(self.extended_len(), F::ZERO);
+        self.domain.distribute_powers_zeta(&mut a.values, true);
+        a.values.resize(self.domain.extended_len(), F::ZERO);
         fft_coeff_to_extended(
             &mut a.values,
-            &self.twiddles.extended_omega,
-            self.extended_k,
+            &self.extended_omega,
+            self.domain.extended_k,
             n_real,
         );
 
@@ -312,19 +324,19 @@ impl<F: PrimeField> EvaluationDomain<F> {
     /// This function will panic if the provided vector does not have the
     /// correct length.
     pub fn extended_to_coeff(&self, mut a: Polynomial<F, ExtendedLagrangeCoeff>) -> Vec<F> {
-        assert_eq!(a.values.len(), self.extended_len());
+        assert_eq!(a.values.len(), self.domain.extended_len());
 
         // Inverse FFT using cached twiddle factors.
-        Self::ifft(
+        EvaluationDomain::ifft(
             &mut a.values,
-            &self.twiddles.extended_omega_inv,
-            self.extended_k,
-            self.extended_ifft_divisor,
+            &self.extended_omega_inv,
+            self.domain.extended_k,
+            self.domain.extended_ifft_divisor,
         );
 
         // Distribute powers to move from coset; opposite from the
         // transformation we performed earlier.
-        self.distribute_powers_zeta(&mut a.values, false);
+        self.domain.distribute_powers_zeta(&mut a.values, false);
 
         a.values
     }
@@ -338,26 +350,28 @@ impl<F: PrimeField> EvaluationDomain<F> {
         &self,
         mut a: Polynomial<F, ExtendedLagrangeCoeff>,
     ) -> Polynomial<F, LagrangeCoeff> {
-        assert_eq!(a.values.len(), self.extended_len());
+        assert_eq!(a.values.len(), self.domain.extended_len());
 
-        Self::ifft(
+        EvaluationDomain::ifft(
             &mut a.values,
-            &self.twiddles.extended_omega_inv,
-            self.extended_k,
-            self.extended_ifft_divisor,
+            &self.extended_omega_inv,
+            self.domain.extended_k,
+            self.domain.extended_ifft_divisor,
         );
 
-        a.values.truncate(self.n as usize);
-        self.distribute_powers_zeta(&mut a.values, false);
+        a.values.truncate(self.domain.n as usize);
+        self.domain.distribute_powers_zeta(&mut a.values, false);
 
-        best_fft_with_twiddles(&mut a.values, &self.twiddles.omega, self.k);
+        best_fft_with_twiddles(&mut a.values, &self.omega, self.domain.k);
 
         Polynomial {
             values: a.values,
             _marker: PhantomData,
         }
     }
+}
 
+impl<F: PrimeField> EvaluationDomain<F> {
     /// This divides the polynomial (in the extended domain) by the vanishing
     /// polynomial of the $2^k$ size domain.
     pub fn divide_by_vanishing_poly(
@@ -559,10 +573,11 @@ fn test_rotate() {
     let poly_rotated_next = poly.rotate(Rotation::next());
     let poly_rotated_prev = poly.rotate(Rotation::prev());
 
-    let poly = domain.lagrange_to_coeff(poly);
-    let poly_rotated_cur = domain.lagrange_to_coeff(poly_rotated_cur);
-    let poly_rotated_next = domain.lagrange_to_coeff(poly_rotated_next);
-    let poly_rotated_prev = domain.lagrange_to_coeff(poly_rotated_prev);
+    let fft_domain = FftDomain::new(&domain);
+    let poly = fft_domain.lagrange_to_coeff(poly);
+    let poly_rotated_cur = fft_domain.lagrange_to_coeff(poly_rotated_cur);
+    let poly_rotated_next = fft_domain.lagrange_to_coeff(poly_rotated_next);
+    let poly_rotated_prev = fft_domain.lagrange_to_coeff(poly_rotated_prev);
 
     let x = Scalar::random(rng);
 
