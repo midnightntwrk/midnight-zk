@@ -17,7 +17,7 @@
 use std::{cell::RefCell, cmp::min, collections::HashMap, rc::Rc};
 
 use midnight_proofs::{
-    circuit::{Chip, Layouter, Value},
+    circuit::{Layouter, Value},
     plonk::Error,
 };
 use num_bigint::BigUint;
@@ -228,85 +228,6 @@ impl<F: CircuitField> InnerValue for AssignedBounded<F> {
     }
 }
 
-impl<F: CircuitField> NativeGadget<F> {
-    /// Asserts that `x < 2^n`: through the range-check chip if it takes
-    /// assertions of `n` bits, and otherwise on the limbs of `x` of sizes it
-    /// takes.
-    fn assert_lower_than_pow2(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        x: &AssignedNative<F>,
-        n: usize,
-    ) -> Result<(), Error> {
-        let chip = &self.range_check_chip;
-        if chip.is_supported_bound(n) {
-            return chip.assert_lower_than_pow2(layouter, x, n);
-        }
-        let t = chip.max_bit_len();
-        let (mut sizes, mut rest) = (vec![], n);
-        while rest > 0 {
-            let size = match rest {
-                _ if chip.is_supported_bound(rest) => rest,
-                _ if rest < 4 * t => t,
-                _ => 4 * t * (rest / (4 * t)),
-            };
-            sizes.push(size);
-            rest -= size;
-        }
-        self.decompose(layouter, x, &sizes).map(|_| ())
-    }
-
-    /// Decomposes `x` in range-checked limbs of the given bit sizes, in
-    /// little-endian order: `x = sum_i 2^(s_0 + ... + s_(i-1)) * limb_i`.
-    fn decompose(
-        &self,
-        layouter: &mut impl Layouter<F>,
-        x: &AssignedNative<F>,
-        sizes: &[usize],
-    ) -> Result<Vec<AssignedNative<F>>, Error> {
-        // Limbs of a common size of at most `T` bits are decomposed by the
-        // range-check chip itself.
-        if let Some(&s) = sizes.first()
-            && s <= self.range_check_chip.max_bit_len()
-            && sizes.iter().all(|&size| size == s)
-        {
-            return self.range_check_chip.decompose(layouter, x, s, sizes.len());
-        }
-
-        let limbs = layouter.assign_region(
-            || "decompose",
-            |mut region| {
-                let mut shift = 0;
-                let terms = sizes
-                    .iter()
-                    .map(|&size| {
-                        let limb = x.value().map(|x| {
-                            big_to_fe((x.to_biguint() >> shift) % (BigUint::from(1u8) << size))
-                        });
-                        shift += size;
-                        (big_to_fe(BigUint::from(1u8) << (shift - size)), limb)
-                    })
-                    .collect::<Vec<_>>();
-                let nb_cols = self.native_chip.config().value_cols.len() - 1;
-                let (limbs, y) = self.native_chip.assign_linear_combination_aux(
-                    &mut region,
-                    &terms,
-                    F::ZERO,
-                    &x.value().copied(),
-                    nb_cols,
-                    &mut 0,
-                )?;
-                x.constrain_equal(&mut region, &y)?;
-                Ok(limbs)
-            },
-        )?;
-        for (limb, &size) in limbs.iter().zip(sizes) {
-            self.assert_lower_than_pow2(layouter, limb, size)?;
-        }
-        Ok(limbs)
-    }
-}
-
 impl<F: CircuitField> RangeCheckInstructions<F, AssignedNative<F>> for NativeGadget<F> {
     fn assign_lower_than_fixed(
         &self,
@@ -339,7 +260,7 @@ impl<F: CircuitField> RangeCheckInstructions<F, AssignedNative<F>> for NativeGad
 
         // if the bound is a power of 2, the check is easier
         if two_pow_k == *bound {
-            self.assert_lower_than_pow2(layouter, x, k)?;
+            self.range_check_chip.assert_lower_than_pow2(layouter, x, k)?;
         } else {
             // b := x in [0, 2^k)
             let b_value = x.value().map(|x| x.to_biguint() < two_pow_k);
@@ -350,7 +271,7 @@ impl<F: CircuitField> RangeCheckInstructions<F, AssignedNative<F>> for NativeGad
             // x in [0, bound) <=> x in [0, 2^k) or (x - diff) in [0, 2^k)
             let shifted_x = self.add_constant(layouter, x, -diff)?;
             let y = self.select(layouter, &b, x, &shifted_x)?;
-            self.assert_lower_than_pow2(layouter, &y, k)?;
+            self.range_check_chip.assert_lower_than_pow2(layouter, &y, k)?;
         }
         self.update_bound(x, bound.clone());
         Ok(())
@@ -447,7 +368,7 @@ impl<F: CircuitField> ComparisonInstructions<F, AssignedNative<F>> for NativeGad
         ];
         let z = self.linear_combination(layouter, terms.as_slice(), -y)?;
 
-        self.assert_lower_than_pow2(layouter, &z, x.bound() as usize)?;
+        self.range_check_chip.assert_lower_than_pow2(layouter, &z, x.bound() as usize)?;
         Ok(assigned_result)
     }
 
@@ -491,7 +412,7 @@ impl<F: CircuitField> ComparisonInstructions<F, AssignedNative<F>> for NativeGad
         let z = self.linear_combination(layouter, terms.as_slice(), F::ZERO)?;
 
         let max_bound = x.bound().max(y.bound());
-        self.assert_lower_than_pow2(layouter, &z, max_bound as usize)?;
+        self.range_check_chip.assert_lower_than_pow2(layouter, &z, max_bound as usize)?;
         Ok(assigned_result)
     }
 
@@ -570,7 +491,7 @@ impl<F: CircuitField> AssignmentInstructions<F, AssignedByte<F>> for NativeGadge
     ) -> Result<AssignedByte<F>, Error> {
         let byte_as_f = byte.map(|b| F::from(b as u64));
         let assigned = self.native_chip.assign(layouter, byte_as_f)?;
-        self.assert_lower_than_pow2(layouter, &assigned, 8)?;
+        self.range_check_chip.assert_lower_than_pow2(layouter, &assigned, 8)?;
         Ok(AssignedByte(assigned))
     }
 
@@ -598,7 +519,7 @@ impl<F: CircuitField> AssignmentInstructions<F, AssignedByte<F>> for NativeGadge
         assigned
             .iter()
             .map(|x| {
-                self.assert_lower_than_pow2(layouter, x, 8)?;
+                self.range_check_chip.assert_lower_than_pow2(layouter, x, 8)?;
                 self.convert_unsafe(layouter, x)
             })
             .collect()
@@ -852,7 +773,7 @@ impl<F: CircuitField> DecompositionInstructions<F, AssignedNative<F>> for Native
             "assigned_to_le_bits: why do you need the output to have more bits than necessary?"
         );
 
-        let limbs = self.decompose(layouter, x, &vec![1; nb_bits])?;
+        let limbs = self.range_check_chip.decompose(layouter, x, &vec![1; nb_bits])?;
         let bits = limbs
             .iter()
             .map(|x| self.native_chip.convert_unsafe(layouter, x))
@@ -905,7 +826,7 @@ impl<F: CircuitField> DecompositionInstructions<F, AssignedNative<F>> for Native
         // If nb_bytes < ⌈F::NUM_BITS / 8⌉, wrap-arounds are not possible, so canonicity is always
         // guaranteed. In this case we can split in bytes more efficiently.
         else {
-            let limbs = self.decompose(layouter, x, &vec![8; nb_bytes])?;
+            let limbs = self.range_check_chip.decompose(layouter, x, &vec![8; nb_bytes])?;
             limbs
                 .iter()
                 .map(|x| self.convert_unsafe(layouter, x))
@@ -922,7 +843,8 @@ impl<F: CircuitField> DecompositionInstructions<F, AssignedNative<F>> for Native
     ) -> Result<Vec<AssignedNative<F>>, Error> {
         assert!(nb_bits_per_chunk < F::NUM_BITS as usize);
         let nb_chunks = nb_chunks.unwrap_or((F::NUM_BITS as usize).div_ceil(nb_bits_per_chunk));
-        self.decompose(layouter, x, &vec![nb_bits_per_chunk; nb_chunks])
+        self.range_check_chip
+            .decompose(layouter, x, &vec![nb_bits_per_chunk; nb_chunks])
     }
 
     fn sgn0(
@@ -1053,7 +975,7 @@ impl<F: CircuitField> AssignmentInstructions<F, AssignedBit<F>> for NativeGadget
         assigned
             .iter()
             .map(|x| {
-                self.assert_lower_than_pow2(layouter, x, 1)?;
+                self.range_check_chip.assert_lower_than_pow2(layouter, x, 1)?;
                 self.native_chip.convert_unsafe(layouter, x)
             })
             .collect()

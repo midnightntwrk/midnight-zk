@@ -108,9 +108,9 @@ fn satisfied(inputs: Vec<(F, Vec<usize>)>, mode: Mode) -> bool {
         .is_ok_and(|prover| prover.verify().is_ok())
 }
 
-/// Short checks, values of one group with every kind of top limb, and
-/// chains of up to three rows.
-const SIZES: [usize; 9] = [0, 1, 5, 8, 25, 26, 32, 64, 96];
+/// Short checks, values of one group with every kind of top limb, chains of
+/// up to three rows, and bounds split in limbs of equal and unequal sizes.
+const SIZES: [usize; 13] = [0, 1, 5, 8, 25, 26, 32, 64, 96, 9, 16, 24, 40];
 
 #[test]
 fn in_range() {
@@ -152,10 +152,4 @@ fn loading() {
 fn shared_between_chips() {
     assert!(satisfied(vec![(F::ONE, vec![8])], Mode::LoadOther));
     assert!(!satisfied(vec![(pow2::<F>(8), vec![8])], Mode::LoadOther));
-}
-
-#[test]
-#[should_panic(expected = "cannot assert x < 2^9")]
-fn unsupported_size() {
-    satisfied(vec![(F::ONE, vec![9])], Mode::Load);
 }

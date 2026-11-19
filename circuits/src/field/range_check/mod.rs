@@ -92,7 +92,7 @@ use midnight_proofs::{
 };
 
 use self::{
-    layout::bit_slice,
+    layout::{bit_slice, pow2},
     state::{Decomposition, Pending, State},
 };
 use crate::{
@@ -156,16 +156,7 @@ impl<F: CircuitField> Chip<F> for RangeCheckChip<F> {
 }
 
 impl<F: CircuitField> RangeCheckChip<F> {
-    /// The largest limb size `T` of the chip, set when configuring it.
-    ///
-    /// Range checks are split in lanes of up to `T` bits, and decompositions
-    /// take limbs of up to `T` bits.
-    pub fn max_bit_len(&self) -> usize {
-        self.config.max_bit_len
-    }
-
-    /// Whether [RangeCheckChip::assert_lower_than_pow2] takes the bound
-    /// `2^n`.
+    /// Asserts that `x` lies in `[0, 2^n)`.
     ///
     /// With `T` the chip's `max_bit_len`, the chip lays out `x < 2^n` as:
     ///
@@ -173,19 +164,12 @@ impl<F: CircuitField> RangeCheckChip<F> {
     /// - one group, with three lanes of `T` bits and a most significant one of
     ///   `n - 3T` bits, if `3T < n <= 4T`,
     /// - `n / 4T` linked groups with lanes of `T` bits, if `n` is a multiple of
-    ///   `4T`.
+    ///   `4T`,
     ///
-    /// Other bounds are not taken: `x` must be split in pieces with supported
-    /// bounds, as [NativeGadget](crate::field::NativeGadget) does.
-    pub fn is_supported_bound(&self, n: usize) -> bool {
-        let t = self.config.max_bit_len;
-        n <= t || (3 * t < n && n <= 4 * t) || n.is_multiple_of(4 * t)
-    }
-
-    /// Asserts that `x` lies in `[0, 2^n)`.
+    /// and otherwise splits `x` in limbs with such bounds, see
+    /// [RangeCheckChip::decompose].
     ///
     /// The assertion is recorded, and only laid out when the chip is loaded.
-    ///
     /// If the same element is asserted several times, only the tightest bound
     /// is laid out.
     ///
@@ -193,29 +177,32 @@ impl<F: CircuitField> RangeCheckChip<F> {
     ///
     /// # Panics
     ///
-    /// If `n >= F::NUM_BITS`, or if the chip does not take the bound `2^n`, see
-    /// [RangeCheckChip::is_supported_bound].
+    /// If `n >= F::NUM_BITS`.
     pub fn assert_lower_than_pow2(
         &self,
         layouter: &mut impl Layouter<F>,
         x: &AssignedNative<F>,
         n: usize,
     ) -> Result<(), Error> {
-        let t = self.config.max_bit_len;
         assert!(
             n < F::NUM_BITS as usize,
             "RangeCheckChip: cannot assert x < 2^{n}: the field elements have {} bits",
             F::NUM_BITS
         );
-        assert!(
-            self.is_supported_bound(n),
-            "RangeCheckChip: cannot assert x < 2^{n} directly: with max_bit_len = {t}, the chip \
-             lays out bounds 2^n with n <= {t}, {} <= n <= {} or n a multiple of {}; assert \
-             the bound on pieces of x with these sizes instead, as NativeGadget does",
-            3 * t + 1,
-            4 * t,
-            4 * t,
-        );
+        let t = self.config.max_bit_len;
+        if !self.is_supported_bound(n) {
+            let (mut sizes, mut rest) = (vec![], n);
+            while rest > 0 {
+                let size = match rest {
+                    _ if self.is_supported_bound(rest) => rest,
+                    _ if rest < 4 * t => t,
+                    _ => 4 * t * (rest / (4 * t)),
+                };
+                sizes.push(size);
+                rest -= size;
+            }
+            return self.decompose(layouter, x, &sizes).map(|_| ());
+        }
         self.assert_not_loaded()?;
         self.place_sentinel_once(layouter)?;
         let pending = &mut *self.pending();
@@ -229,48 +216,92 @@ impl<F: CircuitField> RangeCheckChip<F> {
         Ok(())
     }
 
-    /// Decomposes `x` in `nb_limbs` limbs of `s` bits, in little-endian
-    /// order, and returns them.
+    /// Decomposes `x` in limbs of the given bit sizes, in little-endian order,
+    /// and returns them: `x = sum_i 2^(s_0 + ... + s_(i-1)) limb_i`.
     ///
-    /// Every limb, the most significant one included, is range-checked to
-    /// `[0, 2^s)`, and the limbs are constrained to add up to `x`. So this also
-    /// asserts that `x` lies in `[0, 2^(s nb_limbs))`, as long as
-    /// `s nb_limbs < F::NUM_BITS`. With more bits, the limbs add up to `x`
-    /// modulo the field order, and are not necessarily the canonical
+    /// Every limb, the most significant one included, is range-checked to its
+    /// size. So this also asserts that `x` lies in `[0, 2^(sum_i s_i))`, as
+    /// long as `sum_i s_i < F::NUM_BITS`. With more bits, the limbs add up to
+    /// `x` modulo the field order, and are not necessarily the canonical
     /// decomposition of `x`.
     ///
-    /// The decomposition is recorded, and only laid out when the chip is
-    /// loaded.
+    /// Limbs of a common size of at most `max_bit_len` bits are recorded as a
+    /// decomposition, and only laid out when the chip is loaded. Other limbs
+    /// are constrained to add up to `x` by the underlying [NativeChip], and
+    /// range-checked one by one.
     ///
     /// Returns an error if the chip has already been loaded.
     ///
     /// # Panics
     ///
-    /// If `s` is 0 or larger than the chip's `max_bit_len`.
+    /// If some size is 0 or not lower than `F::NUM_BITS`.
     pub fn decompose(
         &self,
         layouter: &mut impl Layouter<F>,
         x: &AssignedNative<F>,
-        s: usize,
-        nb_limbs: usize,
+        sizes: &[usize],
     ) -> Result<Vec<AssignedNative<F>>, Error> {
-        let t = self.config.max_bit_len;
         assert!(
-            0 < s && s <= t,
-            "RangeCheckChip: cannot decompose in limbs of {s} bits: with max_bit_len = {t}, \
-             the limbs have between 1 and {t} bits"
+            sizes.iter().all(|&s| 0 < s && s < F::NUM_BITS as usize),
+            "RangeCheckChip: cannot decompose in limbs of sizes {sizes:?}: the limbs have \
+             between 1 and {} bits",
+            F::NUM_BITS - 1
         );
-        self.assert_not_loaded()?;
-        self.place_sentinel_once(layouter)?;
-        let limbs: Vec<_> = (0..nb_limbs)
-            .map(|i| AssignedNative::free(bit_slice(x, s * i, Some(s))))
-            .collect();
-        self.pending().decompositions.push(Decomposition {
-            x: x.clone(),
-            limbs: limbs.clone(),
-            size: s,
-        });
+        if let Some(&s) = sizes.first()
+            && s <= self.config.max_bit_len
+            && sizes.iter().all(|&size| size == s)
+        {
+            self.assert_not_loaded()?;
+            self.place_sentinel_once(layouter)?;
+            let limbs: Vec<_> = (0..sizes.len())
+                .map(|i| AssignedNative::free(bit_slice(x, s * i, Some(s))))
+                .collect();
+            self.pending().decompositions.push(Decomposition {
+                x: x.clone(),
+                limbs: limbs.clone(),
+                size: s,
+            });
+            return Ok(limbs);
+        }
+
+        let limbs = layouter.assign_region(
+            || "decompose",
+            |mut region| {
+                let mut shift = 0;
+                let terms = sizes
+                    .iter()
+                    .map(|&size| {
+                        shift += size;
+                        (
+                            pow2::<F>(shift - size),
+                            bit_slice(x, shift - size, Some(size)),
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                let nb_cols = self.native_chip.config().value_cols.len() - 1;
+                let (limbs, y) = self.native_chip.assign_linear_combination_aux(
+                    &mut region,
+                    &terms,
+                    F::ZERO,
+                    &x.value().copied(),
+                    nb_cols,
+                    &mut 0,
+                )?;
+                x.constrain_equal(&mut region, &y)?;
+                Ok(limbs)
+            },
+        )?;
+        for (limb, &size) in limbs.iter().zip(sizes) {
+            self.assert_lower_than_pow2(layouter, limb, size)?;
+        }
         Ok(limbs)
+    }
+
+    /// Whether the chip lays out `x < 2^n` directly, see
+    /// [RangeCheckChip::assert_lower_than_pow2].
+    fn is_supported_bound(&self, n: usize) -> bool {
+        let t = self.config.max_bit_len;
+        n <= t || (3 * t < n && n <= 4 * t) || n.is_multiple_of(4 * t)
     }
 }
 
