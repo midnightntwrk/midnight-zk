@@ -1499,6 +1499,20 @@ where
         // Assert that the table points are not the identity.
         table.iter().try_for_each(|point| self.assert_non_zero(layouter, point))?;
 
+        // The selected points are rebuilt from the table limbs and marked as
+        // well-formed, so the table coordinates must be well-formed.
+        // (Normalization is free on already well-formed coordinates.)
+        let table = table
+            .iter()
+            .map(|point| {
+                Ok(AssignedForeignPoint::<F, C, B> {
+                    x: self.base_field_chip().normalize(layouter, &point.x)?,
+                    y: self.base_field_chip().normalize(layouter, &point.y)?,
+                    ..point.clone()
+                })
+            })
+            .collect::<Result<Vec<_>, Error>>()?;
+
         // Load the table with a fresh tag, and increase the tag for the next use.
         // This associates index i from 0 to k-1 to the i-th table entry.
         //
@@ -1507,7 +1521,7 @@ where
         // a common table.
         let tag_cnt = *self.config.tag_cnt.borrow();
         self.config.tag_cnt.replace(tag_cnt + 1);
-        self.load_multi_select_table(layouter, table, F::from(tag_cnt))?;
+        self.load_multi_select_table(layouter, &table, F::from(tag_cnt))?;
 
         // Find the index for each of the `k` selected points.
         let table_values =
