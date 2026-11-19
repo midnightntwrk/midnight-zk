@@ -39,11 +39,11 @@ use crate::{
 ///
 /// - Completeness is only guaranteed when the all input points are in `G`.
 /// - Soundness: the constraints only enforce that the `G` component of the
-///   output is correct, not its torsion component. For an input point
-///   `P = a * T + b * G`, where `T` is a torsion point and `G` belongs to
-///   the prime-order subgroup, and scalar `s`, the output is guaranteed to
-///   have the form `Q = a' * T + (b * s) * G`, but `a'` is not constrained
-///   to equal `a * s` modulo the cofactor.
+///   output is correct, not its torsion component. For an input point `P = a *
+///   T + b * G`, where `T` is a torsion point and `G` belongs to the
+///   prime-order subgroup, and scalar `s`, the output is guaranteed to have the
+///   form `Q = a' * T + (b * s) * G`, but `a'` is not constrained to equal `a *
+///   s` modulo the cofactor.
 ///
 /// Points assigned with `assign` or [`Self::point_from_coordinates`] are
 /// constrained to be in `G`. Points obtained via
