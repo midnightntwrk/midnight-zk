@@ -19,6 +19,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * BREAKING: `ZkStdLibArch::nr_pow2range_cols` is replaced by `nb_range_check_groups`, the number of groups of the range-check chip, of 5 advice columns each, at the same position in the serialized architecture; `ZkStdLib::new` no longer takes `max_bit_len`, which the configuration carries. This changes the verifying keys of every circuit [#631](https://github.com/midnightntwrk/midnight-zk/pull/631)
 * The RSA example sets `range_check_bit_len` to 10, so that its range-check table fits in `k = 12`, and the examples run at their optimal `k` [#631](https://github.com/midnightntwrk/midnight-zk/pull/631)
 * The foreign Weierstrass ECC chips (secp256k1, P-256 and BLS12-381) are configured with the `max_bit_len` of the range-check chip, to split the carries of their unified identity that it does not take. This changes the verifying keys of circuits using them [#660](https://github.com/midnightntwrk/midnight-zk/pull/660)
+* The Cardano signature example runs at `k = 16`, which the optimizations of the foreign-field chips of `midnight-circuits` make it fit in [#660](https://github.com/midnightntwrk/midnight-zk/pull/660)
 
 ### Removed
 ### Fixed
