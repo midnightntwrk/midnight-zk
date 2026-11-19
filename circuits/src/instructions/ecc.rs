@@ -30,11 +30,23 @@ use crate::{
 
 /// The set of circuit instructions for EC operations.
 ///
-/// On curves with a non-trivial cofactor, these instructions are only
-/// well-defined on the prime-order subgroup component of a point; on its
-/// torsion component they may misbehave. For instance, an MSM over a base
-/// with a torsion component determines the result only up to torsion. Points
-/// obtained via [`Self::assign_without_subgroup_check`] may have such a
+/// Let `G` be the subgroup of large prime order `q` represented by
+/// `C::CryptographicGroup`, where `q` is the order of `C::ScalarField`. If the
+/// curve has a non-trivial cofactor `h`, every curve point `P` decomposes
+/// uniquely as `P = P_G + P_T`, where `P_G` is in `G` and the order of `P_T`
+/// (the torsion component of `P`) divides `h`. The guarantees of these
+/// instructions only concern the `G` component:
+///
+/// - Completeness: an honest prover is only guaranteed to satisfy the
+///   constraints when all input points are in `G`.
+/// - Soundness: the constraints only enforce that the `G` component of the
+///   output is correct, not its torsion component. For instance, an MSM over a
+///   base with a torsion component determines the result only up to torsion.
+///
+/// Points assigned with `assign` or [`Self::point_from_coordinates`] are
+/// constrained to be in `G`. Points obtained via
+/// [`Self::assign_without_subgroup_check`] or
+/// [`Self::point_from_coordinates_without_subgroup_check`] may have a torsion
 /// component.
 pub trait EccInstructions<F: CircuitField, C: CircuitCurve>:
     AssertionInstructions<F, Self::Point>

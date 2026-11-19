@@ -14,7 +14,7 @@
 //! Elliptic curve (in Weierstrass form) operations over foreign fields.
 //! This module supports curves of the form y^2 = x^3 + ax + b.
 //!
-//! The curve (or the relevant subgroup) must have a large prime order.
+//! The relevant subgroup of the curve must have a large prime order.
 //!
 //! If the curve has a non-trivial cofactor (e.g. BLS12-381), assigned points
 //! are constrained to be in the prime-order subgroup, unless they are created
@@ -22,13 +22,9 @@
 //! [`EccInstructions::point_from_coordinates_without_subgroup_check`], which
 //! only constrain them to satisfy the curve equation.
 //!
-//! We require that the emulated elliptic curve do not have low-order points.
-//! In particular, the curve (or the relevant subgroup) must have a large prime
-//! order.
-//!
-//! If the curve has a non-trivial cofactor (e.g. BLS12-381 G1), the
-//! instructions of this chip are only well-defined on the prime-order subgroup
-//! component of a point, and may misbehave on its torsion component. For
+//! If the curve has a non-trivial cofactor (e.g. BLS12-381 G1), completeness
+//! and soundness only hold on the large prime-order subgroup component of a
+//! point, not on its torsion component (see [`EccInstructions`]). For
 //! instance, the GLV split used in MSMs only constrains
 //! `x1 + zeta * x2 = s (mod q)`, so on a base with a torsion component the MSM
 //! result is only determined up to torsion. Unless you know what you are doing,

@@ -19,7 +19,9 @@
 //!
 //! Assigned points are guaranteed to be in the prime-order subgroup, unless
 //! they are created with [`EccInstructions::assign_without_subgroup_check`],
-//! which only constrains them to satisfy the curve equation.
+//! which only constrains them to satisfy the curve equation. See
+//! [`EccInstructions`] for the completeness and soundness guarantees on such
+//! points.
 
 use std::{
     cell::RefCell,
