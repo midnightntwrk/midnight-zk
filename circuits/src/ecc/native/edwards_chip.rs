@@ -14,6 +14,10 @@
 //! Generic Chip implementation for the ECC Instructions over twisted Edwards
 //! curves. Indeed, this chip only implements partially generic twisted Edwards
 //! curve, i.e. with a = -1, which is the case of Jubjub.
+//!
+//! Points created with [`EccInstructions::assign_without_subgroup_check`] are
+//! only constrained to satisfy the curve equation. See [`EccInstructions`] for
+//! the completeness and soundness guarantees on such points.
 
 use ecc::EccInstructions;
 use ff::{Field, PrimeField};

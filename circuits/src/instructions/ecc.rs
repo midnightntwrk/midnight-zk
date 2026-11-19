@@ -28,7 +28,29 @@ use crate::{
     types::{InnerConstants, InnerValue, Instantiable},
 };
 
-/// The  set of circuit instructions for EC operations.
+/// The set of circuit instructions for EC operations.
+///
+/// Let `G` be the subgroup of large prime order `q` represented by
+/// `C::CryptographicGroup`, where `q` is the order of `C::ScalarField`. If the
+/// curve has a non-trivial cofactor `h`, every curve point `P` decomposes
+/// uniquely as `P = P_G + P_T`, where `P_G` is in `G` and the order of `P_T`
+/// (the torsion component of `P`) divides `h`. The guarantees of these
+/// instructions only concern the `G` component:
+///
+/// - Completeness is only guaranteed when the all input points are in `G`.
+/// - Soundness: the constraints only enforce that the `G` component of the
+///   output is correct, not its torsion component. For example, when
+///   multiplying a point `P` of the form `P = T + G` (where `T` is a torsion
+///   point and `G` belongs to the prime-order subgroup) by a scalar `s`, the
+///   output is guaranteed to be a point `Q` of the form `Q = a * T + s * G`,
+///   for some `a`, which is not necessarily constrained to equal `s` modulo the
+///   cofactor.
+///
+/// Points assigned with `assign` or [`Self::point_from_coordinates`] are
+/// constrained to be in `G`. Points obtained via
+/// [`Self::assign_without_subgroup_check`] or
+/// [`Self::point_from_coordinates_without_subgroup_check`] may have a torsion
+/// component.
 pub trait EccInstructions<F: CircuitField, C: CircuitCurve>:
     AssertionInstructions<F, Self::Point>
 where
@@ -161,12 +183,13 @@ where
     }
 
     /// Assigns a private curve point, checking it is on the curve but skipping
-    /// any subgroup-membership check. We enforce honest users to operate over
-    /// the prime-order subgroup, but allow the circuit to skip enforcing this
-    /// constraint where this guarantee is not required.
+    /// any subgroup-membership check. For curves with a non-trivial cofactor
+    /// this skips the expensive cofactor-based subgroup check.
     ///
-    /// For curves with a non-trivial cofactor this skips the expensive
-    /// cofactor-based subgroup check.
+    /// The returned point may have a torsion component, on which the other
+    /// instructions of this trait may misbehave (see the trait docs). Unless
+    /// your application tolerates this, use `assign`, which enforces subgroup
+    /// membership.
     fn assign_without_subgroup_check(
         &self,
         layouter: &mut impl Layouter<F>,

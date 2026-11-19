@@ -14,13 +14,24 @@
 //! Elliptic curve (in Weierstrass form) operations over foreign fields.
 //! This module supports curves of the form y^2 = x^3 + ax + b.
 //!
-//! The curve (or the relevant subgroup) must have a large prime order.
+//! The relevant subgroup of the curve must have a large prime order.
 //!
 //! If the curve has a non-trivial cofactor (e.g. BLS12-381), assigned points
 //! are constrained to be in the prime-order subgroup, unless they are created
 //! with [`EccInstructions::assign_without_subgroup_check`] or
 //! [`EccInstructions::point_from_coordinates_without_subgroup_check`], which
 //! only constrain them to satisfy the curve equation.
+//!
+//! If the curve has a non-trivial cofactor (e.g. BLS12-381 G1),
+//! completeness and soundness are only guaranteed to hold on the
+//! large prime-order subgroup component of a point, not necessarily
+//! on its torsion component (see [`EccInstructions`]). For instance,
+//! the GLV split used in MSMs only constrains
+//! `x1 + zeta * x2 = s (mod q)`, so on a base with a torsion
+//! component the MSM result is only determined up to torsion.
+//! Unless you know what you are doing, always enforce subgroup
+//! membership by assigning points with `assign` rather than
+//! [`EccInstructions::assign_without_subgroup_check`].
 
 use std::{
     cell::RefCell,
