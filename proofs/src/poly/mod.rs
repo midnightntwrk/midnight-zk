@@ -101,13 +101,13 @@ pub trait PolynomialRepresentation: Copy + Debug + Send + Sync {
     /// Converts a polynomial from coefficient form into this representation
     /// over the given evaluation domain.
     fn coeff_to_self<F: PrimeField>(
-        evaluation_domain: &EvaluationDomain<F>,
+        fft_domain: &FftDomain<F>,
         poly: Polynomial<F, Coeff>,
     ) -> Polynomial<F, Self>;
 
     /// Converts a polynomial from its own representation to coefficient form.
     fn self_to_coeff<F: PrimeField>(
-        evaluation_domain: &EvaluationDomain<F>,
+        fft_domain: &FftDomain<F>,
         poly: Polynomial<F, Self>,
     ) -> Polynomial<F, Coeff>;
 
@@ -135,14 +135,14 @@ impl PolynomialRepresentation for Coeff {
     }
 
     fn coeff_to_self<F: PrimeField>(
-        _evaluation_domain: &EvaluationDomain<F>,
+        _fft_domain: &FftDomain<F>,
         poly: Polynomial<F, Coeff>,
     ) -> Polynomial<F, Self> {
         poly
     }
 
     fn self_to_coeff<F: PrimeField>(
-        _evaluation_domain: &EvaluationDomain<F>,
+        _fft_domain: &FftDomain<F>,
         poly: Polynomial<F, Self>,
     ) -> Polynomial<F, Coeff> {
         poly
@@ -172,17 +172,17 @@ impl PolynomialRepresentation for LagrangeCoeff {
     }
 
     fn coeff_to_self<F: PrimeField>(
-        evaluation_domain: &EvaluationDomain<F>,
+        fft_domain: &FftDomain<F>,
         poly: Polynomial<F, Coeff>,
     ) -> Polynomial<F, Self> {
-        evaluation_domain.coeff_to_lagrange(poly)
+        fft_domain.coeff_to_lagrange(poly)
     }
 
     fn self_to_coeff<F: PrimeField>(
-        evaluation_domain: &EvaluationDomain<F>,
+        fft_domain: &FftDomain<F>,
         poly: Polynomial<F, Self>,
     ) -> Polynomial<F, Coeff> {
-        evaluation_domain.lagrange_to_coeff(poly)
+        fft_domain.lagrange_to_coeff(poly)
     }
 
     fn g_coset<F: PrimeField>(_evaluation_domain: &EvaluationDomain<F>) -> F {
@@ -210,17 +210,17 @@ impl PolynomialRepresentation for ExtendedLagrangeCoeff {
     }
 
     fn coeff_to_self<F: PrimeField>(
-        evaluation_domain: &EvaluationDomain<F>,
+        fft_domain: &FftDomain<F>,
         poly: Polynomial<F, Coeff>,
     ) -> Polynomial<F, Self> {
-        evaluation_domain.coeff_to_extended(poly)
+        fft_domain.coeff_to_extended(poly)
     }
 
     fn self_to_coeff<F: PrimeField>(
-        evaluation_domain: &EvaluationDomain<F>,
+        fft_domain: &FftDomain<F>,
         poly: Polynomial<F, Self>,
     ) -> Polynomial<F, Coeff> {
-        evaluation_domain.coeff_from_vec(evaluation_domain.extended_to_coeff(poly))
+        fft_domain.domain().coeff_from_vec(fft_domain.extended_to_coeff(poly))
     }
 
     fn g_coset<F: PrimeField>(evaluation_domain: &EvaluationDomain<F>) -> F {
@@ -254,14 +254,14 @@ impl PolynomialRepresentation for LagrangeDeltaCoeff {
     }
 
     fn coeff_to_self<F: PrimeField>(
-        _evaluation_domain: &EvaluationDomain<F>,
+        _fft_domain: &FftDomain<F>,
         _poly: Polynomial<F, Coeff>,
     ) -> Polynomial<F, Self> {
         unimplemented!("LagrangeDelta is constructed from LagrangeCoeff via `to_delta`.")
     }
 
     fn self_to_coeff<F: PrimeField>(
-        _evaluation_domain: &EvaluationDomain<F>,
+        _fft_domain: &FftDomain<F>,
         _poly: Polynomial<F, Self>,
     ) -> Polynomial<F, Coeff> {
         unimplemented!("Cannot convert LagrangeDelta basis to coefficient form.")
@@ -300,7 +300,7 @@ impl PolynomialRepresentation for LagrangeDoubleDeltaCoeff {
     }
 
     fn coeff_to_self<F: PrimeField>(
-        _evaluation_domain: &EvaluationDomain<F>,
+        _fft_domain: &FftDomain<F>,
         _poly: Polynomial<F, Coeff>,
     ) -> Polynomial<F, Self> {
         unimplemented!(
@@ -309,7 +309,7 @@ impl PolynomialRepresentation for LagrangeDoubleDeltaCoeff {
     }
 
     fn self_to_coeff<F: PrimeField>(
-        _evaluation_domain: &EvaluationDomain<F>,
+        _fft_domain: &FftDomain<F>,
         _poly: Polynomial<F, Self>,
     ) -> Polynomial<F, Coeff> {
         unimplemented!("Cannot convert LagrangeDoubleDelta basis to coefficient form.")

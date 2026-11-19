@@ -11,7 +11,8 @@ use group::ff::FromUniformBytes;
 use crate::{
     plonk::permutation::expressions,
     poly::{
-        EvaluationDomain, ExtendedLagrangeCoeff, LagrangeCoeff, PinnedEvaluationDomain, Polynomial,
+        EvaluationDomain, ExtendedLagrangeCoeff, FftDomain, LagrangeCoeff, PinnedEvaluationDomain,
+        Polynomial,
     },
     transcript::{Hashable, Transcript, TranscriptField, TranscriptHash},
     utils::{
@@ -343,6 +344,8 @@ pub struct PinnedVerificationKey<'a, F: PrimeField, PCS: PolynomialCommitmentSch
 #[derive(Debug)]
 pub struct ProvingKey<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> {
     pub(crate) vk: VerifyingKey<F, PCS>,
+    /// The FFTs over the domain of `vk`. Not serialized: built from `vk`.
+    pub(crate) fft_domain: FftDomain<F>,
     pub(crate) l0: Polynomial<F, ExtendedLagrangeCoeff>,
     pub(crate) l_last: Polynomial<F, ExtendedLagrangeCoeff>,
     pub(crate) l_active_row: Polynomial<F, ExtendedLagrangeCoeff>,
@@ -373,7 +376,7 @@ pub struct ProvingKey<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> {
 /// permutation argument.
 #[allow(clippy::type_complexity)]
 pub(in crate::plonk) fn build_phase0_polys<F: PrimeField>(
-    domain: &EvaluationDomain<F>,
+    fft_domain: &FftDomain<F>,
     cs: &ConstraintSystem<F>,
     vk_repr: F,
     fixed_values: &[Polynomial<F, LagrangeCoeff>],
@@ -392,11 +395,11 @@ pub(in crate::plonk) fn build_phase0_polys<F: PrimeField>(
 
     let fixed_coeffs: Vec<_> = fixed_values
         .par_iter()
-        .map(|poly| domain.lagrange_to_coeff(poly.clone()))
+        .map(|poly| fft_domain.lagrange_to_coeff(poly.clone()))
         .collect();
     let fixed_cosets = fixed_coeffs
         .par_iter()
-        .map(|poly| domain.coeff_to_extended(poly.clone()))
+        .map(|poly| fft_domain.coeff_to_extended(poly.clone()))
         .collect();
 
     let mut group: BTreeMap<_, _> = fixed_coeffs
@@ -406,7 +409,7 @@ pub(in crate::plonk) fn build_phase0_polys<F: PrimeField>(
         .collect();
 
     let (sigma_coeffs, sigma_cosets) =
-        permutation::keygen::compute_polys_and_cosets(domain, &cs.permutation, &sigmas);
+        permutation::keygen::compute_polys_and_cosets(fft_domain, &cs.permutation, &sigmas);
     group.extend(sigma_labels.into_iter().zip(sigma_coeffs));
 
     (
@@ -490,7 +493,8 @@ where
             #[cfg(feature = "circuit-params")]
             params,
         )?;
-        let [l0, l_last, l_active_row] = compute_lagrange_polys(&vk, &vk.cs);
+        let fft_domain = FftDomain::new(&vk.domain);
+        let [l0, l_last, l_active_row] = compute_lagrange_polys(&vk, &fft_domain, &vk.cs);
         let fixed_values: Vec<_> = read_polynomial_vec(reader, format)?;
         let permutations: Vec<_> = read_polynomial_vec(reader, format)?;
         if permutations.len() != vk.cs.permutation.columns.len() {
@@ -504,7 +508,7 @@ where
             ));
         }
         let (phase0_polys, fixed_cosets, sigmas) = build_phase0_polys(
-            &vk.domain,
+            &fft_domain,
             &vk.cs,
             vk.transcript_repr,
             &fixed_values,
@@ -513,6 +517,7 @@ where
         let ev = Evaluator::new(vk.cs());
         Ok(Self {
             vk,
+            fft_domain,
             l0,
             l_last,
             l_active_row,
