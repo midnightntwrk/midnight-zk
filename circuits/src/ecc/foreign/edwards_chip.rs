@@ -96,6 +96,10 @@ where
     q_multi_select: Selector,
     idx_col_multi_select: Column<Advice>,
     tag_col_multi_select: Column<Fixed>,
+    // Tag counter for dynamic lookup tables (tag 0 is reserved). It lives in the
+    // config (not the chip) so that all chips built from this config share it,
+    // since they share the same lookup argument.
+    tag_cnt: Rc<RefCell<u64>>,
 }
 
 /// ECC chip to perform foreign Edwards EC operations.
@@ -113,8 +117,6 @@ where
     native_gadget: N,
     base_field_chip: FieldChip<F, C::Base, B, N>,
     scalar_field_chip: S,
-    /// Per-chip tag counter for dynamic lookup tables (tag 0 is reserved).
-    tag_cnt: Rc<RefCell<u64>>,
 }
 
 impl<F, C, B, S, N> ForeignEdwardsEccChip<F, C, B, S, N>
@@ -156,6 +158,7 @@ where
             q_multi_select,
             idx_col_multi_select,
             tag_col_multi_select,
+            tag_cnt: Rc::new(RefCell::new(1)),
         }
     }
 }
@@ -181,7 +184,6 @@ where
             native_gadget: native_gadget.clone(),
             base_field_chip,
             scalar_field_chip: scalar_field_chip.clone(),
-            tag_cnt: Rc::new(RefCell::new(1)),
         }
     }
 
@@ -1254,8 +1256,8 @@ where
         let max_num_windows = *num_windows.iter().max().unwrap();
 
         // Precompute tables for each base and load them into the dynamic lookup.
-        let tag_cnt = *self.tag_cnt.borrow();
-        self.tag_cnt.replace(tag_cnt + bases.len() as u64);
+        let tag_cnt = *self.config.tag_cnt.borrow();
+        self.config.tag_cnt.replace(tag_cnt + bases.len() as u64);
         debug_assert!(F::NUM_BITS > 64);
 
         let mut tables = vec![];
@@ -1381,8 +1383,8 @@ where
                 .collect::<Result<Vec<_>, _>>()?;
 
             let tag = {
-                let t = *self.tag_cnt.borrow();
-                self.tag_cnt.replace(t + 1);
+                let t = *self.config.tag_cnt.borrow();
+                self.config.tag_cnt.replace(t + 1);
                 t
             };
             self.load_multi_select_table(layouter, &table, F::from(tag))?;
@@ -1603,6 +1605,26 @@ mod tests {
     ecc_tests!(test_mul_by_constant);
     ecc_tests!(test_coordinates);
     ecc_tests!(test_coordinates_without_subgroup_check);
+
+    // Chips built with separate `new()` calls on the same config share one lookup
+    // argument, so they must share the dynamic-lookup tag counter.
+    #[test]
+    fn test_tag_counter_shared_across_chips() {
+        type Chip = ForeignEdwardsEccChip<
+            F,
+            Curve25519,
+            MultiEmulationParams,
+            EmulatedField<F, Curve25519>,
+            Native<F>,
+        >;
+        let mut meta = ConstraintSystem::<F>::default();
+        let instance_columns = [meta.instance_column(), meta.instance_column()];
+        let config =
+            Chip::configure_from_scratch(&mut meta, &mut vec![], &mut vec![], &instance_columns);
+        let chip1 = Chip::new_from_scratch(&config);
+        let chip2 = Chip::new_from_scratch(&config);
+        assert!(Rc::ptr_eq(&chip1.config.tag_cnt, &chip2.config.tag_cnt));
+    }
 
     #[test]
     fn test_assert_on_curve() {
