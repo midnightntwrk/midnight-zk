@@ -1510,7 +1510,7 @@ where
         // a common table.
         let tag_cnt = *self.config.tag_cnt.borrow();
         self.config.tag_cnt.replace(tag_cnt + 1);
-        self.load_multi_select_table(layouter, table, F::from(tag_cnt))?;
+        self.load_multi_select_table(layouter, &table, F::from(tag_cnt))?;
 
         // Find the index for each of the `k` selected points.
         let table_values =
