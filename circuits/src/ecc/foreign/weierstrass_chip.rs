@@ -22,14 +22,16 @@
 //! [`EccInstructions::point_from_coordinates_without_subgroup_check`], which
 //! only constrain them to satisfy the curve equation.
 //!
-//! If the curve has a non-trivial cofactor (e.g. BLS12-381 G1), completeness
-//! and soundness only hold on the large prime-order subgroup component of a
-//! point, not on its torsion component (see [`EccInstructions`]). For
-//! instance, the GLV split used in MSMs only constrains
-//! `x1 + zeta * x2 = s (mod q)`, so on a base with a torsion component the MSM
-//! result is only determined up to torsion. Unless you know what you are doing,
-//! always enforce subgroup membership by assigning points with `assign` rather
-//! than [`EccInstructions::assign_without_subgroup_check`].
+//! If the curve has a non-trivial cofactor (e.g. BLS12-381 G1),
+//! completeness and soundness are only guaranteed to hold on the
+//! large prime-order subgroup component of a point, not necessarily
+//! on its torsion component (see [`EccInstructions`]). For instance,
+//! the GLV split used in MSMs only constrains
+//! `x1 + zeta * x2 = s (mod q)`, so on a base with a torsion
+//! component the MSM result is only determined up to torsion.
+//! Unless you know what you are doing, always enforce subgroup
+//! membership by assigning points with `assign` rather than
+//! [`EccInstructions::assign_without_subgroup_check`].
 
 use std::{
     cell::RefCell,
