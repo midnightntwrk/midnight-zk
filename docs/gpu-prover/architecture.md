@@ -4,7 +4,7 @@ This document describes how the GPU path attaches to the midnight-proofs
 0.9.0-rc.1 prover and what runs on the device. It also describes the data that
 stays on the device between requests, the admission, the wipe and the
 fallback.
-The requirements are in [gpu-spec/requirements.md](../../gpu-spec/requirements.md).
+The requirements are in [formal/gpu-prover/requirements.md](../../formal/gpu-prover/requirements.md).
 Requirement IDs appear in brackets.
 
 ## 1. Pipeline and hook points

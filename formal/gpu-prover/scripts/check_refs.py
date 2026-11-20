@@ -17,7 +17,7 @@
 
 For each verification entry:
 * `oracle: ...`  every Lean name (GpuSpec.x, Service.x, DataMove.x or a bare
-  name with an underscore) is a declaration of some module of oracle/GpuSpec;
+  name with an underscore) is a declaration of some module of lean/GpuSpec;
 * `quint: ...`   every inv_*, w_* and *Test name is in the Quint files;
 * `vectors: ...` every *.json path is a file under vectors/.
 Usage: check_refs.py   (exit 1 with the list of stale names)"""
@@ -27,7 +27,7 @@ import re
 import sys
 
 root = pathlib.Path(__file__).resolve().parent.parent
-lean = "\n".join(p.read_text() for p in sorted((root / "oracle" / "GpuSpec").glob("*.lean")))
+lean = "\n".join(p.read_text() for p in sorted((root / "lean" / "GpuSpec").glob("*.lean")))
 decls = set(re.findall(r"^\s*(?:private\s+)?(?:theorem|def|abbrev|structure|inductive|instance)\s+([A-Za-z_][\w.']*)",
                        lean, re.M))
 short = {d.split(".")[-1] for d in decls} | decls

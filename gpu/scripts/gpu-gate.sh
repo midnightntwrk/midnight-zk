@@ -44,22 +44,22 @@ export MIDNIGHT_GPU_REQUIRE_CUDA=1
 features=cuda,test-fault
 wrap=${MIDNIGHT_GPU_GATE_WRAP:-}
 
-traces=${ORACLE_ITF_DIR:-gpu-spec/quint/traces}
+traces=${ORACLE_ITF_DIR:-formal/gpu-prover/quint/traces}
 if [[ -z ${ORACLE_ITF_DIR:-} ]]; then
     if [[ ! -d $traces ]]; then
         echo "== generate the frozen model's ITF traces"
-        bash gpu-spec/scripts/quint_check.sh 50 50 >"$out/quint-traces.log" 2>&1 || {
+        bash formal/gpu-prover/scripts/quint_check.sh 50 50 >"$out/quint-traces.log" 2>&1 || {
             tail -n 10 "$out/quint-traces.log" >&2
             exit 1
         }
     fi
 fi
 if [[ ! -d $traces ]]; then
-    echo "Missing frozen ITF traces. Run gpu-spec/scripts/quint_check.sh 50 50 or set ORACLE_ITF_DIR." >&2
+    echo "Missing frozen ITF traces. Run formal/gpu-prover/scripts/quint_check.sh 50 50 or set ORACLE_ITF_DIR." >&2
     exit 1
 fi
 
-digest=$(cd gpu-spec/vectors && export LC_ALL=C && sha256sum -- *.json | sha256sum)
+digest=$(cd formal/gpu-prover/vectors && export LC_ALL=C && sha256sum -- *.json | sha256sum)
 if [[ ${digest%% *} != de054ca4572a2e7df5abf2eb39361da80c8f5b6c48c1de269c56605c16bd1ffb ]]; then
     echo "Unexpected e5b2e4dc v2 vector digest" >&2
     exit 1
@@ -75,13 +75,13 @@ cargo build --offline --locked --release -p midnight-gpu --features "$features" 
 
 status=0
 for fixture in ntt msm coset quotient gate threshold datamove; do
-    test -s "gpu-spec/vectors/$fixture.json" || { echo "Missing v2 fixture $fixture" >&2; exit 1; }
+    test -s "formal/gpu-prover/vectors/$fixture.json" || { echo "Missing v2 fixture $fixture" >&2; exit 1; }
 done
 
 echo "== service vectors v2 and Quint ITF through the daemon adapter"
 service_tests=service::oracle_conformance
 # Cargo runs these two unit tests from gpu-prover/. Both use a test Device.
-if ! ORACLE_VECTOR_DIR=../gpu-spec/vectors \
+if ! ORACLE_VECTOR_DIR=../formal/gpu-prover/vectors \
     ORACLE_ITF_DIR="$(realpath --relative-to=gpu-prover "$traces")" \
     ORACLE_ITF_EVIDENCE="$(realpath -m --relative-to=gpu-prover "$out/daemon-itf.jsonl")" \
     RAYON_NUM_THREADS="${RAYON_NUM_THREADS:-2}" \
@@ -108,7 +108,7 @@ for b in "${bins[@]}"; do
     fi
     # These prebuilt binaries run from the repository root.
     # shellcheck disable=SC2086
-    if ! ORACLE_VECTOR_DIR=gpu-spec/vectors $wrap "$b" --include-ignored --test-threads=1 --nocapture \
+    if ! ORACLE_VECTOR_DIR=formal/gpu-prover/vectors $wrap "$b" --include-ignored --test-threads=1 --nocapture \
         >"$log" 2>&1; then
         status=1
     fi

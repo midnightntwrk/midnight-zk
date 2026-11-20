@@ -22,15 +22,15 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
-(cd oracle && lake build --wfail >/dev/null)
+(cd lean && lake build --wfail >/dev/null)
 
-fresh() {  # a copy of gpu-spec that shares the built oracle
+fresh() {  # a copy of formal/gpu-prover that shares the built oracle
   local d="$work/$1"
   mkdir -p "$d"
   cp -r scripts vectors "$d/"
-  mkdir -p "$d/oracle"
-  for f in oracle/*; do ln -s "$PWD/$f" "$d/oracle/"; done
-  ln -s "$PWD/oracle/.lake" "$d/oracle/.lake"
+  mkdir -p "$d/lean"
+  for f in lean/*; do ln -s "$PWD/$f" "$d/lean/"; done
+  ln -s "$PWD/lean/.lake" "$d/lean/.lake"
   echo "$d"
 }
 expect_fail() {

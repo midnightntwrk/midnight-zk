@@ -61,10 +61,10 @@ every call. Upstream CI therefore needs no GPU and no CUDA install.
 | [`gpu-prover/container/`](../../gpu-prover/container/README.md) | Dockerfile, Compose file, systemd unit, CDI check, restart-cap test, [test record](../../gpu-prover/container/TESTED.md). |
 | [`gpu-prover/bench/compact/`](../../gpu-prover/bench/compact/README.md) | Compact proof benchmark: runner, [results](../../gpu-prover/bench/compact/results/compare-rtx-5080-laptop.tsv), [proof server note](../../gpu-prover/bench/compact/PROOF-SERVER.md). |
 | [`gpu-prover/bench/large-circuit/`](../../gpu-prover/bench/large-circuit/README.md) | The k = 21 measurements made before the port to 0.9.0-rc.1. |
-| [`gpu-spec/`](../../gpu-spec/README.md) | The specification: [requirements](../../gpu-spec/requirements.md) GPU-001 to GPU-072, [design](../../gpu-spec/design.md), [results and open items](../../gpu-spec/RESULTS.md). |
-| [`gpu-spec/oracle/`](../../gpu-spec/oracle/Main.lean) | Lean 4 oracle: reference arithmetic, device models and theorems, the request state machine. |
-| [`gpu-spec/quint/`](../../gpu-spec/quint/gpu_service.qnt) | Quint model of the request state machine, written from the requirements only. |
-| [`gpu-spec/vectors/`](../../gpu-spec/vectors/README.md) | Golden vectors that the Rust tests compare the kernels with. |
+| [`formal/gpu-prover/`](../../formal/gpu-prover/README.md) | The specification: [requirements](../../formal/gpu-prover/requirements.md) GPU-001 to GPU-072, [design](../../formal/gpu-prover/design.md), [results and open items](../../formal/gpu-prover/RESULTS.md). |
+| [`formal/gpu-prover/lean/`](../../formal/gpu-prover/lean/Main.lean) | Lean 4 oracle: reference arithmetic, device models and theorems, the request state machine. |
+| [`formal/gpu-prover/quint/`](../../formal/gpu-prover/quint/gpu_service.qnt) | Quint model of the request state machine, written from the requirements only. |
+| [`formal/gpu-prover/vectors/`](../../formal/gpu-prover/vectors/README.md) | Golden vectors that the Rust tests compare the kernels with. |
 | [`scripts/check-generic.sh`](../../scripts/check-generic.sh) | CI check: no machine-local names or paths in the tree. |
 | [`docs/gpu-prover-site/`](../gpu-prover-site/index.html) | An illustrated walk through the pipeline, the kernels and the fallback. |
 

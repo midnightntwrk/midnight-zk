@@ -20,7 +20,7 @@
 The daemon, its supervisor and its client, as one state and one transition
 per operation. Each branch names the requirement IDs it implements. Memory is
 in abstract units. Field names match the Quint model's record `s` and the
-`--step` wire format (gpu-spec/vectors/README.md).
+`--step` wire format (formal/gpu-prover/vectors/README.md).
 
 Operations are numbered `code + 100 * a + 10000 * b`:
 

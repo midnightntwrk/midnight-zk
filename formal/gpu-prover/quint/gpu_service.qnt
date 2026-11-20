@@ -15,13 +15,13 @@
 
 // GPU prover service: the request life cycle of the resident prover daemon, its
 // supervisor and its client (with the client circuit breaker). Written from
-// gpu-spec/requirements.json, gpu-spec/design.md and gpu-spec/vectors/README.md
+// formal/gpu-prover/requirements.json, formal/gpu-prover/design.md and formal/gpu-prover/vectors/README.md
 // only, without reading the Lean oracle. Each invariant and each action names
 // the requirement IDs it states.
 //
 // Memory is in abstract units (one unit = one GiB in the examples). The op
 // that a step takes is in `lastOp` as code + 100 * a + 10000 * b; the replay
-// script sends it to the oracle's --step mode (see gpu-spec/vectors/README.md).
+// script sends it to the oracle's --step mode (see formal/gpu-prover/vectors/README.md).
 // `s` is the record that the replay compares field by field. `prev` is a ghost
 // copy of the state before the last step; it is not part of the wire contract
 // and exists so that event-driven requirements can be stated as invariants and

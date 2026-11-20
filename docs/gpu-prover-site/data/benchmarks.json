@@ -305,7 +305,7 @@
     "empty": "Measurements of one k = 21 circuit are a roadmap item, coming soon."
   },
   "checks": {
-    "label": "Results of the specification checks, from gpu-spec/RESULTS.md and gpu-spec/COVERAGE.md.",
+    "label": "Results of the specification checks, from formal/gpu-prover/RESULTS.md and formal/gpu-prover/COVERAGE.md.",
     "stack": true,
     "columns": [
       {
@@ -351,7 +351,7 @@
       "The Quint model was checked by simulation and trace replay. Exhaustive model checking is future work.",
       "The models leave out what RESULTS.md lists under its fidelity gaps, such as the permutation, lookup and trash terms of the quotient kernel. Rust tests against the stock routines cover those."
     ],
-    "source": "gpu-spec/RESULTS.md",
+    "source": "formal/gpu-prover/RESULTS.md",
     "empty": "No check results are recorded."
   },
   "cpu_changes": {

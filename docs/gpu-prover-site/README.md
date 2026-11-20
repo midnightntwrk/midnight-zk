@@ -54,8 +54,8 @@ from that file. The captions and column labels are in `data/benchmarks.json` (`r
 The other tables are older, dated measurements:
 
 - `identity` is the sentence in the zero-knowledge section. Remove the key to remove it.
-- `checks` is the table of the oracle section; its numbers come from `gpu-spec/RESULTS.md` and
-  `gpu-spec/COVERAGE.md`. `"stack": true` makes a table stack its rows on a narrow screen.
+- `checks` is the table of the oracle section; its numbers come from `formal/gpu-prover/RESULTS.md` and
+  `formal/gpu-prover/COVERAGE.md`. `"stack": true` makes a table stack its rows on a narrow screen.
 - `compact_programs`, `preview` and `large_circuit` each have `label` (what the numbers were
   measured on), `columns`, `rows`, `notes` and `empty`. With no rows the page keeps the heading
   and shows the text of `empty`. A `null` cell shows "not reported".

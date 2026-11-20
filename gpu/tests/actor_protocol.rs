@@ -309,7 +309,7 @@ fn json_roundtrip_and_op_encoding() {
 
 #[test]
 fn itf_traces_replay_when_present() {
-    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../gpu-spec/vectors/actor");
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../formal/gpu-prover/vectors/actor");
     if !dir.is_dir() {
         return;
     }

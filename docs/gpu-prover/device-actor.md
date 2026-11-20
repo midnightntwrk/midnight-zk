@@ -43,8 +43,8 @@ instead of blocking.
 
 Artefacts:
 
-- Model: `gpu-spec/quint/device_actor.qnt`, directed tests in
-  `gpu-spec/quint/device_actor_test.qnt`.
+- Model: `formal/gpu-prover/quint/device_actor.qnt`, directed tests in
+  `formal/gpu-prover/quint/device_actor_test.qnt`.
 - Protocol core: `gpu/src/actor/` (`protocol.rs` is the pure state
   machine, `budget.rs` the admission budget, `chan.rs` the blocking
   channel layer, `mod.rs` the protocol actor thread and the
@@ -148,7 +148,7 @@ is outside the model.
 one (same names, same state fields, same `lastOp` encoding
 `code + 100 * a + 10000 * b`). ITF traces of the model replay
 against it (`protocol::replay_itf`); `gpu/tests/actor_protocol.rs`
-replays every trace file placed in `gpu-spec/vectors/actor/`.
+replays every trace file placed in `formal/gpu-prover/vectors/actor/`.
 Invariants (named `val`s in the model, mirrored by tests):
 `noDeadlock`, `budgetNeverExceeded`, `noReuseBeforeWipeConfirmed`,
 `teardownAnswersEveryWaiter`, `noCrossJobRead`, `fifoAdmission`,

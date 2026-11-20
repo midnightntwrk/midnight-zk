@@ -244,7 +244,7 @@ gpu-prover/container/run-gpu.sh docker run -d --name midnight-gpu-prover \
                 </tr>
                 <tr>
                   <th scope="row">Specification</th>
-                  <td data-label="Path"><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-spec/README.md" data-repo="gpu-spec/README.md"><code>gpu-spec/</code></a></td>
+                  <td data-label="Path"><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/formal/gpu-prover/README.md" data-repo="formal/gpu-prover/README.md"><code>formal/gpu-prover/</code></a></td>
                   <td data-label="What it is">
                     85 EARS requirements (GPU-001 to GPU-085), the design, an executable Lean 4 oracle with theorems, a Quint
                     model of the request state machine, and golden vectors for the Rust tests.
@@ -538,7 +538,7 @@ gpu-prover/container/run-gpu.sh docker run -d --name midnight-gpu-prover \
             </p>
             <p class="result" data-bench="identity"></p>
             <p>
-              A caller seed alone does not fix the proof bytes, because the limb values come from the operating system RNG. The Lean oracle of the <a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-spec/RESULTS.md" data-repo="gpu-spec/RESULTS.md">specification</a> proves the same property for the model: any two devices that obey the hook contract give the same transcript and the same number of random draws.
+              A caller seed alone does not fix the proof bytes, because the limb values come from the operating system RNG. The Lean oracle of the <a href="https://github.com/midnightntwrk/midnight-zk/blob/main/formal/gpu-prover/RESULTS.md" data-repo="formal/gpu-prover/RESULTS.md">specification</a> proves the same property for the model: any two devices that obey the hook contract give the same transcript and the same number of random draws.
             </p>
 
             <h3>The skew mask is not a blinder</h3>
@@ -587,7 +587,7 @@ gpu-prover/container/run-gpu.sh docker run -d --name midnight-gpu-prover \
           <div data-bench="checks">
             <p class="empty">The check results need JavaScript and an HTTP server.</p>
           </div>
-          <p class="source">Source: <a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-spec/RESULTS.md" data-repo="gpu-spec/RESULTS.md">gpu-spec/RESULTS.md</a> and <a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-spec/COVERAGE.md" data-repo="gpu-spec/COVERAGE.md">gpu-spec/COVERAGE.md</a>.</p>
+          <p class="source">Source: <a href="https://github.com/midnightntwrk/midnight-zk/blob/main/formal/gpu-prover/RESULTS.md" data-repo="formal/gpu-prover/RESULTS.md">formal/gpu-prover/RESULTS.md</a> and <a href="https://github.com/midnightntwrk/midnight-zk/blob/main/formal/gpu-prover/COVERAGE.md" data-repo="formal/gpu-prover/COVERAGE.md">formal/gpu-prover/COVERAGE.md</a>.</p>
           <div class="prose">
             <p>
               The theorems are about the models. That the code obeys the hook contract is a separate
@@ -1212,7 +1212,7 @@ shares its count between its usable rows. The blinding values of the multiplicit
               The coverage matrix marks 6 requirements as Gap: GPU-001, GPU-014, GPU-015, GPU-019,
               GPU-051 and GPU-065. It marks 8 as Partial: GPU-002, GPU-004, GPU-022, GPU-025, GPU-033,
               GPU-045, GPU-047 and GPU-053. The matrix is in
-              <a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-spec/COVERAGE.md" data-repo="gpu-spec/COVERAGE.md">gpu-spec/COVERAGE.md</a>.
+              <a href="https://github.com/midnightntwrk/midnight-zk/blob/main/formal/gpu-prover/COVERAGE.md" data-repo="formal/gpu-prover/COVERAGE.md">formal/gpu-prover/COVERAGE.md</a>.
             </p>
             <h3>Other notes</h3>
             <ul>
@@ -1240,12 +1240,12 @@ shares its count between its usable rows. The blinding values of the multiplicit
             <li><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/docs/gpu-prover/security.md" data-repo="docs/gpu-prover/security.md"><b>Security</b><span>The zero-knowledge argument and the threat model.</span></a></li>
             <li><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/docs/gpu-prover/benchmarks.md" data-repo="docs/gpu-prover/benchmarks.md"><b>Benchmarks</b><span>Method and results.</span></a></li>
             <li><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/docs/gpu-prover/compact-suite.md" data-repo="docs/gpu-prover/compact-suite.md"><b>Compact suite</b><span>The Compact programs and how they are proved.</span></a></li>
-            <li><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-spec/README.md" data-repo="gpu-spec/README.md"><b>Specification</b><span>Requirements, design, Lean oracle, Quint model and golden vectors, which check each other.</span></a></li>
-            <li><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-spec/requirements.md" data-repo="gpu-spec/requirements.md"><b>Requirements</b><span>The EARS requirements, each with its verification.</span></a></li>
-            <li><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-spec/design.md" data-repo="gpu-spec/design.md"><b>Design</b><span>Pipeline, hook points, kernels, memory, wipe, fallback, zero knowledge and threat model.</span></a></li>
-            <li><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-spec/oracle" data-repo="gpu-spec/oracle"><b>Lean oracle</b><span>Reference arithmetic, device models with theorems, and the request state machine.</span></a></li>
-            <li><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-spec/quint" data-repo="gpu-spec/quint"><b>Quint model</b><span>The request state machine, written from the requirements and the design.</span></a></li>
-            <li><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-spec/RESULTS.md" data-repo="gpu-spec/RESULTS.md"><b>Check results</b><span>What the checks found and what is still open.</span></a></li>
+            <li><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/formal/gpu-prover/README.md" data-repo="formal/gpu-prover/README.md"><b>Specification</b><span>Requirements, design, Lean oracle, Quint model and golden vectors, which check each other.</span></a></li>
+            <li><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/formal/gpu-prover/requirements.md" data-repo="formal/gpu-prover/requirements.md"><b>Requirements</b><span>The EARS requirements, each with its verification.</span></a></li>
+            <li><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/formal/gpu-prover/design.md" data-repo="formal/gpu-prover/design.md"><b>Design</b><span>Pipeline, hook points, kernels, memory, wipe, fallback, zero knowledge and threat model.</span></a></li>
+            <li><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/formal/gpu-prover/lean" data-repo="formal/gpu-prover/lean"><b>Lean oracle</b><span>Reference arithmetic, device models with theorems, and the request state machine.</span></a></li>
+            <li><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/formal/gpu-prover/quint" data-repo="formal/gpu-prover/quint"><b>Quint model</b><span>The request state machine, written from the requirements and the design.</span></a></li>
+            <li><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/formal/gpu-prover/RESULTS.md" data-repo="formal/gpu-prover/RESULTS.md"><b>Check results</b><span>What the checks found and what is still open.</span></a></li>
             <li><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-prover/README.md" data-repo="gpu-prover/README.md"><b>midnight-gpu-prover</b><span>Service, daemon, client, configuration and protocol.</span></a></li>
             <li><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu" data-repo="gpu"><b>midnight-gpu</b><span>The CUDA kernels.</span></a></li>
             <li><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-prover/container/README.md" data-repo="gpu-prover/container/README.md"><b>Container</b><span>Image build, CDI, SRS mount, restart policy and systemd unit.</span></a></li>

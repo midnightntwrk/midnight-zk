@@ -1,4 +1,4 @@
-# gpu-spec
+# formal/gpu-prover
 
 The specification of the GPU prover, in four forms that check each other:
 
@@ -6,7 +6,7 @@ The specification of the GPU prover, in four forms that check each other:
 |---|---|
 | `requirements.json`, `requirements.md` | 85 EARS requirements, GPU-001 to GPU-085. The JSON is authoritative; the Markdown is generated from it. |
 | `design.md` | Pipeline, hook points, device kernels, memory and admission, wipe, fallback, the zero-knowledge argument and the threat model. |
-| `oracle/` | An executable Lean 4 oracle: reference field arithmetic, transforms, MSM and quotient numerator, device models with theorems, and the request state machine with invariant proofs. |
+| `lean/` | An executable Lean 4 oracle: reference field arithmetic, transforms, MSM and quotient numerator, device models with theorems, and the request state machine with invariant proofs. |
 | `quint/` | A Quint model of the request state machine, written from the requirements and the design only. |
 | `vectors/` | Golden vectors written by the oracle, for the Rust tests. Format in `vectors/README.md`. |
 | `scripts/` | Gates and helpers. |
@@ -14,7 +14,7 @@ The specification of the GPU prover, in four forms that check each other:
 
 ## Tools
 
-- Lean 4 through `elan`. The toolchain is pinned in `oracle/lean-toolchain`
+- Lean 4 through `elan`. The toolchain is pinned in `lean/lean-toolchain`
   (`v4.35.0`); `lake` installs it on first use. No Mathlib.
 - Quint 0.32.0 (`npm i -g @informalsystems/quint@0.32.0`). The gate uses
   `quint run` and `quint test` only, which need no Apalache.
@@ -23,7 +23,7 @@ The specification of the GPU prover, in four forms that check each other:
 ## Build the oracle
 
 ```sh
-cd gpu-spec/oracle
+cd formal/gpu-prover/lean
 lake build --wfail
 ```
 
@@ -44,7 +44,7 @@ Set `LEAN_ABORT_ON_PANIC=1` for every oracle process.
 echo '{"protocol":"kink-implementation/1","inputs":{"config":{"perProof":6,"resident":8,
 "reduced":2,"budget":0,"keep":false,"wsl":false,"device":true,"limit":3,"window":600,
 "bench":false,"acceptance":false,"brLimit":3,"brWindow":600,"brCooldown":600},
-"ops":[1,202002]}}' | oracle/.lake/build/bin/oracle
+"ops":[1,202002]}}' | lean/.lake/build/bin/oracle
 ```
 
 The answer is `{"end":"final","cells":{"s":{...}}}` with the end state, or
@@ -71,7 +71,7 @@ encoding and the state fields are in `vectors/README.md`.
 
 ## Gates
 
-From `gpu-spec/`:
+From `formal/gpu-prover/`:
 
 ```sh
 python3 -I scripts/gen_requirements_md.py --check     # requirements.md matches the JSON
@@ -89,7 +89,7 @@ field kind through `--step`, refusal controls with their exact codes, decode
 error controls, and the default mode against the end state of every service
 trace. `check_vectors.test.sh` runs the gate on copies with a hand-edited
 value, a stale trace, a missing file and an extra file; each must fail. CI
-(`.github/workflows/gpu-spec.yml`) runs the build and these three checks.
+(`.github/workflows/formal-gpu-prover.yml`) runs the build and these three checks.
 
 `quint_check.sh` (about 40 minutes at the default sample count) builds the
 oracle, typechecks the model, runs the assignment lint, then for each of the

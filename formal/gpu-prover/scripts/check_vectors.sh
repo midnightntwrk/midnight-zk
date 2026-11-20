@@ -15,14 +15,14 @@
 # limitations under the License.
 
 # Vector gate: build the oracle, export the golden vectors into a temporary
-# directory and fail when they differ from gpu-spec/vectors.
+# directory and fail when they differ from formal/gpu-prover/vectors.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export LEAN_ABORT_ON_PANIC=1
-(cd oracle && lake build --wfail >/dev/null)
+(cd lean && lake build --wfail >/dev/null)
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
-oracle/.lake/build/bin/oracle --vectors "$tmp"
+lean/.lake/build/bin/oracle --vectors "$tmp"
 cp vectors/README.md "$tmp/README.md"
 # Each check is its own command, so `set -e` stops on a failure. (As the left
 # side of `&&` a failing diff would be ignored and the script would exit 0.)
@@ -31,9 +31,9 @@ echo "vectors: up to date"
 # A second export must give the same bytes (the generator is deterministic).
 tmp2=$(mktemp -d)
 trap 'rm -rf "$tmp" "$tmp2"' EXIT
-oracle/.lake/build/bin/oracle --vectors "$tmp2"
+lean/.lake/build/bin/oracle --vectors "$tmp2"
 cp vectors/README.md "$tmp2/README.md"
 diff -r "$tmp" "$tmp2"
 echo "vectors: regeneration is byte-stable"
-python3 -I scripts/check_step_codec.py oracle/.lake/build/bin/oracle vectors >/dev/null
+python3 -I scripts/check_step_codec.py lean/.lake/build/bin/oracle vectors >/dev/null
 echo "codec checks: ok"

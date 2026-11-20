@@ -4,8 +4,8 @@ This document gives the argument that the GPU path keeps the proof and its
 zero-knowledge property unchanged. It then states what the service does with
 witness data on the device and on the host, what it does not do, and which
 risks remain. The full threat model is section 12 of
-[gpu-spec/design.md](../../gpu-spec/design.md). The open items are in
-[gpu-spec/RESULTS.md](../../gpu-spec/RESULTS.md).
+[formal/gpu-prover/design.md](../../formal/gpu-prover/design.md). The open items are in
+[formal/gpu-prover/RESULTS.md](../../formal/gpu-prover/RESULTS.md).
 
 ## 1. Where randomness is drawn
 
@@ -33,17 +33,17 @@ The hook contract has three parts (see [architecture.md](architecture.md#2-the-h
 2. A decline leaves the input unchanged, and the stock code runs on it.
 3. A hook draws no random value and touches no transcript.
 
-The Lean oracle in [`gpu-spec/oracle/`](../../gpu-spec/oracle/Main.lean) states the prover as a
+The Lean oracle in [`formal/gpu-prover/lean/`](../../formal/gpu-prover/lean/Main.lean) states the prover as a
 fold over a list of events: hooked calls, random draws and transcript
 squeezes. It proves these theorems:
 
 | Theorem | File | Statement |
 |---|---|---|
-| `resolve_eq` | [`GpuSpec/Hooks.lean`](../../gpu-spec/oracle/GpuSpec/Hooks.lean) | A device that obeys the contract resolves every call to the reference value. |
+| `resolve_eq` | [`GpuSpec/Hooks.lean`](../../formal/gpu-prover/lean/GpuSpec/Hooks.lean) | A device that obeys the contract resolves every call to the reference value. |
 | `prove_any_schedule` | `GpuSpec/Hooks.lean` | Any two devices that obey the contract give the same transcript and the same number of random draws. |
 | `runInPlace_eq` | `GpuSpec/Hooks.lean` | An in-place hook whose decline leaves the buffer unchanged gives the reference value. |
-| `msmMasked_eq` | [`GpuSpec/Msm.lean`](../../gpu-spec/oracle/GpuSpec/Msm.lean) | `MSM(s + r) - MSM(r) = MSM(s)` for every `s` and `r` of equal length. |
-| `compile_correct`, `deviceNumerator_eq` | [`GpuSpec/Quotient.lean`](../../gpu-spec/oracle/GpuSpec/Quotient.lean) | The compiled stack program computes the tree value of every expression, and the device numerator equals the reference numerator at every point. |
+| `msmMasked_eq` | [`GpuSpec/Msm.lean`](../../formal/gpu-prover/lean/GpuSpec/Msm.lean) | `MSM(s + r) - MSM(r) = MSM(s)` for every `s` and `r` of equal length. |
+| `compile_correct`, `deviceNumerator_eq` | [`GpuSpec/Quotient.lean`](../../formal/gpu-prover/lean/GpuSpec/Quotient.lean) | The compiled stack program computes the tree value of every expression, and the device numerator equals the reference numerator at every point. |
 
 The CPU-only device obeys the contract. By `prove_any_schedule`, every device
 schedule therefore gives the transcript of the CPU prover with the same random
@@ -55,7 +55,7 @@ These theorems are about a model: the MSM is over the toy group `Z_r`, and the
 transforms and the numerator are reference definitions. The link from the
 model to the CUDA code is made by tests:
 
-- The golden vectors in [`gpu-spec/vectors/`](../../gpu-spec/vectors/README.md) fix the
+- The golden vectors in [`formal/gpu-prover/vectors/`](../../formal/gpu-prover/vectors/README.md) fix the
   expected values of the NTT, the coset transforms, the MSM and the quotient
   numerator. The oracle checks its device models against them.
 - [`gpu/tests/prover.rs`](../../gpu/tests/prover.rs) compares whole proofs. `seeded_proofs_equal_cpu`
@@ -168,7 +168,7 @@ In scope:
 - a crash loop,
 - a shared device under WSL2.
 
-The controls for each are in section 12 of [design.md](../../gpu-spec/design.md).
+The controls for each are in section 12 of [design.md](../../formal/gpu-prover/design.md).
 
 Scope of the zero-knowledge rule (a named assumption):
 
@@ -216,7 +216,7 @@ Out of scope:
 
 ## 9. Residual risks
 
-These items are open in [RESULTS.md](../../gpu-spec/RESULTS.md):
+These items are open in [RESULTS.md](../../formal/gpu-prover/RESULTS.md):
 
 1. **Crash before the wipe.** Device memory of a crashed daemon is freed
    without zeroing. No code inside the daemon can close this. A host that

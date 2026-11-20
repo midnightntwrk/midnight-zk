@@ -24,14 +24,14 @@ survivor fails the run unless RESULTS.md gives its equivalence argument
 (`EQUIVALENT` below).
 
 Usage: mutants.py COPY [ID ...]
-COPY is a scratch copy of gpu-spec/ with a built oracle and with the traces of
+COPY is a scratch copy of formal/gpu-prover/ with a built oracle and with the traces of
 `scripts/quint_check.sh` under quint/traces (the script edits files in COPY and
 restores them; never run it on the work tree). Exit 1 on an unexpected
 survivor or a mutant whose text no longer matches the source."""
 import subprocess,sys,os,shutil
 if len(sys.argv) < 2:
     sys.exit(__doc__)
-G=os.path.abspath(sys.argv[1]); R=G+'/oracle'
+G=os.path.abspath(sys.argv[1]); R=G+'/lean'
 EQUIVALENT={'47'}
 Sv='GpuSpec/Service.lean'
 M=[

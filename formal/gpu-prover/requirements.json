@@ -754,7 +754,7 @@
     {
       "id": "GPU-072",
       "section": "harness",
-      "statement": "The midnight-gpu test suite shall check the device MSM, forward NTT, inverse NTT and the coset transform of the quotient hook against the golden vectors of gpu-spec/vectors.",
+      "statement": "The midnight-gpu test suite shall check the device MSM, forward NTT, inverse NTT and the coset transform of the quotient hook against the golden vectors of formal/gpu-prover/vectors.",
       "verification": [
         "rust: vector tests; vectors/README.md"
       ]

@@ -2,7 +2,7 @@
 
 This document describes how the GPU prover adds device acceleration to the
 midnight-proofs prover without changing its output. The requirements are in
-`requirements.md` (GPU-001 to GPU-072). The Lean oracle in `oracle/` and the
+`requirements.md` (GPU-001 to GPU-072). The Lean oracle in `lean/` and the
 Quint model in `quint/` make the hook contract and the request state machine
 executable. Requirement IDs appear in brackets.
 

@@ -1,6 +1,6 @@
 # Golden vectors
 
-The Lean oracle (`gpu-spec/oracle`) writes these files with
+The Lean oracle (`formal/gpu-prover/lean`) writes these files with
 `oracle --vectors DIR`. Every expected value comes from a reference definition
 of the oracle (the transform formulas, the plain MSM sum, the expression tree,
 the service `step`), never from a device model. The one exception is the

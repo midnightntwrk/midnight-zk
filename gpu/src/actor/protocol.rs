@@ -15,7 +15,7 @@
 //! call is made here; effects go through [`super::Backend`].
 //!
 //! The transition function [`step`] corresponds action for action to
-//! the Quint model `gpu-spec/quint/device_actor.qnt`: same action
+//! the Quint model `formal/gpu-prover/quint/device_actor.qnt`: same action
 //! names, same state field names, same op encoding
 //! (`code + 100 * a + 10000 * b` in [`Action::op_code`]). ITF traces of
 //! the model replay against it with [`replay_itf`].
@@ -660,7 +660,7 @@ pub fn step(state: &State, action: &Action) -> Result<State, Refusal> {
 // integers as {"#bigint": "..."}; both forms are read. Sets would be
 // {"#set": [...]} and maps {"#map": [[k, v], ...]}; this state has
 // neither (lists and records only), matching `itf_value` in
-// gpu-spec/scripts/quint_replay.py.
+// formal/gpu-prover/scripts/quint_replay.py.
 
 fn ints(v: &[i64]) -> String {
     v.iter().map(i64::to_string).collect::<Vec<_>>().join(",")

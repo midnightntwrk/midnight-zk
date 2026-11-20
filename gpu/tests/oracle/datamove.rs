@@ -15,7 +15,7 @@ use serde_json::Value;
 pub(super) fn permitted() -> Option<BTreeMap<String, u64>> {
     let root = std::env::var_os("ORACLE_VECTOR_DIR")
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../gpu-spec/vectors"));
+        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../formal/gpu-prover/vectors"));
     let mut policy = None;
     let mut v2 = false;
     for entry in fs::read_dir(root).unwrap() {

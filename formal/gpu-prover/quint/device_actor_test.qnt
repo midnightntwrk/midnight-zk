@@ -14,8 +14,8 @@
 // limitations under the License.
 
 // Directed tests of device_actor.qnt. Run with
-//   quint test gpu-spec/quint/device_actor_test.qnt --main test_actor --match 'Test$'
-//   quint test gpu-spec/quint/device_actor_test.qnt --main refuse_actor --match 'Test$'
+//   quint test formal/gpu-prover/quint/device_actor_test.qnt --main test_actor --match 'Test$'
+//   quint test formal/gpu-prover/quint/device_actor_test.qnt --main refuse_actor --match 'Test$'
 // Refusal tests end in .fail(): the named step must be refused.
 
 module test_actor {

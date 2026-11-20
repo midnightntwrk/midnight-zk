@@ -93,7 +93,7 @@ impl Trace {
 fn vector_dir() -> std::path::PathBuf {
     std::env::var_os("ORACLE_VECTOR_DIR")
         .map(Into::into)
-        .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../gpu-spec/vectors"))
+        .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../formal/gpu-prover/vectors"))
 }
 
 /// Keep the live codec here. Forward opaque state records to Lean unchanged.

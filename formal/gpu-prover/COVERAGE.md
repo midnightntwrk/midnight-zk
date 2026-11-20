@@ -1,8 +1,8 @@
 # GPU requirement coverage
 
-The matrix covers GPU-001 through GPU-085 against the frozen oracle and vectors in gpu-spec/. V1 uses the earlier fixtures. V2 uses the vectors in this checkout. The Rust service replay runs the CPU prover and stock verifier with a scripted Device.
+The matrix covers GPU-001 through GPU-085 against the frozen oracle and vectors in formal/gpu-prover/. V1 uses the earlier fixtures. V2 uses the vectors in this checkout. The Rust service replay runs the CPU prover and stock verifier with a scripted Device.
 
-Device evidence comes from two GPUs: an integrated Blackwell GPU (SM 121) and an RTX 5080 Laptop GPU (SM 120). On both, every v2 vector row passes, including the two newest quotient cases, and both GPU-038 read-back paths record zero extended copies. On SM 121 an earlier corpus also passed the v1 hook 27/27. The stock singleton FFT is undefined, so the singleton row checks only the shape decline and the unchanged buffer (ORACLE-30). Script paths in the matrix are relative to the repository root. Service vector paths start at gpu-spec/vectors/.
+Device evidence comes from two GPUs: an integrated Blackwell GPU (SM 121) and an RTX 5080 Laptop GPU (SM 120). On both, every v2 vector row passes, including the two newest quotient cases, and both GPU-038 read-back paths record zero extended copies. On SM 121 an earlier corpus also passed the v1 hook 27/27. The stock singleton FFT is undefined, so the singleton row checks only the shape decline and the unchanged buffer (ORACLE-30). Script paths in the matrix are relative to the repository root. Service vector paths start at formal/gpu-prover/vectors/.
 
 | ID | Requirement | Lean oracle | Quint | Rust check | Harness or evidence | Evidence at this head |
 |---|---|---|---|---|---|---|
@@ -97,12 +97,12 @@ Device evidence comes from two GPUs: an integrated Blackwell GPU (SM 121) and an
 Run from the repository root. Use the frozen oracle binary with frozen vectors. Cargo starts tests from each crate directory, so fixture and executable paths exported for Rust must resolve from there. `gpu/scripts/gpu-gate.sh` runs the device tests, the v2 vectors and the ITF replay through the daemon adapter on a CUDA host.
 
 ```sh
-(cd gpu-spec/oracle && lake build --wfail)
-python3 -I gpu-spec/scripts/check_refs.py
-spec=gpu-spec
-python3 -I "$spec/scripts/check_step_codec.py" "$spec/oracle/.lake/build/bin/oracle" "$spec/vectors"
-for dir in gpu-spec/quint/traces/*; do
-  python3 -I "$spec/scripts/quint_replay.py" --oracle "$spec/oracle/.lake/build/bin/oracle" \
+(cd formal/gpu-prover/lean && lake build --wfail)
+python3 -I formal/gpu-prover/scripts/check_refs.py
+spec=formal/gpu-prover
+python3 -I "$spec/scripts/check_step_codec.py" "$spec/lean/.lake/build/bin/oracle" "$spec/vectors"
+for dir in formal/gpu-prover/quint/traces/*; do
+  python3 -I "$spec/scripts/quint_replay.py" --oracle "$spec/lean/.lake/build/bin/oracle" \
     --traces "$dir" --op-var lastOp --compare s --drop prev --keep-going || exit "$?"
 done
 ```
@@ -111,7 +111,7 @@ The Lean comparison uses every field of `s`. The Rust comparison observes the fi
 
 ## Artifact checks
 
-Run `python3 -I gpu-spec/scripts/check_evidence.py` with the following subcommands on fresh captures.
+Run `python3 -I formal/gpu-prover/scripts/check_evidence.py` with the following subcommands on fresh captures.
 
 - `identical LEFT RIGHT vk pk proof` checks the nonempty serialized build artifacts, including each enabled phase mask against CPU. The same predicate checks ordered `rng-events` and `transcript-events`. Both the caller stream and stock quotient limb entropy need controlled test-only sources. Ordered-event producers remain missing.
 - `workers PID,THREADS PID,THREADS` checks disjoint live affinity masks and the configured thread budgets. `summary SUMMARY.tsv` checks first and median latency, warm count, ready time and memory peaks. Separately verify that the raw repetitions belong to one process. Compact can resume a prior raw file.

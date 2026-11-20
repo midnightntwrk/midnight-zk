@@ -14,12 +14,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Quint gate of gpu-spec: typecheck, simulate every instance against `inv`,
+# Quint gate of formal/gpu-prover: typecheck, simulate every instance against `inv`,
 # export ITF traces, replay them through the Lean oracle's --step mode, and
 # check that the replay can fail (negative control).
 #
 # Usage: scripts/quint_check.sh [SAMPLES] [TRACES]   (defaults 10000 and 50)
-# Needs: quint (0.32.0), lake (the toolchain of oracle/lean-toolchain), python3.
+# Needs: quint (0.32.0), lake (the toolchain of lean/lean-toolchain), python3.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 SAMPLES=${1:-10000}
@@ -50,8 +50,8 @@ WITNESSES="w_wait w_evict w_cpu w_queued w_busy w_stopped w_degraded w_served w_
 DROP="--drop prev"
 export LEAN_ABORT_ON_PANIC=1
 
-(cd oracle && lake build --wfail >/dev/null)
-ORACLE=oracle/.lake/build/bin/oracle
+(cd lean && lake build --wfail >/dev/null)
+ORACLE=lean/.lake/build/bin/oracle
 
 quint typecheck "$MODEL"
 python3 -I scripts/quint_assignment_lint.py "$MODEL"
