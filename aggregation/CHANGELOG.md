@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 * Adapt to configurable `NB_ARITH_COLS` [#287](https://github.com/midnightntwrk/midnight-zk/pull/287)
 
 ### Fixed
+* `IvcVerifier::verify` rejects instances whose accumulator does not have the labels and shape the circuit assigns, which the public inputs do not bind
 * `Ivc::circuit_is_genesis` panics if the state's public input and the genesis one have different lengths, instead of comparing only a prefix [#622](https://github.com/midnightntwrk/midnight-zk/issues/622)
 * Fix cost model to pass correct number of committed instances [#280](https://github.com/midnightntwrk/midnight-zk/pull/280)
 * Run 'prepare' function in-circuit for the multi-circuit aggregator [416](https://github.com/midnightntwrk/midnight-zk/pull/416)

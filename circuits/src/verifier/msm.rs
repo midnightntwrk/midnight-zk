@@ -226,6 +226,18 @@ impl<E: InCircuitKZGEngine> Msm<E> {
         self.labels.clone()
     }
 
+    /// Whether this MSM has the shape [`AssignedMsm::assign_collapsed`]
+    /// assigns with the given `fixed_base_labels`.
+    pub fn is_collapsed_with(&self, fixed_base_labels: &[PolynomialLabel]) -> bool {
+        let n = fixed_base_labels.len();
+        self.labels.len() == n + 1
+            && self.labels[..n] == *fixed_base_labels
+            && self.labels[n] == PolynomialLabel::NoLabel
+            && self.bases[..n].iter().all(|p| matches!(p, Point::Fixed))
+            && matches!(self.bases[n], Point::Variable(..))
+            && self.scalars[n] == E::Fr::ONE
+    }
+
     /// Collapses the variable-base part into a single `(collapsed-point, 1)`
     /// term, labeling the result with `label`.
     ///
@@ -705,5 +717,33 @@ impl<E: InCircuitKZGEngine> AssignedMsm<E> {
         acc.add_msm(&other)?;
 
         Ok(acc)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use group::Group;
+    use midnight_curves::{Bls12, Fq as Fr, G1Projective as G1};
+
+    use super::*;
+
+    #[test]
+    fn test_is_collapsed_with() {
+        let labels = [
+            PolynomialLabel::Custom("-G".into()),
+            PolynomialLabel::Fixed(0),
+        ];
+        let p = Point::Variable(G1::generator());
+        let msm = |bases: &[Point<Bls12>], label: &PolynomialLabel| {
+            let labels = [label.clone(), labels[1].clone(), PolynomialLabel::NoLabel];
+            Msm::new(bases, &[Fr::from(2), Fr::from(3), Fr::ONE], &labels)
+        };
+        let canonical = [Point::Fixed, Point::Fixed, p.clone()];
+        assert!(msm(&canonical, &labels[0]).is_collapsed_with(&labels));
+
+        // Relabelling a scalar or moving the variable base keeps the public inputs.
+        assert!(!msm(&canonical, &labels[1]).is_collapsed_with(&labels));
+        let moved = [p, Point::Fixed, Point::Fixed];
+        assert!(!msm(&moved, &labels[0]).is_collapsed_with(&labels));
     }
 }
