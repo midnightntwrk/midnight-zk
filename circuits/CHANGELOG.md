@@ -20,6 +20,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * `CircuitCurve::from_xy` for Jubjub checks the curve equation on both coordinates. [#654](https://github.com/midnightntwrk/midnight-zk/pull/654)
 * `VectorInstructions::trim_beginning` with `n_elems > M` and the `AssignedVector` comparisons with a constant longer than `M` (`is_equal_to_fixed`, `assert_equal_to_fixed` and their negations) panic with a descriptive message instead of underflowing. [#662](https://github.com/midnightntwrk/midnight-zk/pull/662)
 ### Changed
+* `CircuitCurve::from_xy` for BLS12-381 and BN256 relies on the curve-equation check of `CurveAffine::from_xy` instead of repeating it [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 * Foreign Weierstrass `point_from_coordinates` enforces membership in the prime-order subgroup on curves with a non-trivial cofactor (BLS12-381), as documented in `EccInstructions` [#654](https://github.com/midnightntwrk/midnight-zk/pull/654)
 * Document that `EccInstructions` (and the foreign Weierstrass chip) only guarantee completeness and soundness on the large prime-order subgroup component of a point, not on its torsion component, e.g. the GLV-based MSM [#659](https://github.com/midnightntwrk/midnight-zk/pull/659)
 * `AssignmentInstructions::as_constant`, the constant an assigned element is known to encode at circuit-construction time, if any [#655](https://github.com/midnightntwrk/midnight-zk/pull/655)

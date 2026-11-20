@@ -949,7 +949,9 @@ impl CurveAffine for G1Affine {
 
     fn from_xy(x: Self::Base, y: Self::Base) -> CtOption<Self> {
         let p = Self::from_raw_unchecked(x, y, false);
-        CtOption::new(p, p.is_torsion_free())
+        // The subgroup test does not use the curve constant, so on its own it
+        // accepts points of other curves `y² = x³ + b'`.
+        CtOption::new(p, p.is_on_curve() & p.is_torsion_free())
     }
 
     /// Skips `from_xy`'s subgroup check, which costs about a scalar
@@ -1603,6 +1605,32 @@ mod tests {
         assert!(bool::from(
             <G1Affine as UncompressedEncoding>::from_uncompressed(&enc).is_none()
         ));
+    }
+
+    #[test]
+    fn test_g1_from_xy_checks_curve_and_subgroup() {
+        let g = G1Affine::generator();
+        assert_eq!(G1Affine::from_xy(g.x(), g.y()).unwrap(), g);
+        assert_eq!(
+            G1Affine::from_xy(Fp::ZERO, Fp::ZERO).unwrap(),
+            G1Affine::identity()
+        );
+
+        // On the curve, outside the prime-order subgroup.
+        let p = g1_non_torsion_point();
+        assert!(bool::from(G1Affine::from_xy(p.x(), p.y()).is_none()));
+
+        // For a subgroup point `(x, y)`, `(u²x, u³y)` lies on `y² = x³ + 4u⁶`
+        // and still passes the subgroup test.
+        for u in [2u64, 3, 5] {
+            let u = Fp::from(u);
+            let (x, y) = (g.x() * u.square(), g.y() * u.square() * u);
+            let q = G1Affine::from_raw_unchecked(x, y, false);
+            assert_eq!(q.is_on_curve().unwrap_u8(), 0);
+            assert_eq!(q.is_torsion_free().unwrap_u8(), 1);
+            assert!(bool::from(G1Affine::from_xy(x, y).is_none()));
+            assert!(bool::from(Coordinates::<G1Affine>::from_xy(x, y).is_none()));
+        }
     }
 
     #[test]

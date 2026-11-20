@@ -302,15 +302,12 @@ impl CircuitCurve for G1Projective {
     }
 
     fn from_xy(x: Self::Base, y: Self::Base) -> Option<Self> {
-        // Check the (short) Weierstrass curve equation: y² = x³ + Ax + B
-        let a = <Self as WeierstrassCurve>::A;
-        let b = <Self as WeierstrassCurve>::B;
-        if y.square() != x.square() * x + a * x + b {
-            return None;
-        }
-        // `G1Projective` only represents points of the prime-order subgroup, so
-        // points of the curve outside of it are rejected by `CurveAffine::from_xy`.
-        <G1Affine as CurveAffine>::from_xy(x, y).into_option().map(|p| p.into())
+        // `CurveAffine::from_xy` checks the curve equation and the prime-order
+        // subgroup. It also maps (0, 0) to the identity, which is rejected here.
+        <G1Affine as CurveAffine>::from_xy(x, y)
+            .into_option()
+            .map(Self::from)
+            .filter(|p| !bool::from(p.is_identity()))
     }
 
     fn try_into_subgroup(self) -> Option<Self::CryptographicGroup> {
@@ -349,15 +346,12 @@ impl CircuitCurve for bn256::G1 {
     }
 
     fn from_xy(x: Self::Base, y: Self::Base) -> Option<Self> {
-        // Check the (short) Weierstrass curve equation: y² = x³ + Ax + B
-        // The underlying `CurveAffine::from_xy` handles the identity coordinates
-        // without errors via a short-circuit check.
-        let a = <Self as WeierstrassCurve>::A;
-        let b = <Self as WeierstrassCurve>::B;
-        if y.square() != x.square() * x + a * x + b {
-            return None;
-        }
-        <bn256::G1Affine as CurveAffine>::from_xy(x, y).into_option().map(|p| p.into())
+        // `CurveAffine::from_xy` checks the curve equation. It also maps (0, 0)
+        // to the identity, which is rejected here.
+        <bn256::G1Affine as CurveAffine>::from_xy(x, y)
+            .into_option()
+            .map(Self::from)
+            .filter(|p| !bool::from(p.is_identity()))
     }
 
     fn try_into_subgroup(self) -> Option<Self::CryptographicGroup> {
@@ -450,6 +444,20 @@ mod tests {
         // A point in the subgroup is accepted.
         let (x, y) = G1Projective::generator().coordinates().unwrap();
         assert_eq!(G1Projective::from_xy(x, y), Some(G1Projective::generator()));
+    }
+
+    /// Tests that `from_xy` rejects points of BLS12-381 that are off the curve
+    /// but pass its subgroup test: `(u²x, u³y)` for `(x, y)` in the subgroup.
+    #[test]
+    fn test_bls_from_xy_off_curve_in_subgroup_test() {
+        let (x, y) = G1Projective::generator().coordinates().unwrap();
+        let u = BlsBase::from(2);
+        let (x, y) = (x * u.square(), y * u.square() * u);
+        assert_ne!(
+            y.square(),
+            x.square() * x + <G1Projective as WeierstrassCurve>::B
+        );
+        assert!(G1Projective::from_xy(x, y).is_none());
     }
 
     /// Tests that `from_xy` on the identity coordinates returns `Some` only

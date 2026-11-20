@@ -1024,7 +1024,7 @@ impl CurveAffine for G2Affine {
     fn from_xy(x: Self::Base, y: Self::Base) -> CtOption<Self> {
         let raw = blst_p2_affine { x: x.0, y: y.0 };
         let p = G2Affine(raw);
-        CtOption::new(p, p.is_on_curve())
+        CtOption::new(p, p.is_on_curve() & p.is_torsion_free())
     }
 
     fn is_on_curve(&self) -> Choice {
@@ -1614,6 +1614,25 @@ mod tests {
         let enc = <G2Affine as UncompressedEncoding>::to_uncompressed(&p);
         assert!(bool::from(
             <G2Affine as UncompressedEncoding>::from_uncompressed(&enc).is_none()
+        ));
+    }
+
+    #[test]
+    fn test_g2_from_xy_checks_curve_and_subgroup() {
+        let g = G2Affine::generator();
+        assert_eq!(G2Affine::from_xy(g.x(), g.y()).unwrap(), g);
+        assert_eq!(
+            G2Affine::from_xy(Fp2::ZERO, Fp2::ZERO).unwrap(),
+            G2Affine::identity()
+        );
+
+        // On the curve, outside the prime-order subgroup.
+        let p = g2_non_torsion_point();
+        assert!(bool::from(G2Affine::from_xy(p.x(), p.y()).is_none()));
+
+        // Off the curve.
+        assert!(bool::from(
+            G2Affine::from_xy(g.x(), g.y() + Fp2::ONE).is_none()
         ));
     }
 
