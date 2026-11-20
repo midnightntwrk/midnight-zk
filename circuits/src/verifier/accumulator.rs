@@ -150,6 +150,13 @@ impl<E: InCircuitKZGEngine> Accumulator<E> {
         self.rhs.clone()
     }
 
+    /// Whether this accumulator has the shape
+    /// [`AssignedAccumulator::assign_collapsed`] assigns with the given
+    /// `fixed_base_labels`.
+    pub fn is_collapsed_with(&self, fixed_base_labels: &[PolynomialLabel]) -> bool {
+        self.lhs.is_collapsed_with(&[]) && self.rhs.is_collapsed_with(fixed_base_labels)
+    }
+
     /// Given the actual fixed bases, resolves the fixed-base part of the
     /// internal MSMs by pairing each named scalar with its base and moving
     /// them to regular variable-base entries.

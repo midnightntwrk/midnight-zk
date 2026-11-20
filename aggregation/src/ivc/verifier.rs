@@ -61,12 +61,9 @@ impl<T: Ivc> IvcVerifier<T> {
 
         let fixed_bases = midnight_circuits::verifier::fixed_bases::<E, PCS>(self.vk.vk());
 
-        // The public inputs do not bind the accumulator's labels: they must be the
-        // ones the circuit assigns.
+        // Make sure that the received accumulator has the expected label structure.
         let labels = fixed_bases.keys().cloned().collect::<Vec<_>>();
-        if !instance.acc.lhs().is_collapsed_with(&[])
-            || !instance.acc.rhs().is_collapsed_with(&labels)
-        {
+        if !instance.acc.is_collapsed_with(&labels) {
             return Err(IvcError::InvalidInstance);
         }
 

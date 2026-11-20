@@ -8,7 +8,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 ### Added
-* `Msm::is_collapsed_with`, which checks that an MSM has the shape `AssignedMsm::assign_collapsed` assigns
+* `Accumulator::is_collapsed_with` and `Msm::is_collapsed_with`, which check that an accumulator or MSM has the shape `assign_collapsed` assigns
 * `EccInstructions::point_from_coordinates_without_subgroup_check`, which creates a point from its coordinates without enforcing subgroup membership with constraints [#654](https://github.com/midnightntwrk/midnight-zk/pull/654)
 * `verifier::InCircuitKZGEngine`, the `KZGEngine`s whose KZG proofs can be verified in-circuit, bounding the KZG types of the in-circuit verifier [#644](https://github.com/midnightntwrk/midnight-zk/pull/644)
 ### Fixed
