@@ -82,11 +82,7 @@ fn keygen() -> VerifyingKey<Fq, KZGCommitmentScheme<Bls12>> {
 
 #[test]
 fn vk_round_trip() {
-    for format in [
-        SerdeFormat::Processed,
-        SerdeFormat::RawBytes,
-        SerdeFormat::RawBytesUnchecked,
-    ] {
+    for format in [SerdeFormat::Processed, SerdeFormat::RawBytes] {
         let vk = keygen();
         let bytes = vk.to_bytes(format);
         assert_eq!(bytes.len(), vk.bytes_length(format));
@@ -106,11 +102,7 @@ fn vk_round_trip() {
 
 #[test]
 fn pk_round_trip() {
-    for format in [
-        SerdeFormat::Processed,
-        SerdeFormat::RawBytes,
-        SerdeFormat::RawBytesUnchecked,
-    ] {
+    for format in [SerdeFormat::Processed, SerdeFormat::RawBytes] {
         let pk = keygen_pk(keygen(), &MyCircuit).expect("pk should not fail");
         let bytes = pk.to_bytes(format);
         assert_eq!(bytes.len(), pk.bytes_length(format));
@@ -125,4 +117,31 @@ fn pk_round_trip() {
 
         assert_eq!(read.to_bytes(format), bytes);
     }
+}
+
+/// Keys may come from an untrusted party, so they cannot be read with
+/// `RawBytesUnchecked`, which skips checks on their points.
+#[test]
+fn keys_reject_the_unchecked_format() {
+    let unchecked = SerdeFormat::RawBytesUnchecked;
+
+    let vk = keygen();
+    let err = VerifyingKey::<Fq, KZGCommitmentScheme<Bls12>>::from_bytes::<MyCircuit>(
+        &vk.to_bytes(unchecked),
+        unchecked,
+        #[cfg(feature = "circuit-params")]
+        (),
+    )
+    .expect_err("vk should not deserialize");
+    assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+
+    let pk = keygen_pk(vk, &MyCircuit).expect("pk should not fail");
+    let err = ProvingKey::<Fq, KZGCommitmentScheme<Bls12>>::from_bytes::<MyCircuit>(
+        &pk.to_bytes(unchecked),
+        unchecked,
+        #[cfg(feature = "circuit-params")]
+        (),
+    )
+    .expect_err("pk should not deserialize");
+    assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
 }

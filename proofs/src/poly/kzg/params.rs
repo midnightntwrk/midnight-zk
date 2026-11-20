@@ -375,9 +375,12 @@ where
                 (g, g_lagrange)
             }
             SerdeFormat::RawBytesUnchecked => {
-                let g = (0..n).map(|_| E::G1Affine::read_raw_unchecked(reader)).collect::<Vec<_>>();
-                let g_lagrange =
-                    (0..n).map(|_| E::G1Affine::read_raw_unchecked(reader)).collect::<Vec<_>>();
+                let g = (0..n)
+                    .map(|_| E::G1Affine::try_read_raw_unchecked(reader))
+                    .collect::<Result<Vec<_>, _>>()?;
+                let g_lagrange = (0..n)
+                    .map(|_| E::G1Affine::try_read_raw_unchecked(reader))
+                    .collect::<Result<Vec<_>, _>>()?;
                 (g, g_lagrange)
             }
         };
@@ -595,6 +598,28 @@ mod test {
         assert_eq!(params0.g_lagrange, params1.g_lagrange);
         assert_eq!(params0.g2, params1.g2);
         assert_eq!(params0.s_g2, params1.s_g2);
+    }
+
+    /// Malformed parameters give an error, in the unchecked format as well.
+    #[test]
+    fn test_read_custom_rejects_malformed_points() {
+        use midnight_curves::Bls12;
+
+        const K: u32 = 2;
+        let params: ParamsKZG<Bls12> = ParamsKZG::unsafe_setup(K, OsRng);
+        let mut data = vec![];
+        params.write_custom(&mut data, SerdeFormat::RawBytes).unwrap();
+
+        // The last byte of the first point, after the 4 bytes of `k`.
+        let mut off_curve = data.clone();
+        off_curve[4 + 95] ^= 1;
+
+        for format in [SerdeFormat::RawBytes, SerdeFormat::RawBytesUnchecked] {
+            assert!(ParamsKZG::<Bls12>::read_custom(&mut &data[..], format).is_ok());
+            assert!(ParamsKZG::<Bls12>::read_custom(&mut &off_curve[..], format).is_err());
+            let truncated = &data[..data.len() - 1];
+            assert!(ParamsKZG::<Bls12>::read_custom(&mut &truncated[..], format).is_err());
+        }
     }
 
     #[test]

@@ -91,16 +91,8 @@ where
     F: WithSmallOrderMulGroup<3> + FromUniformBytes<64>,
     PCS: PolynomialCommitmentScheme<F>,
 {
-    /// Writes a verifying key to a buffer.
-    ///
-    /// Writes a curve element according to `format`:
-    /// - `Processed`: Writes a compressed curve element with coordinates in
-    ///   standard form. Writes a field element in standard form, with
-    ///   endianness specified by the `PrimeField` implementation.
-    /// - Otherwise: Writes an uncompressed curve element with coordinates in
-    ///   Montgomery form Writes a field element into raw bytes in its internal
-    ///   Montgomery representation, WITHOUT performing the expensive Montgomery
-    ///   reduction.
+    /// Writes a verifying key to a buffer, with its curve elements serialized
+    /// according to `format` (see [`SerdeFormat`]).
     pub fn write<W: io::Write>(&self, writer: &mut W, format: SerdeFormat) -> io::Result<()> {
         // Version byte that will be checked on read.
         writer.write_all(&[VERSION])?;
@@ -115,17 +107,8 @@ where
 
     /// Reads a verification key from a buffer for the associated [Circuit].
     ///
-    /// Reads a curve element from the buffer and parses it according to the
-    /// `format`:
-    /// - `Processed`: Reads a compressed curve element and decompresses it.
-    ///   Reads a field element in standard form, with endianness specified by
-    ///   the `PrimeField` implementation, and checks that the element is less
-    ///   than the modulus.
-    /// - `RawBytes`: Reads an uncompressed curve element with coordinates in
-    ///   Montgomery form. Checks that field elements are less than modulus, and
-    ///   then checks that the point is on the curve.
-    /// - `RawBytesUnchecked`: Reads an uncompressed curve element with
-    ///   coordinates in Montgomery form; does not perform any checks.
+    /// Curve elements are parsed according to `format` (see [`SerdeFormat`]),
+    /// which must be a checked one: `RawBytesUnchecked` gives an error.
     pub fn read<R: io::Read, ConcreteCircuit: Circuit<F>>(
         reader: &mut R,
         format: SerdeFormat,
@@ -143,22 +126,21 @@ where
     /// Reads a verification key from a buffer, using the provided
     /// [ConstraintSystem].
     ///
-    /// Reads a curve element from the buffer and parses it according to the
-    /// `format`:
-    /// - `Processed`: Reads a compressed curve element and decompresses it.
-    ///   Reads a field element in standard form, with endianness specified by
-    ///   the `PrimeField` implementation, and checks that the element is less
-    ///   than the modulus.
-    /// - `RawBytes`: Reads an uncompressed curve element with coordinates in
-    ///   Montgomery form. Checks that field elements are less than modulus, and
-    ///   then checks that the point is on the curve.
-    /// - `RawBytesUnchecked`: Reads an uncompressed curve element with
-    ///   coordinates in Montgomery form; does not perform any checks.
+    /// Curve elements are parsed according to `format` (see [`SerdeFormat`]),
+    /// which must be a checked one: `RawBytesUnchecked` gives an error.
     pub fn read_from_cs<R: io::Read>(
         reader: &mut R,
         format: SerdeFormat,
         cs: ConstraintSystem<F>,
     ) -> io::Result<Self> {
+        // Keys may come from an untrusted party, so their points are always checked.
+        if matches!(format, SerdeFormat::RawBytesUnchecked) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "keys cannot be read with SerdeFormat::RawBytesUnchecked",
+            ));
+        }
+
         let mut version_byte = [0u8; 1];
         reader.read_exact(&mut version_byte)?;
         if VERSION != version_byte[0] {
@@ -447,17 +429,9 @@ where
     F: WithSmallOrderMulGroup<3> + PrimeField + FromUniformBytes<64> + SerdeObject,
     PCS: PolynomialCommitmentScheme<F>,
 {
-    /// Writes a proving key to a buffer.
-    ///
-    /// Writes a curve element according to `format`:
-    /// - `Processed`: Writes a compressed curve element with coordinates in
-    ///   standard form. Writes a field element in standard form, with
-    ///   endianness specified by the `PrimeField` implementation.
-    /// - Otherwise: Writes an uncompressed curve element with coordinates in
-    ///   Montgomery form Writes a field element into raw bytes in its internal
-    ///   Montgomery representation, WITHOUT performing the expensive Montgomery
-    ///   reduction. Does so by first writing the verifying key and then
-    ///   serializing the rest of the data (in the form of field polynomials)
+    /// Writes a proving key to a buffer: the verifying key, with its curve
+    /// elements serialized according to `format` (see [`SerdeFormat`]),
+    /// followed by the rest of the data, as field polynomials.
     pub fn write<W: io::Write>(&self, writer: &mut W, format: SerdeFormat) -> io::Result<()> {
         self.vk.write(writer, format)?;
         write_polynomial_slice(&self.fixed_values, writer)?;
@@ -471,17 +445,8 @@ where
     /// Does so by reading verification key first, and then deserializing the
     /// rest of the file into the remaining proving key data.
     ///
-    /// Reads a curve element from the buffer and parses it according to the
-    /// `format`:
-    /// - `Processed`: Reads a compressed curve element and decompresses it.
-    ///   Reads a field element in standard form, with endianness specified by
-    ///   the `PrimeField` implementation, and checks that the element is less
-    ///   than the modulus.
-    /// - `RawBytes`: Reads an uncompressed curve element with coordinates in
-    ///   Montgomery form. Checks that field elements are less than modulus, and
-    ///   then checks that the point is on the curve.
-    /// - `RawBytesUnchecked`: Reads an uncompressed curve element with
-    ///   coordinates in Montgomery form; does not perform any checks
+    /// Curve elements are parsed according to `format` (see [`SerdeFormat`]),
+    /// which must be a checked one: `RawBytesUnchecked` gives an error.
     pub fn read<R: io::Read, ConcreteCircuit: Circuit<F>>(
         reader: &mut R,
         format: SerdeFormat,

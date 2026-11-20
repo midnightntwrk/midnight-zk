@@ -11,30 +11,33 @@ use midnight_curves::serde::SerdeObject;
 
 use crate::poly::Polynomial;
 
-/// This enum specifies how various types are serialized and deserialized.
+/// This enum specifies how curve elements are serialized and deserialized.
+///
+/// Field elements are serialized in their internal (Montgomery) representation
+/// in every format, and read with [`SerdeObject::read_raw`], whose checks
+/// depend on the field: BLS12-381 scalars are not checked to be reduced.
 #[derive(Clone, Copy, Debug)]
 pub enum SerdeFormat {
-    /// Curve elements are serialized in compressed form.
-    /// Field elements are serialized in standard form, with endianness
-    /// specified by the `PrimeField` implementation.
+    /// Curve elements are serialized in compressed form. When deserializing,
+    /// they are validated (on BLS12-381: on the curve and in the prime-order
+    /// subgroup).
     Processed,
-    /// Curve elements are serialized in uncompressed form. Field elements are
-    /// serialized in their internal Montgomery representation.
-    /// When deserializing, checks are performed to ensure curve elements indeed
-    /// lie on the curve and field elements are less than modulus.
+    /// Curve elements are serialized in uncompressed form, as given by their
+    /// [`SerdeObject`] implementation. When deserializing, they are validated
+    /// as in `Processed`.
     RawBytes,
-    /// Serialization is the same as `RawBytes`, but no checks are performed.
+    /// Same serialization as `RawBytes`. When deserializing, curve elements
+    /// skip the checks that their [`SerdeObject`] implementation allows to skip
+    /// (on BLS12-381, the subgroup check). Only use it on trusted data: it is
+    /// rejected when reading keys.
     RawBytesUnchecked,
 }
 
 /// Interface for Serde objects that can be represented in compressed form.
 pub trait ProcessedSerdeObject: Sized {
     /// Reads an element from the buffer and parses it according to the
-    /// `format`:
-    /// - `Processed`: Reads a compressed element and decompress it
-    /// - `RawBytes`: Reads an uncompressed element and checks its correctness
-    /// - `RawBytesUnchecked`: Reads an uncompressed element without performing
-    ///   any checks
+    /// `format` (see [`SerdeFormat`]). In every format, bytes that cannot be
+    /// decoded give an error.
     fn read<R: io::Read>(reader: &mut R, format: SerdeFormat) -> io::Result<Self>;
 
     /// Writes an element according to `format`:
@@ -53,9 +56,8 @@ pub(crate) fn read_f<F: PrimeField + SerdeObject, R: io::Read>(
     format: SerdeFormat,
 ) -> io::Result<F> {
     match format {
-        SerdeFormat::Processed => <F as SerdeObject>::read_raw(reader),
-        SerdeFormat::RawBytes => <F as SerdeObject>::read_raw(reader),
-        SerdeFormat::RawBytesUnchecked => Ok(<F as SerdeObject>::read_raw_unchecked(reader)),
+        SerdeFormat::Processed | SerdeFormat::RawBytes => F::read_raw(reader),
+        SerdeFormat::RawBytesUnchecked => F::try_read_raw_unchecked(reader),
     }
 }
 
@@ -65,14 +67,6 @@ where
     C: Curve + GroupEncoding + From<C::AffineRepr>,
     C::AffineRepr: SerdeObject,
 {
-    /// Reads an element from the buffer and parses it according to the
-    /// `format`:
-    /// - `Processed`: Reads a compressed curve element and decompress it
-    /// - `RawBytes`: Reads an uncompressed curve element with coordinates in
-    ///   Montgomery form. Checks that field elements are less than modulus, and
-    ///   then checks that the point is on the curve.
-    /// - `RawBytesUnchecked`: Reads an uncompressed curve element with
-    ///   coordinates in Montgomery form; does not perform any checks
     fn read<R: Read>(reader: &mut R, format: SerdeFormat) -> io::Result<Self> {
         {
             match format {
@@ -86,16 +80,12 @@ where
                     <Self as Curve>::AffineRepr::read_raw(reader).map(|p| p.into())
                 }
                 SerdeFormat::RawBytesUnchecked => {
-                    Ok(<Self as Curve>::AffineRepr::read_raw_unchecked(reader).into())
+                    <Self as Curve>::AffineRepr::try_read_raw_unchecked(reader).map(|p| p.into())
                 }
             }
         }
     }
 
-    /// Writes a curve element according to `format`:
-    /// - `Processed`: Writes a compressed curve element
-    /// - Otherwise: Writes an uncompressed curve element with coordinates in
-    ///   Montgomery form
     fn write<W: Write>(&self, writer: &mut W, format: SerdeFormat) -> io::Result<()> {
         match format {
             SerdeFormat::Processed => writer.write_all(self.to_bytes().as_ref()),

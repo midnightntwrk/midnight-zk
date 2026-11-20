@@ -438,8 +438,7 @@ impl SerdeObject for G2Affine {
     }
 
     fn from_raw_bytes(bytes: &[u8]) -> Option<Self> {
-        debug_assert_eq!(bytes.len(), UNCOMPRESSED_SIZE);
-        let input: [u8; UNCOMPRESSED_SIZE] = bytes.try_into().unwrap();
+        let input: [u8; UNCOMPRESSED_SIZE] = bytes.try_into().ok()?;
         Self::from_uncompressed(&input).into()
     }
 
@@ -448,10 +447,18 @@ impl SerdeObject for G2Affine {
     }
 
     fn read_raw_unchecked<R: Read>(reader: &mut R) -> Self {
+        Self::try_read_raw_unchecked(reader).expect("Could not read a point.")
+    }
+
+    fn try_read_raw_unchecked<R: Read>(reader: &mut R) -> std::io::Result<Self> {
         let mut buf = [0u8; UNCOMPRESSED_SIZE];
-        reader.read_exact(&mut buf).expect("Could not read from buffer.");
-        Self::from_uncompressed_unchecked(&buf)
-            .expect("from_uncompressed_unchecked should return a point.")
+        reader.read_exact(&mut buf)?;
+        Option::from(Self::from_uncompressed_unchecked(&buf)).ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Invalid point encoding, or point not on the curve.",
+            )
+        })
     }
 
     fn read_raw<R: Read>(reader: &mut R) -> std::io::Result<Self> {
@@ -463,7 +470,7 @@ impl SerdeObject for G2Affine {
         } else {
             Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
-                "Invalid point. (Either not on curve, or not in subgroup.",
+                "Invalid point: bad encoding, not on the curve or not in the subgroup.",
             ))
         }
     }
@@ -1615,6 +1622,35 @@ mod tests {
         assert!(bool::from(
             <G2Affine as UncompressedEncoding>::from_uncompressed(&enc).is_none()
         ));
+    }
+
+    // The fallible unchecked reader only skips the subgroup check, and reports
+    // undecodable or truncated input as an error.
+    #[test]
+    fn test_g2_try_read_raw_unchecked() {
+        let g = G2Affine::generator();
+        let raw = g.to_raw_bytes();
+        assert_eq!(
+            G2Affine::try_read_raw_unchecked(&mut raw.as_slice()).unwrap(),
+            g
+        );
+
+        let p = g2_non_torsion_point();
+        assert_eq!(
+            G2Affine::try_read_raw_unchecked(&mut p.to_raw_bytes().as_slice()).unwrap(),
+            p
+        );
+
+        // Off the curve: the generator with its `y` coordinate changed.
+        let mut off_curve = raw.clone();
+        off_curve[UNCOMPRESSED_SIZE - 1] ^= 1;
+        assert!(G2Affine::try_read_raw_unchecked(&mut off_curve.as_slice()).is_err());
+
+        // Truncated input.
+        let truncated = &raw[..UNCOMPRESSED_SIZE - 1];
+        assert!(G2Affine::try_read_raw_unchecked(&mut &truncated[..]).is_err());
+        assert!(G2Affine::read_raw(&mut &truncated[..]).is_err());
+        assert!(G2Affine::from_raw_bytes(truncated).is_none());
     }
 
     #[test]

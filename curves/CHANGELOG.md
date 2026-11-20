@@ -9,11 +9,13 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 ### Added
 * `msm::msm_pippenger`, the MSM used for polynomial commitments: a Pippenger over blst-style tiles of windows × chunks of the terms, with batched affine buckets (gnark's) from window 7 and XYZZ buckets below, and per-arch window tables (x86-64, aarch64); a sparse input (more zero scalars than non-zero) is compacted first [#594](https://github.com/midnightntwrk/midnight-zk/pull/594)
 * `FieldInto`: field arithmetic written into a destination (blst-style); every method has a default, and BLS12-381 `Fp` overrides them with direct blst calls [#594](https://github.com/midnightntwrk/midnight-zk/pull/594)
+* `SerdeObject::try_read_raw_unchecked`, which reads like `read_raw_unchecked` but returns an error instead of panicking. It defaults to `read_raw`; BLS12-381 `G1Affine` and `G2Affine` skip the subgroup check [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 * `CurveAffine::from_xy_unchecked`, a point from coordinates the caller vouches for (BLS12-381 G1 skips the subgroup check), and the hidden `CurveAffine::xy_ref`, which lets an MSM read a base's coordinates in place [#594](https://github.com/midnightntwrk/midnight-zk/pull/594)
 ### Changed
 * BREAKING: `CurveAffine::Base` requires `FieldInto`. A downstream `CurveAffine` implementation needs `impl FieldInto for <Base> {}` [#594](https://github.com/midnightntwrk/midnight-zk/pull/594)
 * BLS12-381 `Fp` overrides `is_zero_vartime` (an OR of the limbs) and inlines `is_zero`, `square` and `double` [#594](https://github.com/midnightntwrk/midnight-zk/pull/594)
 ### Fixed
+* `SerdeObject::from_raw_bytes` for BLS12-381 `G1Affine` and `G2Affine` returns `None` on input of the wrong length instead of panicking [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 * `CurveAffine::from_xy` (and `Coordinates::from_xy`) for BLS12-381 `G1Affine` and `G2Affine` checks both the curve equation and membership in the prime-order subgroup [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 * `msm` bench: one generator per rayon job made 98% of its points and scalars repeats; each item is now seeded on its own [#594](https://github.com/midnightntwrk/midnight-zk/pull/594)
 ### Removed
