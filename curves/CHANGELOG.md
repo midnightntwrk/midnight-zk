@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 * BREAKING: `CurveAffine::Base` requires `FieldInto`. A downstream `CurveAffine` implementation needs `impl FieldInto for <Base> {}` [#594](https://github.com/midnightntwrk/midnight-zk/pull/594)
 * BLS12-381 `Fp` overrides `is_zero_vartime` (an OR of the limbs) and inlines `is_zero`, `square` and `double` [#594](https://github.com/midnightntwrk/midnight-zk/pull/594)
 ### Fixed
+* `CurveAffine::from_xy` (and `Coordinates::from_xy`) for BLS12-381 `G1Affine` and `G2Affine` checks both the curve equation and membership in the prime-order subgroup [#675](https://github.com/midnightntwrk/midnight-zk/pull/675)
 * `msm` bench: one generator per rayon job made 98% of its points and scalars repeats; each item is now seeded on its own [#594](https://github.com/midnightntwrk/midnight-zk/pull/594)
 ### Removed
 
