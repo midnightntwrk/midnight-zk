@@ -124,12 +124,12 @@ dependencies = [
  "blake2s_simd",
  "byteorder",
  "crossbeam-channel",
- "ff",
- "group",
+ "ff 0.13.1",
+ "group 0.13.0",
  "lazy_static",
  "log",
  "num_cpus",
- "pairing",
+ "pairing 0.23.0",
  "rand_core 0.6.4",
  "rayon",
  "subtle",
@@ -207,7 +207,7 @@ version = "0.3.0-rc.1"
 source = "git+https://github.com/eryxcoop/blake2b_halo2?rev=6d9828c#6d9828c922f5cecf0d4f0666a119581abe7ff950"
 dependencies = [
  "blake2b_simd",
- "ff",
+ "ff 0.13.1",
  "hex",
  "midnight-curves",
  "midnight-proofs",
@@ -587,7 +587,7 @@ dependencies = [
  "cpufeatures 0.2.17",
  "curve25519-dalek-derive",
  "fiat-crypto",
- "group",
+ "group 0.13.0",
  "rand_core 0.6.4",
  "rustc_version",
  "subtle",
@@ -740,9 +740,9 @@ dependencies = [
  "base16ct",
  "crypto-bigint",
  "digest 0.10.7",
- "ff",
+ "ff 0.13.1",
  "generic-array",
- "group",
+ "group 0.13.0",
  "pkcs8",
  "rand_core 0.6.4",
  "sec1",
@@ -787,6 +787,16 @@ checksum = "c0b50bfb653653f9ca9095b427bed08ab8d75a137839d9ad64eb11810d5b6393"
 dependencies = [
  "bitvec",
  "rand_core 0.6.4",
+ "subtle",
+]
+
+[[package]]
+name = "ff"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a1f686ab92a9fb0eaf188f6c6c87b89490baa6fdb0db4544ba4dc47f7942489f"
+dependencies = [
+ "rand_core 0.10.1",
  "subtle",
 ]
 
@@ -915,10 +925,21 @@ version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f0f9ef7462f7c099f518d754361858f86d8a07af53ba9af0fe635bbccb151a63"
 dependencies = [
- "ff",
+ "ff 0.13.1",
  "rand 0.8.7",
  "rand_core 0.6.4",
  "rand_xorshift 0.3.0",
+ "subtle",
+]
+
+[[package]]
+name = "group"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7fd1a1c7a5206c5b7a3f5a0d7ccd3ff85d0c8f5133d62a02680255b0004af5f4"
+dependencies = [
+ "ff 0.14.0",
+ "rand_core 0.10.1",
  "subtle",
 ]
 
@@ -1096,8 +1117,8 @@ name = "midnight-aggregation"
 version = "0.1.0"
 dependencies = [
  "blake2b_simd",
- "ff",
- "group",
+ "ff 0.13.1",
+ "group 0.13.0",
  "midnight-circuits",
  "midnight-curves",
  "midnight-proofs",
@@ -1114,9 +1135,9 @@ dependencies = [
  "base64",
  "criterion",
  "dhat",
- "ff",
+ "ff 0.13.1",
  "goldenfile",
- "group",
+ "group 0.13.0",
  "indexmap",
  "itertools 0.15.0",
  "lazy_static",
@@ -1146,15 +1167,15 @@ dependencies = [
  "criterion",
  "curve25519-dalek",
  "digest 0.10.7",
- "ff",
+ "ff 0.13.1",
  "getrandom 0.2.17",
- "group",
+ "group 0.13.0",
  "halo2derive",
  "k256",
  "lazy_static",
  "num-bigint",
  "p256",
- "pairing",
+ "pairing 0.24.2",
  "paste",
  "primeorder",
  "rand 0.8.7",
@@ -1172,9 +1193,9 @@ dependencies = [
  "assert_matches",
  "blake2b_simd",
  "criterion",
- "ff",
+ "ff 0.13.1",
  "getrandom 0.2.17",
- "group",
+ "group 0.13.0",
  "itertools 0.15.0",
  "midnight-circuits",
  "midnight-curves",
@@ -1206,9 +1227,9 @@ dependencies = [
  "blake2b_simd",
  "criterion",
  "dhat",
- "ff",
+ "ff 0.13.1",
  "goldenfile",
- "group",
+ "group 0.13.0",
  "hex-literal",
  "itertools 0.15.0",
  "midnight-circuits",
@@ -1329,7 +1350,16 @@ version = "0.23.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "81fec4625e73cf41ef4bb6846cafa6d44736525f442ba45e407c4a000a13996f"
 dependencies = [
- "group",
+ "group 0.13.0",
+]
+
+[[package]]
+name = "pairing"
+version = "0.24.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e2507708d4076d5c62617fbdd8c50e11047d033ac318a437623d7e35385f9b7f"
+dependencies = [
+ "group 0.14.0",
 ]
 
 [[package]]
@@ -1808,7 +1838,7 @@ version = "0.3.0-rc.1"
 source = "git+https://github.com/alexandroszacharakis8/sha3-circuit?rev=a66a403#a66a403a55bc9531d9084eef2923c6353d763edf"
 dependencies = [
  "blake2b_simd",
- "ff",
+ "ff 0.13.1",
  "midnight-curves",
  "midnight-proofs",
  "num-bigint",
