@@ -39,6 +39,9 @@ use crate::{
 /// the committed instances that the verifier will be provided with when this
 /// feature is enabled.
 ///
+/// `column` is the index of the instance column these values fill. The
+/// commitment is labelled with it, so the verifier accepts it only there.
+///
 /// # Panics
 ///
 /// If `instances` is longer than the domain.
@@ -46,6 +49,7 @@ pub fn commit_to_instances<F, PCS>(
     params: &PCS::Parameters,
     domain: &EvaluationDomain<F>,
     instances: &[F],
+    column: usize,
 ) -> PCS::Commitment
 where
     F: Ord + FromUniformBytes<64>,
@@ -56,7 +60,7 @@ where
     for (poly_eval, value) in poly.iter_mut().zip(instances.iter()) {
         *poly_eval = *value;
     }
-    PCS::commit(params, &poly, PolynomialLabel::CommittedInstance(0))
+    PCS::commit(params, &poly, PolynomialLabel::CommittedInstance(column))
 }
 
 /// This computes a proof trace for the provided `circuit` when given the
