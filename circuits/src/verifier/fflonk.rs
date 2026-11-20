@@ -126,19 +126,24 @@ where
         // Maps the labels of every queried chunk to its commitment and the points
         // its polynomials are queried at, in query order: `labels -> (commitment,
         // points)`.
-        let chunks_info = queries.iter().fold(BTreeMap::new(), |mut chunks_info, q| {
+        let chunks_info = queries.iter().try_fold(BTreeMap::new(), |mut chunks_info, q| {
             let labels = balanced_chunks(
                 &<Self as InCircuitPCS<F>>::commitment_labels(q.commitment),
                 Self::T_MAX,
             )
             .find(|labels| labels.contains(&q.label))
-            .map_or_else(|| vec![q.label.clone()], <[_]>::to_vec);
+            .ok_or_else(|| {
+                Error::Synthesis(
+                    "the queried commitment has no polynomial under the query label".into(),
+                )
+            })?
+            .to_vec();
             let (_, points) = chunks_info.entry(labels).or_insert((q.commitment, Vec::new()));
             if !points.contains(&q.point) {
                 points.push(q.point.clone());
             }
-            chunks_info
-        });
+            Ok::<_, Error>(chunks_info)
+        })?;
 
         // The evaluations of the chunks at all the points, both the explicit (taken
         // from the queries) and the implicit (read from the transcript here) ones.

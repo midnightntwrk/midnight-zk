@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * KZG commitments (`commit`, `commit_many` and `commit_interleaved`, hence the prover, keygen and `commit_to_instances`) use the Rust `msm_pippenger` instead of blst's `multi_exp_affine` for BLS12-381 G1, with the same results. The verifier's MSM (`msm_specific`) is unchanged [#594](https://github.com/midnightntwrk/midnight-zk/pull/594)
 * Only the code that needs `ZETA` (building an `EvaluationDomain`, and reading or creating keys) requires `WithSmallOrderMulGroup<3>`; the getters of `EvaluationDomain`, `VerifyingKey` and `ProvingKey`, and the prover and verifier internals, require `PrimeField` [#644](https://github.com/midnightntwrk/midnight-zk/pull/644)
 * Remove outdated references to the removed `Polynomial::padded_add` from the docs of the `Add` and `AddAssign` impls of `Polynomial` [#666](https://github.com/midnightntwrk/midnight-zk/pull/666)
+* `Fflonk::multi_prepare` returns `Error::OpeningError` when a query's label is not among its commitment's labels, instead of opening the commitment as a single polynomial under that label
 ### Removed
 
 ## [0.9.0-rc.1]
