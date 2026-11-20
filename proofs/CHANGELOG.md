@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `Fflonk::multi_prepare` returns `Error::DuplicatedQuery` when a polynomial is queried twice at the same point, as KZG does, instead of keeping only the last evaluation
 * `commit_to_instances` takes the index of the instance column it commits to and labels the commitment with it. It used to label every commitment as column 0, so the verifier rejected proofs with more than one committed instance column [#671](https://github.com/midnightntwrk/midnight-zk/pull/671)
 * `Fflonk::multi_open` returns `Error::OpeningError` when a query's label is not among its group's labels, instead of panicking, and `Error::DuplicatedQuery` when a polynomial is queried twice at the same point, as `Fflonk::multi_prepare` does [#671](https://github.com/midnightntwrk/midnight-zk/pull/671)
+* The cost model with `COST_MEASURE_START`/`COST_MEASURE_END` markers reports the number of rows of the measured regions, which chips laying out constraints at load time may place apart, instead of their span [#631](https://github.com/midnightntwrk/midnight-zk/pull/631)
+
 ### Removed
 
 ## [0.9.0-rc.1]

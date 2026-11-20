@@ -27,21 +27,16 @@ macro_rules! run_test_native_gadget {
             types::{AssignedBit, AssignedByte, AssignedNative, ComposableChip},
             instructions::*,
             field::{
-                decomposition::{
-                    chip::{P2RDecompositionChip, P2RDecompositionConfig},
-                    pow2range::Pow2RangeChip,
-                },
-                AssignedBounded, NativeChip, NativeGadget,
+                AssignedBounded, NativeChip, NativeConfig, NativeGadget, RangeCheckChip,
+                RangeCheckConfig,
                 native::NB_EXTRA_ARITH_FIXED_COLS,
             },
         };
 
-        struct TestCircuit<const NB_POW2RANGE_COLS: usize>;
+        struct TestCircuit;
 
-        type NG<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
-
-        impl<F: CircuitField, const NB_POW2RANGE_COLS: usize> Circuit<F> for TestCircuit<NB_POW2RANGE_COLS> {
-            type Config = P2RDecompositionConfig;
+        impl<F: CircuitField> Circuit<F> for TestCircuit {
+            type Config = (NativeConfig, RangeCheckConfig<F>);
             type FloorPlanner = SimpleFloorPlanner;
             type Params = ();
 
@@ -69,9 +64,11 @@ macro_rules! run_test_native_gadget {
                     ),
                 );
 
-                let pow2range_config =
-                    Pow2RangeChip::configure(meta, &advice_columns[1..=NB_POW2RANGE_COLS]);
-                P2RDecompositionConfig::new(&native_config, &pow2range_config)
+                let range_check_config = RangeCheckChip::configure(
+                    meta,
+                    &(advice_columns.to_vec(), fixed_columns[..4].to_vec(), 8),
+                );
+                (native_config, range_check_config)
             }
 
             fn synthesize(
@@ -79,20 +76,19 @@ macro_rules! run_test_native_gadget {
                 config: Self::Config,
                 mut $layouter: impl Layouter<F>,
             ) -> Result<(), Error> {
-                let max_bit_len = 8;
-                let native_chip = NativeChip::new(config.native_config(), &());
-                let core_decomposition_chip = P2RDecompositionChip::new(&config, &max_bit_len);
-                let $chip = NativeGadget::new(core_decomposition_chip.clone(), native_chip.clone());
+                let native_chip = NativeChip::new(&config.0, &());
+                let range_check_chip = RangeCheckChip::new(&config.1, &native_chip);
+                let $chip = NativeGadget::new(native_chip.clone(), range_check_chip.clone());
 
                 $synthesize_body
 
                 native_chip.load(&mut $layouter)?;
-                core_decomposition_chip.load(&mut $layouter)
+                range_check_chip.load(&mut $layouter)
             }
         }
 
         assert_eq!(
-            MockProver::<Scalar>::run(&(TestCircuit::<4> {}), vec![vec![], vec![]])
+            MockProver::<Scalar>::run(&TestCircuit, vec![vec![], vec![]])
                 .unwrap()
                 .verify(),
             Ok(())

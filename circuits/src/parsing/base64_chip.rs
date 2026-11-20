@@ -30,10 +30,7 @@ use midnight_proofs::{
 
 use crate::{
     CircuitField,
-    field::{
-        AssignNative, AssignedNative, NativeChip, NativeGadget,
-        decomposition::chip::P2RDecompositionChip,
-    },
+    field::{AssignNative, AssignedNative, NativeGadget},
     instructions::{
         ArithInstructions, AssignmentInstructions, Base64Instructions, ControlFlowInstructions,
         DecompositionInstructions, EqualityInstructions, RangeCheckInstructions,
@@ -60,7 +57,7 @@ pub struct Base64Config {
 }
 
 // Native gadget type abbreviation.
-type NG<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
+type NG<F> = NativeGadget<F>;
 
 // Contains 4 Base64 characters as bytes.
 type B64Chunk<F> = [AssignedByte<F>; 4];
@@ -484,7 +481,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        field::decomposition::chip::P2RDecompositionConfig,
+        field::NativeGadget,
         instructions::{AssertionInstructions, AssignmentInstructions},
         testing_utils::FromScratch,
         vec::vector_gadget::VectorGadget,
@@ -529,7 +526,7 @@ mod tests {
     }
 
     impl<F: CircuitField> Circuit<F> for TestCircuit<F> {
-        type Config = (P2RDecompositionConfig, Base64Config);
+        type Config = (<NativeGadget<F> as FromScratch<F>>::Config, Base64Config);
         type FloorPlanner = SimpleFloorPlanner;
         type Params = ();
 
@@ -555,8 +552,7 @@ mod tests {
                 &mut vec![],
                 &[committed_instance_column, instance_column],
             );
-            let sr =
-                &ng_config.native_config.value_cols[..NB_BASE64_ADVICE_COLS].try_into().unwrap();
+            let sr = &ng_config.0.value_cols[..NB_BASE64_ADVICE_COLS].try_into().unwrap();
             let b64_config = Base64Chip::configure(meta, sr);
 
             (ng_config, b64_config)

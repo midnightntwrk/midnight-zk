@@ -258,7 +258,8 @@ impl<T: Ivc> Relation for IvcCircuit<T> {
         let ctx = T::read_context(reader)?;
 
         let mut cs = ConstraintSystem::default();
-        ZkStdLib::configure(&mut cs, (Self::arch(), (k - 1) as u8));
+        let arch = Self::arch();
+        ZkStdLib::configure(&mut cs, (arch, arch.range_check_bit_len(k)));
         let domain = EvaluationDomain::new(cs.degree() as u32, k);
 
         Ok(IvcCircuit {

@@ -162,7 +162,7 @@ impl Relation for SchnorrExample {
 }
 
 fn main() {
-    const K: u32 = 11;
+    const K: u32 = 10;
 
     let relation = SchnorrExample;
     let srs = srs_for_test(&relation, Some(K));

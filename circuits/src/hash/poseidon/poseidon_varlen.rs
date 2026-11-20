@@ -19,7 +19,7 @@ use super::{
     constants::{PoseidonField, RATE},
 };
 use crate::{
-    field::{NativeChip, NativeGadget, decomposition::chip::P2RDecompositionChip},
+    field::NativeGadget,
     hash::poseidon::{PoseidonState, constants::WIDTH},
     instructions::{
         ArithInstructions, AssignmentInstructions, BinaryInstructions, ControlFlowInstructions,
@@ -29,7 +29,7 @@ use crate::{
     types::{AssignedBit, AssignedNative, AssignedVector},
 };
 
-type NG<F> = NativeGadget<F, P2RDecompositionChip<F>, NativeChip<F>>;
+type NG<F> = NativeGadget<F>;
 
 /// Gadget for variable-length Poseidon operations.
 #[derive(Clone, Debug)]
@@ -180,14 +180,12 @@ impl<F: PoseidonField> VarLenPoseidonGadget<F> {
 use midnight_proofs::plonk::{Advice, Column, ConstraintSystem, Fixed, Instance};
 
 #[cfg(any(test, feature = "testing"))]
-use crate::field::decomposition::chip::P2RDecompositionConfig;
-#[cfg(any(test, feature = "testing"))]
 use crate::testing_utils::FromScratch;
 
 #[cfg(any(test, feature = "testing"))]
 impl<F: PoseidonField> FromScratch<F> for VarLenPoseidonGadget<F> {
     type Config = (
-        P2RDecompositionConfig,
+        <NativeGadget<F> as FromScratch<F>>::Config,
         <PoseidonChip<F> as FromScratch<F>>::Config,
     );
 

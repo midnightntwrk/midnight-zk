@@ -25,11 +25,12 @@ pub struct ZkStdLibArch {
     pub bls12_381: bool,
     pub base64: bool,
     pub automaton: bool,
-    pub nr_pow2range_cols: u8,
+    pub nb_range_check_groups: u8,
+    pub range_check_bit_len: Option<u8>,
 }
 ```
 
-The configuration can be defined via the `Relation` trait with the `used_chips` function. The default architecture activates only `JubJub`, `Poseidon` and `sha256`, and uses a single column for the `pow2range` chip. The maximum number of columns accepted for the `pow2range` chip is currently 4.
+The configuration can be defined via the `Relation` trait with the `used_chips` function. The default architecture activates none of the optional chips, and uses a single group of columns for the range-check chip (`nb_range_check_groups`), with lanes of `k - 1` bits unless `range_check_bit_len` sets another size.
 
 ## Example: Proving Knowledge of a SHA-256 Preimage
 

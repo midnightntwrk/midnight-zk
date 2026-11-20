@@ -74,7 +74,8 @@ impl Relation for RSASignatureCircuit {
 
     fn used_chips(&self) -> ZkStdLibArch {
         ZkStdLibArch {
-            nr_pow2range_cols: 4,
+            nb_range_check_groups: 1,
+            range_check_bit_len: Some(10),
             ..ZkStdLibArch::default()
         }
     }
