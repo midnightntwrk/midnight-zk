@@ -26,6 +26,8 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * Native and emulated field arithmetic and the foreign MSM use `as_constant` to simplify operations with constant operands, which changes the VKs of circuits that use them [#655](https://github.com/midnightntwrk/midnight-zk/pull/655)
 * `NativeChip::assign` and `assign_many` create elements that are not assigned to a cell yet: an element is assigned to the first cell it is copied to (or to the cell of an element it is constrained to be equal to), saving the rows of the assignment. Unused elements are never assigned. This changes the verifying keys of all circuits [#620](https://github.com/midnightntwrk/midnight-zk/pull/620)
 * `AssignedNative<F>` is a struct instead of an alias of `AssignedCell<F, F>`; convert from `AssignedCell<F, F>` with `AssignedNative::from_cell` and to it with `From`. Two `AssignedNative`s are equal iff they are assigned to the same cell, or neither is assigned to a cell and one is a clone of the other [#620](https://github.com/midnightntwrk/midnight-zk/pull/620)
+* The in-circuit fflonk `multi_prepare` returns `Error::Synthesis` when a query's label is not among its commitment's labels, instead of opening the commitment as a single polynomial under that label
+* The in-circuit fflonk `multi_prepare` returns `Error::Synthesis` when a polynomial is queried twice at the same point, as the in-circuit KZG `multi_prepare` does, instead of keeping only the last evaluation
 ### Removed
 * BREAKING: `ForeignEdwardsEccChip::as_known_constant`. Use `AssignmentInstructions::as_constant` [#655](https://github.com/midnightntwrk/midnight-zk/pull/655)
 

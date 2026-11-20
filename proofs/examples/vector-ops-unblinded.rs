@@ -512,7 +512,10 @@ where
     let instance_commitments = public_inputs
         .iter()
         .take(NB_INSTANCE_COMS)
-        .map(|v| commit_to_instances::<E::Fr, KZGCommitmentScheme<E>>(&params, vk.get_domain(), v))
+        .enumerate()
+        .map(|(i, v)| {
+            commit_to_instances::<E::Fr, KZGCommitmentScheme<E>>(&params, vk.get_domain(), v, i)
+        })
         .collect::<Vec<_>>();
 
     let proof = {

@@ -172,24 +172,30 @@ where
     {
         // Maps the labels of every queried chunk to its polynomials and the
         // points they are queried at, in query order: `labels -> (polys, points)`.
-        let chunks_info = queries.iter().fold(BTreeMap::new(), |mut chunks_info, q| {
+        let chunks_info = queries.iter().try_fold(BTreeMap::new(), |mut chunks_info, q| {
             let (labels, polys) = (balanced_chunks(q.group_labels, Self::T_MAX)
                 .zip(balanced_chunks(q.group_polys, Self::T_MAX)))
             .find(|(labels, _)| labels.contains(&q.label))
-            .expect("the queried group has no polynomial under the query label");
+            .ok_or(Error::OpeningError)?;
             let (_, points) = (chunks_info.entry(labels))
                 .or_insert_with(|| (polys.iter().collect::<Vec<_>>(), Vec::new()));
             if !points.contains(&q.point) {
                 points.push(q.point);
             }
-            chunks_info
-        });
+            Ok(chunks_info)
+        })?;
 
         // fflonk requires that every polynomial of a chunk be queried at every point of
         // the chunk. We compute the missing evaluations (those that were not queried)
         // and write them to the transcript. Note that the evaluations of explicit
         // queries are expected to be in the transcript before the call to `multi_open`.
-        let queried: HashSet<_> = queries.iter().map(|q| (q.label.clone(), q.point)).collect();
+        // A polynomial may be queried at most once per point.
+        let mut queried = HashSet::new();
+        for q in queries {
+            if !queried.insert((q.label.clone(), q.point)) {
+                return Err(Error::DuplicatedQuery);
+            }
+        }
         for (labels, (polys, points)) in &chunks_info {
             for point in points {
                 for (label, poly) in labels.iter().zip(polys.iter()) {
@@ -253,21 +259,27 @@ where
         // Maps the labels of every queried chunk to its commitment and the points
         // its polynomials are queried at, in query order: `labels -> (commitment,
         // points)`.
-        let chunks_info = queries.iter().fold(BTreeMap::new(), |mut chunks_info, q| {
+        let chunks_info = queries.iter().try_fold(BTreeMap::new(), |mut chunks_info, q| {
             let labels = balanced_chunks(&Self::commitment_labels(q.commitment), Self::T_MAX)
                 .find(|labels| labels.contains(&q.label))
-                .map_or_else(|| vec![q.label.clone()], <[_]>::to_vec);
+                .ok_or(Error::OpeningError)?
+                .to_vec();
             let (_, points) = chunks_info.entry(labels).or_insert((q.commitment, Vec::new()));
             if !points.contains(&q.point) {
                 points.push(q.point);
             }
-            chunks_info
-        });
+            Ok(chunks_info)
+        })?;
 
         // The evaluations of the chunks at all the points, both the explicit (taken
         // from the queries) and the implicit (read from the transcript here) ones.
-        let mut evals: HashMap<(PolynomialLabel, F), F> =
-            queries.iter().map(|q| ((q.label.clone(), q.point), q.eval)).collect();
+        // As in KZG, a polynomial may be queried at most once per point.
+        let mut evals: HashMap<(PolynomialLabel, F), F> = HashMap::new();
+        for q in queries {
+            if evals.insert((q.label.clone(), q.point), q.eval).is_some() {
+                return Err(Error::DuplicatedQuery);
+            }
+        }
         for (labels, (_, points)) in &chunks_info {
             for point in points {
                 for label in labels {
@@ -312,7 +324,7 @@ mod tests {
     use super::Fflonk;
     use crate::{
         poly::{
-            EvaluationDomain, FftDomain, PolynomialLabel, ProverQuery, VerifierQuery,
+            Error, EvaluationDomain, FftDomain, PolynomialLabel, ProverQuery, VerifierQuery,
             commitment::{Guard, PolynomialCommitmentScheme},
             kzg::{KZGCommitmentScheme, params::ParamsKZG},
         },
@@ -371,6 +383,30 @@ mod tests {
             transcript.assert_empty().unwrap();
             guard.verify(&params.verifier_params()).unwrap();
         }
+    }
+
+    /// As in KZG, querying a polynomial twice at the same point is rejected.
+    #[test]
+    fn test_duplicated_query() {
+        #[allow(clippy::upper_case_acronyms)]
+        type PCS = Fflonk<Kzg, 1>;
+        let k = 3;
+        let params = PCS::gen_params(k);
+        let domain = EvaluationDomain::<Fq>::new(1, k);
+        let labels = [PolynomialLabel::Advice(0), PolynomialLabel::Advice(1)];
+        let polys: Vec<_> = (0..2)
+            .map(|_| domain.coeff_from_vec((0..1 << k).map(|_| Fq::random(OsRng)).collect()))
+            .collect();
+        let commitment = PCS::commit_many(&params, &polys.iter().collect::<Vec<_>>(), &labels);
+
+        let x = Fq::random(OsRng).square();
+        let queries = [
+            VerifierQuery::new(x, &commitment, labels[0].clone(), Fq::ONE),
+            VerifierQuery::new(x, &commitment, labels[0].clone(), Fq::ZERO),
+        ];
+        let mut transcript = CircuitTranscript::<Blake2bState>::init();
+        let result = PCS::multi_prepare(&queries, &mut transcript);
+        assert!(matches!(result, Err(Error::DuplicatedQuery)));
     }
 
     /// Commits to `nb_polys` sparse polynomials of `2^k` rows, given in

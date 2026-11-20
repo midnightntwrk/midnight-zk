@@ -202,7 +202,7 @@ fn main() {
     let committed_credential = {
         let instance = CredentialEnrollment::format_committed_instances(&witness)
             .expect("CredentialEnrollment has no committed instance");
-        commit_to_instances::<_, KZGCommitmentScheme<_>>(&srs, vk.vk().get_domain(), &instance)
+        commit_to_instances::<_, KZGCommitmentScheme<_>>(&srs, vk.vk().get_domain(), &instance, 0)
     };
     println!("... done\n{:?}", wit.elapsed());
 
