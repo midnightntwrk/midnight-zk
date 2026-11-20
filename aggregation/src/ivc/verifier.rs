@@ -61,6 +61,15 @@ impl<T: Ivc> IvcVerifier<T> {
 
         let fixed_bases = midnight_circuits::verifier::fixed_bases::<E, PCS>(self.vk.vk());
 
+        // The public inputs do not bind the accumulator's labels: they must be the
+        // ones the circuit assigns.
+        let labels = fixed_bases.keys().cloned().collect::<Vec<_>>();
+        if !instance.acc.lhs().is_collapsed_with(&[])
+            || !instance.acc.rhs().is_collapsed_with(&labels)
+        {
+            return Err(IvcError::InvalidInstance);
+        }
+
         let pi = IvcCircuit::<T>::format_instance(&IvcExtendedInstance::new(
             self.vk.vk(),
             instance.clone(),
