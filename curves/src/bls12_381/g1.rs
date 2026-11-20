@@ -453,8 +453,7 @@ impl SerdeObject for G1Affine {
     }
 
     fn from_raw_bytes(bytes: &[u8]) -> Option<Self> {
-        debug_assert_eq!(bytes.len(), UNCOMPRESSED_SIZE);
-        let input: [u8; UNCOMPRESSED_SIZE] = bytes.try_into().unwrap();
+        let input: [u8; UNCOMPRESSED_SIZE] = bytes.try_into().ok()?;
         Self::from_uncompressed(&input).into()
     }
 
@@ -478,7 +477,7 @@ impl SerdeObject for G1Affine {
         } else {
             Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
-                "Invalid point. (Either not on curve, or not in subgroup.",
+                "Invalid point: bad encoding, not on the curve or not in the subgroup.",
             ))
         }
     }
@@ -1605,6 +1604,15 @@ mod tests {
         assert!(bool::from(
             <G1Affine as UncompressedEncoding>::from_uncompressed(&enc).is_none()
         ));
+    }
+
+    // The checked raw readers reject input of the wrong length.
+    #[test]
+    fn test_g1_raw_bytes_wrong_length() {
+        let raw = G1Affine::generator().to_raw_bytes();
+        let truncated = &raw[..UNCOMPRESSED_SIZE - 1];
+        assert!(G1Affine::from_raw_bytes(truncated).is_none());
+        assert!(G1Affine::read_raw(&mut &truncated[..]).is_err());
     }
 
     #[test]
