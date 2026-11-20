@@ -267,8 +267,13 @@ where
 
         // The evaluations of the chunks at all the points, both the explicit (taken
         // from the queries) and the implicit (read from the transcript here) ones.
-        let mut evals: HashMap<(PolynomialLabel, F), F> =
-            queries.iter().map(|q| ((q.label.clone(), q.point), q.eval)).collect();
+        // As in KZG, a polynomial may be queried at most once per point.
+        let mut evals: HashMap<(PolynomialLabel, F), F> = HashMap::new();
+        for q in queries {
+            if evals.insert((q.label.clone(), q.point), q.eval).is_some() {
+                return Err(Error::DuplicatedQuery);
+            }
+        }
         for (labels, (_, points)) in &chunks_info {
             for point in points {
                 for label in labels {
@@ -313,7 +318,7 @@ mod tests {
     use super::Fflonk;
     use crate::{
         poly::{
-            EvaluationDomain, FftDomain, PolynomialLabel, ProverQuery, VerifierQuery,
+            Error, EvaluationDomain, FftDomain, PolynomialLabel, ProverQuery, VerifierQuery,
             commitment::{Guard, PolynomialCommitmentScheme},
             kzg::{KZGCommitmentScheme, params::ParamsKZG},
         },
@@ -372,6 +377,30 @@ mod tests {
             transcript.assert_empty().unwrap();
             guard.verify(&params.verifier_params()).unwrap();
         }
+    }
+
+    /// As in KZG, querying a polynomial twice at the same point is rejected.
+    #[test]
+    fn test_duplicated_query() {
+        #[allow(clippy::upper_case_acronyms)]
+        type PCS = Fflonk<Kzg, 1>;
+        let k = 3;
+        let params = PCS::gen_params(k);
+        let domain = EvaluationDomain::<Fq>::new(1, k);
+        let labels = [PolynomialLabel::Advice(0), PolynomialLabel::Advice(1)];
+        let polys: Vec<_> = (0..2)
+            .map(|_| domain.coeff_from_vec((0..1 << k).map(|_| Fq::random(OsRng)).collect()))
+            .collect();
+        let commitment = PCS::commit_many(&params, &polys.iter().collect::<Vec<_>>(), &labels);
+
+        let x = Fq::random(OsRng).square();
+        let queries = [
+            VerifierQuery::new(x, &commitment, labels[0].clone(), Fq::ONE),
+            VerifierQuery::new(x, &commitment, labels[0].clone(), Fq::ZERO),
+        ];
+        let mut transcript = CircuitTranscript::<Blake2bState>::init();
+        let result = PCS::multi_prepare(&queries, &mut transcript);
+        assert!(matches!(result, Err(Error::DuplicatedQuery)));
     }
 
     /// Commits to `nb_polys` sparse polynomials of `2^k` rows, given in

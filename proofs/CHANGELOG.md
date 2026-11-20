@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Only the code that needs `ZETA` (building an `EvaluationDomain`, and reading or creating keys) requires `WithSmallOrderMulGroup<3>`; the getters of `EvaluationDomain`, `VerifyingKey` and `ProvingKey`, and the prover and verifier internals, require `PrimeField` [#644](https://github.com/midnightntwrk/midnight-zk/pull/644)
 * Remove outdated references to the removed `Polynomial::padded_add` from the docs of the `Add` and `AddAssign` impls of `Polynomial` [#666](https://github.com/midnightntwrk/midnight-zk/pull/666)
 * `Fflonk::multi_prepare` returns `Error::OpeningError` when a query's label is not among its commitment's labels, instead of opening the commitment as a single polynomial under that label
+* `Fflonk::multi_prepare` returns `Error::DuplicatedQuery` when a polynomial is queried twice at the same point, as KZG does, instead of keeping only the last evaluation
 ### Removed
 
 ## [0.9.0-rc.1]

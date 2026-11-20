@@ -147,10 +147,13 @@ where
 
         // The evaluations of the chunks at all the points, both the explicit (taken
         // from the queries) and the implicit (read from the transcript here) ones.
-        let mut evals: HashMap<_, _> = queries
-            .iter()
-            .map(|q| ((q.label.clone(), q.point.clone()), q.eval.clone()))
-            .collect();
+        // As in KZG, a polynomial may be queried at most once per point.
+        let mut evals = HashMap::new();
+        for q in queries {
+            if evals.insert((q.label.clone(), q.point.clone()), q.eval.clone()).is_some() {
+                return Err(Error::Synthesis("repeated query".into()));
+            }
+        }
         for (labels, (_, points)) in &chunks_info {
             for point in points {
                 for label in labels {
