@@ -231,7 +231,7 @@ Only these values go from the device to the host on the proving path
 
 No extended-domain vector goes back. The test
 `readback_is_base_transforms_and_quotient` in
-[`gpu/tests/prover.rs`](../../gpu/tests/prover.rs) records the size of every
+[`gpu-conformance/tests/readback.rs`](../../gpu-conformance/tests/readback.rs) records the size of every
 device-to-host result copy of one proof and checks this set. Zero-check
 read-backs of zeroed regions are not results and are not recorded.
 

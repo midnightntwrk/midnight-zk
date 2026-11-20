@@ -1204,6 +1204,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "midnight-gpu-conformance"
+version = "0.1.0"
+dependencies = [
+ "ff",
+ "group",
+ "libc",
+ "midnight-curves",
+ "midnight-gpu",
+ "midnight-proofs",
+ "serde_json",
+]
+
+[[package]]
 name = "midnight-gpu-prover"
 version = "0.1.0"
 dependencies = [

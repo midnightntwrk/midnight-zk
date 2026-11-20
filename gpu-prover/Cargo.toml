@@ -37,6 +37,12 @@ metal = ["dep:midnight-metal", "midnight-proofs/gpu"]
 # never takes a seed.
 test-seed = ["dep:rand_chacha", "midnight-proofs/gpu-test"]
 
+# Test only: the unit tests that replay the formal model's service vectors and
+# Quint traces (conformance/, reading formal/gpu-prover). Without it the
+# crate's tests do not need the formal folder. It changes nothing outside
+# `cargo test`.
+conformance = []
+
 [dependencies]
 blake2b_simd = { workspace = true }
 ff = { workspace = true }

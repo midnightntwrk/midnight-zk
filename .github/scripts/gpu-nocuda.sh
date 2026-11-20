@@ -17,6 +17,8 @@ case "$1" in
   *) echo "Unknown feature set: $1" >&2; exit 2 ;;
 esac
 gpu_packages=(-p midnight-gpu -p midnight-gpu-prover)
+# The conformance tests against formal/gpu-prover (dev-only crate).
+conformance=(-p midnight-gpu-conformance)
 common=(--locked --offline)
 
 case "$2" in
@@ -39,7 +41,7 @@ case "$2" in
     ;;
   clippy)
     cargo clippy "${common[@]}" --workspace --all-targets "${features[@]}"
-    cargo clippy "${common[@]}" "${gpu_packages[@]}" --all-targets "${features[@]}" -- -D warnings
+    cargo clippy "${common[@]}" "${gpu_packages[@]}" "${conformance[@]}" --all-targets "${features[@]}" -- -D warnings
     ;;
   doc)
     RUSTDOCFLAGS='-D warnings' cargo doc "${common[@]}" --no-deps "${gpu_packages[@]}" "${features[@]}"
@@ -51,7 +53,7 @@ case "$2" in
     # Include this test even if the build unexpectedly compiled the CUDA core.
     # It asserts cuda_built() is false before calling any device API.
     cargo test "${common[@]}" "${gpu_packages[@]}" "${features[@]}" --test stub -- --include-ignored
-    cargo test "${common[@]}" "${gpu_packages[@]}" "${features[@]}"
+    cargo test "${common[@]}" "${gpu_packages[@]}" "${conformance[@]}" "${features[@]}"
     ;;
   *) echo "Unknown check: $2" >&2; exit 2 ;;
 esac

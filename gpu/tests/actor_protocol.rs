@@ -12,8 +12,9 @@
 // limitations under the License.
 
 //! Protocol-core tests: budget FIFO, buffer lifecycle, teardown,
-//! exclusivity, pending-erasure exactness, and ITF trace replay.
-//! No device is used.
+//! exclusivity, pending-erasure exactness, and the ITF codec. No device
+//! is used. The replay of the Quint model's traces is in
+//! `gpu-conformance/tests/actor_itf.rs`.
 
 use midnight_gpu::actor::protocol::{
     Action, BufState, Phase, Refusal, ReplyKind, State, Teardown, step,
@@ -305,26 +306,6 @@ fn json_roundtrip_and_op_encoding() {
     ] {
         assert_eq!(Action::from_op_code(a.op_code()), Some(a));
     }
-}
-
-#[test]
-fn itf_traces_replay_when_present() {
-    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../formal/gpu-prover/vectors/actor");
-    if !dir.is_dir() {
-        return;
-    }
-    let mut files = 0;
-    for entry in std::fs::read_dir(&dir).expect("read vectors/actor") {
-        let path = entry.expect("dir entry").path();
-        if path.extension().is_some_and(|e| e == "json") {
-            let text = std::fs::read_to_string(&path).expect("read trace");
-            let steps = midnight_gpu::actor::protocol::replay_itf(&text)
-                .unwrap_or_else(|e| panic!("{}: {e}", path.display()));
-            assert!(steps > 0, "{} has no steps", path.display());
-            files += 1;
-        }
-    }
-    assert!(files > 0, "trace directory is present but holds no traces");
 }
 
 #[test]

@@ -147,8 +147,8 @@ is outside the model.
 `gpu/src/actor/protocol.rs::step` mirrors the Quint actions one for
 one (same names, same state fields, same `lastOp` encoding
 `code + 100 * a + 10000 * b`). ITF traces of the model replay
-against it (`protocol::replay_itf`); `gpu/tests/actor_protocol.rs`
-replays every trace file placed in `formal/gpu-prover/vectors/actor/`.
+against it (`protocol::replay_itf`); `gpu-conformance/tests/actor_itf.rs`
+replays every trace file in `formal/gpu-prover/vectors/actor/`.
 Invariants (named `val`s in the model, mirrored by tests):
 `noDeadlock`, `budgetNeverExceeded`, `noReuseBeforeWipeConfirmed`,
 `teardownAnswersEveryWaiter`, `noCrossJobRead`, `fifoAdmission`,

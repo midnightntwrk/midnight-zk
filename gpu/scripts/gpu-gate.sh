@@ -13,9 +13,11 @@
 # limitations under the License.
 
 # The GPU gate of midnight-gpu: builds the CUDA core (a missing nvcc is an
-# error here), then runs every device test, the ignored ones included (the
-# 10,000-system quotient fuzz, with its node coverage), one test binary at a
-# time, and the kernel harness, which writes a TSV.
+# error here), then runs every device test of midnight-gpu and every
+# conformance test of midnight-gpu-conformance (the golden vectors of
+# formal/gpu-prover), the ignored ones included (the 10,000-system quotient
+# fuzz, with its node coverage), one test binary at a time, the service
+# replay of midnight-gpu-prover, and the kernel harness, which writes a TSV.
 #
 # Usage: gpu/scripts/gpu-gate.sh [OUT_DIR]   (default target/gpu-gate)
 #
@@ -67,7 +69,8 @@ fi
 
 echo "== build"
 # Read the artifacts from this build. pipefail propagates a partial build failure.
-test_bins=$(cargo test --offline --locked --release -p midnight-gpu --features "$features" --tests --no-run \
+test_bins=$(cargo test --offline --locked --release -p midnight-gpu -p midnight-gpu-conformance \
+    --features "midnight-gpu/cuda,midnight-gpu/test-fault" --tests --no-run \
     --message-format=json-render-diagnostics | sed -n 's/.*"executable":"\([^"]*\)".*/\1/p')
 [[ -n $test_bins ]] || { echo "no test binary found"; exit 1; }
 mapfile -t bins <<<"$test_bins"
@@ -85,7 +88,7 @@ if ! ORACLE_VECTOR_DIR=../formal/gpu-prover/vectors \
     ORACLE_ITF_DIR="$(realpath --relative-to=gpu-prover "$traces")" \
     ORACLE_ITF_EVIDENCE="$(realpath -m --relative-to=gpu-prover "$out/daemon-itf.jsonl")" \
     RAYON_NUM_THREADS="${RAYON_NUM_THREADS:-2}" \
-    cargo test --offline --locked --release -p midnight-gpu-prover --lib -- \
+    cargo test --offline --locked --release -p midnight-gpu-prover --features conformance --lib -- \
     --exact "${service_tests}::service_oracle_vectors" "${service_tests}::itf::quint_daemon_gate" \
     --include-ignored --test-threads=1 --nocapture >"$out/daemon-itf.log" 2>&1 ||
     ! grep -Fq 'test result: ok. 2 passed;' "$out/daemon-itf.log"; then

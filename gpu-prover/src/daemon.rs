@@ -670,6 +670,6 @@ mod tests {
     }
 }
 
-#[cfg(test)]
-#[path = "service/oracle_reader.rs"]
+#[cfg(all(test, feature = "conformance"))]
+#[path = "../conformance/oracle_reader.rs"]
 pub(crate) mod oracle_reader;

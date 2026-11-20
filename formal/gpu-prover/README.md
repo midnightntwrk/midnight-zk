@@ -11,6 +11,26 @@ The specification of the GPU prover, in four forms that check each other:
 | `vectors/` | Golden vectors written by the oracle, for the Rust tests. Format in `vectors/README.md`. |
 | `scripts/` | Gates and helpers. |
 | `RESULTS.md` | What the checks found and what is still open. |
+| `COVERAGE.md` | Each requirement against the theorem, Quint artifact, Rust test and device run that covers it. |
+
+Nothing in this folder is built or read by the production crates (`proofs`, `gpu`, `metal`,
+`gpu-prover`); they build and test without it.
+
+## How this checks the production code
+
+The oracle's outputs reach the Rust code through two sets of tests that read this folder:
+
+- [`gpu-conformance/`](../../gpu-conformance/README.md), a test-only crate, replays the golden
+  vectors through the midnight-proofs hooks and midnight-gpu (MSM, NTT, coset, quotient, gate,
+  threshold), checks what a proof reads back from the device against `datamove.json` (GPU-038),
+  and replays the Quint model's device-actor traces (`vectors/actor`) through the actor's
+  protocol core.
+- [`gpu-prover/conformance/`](../../gpu-prover/conformance/README.md) replays the service vectors
+  (`vectors/service`) and the Quint model's ITF traces through the proving service. These are
+  unit tests of midnight-gpu-prover behind its test-only feature `conformance`.
+
+`gpu/scripts/gpu-gate.sh` runs both on a CUDA device. Without a device the vector tests check the
+stock CPU code and the hooks' decline paths.
 
 ## Tools
 

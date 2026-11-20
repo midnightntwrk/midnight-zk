@@ -133,7 +133,7 @@ pub fn request_ok(
     lock_fd: Option<BorrowedFd<'_>>,
     timeout: Duration,
 ) -> Result<Value, Error> {
-    #[cfg(test)]
+    #[cfg(all(test, feature = "conformance"))]
     if let Some(reply) = crate::service::oracle_conformance::take_reply() {
         return reply;
     }

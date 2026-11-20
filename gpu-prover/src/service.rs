@@ -820,5 +820,9 @@ mod tests {
     }
 }
 
-#[cfg(test)]
+// The replay of the formal model's service vectors and Quint traces through
+// this service (formal/gpu-prover). Test builds with the feature
+// `conformance` only; see conformance/README.md.
+#[cfg(all(test, feature = "conformance"))]
+#[path = "../conformance/oracle_conformance.rs"]
 pub(crate) mod oracle_conformance;
