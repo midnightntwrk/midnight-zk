@@ -31,6 +31,12 @@ static SERIAL: std::sync::Mutex<()> = std::sync::Mutex::new(());
 fn detect() -> Option<Box<dyn Device>> {
     let d = device::detect(DeviceSelect::Auto);
     if d.info().is_none() {
+        // CI sets this on a runner with an Apple GPU, so that a broken
+        // detection fails instead of skipping every test.
+        assert!(
+            std::env::var_os("MIDNIGHT_METAL_REQUIRE_DEVICE").is_none(),
+            "no Metal device detected and MIDNIGHT_METAL_REQUIRE_DEVICE is set"
+        );
         eprintln!("no Metal device detected: skipped");
         return None;
     }
