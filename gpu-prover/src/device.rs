@@ -11,19 +11,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! The device layer: the one place where this crate meets the CUDA crate
-//! `midnight-gpu` and the hook layer `midnight_proofs::gpu`.
+//! The device layer: the one place where this crate meets the device crates
+//! (the CUDA crate `midnight-gpu`, the Apple GPU crate `midnight-metal`) and
+//! the hook layer `midnight_proofs::gpu`.
 //!
-//! The service talks to a device only through the [`Device`] trait. Two
+//! The service talks to a device only through the [`Device`] trait. Three
 //! implementations exist:
 //!
 //! - [`NoDevice`]: no device. Every phase runs on the CPU. Used by a build
-//!   without the `cuda` feature, by `device = "off"`, and when the run-time
-//!   detection finds no device.
+//!   without the `cuda` and `metal` features, by `device = "off"`, and when the
+//!   run-time detection finds no device.
 //! - `CudaDevice` (module `cuda`): the hooks of `midnight_proofs::gpu` backed
 //!   by `midnight-gpu`. It is compiled only when the build has the cfg
 //!   `midnight_gpu_linked`, which the build script sets with the `cuda`
 //!   feature.
+//! - `MetalDevice` (module `metal`): the same hooks backed by
+//!   `midnight-metal`, compiled only with the cfg `midnight_metal_linked`
+//!   (feature `metal`). With both features CUDA is tried first.
 //!
 //! Tests and embedders can implement [`Device`] themselves, for example to
 //! give the admission ladder a fake memory reading.
@@ -120,6 +124,10 @@ pub struct DeviceInfo {
     pub driver_version: String,
     /// Total device memory, bytes.
     pub total_bytes: u64,
+    /// Metal only: the log2 size from which each kernel class goes to the
+    /// device; `None` (JSON `null`) for never.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub size_thresholds: BTreeMap<String, Option<u32>>,
 }
 
 /// Free and total device memory, bytes.
@@ -181,20 +189,26 @@ pub struct Fallback {
 /// time; no field depends on a scalar value.
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct DeviceCounters {
-    /// MSMs that ran on the device.
+    /// MSM count. CUDA: the MSMs that ran on the device. Metal: every MSM
+    /// hook invocation, as the served count depends on the scalar values.
     pub msm_count: u64,
-    /// Seconds spent in device MSMs.
+    /// MSM seconds. CUDA: the wall time of the device MSMs. Metal: the wall
+    /// time of every MSM hook invocation.
     pub msm_seconds: f64,
-    /// Device calls by operation name.
+    /// Metal only: MSM hook invocations the device takes by length and
+    /// bases, without reading a scalar.
+    pub msm_sized: u64,
+    /// Device calls served, by operation name (no `msm` for Metal).
     pub calls: BTreeMap<String, u64>,
     /// Fallbacks to the CPU: declines of an admitted phase that the device
     /// should have taken.
     pub fallbacks: Vec<Fallback>,
     /// Every declined hook call by phase and reason, fallbacks included:
     /// also the size threshold (`below-min-k`), no device (`no-device`) and
-    /// the admission's decision (`not-admitted`).
+    /// the admission's decision (`not-admitted`). Metal: no `msm` row.
     pub declines: Vec<Fallback>,
-    /// Peak device bytes this process held during the request.
+    /// Peak device bytes this process held during the request, without a
+    /// pool of idle buffers.
     pub peak_bytes: u64,
     /// Seconds per prover phase, by phase name.
     pub phase_seconds: BTreeMap<String, f64>,
@@ -204,6 +218,12 @@ impl DeviceCounters {
     /// Total fallback count.
     pub fn fallback_count(&self) -> u64 {
         self.fallbacks.iter().map(|f| f.count).sum()
+    }
+
+    /// Whether a call ran on the device, from counts that do not depend on
+    /// the scalar values.
+    pub fn device_ran(&self) -> bool {
+        self.calls.values().sum::<u64>() > 0 || self.msm_sized > 0
     }
 }
 
@@ -360,18 +380,24 @@ pub fn build_features() -> Vec<&'static str> {
     if cfg!(feature = "cuda") {
         v.push("cuda");
     }
+    if cfg!(feature = "metal") {
+        v.push("metal");
+    }
     if cfg!(feature = "test-seed") {
         v.push("test-seed");
     }
     if cfg!(midnight_gpu_linked) {
         v.push("midnight-gpu-linked");
     }
+    if cfg!(midnight_metal_linked) {
+        v.push("midnight-metal-linked");
+    }
     v
 }
 
-/// The device of this build and configuration: a CUDA device when the build
-/// links the device crates, `select` is not `off` and one is detected;
-/// otherwise [`NoDevice`].
+/// The device of this build and configuration: a CUDA device (feature `cuda`)
+/// or a Metal device (feature `metal`) when the build links the device crates,
+/// `select` is not `off` and one is detected; otherwise [`NoDevice`].
 pub fn detect(select: crate::config::DeviceSelect) -> Box<dyn Device> {
     if select == crate::config::DeviceSelect::Off {
         return Box::new(NoDevice);
@@ -380,8 +406,16 @@ pub fn detect(select: crate::config::DeviceSelect) -> Box<dyn Device> {
     if let Some(d) = cuda::CudaDevice::detect() {
         return Box::new(d);
     }
+    // after a CUDA device took the hooks this finds no device
+    #[cfg(all(feature = "metal", midnight_metal_linked))]
+    if let Some(d) = metal::MetalDevice::detect() {
+        return Box::new(d);
+    }
     Box::new(NoDevice)
 }
+
+#[cfg(all(feature = "metal", midnight_metal_linked))]
+mod metal;
 
 /// The binding to `midnight-gpu` and `midnight_proofs::gpu`: every call into
 /// those crates is in this module. Compiled only with the cfg
@@ -636,6 +670,7 @@ mod cuda {
                 runtime_version: version(i.runtime_version),
                 driver_version: version(i.driver_version),
                 total_bytes: i.total_bytes,
+                size_thresholds: BTreeMap::new(),
             })
         }
 
@@ -851,6 +886,7 @@ mod cuda {
             DeviceCounters {
                 msm_count: st.msm,
                 msm_seconds,
+                msm_sized: 0,
                 calls,
                 fallbacks,
                 declines,
@@ -1095,6 +1131,15 @@ mod tests {
         }
         // callable whether or not a device is present
         let _ = midnight_gpu::present();
+    }
+
+    /// Fails when the `metal` feature is on but the binding is compiled out.
+    #[cfg(feature = "metal")]
+    #[test]
+    fn metal_feature_links_the_device_crates() {
+        const { assert!(cfg!(midnight_metal_linked)) };
+        assert!(build_features().contains(&"midnight-metal-linked"));
+        let _ = midnight_metal::present();
     }
 
     #[test]

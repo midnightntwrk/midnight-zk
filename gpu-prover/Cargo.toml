@@ -21,10 +21,17 @@ default = []
 rc1-bench = []
 # Direct benchmark hooks for rc.1. The benchmark runs without the daemon.
 rc1-bench-cuda = ["rc1-bench", "dep:midnight-gpu", "midnight-gpu/cuda", "midnight-proofs/gpu"]
+# Direct benchmark hooks for rc.1 on an Apple GPU, through `midnight-metal`.
+rc1-bench-metal = ["rc1-bench", "metal"]
 # Route proof phases to a CUDA device through `midnight-gpu`. A build without the CUDA
 # toolkit still compiles and proves on the CPU; the device layer reports no device.
 # Without nvcc at build time `midnight-gpu` builds a stub that declines every call.
 cuda = ["dep:midnight-gpu", "midnight-gpu/cuda", "midnight-proofs/gpu"]
+# Route proof phases to an Apple GPU through `midnight-metal`. With `cuda` also on, the
+# device layer tries CUDA first (the hooks of `midnight-proofs` are installed once per
+# process). On a target other than macOS the build compiles and the device layer
+# reports no device.
+metal = ["dep:midnight-metal", "midnight-proofs/gpu"]
 # The seeded prover entry `ProverService::prove_seeded`, for byte-identity tests only.
 # It turns on the test switches of the hook layer (seeded quotient blinding). The daemon
 # never takes a seed.
@@ -43,6 +50,7 @@ midnight-proofs = { version = "0.9.0-rc.1", default-features = false, features =
 midnight-zk-stdlib = { version = "3.0.0-rc.1", path = "../zk_stdlib" }
 midnight-circuits = { version = "8.0.0-rc.1" }
 midnight-gpu = { version = "0.1.0", path = "../gpu", optional = true }
+midnight-metal = { version = "0.1.0", path = "../metal", optional = true }
 rand = { workspace = true }
 rand_chacha = { workspace = true, optional = true }
 rayon = { workspace = true }
@@ -52,6 +60,9 @@ sha2 = { workspace = true }
 
 [dev-dependencies]
 midnight-gpu = { version = "0.1.0", path = "../gpu", features = ["test-fault"] }
+# the erasure check's test switches (`ctx::set_plant_nonzero`), for the tests
+# only: a build of the daemon never gets `test-support`
+midnight-metal = { version = "0.1.0", path = "../metal", features = ["test-support"] }
 rand_chacha = { workspace = true }
 tempfile = "3"
 

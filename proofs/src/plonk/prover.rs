@@ -11,14 +11,17 @@ use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
 
+#[cfg(not(feature = "prover-par"))]
+use super::circuit::FloorPlanner;
 use super::{
     Error, ProvingKey,
     circuit::{
-        Advice, Any, Assignment, Circuit, Column, ConstraintSystem, Fixed, FloorPlanner, Instance,
-        Selector,
+        Advice, Any, Assignment, Circuit, Column, ConstraintSystem, Fixed, Instance, Selector,
     },
     logup,
 };
+#[cfg(not(feature = "prover-par"))]
+use crate::utils::arithmetic::eval_polynomial;
 use crate::{
     circuit::Value,
     plonk::{ProofField, argument, traces::ProverTrace},
@@ -28,10 +31,7 @@ use crate::{
         commitment::PolynomialCommitmentScheme,
     },
     transcript::{Hashable, Transcript},
-    utils::{
-        arithmetic::{eval_polynomial, eval_polynomial_seq},
-        rational::Rational,
-    },
+    utils::{arithmetic::eval_polynomial_seq, rational::Rational},
 };
 
 #[cfg(feature = "committed-instances")]
@@ -415,10 +415,16 @@ where
 
     // h_0(x) is not written to the proof, the verifier derives it.
     let h0 = PolynomialLabel::QuotientPiece(0);
+    #[cfg(not(feature = "prover-par"))]
     let h0_eval = eval_polynomial(
         quotient_committed.poly(&h0).expect("a quotient limb h_0"),
         x,
     );
+    #[cfg(feature = "prover-par")]
+    let h0_eval = crate::par::open::eval_many(&[(
+        &quotient_committed.poly(&h0).expect("a quotient limb h_0").values[..],
+        x,
+    )])[0];
     quotient_evaluated.insert(h0, x, h0_eval);
 
     let instance_labels: Vec<_> = (0..nb_committed_instances)
@@ -583,12 +589,26 @@ where
     // the region layout (see `ProvingKey::region_starts`), we reuse it
     // here to skip the shape pass; otherwise the floor planner falls
     // back to computing it.
+    #[cfg(not(feature = "prover-par"))]
     ConcreteCircuit::FloorPlanner::synthesize_with_cached_regions(
         &mut witness,
         circuit,
         config,
         meta.constants.clone(),
         pk.region_starts.as_deref(),
+    )?;
+    // See `crate::par::layout`.
+    #[cfg(feature = "prover-par")]
+    crate::par::layout::synthesize(
+        &mut witness,
+        |witness| {
+            witness.advice = vec![domain.empty_lagrange_rational(); meta.num_advice_columns];
+        },
+        circuit,
+        config,
+        meta.constants.clone(),
+        pk.region_starts.as_deref(),
+        &pk.region_starts_cache,
     )?;
 
     let mut advice_polys = batch_invert_rational::<F>(witness.advice);
@@ -788,15 +808,18 @@ where
     // blinding coefficients appended below, within the same capacity.
     // The stock `resize` of the whole `h` and the per-limb `to_vec`
     // copies, which reallocate and leave unzeroed copies, do not happen.
-    let mut h_limbs = Vec::with_capacity(nb_limbs);
-    for k in 0..nb_limbs {
-        let mut limb =
-            crate::gpu::erasing::ErasingVec::with_capacity_zeroed(limb_len + 2, limb_len);
-        let start = k * limb_len;
-        let avail = h_poly.len().saturating_sub(start).min(limb_len);
-        limb[..avail].copy_from_slice(&h_poly[start..start + avail]);
-        h_limbs.push(limb);
-    }
+    let h: &[F] = &h_poly;
+    let mut h_limbs: Vec<_> = (0..nb_limbs)
+        .into_par_iter()
+        .map(|k| {
+            let mut limb =
+                crate::gpu::erasing::ErasingVec::with_capacity_zeroed(limb_len + 2, limb_len);
+            let start = k * limb_len;
+            let avail = h.len().saturating_sub(start).min(limb_len);
+            crate::par::columns::copy_from_slice(&mut limb[..avail], &h[start..start + avail]);
+            limb
+        })
+        .collect();
     drop(h_poly);
 
     blind_quotient_limbs_erasing(&mut h_limbs);

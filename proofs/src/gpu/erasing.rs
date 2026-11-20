@@ -40,14 +40,127 @@ use std::{
 
 use ff::PrimeField;
 
+/// Minimum bytes per thread of [`zero_bytes`].
+const PAR_ZERO_BYTES: usize = 1 << 20;
+
+/// The parts of the range are cut at multiples of this many bytes.
+const ZERO_TASK_BYTES: usize = 1 << 18;
+
+/// Most threads of one [`zero_bytes`] call: it is bound by memory bandwidth,
+/// which a few cores saturate.
+const MAX_ZERO_THREADS: usize = 8;
+
+/// A pointer into the range of a [`zero_bytes`] call, sent to its threads.
+#[derive(Clone, Copy)]
+struct SendPtr(*mut u8);
+
+// SAFETY: a `SendPtr` is only sent to the scoped threads of one
+// `zero_bytes` call, which write disjoint parts of a range the caller
+// guarantees writable and are joined before the call returns.
+unsafe impl Send for SendPtr {}
+
 /// Zeroes `bytes` bytes at `ptr` with volatile writes that the compiler
-/// cannot remove.
+/// cannot remove: the zeroed memory is not read again before it is freed,
+/// so plain writes to it could be removed as dead stores.
+///
+/// Large ranges are split over scoped threads, all joined before the return.
+/// A part whose thread cannot be spawned is zeroed on the calling thread.
+///
+/// This does not use the rayon pool: it runs in `Drop`, where the caller may
+/// hold a lock. A pool worker waiting on pool tasks could steal a task that
+/// takes the same lock, or wait on workers blocked on it.
 ///
 /// # Safety
 /// `ptr` must be valid for writes of `bytes` bytes.
 pub(crate) unsafe fn zero_bytes(ptr: *mut u8, bytes: usize) {
-    for i in 0..bytes {
-        // SAFETY: the caller guarantees the range is writable.
+    let threads = zero_threads(bytes);
+    if threads > 1 {
+        // The last part may be shorter.
+        let per_thread = bytes.div_ceil(threads).div_ceil(ZERO_TASK_BYTES) * ZERO_TASK_BYTES;
+        let base = SendPtr(ptr);
+        std::thread::scope(|scope| {
+            let mut own = Vec::new();
+            for part in 1..threads {
+                let start = part * per_thread;
+                if start >= bytes {
+                    break;
+                }
+                let len = per_thread.min(bytes - start);
+                let spawned = spawn_allowed()
+                    && std::thread::Builder::new()
+                        .name("zero-bytes".into())
+                        .stack_size(64 << 10)
+                        .spawn_scoped(scope, move || {
+                            let base = base;
+                            // SAFETY: `start + len <= bytes`, so the part
+                            // lies within the range the caller guarantees
+                            // writable, and no other thread writes it.
+                            unsafe { zero_bytes_here(base.0.add(start), len) };
+                        })
+                        .is_ok();
+                if !spawned {
+                    own.push((start, len));
+                }
+            }
+            // SAFETY: `per_thread.min(bytes)` bytes from the start of the
+            // range, written by no other thread.
+            unsafe { zero_bytes_here(ptr, per_thread.min(bytes)) };
+            for (start, len) in own {
+                // SAFETY: a part within the range whose thread was not
+                // spawned, written by no other thread.
+                unsafe { zero_bytes_here(ptr.add(start), len) };
+            }
+        });
+    } else {
+        // SAFETY: as guaranteed by the caller.
+        unsafe { zero_bytes_here(ptr, bytes) };
+    }
+    compiler_fence(Ordering::SeqCst);
+}
+
+/// Threads for zeroing `bytes` bytes, the calling one included.
+fn zero_threads(bytes: usize) -> usize {
+    if bytes < PAR_ZERO_BYTES {
+        return 1;
+    }
+    static AVAILABLE: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+    let available =
+        *AVAILABLE.get_or_init(|| std::thread::available_parallelism().map_or(1, |n| n.get()));
+    (bytes / PAR_ZERO_BYTES).clamp(1, available.min(MAX_ZERO_THREADS))
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Simulates a failed spawn in [`zero_bytes`].
+    static NO_SPAWN: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+fn spawn_allowed() -> bool {
+    #[cfg(test)]
+    return !NO_SPAWN.with(|n| n.get());
+    #[cfg(not(test))]
+    true
+}
+
+/// [`zero_bytes`] on the calling thread.
+///
+/// # Safety
+/// `ptr` must be valid for writes of `bytes` bytes.
+unsafe fn zero_bytes_here(ptr: *mut u8, bytes: usize) {
+    let head = ptr.align_offset(std::mem::align_of::<u64>()).min(bytes);
+    let words = (bytes - head) / std::mem::size_of::<u64>();
+    let tail = head + words * std::mem::size_of::<u64>();
+    // SAFETY (all three loops): every address written is in
+    // `ptr..ptr + bytes`, which the caller guarantees writable; the word
+    // writes start at the aligned address `ptr + head`.
+    for i in 0..head {
+        unsafe { write_volatile(ptr.add(i), 0u8) };
+    }
+    let word_ptr = unsafe { ptr.add(head) } as *mut u64;
+    for i in 0..words {
+        unsafe { write_volatile(word_ptr.add(i), 0u64) };
+    }
+    for i in tail..bytes {
         unsafe { write_volatile(ptr.add(i), 0u8) };
     }
     compiler_fence(Ordering::SeqCst);
@@ -395,5 +508,59 @@ impl<F> Drop for ErasingVec<F> {
             // type or by the `Vec` it adopted, whose layout is the same).
             unsafe { dealloc(self.ptr.as_ptr() as *mut u8, layout) };
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::zero_bytes;
+
+    /// At every alignment, below and above the parallel size, and when no
+    /// thread can be spawned (the calling thread zeroes every part).
+    #[test]
+    fn zero_bytes_zeroes_exactly_the_range() {
+        use super::{NO_SPAWN, PAR_ZERO_BYTES as PAR, ZERO_TASK_BYTES as TASK};
+
+        let cases = [0, 1, 9, 63, PAR - 1, PAR, 3 * TASK + PAR + 5]
+            .map(|bytes| (bytes, false))
+            .into_iter()
+            .chain([(9 * PAR + TASK + 7, true)]);
+        for (bytes, no_spawn) in cases {
+            for offset in 0..9 {
+                let mut buf: Vec<u8> = (0..bytes + 32).map(|i| (i % 251) as u8 | 1).collect();
+                let mut expected = buf.clone();
+                expected[offset..offset + bytes].fill(0);
+                NO_SPAWN.with(|n| n.set(no_spawn));
+                // SAFETY: `offset + bytes <= buf.len()`.
+                unsafe { zero_bytes(buf.as_mut_ptr().add(offset), bytes) };
+                NO_SPAWN.with(|n| n.set(false));
+                assert!(buf == expected, "bytes {bytes} offset {offset}");
+            }
+        }
+    }
+
+    /// The only worker of a pool, holding a lock that a queued pool task
+    /// takes, zeroes without waiting on the pool.
+    #[test]
+    fn zero_bytes_on_a_pool_worker_holding_a_lock() {
+        use std::sync::{Mutex, mpsc};
+
+        static LOCK: Mutex<()> = Mutex::new(());
+        let bytes = 4 * super::PAR_ZERO_BYTES + 5;
+        let mut buf = vec![0xffu8; bytes];
+        let (done_tx, done_rx) = mpsc::channel();
+        let pool = rayon::ThreadPoolBuilder::new().num_threads(1).build().unwrap();
+        pool.install(|| {
+            let guard = LOCK.lock().unwrap();
+            rayon::spawn(move || {
+                let _guard = LOCK.lock().unwrap();
+                done_tx.send(()).unwrap();
+            });
+            // SAFETY: the whole buffer.
+            unsafe { zero_bytes(buf.as_mut_ptr(), bytes) };
+            drop(guard);
+        });
+        done_rx.recv().unwrap();
+        assert!(buf.iter().all(|b| *b == 0));
     }
 }

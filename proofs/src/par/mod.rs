@@ -21,5 +21,32 @@
 
 pub(crate) mod columns;
 pub(crate) mod invert;
+pub(crate) mod layout;
 pub(crate) mod open;
 pub(crate) mod product;
+#[cfg(test)]
+mod testing;
+
+// Size floors: below a floor the call site keeps the stock routine, where
+// splitting into tasks costs more than the threads save.
+
+/// Columns shorter than this are delta-encoded by the stock code.
+pub(crate) const DELTA_MIN_LEN: usize = 1 << 14;
+
+/// Chunks per pool thread in [`columns::parallelize`], so threads that finish
+/// early take more.
+pub(crate) const PARALLELIZE_CHUNKS_PER_THREAD: usize = 4;
+
+/// [`columns::parallelize`] keeps the stock cut when its chunks would be
+/// shorter than this.
+pub(crate) const PARALLELIZE_MIN_CHUNK: usize = 1 << 10;
+
+/// Polynomials shorter than this are divided by the stock `divide_by_roots`
+/// and `kate_division`. Below it, the scan that joins the blocks costs about
+/// as much as the stock loop.
+pub(crate) const DIVISION_MIN_LEN: usize = 1 << 15;
+
+/// Inner products of polynomials shorter than this use the stock helper of the
+/// KZG multi-open. Below it, the smaller tasks cost more than the better
+/// balance gains.
+pub(crate) const INNER_PRODUCT_MIN_LEN: usize = 1 << 19;

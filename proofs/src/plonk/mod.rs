@@ -359,6 +359,10 @@ pub struct ProvingKey<F: PrimeField, PCS: PolynomialCommitmentScheme<F>> {
     /// `FloorPlanner` does not support capture, or the key was deserialized);
     /// in that case the prover falls back to running the shape pass itself.
     pub(crate) region_starts: Option<Vec<crate::circuit::RegionStart>>,
+    /// When `region_starts` is `None`: the layout measured by the first
+    /// proof (see `crate::par::layout`).
+    #[cfg(feature = "prover-par")]
+    pub(crate) region_starts_cache: std::sync::OnceLock<crate::circuit::layouter::MeasuredLayout>,
 }
 
 /// The fixed polynomials of a proving key, derived from `fixed_values`, the
@@ -531,6 +535,8 @@ where
             // proofs from the same in-memory key still pay that cost unless
             // the caller caches the layout externally.
             region_starts: None,
+            #[cfg(feature = "prover-par")]
+            region_starts_cache: std::sync::OnceLock::new(),
         })
     }
 

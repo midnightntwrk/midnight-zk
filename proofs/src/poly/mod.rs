@@ -337,6 +337,13 @@ impl<F: Field> Polynomial<F, LagrangeCoeff> {
     /// (e.g. for evaluation or opening). One forward sweep, one transient
     /// `Vec<F>` allocation.
     pub fn to_delta(&self) -> Polynomial<F, LagrangeDeltaCoeff> {
+        #[cfg(feature = "prover-par")]
+        if self.values.len() >= crate::par::DELTA_MIN_LEN {
+            return Polynomial {
+                values: crate::par::columns::to_delta(&self.values),
+                _marker: PhantomData,
+            };
+        }
         let n = self.values.len();
         let mut out = Vec::with_capacity(n);
         if n >= 1 {
@@ -360,6 +367,13 @@ impl<F: Field> Polynomial<F, LagrangeCoeff> {
     /// applying the delta transform twice at the price of one transient
     /// `Vec<F>` allocation.
     pub fn to_double_delta(&self) -> Polynomial<F, LagrangeDoubleDeltaCoeff> {
+        #[cfg(feature = "prover-par")]
+        if self.values.len() >= crate::par::DELTA_MIN_LEN {
+            return Polynomial {
+                values: crate::par::columns::to_double_delta(&self.values),
+                _marker: PhantomData,
+            };
+        }
         let n = self.values.len();
         let mut out = Vec::with_capacity(n);
         if n >= 1 {
@@ -571,6 +585,10 @@ impl<F: PrimeField + SerdeObject, B> Polynomial<F, B> {
 pub(crate) fn batch_invert_rational<F: Field>(
     assigned: Vec<Polynomial<Rational<F>, LagrangeCoeff>>,
 ) -> Vec<Polynomial<F, LagrangeCoeff>> {
+    #[cfg(feature = "prover-par")]
+    if crate::par::invert::is_bls_scalar::<F>() {
+        return crate::par::columns::batch_invert_rational(assigned);
+    }
     let mut assigned_denominators: Vec<_> = assigned
         .iter()
         .map(|f| f.iter().map(|value| value.denominator()).collect::<Vec<_>>())

@@ -103,8 +103,11 @@ impl Lease {
         // SAFETY: `st` is written by `fstat` before it is read.
         let mut st: libc::stat = unsafe { std::mem::zeroed() };
         // SAFETY: `fd` is an open descriptor and `st` a valid out pointer.
+        // `st_dev` is `i32` on macOS and `u64` on Linux; `Metadata::dev` is
+        // `u64` and casts `st_dev` the same way.
+        #[allow(clippy::unnecessary_cast)]
         if unsafe { libc::fstat(fd.as_raw_fd(), &mut st) } != 0
-            || st.st_dev != want.dev()
+            || st.st_dev as u64 != want.dev()
             || st.st_ino != want.ino()
         {
             return Err(LeaseError::OtherFile);

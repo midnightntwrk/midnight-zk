@@ -5,6 +5,8 @@ use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
 
+#[cfg(not(feature = "prover-par"))]
+use crate::utils::arithmetic::eval_polynomial;
 use crate::{
     plonk::{
         AbsorbedVk, ConstraintSystem, Error,
@@ -15,7 +17,6 @@ use crate::{
         Rotation, commitment::PolynomialCommitmentScheme,
     },
     transcript::{Hashable, Transcript},
-    utils::arithmetic::eval_polynomial,
 };
 
 #[derive(Debug)]
@@ -209,6 +210,7 @@ impl<F: PrimeField> Committed<F, Coeff> {
         F: Hashable<T::Hash> + PrimeField,
         T: Transcript,
     {
+        #[cfg(not(feature = "prover-par"))]
         let evaluate = |poly: &Polynomial<F, Coeff>, x: F| -> Evaluation<F> {
             Evaluation {
                 point: x,
@@ -216,6 +218,7 @@ impl<F: PrimeField> Committed<F, Coeff> {
             }
         };
 
+        #[cfg(not(feature = "prover-par"))]
         let evals_map: BTreeMap<PolynomialLabel, Vec<Evaluation<F>>> = self
             .labels
             .iter()
@@ -228,6 +231,28 @@ impl<F: PrimeField> Committed<F, Coeff> {
                 )
             })
             .collect();
+        // As with the stock `zip`, only labels with a polynomial are
+        // evaluated.
+        #[cfg(feature = "prover-par")]
+        let evals_map: BTreeMap<PolynomialLabel, Vec<Evaluation<F>>> = {
+            type Pair<'p, F> = (&'p PolynomialLabel, &'p Polynomial<F, Coeff>, Vec<F>);
+            let pairs: Vec<Pair<'_, F>> = (self.labels.iter().zip(self.polys.iter()))
+                .map(|(label, poly)| (label, poly, argument::eval_points(cs, label, x_rotations)))
+                .collect();
+            let jobs: Vec<(&[F], F)> = (pairs.iter())
+                .flat_map(|(_, poly, points)| points.iter().map(move |x| (&poly.values[..], *x)))
+                .collect();
+            let mut evals = crate::par::open::eval_many(&jobs).into_iter();
+            (pairs.into_iter())
+                .map(|(label, _, points)| {
+                    let evaluations = (points.into_iter())
+                        .zip(&mut evals)
+                        .map(|(point, eval)| Evaluation { point, eval })
+                        .collect();
+                    (label.clone(), evaluations)
+                })
+                .collect()
+        };
 
         for evals in evals_map.values() {
             for evaluation in evals.iter() {
@@ -260,5 +285,57 @@ impl<F: PrimeField> Evaluated<'_, F> {
                 )
             })
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use ff::Field;
+    use midnight_curves::Fq;
+    use rand_chacha::ChaCha20Rng;
+    use rand_core::SeedableRng;
+
+    use super::Committed;
+    use crate::{
+        plonk::ConstraintSystem,
+        poly::{Polynomial, PolynomialLabel, Rotation},
+        transcript::{CircuitTranscript, Transcript},
+        utils::arithmetic::eval_polynomial,
+    };
+
+    /// Labels and polynomials of different counts are evaluated pairwise,
+    /// as the stock `zip` does.
+    #[test]
+    fn evaluate_stops_at_the_shorter_list() {
+        let mut rng = ChaCha20Rng::seed_from_u64(0x5a);
+        let cs = ConstraintSystem::<Fq>::default();
+        let x = Fq::random(&mut rng);
+        let x_rotations = BTreeMap::from([(Rotation::cur(), x)]);
+        let poly = |rng: &mut ChaCha20Rng| Polynomial {
+            values: (0..37).map(|_| Fq::random(&mut *rng)).collect(),
+            _marker: std::marker::PhantomData,
+        };
+        for (nb_labels, nb_polys) in [(3, 1), (1, 3), (2, 2), (0, 2)] {
+            let committed = Committed {
+                labels: (0..nb_labels).map(PolynomialLabel::Trash).collect(),
+                polys: (0..nb_polys).map(|_| poly(&mut rng)).collect(),
+            };
+            let mut transcript = CircuitTranscript::<blake2b_simd::State>::init();
+            let evaluated = committed.evaluate(&cs, &x_rotations, &mut transcript).unwrap();
+
+            let pairs = nb_labels.min(nb_polys);
+            let mut expected = CircuitTranscript::<blake2b_simd::State>::init();
+            assert_eq!(evaluated.evals_map.len(), pairs);
+            for (i, (label, evals)) in evaluated.evals_map.iter().enumerate() {
+                let value = eval_polynomial(&committed.polys[i], x);
+                assert_eq!(*label, PolynomialLabel::Trash(i));
+                assert_eq!(evals.len(), 1);
+                assert_eq!((evals[0].point, evals[0].eval), (x, value));
+                expected.write(&value).unwrap();
+            }
+            assert_eq!(transcript.finalize(), expected.finalize());
+        }
     }
 }

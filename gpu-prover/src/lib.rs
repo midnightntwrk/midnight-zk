@@ -30,8 +30,8 @@
 //! client ([`client`]) sends requests and proves on the CPU in-process when
 //! the daemon cannot serve, with a circuit breaker.
 //!
-//! Without the `cuda` feature, or without a detected device, every phase
-//! runs on the CPU and no CUDA toolkit is needed.
+//! Without the `cuda` and `metal` features, or without a detected device, every
+//! phase runs on the CPU and no CUDA toolkit is needed.
 
 #![deny(missing_docs)]
 

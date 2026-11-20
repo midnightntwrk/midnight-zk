@@ -342,6 +342,8 @@ where
         sigmas,
         ev,
         region_starts,
+        #[cfg(feature = "prover-par")]
+        region_starts_cache: std::sync::OnceLock::new(),
     })
 }
 

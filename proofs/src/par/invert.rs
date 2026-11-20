@@ -28,7 +28,7 @@ use std::any::TypeId;
 use ff::{BatchInvert, BatchInverter, Field};
 use rayon::{iter::ParallelIterator, slice::ParallelSliceMut};
 
-fn is_bls_scalar<F: Field>() -> bool {
+pub(crate) fn is_bls_scalar<F: Field>() -> bool {
     TypeId::of::<F>() == TypeId::of::<midnight_curves::Fq>()
 }
 
