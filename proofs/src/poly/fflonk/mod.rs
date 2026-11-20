@@ -172,24 +172,30 @@ where
     {
         // Maps the labels of every queried chunk to its polynomials and the
         // points they are queried at, in query order: `labels -> (polys, points)`.
-        let chunks_info = queries.iter().fold(BTreeMap::new(), |mut chunks_info, q| {
+        let chunks_info = queries.iter().try_fold(BTreeMap::new(), |mut chunks_info, q| {
             let (labels, polys) = (balanced_chunks(q.group_labels, Self::T_MAX)
                 .zip(balanced_chunks(q.group_polys, Self::T_MAX)))
             .find(|(labels, _)| labels.contains(&q.label))
-            .expect("the queried group has no polynomial under the query label");
+            .ok_or(Error::OpeningError)?;
             let (_, points) = (chunks_info.entry(labels))
                 .or_insert_with(|| (polys.iter().collect::<Vec<_>>(), Vec::new()));
             if !points.contains(&q.point) {
                 points.push(q.point);
             }
-            chunks_info
-        });
+            Ok(chunks_info)
+        })?;
 
         // fflonk requires that every polynomial of a chunk be queried at every point of
         // the chunk. We compute the missing evaluations (those that were not queried)
         // and write them to the transcript. Note that the evaluations of explicit
         // queries are expected to be in the transcript before the call to `multi_open`.
-        let queried: HashSet<_> = queries.iter().map(|q| (q.label.clone(), q.point)).collect();
+        // A polynomial may be queried at most once per point.
+        let mut queried = HashSet::new();
+        for q in queries {
+            if !queried.insert((q.label.clone(), q.point)) {
+                return Err(Error::DuplicatedQuery);
+            }
+        }
         for (labels, (polys, points)) in &chunks_info {
             for point in points {
                 for (label, poly) in labels.iter().zip(polys.iter()) {
