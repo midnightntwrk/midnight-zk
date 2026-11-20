@@ -84,9 +84,6 @@ static ADMITTED: AtomicU32 = AtomicU32::new(0);
 /// Nanoseconds of the calls the device served, by class. For `msm` (class
 /// 0): of every hook invocation.
 static SERVED_NS: [AtomicU64; 4] = [const { AtomicU64::new(0) }; 4];
-/// The decline and success classes of the crate contract.
-const CLASSES: [&str; 4] = ["msm", "fft", "ifft", "quotient"];
-const PHASES: [Phases; 4] = [Phases::MSM, Phases::FFT, Phases::IFFT, Phases::QUOTIENT];
 /// Hook calls declined as not admitted, by class.
 static NOT_ADMITTED: [AtomicU64; 4] = [const { AtomicU64::new(0) }; 4];
 /// MSM hook invocations, served or declined.
@@ -257,22 +254,6 @@ fn decline_rows() -> (Vec<Fallback>, u64) {
         }
     }
     (rows, msm_unhooked)
-}
-
-/// Declines of an admitted phase that the device should have taken (the
-/// quotient only when the key reaches its size threshold).
-fn fallback_rows(declines: &[Fallback], admitted: Phases, sized: bool) -> Vec<Fallback> {
-    declines
-        .iter()
-        .filter(|d| is_fallback(&d.reason))
-        .filter(|d| {
-            CLASSES.iter().position(|c| *c == d.phase).is_some_and(|i| {
-                let p = PHASES[i];
-                admitted.contains(p) && (p != Phases::QUOTIENT || sized)
-            })
-        })
-        .cloned()
-        .collect()
 }
 
 #[derive(Default)]
@@ -470,7 +451,7 @@ impl Device for MetalDevice {
             msm_seconds: seconds(0),
             msm_sized: MSM_SIZED.load(Relaxed),
             calls,
-            fallbacks: fallback_rows(&declines, s.admitted, s.sized),
+            fallbacks: fallback_rows(&declines, s.admitted, s.sized, is_fallback),
             declines,
             // reset only when a request starts on the device
             peak_bytes: if s.admitted.is_empty() {

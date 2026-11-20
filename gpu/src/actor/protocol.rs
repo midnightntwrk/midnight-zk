@@ -12,7 +12,8 @@
 // limitations under the License.
 
 //! The device-owner actor protocol as a pure state machine. No CUDA
-//! call is made here; effects go through [`super::Backend`].
+//! call is made here; effects go through `super::Backend` (with the
+//! `actor` feature).
 //!
 //! The transition function [`step`] corresponds action for action to
 //! the Quint model `formal/gpu-prover/quint/device_actor.qnt`: same action

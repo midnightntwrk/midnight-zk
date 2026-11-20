@@ -39,8 +39,8 @@
 //! - [`Buffer`]: owned by the caller, zeroed when dropped if it may hold a
 //!   non-zero byte.
 //! - Pooled ([`Ctx::alloc_pooled`]): taken from and returned to a pool of
-//!   zeroed buffers, because a new buffer delays its first command buffer
-//!   while Metal maps it.
+//!   zeroed buffers, because a new buffer delays its first command buffer while
+//!   Metal maps it.
 //! - Per-request ([`Session::scratch`], [`take_request_buffer`]): kept under a
 //!   key until [`end_request_report`] zeroes them, or zeroed at the end of a
 //!   hook call made outside a request (`wipe_unbracketed`).

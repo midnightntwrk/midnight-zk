@@ -607,7 +607,7 @@ pub struct TrashJob<'a, F> {
 }
 
 /// The division of the numerator by `t(X) = X^n - 1` on the extended coset
-/// and the inverse transform of `EvaluationDomain::extended_to_coeff`:
+/// and the inverse transform of `FftDomain::extended_to_coeff`:
 /// `h[i] = nu[i] * t_inv[i mod t_inv.len()]`; the inverse FFT of size
 /// `2^ext_k` at `omega_inv`, each value times `divisor`; then
 /// `h[i] *= zeta_out[(i mod 3) - 1]` for `i mod 3 != 0`; then the first `len`

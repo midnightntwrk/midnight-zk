@@ -44,6 +44,9 @@
 //! that still cannot confirm stays pending until teardown's reset
 //! counts it lost unerased, exactly as the protocol states.
 
+// The links above name items that exist only with the `actor` feature.
+#![cfg_attr(not(feature = "actor"), allow(rustdoc::broken_intra_doc_links))]
+
 pub mod budget;
 #[cfg(feature = "actor")]
 pub mod chan;

@@ -25,9 +25,9 @@
 //!   by `midnight-gpu`. It is compiled only when the build has the cfg
 //!   `midnight_gpu_linked`, which the build script sets with the `cuda`
 //!   feature.
-//! - `MetalDevice` (module `metal`): the same hooks backed by
-//!   `midnight-metal`, compiled only with the cfg `midnight_metal_linked`
-//!   (feature `metal`). With both features CUDA is tried first.
+//! - `MetalDevice` (module `metal`): the same hooks backed by `midnight-metal`,
+//!   compiled only with the cfg `midnight_metal_linked` (feature `metal`). With
+//!   both features CUDA is tried first.
 //!
 //! Tests and embedders can implement [`Device`] themselves, for example to
 //! give the admission ladder a fake memory reading.
@@ -414,6 +414,44 @@ pub fn detect(select: crate::config::DeviceSelect) -> Box<dyn Device> {
     Box::new(NoDevice)
 }
 
+/// The decline and success classes of the hook contract, and their phases.
+#[cfg(any(
+    all(feature = "cuda", midnight_gpu_linked),
+    all(feature = "metal", midnight_metal_linked)
+))]
+const CLASSES: [&str; 4] = ["msm", "fft", "ifft", "quotient"];
+#[cfg(any(
+    all(feature = "cuda", midnight_gpu_linked),
+    all(feature = "metal", midnight_metal_linked)
+))]
+const PHASES: [Phases; 4] = [Phases::MSM, Phases::FFT, Phases::IFFT, Phases::QUOTIENT];
+
+/// Declines of an admitted phase that the device should have taken: a reason
+/// for which the backend's `is_fallback` holds, on an admitted phase (the
+/// quotient only when the key reaches its size threshold).
+#[cfg(any(
+    all(feature = "cuda", midnight_gpu_linked),
+    all(feature = "metal", midnight_metal_linked)
+))]
+fn fallback_rows(
+    declines: &[Fallback],
+    admitted: Phases,
+    sized: bool,
+    is_fallback: fn(&str) -> bool,
+) -> Vec<Fallback> {
+    declines
+        .iter()
+        .filter(|d| is_fallback(&d.reason))
+        .filter(|d| {
+            CLASSES.iter().position(|c| *c == d.phase).is_some_and(|i| {
+                let p = PHASES[i];
+                admitted.contains(p) && (p != Phases::QUOTIENT || sized)
+            })
+        })
+        .cloned()
+        .collect()
+}
+
 #[cfg(all(feature = "metal", midnight_metal_linked))]
 mod metal;
 
@@ -449,9 +487,6 @@ mod cuda {
     static ADMITTED: AtomicU32 = AtomicU32::new(0);
     /// Device MSMs and their time in nanoseconds, since the last reset.
     static MSM_NS: AtomicU64 = AtomicU64::new(0);
-    /// The decline and success classes of the crate contract.
-    const CLASSES: [&str; 4] = ["msm", "fft", "ifft", "quotient"];
-    const PHASES: [Phases; 4] = [Phases::MSM, Phases::FFT, Phases::IFFT, Phases::QUOTIENT];
     /// Hook calls declined because their phase was not admitted, by class,
     /// since the last reset.
     static NOT_ADMITTED: [AtomicU64; 4] = [const { AtomicU64::new(0) }; 4];
@@ -871,17 +906,7 @@ mod cuda {
             }
             // a fallback: a decline of an admitted phase for a reason other
             // than size or a missing device
-            let fallbacks = declines
-                .iter()
-                .filter(|d| is_fallback(&d.reason))
-                .filter(|d| {
-                    CLASSES.iter().position(|c| *c == d.phase).is_some_and(|i| {
-                        let p = PHASES[i];
-                        s.admitted.contains(p) && (p != Phases::QUOTIENT || s.sized)
-                    })
-                })
-                .cloned()
-                .collect();
+            let fallbacks = fallback_rows(&declines, s.admitted, s.sized, is_fallback);
             let msm_seconds = MSM_NS.load(Relaxed) as f64 * 1e-9;
             DeviceCounters {
                 msm_count: st.msm,

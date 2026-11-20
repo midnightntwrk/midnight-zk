@@ -200,9 +200,9 @@ fn vectors(kind: &str, run: fn(&Value, Lane) -> bool) {
     if require_device() {
         assert!(gpu::device(), "CUDA vector run requires a working device");
     }
-    let dir = std::env::var_os("ORACLE_VECTOR_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../formal/gpu-prover/vectors"));
+    let dir = std::env::var_os("ORACLE_VECTOR_DIR").map(PathBuf::from).unwrap_or_else(|| {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../formal/gpu-prover/vectors")
+    });
     let mut paths: Vec<_> = fs::read_dir(&dir)
         .unwrap()
         .map(|e| e.unwrap().path())

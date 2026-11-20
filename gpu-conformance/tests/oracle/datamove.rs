@@ -13,9 +13,9 @@ use serde_json::Value;
 /// Read the oracle's payload policy. V1 exported arithmetic and service files
 /// only. A v2 arithmetic corpus must supply the data-movement plans as well.
 pub(super) fn permitted() -> Option<BTreeMap<String, u64>> {
-    let root = std::env::var_os("ORACLE_VECTOR_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../formal/gpu-prover/vectors"));
+    let root = std::env::var_os("ORACLE_VECTOR_DIR").map(PathBuf::from).unwrap_or_else(|| {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../formal/gpu-prover/vectors")
+    });
     let mut policy = None;
     let mut v2 = false;
     for entry in fs::read_dir(root).unwrap() {

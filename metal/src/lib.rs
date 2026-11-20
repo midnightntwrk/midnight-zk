@@ -35,8 +35,8 @@
 //!   declines (`None` / `false`) and the caller runs the CPU code.
 //! - A decline leaves the caller's buffer unchanged: a result is written only
 //!   after the last command buffer completed without error.
-//! - No entry point draws randomness or touches a transcript. Any
-//!   pseudo-random value (the MSM mask) is a fixed function of the shape.
+//! - No entry point draws randomness or touches a transcript. Any pseudo-random
+//!   value (the MSM mask) is a fixed function of the shape.
 //! - Every failure, including a panic caught at the entry point, is a counted
 //!   decline ([`declines`]), never a panic into the prover.
 //!
@@ -401,8 +401,8 @@ pub fn stats() -> Stats {
 /// - `device-error`: a pipeline, encoder or command buffer failed;
 /// - `panic`: the backend panicked and the entry point caught it;
 /// - `bases-not-in-subgroup` (`msm`): a base outside G1;
-/// - `unregistered-bases` (`msm`): no registered table serves the bases and
-///   the one-shot path is off.
+/// - `unregistered-bases` (`msm`): no registered table serves the bases and the
+///   one-shot path is off.
 pub fn declines() -> Vec<(&'static str, &'static str, u64)> {
     account::declines()
 }
@@ -809,8 +809,8 @@ pub fn begin_request() {
 /// What [`end_request_report`] erased.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct WipeStats {
-    /// Regions zeroed: the per-request buffers and, in check mode, the idle pool
-    /// buffers.
+    /// Regions zeroed: the per-request buffers and, in check mode, the idle
+    /// pool buffers.
     pub regions: u64,
     /// Their bytes.
     pub bytes: u64,

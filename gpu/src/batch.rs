@@ -371,7 +371,7 @@ static PANIC_AFTER_MSM: AtomicBool = AtomicBool::new(false);
 /// The G1 MSM hook of a batch: [`crate::msm_g1`] with the registered MSM
 /// contexts evicted and the erasure checked afterwards, all under one
 /// owner lock (see the module text). The eviction and check run on
-/// every exit, an unwind of the MSM included ([`EvictOnDrop`], taken
+/// every exit, an unwind of the MSM included (`EvictOnDrop`, taken
 /// before the MSM starts), and an unwind latches the erasure failure.
 /// `None` declines as `crate::msm_g1` does, and after a failed erasure
 /// check.
@@ -463,11 +463,11 @@ pub fn batch_ifft(a: &mut [Scalar], omega_inv: Scalar, log_n: u32, divisor: Scal
     with_shared_scratch(|| crate::transform(a, omega_inv, log_n, Some(divisor), Entry::Batch))
 }
 
-/// The batch quotient hook: [`crate::quotient`] admitted on the batch
+/// The batch quotient hook: [`crate::quotient()`] admitted on the batch
 /// side of the gate. Declines when no batch session holds the gate.
 ///
 /// # Safety
-/// The same contract as [`crate::quotient`].
+/// The same contract as [`crate::quotient()`].
 pub unsafe fn batch_quotient(job: *const std::ffi::c_void, out: &mut [Scalar]) -> bool {
     let Some(_session) = admit_batch("quotient") else {
         return false;
