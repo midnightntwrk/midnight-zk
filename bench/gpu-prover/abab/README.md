@@ -1,10 +1,10 @@
 # Interleaved comparisons of two trees on the rc1 bench
 
-Each file compares two trees with the public k = 21 circuit of `gpu-prover/bench/rc1`. The two binaries (`rc1-bench` with the feature `rc1-bench-cuda`) are built from the two trees with the same toolchain, lockfile and CUDA target, and share one key cache. The runs alternate: tree A, tree B, tree A, tree B, one prover process per run. A pair is one run of each tree.
+Each file compares two trees with the public k = 21 circuit of `bench/gpu-prover/rc1`. The two binaries (`rc1-bench` with the feature `rc1-bench-cuda`) are built from the two trees with the same toolchain, lockfile and CUDA target, and share one key cache. The runs alternate: tree A, tree B, tree A, tree B, one prover process per run. A pair is one run of each tree.
 
 Each run makes one cold proof and five warm proofs (`RC1_WARM=5`). The ratio of a pair is the median `prove_s` of the five warm proofs of tree A divided by that of tree B. A ratio above 1 means tree B is faster. Every proof was verified by the stock CPU verifier (`verified`).
 
-Columns: `tree` (short commit id), `pair`, then the columns of the bench (`gpu-prover/bench/rc1/README.md`): `mode rep k threads start_load1 proof state prove_s verify_s verified msm_calls ntt_calls quotient_calls device_errors fallbacks declines hook_declines h2d_copies h2d_bytes d2h_copies d2h_bytes msm_d2h_copies msm_d2h_bytes stage peak_device_bytes gpu_model device_total_bytes`. `rep` is the bench's own repeat field (1 to 3) and carries no meaning here; `pair` is the pair number. `start_load1` is the one-minute load the process sampled at its gate before the cold proof.
+Columns: `tree` (short commit id), `pair`, then the columns of the bench (`bench/gpu-prover/rc1/README.md`): `mode rep k threads start_load1 proof state prove_s verify_s verified msm_calls ntt_calls quotient_calls device_errors fallbacks declines hook_declines h2d_copies h2d_bytes d2h_copies d2h_bytes msm_d2h_copies msm_d2h_bytes stage peak_device_bytes gpu_model device_total_bytes`. `rep` is the bench's own repeat field (1 to 3) and carries no meaning here; `pair` is the pair number. `start_load1` is the one-minute load the process sampled at its gate before the cold proof.
 
 ## b0230e08-vs-ffa83b28.tsv
 
@@ -30,7 +30,7 @@ Trees: `ffa83b28` and the same tree with the chunked parallel batch inversion an
 | 4 | 4.804 | 4.449 | 1.080 | 1.95 / 1.56 |
 | 5 | 4.742 | 4.488 | 1.057 | 1.22 / 1.21 |
 
-Median ratio 1.059, range 1.057 to 1.081. Device calls per proof and the device peak (1.84 GiB) are the same in both arms. The inversion change that this pull request carries is narrower than the version measured here: it inverts the permutation and LogUp denominators in parallel and leaves the rational advice path as it is in stock. The measurement session in `gpu-prover/bench/session/` measures the final change.
+Median ratio 1.059, range 1.057 to 1.081. Device calls per proof and the device peak (1.84 GiB) are the same in both arms. The inversion change that this pull request carries is narrower than the version measured here: it inverts the permutation and LogUp denominators in parallel and leaves the rational advice path as it is in stock. The measurement session in `bench/gpu-prover/session/` measures the final change.
 
 ## lookup-k20-ffa83b28-vs-scans.tsv
 

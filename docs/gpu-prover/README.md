@@ -59,8 +59,8 @@ every call. Upstream CI therefore needs no GPU and no CUDA install.
 | [`gpu/`](../../gpu/src/lib.rs) | `midnight-gpu`: CUDA kernels, [build script](../../gpu/build.rs), [vendored sppark](../../gpu/third_party/sppark/VENDORED.txt). |
 | [`gpu-prover/`](../../gpu-prover/README.md) | `midnight-gpu-prover`: library, daemon `midnight-gpu-proverd`, client `midnight-gpu-prover-client`. |
 | [`gpu-prover/container/`](../../gpu-prover/container/README.md) | Dockerfile, Compose file, systemd unit, CDI check, restart-cap test, [test record](../../gpu-prover/container/TESTED.md). |
-| [`gpu-prover/bench/compact/`](../../gpu-prover/bench/compact/README.md) | Compact proof benchmark: runner, [results](../../gpu-prover/bench/compact/results/compare-rtx-5080-laptop.tsv), [proof server note](../../gpu-prover/bench/compact/PROOF-SERVER.md). |
-| [`gpu-prover/bench/large-circuit/`](../../gpu-prover/bench/large-circuit/README.md) | The k = 21 measurements made before the port to 0.9.0-rc.1. |
+| [`bench/gpu-prover/compact/`](../../bench/gpu-prover/compact/README.md) | Compact proof benchmark: runner, [results](../../bench/gpu-prover/compact/results/compare-rtx-5080-laptop.tsv), [proof server note](../../bench/gpu-prover/compact/PROOF-SERVER.md). |
+| [`bench/gpu-prover/large-circuit/`](../../bench/gpu-prover/large-circuit/README.md) | The k = 21 measurements made before the port to 0.9.0-rc.1. |
 | [`formal/gpu-prover/`](../../formal/gpu-prover/README.md) | The specification: [requirements](../../formal/gpu-prover/requirements.md) GPU-001 to GPU-072, [design](../../formal/gpu-prover/design.md), [results and open items](../../formal/gpu-prover/RESULTS.md). |
 | [`formal/gpu-prover/lean/`](../../formal/gpu-prover/lean/Main.lean) | Lean 4 oracle: reference arithmetic, device models and theorems, the request state machine. |
 | [`formal/gpu-prover/quint/`](../../formal/gpu-prover/quint/gpu_service.qnt) | Quint model of the request state machine, written from the requirements only. |

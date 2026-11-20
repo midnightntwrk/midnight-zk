@@ -5,7 +5,7 @@
 # records clocks and temperatures through the whole session. Sensors are read
 # only; the script never changes clocks, power limits or fan settings.
 #
-# Usage: gpu-prover/bench/session/run.sh   (configuration from the environment)
+# Usage: bench/gpu-prover/session/run.sh   (configuration from the environment)
 #
 #   SESSION_OUT   output directory (raw/, RESULTS.md, session.json)   [../session-results]
 #   BIN_DIR       directory with rc1-cpu and rc1-gpu of the measured tree (required)
@@ -29,7 +29,7 @@
 #   TREE, BASE    commit labels written to the results
 #   DEVICE        device label for the results   [from nvidia-smi]
 set -uo pipefail
-[[ -f gpu-prover/bench/rc1/main.rs ]] || { echo "run from the repository root" >&2; exit 2; }
+[[ -f bench/gpu-prover/rc1/main.rs ]] || { echo "run from the repository root" >&2; exit 2; }
 : "${BIN_DIR:?set BIN_DIR}"
 OUT=${SESSION_OUT:-"$PWD/../session-results"}
 export RC1_CACHE=${RC1_CACHE:-"$OUT/key-cache"}
@@ -198,4 +198,4 @@ if [[ -n $ABAB_FILE ]]; then
 fi
 phase done
 kill $SENSORS 2>/dev/null; wait $SENSORS 2>/dev/null
-python3 gpu-prover/bench/session/summarize.py "$OUT" && log "session done: $OUT/session.json"
+python3 bench/gpu-prover/session/summarize.py "$OUT" && log "session done: $OUT/session.json"

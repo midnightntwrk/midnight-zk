@@ -4,15 +4,15 @@ The Compact suite proves real Compact contracts through the same calls that
 the Midnight proof server makes. It measures the CPU prover and the GPU prover
 on the same jobs and checks every GPU proof with the stock verifier. The
 runner and its full reference are in
-[`gpu-prover/bench/compact/`](../../gpu-prover/bench/compact/README.md). The results are in
+[`bench/gpu-prover/compact/`](../../bench/gpu-prover/compact/README.md). The results are in
 [benchmarks.md](benchmarks.md).
 
 ## 1. Programs
 
-[`suite.json`](../../gpu-prover/bench/compact/suite.json) pins every source file by
+[`suite.json`](../../bench/gpu-prover/compact/suite.json) pins every source file by
 repository, commit and SHA-256. The suite has 33 programs:
 
-- 30 programs are fetched by [`fetch-suite.sh`](../../gpu-prover/bench/compact/fetch-suite.sh)
+- 30 programs are fetched by [`fetch-suite.sh`](../../bench/gpu-prover/compact/fetch-suite.sh)
   from Apache-2.0 sources: LFDT-Minokawa/compact and the midnightntwrk example
   repositories. The tree holds no copy of their sources.
 - 3 programs (`s01-natives`, `s02-foreign`, `s03-language`) were written for
@@ -24,7 +24,7 @@ and it needs an external library) and `d07-zkloan` (does not compile with
 language 0.28.0).
 
 Three fetched files get a small patch after the SHA-256 check
-([`patches/README.md`](../../gpu-prover/bench/compact/patches/README.md)). Two change an exact language
+([`patches/README.md`](../../bench/gpu-prover/compact/patches/README.md)). Two change an exact language
 pragma to `>=`. One adds a constructor to the election example, so that its
 authorized circuits can be proved.
 
@@ -85,7 +85,7 @@ workspace.
    0.28.0) as a release archive and checks its SHA-256:
 
    ```sh
-   cd gpu-prover/bench/compact
+   cd bench/gpu-prover/compact
    ./fetch-suite.sh
    ```
 
@@ -108,7 +108,7 @@ workspace.
 
 5. Run the timed CPU set, the GPU set and the stock verification of every GPU
    proof, then make the comparison table. The commands are in step 7 of the
-   [runner README](../../gpu-prover/bench/compact/README.md#reproduce).
+   [runner README](../../bench/gpu-prover/compact/README.md#reproduce).
 
 A run is resumable. It skips every repetition that is already in the raw
 file. With `--lock FILE` the runner takes the device lock before each proof.

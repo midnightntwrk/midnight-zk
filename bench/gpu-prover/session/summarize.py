@@ -216,7 +216,7 @@ tline = box.get("tree", "")
 tm = re.match(r"(\S+) base=(\S+) threads=(\d+)", tline)
 session = {
     "meta": {
-        "source": str(Path("gpu-prover/bench/session/results")),
+        "source": str(Path("bench/gpu-prover/session/results")),
         "tree": tm.group(1) if tm else None,
         "base": tm.group(2) if tm else None,
         "device": (gpu_line.split(",")[0].replace("NVIDIA GeForce ", "").replace(" GPU", "").strip() or None),

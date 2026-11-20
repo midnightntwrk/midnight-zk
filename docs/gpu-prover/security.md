@@ -246,7 +246,7 @@ The library's log target is `midnight_zkir`. The stock proof server 9.0.1
 turns off the target `zkir`, which matches only the zkir command-line tool,
 so the stock filter does not stop these lines.
 
-- The proof-server wrapper (`gpu-prover/bench/compact/proof-server`) turns off
+- The proof-server wrapper (`bench/gpu-prover/compact/proof-server`) turns off
   both `zkir` and `midnight_zkir` in a filter that does not read `RUST_LOG`.
   Its test `malformed_witness_logs_nothing_from_zkir` sends a malformed witness
   through zkir and checks that the log holds no zkir line.
@@ -266,7 +266,7 @@ only a loopback interface (`unshare -rn`) and bridge a mode-600 unix socket
 to its port, or put it behind a firewall rule that drops the port on every
 non-loopback interface. Then reach it through a tunnel. A systemd IP filter
 on a unit does not cover a process that runs in a separate transient scope.
-[PROOF-SERVER.md](../../gpu-prover/bench/compact/PROOF-SERVER.md) gives the
+[PROOF-SERVER.md](../../bench/gpu-prover/compact/PROOF-SERVER.md) gives the
 namespace method and the probe that refuses a session whose port answers on
 a network address.
 

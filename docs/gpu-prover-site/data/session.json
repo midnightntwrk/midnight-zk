@@ -1,6 +1,6 @@
 {
   "meta": {
-    "source": "gpu-prover/bench/session/results",
+    "source": "bench/gpu-prover/session/results",
     "tree": "9070a373",
     "base": "4bea43d4",
     "device": "RTX 5090 Laptop",

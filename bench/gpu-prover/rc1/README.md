@@ -13,7 +13,7 @@ The prover commits the dense advice columns, runs the permutation argument, cons
 Run the scripts from the repository root on Linux. Set `RC1_WORK_DIR` to the directory for the binaries and results. It defaults to `../rc1-results`. `RC1_CACHE` selects the key cache and defaults to `$RC1_WORK_DIR/key-cache`. Both CPU and GPU processes must use the same cache. Use the root workspace toolchain and lockfile, the offline Cargo registry, and a CUDA toolkit for the GPU build.
 
 ```sh
-bench=gpu-prover/bench/rc1/scripts
+bench=bench/gpu-prover/rc1/scripts
 bash "$bench/build.sh"
 bash "$bench/prepare.sh"
 ```
@@ -53,7 +53,7 @@ For a CPU-only smoke test, build just the stock target and use a smaller k. Smok
 ```sh
 export CARGO_BUILD_JOBS=8 RC1_K=8 RC1_WARM=1 RAYON_NUM_THREADS=4
 export RC1_CACHE="${RC1_WORK_DIR:-../rc1-results}/smoke-cache"
-cargo build --release --locked --offline -p midnight-gpu-prover --bin rc1-bench --features rc1-bench
+cargo build --release --locked --offline -p midnight-gpu-prover-bench --bin rc1-bench
 bin="${CARGO_TARGET_DIR:-target}/release/rc1-bench"
 "$bin" prepare
 "$bin" smoke

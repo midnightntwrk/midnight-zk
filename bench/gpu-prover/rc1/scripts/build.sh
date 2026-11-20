@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
-source gpu-prover/bench/rc1/scripts/common.sh
+source bench/gpu-prover/rc1/scripts/common.sh
 
 mkdir -p "$bin_dir"
-build=(cargo build --release --locked --offline -p midnight-gpu-prover --bin rc1-bench)
-"${build[@]}" --features rc1-bench
+build=(cargo build --release --locked --offline -p midnight-gpu-prover-bench --bin rc1-bench)
+"${build[@]}"
 install -m755 "$CARGO_TARGET_DIR/release/rc1-bench" "$RC1_STOCK_BIN"
 
 # An explicit target avoids querying a device during compilation.

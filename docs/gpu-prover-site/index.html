@@ -257,7 +257,7 @@ gpu-prover/container/run-gpu.sh docker run -d --name midnight-gpu-prover \
                 </tr>
                 <tr>
                   <th scope="row">Compact benchmark</th>
-                  <td data-label="Path"><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-prover/bench/compact/README.md" data-repo="gpu-prover/bench/compact/README.md"><code>gpu-prover/bench/compact/</code></a></td>
+                  <td data-label="Path"><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/bench/gpu-prover/compact/README.md" data-repo="bench/gpu-prover/compact/README.md"><code>bench/gpu-prover/compact/</code></a></td>
                   <td data-label="What it is">A harness that proves real Compact contracts on the CPU and on the GPU path, with its results.</td>
                 </tr>
               </tbody>
@@ -601,15 +601,15 @@ gpu-prover/container/run-gpu.sh docker run -d --name midnight-gpu-prover \
           <h2>Benchmarks</h2>
           <h3 id="compact-title">Compact program suite</h3>
           <div data-bench="compact"></div>
-          <p class="source">Source: <a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-prover/bench/compact/README.md" data-repo="gpu-prover/bench/compact/README.md">gpu-prover/bench/compact</a>, with the raw results in <a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-prover/bench/compact/results" data-repo="gpu-prover/bench/compact/results">results/</a>.</p>
+          <p class="source">Source: <a href="https://github.com/midnightntwrk/midnight-zk/blob/main/bench/gpu-prover/compact/README.md" data-repo="bench/gpu-prover/compact/README.md">bench/gpu-prover/compact</a>, with the raw results in <a href="https://github.com/midnightntwrk/midnight-zk/blob/main/bench/gpu-prover/compact/results" data-repo="bench/gpu-prover/compact/results">results/</a>.</p>
 
           <h3 id="preview-title">Transactions on the Preview network</h3>
           <div data-bench="preview"></div>
-          <p class="source">Source: <a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-prover/bench/compact/results/preview-rtx-5080-laptop.tsv" data-repo="gpu-prover/bench/compact/results/preview-rtx-5080-laptop.tsv">preview-rtx-5080-laptop.tsv</a>, with the hashes in the <a href="https://github.com/midnightntwrk/midnight-zk/blob/main/docs/gpu-prover/benchmarks.md" data-repo="docs/gpu-prover/benchmarks.md">benchmarks document</a>.</p>
+          <p class="source">Source: <a href="https://github.com/midnightntwrk/midnight-zk/blob/main/bench/gpu-prover/compact/results/preview-rtx-5080-laptop.tsv" data-repo="bench/gpu-prover/compact/results/preview-rtx-5080-laptop.tsv">preview-rtx-5080-laptop.tsv</a>, with the hashes in the <a href="https://github.com/midnightntwrk/midnight-zk/blob/main/docs/gpu-prover/benchmarks.md" data-repo="docs/gpu-prover/benchmarks.md">benchmarks document</a>.</p>
 
           <h3 id="large-title">One large circuit, k = 21, on midnight-proofs 0.8.3</h3>
           <div data-bench="large"></div>
-          <p class="source">Source: <a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-prover/bench/large-circuit/README.md" data-repo="gpu-prover/bench/large-circuit/README.md">gpu-prover/bench/large-circuit</a>, with the method in the <a href="https://github.com/midnightntwrk/midnight-zk/blob/main/docs/gpu-prover/benchmarks.md" data-repo="docs/gpu-prover/benchmarks.md">benchmarks document</a>.</p>
+          <p class="source">Source: <a href="https://github.com/midnightntwrk/midnight-zk/blob/main/bench/gpu-prover/large-circuit/README.md" data-repo="bench/gpu-prover/large-circuit/README.md">bench/gpu-prover/large-circuit</a>, with the method in the <a href="https://github.com/midnightntwrk/midnight-zk/blob/main/docs/gpu-prover/benchmarks.md" data-repo="docs/gpu-prover/benchmarks.md">benchmarks document</a>.</p>
         </section>
 
         <section id="cpu-too" hidden>
@@ -637,7 +637,7 @@ gpu-prover/container/run-gpu.sh docker run -d --name midnight-gpu-prover \
           <div data-bench="sequential">
             <p class="empty">The benchmark tables need JavaScript and an HTTP server.</p>
           </div>
-          <p class="source" data-session-source>Source: <a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-prover/bench/h2h/results/RESULTS.md" data-repo="gpu-prover/bench/h2h/results/RESULTS.md">gpu-prover/bench/h2h/results/RESULTS.md</a>, with the raw rows in <a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-prover/bench/h2h/results/raw" data-repo="gpu-prover/bench/h2h/results/raw">raw/</a>.</p>
+          <p class="source" data-session-source>Source: <a href="https://github.com/midnightntwrk/midnight-zk/blob/main/bench/gpu-prover/h2h/results/RESULTS.md" data-repo="bench/gpu-prover/h2h/results/RESULTS.md">bench/gpu-prover/h2h/results/RESULTS.md</a>, with the raw rows in <a href="https://github.com/midnightntwrk/midnight-zk/blob/main/bench/gpu-prover/h2h/results/raw" data-repo="bench/gpu-prover/h2h/results/raw">raw/</a>.</p>
           <h3 id="batch-session-title" data-batch-session hidden>Batch proving</h3>
           <div data-bench="batch-session" data-batch-session hidden></div>
         </section>
@@ -1249,7 +1249,7 @@ shares its count between its usable rows. The blinding values of the multiplicit
             <li><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-prover/README.md" data-repo="gpu-prover/README.md"><b>midnight-gpu-prover</b><span>Service, daemon, client, configuration and protocol.</span></a></li>
             <li><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu" data-repo="gpu"><b>midnight-gpu</b><span>The CUDA kernels.</span></a></li>
             <li><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-prover/container/README.md" data-repo="gpu-prover/container/README.md"><b>Container</b><span>Image build, CDI, SRS mount, restart policy and systemd unit.</span></a></li>
-            <li><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/gpu-prover/bench/compact/README.md" data-repo="gpu-prover/bench/compact/README.md"><b>Compact benchmark</b><span>Harness, programs and raw results.</span></a></li>
+            <li><a href="https://github.com/midnightntwrk/midnight-zk/blob/main/bench/gpu-prover/compact/README.md" data-repo="bench/gpu-prover/compact/README.md"><b>Compact benchmark</b><span>Harness, programs and raw results.</span></a></li>
           </ul>
 
           <footer>

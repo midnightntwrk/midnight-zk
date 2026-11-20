@@ -13,7 +13,7 @@
     "extra_sources": [
       {
         "text": "Paired runs of the two trees",
-        "path": "gpu-prover/bench/abab/README.md"
+        "path": "bench/gpu-prover/abab/README.md"
       }
     ]
   },
@@ -155,7 +155,7 @@
       "Byte-equal counts the proofs whose repetitions all give the same bytes, with the same seed and thread count, on both paths. Verified counts the others, which pass the stock verifier with equal public inputs.",
       "All 798 GPU proofs pass their check, and no hook fell back to the CPU."
     ],
-    "source": "gpu-prover/bench/compact/README.md",
+    "source": "bench/gpu-prover/compact/README.md",
     "empty": "Benchmarks of Compact program proofs are a roadmap item, coming soon."
   },
   "preview": {
@@ -226,7 +226,7 @@
       "The ledger verified every proof with the stock verifier when it included the transaction. Each GPU call had 0 fallbacks.",
       "The transaction hashes, blocks and the CPU baseline transactions are in the benchmarks document."
     ],
-    "source": "gpu-prover/bench/compact/results/preview-rtx-5080-laptop.tsv",
+    "source": "bench/gpu-prover/compact/results/preview-rtx-5080-laptop.tsv",
     "empty": "No Preview transactions are recorded.",
     "stack": true
   },
@@ -301,7 +301,7 @@
       "One proof makes 23 MSMs of 2²¹ terms. On the RTX 5080 Laptop GPU they take 1.44 s together, about 63 ms each.",
       "Every proof had 0 fallbacks."
     ],
-    "source": "gpu-prover/bench/large-circuit/gpu-k21.tsv",
+    "source": "bench/gpu-prover/large-circuit/gpu-k21.tsv",
     "empty": "Measurements of one k = 21 circuit are a roadmap item, coming soon."
   },
   "checks": {

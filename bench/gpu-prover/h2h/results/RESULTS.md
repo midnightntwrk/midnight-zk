@@ -13,7 +13,7 @@ Every number is MEASURED. Each k row is one process: 1 cold proof, then 3 warm p
 
 ## Circuit
 
-This is the `gpu-prover/bench/rc1` chain circuit: `x[i+1] = x[i]^2 + 3` in the BLS12-381 scalar field, four advice columns, one selector, no lookups. The start and end values are bound to one public instance column. It uses KZG with a public test SRS (`unsafe_setup`, fixed seed), and a Blake2b transcript.
+This is the `bench/gpu-prover/rc1` chain circuit: `x[i+1] = x[i]^2 + 3` in the BLS12-381 scalar field, four advice columns, one selector, no lookups. The start and end values are bound to one public instance column. It uses KZG with a public test SRS (`unsafe_setup`, fixed seed), and a Blake2b transcript.
 
 ## Head to head (seconds per proof)
 
@@ -68,7 +68,7 @@ From the root of the tree, with `PATH` holding the CUDA 13.4 `bin` directory, `L
 
 ```sh
 export RC1_WORK_DIR=<work dir> RC1_CACHE=<work dir>/key-cache
-bash gpu-prover/bench/rc1/scripts/build.sh
+bash bench/gpu-prover/rc1/scripts/build.sh
 export RC1_STOCK_BIN=$RC1_WORK_DIR/bin/rc1-cpu
 for k in 16 14 18 20 21; do
   RC1_K=$k $RC1_WORK_DIR/bin/rc1-cpu prepare
@@ -81,7 +81,7 @@ RC1_K=16 RC1_WARM=64 RC1_REP=2 $RC1_WORK_DIR/bin/rc1-cpu run > raw/seq16-cpu.tsv
 
 ## Files
 
-- `raw/*.tsv`: one row per proof. The columns are those of `gpu-prover/bench/rc1/README.md`.
+- `raw/*.tsv`: one row per proof. The columns are those of `bench/gpu-prover/rc1/README.md`.
 - `results.json`: the medians, ranges, verification flags and throughput prefixes computed from the TSVs.
 - `run.log`: the step log of the run.
 

@@ -1240,6 +1240,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "midnight-gpu-prover-bench"
+version = "0.1.0"
+dependencies = [
+ "blake2b_simd",
+ "ff",
+ "hex",
+ "libc",
+ "midnight-curves",
+ "midnight-gpu",
+ "midnight-metal",
+ "midnight-proofs",
+ "rand 0.8.7",
+ "rayon",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "midnight-metal"
 version = "0.1.0"
 dependencies = [

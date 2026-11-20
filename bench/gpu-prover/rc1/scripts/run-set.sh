@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-source gpu-prover/bench/rc1/scripts/common.sh
+source bench/gpu-prover/rc1/scripts/common.sh
 
 [[ $# == 2 && $1 =~ ^(cpu|gpu|metal)$ && $2 =~ ^[123]$ ]] || { echo "usage: run-{cpu,gpu,metal}.sh REP (1, 2, or 3)" >&2; exit 2; }
 mode=$1

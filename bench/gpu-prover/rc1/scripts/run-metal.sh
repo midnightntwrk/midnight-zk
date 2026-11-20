@@ -7,4 +7,4 @@ if ! command -v timeout >/dev/null; then
     limit=()
     ! command -v gtimeout >/dev/null || limit=(gtimeout --kill-after=3s 690s)
 fi
-exec "${limit[@]}" bash gpu-prover/bench/rc1/scripts/run-set.sh metal "$@"
+exec "${limit[@]}" bash bench/gpu-prover/rc1/scripts/run-set.sh metal "$@"

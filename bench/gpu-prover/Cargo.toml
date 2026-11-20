@@ -1,0 +1,44 @@
+[package]
+name = "midnight-gpu-prover-bench"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = """
+Benchmarks of the GPU prover: the rc.1 chain-circuit bench (rc1/) with its scripts and results,
+and the measurement data of the other benches (compact/, session/, abab/, h2h/, large-circuit/)
+"""
+build = "build.rs"
+publish = false
+
+[lints]
+workspace = true
+
+[features]
+default = []
+# The bench through the CUDA hooks (midnight-gpu). Without a feature it proves on the stock
+# CPU prover.
+rc1-bench-cuda = ["dep:midnight-gpu", "midnight-gpu/cuda", "midnight-proofs/gpu"]
+# The bench through the Metal hooks (midnight-metal), on an Apple GPU.
+rc1-bench-metal = ["dep:midnight-metal", "midnight-proofs/gpu"]
+
+[dependencies]
+blake2b_simd = { workspace = true }
+ff = { workspace = true }
+hex = "0.4"
+libc = "0.2"
+midnight-curves = { version = "0.4.0-rc.1" }
+midnight-proofs = { version = "0.9.0-rc.1", default-features = false, features = [
+    "circuit-params",
+    "committed-instances",
+] }
+midnight-gpu = { version = "0.1.0", path = "../../gpu", optional = true }
+midnight-metal = { version = "0.1.0", path = "../../metal", optional = true }
+rand = { workspace = true }
+rayon = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[[bin]]
+name = "rc1-bench"
+path = "rc1/main.rs"

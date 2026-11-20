@@ -18,11 +18,6 @@ workspace = true
 
 [features]
 default = []
-rc1-bench = []
-# Direct benchmark hooks for rc.1. The benchmark runs without the daemon.
-rc1-bench-cuda = ["rc1-bench", "dep:midnight-gpu", "midnight-gpu/cuda", "midnight-proofs/gpu"]
-# Direct benchmark hooks for rc.1 on an Apple GPU, through `midnight-metal`.
-rc1-bench-metal = ["rc1-bench", "metal"]
 # Route proof phases to a CUDA device through `midnight-gpu`. A build without the CUDA
 # toolkit still compiles and proves on the CPU; the device layer reports no device.
 # Without nvcc at build time `midnight-gpu` builds a stub that declines every call.
@@ -86,8 +81,3 @@ path = "src/bin/midnight-gpu-prover-client.rs"
 [[example]]
 name = "seeded_prove"
 required-features = ["test-seed"]
-
-[[bin]]
-name = "rc1-bench"
-path = "bench/rc1/main.rs"
-required-features = ["rc1-bench"]

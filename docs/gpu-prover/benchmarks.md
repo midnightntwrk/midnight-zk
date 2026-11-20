@@ -1,8 +1,8 @@
 # Benchmarks
 
 Every number in this document comes from a file in the repository. The
-Compact numbers come from [`gpu-prover/bench/compact/results/`](../../gpu-prover/bench/compact/results/compare-rtx-5080-laptop.tsv).
-The large-circuit numbers come from [`gpu-prover/bench/large-circuit/`](../../gpu-prover/bench/large-circuit/README.md).
+Compact numbers come from [`bench/gpu-prover/compact/results/`](../../bench/gpu-prover/compact/results/compare-rtx-5080-laptop.tsv).
+The large-circuit numbers come from [`bench/gpu-prover/large-circuit/`](../../bench/gpu-prover/large-circuit/README.md).
 Each table names the GPU model and the platform.
 
 ## Which code was measured
@@ -27,7 +27,7 @@ the same jobs and the same command: one warm-up and 5 timed repetitions per
 proof. The times are the prover call (witness generation and `create_proof`)
 as the median of the 5 repetitions. Key loading and verification are timed
 apart. The method is in [compact-suite.md](compact-suite.md) and the
-[benchmark README](../../gpu-prover/bench/compact/README.md).
+[benchmark README](../../bench/gpu-prover/compact/README.md).
 
 **Comparison rule.** A proof is checked in one of two ways:
 
@@ -232,7 +232,7 @@ hook fell back to the CPU.
 Of the 133 published proofs, 26 ran while other processes used more than 2
 cores (3 in the CPU run, 23 in the GPU run). They pass the check but are kept
 out of the totals and the table below; each is listed as an `# excluded:` line
-in [`compare-rtx-5090-laptop.tsv`](../../gpu-prover/bench/compact/results/compare-rtx-5090-laptop.tsv),
+in [`compare-rtx-5090-laptop.tsv`](../../bench/gpu-prover/compact/results/compare-rtx-5090-laptop.tsv),
 which also holds the per-call rows. The only k = 17 proof is among them.
 
 | Quantity | CPU | GPU |
@@ -273,8 +273,8 @@ Each timed set is
 one cold proof, then 5 warm proofs (n = 5). Each set started only after the
 1-minute load of the machine was below 2 (the quiet gate). Every proof had 0
 fallbacks. All values are MEASURED. The source files are
-[`gpu-k21.tsv`](../../gpu-prover/bench/large-circuit/gpu-k21.tsv) and
-[`cpu-gpu-k21-rtx-5080-laptop.tsv`](../../gpu-prover/bench/large-circuit/cpu-gpu-k21-rtx-5080-laptop.tsv).
+[`gpu-k21.tsv`](../../bench/gpu-prover/large-circuit/gpu-k21.tsv) and
+[`cpu-gpu-k21-rtx-5080-laptop.tsv`](../../bench/gpu-prover/large-circuit/cpu-gpu-k21-rtx-5080-laptop.tsv).
 
 ### 2.1 Warm prove by GPU model
 
@@ -319,7 +319,7 @@ ladder.
 
 Two Compact programs were deployed and called on the Preview network on
 2026-11-18 (UTC). The proofs came from the proof server 9.0.1 wrapper
-(`gpu-prover/bench/compact/proof-server`) on an RTX 5080 Laptop GPU. They were
+(`bench/gpu-prover/compact/proof-server`) on an RTX 5080 Laptop GPU. They were
 proved by the 0.8.3 hooks; the PR carries the same design on 0.9.0-rc.1. The
 CPU baseline column gives the transaction of the same call proved by the stock
 CPU proof server on Preview.
@@ -375,9 +375,9 @@ server prints a line every 200 ms while the counts change):
   dust tx-history section`. No proof request reached the GPU server and nothing
   was submitted (0 transactions). The retry above ran after a fresh wallet sync.
 
-Data: [`results/preview-rtx-5080-laptop.tsv`](../../gpu-prover/bench/compact/results/preview-rtx-5080-laptop.tsv)
+Data: [`results/preview-rtx-5080-laptop.tsv`](../../bench/gpu-prover/compact/results/preview-rtx-5080-laptop.tsv)
 (one row per transaction) and
-[`results/preview-rtx-5080-laptop.hooks.txt`](../../gpu-prover/bench/compact/results/preview-rtx-5080-laptop.hooks.txt)
+[`results/preview-rtx-5080-laptop.hooks.txt`](../../bench/gpu-prover/compact/results/preview-rtx-5080-laptop.hooks.txt)
 (the server's hook and request lines; no witness data).
 
 ## 4. Pre-merge record: midnight-proofs 0.9.0-rc.1, 2026-11-18
@@ -392,7 +392,7 @@ These numbers come from the code of this pull request on midnight-proofs
 toolchain and the proof server pin earlier midnight-proofs releases. The
 rc.1 measurement therefore uses a public k = 21 circuit built into the
 benchmark, described in
-[`gpu-prover/bench/rc1/README.md`](../../gpu-prover/bench/rc1/README.md).
+[`bench/gpu-prover/rc1/README.md`](../../bench/gpu-prover/rc1/README.md).
 That circuit differs from the private k = 21 circuit of section 2, so the two
 sets of times are not comparable with each other.
 
@@ -415,7 +415,7 @@ fallbacks. A warm proof copies 4.29 GB to the device and 0.60 GB back, plus
 1.08 GB of MSM bucket read-backs, which are zeroed after use. Peak tracked
 device memory is 1.97 GB.
 
-Data: [`gpu-prover/bench/rc1/results/`](../../gpu-prover/bench/rc1/results/)
+Data: [`bench/gpu-prover/rc1/results/`](../../bench/gpu-prover/rc1/results/)
 (raw rows, summaries, load samples and the device record of each machine).
 
 ## 5. Measurement session, 2026-11-18
@@ -427,9 +427,9 @@ of that base. The tree that this pull request ships differs from the
 measured tree only off the timed paths (diagnostics, documentation and
 formatting). The session started after ten idle minutes, and clocks and temperatures were
 recorded through the whole session. The script is
-[`gpu-prover/bench/session/run.sh`](../../gpu-prover/bench/session/run.sh);
+[`bench/gpu-prover/session/run.sh`](../../bench/gpu-prover/session/run.sh);
 results and raw rows are in
-[`gpu-prover/bench/session/results/`](../../gpu-prover/bench/session/results/RESULTS.md).
+[`bench/gpu-prover/session/results/`](../../bench/gpu-prover/session/results/RESULTS.md).
 
 Tree `9070a373` on base `4bea43d4`. NVIDIA GeForce RTX 5090 Laptop GPU, 24463 MiB, 615.78.08, 3090 MHz, 14001 MHz, [N/A]. CPU: Intel(R) Core(TM) Ultra 9 275HX cores=24. 24 prover threads. Every proof was checked by the stock CPU verifier.
 

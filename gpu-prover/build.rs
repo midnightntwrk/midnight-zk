@@ -14,7 +14,7 @@
 //! Build script: sets the `midnight_gpu_linked` cfg with the `cuda` feature
 //! and `midnight_metal_linked` with `metal`, marking builds in which the
 //! device crate and the `gpu` feature of `midnight-proofs` are linked (see
-//! `src/device.rs`), and `rc1_device` for a benchmark build with a device.
+//! `src/device.rs`).
 
 fn main() {
     println!("cargo::rustc-check-cfg=cfg(midnight_gpu_linked)");
@@ -25,12 +25,6 @@ fn main() {
     println!("cargo::rustc-check-cfg=cfg(midnight_metal_linked)");
     if std::env::var_os("CARGO_FEATURE_METAL").is_some() {
         println!("cargo::rustc-cfg=midnight_metal_linked");
-    }
-    println!("cargo::rustc-check-cfg=cfg(rc1_device)");
-    if std::env::var_os("CARGO_FEATURE_RC1_BENCH_CUDA").is_some()
-        || std::env::var_os("CARGO_FEATURE_RC1_BENCH_METAL").is_some()
-    {
-        println!("cargo::rustc-cfg=rc1_device");
     }
     println!("cargo::rerun-if-changed=build.rs");
 }

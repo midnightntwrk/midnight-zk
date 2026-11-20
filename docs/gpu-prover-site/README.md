@@ -33,7 +33,7 @@ The page has no measured number in its HTML. Every number traces to a file in th
 and the page links each table to its source.
 
 The headline comes from one measurement session. `data/session.json` is the results file of that
-session, with the schema of `gpu-prover/bench/h2h/results/results.json` and these additions:
+session, with the schema of `bench/gpu-prover/h2h/results/results.json` and these additions:
 
 - `meta`: `source` (the in-tree results directory, which holds `RESULTS.md` and `raw/`), `tree`,
   `base`, `device`, `threads`, and `date`, `clocks` and `temperatures` (shown when not `null`).
@@ -59,8 +59,8 @@ The other tables are older, dated measurements:
 - `compact_programs`, `preview` and `large_circuit` each have `label` (what the numbers were
   measured on), `columns`, `rows`, `notes` and `empty`. With no rows the page keeps the heading
   and shows the text of `empty`. A `null` cell shows "not reported".
-- Their numbers come from `docs/gpu-prover/benchmarks.md`, `gpu-prover/bench/compact/results/`
-  and `gpu-prover/bench/large-circuit/`. Each table has a source line under it in `index.html`.
+- Their numbers come from `docs/gpu-prover/benchmarks.md`, `bench/gpu-prover/compact/results/`
+  and `bench/gpu-prover/large-circuit/`. Each table has a source line under it in `index.html`.
 
 ## Animations
 

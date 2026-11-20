@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # All entry points run from the workspace root.
-[[ -f gpu-prover/bench/rc1/main.rs ]] || { echo "run from the repository root" >&2; exit 2; }
+[[ -f bench/gpu-prover/rc1/main.rs ]] || { echo "run from the repository root" >&2; exit 2; }
 export RC1_WORK_DIR=${RC1_WORK_DIR:-"$PWD/../rc1-results"}
 export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-"$RC1_WORK_DIR/target"}
 export CARGO_BUILD_JOBS=8
