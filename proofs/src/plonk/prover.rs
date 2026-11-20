@@ -659,7 +659,7 @@ where
         })
         .collect();
 
-    argument::prover::Committed::commit::<PCS, T, _>(params, h_limbs, Polynomial::clone, transcript)
+    argument::prover::Committed::commit_as_is::<PCS, T>(params, h_limbs, transcript)
 }
 
 /// Blinds the limbs `h_k(X)` of `h(X) = Σ_k X^{k(n-2)} h_k(X)`, of `n-2`

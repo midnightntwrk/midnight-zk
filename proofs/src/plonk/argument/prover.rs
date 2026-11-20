@@ -96,6 +96,29 @@ impl<F: PrimeField, B: PolynomialRepresentation> Committed<F, B> {
 
         Ok(group)
     }
+
+    /// Commits to the polynomials of `polys_map` in their own representation.
+    pub fn commit_as_is<PCS, T>(
+        params: &PCS::Parameters,
+        polys_map: BTreeMap<PolynomialLabel, Polynomial<F, B>>,
+        transcript: &mut T,
+    ) -> Result<Self, Error>
+    where
+        PCS: PolynomialCommitmentScheme<F>,
+        PCS::Commitment: Hashable<T::Hash>,
+        T: Transcript,
+    {
+        let group = Self::from_map(polys_map);
+        let commitment = PCS::commit_many(
+            params,
+            &group.polys.iter().collect::<Vec<_>>(),
+            &group.labels,
+        );
+
+        PCS::write_commitment(transcript, &commitment)?;
+
+        Ok(group)
+    }
 }
 
 /// A group whose polynomials are committed to in the verifying key rather than
