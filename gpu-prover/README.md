@@ -101,7 +101,7 @@ command-line flag. Unknown keys in the file are an error.
 | `wait_s` | `MIDNIGHT_GPU_PROVER_WAIT_S` | 20 | Longest admission wait for another device user, seconds. |
 | `margin_mib` | `MIDNIGHT_GPU_PROVER_MARGIN_MIB` | 768 | Reserve added to the computed need, MiB. |
 | `max_device_peak_mib` | `MIDNIGHT_GPU_PROVER_MAX_DEVICE_PEAK_MIB` | 0 | Bound on the device peak of one request, MiB (0: none). Above it the reply goes out, then the daemon exits 3 so that its supervisor restarts it. |
-| `max_host_hwm_mib` | `MIDNIGHT_GPU_PROVER_MAX_HOST_HWM_MIB` | 0 | Bound on the host high-water mark after a request, MiB (0: none). Handled as `max_device_peak_mib`. |
+| `max_host_hwm_mib` | `MIDNIGHT_GPU_PROVER_MAX_HOST_HWM_MIB` | 0 | Bound on the host high-water mark after a request, MiB (0: none). Handled as `max_device_peak_mib`. Linux only: the mark comes from `/proc/self/status`. |
 | `lock_path` | `MIDNIGHT_GPU_PROVER_LOCK` | unset | Device lock file. When set, a request uses the device only with a lease (see below). |
 | `wsl` | `MIDNIGHT_GPU_PROVER_WSL` | `auto` | WSL2 profile: `auto` (detect `/dev/dxg` or Microsoft in `/proc/version`), `on`, `off`. |
 | `wsl_reserve_mib` | `MIDNIGHT_GPU_PROVER_WSL_RESERVE_MIB` | 4096 | WSL2 budget = device total minus this reserve. |

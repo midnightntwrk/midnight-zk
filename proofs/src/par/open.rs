@@ -41,6 +41,9 @@ const SUM_CHUNK: usize = 1 << 12;
 
 /// Rows per block of a division.
 const DIV_BLOCK: usize = 1 << 13;
+/// The most field elements the homogeneous solutions of one division may
+/// hold (128 MiB of 32-byte elements).
+const DIV_SCRATCH: usize = 1 << 22;
 
 /// Calls that divided in parallel blocks, so the golden-digest test at
 /// division size can check it reached them.
@@ -158,8 +161,10 @@ pub(crate) fn divide_by_roots<F: Field>(poly: &[F], roots: &[F]) -> Vec<F> {
     // The history a block needs: its rows read up to `lags` rows above it.
     let lags = terms.iter().map(|(lag, _)| *lag).max().unwrap_or(0);
 
-    // A history longer than a block would reach past the block above.
-    if lags > DIV_BLOCK {
+    // A history longer than a block would reach past the block above, and
+    // the homogeneous solutions take `lags` rows of a block each: past
+    // DIV_SCRATCH elements the sequential division costs less memory.
+    if lags > DIV_BLOCK || lags * DIV_BLOCK.min(m) > DIV_SCRATCH {
         return crate::utils::arithmetic::divide_by_roots_seq(poly, roots);
     }
     #[cfg(test)]

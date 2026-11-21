@@ -625,7 +625,15 @@ impl<R: ServedRelation> ProverService<R> {
             return Err(Error::Degraded(reasons.join("; ")));
         }
 
-        let verify_s = match self.verify(&pi, &proof) {
+        let verify = self.verify(&pi, &proof);
+        // the verifier's own allocations count against the host bound too
+        let host_hwm = host_hwm.max(report::host_hwm_bytes());
+        if self.retired.is_none()
+            && let Some(b) = self.bound_overrun(request, counters.peak_bytes, host_hwm)
+        {
+            self.retired = Some(Retirement::Bound(b));
+        }
+        let verify_s = match verify {
             Ok(v) => v,
             Err(e) => {
                 eprintln!(

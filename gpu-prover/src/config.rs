@@ -124,7 +124,9 @@ pub struct Config {
     /// supervisor starts a fresh process.
     pub max_device_peak_mib: u64,
     /// Bound on the host high-water mark of the process after a request,
-    /// MiB; 0 means none. Handled as `max_device_peak_mib`.
+    /// MiB; 0 means none. Handled as `max_device_peak_mib`. The mark is read
+    /// from `/proc/self/status`, so the bound acts only on Linux; elsewhere
+    /// the mark reads 0.
     pub max_host_hwm_mib: u64,
     /// Lock file of the device. When set, a request may use the device only
     /// while its caller holds an exclusive `flock` on this file and passes

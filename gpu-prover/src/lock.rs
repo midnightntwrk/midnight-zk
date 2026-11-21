@@ -202,9 +202,25 @@ fn exclusive_flock(fd: &OwnedFd) -> Option<bool> {
     )
 }
 
-/// Whether the peer of `s` closed its end: a peek reads end-of-file. Bytes
-/// the peer sent after its request line do not count as a hang-up.
+/// Whether the peer of `s` closed its end. On Linux `poll` reports the
+/// hang-up even when unread bytes wait in the socket; elsewhere a peek
+/// reads end-of-file, and bytes the peer sent after its request line hide a
+/// hang-up until the request ends.
 pub fn peer_hung_up(s: &std::os::unix::net::UnixStream) -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        let mut p = libc::pollfd {
+            fd: s.as_raw_fd(),
+            events: libc::POLLRDHUP,
+            revents: 0,
+        };
+        // SAFETY: one valid `pollfd`; a zero timeout does not block.
+        match unsafe { libc::poll(&mut p, 1, 0) } {
+            0 => return false,
+            n if n > 0 => return p.revents & (libc::POLLRDHUP | libc::POLLHUP) != 0,
+            _ => {}
+        }
+    }
     let mut b = [0u8; 1];
     // SAFETY: `b` is a valid buffer of one byte; `recv` with MSG_PEEK and
     // MSG_DONTWAIT neither consumes data nor blocks.
@@ -419,6 +435,18 @@ pub(crate) mod tests {
             }
         }
         out
+    }
+
+    /// A peer that closes with unread bytes in the socket has hung up.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn hang_up_with_unread_bytes() {
+        use std::io::Write;
+        let (mut a, b) = std::os::unix::net::UnixStream::pair().unwrap();
+        a.write_all(b"after the request line").unwrap();
+        assert!(!super::peer_hung_up(&b));
+        drop(a);
+        assert!(super::peer_hung_up(&b));
     }
 
     #[test]
