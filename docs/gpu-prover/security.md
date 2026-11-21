@@ -149,11 +149,17 @@ lease only when all three checks pass:
 3. The passed descriptor can take the lock without blocking, so the caller's
    own open file description holds it.
 
+On Linux the service replaces checks 2 and 3 with the lock list of the passed
+descriptor in `/proc/self/fdinfo`: the descriptor must hold an exclusive
+`flock` there. This takes no lock, so a shared lock is never upgraded and a
+lock released during the check is never taken. The lock file must be on a
+local file system whose locks the kernel records (not a FUSE mount that keeps
+its own locks), or no request gets a lease.
+
 While the request proves, the service checks the lease every 20 ms. On Linux
-it reads the lock list of the passed descriptor in `/proc/self/fdinfo`, which
-takes no lock, so a lock the caller releases is seen as lost. Other systems
-repeat checks 2 and 3, and a release between the two lets the descriptor take
-the free lock back.
+it reads the same lock list, so a lock the caller releases is seen as lost, and
+a list it cannot read counts as a lost lease. Other systems repeat checks 2 and
+3, and a release between the two lets the descriptor take the free lock back.
 
 A lock held by an unrelated process gives no lease. The service keeps its copy
 of the descriptor until the request is wiped, so the lock stays held when the

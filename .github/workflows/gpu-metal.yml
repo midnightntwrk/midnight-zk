@@ -8,6 +8,8 @@ on:
       - "metal/**"
       - "gpu-prover/**"
       - "proofs/**"
+      - "circuits/**"
+      - "curves/**"
       - "bench/gpu-prover/rc1/**"
       - "bench/gpu-prover/Cargo.toml"
       - "bench/gpu-prover/build.rs"

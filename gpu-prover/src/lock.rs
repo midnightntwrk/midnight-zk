@@ -112,14 +112,29 @@ impl Lease {
         {
             return Err(LeaseError::OtherFile);
         }
-        let probe = File::open(lock_path).map_err(|_| LeaseError::NoLockFile)?;
-        if flock(probe.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB).is_ok() {
-            let _ = flock(probe.as_raw_fd(), libc::LOCK_UN);
-            return Err(LeaseError::NotHeld);
-        }
-        drop(probe);
-        if flock(fd.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB).is_err() {
+        // Linux: the descriptor's own lock list decides, and the lease takes
+        // no lock (a shared lock is not upgraded, a released lock is not
+        // taken)
+        #[cfg(target_os = "linux")]
+        if exclusive_flock(&fd) != Some(true) {
+            let probe = File::open(lock_path).map_err(|_| LeaseError::NoLockFile)?;
+            if flock(probe.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB).is_ok() {
+                let _ = flock(probe.as_raw_fd(), libc::LOCK_UN);
+                return Err(LeaseError::NotHeld);
+            }
             return Err(LeaseError::HeldByOther);
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            let probe = File::open(lock_path).map_err(|_| LeaseError::NoLockFile)?;
+            if flock(probe.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB).is_ok() {
+                let _ = flock(probe.as_raw_fd(), libc::LOCK_UN);
+                return Err(LeaseError::NotHeld);
+            }
+            drop(probe);
+            if flock(fd.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB).is_err() {
+                return Err(LeaseError::HeldByOther);
+            }
         }
         Ok(Lease {
             _fd: fd,
@@ -150,17 +165,17 @@ impl Lease {
 
 /// Whether the open file description of `fd` holds the exclusive lock of
 /// `path`.
+#[cfg(target_os = "linux")]
+fn holds(_path: &Path, fd: &OwnedFd) -> bool {
+    // an unreadable lock list confirms nothing: the lease counts as lost
+    exclusive_flock(fd) == Some(true)
+}
+
+/// Whether the open file description of `fd` holds the exclusive lock of
+/// `path`.
+#[cfg(not(target_os = "linux"))]
 fn holds(path: &Path, fd: &OwnedFd) -> bool {
-    // Linux lists the flock locks of an open file description in its fdinfo.
-    // Reading it takes no lock, so a lock the holder releases between two
-    // checks cannot be taken again here and the release is seen.
-    #[cfg(target_os = "linux")]
-    if let Ok(info) = std::fs::read_to_string(format!("/proc/self/fdinfo/{}", fd.as_raw_fd())) {
-        return info
-            .lines()
-            .any(|l| l.starts_with("lock:") && l.contains(" FLOCK ") && l.contains(" WRITE "));
-    }
-    // Elsewhere: a second open of the path takes the lock: nobody holds it
+    // a second open of the path takes the lock: nobody holds it
     if let Ok(probe) = File::open(path)
         && flock(probe.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB).is_ok()
     {
@@ -171,6 +186,20 @@ fn holds(path: &Path, fd: &OwnedFd) -> bool {
     // without waiting (a no-op for the holder). A release between the two
     // checks is missed here: this description takes the free lock.
     flock(fd.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB).is_ok()
+}
+
+/// Whether the open file description of `fd` holds an exclusive `flock`,
+/// from its lock list in `/proc/self/fdinfo`; `None` when the list cannot
+/// be read. Reading it takes no lock. A lock that the kernel does not record
+/// there (a lock a FUSE server keeps, for example) reads as not held, so a
+/// lock file on such a file system gives no lease.
+#[cfg(target_os = "linux")]
+fn exclusive_flock(fd: &OwnedFd) -> Option<bool> {
+    let info = std::fs::read_to_string(format!("/proc/self/fdinfo/{}", fd.as_raw_fd())).ok()?;
+    Some(
+        info.lines()
+            .any(|l| l.starts_with("lock:") && l.contains(" FLOCK ") && l.contains(" WRITE ")),
+    )
 }
 
 /// Whether the peer of `s` closed its end: a peek reads end-of-file. Bytes

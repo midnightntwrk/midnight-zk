@@ -502,7 +502,8 @@ impl<F> Drop for ErasingVec<F> {
                 thread: std::thread::current().id(),
             });
         }
-        if self.owned && self.cap > 0 {
+        // a zero-sized element type owns no allocation, whatever the capacity
+        if self.owned && self.cap > 0 && std::mem::size_of::<F>() > 0 {
             let layout = Layout::array::<F>(self.cap).expect("capacity overflow");
             // SAFETY: this allocation was made with this layout (by this
             // type or by the `Vec` it adopted, whose layout is the same).
@@ -513,6 +514,14 @@ impl<F> Drop for ErasingVec<F> {
 
 #[cfg(test)]
 mod tests {
+    /// A `Vec` of a zero-sized type owns no allocation: dropping its
+    /// adopted copy frees nothing.
+    #[test]
+    fn zero_sized_elements_free_nothing() {
+        drop(super::ErasingVec::from_vec(vec![(); 3]));
+        drop(super::ErasingVec::from_vec(Vec::<()>::new()));
+    }
+
     use super::zero_bytes;
 
     /// At every alignment, below and above the parallel size, and when no

@@ -13,23 +13,23 @@
 
 //! The device-owner actor: one thread owns the (future) CUDA context
 //! of one GPU, and jobs reach it only through typed messages on a
-//! bounded channel. This round is device-free: effects go through
-//! [`Backend`], which a mock implements in tests and the real device
-//! will implement in the integration round. Nothing here calls CUDA,
+//! bounded channel (with the `actor` feature). This round is device-free:
+//! effects go through `Backend`, which a mock implements in tests and the real
+//! device will implement in the integration round. Nothing here calls CUDA,
 //! and no existing device path routes through the actor yet.
 //!
 //! The actor loop applies the pure protocol ([`protocol::step`]) and
 //! calls the backend for each effect. Every request gets exactly one
 //! reply on its own channel:
-//! - [`Request::Submit`] is answered when the job is admitted
-//!   ([`Reply::Admitted`]), or at once with [`Reply::Teardown`] /
-//!   [`Reply::Refused`]. A queued submit never fails for lack of memory; it
-//!   waits for admission or teardown.
-//! - [`Request::RunOp`] is answered when the operation completes.
-//! - [`Request::Release`] is answered when the job's buffer was wiped and
-//!   freed, or counted lost at the reset. Until then the job's bytes stay
-//!   reserved and the buffer stays in the pending-erasure count.
-//! - [`Request::Teardown`] stops admission, drives every admitted job through
+//! - `Request::Submit` is answered when the job is admitted
+//!   (`Reply::Admitted`), or at once with `Reply::Teardown` / `Reply::Refused`.
+//!   A queued submit never fails for lack of memory; it waits for admission or
+//!   teardown.
+//! - `Request::RunOp` is answered when the operation completes.
+//! - `Request::Release` is answered when the job's buffer was wiped and freed,
+//!   or counted lost at the reset. Until then the job's bytes stay reserved and
+//!   the buffer stays in the pending-erasure count.
+//! - `Request::Teardown` stops admission, drives every admitted job through
 //!   drain/wipe/free (bounded retries), resets, and answers every waiting
 //!   request before it replies. After that the actor stays alive only to answer
 //!   later submits with teardown, until every handle is dropped.
@@ -43,9 +43,6 @@
 //! Drain and wipe are each retried up to `MAX_ATTEMPTS` times; a job
 //! that still cannot confirm stays pending until teardown's reset
 //! counts it lost unerased, exactly as the protocol states.
-
-// The links above name items that exist only with the `actor` feature.
-#![cfg_attr(not(feature = "actor"), allow(rustdoc::broken_intra_doc_links))]
 
 pub mod budget;
 #[cfg(feature = "actor")]
@@ -248,7 +245,7 @@ impl ActorHandle {
     /// Sends one request and waits for its single reply. Every
     /// blocked phase (the send, the reply wait) observes the
     /// shutdown signal: when teardown begins the call returns
-    /// [`Reply::Teardown`] within a bounded time, never hangs.
+    /// `Reply::Teardown` within a bounded time, never hangs.
     pub fn call(&self, make: impl FnOnce(chan::ReplyTx<Reply>) -> Request) -> Option<Reply> {
         let (rtx, rrx) = chan::reply_channel();
         match self.tx.blocking_send(make(rtx), &self.shutdown) {
@@ -281,7 +278,7 @@ impl ActorHandle {
     /// Submits a job and waits until it is admitted (or answered).
     /// The caller first reserves the job's permits in the budget
     /// (FIFO, see [`chan::Budget`]); a reservation above the whole
-    /// budget is [`Reply::Refused`] at once. The permits move to
+    /// budget is `Reply::Refused` at once. The permits move to
     /// the actor's job record with the request.
     pub fn submit(&self, job: JobId, size: u64) -> Option<Reply> {
         let permit = match self.budget.reserve(size, &self.shutdown) {
@@ -326,7 +323,7 @@ impl ActorHandle {
     /// Tears the device down and waits for the reset to finish. The
     /// shutdown signal is triggered first, so every caller blocked
     /// in a budget wait, a channel send or a reply wait returns
-    /// [`Reply::Teardown`] within a bounded time even while the
+    /// `Reply::Teardown` within a bounded time even while the
     /// actor thread is still inside a backend call; this call then
     /// waits (unconditionally) for the actor to drain, wipe, reset
     /// and fail every pending reply sender.
