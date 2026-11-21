@@ -1,0 +1,8 @@
+gpu	1	16	0	1795051911.875699499	1795051914.408109908	batch: 1/1 proofs verified in 590.18522ms (k=16, device: yes, batch MSMs: 16, evictions: 16)
+cpu	1	16	0	1795051914.511506486	1795051916.820462398	batch: 1/1 proofs verified in 591.780838ms (k=16, device: no, CPU, batch MSMs: 0, evictions: 0)
+gpu	2	16	0	1795051916.834172694	1795051921.587016954	batch: 2/2 proofs verified in 1.003817977s (k=16, device: yes, batch MSMs: 32, evictions: 32)
+cpu	2	16	0	1795051921.666381372	1795051926.306131527	batch: 2/2 proofs verified in 1.075722364s (k=16, device: no, CPU, batch MSMs: 0, evictions: 0)
+gpu	4	16	0	1795051926.399646767	1795051935.326171236	batch: 4/4 proofs verified in 1.882424815s (k=16, device: yes, batch MSMs: 64, evictions: 64)
+cpu	4	16	0	1795051935.344153016	1795051944.997871650	batch: 4/4 proofs verified in 2.30390372s (k=16, device: no, CPU, batch MSMs: 0, evictions: 0)
+gpu	8	16	0	1795051945.091802791	1795051962.643358882	batch: 8/8 proofs verified in 3.618666603s (k=16, device: yes, batch MSMs: 123, evictions: 123)
+cpu	8	16	0	1795051962.654619515	1795051981.134819418	batch: 8/8 proofs verified in 4.189560048s (k=16, device: no, CPU, batch MSMs: 0, evictions: 0)

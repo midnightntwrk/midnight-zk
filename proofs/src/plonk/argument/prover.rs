@@ -5,6 +5,8 @@ use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
 
+#[cfg(not(feature = "prover-par"))]
+use crate::utils::arithmetic::eval_polynomial;
 use crate::{
     plonk::{
         AbsorbedVk, ConstraintSystem, Error,
@@ -15,7 +17,6 @@ use crate::{
         Rotation, commitment::PolynomialCommitmentScheme,
     },
     transcript::{Hashable, Transcript},
-    utils::arithmetic::eval_polynomial,
 };
 
 #[derive(Debug)]
@@ -98,6 +99,53 @@ impl<F: PrimeField, B: PolynomialRepresentation> Committed<F, B> {
     }
 }
 
+#[cfg(feature = "gpu")]
+impl<F: PrimeField, B: PolynomialRepresentation> Committed<F, B> {
+    /// Commits to the polynomials of `polys_map` as given, from
+    /// references to the group's own polynomials: like
+    /// [`commit`](Self::commit) with the identity encoding, but without
+    /// the copy of every polynomial that an encoding step would make
+    /// (the commitment scheme takes references). The group keeps the
+    /// polynomials as given. For witness-dependent polynomials, such as
+    /// the quotient limbs, whose copies would have to be erased.
+    pub fn commit_without_copy<PCS, T>(
+        params: &PCS::Parameters,
+        polys_map: BTreeMap<PolynomialLabel, Polynomial<F, B>>,
+        transcript: &mut T,
+    ) -> Result<Self, Error>
+    where
+        PCS: PolynomialCommitmentScheme<F>,
+        PCS::Commitment: Hashable<T::Hash>,
+        T: Transcript,
+    {
+        let mut group = Self::from_map(polys_map);
+        let polys: Vec<_> = group.polys.iter().collect();
+        let commitment = PCS::commit_many(params, &polys, &group.labels);
+
+        if let Err(err) = PCS::write_commitment(transcript, &commitment) {
+            // The group is released here, so its polynomials are erased
+            // before they are freed, as on the release of a group that
+            // was returned to the caller.
+            group.erase_polys();
+            return Err(err.into());
+        }
+
+        Ok(group)
+    }
+
+    /// Zeroes the coefficients of every polynomial of the group over
+    /// the whole capacity of each allocation, with volatile writes and
+    /// a compiler fence. The allocations keep their lengths and are
+    /// freed by the stock drop that follows, holding only zeros. For
+    /// witness-dependent groups, such as the quotient limbs, at the
+    /// point where the group is released.
+    pub(crate) fn erase_polys(&mut self) {
+        for poly in &mut self.polys {
+            crate::gpu::erasing::zero_vec(&mut poly.values);
+        }
+    }
+}
+
 /// A group whose polynomials are committed to in the verifying key rather than
 /// in the proof. It takes part in a proof, as a [`Committed`], only once that
 /// verifying key has been absorbed into the transcript; see
@@ -162,6 +210,7 @@ impl<F: PrimeField> Committed<F, Coeff> {
         F: Hashable<T::Hash> + PrimeField,
         T: Transcript,
     {
+        #[cfg(not(feature = "prover-par"))]
         let evaluate = |poly: &Polynomial<F, Coeff>, x: F| -> Evaluation<F> {
             Evaluation {
                 point: x,
@@ -169,6 +218,7 @@ impl<F: PrimeField> Committed<F, Coeff> {
             }
         };
 
+        #[cfg(not(feature = "prover-par"))]
         let evals_map: BTreeMap<PolynomialLabel, Vec<Evaluation<F>>> = self
             .labels
             .iter()
@@ -181,6 +231,28 @@ impl<F: PrimeField> Committed<F, Coeff> {
                 )
             })
             .collect();
+        // As with the stock `zip`, only labels with a polynomial are
+        // evaluated.
+        #[cfg(feature = "prover-par")]
+        let evals_map: BTreeMap<PolynomialLabel, Vec<Evaluation<F>>> = {
+            type Pair<'p, F> = (&'p PolynomialLabel, &'p Polynomial<F, Coeff>, Vec<F>);
+            let pairs: Vec<Pair<'_, F>> = (self.labels.iter().zip(self.polys.iter()))
+                .map(|(label, poly)| (label, poly, argument::eval_points(cs, label, x_rotations)))
+                .collect();
+            let jobs: Vec<(&[F], F)> = (pairs.iter())
+                .flat_map(|(_, poly, points)| points.iter().map(move |x| (&poly.values[..], *x)))
+                .collect();
+            let mut evals = crate::par::open::eval_many(&jobs).into_iter();
+            (pairs.into_iter())
+                .map(|(label, _, points)| {
+                    let evaluations = (points.into_iter())
+                        .zip(&mut evals)
+                        .map(|(point, eval)| Evaluation { point, eval })
+                        .collect();
+                    (label.clone(), evaluations)
+                })
+                .collect()
+        };
 
         for evals in evals_map.values() {
             for evaluation in evals.iter() {
@@ -213,5 +285,57 @@ impl<F: PrimeField> Evaluated<'_, F> {
                 )
             })
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use ff::Field;
+    use midnight_curves::Fq;
+    use rand_chacha::ChaCha20Rng;
+    use rand_core::SeedableRng;
+
+    use super::Committed;
+    use crate::{
+        plonk::ConstraintSystem,
+        poly::{Polynomial, PolynomialLabel, Rotation},
+        transcript::{CircuitTranscript, Transcript},
+        utils::arithmetic::eval_polynomial,
+    };
+
+    /// Labels and polynomials of different counts are evaluated pairwise,
+    /// as the stock `zip` does.
+    #[test]
+    fn evaluate_stops_at_the_shorter_list() {
+        let mut rng = ChaCha20Rng::seed_from_u64(0x5a);
+        let cs = ConstraintSystem::<Fq>::default();
+        let x = Fq::random(&mut rng);
+        let x_rotations = BTreeMap::from([(Rotation::cur(), x)]);
+        let poly = |rng: &mut ChaCha20Rng| Polynomial {
+            values: (0..37).map(|_| Fq::random(&mut *rng)).collect(),
+            _marker: std::marker::PhantomData,
+        };
+        for (nb_labels, nb_polys) in [(3, 1), (1, 3), (2, 2), (0, 2)] {
+            let committed = Committed {
+                labels: (0..nb_labels).map(PolynomialLabel::Trash).collect(),
+                polys: (0..nb_polys).map(|_| poly(&mut rng)).collect(),
+            };
+            let mut transcript = CircuitTranscript::<blake2b_simd::State>::init();
+            let evaluated = committed.evaluate(&cs, &x_rotations, &mut transcript).unwrap();
+
+            let pairs = nb_labels.min(nb_polys);
+            let mut expected = CircuitTranscript::<blake2b_simd::State>::init();
+            assert_eq!(evaluated.evals_map.len(), pairs);
+            for (i, (label, evals)) in evaluated.evals_map.iter().enumerate() {
+                let value = eval_polynomial(&committed.polys[i], x);
+                assert_eq!(*label, PolynomialLabel::Trash(i));
+                assert_eq!(evals.len(), 1);
+                assert_eq!((evals[0].point, evals[0].eval), (x, value));
+                expected.write(&value).unwrap();
+            }
+            assert_eq!(transcript.finalize(), expected.finalize());
+        }
     }
 }

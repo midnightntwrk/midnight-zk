@@ -1,0 +1,59 @@
+[package]
+name = "midnight-compact-bench"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+license = "Apache-2.0"
+description = """
+Proves Compact (ZKIR v3) proof preimages through the proof-server call path and times
+each proof: the CPU baseline with stock midnight-proofs 0.8.3, and the same run with a
+hooked midnight-proofs build
+"""
+publish = false
+build = "build.rs"
+
+[[bin]]
+name = "compact-bench"
+path = "src/main.rs"
+
+# A standalone workspace with its own Cargo.lock. It is not a member of the root
+# workspace: it builds against the midnight-proofs 0.8.x line that the proof server
+# 9.0.1 uses, not against the 0.9 crates in this repository.
+[workspace]
+
+[features]
+default = []
+# Installs the GPU hooks of the `compact-bench-gpu` backend before the first proof. Build it
+# with `scripts/build.sh hooked PROOFS BACKEND`, which patches midnight-proofs with the hooked
+# 0.8.3 and the stub backend with a real one (see patches/README.md). With the stub, rows are
+# labelled `hooked-inactive`.
+gpu = ["dep:compact-bench-gpu"]
+
+[dependencies]
+# Pins of proof server 9.0.1 (midnight-ledger tag proof-server-9.0.1 and
+# midnight-zkir tag zkir-3.2.0).
+midnight-zkir = { git = "https://github.com/midnightntwrk/midnight-zkir", rev = "446c7fecc6bd41dab99ebe89ab404e9d077d11a9" }
+midnight-transient-crypto = { git = "https://github.com/midnightntwrk/midnight-ledger", rev = "a2b30128ca4b660b73a068e29b56b48ede8c9a74" }
+midnight-serialize = { git = "https://github.com/midnightntwrk/midnight-ledger", rev = "a2b30128ca4b660b73a068e29b56b48ede8c9a74" }
+# transient-crypto asks for ^0.8.2; the lock file resolves 0.8.3.
+midnight-proofs = "=0.8.3"
+futures-executor = "0.3"
+hex = "0.4"
+rand_chacha = "0.3"
+rayon = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+# The GPU backend. The tree has a stub (gpu-backend-stub/); scripts/build.sh hooked
+# replaces it with a real backend through `[patch]` on the command line.
+compact-bench-gpu = { version = "0.1", optional = true }
+
+[patch.crates-io]
+compact-bench-gpu = { path = "gpu-backend-stub" }
+midnight-serialize = { git = "https://github.com/midnightntwrk/midnight-ledger", rev = "a2b30128ca4b660b73a068e29b56b48ede8c9a74" }
+midnight-base-crypto = { git = "https://github.com/midnightntwrk/midnight-ledger", rev = "a2b30128ca4b660b73a068e29b56b48ede8c9a74" }
+midnight-transient-crypto = { git = "https://github.com/midnightntwrk/midnight-ledger", rev = "a2b30128ca4b660b73a068e29b56b48ede8c9a74" }
+midnight-storage-core = { git = "https://github.com/midnightntwrk/midnight-ledger", rev = "a2b30128ca4b660b73a068e29b56b48ede8c9a74" }
+
+[profile.release]
+debug = 1

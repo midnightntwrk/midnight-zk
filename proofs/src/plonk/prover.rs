@@ -11,14 +11,17 @@ use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
 };
 
+#[cfg(not(feature = "prover-par"))]
+use super::circuit::FloorPlanner;
 use super::{
     Error, ProvingKey,
     circuit::{
-        Advice, Any, Assignment, Circuit, Column, ConstraintSystem, Fixed, FloorPlanner, Instance,
-        Selector,
+        Advice, Any, Assignment, Circuit, Column, ConstraintSystem, Fixed, Instance, Selector,
     },
     logup,
 };
+#[cfg(not(feature = "prover-par"))]
+use crate::utils::arithmetic::eval_polynomial;
 use crate::{
     circuit::Value,
     plonk::{ProofField, argument, traces::ProverTrace},
@@ -28,10 +31,7 @@ use crate::{
         commitment::PolynomialCommitmentScheme,
     },
     transcript::{Hashable, Transcript},
-    utils::{
-        arithmetic::{eval_polynomial, eval_polynomial_seq},
-        rational::Rational,
-    },
+    utils::{arithmetic::eval_polynomial_seq, rational::Rational},
 };
 
 #[cfg(feature = "committed-instances")]
@@ -292,6 +292,34 @@ where
     })
 }
 
+/// The quotient group of [`finalise_proof`] with the feature `gpu`: the
+/// blinded limbs of `h(X)` are witness-dependent, so the group is held
+/// in this guard from the point where it exists until the end of the
+/// proof. The guard dereferences to the group for the evaluations and
+/// the multi-open, and on drop — on the success path and on every
+/// error path out of `finalise_proof` alike — it zeroes every limb over
+/// the whole capacity of its allocation before the stock drop frees
+/// it.
+#[cfg(feature = "gpu")]
+#[derive(Debug)]
+struct ErasingQuotient<F: PrimeField>(argument::prover::Committed<F, Coeff>);
+
+#[cfg(feature = "gpu")]
+impl<F: PrimeField> std::ops::Deref for ErasingQuotient<F> {
+    type Target = argument::prover::Committed<F, Coeff>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+#[cfg(feature = "gpu")]
+impl<F: PrimeField> Drop for ErasingQuotient<F> {
+    fn drop(&mut self) {
+        self.0.erase_polys();
+    }
+}
+
 /// This takes the computed trace of a set of witnesses and creates a proof
 /// for the provided `circuit` when given the public
 /// parameters `params` and the proving key [`ProvingKey`] that was
@@ -316,12 +344,41 @@ where
     #[cfg(not(feature = "committed-instances"))]
     let nb_committed_instances: usize = 0;
 
+    #[cfg(not(feature = "gpu"))]
     let nu_poly = compute_nu_poly(pk, &trace);
 
     // Construct the quotient polynomial h(X) = nu(X)/(X^n-1), split it into limbs,
     // and commit to the limbs as one group
+    #[cfg(not(feature = "gpu"))]
     let quotient_committed =
         compute_h_poly::<F, PCS, T>(params, &pk.fft_domain, nu_poly, transcript)?;
+
+    // With the feature `gpu`, the installed quotient hook may compute the
+    // coefficients of h(X); when it declines, the stock code runs.
+    #[cfg(feature = "gpu")]
+    let quotient_committed = {
+        let domain = pk.get_vk().get_domain();
+        let fft_domain = &pk.fft_domain;
+        let stock = || {
+            let nu_poly = compute_nu_poly(pk, &trace);
+            fft_domain.extended_to_coeff(domain.divide_by_vanishing_poly(nu_poly))
+        };
+        match crate::gpu::quotient_coeffs(pk, &trace, stock) {
+            Some(h_poly) => {
+                commit_h_coeffs_erasing::<F, PCS, T>(params, domain, h_poly, transcript)?
+            }
+            None => {
+                let nu_poly = compute_nu_poly(pk, &trace);
+                compute_h_poly::<F, PCS, T>(params, fft_domain, nu_poly, transcript)?
+            }
+        }
+    };
+
+    // With the feature `gpu`, the quotient limbs are zeroed when the
+    // group is released at the end of this function, on every path out
+    // of it from here on.
+    #[cfg(feature = "gpu")]
+    let quotient_committed = ErasingQuotient(quotient_committed);
 
     let ProverTrace {
         instance_polys,
@@ -358,10 +415,16 @@ where
 
     // h_0(x) is not written to the proof, the verifier derives it.
     let h0 = PolynomialLabel::QuotientPiece(0);
+    #[cfg(not(feature = "prover-par"))]
     let h0_eval = eval_polynomial(
         quotient_committed.poly(&h0).expect("a quotient limb h_0"),
         x,
     );
+    #[cfg(feature = "prover-par")]
+    let h0_eval = crate::par::open::eval_many(&[(
+        &quotient_committed.poly(&h0).expect("a quotient limb h_0").values[..],
+        x,
+    )])[0];
     quotient_evaluated.insert(h0, x, h0_eval);
 
     let instance_labels: Vec<_> = (0..nb_committed_instances)
@@ -526,12 +589,26 @@ where
     // the region layout (see `ProvingKey::region_starts`), we reuse it
     // here to skip the shape pass; otherwise the floor planner falls
     // back to computing it.
+    #[cfg(not(feature = "prover-par"))]
     ConcreteCircuit::FloorPlanner::synthesize_with_cached_regions(
         &mut witness,
         circuit,
         config,
         meta.constants.clone(),
         pk.region_starts.as_deref(),
+    )?;
+    // See `crate::par::layout`.
+    #[cfg(feature = "prover-par")]
+    crate::par::layout::synthesize(
+        &mut witness,
+        |witness| {
+            witness.advice = vec![domain.empty_lagrange_rational(); meta.num_advice_columns];
+        },
+        circuit,
+        config,
+        meta.constants.clone(),
+        pk.region_starts.as_deref(),
+        &pk.region_starts_cache,
     )?;
 
     let mut advice_polys = batch_invert_rational::<F>(witness.advice);
@@ -552,7 +629,7 @@ where
     Ok(advice_polys)
 }
 
-pub(super) fn compute_nu_poly<F: PrimeField, PCS: PolynomialCommitmentScheme<F>>(
+pub(crate) fn compute_nu_poly<F: PrimeField, PCS: PolynomialCommitmentScheme<F>>(
     pk: &ProvingKey<F, PCS>,
     trace: &ProverTrace<'_, F>,
 ) -> Polynomial<F, ExtendedLagrangeCoeff> {
@@ -631,8 +708,37 @@ where
     let h_poly = domain.divide_by_vanishing_poly(nu_poly);
 
     // Convert h(X) to coefficient form
-    let mut h_poly = fft_domain.extended_to_coeff(h_poly);
+    let h_poly = fft_domain.extended_to_coeff(h_poly);
 
+    commit_h_coeffs::<F, PCS, T>(params, domain, h_poly, transcript)
+}
+
+/// Splits the coefficients of `h(X)` (`extended_to_coeff` of the quotient)
+/// into blinded limbs and commits to them; see [`compute_h_poly`].
+#[cfg_attr(feature = "gpu", allow(unreachable_code, unused_mut))]
+fn commit_h_coeffs<F, PCS, T>(
+    params: &PCS::Parameters,
+    domain: &EvaluationDomain<F>,
+    mut h_poly: Vec<F>,
+    transcript: &mut T,
+) -> Result<argument::prover::Committed<F, Coeff>, Error>
+where
+    F: PrimeField + Hashable<T::Hash>,
+    PCS: PolynomialCommitmentScheme<F>,
+    PCS::Commitment: Hashable<T::Hash>,
+    T: Transcript,
+{
+    // With the feature `gpu`, the coefficients are witness-dependent
+    // values of the hook layer: adopt the stock allocation at once and
+    // split it in erasing owners. Without the feature this block is not
+    // compiled and the stock code below runs unchanged.
+    #[cfg(feature = "gpu")]
+    return commit_h_coeffs_erasing::<F, PCS, T>(
+        params,
+        domain,
+        crate::gpu::erasing::ErasingVec::from_vec(h_poly),
+        transcript,
+    );
     // Let n := size of evaluation domain
     // Let d := degree of constraint system
     // Hence, the degree of the quotient poly is: d*(n-1) - n = (d-1)*(n-1) - 1,
@@ -666,6 +772,109 @@ where
     argument::prover::Committed::commit::<PCS, T, _>(params, h_limbs, Polynomial::clone, transcript)
 }
 
+/// [`commit_h_coeffs`] with the feature `gpu`: `h_poly` and the limbs
+/// split from it live in erasing owners (fixed capacity, zeroed on
+/// drop), so no copy of `h` is made by a growing `Vec` and the buffer of
+/// `h` is zeroed once the limbs are split off. The arithmetic, the
+/// blinding draws and the transcript operations are those of
+/// [`commit_h_coeffs`], in the same order, so proof bytes do not change.
+/// The only hand-over to stock code is the last one: each blinded limb
+/// becomes the `Vec` of a stock polynomial for the commitment, by moving
+/// its allocation (`into_vec`, no copy), because the stock polynomial
+/// type owns a `Vec`.
+#[cfg(feature = "gpu")]
+fn commit_h_coeffs_erasing<F, PCS, T>(
+    params: &PCS::Parameters,
+    domain: &EvaluationDomain<F>,
+    mut h_poly: crate::gpu::erasing::ErasingVec<F>,
+    transcript: &mut T,
+) -> Result<argument::prover::Committed<F, Coeff>, Error>
+where
+    F: PrimeField + Hashable<T::Hash>,
+    PCS: PolynomialCommitmentScheme<F>,
+    PCS::Commitment: Hashable<T::Hash>,
+    T: Transcript,
+{
+    h_poly.truncate((domain.n - 1) as usize * domain.get_quotient_poly_degree());
+
+    let limb_len = (domain.n - 2) as usize;
+    let nb_limbs = domain.get_quotient_poly_degree() + 1;
+    assert!(
+        nb_limbs * limb_len >= h_poly.len(),
+        "the domain is too small to split the quotient into {nb_limbs} limbs"
+    );
+    // Each limb is one fixed allocation of `n` coefficients: `n - 2`
+    // coefficients of `h` (zero beyond the end of `h`) and the two
+    // blinding coefficients appended below, within the same capacity.
+    // The stock `resize` of the whole `h` and the per-limb `to_vec`
+    // copies, which reallocate and leave unzeroed copies, do not happen.
+    let h: &[F] = &h_poly;
+    let mut h_limbs: Vec<_> = (0..nb_limbs)
+        .into_par_iter()
+        .map(|k| {
+            let mut limb =
+                crate::gpu::erasing::ErasingVec::with_capacity_zeroed(limb_len + 2, limb_len);
+            let start = k * limb_len;
+            let avail = h.len().saturating_sub(start).min(limb_len);
+            crate::par::columns::copy_from_slice(&mut limb[..avail], &h[start..start + avail]);
+            limb
+        })
+        .collect();
+    drop(h_poly);
+
+    blind_quotient_limbs_erasing(&mut h_limbs);
+
+    let h_limbs = (h_limbs.into_iter().enumerate())
+        .map(|(i, h_limb)| {
+            (
+                PolynomialLabel::QuotientPiece(i),
+                domain.coeff_from_vec(h_limb.into_vec()),
+            )
+        })
+        .collect();
+
+    // The commitment is made from references to the group's limbs, so
+    // no copy of a limb is made for it; the caller holds the group in a
+    // guard that zeroes the limbs when it is released.
+    argument::prover::Committed::commit_without_copy::<PCS, T>(params, h_limbs, transcript)
+}
+
+/// [`blind_quotient_limbs`] over erasing owners, with the same draws in
+/// the same order: the two blinding coefficients of a limb are appended
+/// within its fixed capacity instead of by a growing `extend`.
+#[cfg(feature = "gpu")]
+fn blind_quotient_limbs_erasing<F: PrimeField>(
+    quotient_limbs: &mut [crate::gpu::erasing::ErasingVec<F>],
+) {
+    let nr_limbs = quotient_limbs.len();
+    assert!(nr_limbs >= 2);
+
+    #[cfg(any(test, feature = "gpu-test"))]
+    if let Some(mut rng) = test_blinding::rng() {
+        for i in 1..nr_limbs {
+            let (t, t_prime) = (F::random(&mut rng), F::random(&mut rng));
+            quotient_limbs[i - 1].push_fixed(t);
+            quotient_limbs[i - 1].push_fixed(t_prime);
+            quotient_limbs[i][0] -= t;
+            quotient_limbs[i][1] -= t_prime;
+        }
+        quotient_limbs[nr_limbs - 1].push_fixed(F::ZERO);
+        quotient_limbs[nr_limbs - 1].push_fixed(F::ZERO);
+        return;
+    }
+
+    for i in 1..nr_limbs {
+        let (t, t_prime) = (F::random(OsRng), F::random(OsRng));
+        quotient_limbs[i - 1].push_fixed(t);
+        quotient_limbs[i - 1].push_fixed(t_prime);
+        quotient_limbs[i][0] -= t;
+        quotient_limbs[i][1] -= t_prime;
+    }
+
+    quotient_limbs[nr_limbs - 1].push_fixed(F::ZERO);
+    quotient_limbs[nr_limbs - 1].push_fixed(F::ZERO);
+}
+
 /// Blinds the limbs `h_k(X)` of `h(X) = Σ_k X^{k(n-2)} h_k(X)`, of `n-2`
 /// coefficients each, without changing `h(X)`: each boundary between two limbs
 /// gets two random `t`, `t'`, added as `t X^{n-2} + t' X^{n-1}` to the lower
@@ -673,6 +882,19 @@ where
 fn blind_quotient_limbs<F: PrimeField>(quotient_limbs: &mut [Vec<F>]) {
     let nr_limbs = quotient_limbs.len();
     assert!(nr_limbs >= 2);
+
+    // Test-only: a seeded blinding RNG makes proofs reproducible.
+    #[cfg(any(test, feature = "gpu-test"))]
+    if let Some(mut rng) = test_blinding::rng() {
+        for i in 1..nr_limbs {
+            let (t, t_prime) = (F::random(&mut rng), F::random(&mut rng));
+            quotient_limbs[i - 1].extend([t, t_prime]);
+            quotient_limbs[i][0] -= t;
+            quotient_limbs[i][1] -= t_prime;
+        }
+        quotient_limbs[nr_limbs - 1].extend([F::ZERO; 2]);
+        return;
+    }
 
     for i in 1..nr_limbs {
         let (t, t_prime) = (F::random(OsRng), F::random(OsRng));
@@ -682,6 +904,26 @@ fn blind_quotient_limbs<F: PrimeField>(quotient_limbs: &mut [Vec<F>]) {
     }
 
     quotient_limbs[nr_limbs - 1].extend([F::ZERO; 2]);
+}
+
+/// Test-only seed of the quotient limb blinding (unit tests, and the feature
+/// `gpu-test`): with a seed set, proofs are reproducible.
+#[cfg(any(test, feature = "gpu-test"))]
+pub(crate) mod test_blinding {
+    use std::sync::Mutex;
+
+    use rand_chacha::ChaCha20Rng;
+    use rand_core::SeedableRng;
+
+    static SEED: Mutex<Option<u64>> = Mutex::new(None);
+
+    pub(crate) fn set(seed: Option<u64>) {
+        *SEED.lock().unwrap_or_else(|e| e.into_inner()) = seed;
+    }
+
+    pub(crate) fn rng() -> Option<ChaCha20Rng> {
+        SEED.lock().unwrap_or_else(|e| e.into_inner()).map(ChaCha20Rng::seed_from_u64)
+    }
 }
 
 pub(super) fn write_instance_evals_to_transcript<F, PCS, T>(

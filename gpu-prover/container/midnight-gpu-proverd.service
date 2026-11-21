@@ -1,0 +1,83 @@
+# This file is part of midnight-zk.
+# Copyright (C) Midnight Foundation
+# SPDX-License-Identifier: Apache-2.0
+# Licensed under the Apache License, Version 2.0 (the "License");
+# You may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+# http://www.apache.org/licenses/LICENSE-2.0
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Example systemd unit for running midnight-gpu-proverd on the host (no
+# container). Create the service user, copy this file to /etc/systemd/system/,
+# adjust the paths and limits, then:
+#   useradd --system --no-create-home --shell /usr/sbin/nologin midnight-prover
+#   systemctl daemon-reload && systemctl enable --now midnight-gpu-proverd
+#
+# The daemon makes its socket with mode 0600: clients must run as the same
+# user (midnight-prover) or as root.
+#
+# Restart cap: at most 3 starts in 600 s. Past the cap systemd leaves the unit
+# failed and clients use their CPU fallback. Clear it with
+#   systemctl reset-failed midnight-gpu-proverd
+
+[Unit]
+Description=Midnight GPU prover daemon
+Documentation=https://github.com/midnightntwrk/midnight-zk/tree/main/gpu-prover/container
+After=network.target
+StartLimitIntervalSec=600
+StartLimitBurst=3
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/midnight-gpu-proverd
+Restart=on-failure
+RestartSec=5s
+
+# Socket in /run/midnight-gpu-prover, made and removed by systemd.
+RuntimeDirectory=midnight-gpu-prover
+RuntimeDirectoryMode=0700
+Environment=MIDNIGHT_GPU_PROVER_SOCKET=/run/midnight-gpu-prover/proverd.sock
+Environment=MIDNIGHT_GPU_PROVER_SRS=/srv/midnight/srs/srs.bin
+# CUDA JIT cache in a writable, private directory.
+CacheDirectory=midnight-gpu-proverd
+Environment=CUDA_CACHE_PATH=/var/cache/midnight-gpu-proverd
+# Optional overrides (device list, threads, memory bound) go here:
+#EnvironmentFile=-/etc/default/midnight-gpu-proverd
+
+User=midnight-prover
+Group=midnight-prover
+
+MemoryMax=32G
+MemorySwapMax=0
+TasksMax=512
+LimitNOFILE=65536
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_UNIX
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+UMask=0027
+ReadOnlyPaths=-/srv/midnight/srs
+# The GPU needs its device nodes (/dev/nvidia*): do not set
+# PrivateDevices=yes or a closed DevicePolicy.
+
+[Install]
+WantedBy=multi-user.target

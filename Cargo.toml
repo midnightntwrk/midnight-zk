@@ -1,7 +1,18 @@
 [workspace]
 resolver = "2"
 
-members = ["proofs", "curves", "circuits", "aggregation", "zk_stdlib"]
+members = [
+    "proofs",
+    "curves",
+    "circuits",
+    "aggregation",
+    "zk_stdlib",
+    "gpu",
+    "gpu-prover",
+    "metal",
+    "gpu-conformance",
+    "bench/gpu-prover",
+]
 
 [workspace.package]
 license = "Apache-2.0"

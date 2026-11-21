@@ -1,0 +1,141 @@
+# cpu_model: AMD RYZEN AI MAX+ 395 w/ Radeon 8060S
+# gpu_model: NVIDIA GeForce RTX 5090 Laptop GPU
+# threads: 12
+# cpu binary: 088f098b7008cdc91a53eb29f83d93941f26c7d7e6a0319568111f729d6e3eb4 (crates.io:midnight-proofs-0.8.3)
+# gpu binary: 3f5c196deb0acc43f81752ba7040f35e80d1883f2e3c9967f6a54267bc75018d (path:midnight-proofs-0.8.3-hooked@local)
+# hits: device msm/ntt/coset/quotient/fallbacks, largest count of any repetition
+# note: built before the columns load1_after, quiet_gate, gpu_driver, ready_s, device_peak_bytes and host_hwm_bytes existed; they are absent (see README.md, Results)
+# excluded: d01-example-bboard/01-alice-post.0 (k=13, check verified): contended (foreign_cores > 2), excluded
+# excluded: d01-example-bboard/04-alice-takedown.0 (k=13, check verified): contended (foreign_cores > 2), excluded
+# excluded: d01-example-bboard/06-bob-post.0 (k=13, check verified): contended (foreign_cores > 2), excluded
+# excluded: d03-micro-dao/10-carol-commit-yes.0 (k=16, check verified): contended (foreign_cores > 2), excluded
+# excluded: d03-micro-dao/12-advance-to-reveal.0 (k=13, check verified): contended (foreign_cores > 2), excluded
+# excluded: d03-micro-dao/13-alice-reveal-yes.0 (k=14, check verified): contended (foreign_cores > 2), excluded
+# excluded: d03-micro-dao/16-bob-reveal-no.0 (k=14, check verified): contended (foreign_cores > 2), excluded
+# excluded: d04-coracle/03-blue-start.0 (k=16, check verified): contended (foreign_cores > 2), excluded
+# excluded: d04-coracle/07-blue-guess-7.0 (k=14, check verified): contended (foreign_cores > 2), excluded
+# excluded: d04-coracle/08-red-guess-5.0 (k=14, check verified): contended (foreign_cores > 2), excluded
+# excluded: d04-coracle/09-blue-concede.0 (k=16, check verified): contended (foreign_cores > 2), excluded
+# excluded: d04-coracle/11-red-withdraw.0 (k=17, check verified): contended (foreign_cores > 2), excluded
+# excluded: h03-election-ctor/add-voter-32.0 (k=13, check verified): contended (foreign_cores > 2), excluded
+# excluded: h03-election-ctor/add-voter-33.0 (k=13, check verified): contended (foreign_cores > 2), excluded
+# excluded: h03-election-ctor/advance-to-commit.0 (k=13, check verified): contended (foreign_cores > 2), excluded
+# excluded: h03-election-ctor/advance-to-final.0 (k=13, check verified): contended (foreign_cores > 2), excluded
+# excluded: z02-unshielded-tokens/getUnshieldedBalanceLtTest.0 (k=8, check bytes-equal): contended (foreign_cores > 2), excluded
+# excluded: z02-unshielded-tokens/getUnshieldedBalanceTest.0 (k=8, check bytes-equal): contended (foreign_cores > 2), excluded
+# excluded: z02-unshielded-tokens/mintShieldedToContractTest.0 (k=14, check verified): contended (foreign_cores > 2), excluded
+# excluded: z02-unshielded-tokens/mintShieldedToSelfTest.0 (k=14, check verified): contended (foreign_cores > 2), excluded
+# excluded: z02-unshielded-tokens/mintShieldedToUserTest.0 (k=14, check verified): contended (foreign_cores > 2), excluded
+# excluded: z02-unshielded-tokens/mintUnshieldedToContractTest.0 (k=13, check verified): contended (foreign_cores > 2), excluded
+# excluded: z02-unshielded-tokens/mintUnshieldedToSelfTest.0 (k=13, check verified): contended (foreign_cores > 2), excluded
+# excluded: z04-set-qualified-coin/qualified-roundtrip-again.0 (k=9, check bytes-equal): contended (foreign_cores > 2), excluded
+# excluded: z04-set-qualified-coin/qualified-roundtrip.0 (k=9, check bytes-equal): contended (foreign_cores > 2), excluded
+# excluded: z04-set-qualified-coin/shielded-coin-received.0 (k=14, check verified): contended (foreign_cores > 2), excluded
+program	job	k	cpu_median_s	gpu_median_s	speedup	check	gpu_reps_checked	hits
+a01-adt-counter	a01-adt-counter/test_all.0	8	0.3397	0.2969	1.14	bytes-equal	6	0/26/26/1/0
+a01-adt-counter	a01-adt-counter/test_big_increment.0	7	0.3414	0.2927	1.17	bytes-equal	6	0/26/26/1/0
+a02-set-field	a02-set-field/test.0	8	0.3476	0.3046	1.14	bytes-equal	6	0/26/26/1/0
+a03-map-field-field	a03-map-field-field/test.0	8	0.3471	0.3021	1.15	bytes-equal	6	0/26/26/1/0
+a04-map-bool-map-counter	a04-map-bool-map-counter/test.0	7	0.3458	0.2986	1.16	bytes-equal	6	0/26/26/1/0
+a05-list-field	a05-list-field/test.0	10	0.3662	0.3308	1.11	bytes-equal	6	0/26/26/1/0
+a08-kernel	a08-kernel/01-test.0	8	0.3475	0.3087	1.13	bytes-equal	6	0/26/26/1/0
+d01-example-bboard	d01-example-bboard/08-bob-takedown.0	13	0.8540	0.7510	1.14	verified	6	0/32/32/1/0
+d02-battleship	d02-battleship/02-bob-accept.0	14	1.2400	0.9617	1.29	verified	6	37/64/32/1/0
+d02-battleship	d02-battleship/04-alice-shoot-5.0	13	0.8097	0.7163	1.13	verified	6	0/32/32/1/0
+d02-battleship	d02-battleship/06-bob-check-hit.0	13	0.8842	0.7886	1.12	verified	6	0/32/32/1/0
+d02-battleship	d02-battleship/07-bob-shoot-4.0	13	0.8145	0.7196	1.13	verified	6	0/32/32/1/0
+d02-battleship	d02-battleship/08-alice-check-miss.0	13	0.8827	0.7918	1.11	verified	6	0/32/32/1/0
+d02-battleship	d02-battleship/09-alice-shoot-6.0	13	0.8125	0.7229	1.12	verified	6	0/32/32/1/0
+d02-battleship	d02-battleship/10-bob-check-miss.0	13	0.8809	0.7914	1.11	verified	6	0/32/32/1/0
+d02-battleship	d02-battleship/11-bob-shoot-3.0	13	0.8190	0.7207	1.14	verified	6	0/32/32/1/0
+d02-battleship	d02-battleship/12-alice-check-hit.0	13	0.8924	0.7906	1.13	verified	6	0/32/32/1/0
+d02-battleship	d02-battleship/13-alice-shoot-9.0	13	0.8085	0.7157	1.13	verified	6	0/32/32/1/0
+d02-battleship	d02-battleship/14-bob-check-hit-alice-wins.0	13	0.8900	0.7886	1.13	verified	6	0/32/32/1/0
+d03-micro-dao	d03-micro-dao/02-alice-buy-in-empty-pot.0	16	3.5058	1.7863	1.96	verified	6	38/64/32/1/0
+d03-micro-dao	d03-micro-dao/03-set-topic-merge-pot.0	16	3.5326	1.8362	1.92	verified	6	38/64/32/1/0
+d03-micro-dao	d03-micro-dao/04-bob-buy-in-merge-pot.0	16	3.5873	1.8153	1.98	verified	6	38/64/32/1/0
+d03-micro-dao	d03-micro-dao/05-dao-voting-token.0	13	0.8175	0.6998	1.17	verified	6	0/32/32/1/0
+d03-micro-dao	d03-micro-dao/06-carol-buy-in-two.0	16	3.5244	1.8251	1.93	verified	6	38/64/32/1/0
+d03-micro-dao	d03-micro-dao/07-alice-commit-yes.0	16	3.5541	1.8890	1.88	verified	6	38/64/32/1/0
+d03-micro-dao	d03-micro-dao/09-bob-commit-no.0	16	3.5402	1.8436	1.92	verified	6	38/64/32/1/0
+d03-micro-dao	d03-micro-dao/17-carol-reveal-yes.0	14	1.2360	1.0866	1.14	verified	6	37/64/32/1/0
+d03-micro-dao	d03-micro-dao/18-advance-to-final.0	13	0.8301	0.7568	1.10	verified	6	0/32/32/1/0
+d03-micro-dao	d03-micro-dao/20-beneficiary-cash-out.0	15	1.9369	1.2235	1.58	verified	6	38/64/32/1/0
+d03-micro-dao	d03-micro-dao/22-round2-set-topic-empty-pot.0	16	3.3564	1.8120	1.85	verified	6	38/64/32/1/0
+d03-micro-dao	d03-micro-dao/23-round2-advance-to-reveal.0	13	0.8320	0.7672	1.08	verified	6	0/32/32/1/0
+d03-micro-dao	d03-micro-dao/24-round2-advance-to-final.0	13	0.8331	0.7547	1.10	verified	6	0/32/32/1/0
+d03-micro-dao	d03-micro-dao/26-round2-advance-final-reset.0	13	0.8297	0.7708	1.08	verified	6	0/32/32/1/0
+d04-coracle	d04-coracle/02-red-start.0	16	3.5414	1.8512	1.91	verified	6	38/64/32/1/0
+d06-nft	d06-nft/02-mint-1-to-self-new-holder.0	13	0.8185	0.7615	1.07	verified	6	0/32/32/1/0
+d06-nft	d06-nft/03-mint-2-to-self-existing-holder.0	13	0.8177	0.7482	1.09	verified	6	0/32/32/1/0
+d06-nft	d06-nft/04-mint-3-to-bob.0	13	0.8260	0.7540	1.10	verified	6	0/32/32/1/0
+d06-nft	d06-nft/07-balanceOf-self.0	8	0.3611	0.3166	1.14	bytes-equal	6	0/26/26/1/0
+d06-nft	d06-nft/08-balanceOf-unknown.0	8	0.3594	0.3185	1.13	verified	6	0/26/26/1/0
+d06-nft	d06-nft/09-ownerOf-1.0	7	0.3486	0.3175	1.10	verified	6	0/26/26/1/0
+d06-nft	d06-nft/10-approve-bob-for-1.0	9	0.3705	0.3265	1.13	bytes-equal	6	0/26/26/1/0
+d06-nft	d06-nft/12-getApproved-1.0	7	0.3492	0.3143	1.11	verified	6	0/26/26/1/0
+d06-nft	d06-nft/13-setApprovalForAll-bob.0	9	0.3636	0.3307	1.10	bytes-equal	6	0/26/26/1/0
+d06-nft	d06-nft/14-isApprovedForAll-self-bob.0	9	0.3585	0.3356	1.07	bytes-equal	6	0/26/26/1/0
+d06-nft	d06-nft/15-isApprovedForAll-unset.0	9	0.3607	0.3299	1.09	bytes-equal	6	0/26/26/1/0
+d06-nft	d06-nft/16-transfer-1-to-bob.0	10	0.3777	0.3449	1.10	bytes-equal	6	0/26/26/1/0
+d06-nft	d06-nft/18-transferFrom-2-to-carol.0	10	0.3781	0.3383	1.12	bytes-equal	6	0/26/26/1/0
+d06-nft	d06-nft/19-burn-3.0	13	0.8228	0.7579	1.09	verified	6	0/32/32/1/0
+d06-nft	d06-nft/20-rotate-admin.0	13	0.8196	0.7484	1.10	verified	6	0/32/32/1/0
+h03-election-ctor	h03-election-ctor/add-voter-31.0	13	0.8494	0.7790	1.09	verified	6	0/32/32/1/0
+h03-election-ctor	h03-election-ctor/advance-to-reveal.0	13	0.8169	0.7232	1.13	verified	6	0/32/32/1/0
+h03-election-ctor	h03-election-ctor/set-topic.0	13	0.8182	0.7262	1.13	verified	6	0/32/32/1/0
+h03-election-ctor	h03-election-ctor/vote-commit-31-yes.0	14	1.2168	0.9810	1.24	verified	6	37/64/32/1/0
+h03-election-ctor	h03-election-ctor/vote-commit-32-no.0	14	1.2111	0.9566	1.27	verified	6	37/64/32/1/0
+h03-election-ctor	h03-election-ctor/vote-commit-33-yes.0	14	1.2127	1.0608	1.14	verified	6	37/64/32/1/0
+h03-election-ctor	h03-election-ctor/vote-reveal-31-yes.0	14	1.1683	0.9625	1.21	verified	6	37/64/32/1/0
+h03-election-ctor	h03-election-ctor/vote-reveal-32-no.0	14	1.1672	1.0602	1.10	verified	6	37/64/32/1/0
+h03-election-ctor	h03-election-ctor/vote-reveal-33-yes.0	14	1.1654	1.0287	1.13	verified	6	37/64/32/1/0
+j02-schnorr	j02-schnorr/verify-valid.0	11	0.5279	0.5017	1.05	verified	6	0/28/28/1/0
+j02-schnorr	j02-schnorr/verify-wrong-msg.0	11	0.5235	0.5006	1.05	verified	6	0/28/28/1/0
+t01-tiny	t01-tiny/clear-owner.0	13	0.8231	0.7238	1.14	verified	6	0/32/32/1/0
+t01-tiny	t01-tiny/get-set-again.0	7	0.3507	0.3120	1.12	bytes-equal	6	0/26/26/1/0
+t01-tiny	t01-tiny/get-set.0	7	0.3519	0.3065	1.15	bytes-equal	6	0/26/26/1/0
+t01-tiny	t01-tiny/get-unset.0	7	0.3563	0.3121	1.14	bytes-equal	6	0/26/26/1/0
+t01-tiny	t01-tiny/set-other.0	13	0.8246	0.7263	1.14	verified	6	0/32/32/1/0
+t02-counter-example	t02-counter-example/increment.0	6	0.3427	0.3023	1.13	bytes-equal	6	0/26/26/1/0
+t03-counter-compiler	t03-counter-compiler/increment.0	6	0.3380	0.2989	1.13	bytes-equal	6	0/26/26/1/0
+t04-welcome	t04-welcome/add-organizer-k2.0	13	0.8171	0.7264	1.12	verified	6	0/32/32/1/0
+t04-welcome	t04-welcome/add-participant-alice.0	13	0.8186	0.7150	1.14	verified	6	0/32/32/1/0
+t04-welcome	t04-welcome/add-participant-by-k2.0	13	0.8282	0.7239	1.14	verified	6	0/32/32/1/0
+t04-welcome	t04-welcome/check-in-alice.0	6	0.3453	0.3061	1.13	bytes-equal	6	0/26/26/1/0
+t04-welcome	t04-welcome/check-in-bob.0	6	0.3501	0.3063	1.14	bytes-equal	6	0/26/26/1/0
+t04-welcome	t04-welcome/check-in-dave.0	6	0.3452	0.3084	1.12	bytes-equal	6	0/26/26/1/0
+w02-bboard-testcenter	w02-bboard-testcenter/01-alice-post.0	13	0.8521	0.7568	1.13	verified	6	0/32/32/1/0
+w02-bboard-testcenter	w02-bboard-testcenter/04-alice-takedown.0	13	0.8526	0.7553	1.13	verified	6	0/32/32/1/0
+w02-bboard-testcenter	w02-bboard-testcenter/06-bob-post.0	13	0.8727	0.7623	1.14	verified	6	0/32/32/1/0
+w02-bboard-testcenter	w02-bboard-testcenter/08-bob-takedown.0	13	0.8648	0.7610	1.14	verified	6	0/32/32/1/0
+x01-composable-outer	x01-composable-outer/add-cross-contract.0	7	0.3496	0.3107	1.13	bytes-equal	6	0/26/26/1/0
+x01-composable-outer	x01-composable-outer/add-cross-contract.1	8	0.3567	0.3121	1.14	bytes-equal	6	0/26/26/1/0
+x01-composable-outer	x01-composable-outer/add-via-arg-cross-contract.0	7	0.3480	0.3091	1.13	bytes-equal	6	0/26/26/1/0
+x01-composable-outer	x01-composable-outer/add-via-arg-cross-contract.1	8	0.3628	0.3124	1.16	verified	6	0/26/26/1/0
+x01-composable-outer	x01-composable-outer/add-via-const-cross-contract.0	7	0.3493	0.3088	1.13	bytes-equal	6	0/26/26/1/0
+x01-composable-outer	x01-composable-outer/add-via-const-cross-contract.1	8	0.3550	0.3099	1.15	bytes-equal	6	0/26/26/1/0
+x01-composable-outer	x01-composable-outer/echo-stored-after-set.0	6	0.3497	0.3068	1.14	bytes-equal	6	0/26/26/1/0
+x01-composable-outer	x01-composable-outer/echo-stored-initial.0	6	0.3542	0.3215	1.10	bytes-equal	6	0/26/26/1/0
+x01-composable-outer	x01-composable-outer/set-inner-b.0	8	0.3678	0.3333	1.10	verified	6	0/26/26/1/0
+x02-composable-inner	x02-composable-inner/add.0	7	0.3543	0.3133	1.13	bytes-equal	6	0/26/26/1/0
+z01-zerocash	z01-zerocash/mint-c1.0	13	0.8650	0.8053	1.07	verified	6	0/32/32/1/0
+z01-zerocash	z01-zerocash/mint-c2.0	13	0.8477	0.7566	1.12	verified	6	0/32/32/1/0
+z01-zerocash	z01-zerocash/spend-c1.0	15	1.8811	1.1607	1.62	verified	6	38/64/32/1/0
+z01-zerocash	z01-zerocash/spend-c3.0	15	1.8987	1.1812	1.61	verified	6	38/64/32/1/0
+z02-unshielded-tokens	z02-unshielded-tokens/getUnshieldedBalanceGtTest.0	8	0.3607	0.2979	1.21	bytes-equal	6	0/26/26/1/0
+z02-unshielded-tokens	z02-unshielded-tokens/mintUnshieldedToUserTest.0	13	0.8201	0.7599	1.08	verified	6	0/32/32/1/0
+z02-unshielded-tokens	z02-unshielded-tokens/receiveShieldedTest.0	13	0.8350	0.7873	1.06	verified	6	0/32/32/1/0
+z02-unshielded-tokens	z02-unshielded-tokens/receiveUnshieldedTest.0	8	0.3521	0.3206	1.10	bytes-equal	6	0/26/26/1/0
+z02-unshielded-tokens	z02-unshielded-tokens/sendImmediateShieldedToContractTest.0	15	1.9889	1.2728	1.56	verified	6	38/64/32/1/0
+z02-unshielded-tokens	z02-unshielded-tokens/sendImmediateShieldedToSelfTest.0	15	1.9931	1.2534	1.59	verified	6	38/64/32/1/0
+z02-unshielded-tokens	z02-unshielded-tokens/sendImmediateShieldedToUserTest.0	15	1.9628	1.2252	1.60	verified	6	38/64/32/1/0
+z02-unshielded-tokens	z02-unshielded-tokens/sendShieldedToContractTest.0	15	1.9909	1.2732	1.56	verified	6	38/64/32/1/0
+z02-unshielded-tokens	z02-unshielded-tokens/sendShieldedToSelfTest.0	15	2.0761	1.2462	1.67	verified	6	38/64/32/1/0
+z02-unshielded-tokens	z02-unshielded-tokens/sendUnshieldedToContractTest.0	9	0.3593	0.3301	1.09	bytes-equal	6	0/26/26/1/0
+z02-unshielded-tokens	z02-unshielded-tokens/sendUnshieldedToSelfTest.0	9	0.3550	0.3268	1.09	bytes-equal	6	0/26/26/1/0
+z02-unshielded-tokens	z02-unshielded-tokens/sendUnshieldedToUserTest.0	9	0.3663	0.3243	1.13	bytes-equal	6	0/26/26/1/0
+z03-block-time	z03-block-time/testBlockTimeGt.0	7	0.3493	0.3054	1.14	verified	6	0/26/26/1/0
+z03-block-time	z03-block-time/testBlockTimeGte.0	7	0.3473	0.3229	1.08	verified	6	0/26/26/1/0
+z03-block-time	z03-block-time/testBlockTimeLt.0	7	0.3510	0.3223	1.09	verified	6	0/26/26/1/0
+z03-block-time	z03-block-time/testBlockTimeLte.0	7	0.3457	0.3036	1.14	verified	6	0/26/26/1/0

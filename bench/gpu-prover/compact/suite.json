@@ -1,0 +1,439 @@
+{
+ "schema": "compact-bench-suite/1",
+ "compactc": "0.36.0",
+ "language_version": "0.28.0",
+ "excluded": [
+  {
+   "id": "s01-natives",
+   "reason": "written for this suite; no license yet"
+  },
+  {
+   "id": "s02-foreign",
+   "reason": "written for this suite; no license yet"
+  },
+  {
+   "id": "s03-language",
+   "reason": "written for this suite; no license yet"
+  },
+  {
+   "id": "w01-disclose-vector",
+   "reason": "does not compile with compactc 0.36.0 (expected compile error test)"
+  },
+  {
+   "id": "d05-kitties",
+   "reason": "GPL-3.0; also needs an external library"
+  },
+  {
+   "id": "d07-zkloan",
+   "reason": "does not compile with compactc 0.36.0 (language 0.28 change)"
+  }
+ ],
+ "programs": [
+  {
+   "id": "t01-tiny",
+   "repo": "LFDT-Minokawa/compact",
+   "commit": "a36ebaa8fa1d172a80df7aaad3b4b7a489e74bd6",
+   "main": "tiny.compact",
+   "files": [
+    {
+     "path": "tiny.compact",
+     "source_path": "examples/tiny.compact",
+     "sha256": "f32800fcfe2575bad90817dd4671f9086023e431e053b0b9ef05606e57cdd227"
+    }
+   ]
+  },
+  {
+   "id": "t02-counter-example",
+   "repo": "midnightntwrk/example-counter",
+   "commit": "273f083ab36a52407f16ec9a9796d902226e05d6",
+   "main": "counter.compact",
+   "files": [
+    {
+     "path": "counter.compact",
+     "source_path": "contract/src/counter.compact",
+     "sha256": "a9300173ac95240d7799d007053ce4b2c652c087cd05ae1713465e79c9916a0f"
+    }
+   ]
+  },
+  {
+   "id": "t03-counter-compiler",
+   "repo": "LFDT-Minokawa/compact",
+   "commit": "a36ebaa8fa1d172a80df7aaad3b4b7a489e74bd6",
+   "main": "counter.compact",
+   "files": [
+    {
+     "path": "counter.compact",
+     "source_path": "examples/counter.compact",
+     "sha256": "949a5d539dbc9c453337325d5c22edde7a4d44ae7c1fc46e4f2aa4fe24eb7980"
+    }
+   ]
+  },
+  {
+   "id": "t04-welcome",
+   "repo": "LFDT-Minokawa/compact",
+   "commit": "a36ebaa8fa1d172a80df7aaad3b4b7a489e74bd6",
+   "main": "welcome.compact",
+   "files": [
+    {
+     "path": "welcome.compact",
+     "source_path": "test-center/test-contracts/welcome.compact",
+     "sha256": "a046756dbf31b84e55bbd508f8d457a442af7c96112816d18522eac474f700eb"
+    }
+   ]
+  },
+  {
+   "id": "a01-adt-counter",
+   "repo": "LFDT-Minokawa/compact",
+   "commit": "a36ebaa8fa1d172a80df7aaad3b4b7a489e74bd6",
+   "main": "counter.compact",
+   "files": [
+    {
+     "path": "counter.compact",
+     "source_path": "examples/adt/tests/counter.compact",
+     "sha256": "4d97fd0149e15570b32d4e6aa779646bbea6b27314cad8043cde57a4d265e862"
+    }
+   ]
+  },
+  {
+   "id": "a02-set-field",
+   "repo": "LFDT-Minokawa/compact",
+   "commit": "a36ebaa8fa1d172a80df7aaad3b4b7a489e74bd6",
+   "main": "set_field.compact",
+   "files": [
+    {
+     "path": "set_field.compact",
+     "source_path": "examples/adt/tests/set_field.compact",
+     "sha256": "07a6b0aae4ce176b55fd33e7004856461dfe0922cc53c799f11bd1e3fb76e673"
+    }
+   ]
+  },
+  {
+   "id": "a03-map-field-field",
+   "repo": "LFDT-Minokawa/compact",
+   "commit": "a36ebaa8fa1d172a80df7aaad3b4b7a489e74bd6",
+   "main": "map_field_field.compact",
+   "files": [
+    {
+     "path": "map_field_field.compact",
+     "source_path": "examples/adt/tests/map_field_field.compact",
+     "sha256": "2dfdc33fd2e3c9e7460850ea64a2ef0fc7a1962cd6b149faac8d572b4917f541"
+    }
+   ]
+  },
+  {
+   "id": "a04-map-bool-map-counter",
+   "repo": "LFDT-Minokawa/compact",
+   "commit": "a36ebaa8fa1d172a80df7aaad3b4b7a489e74bd6",
+   "main": "map_boolean_map_field_counter.compact",
+   "files": [
+    {
+     "path": "map_boolean_map_field_counter.compact",
+     "source_path": "examples/adt/tests/map_boolean_map_field_counter.compact",
+     "sha256": "c2ed75b5ce0fdafa0f70727040d4fc35d45c2fbfe997757633bc1456af11e6c3"
+    }
+   ]
+  },
+  {
+   "id": "a05-list-field",
+   "repo": "LFDT-Minokawa/compact",
+   "commit": "a36ebaa8fa1d172a80df7aaad3b4b7a489e74bd6",
+   "main": "list_field.compact",
+   "files": [
+    {
+     "path": "list_field.compact",
+     "source_path": "examples/adt/tests/list_field.compact",
+     "sha256": "46602bb50f2bd9beded8dd438ec7c902482a2959fc07f270f59da575564137a1"
+    }
+   ]
+  },
+  {
+   "id": "a06-merkletree-field",
+   "repo": "LFDT-Minokawa/compact",
+   "commit": "a36ebaa8fa1d172a80df7aaad3b4b7a489e74bd6",
+   "main": "merkletree_field.compact",
+   "files": [
+    {
+     "path": "merkletree_field.compact",
+     "source_path": "examples/adt/tests/merkletree_field.compact",
+     "sha256": "f37735ab68d733e4170ff592280d964fd1ef8da2822f3b412cba9951ecf8a3c6"
+    }
+   ]
+  },
+  {
+   "id": "a07-historic-merkletree",
+   "repo": "LFDT-Minokawa/compact",
+   "commit": "a36ebaa8fa1d172a80df7aaad3b4b7a489e74bd6",
+   "main": "historicmerkletree_field.compact",
+   "files": [
+    {
+     "path": "historicmerkletree_field.compact",
+     "source_path": "examples/adt/tests/historicmerkletree_field.compact",
+     "sha256": "6b3a48738d4bccaafa31fd0ae40932e6f9ec4280ce7638369dc12a4c0f28a115"
+    }
+   ]
+  },
+  {
+   "id": "a08-kernel",
+   "repo": "LFDT-Minokawa/compact",
+   "commit": "a36ebaa8fa1d172a80df7aaad3b4b7a489e74bd6",
+   "main": "kernel.compact",
+   "files": [
+    {
+     "path": "kernel.compact",
+     "source_path": "examples/adt/tests/kernel.compact",
+     "sha256": "b6e7cfacf848e2104f9e165824ed4608c0bfdec835d282041105393abb86841b"
+    }
+   ]
+  },
+  {
+   "id": "w02-bboard-testcenter",
+   "repo": "LFDT-Minokawa/compact",
+   "commit": "a36ebaa8fa1d172a80df7aaad3b4b7a489e74bd6",
+   "main": "bboard.compact",
+   "files": [
+    {
+     "path": "bboard.compact",
+     "source_path": "test-center/test-contracts/bboard.compact",
+     "sha256": "30a0db23fe12bced330eb87f64c329efaad89c6bbe5038cbd23e5ad91d888698"
+    }
+   ]
+  },
+  {
+   "id": "h01-election",
+   "repo": "LFDT-Minokawa/compact",
+   "commit": "a36ebaa8fa1d172a80df7aaad3b4b7a489e74bd6",
+   "main": "election.compact",
+   "files": [
+    {
+     "path": "election.compact",
+     "source_path": "examples/election.compact",
+     "sha256": "a659ba80af4701564752870ada386da7479a84cd6724c02466de83f0a1e2767d"
+    }
+   ]
+  },
+  {
+   "id": "h02-external-hashes",
+   "repo": "LFDT-Minokawa/compact",
+   "commit": "a36ebaa8fa1d172a80df7aaad3b4b7a489e74bd6",
+   "main": "examples.compact",
+   "files": [
+    {
+     "path": "examples.compact",
+     "source_path": "examples/external/examples.compact",
+     "sha256": "d8a44938ea1c1384251d387ad9eec3297886ffeb688bc8715a195b3f2230454c"
+    }
+   ]
+  },
+  {
+   "id": "z01-zerocash",
+   "repo": "LFDT-Minokawa/compact",
+   "commit": "a36ebaa8fa1d172a80df7aaad3b4b7a489e74bd6",
+   "main": "zerocash.compact",
+   "files": [
+    {
+     "path": "zerocash.compact",
+     "source_path": "examples/zerocash.compact",
+     "sha256": "c6a1e6a4c2c5484b36c0f266b65513fdf4016f042afd90ab839693ff71c7ef3f"
+    }
+   ]
+  },
+  {
+   "id": "z02-unshielded-tokens",
+   "repo": "LFDT-Minokawa/compact",
+   "commit": "a36ebaa8fa1d172a80df7aaad3b4b7a489e74bd6",
+   "main": "unshielded-tokens.compact",
+   "files": [
+    {
+     "path": "unshielded-tokens.compact",
+     "source_path": "test-center/compact/unshielded-tokens.compact",
+     "sha256": "581c2485dad88e71550f612921735a9bbf0b9b00b04b5f6bb680e2651c73e556"
+    }
+   ]
+  },
+  {
+   "id": "z03-block-time",
+   "repo": "LFDT-Minokawa/compact",
+   "commit": "a36ebaa8fa1d172a80df7aaad3b4b7a489e74bd6",
+   "main": "block-time.compact",
+   "files": [
+    {
+     "path": "block-time.compact",
+     "source_path": "test-center/compact/block-time.compact",
+     "sha256": "33ff8fd24ef8d3a8920e4e519bd86d6423b90570110cd55fc6e4afeb2a48d00d"
+    }
+   ]
+  },
+  {
+   "id": "z04-set-qualified-coin",
+   "repo": "LFDT-Minokawa/compact",
+   "commit": "a36ebaa8fa1d172a80df7aaad3b4b7a489e74bd6",
+   "main": "set_qualified_coin_info.compact",
+   "files": [
+    {
+     "path": "set_qualified_coin_info.compact",
+     "source_path": "examples/adt/tests/set_qualified_coin_info.compact",
+     "sha256": "f46832c313f391c4b10a7e8b674bccbc53d696e0ba94030a53034e74fed959d1"
+    }
+   ]
+  },
+  {
+   "id": "j01-jubjub-point",
+   "repo": "LFDT-Minokawa/compact",
+   "commit": "a36ebaa8fa1d172a80df7aaad3b4b7a489e74bd6",
+   "main": "examples.compact",
+   "files": [
+    {
+     "path": "examples.compact",
+     "source_path": "examples/jubjubpoint/examples.compact",
+     "sha256": "645945554146f8830c85470db2e0f55627b7b6a125abee93b55036d28e548b15"
+    }
+   ]
+  },
+  {
+   "id": "j02-schnorr",
+   "repo": "LFDT-Minokawa/compact",
+   "commit": "a36ebaa8fa1d172a80df7aaad3b4b7a489e74bd6",
+   "main": "schnorr.compact",
+   "files": [
+    {
+     "path": "schnorr.compact",
+     "source_path": "test-center/compact/schnorr.compact",
+     "sha256": "0c159aa7b400d636446e8cc08ed20867e5584b1b1cc363a97cc6ede690628c27"
+    }
+   ]
+  },
+  {
+   "id": "j03-ecdsa",
+   "repo": "LFDT-Minokawa/compact",
+   "commit": "a36ebaa8fa1d172a80df7aaad3b4b7a489e74bd6",
+   "main": "example_one.compact",
+   "files": [
+    {
+     "path": "example_one.compact",
+     "source_path": "examples/ecdsa/example_one.compact",
+     "sha256": "a17526661ff2decc8705be8c690f05d683e0cbd8980a45ea94b93a6a1419d6fe"
+    }
+   ]
+  },
+  {
+   "id": "d01-example-bboard",
+   "repo": "midnightntwrk/example-bboard",
+   "commit": "28b5603602e62934edabdcf027ff180968b7cdf7",
+   "main": "bboard.compact",
+   "files": [
+    {
+     "path": "bboard.compact",
+     "source_path": "contract/src/bboard.compact",
+     "sha256": "f030e3050b22421294034a76e575410093b8ec872638d95c68d687f3f4d44110",
+     "patch": "patches/suite/d01-example-bboard.patch",
+     "patched_sha256": "3d42b67af27bbdf3aebae0e774e8e5877518c7e77bb33ca3cbd2b8c54458cb68"
+    }
+   ]
+  },
+  {
+   "id": "d02-battleship",
+   "repo": "midnightntwrk/example-battleship",
+   "commit": "3ec5b572091d01e27f3e372ae4f9014874fa7a77",
+   "main": "battleship.compact",
+   "files": [
+    {
+     "path": "battleship.compact",
+     "source_path": "contract/battleship.compact",
+     "sha256": "8b71e04f0faf2f3371f38f2a44d6a43aceaaaa3227592429dc34c8e42ae8dee3",
+     "patch": "patches/suite/d02-battleship.patch",
+     "patched_sha256": "23d1bf420cbaa37a692af8805567f30ac996657e01a5207cfc04fd810791b2e5"
+    }
+   ]
+  },
+  {
+   "id": "d03-micro-dao",
+   "repo": "LFDT-Minokawa/compact",
+   "commit": "a36ebaa8fa1d172a80df7aaad3b4b7a489e74bd6",
+   "main": "micro-dao.compact",
+   "files": [
+    {
+     "path": "micro-dao.compact",
+     "source_path": "test-center/test-contracts/micro-dao.compact",
+     "sha256": "9a2d974c5cbe4e768f494f7cd09299b5ee4b9330e3ffd129b6b80171cb5ae744"
+    }
+   ]
+  },
+  {
+   "id": "d04-coracle",
+   "repo": "LFDT-Minokawa/compact",
+   "commit": "a36ebaa8fa1d172a80df7aaad3b4b7a489e74bd6",
+   "main": "coracle.compact",
+   "files": [
+    {
+     "path": "coracle.compact",
+     "source_path": "test-center/test-contracts/coracle.compact",
+     "sha256": "759b710789ddded803efa578c78352db53b4a59146e08a8016be1e50811f9413"
+    }
+   ]
+  },
+  {
+   "id": "d06-nft",
+   "repo": "midnightntwrk/example-nft-contracts",
+   "commit": "212223d340ba6e4655ce40aa89725f156d69403e",
+   "main": "nft.compact",
+   "files": [
+    {
+     "path": "modules/Nft.compact",
+     "source_path": "contracts/nft/src/modules/Nft.compact",
+     "sha256": "d3cf99559b024cbf2556bd7122bfc6ef43dd16890f482e18c4f12e97609e9c5e"
+    },
+    {
+     "path": "nft.compact",
+     "source_path": "contracts/nft/src/nft.compact",
+     "sha256": "171d433d44708825914abe6325174e1f8cdbecec4f8704c092c6da718c4a7301"
+    }
+   ]
+  },
+  {
+   "id": "x01-composable-outer",
+   "repo": "LFDT-Minokawa/compact",
+   "commit": "a36ebaa8fa1d172a80df7aaad3b4b7a489e74bd6",
+   "main": "Outer.compact",
+   "files": [
+    {
+     "path": "Inner.compact",
+     "source_path": "test-center/composable/Basic/Inner.compact",
+     "sha256": "4db5738675ed817fc9df133137ec368bb7122ce7c238e7dd7e513f524661b143"
+    },
+    {
+     "path": "Outer.compact",
+     "source_path": "test-center/composable/Basic/Outer.compact",
+     "sha256": "c32049979df98127134ed6c2946858a442be0da1538a2e6bf789018ce7f27d26"
+    }
+   ]
+  },
+  {
+   "id": "x02-composable-inner",
+   "repo": "LFDT-Minokawa/compact",
+   "commit": "a36ebaa8fa1d172a80df7aaad3b4b7a489e74bd6",
+   "main": "Inner.compact",
+   "files": [
+    {
+     "path": "Inner.compact",
+     "source_path": "test-center/composable/Basic/Inner.compact",
+     "sha256": "4db5738675ed817fc9df133137ec368bb7122ce7c238e7dd7e513f524661b143"
+    }
+   ]
+  },
+  {
+   "id": "h03-election-ctor",
+   "repo": "LFDT-Minokawa/compact",
+   "commit": "a36ebaa8fa1d172a80df7aaad3b4b7a489e74bd6",
+   "main": "election.compact",
+   "files": [
+    {
+     "path": "election.compact",
+     "source_path": "examples/election.compact",
+     "sha256": "a659ba80af4701564752870ada386da7479a84cd6724c02466de83f0a1e2767d",
+     "patch": "patches/suite/h03-election-ctor.patch",
+     "patched_sha256": "95295585e63a7820b29ac268b7f3379de52a7a4458ba058af6917744d734f53c"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,5 @@
+mode	rep	k	threads	start_load1	proof	state	prove_s	verify_s	verified	msm_calls	ntt_calls	quotient_calls	device_errors	fallbacks	declines	hook_declines	h2d_copies	h2d_bytes	d2h_copies	d2h_bytes	msm_d2h_copies	msm_d2h_bytes	stage	peak_device_bytes	gpu_model	device_total_bytes
+gpu	1	14	24	1.71	0	cold	0.212149826	0.003755726	true	9	7	1	0	2	[["msm","below-min-k",2]]	[["msm","hook",2]]	44	33031176	8	4718528	32	42909696	[0,0,0,0,0,0,0,0]	42501128	NVIDIA GeForce RTX 5090 Laptop GPU	25244663808
+gpu	1	14	24	1.71	1	warm	0.105974026	0.003225553	true	9	7	1	0	2	[["msm","below-min-k",2]]	[["msm","hook",2]]	43	32506888	8	4718528	30	40227840	[0,0,0,0,0,0,0,0]	42501128	NVIDIA GeForce RTX 5090 Laptop GPU	25244663808
+gpu	1	14	24	1.71	2	warm	0.107796228	0.002851489	true	9	7	1	0	2	[["msm","below-min-k",2]]	[["msm","hook",2]]	43	32506888	8	4718528	30	40227840	[0,0,0,0,0,0,0,0]	42501128	NVIDIA GeForce RTX 5090 Laptop GPU	25244663808
+gpu	1	14	24	1.71	3	warm	0.105024181	0.002799145	true	9	7	1	0	2	[["msm","below-min-k",2]]	[["msm","hook",2]]	43	32506888	8	4718528	30	40227840	[0,0,0,0,0,0,0,0]	42501128	NVIDIA GeForce RTX 5090 Laptop GPU	25244663808

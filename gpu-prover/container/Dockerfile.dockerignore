@@ -1,0 +1,8 @@
+# Build context is the repository root. Keep build output, git data and
+# local cargo state out of it.
+.git
+**/target
+.cargo/registry
+.cargo/git
+vendor
+*.secret

@@ -1,0 +1,28 @@
+# Preview, proof server 9.0.1 wrapper with the hooked midnight-proofs 0.8.3, RTX 5080 Laptop GPU.
+# Server log lines per session (ANSI codes removed). One /prove request per proof. No witness data.
+# Each transaction: the contract-call /prove (with hook lines) and then the dust-spend /prove (0.7.3, no hook line).
+# A deploy has only the dust-spend /prove. Hook lines count device calls since the previous line (200 ms tick).
+
+## session a01-adt-counter-t1
+2026-11-18T15:20:30.314326Z INFO gpu_proof_server: GPU hooks installed: NVIDIA GeForce RTX 5080 Laptop GPU sm_120
+2026-11-18T15:24:04.989622Z INFO actix_web::middleware::logger: 127.0.0.1 POST /prove HTTP/1.1; took 0.421690s
+2026-11-18T15:24:20.970604Z INFO actix_web::middleware::logger: 127.0.0.1 POST /check HTTP/1.1; took 0.001218s
+2026-11-18T15:24:21.300616Z INFO actix_web::middleware::logger: 127.0.0.1 POST /prove HTTP/1.1; took 0.310961s
+2026-11-18T15:24:21.325939Z INFO gpu_proof_server: hooks: msm 0 ntt 26 coset 26 quotient 1 fallbacks 0 (since last line); device peak 64174496 B
+2026-11-18T15:24:21.800480Z INFO actix_web::middleware::logger: 127.0.0.1 POST /prove HTTP/1.1; took 0.286442s
+
+## session d01-example-bboard-t2
+2026-11-18T15:27:55.392792Z INFO gpu_proof_server: GPU hooks installed: NVIDIA GeForce RTX 5080 Laptop GPU sm_120
+2026-11-18T15:27:57.071067Z INFO actix_web::middleware::logger: 127.0.0.1 POST /prove HTTP/1.1; took 0.402767s
+2026-11-18T15:28:14.821434Z INFO actix_web::middleware::logger: 127.0.0.1 POST /check HTTP/1.1; took 0.000942s
+2026-11-18T15:28:17.011599Z INFO gpu_proof_server: hooks: msm 0 ntt 3 coset 3 quotient 0 fallbacks 0 (since last line); device peak 22052864 B
+2026-11-18T15:28:17.211772Z INFO gpu_proof_server: hooks: msm 0 ntt 43 coset 43 quotient 0 fallbacks 0 (since last line); device peak 22052864 B
+2026-11-18T15:28:17.411863Z INFO gpu_proof_server: hooks: msm 0 ntt 32 coset 32 quotient 1 fallbacks 0 (since last line); device peak 187493952 B
+2026-11-18T15:28:17.441317Z INFO actix_web::middleware::logger: 127.0.0.1 POST /prove HTTP/1.1; took 2.239259s
+2026-11-18T15:28:17.952087Z INFO actix_web::middleware::logger: 127.0.0.1 POST /prove HTTP/1.1; took 0.314302s
+2026-11-18T15:28:38.668617Z INFO actix_web::middleware::logger: 127.0.0.1 POST /check HTTP/1.1; took 0.001323s
+2026-11-18T15:28:40.228920Z INFO gpu_proof_server: hooks: msm 0 ntt 3 coset 3 quotient 0 fallbacks 0 (since last line); device peak 187493952 B
+2026-11-18T15:28:40.429004Z INFO gpu_proof_server: hooks: msm 0 ntt 43 coset 43 quotient 0 fallbacks 0 (since last line); device peak 187493952 B
+2026-11-18T15:28:40.627380Z INFO actix_web::middleware::logger: 127.0.0.1 POST /prove HTTP/1.1; took 1.751046s
+2026-11-18T15:28:40.629081Z INFO gpu_proof_server: hooks: msm 0 ntt 32 coset 32 quotient 1 fallbacks 0 (since last line); device peak 235728448 B
+2026-11-18T15:28:41.140567Z INFO actix_web::middleware::logger: 127.0.0.1 POST /prove HTTP/1.1; took 0.294919s

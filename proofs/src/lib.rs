@@ -9,8 +9,14 @@
 #![deny(unsafe_code)]
 
 pub mod circuit;
+#[cfg(feature = "gpu")]
+pub mod gpu;
+#[cfg(feature = "prover-par")]
+pub(crate) mod par;
 pub mod plonk;
 pub mod poly;
+#[cfg(any(test, feature = "gpu-test"))]
+pub(crate) mod test_circuit;
 pub mod transcript;
 
 pub mod dev;

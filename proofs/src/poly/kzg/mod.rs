@@ -34,6 +34,8 @@ use group::Group;
 use midnight_curves::{msm::msm_pippenger, pairing::MultiMillerLoop, serde::SerdeObject};
 use rand_core::OsRng;
 
+#[cfg(not(feature = "prover-par"))]
+use crate::utils::arithmetic::{eval_polynomial, kate_division};
 use crate::{
     poly::{
         Coeff, Error, Polynomial, PolynomialRepresentation, ProverQuery,
@@ -49,9 +51,8 @@ use crate::{
     transcript::{Hashable, Transcript, TranscriptField},
     utils::{
         arithmetic::{
-            CurveAffine, CurveExt, divide_by_roots, eval_interpolant, eval_polynomial,
-            evals_inner_product, inner_product, kate_division, parallelize, powers, truncate,
-            truncated_powers,
+            CurveAffine, CurveExt, divide_by_roots, eval_interpolant, evals_inner_product,
+            inner_product, parallelize, powers, truncate, truncated_powers,
         },
         helpers::{ProcessedSerdeObject, SerdeFormat},
     },
@@ -279,6 +280,11 @@ impl<E: KZGEngine> PolynomialCommitmentScheme<E::Fr> for KZGCommitmentScheme<E> 
             polys: &[&Polynomial<F, Coeff>],
             scalars: impl IntoIterator<Item = F>,
         ) -> Polynomial<F, Coeff> {
+            #[cfg(feature = "prover-par")]
+            if polys.iter().map(|p| p.len()).max().unwrap_or(0) >= crate::par::INNER_PRODUCT_MIN_LEN
+            {
+                return crate::par::open::poly_inner_product(polys, scalars);
+            }
             let scalars: Vec<F> = scalars.into_iter().take(polys.len()).collect();
             let max_len = polys.iter().map(|p| p.len()).max().unwrap_or(0);
             let mut values = vec![F::ZERO; max_len];
@@ -366,8 +372,13 @@ impl<E: KZGEngine> PolynomialCommitmentScheme<E::Fr> for KZGCommitmentScheme<E> 
         let x3 = truncate(x3);
 
         // Evaluate all q_polys at x3 in parallel, then write sequentially.
+        #[cfg(not(feature = "prover-par"))]
         let q_evals: Vec<E::Fr> =
             q_polys.par_iter().map(|q_poly| eval_polynomial(&q_poly.values, x3)).collect();
+        #[cfg(feature = "prover-par")]
+        let q_evals: Vec<E::Fr> = crate::par::open::eval_many(
+            &q_polys.iter().map(|q_poly| (&q_poly.values[..], x3)).collect::<Vec<_>>(),
+        );
         for eval in &q_evals {
             transcript.write(eval).map_err(|_| Error::OpeningError)?;
         }
@@ -381,11 +392,27 @@ impl<E: KZGEngine> PolynomialCommitmentScheme<E::Fr> for KZGCommitmentScheme<E> 
 
             poly_inner_product(&polys, powers)
         };
+        #[cfg(not(feature = "prover-par"))]
         let v = eval_polynomial(&final_poly, x3);
 
+        #[cfg(not(feature = "prover-par"))]
         let pi = {
             let pi_poly = Polynomial::<_, Coeff> {
                 values: kate_division(&(&final_poly - v).values, x3),
+                _marker: PhantomData,
+            };
+            Self::commit(
+                params,
+                &pi_poly,
+                PolynomialLabel::Custom("kzg_proof".into()),
+            )
+        };
+        // The quotient does not depend on the constant coefficient, so `v`
+        // and the copy `final_poly - v` are not needed.
+        #[cfg(feature = "prover-par")]
+        let pi = {
+            let pi_poly = Polynomial::<_, Coeff> {
+                values: crate::par::open::kate_division(&final_poly.values, x3),
                 _marker: PhantomData,
             };
             Self::commit(
@@ -581,6 +608,20 @@ impl<E: KZGEngine> InterleavedCommit<E::Fr> for KZGCommitmentScheme<E> {
 /// [`msm_pippenger`]. Test builds also compute it with the verifier's MSM
 /// ([`msm_specific`](msm::msm_specific)) and check that both agree.
 fn commit_msm<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
+    // With the feature `gpu`, a BLS12-381 G1 MSM is offered to the installed
+    // hooks first, on the caller's slices (the result is the same group
+    // element). Test builds (and the test-only feature `gpu-test`) check a
+    // served MSM against `msm_pippenger`.
+    #[cfg(feature = "gpu")]
+    if let Some(res) = crate::gpu::msm::<C, C::Scalar, C::Curve>(coeffs, bases) {
+        #[cfg(any(test, feature = "gpu-test"))]
+        assert!(
+            res == msm_pippenger(coeffs, bases),
+            "the MSM hook disagrees with msm_pippenger on {} terms",
+            coeffs.len()
+        );
+        return res;
+    }
     let res = msm_pippenger(coeffs, bases);
     #[cfg(test)]
     assert_eq!(
