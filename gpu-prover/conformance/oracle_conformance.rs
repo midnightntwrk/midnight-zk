@@ -144,6 +144,8 @@ struct Hardware {
     sampled_peak: u64,
     dirty: bool,
     revoked: bool,
+    /// Op 14 ran during the request: a memory bound was exceeded.
+    over_bound: bool,
     valid_proof: bool,
     verifier_input_seen: bool,
 }
@@ -256,6 +258,11 @@ impl Device for Port {
         };
         let mut h = self.hw.lock().unwrap();
         h.mask = Phases::NONE;
+        // The service reads the host high-water mark on this thread after
+        // the erasure, on every path, with or without a device phase.
+        if std::mem::take(&mut h.over_bound) {
+            crate::report::INJECTED_HWM.set(u64::MAX);
+        }
         if !confirmed {
             return Err("injected wipe failure".into());
         }
@@ -408,6 +415,8 @@ fn replay(t: &Trace, params: &ParamsKZG<Bls12>, binary: Option<&Path>, itf: bool
     let cfg = Config {
         threads: 2,
         max_device_peak_mib: 1,
+        // far above any real high-water mark: only op 14 crosses it
+        max_host_hwm_mib: 1 << 30,
         mode: if t.acceptance() {
             RunMode::Acceptance
         } else {
@@ -519,7 +528,6 @@ fn replay(t: &Trace, params: &ParamsKZG<Bls12>, binary: Option<&Path>, itf: bool
     let places = AtomicUsize::new(0);
     let mut lock: Option<File> = None;
     let mut caller_peer = None;
-    let lease_polls = Arc::new(AtomicU64::new(0));
     let mut up = true;
     let mut restarts = Vec::<u64>::new();
     let mut checks = Checks::default();
@@ -639,12 +647,8 @@ fn replay(t: &Trace, params: &ParamsKZG<Bls12>, binary: Option<&Path>, itf: bool
                 let (server, peer) = std::os::unix::net::UnixStream::pair().unwrap();
                 caller_peer = Some(peer);
                 let lost = lease.as_ref().map(Lease::watch);
-                let polls = lease_polls.clone();
                 let cancel = Arc::new(move || {
-                    let lost =
-                        crate::lock::peer_hung_up(&server) || lost.as_ref().is_some_and(|f| f());
-                    polls.fetch_add(1, SeqCst);
-                    lost
+                    crate::lock::peer_hung_up(&server) || lost.as_ref().is_some_and(|f| f())
                 });
                 let opts = RequestOptions {
                     cancel: Some(cancel),
@@ -754,10 +758,12 @@ fn replay(t: &Trace, params: &ParamsKZG<Bls12>, binary: Option<&Path>, itf: bool
                     drop(caller_peer.take());
                 }
                 // Leave the proof paused while the stock watcher samples the
-                // actual lock. A second sample brackets callback completion.
-                let after = lease_polls.load(SeqCst) + 2;
-                let deadline = std::time::Instant::now() + Duration::from_secs(1);
-                while lease_polls.load(SeqCst) < after && !hw.lock().unwrap().revoked {
+                // actual lock. The model takes a lease loss only while device
+                // work runs, so the watcher's revocation always follows. Wait
+                // for the revocation, not for a number of samples: a sample
+                // sees the loss before the revocation lands.
+                let deadline = std::time::Instant::now() + Duration::from_secs(10);
+                while !hw.lock().unwrap().revoked {
                     if std::time::Instant::now() >= deadline {
                         break;
                     }
@@ -981,9 +987,13 @@ fn replay(t: &Trace, params: &ParamsKZG<Bls12>, binary: Option<&Path>, itf: bool
             13 => {
                 service.as_ref().unwrap().evict(true);
             }
-            // Inject a peak above the configured one-MiB device limit.
+            // The model's bound is exceeded while the request proves or
+            // has proved: the host high-water mark the service reads after
+            // the erasure is above the configured bound. A device peak would
+            // not do: the service reads the device counters when proving
+            // ends, and ignores them when no device phase ran.
             14 => {
-                hw.lock().unwrap().counters.peak_bytes = u64::MAX;
+                hw.lock().unwrap().over_bound = true;
             }
             _ => panic!("new service op {op} in {} step {step}", t.name),
         }

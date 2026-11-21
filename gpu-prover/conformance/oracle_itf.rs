@@ -106,7 +106,8 @@ fn quint_daemon_gate() {
     eprintln!(
         "daemon ITF: {files} files, {transitions} transitions, {mismatches} mismatching steps, {fields} differing field observations"
     );
-    assert_eq!((files, transitions), (1077, 40471));
+    // The output of `formal/gpu-prover/scripts/quint_check.sh 50 50`.
+    assert_eq!((files, transitions), (1078, 40473));
     assert_eq!(
         (mismatches, fields),
         (0, 0),

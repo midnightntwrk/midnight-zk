@@ -149,6 +149,12 @@ lease only when all three checks pass:
 3. The passed descriptor can take the lock without blocking, so the caller's
    own open file description holds it.
 
+While the request proves, the service checks the lease every 20 ms. On Linux
+it reads the lock list of the passed descriptor in `/proc/self/fdinfo`, which
+takes no lock, so a lock the caller releases is seen as lost. Other systems
+repeat checks 2 and 3, and a release between the two lets the descriptor take
+the free lock back.
+
 A lock held by an unrelated process gives no lease. The service keeps its copy
 of the descriptor until the request is wiped, so the lock stays held when the
 client disconnects early. A device user that ignores the lock is not seen and

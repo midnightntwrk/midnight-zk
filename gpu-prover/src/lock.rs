@@ -151,7 +151,16 @@ impl Lease {
 /// Whether the open file description of `fd` holds the exclusive lock of
 /// `path`.
 fn holds(path: &Path, fd: &OwnedFd) -> bool {
-    // a second open of the path takes the lock: nobody holds it
+    // Linux lists the flock locks of an open file description in its fdinfo.
+    // Reading it takes no lock, so a lock the holder releases between two
+    // checks cannot be taken again here and the release is seen.
+    #[cfg(target_os = "linux")]
+    if let Ok(info) = std::fs::read_to_string(format!("/proc/self/fdinfo/{}", fd.as_raw_fd())) {
+        return info
+            .lines()
+            .any(|l| l.starts_with("lock:") && l.contains(" FLOCK ") && l.contains(" WRITE "));
+    }
+    // Elsewhere: a second open of the path takes the lock: nobody holds it
     if let Ok(probe) = File::open(path)
         && flock(probe.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB).is_ok()
     {
@@ -159,7 +168,8 @@ fn holds(path: &Path, fd: &OwnedFd) -> bool {
         return false;
     }
     // somebody holds it: this description does when it takes it again
-    // without waiting (a no-op for the holder)
+    // without waiting (a no-op for the holder). A release between the two
+    // checks is missed here: this description takes the free lock.
     flock(fd.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB).is_ok()
 }
 

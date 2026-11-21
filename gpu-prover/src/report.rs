@@ -204,13 +204,31 @@ pub fn proc_status_kib(field: &str) -> u64 {
 
 /// The host high-water mark of this process, bytes.
 pub fn host_hwm_bytes() -> u64 {
-    proc_status_kib("VmHWM") << 10
+    (proc_status_kib("VmHWM") << 10).max(injected_hwm())
 }
 
 /// Resets the host high-water mark to the current resident size (Linux
 /// `clear_refs`); a no-op where the kernel refuses it.
 pub fn reset_host_hwm() {
+    #[cfg(all(test, feature = "conformance"))]
+    INJECTED_HWM.set(0);
     let _ = std::fs::write("/proc/self/clear_refs", "5");
+}
+
+#[cfg(all(test, feature = "conformance"))]
+thread_local! {
+    /// A high-water mark the model replay injects on the request's thread.
+    pub(crate) static INJECTED_HWM: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+#[cfg(all(test, feature = "conformance"))]
+fn injected_hwm() -> u64 {
+    INJECTED_HWM.get()
+}
+
+#[cfg(not(all(test, feature = "conformance")))]
+fn injected_hwm() -> u64 {
+    0
 }
 
 /// Lower-case hex SHA-256.
