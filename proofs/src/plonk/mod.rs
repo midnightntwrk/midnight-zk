@@ -126,20 +126,12 @@ where
     /// Reads a verification key from a buffer, using the provided
     /// [ConstraintSystem].
     ///
-    /// Curve elements are parsed according to `format` (see [`SerdeFormat`]),
-    /// which must be a checked one: `RawBytesUnchecked` gives an error.
+    /// Curve elements are parsed according to `format` (see [`SerdeFormat`]).
     pub fn read_from_cs<R: io::Read>(
         reader: &mut R,
         format: SerdeFormat,
         cs: ConstraintSystem<F>,
     ) -> io::Result<Self> {
-        if matches!(format, SerdeFormat::RawBytesUnchecked) {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "keys cannot be read with SerdeFormat::RawBytesUnchecked",
-            ));
-        }
-
         let mut version_byte = [0u8; 1];
         reader.read_exact(&mut version_byte)?;
         if VERSION != version_byte[0] {

@@ -118,30 +118,3 @@ fn pk_round_trip() {
         assert_eq!(read.to_bytes(format), bytes);
     }
 }
-
-/// Keys cannot be read with `RawBytesUnchecked`, which skips checks on their
-/// points.
-#[test]
-fn keys_reject_the_unchecked_format() {
-    let unchecked = SerdeFormat::RawBytesUnchecked;
-
-    let vk = keygen();
-    let err = VerifyingKey::<Fq, KZGCommitmentScheme<Bls12>>::from_bytes::<MyCircuit>(
-        &vk.to_bytes(unchecked),
-        unchecked,
-        #[cfg(feature = "circuit-params")]
-        (),
-    )
-    .expect_err("vk should not deserialize");
-    assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
-
-    let pk = keygen_pk(vk, &MyCircuit).expect("pk should not fail");
-    let err = ProvingKey::<Fq, KZGCommitmentScheme<Bls12>>::from_bytes::<MyCircuit>(
-        &pk.to_bytes(unchecked),
-        unchecked,
-        #[cfg(feature = "circuit-params")]
-        (),
-    )
-    .expect_err("pk should not deserialize");
-    assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
-}

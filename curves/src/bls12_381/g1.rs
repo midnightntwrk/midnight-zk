@@ -948,8 +948,6 @@ impl CurveAffine for G1Affine {
 
     fn from_xy(x: Self::Base, y: Self::Base) -> CtOption<Self> {
         let p = Self::from_raw_unchecked(x, y, false);
-        // The subgroup test does not use the curve constant, so on its own it
-        // accepts points of other curves `y² = x³ + b'`.
         CtOption::new(p, p.is_on_curve() & p.is_torsion_free())
     }
 

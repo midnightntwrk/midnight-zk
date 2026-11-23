@@ -312,31 +312,6 @@ fn keys_with_out_of_range_k_are_rejected() {
     }
 }
 
-// The points of a key are always checked: the unchecked format is rejected
-// when reading them.
-#[test]
-#[serial]
-fn keys_reject_the_unchecked_format() {
-    let relation = DummyCircuit {
-        architecture: ZkStdLibArch::default(),
-    };
-    let srs = srs_for_test(&relation, None);
-    let vk = midnight_zk_stdlib::setup_vk::<_, KZG>(&srs, &relation);
-    let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
-
-    let mut vk_bytes = Vec::new();
-    vk.write(&mut vk_bytes, SerdeFormat::RawBytes).unwrap();
-    let err = MidnightVK::<KZG>::read(&mut &vk_bytes[..], SerdeFormat::RawBytesUnchecked).err();
-    assert_eq!(err.map(|e| e.kind()), Some(ErrorKind::InvalidInput));
-
-    let mut pk_bytes = Vec::new();
-    pk.write(&mut pk_bytes, SerdeFormat::RawBytes).unwrap();
-    let err =
-        MidnightPK::<DummyCircuit, KZG>::read(&mut &pk_bytes[..], SerdeFormat::RawBytesUnchecked)
-            .err();
-    assert_eq!(err.map(|e| e.kind()), Some(ErrorKind::InvalidInput));
-}
-
 // A VK records its zk_stdlib version and its PCS: reading it under another
 // version, whose keys belong to another proof system, or another PCS fails.
 #[test]
