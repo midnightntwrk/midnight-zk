@@ -19,7 +19,7 @@ use std::{collections::BTreeMap, fmt::Debug, iter, marker::PhantomData};
 
 use midnight_proofs::{
     circuit::{Chip, Layouter, Value},
-    plonk::{ConstraintSystem, Error},
+    plonk::{ConstraintSystem, Error, QUOTIENT_LIMB_BLINDERS},
     poly::{EvaluationDomain, PolynomialLabel, Rotation},
     transcript::Hashable,
 };
@@ -603,8 +603,12 @@ impl<F: CircuitField, PCS: InCircuitPCS<F>> VerifierGadget<F, PCS> {
             .into_iter()
             .for_each(|trash_id| expressions.push(trash_id));
 
-        let x_squared = self.scalar_chip.mul(layouter, &x, &x, None)?;
-        let splitting_factor = self.scalar_chip.div(layouter, &xn, &x_squared)?;
+        // h(X) is split into limbs of n - S coefficients, S = QUOTIENT_LIMB_BLINDERS,
+        // so the splitting factor is x^{n-S} = x^n / x^S.
+        let x_pow_s = (1..QUOTIENT_LIMB_BLINDERS).try_fold(x.clone(), |acc, _| {
+            self.scalar_chip.mul(layouter, &acc, &x, None)
+        })?;
+        let splitting_factor = self.scalar_chip.div(layouter, &xn, &x_pow_s)?;
 
         // -nu(x): the identities batched with y by Horner's rule, negated.
         let zero: AssignedNative<F> = self.scalar_chip.assign_fixed(layouter, F::ZERO)?;
@@ -620,7 +624,7 @@ impl<F: CircuitField, PCS: InCircuitPCS<F>> VerifierGadget<F, PCS> {
         })?;
 
         // h_0(x) is derived from -nu(x) = (1 - x^n) h(x), for
-        // h(x) = h_0(x) + x^{n-2} h_1(x) + ..., so that opening h_0 at it checks
+        // h(x) = h_0(x) + x^{n-S} h_1(x) + ..., so that opening h_0 at it checks
         // the identities.
         let higher_limbs = {
             let mut limb_evals =

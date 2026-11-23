@@ -21,6 +21,9 @@ use crate::{
     utils::rational::Rational,
 };
 
+/// The number of random coefficients for each quotient limb.
+pub const QUOTIENT_LIMB_BLINDERS: usize = 3;
+
 /// A column type
 pub trait ColumnType:
     'static + Sized + Copy + std::fmt::Debug + PartialEq + Eq + Into<Any>
@@ -2183,11 +2186,6 @@ impl<F: Field> ConstraintSystem<F> {
     pub fn blinding_factors(&self) -> usize {
         let factors = self.max_queries();
 
-        // - The permutation argument witness polynomials are evaluated at most 3 times.
-        // - Each lookup argument has independent witness polynomials, and they are
-        //   evaluated at most 2 times.
-        let factors = std::cmp::max(3, factors);
-
         // Each trash argument gives away 1 evaluation of a linear combination of some
         // witness polynomials (the evaluation of the trash column).
         let factors = factors + self.trashcans.len();
@@ -2216,13 +2214,24 @@ impl<F: Field> ConstraintSystem<F> {
     /// Returns the minimum necessary rows that need to exist in order to
     /// account for e.g. blinding factors.
     pub fn minimum_rows(&self) -> usize {
-        self.blinding_factors() // m blinding factors
+        let rows = self.blinding_factors() // m blinding factors
             + 1 // for l_{-(m + 1)} (l_last)
             + 1 // for l_0 (just for extra breathing room for the permutation
                 // argument, to essentially force a separation in the
                 // permutation polynomial between the roles of l_last, l_0
                 // and the interstitial values.)
-            + 1 // for at least one row
+            + 1; // for at least one row
+
+        // The quotient h(X) has d(n - 1) coefficients, where d = degree - 1,
+        // and is split into d + 1 limbs of n - S coefficients each, with
+        // S = QUOTIENT_LIMB_BLINDERS. The limbs can hold all of h(X) iff
+        // (d + 1)(n - S) >= d(n - 1),
+        // that is, iff
+        // n >= d(S - 1) + S.
+        let d = self.degree() - 1;
+        let quotient_rows = d * (QUOTIENT_LIMB_BLINDERS - 1) + QUOTIENT_LIMB_BLINDERS;
+
+        rows.max(quotient_rows)
     }
 
     /// Returns number of fixed columns
