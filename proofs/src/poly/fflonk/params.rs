@@ -1,27 +1,53 @@
-//! The commitments of [`Fflonk`](super::Fflonk) to interleaved polynomials
-//! over KZG.
+//! The parameters of [`Fflonk`](super::Fflonk) over KZG, and the commitments to
+//! interleaved polynomials made with them.
 
 use std::{
+    borrow::Borrow,
     collections::HashMap,
     fmt::Debug,
+    io,
     sync::{Arc, RwLock},
 };
 
-use midnight_curves::pairing::{Engine, MultiMillerLoop};
+use midnight_curves::{
+    pairing::{Engine, MultiMillerLoop},
+    serde::SerdeObject,
+};
 
 use crate::{
     poly::{
-        Coeff, LagrangeCoeff, LagrangeDeltaCoeff, Polynomial, PolynomialBasis, PolynomialLabel,
-        PolynomialRepresentation,
+        Coeff, LagrangeCoeff, LagrangeDeltaCoeff, LagrangeDoubleDeltaCoeff, Polynomial,
+        PolynomialBasis, PolynomialLabel, PolynomialRepresentation,
         commitment::InterleavedCommit,
         kzg::{
             KZGCommitmentScheme, KZGEngine, commit_msm,
             commitment::{KZGCommitment, KZGMultiCommitment},
-            params::{ParamsKZG, suffix_sum},
+            params::{ParamsKZG, ParamsVerifierKZG, read_points, suffix_sum, write_points},
         },
     },
-    utils::arithmetic::{CurveAffine, g_to_lagrange},
+    utils::{
+        SerdeFormat,
+        arithmetic::{CurveAffine, g_to_lagrange},
+        helpers::ProcessedSerdeObject,
+    },
 };
+
+/// The parameters for committing with [`Fflonk`](super::Fflonk) over KZG, to
+/// chunks of up to `T_MAX = 2^LOG2_T_MAX` polynomials of `n` values, `T_MAX·n`
+/// being the size of the SRS: the [`ParamsKZG`], with the bases of the
+/// [`Residue`]s modulo every power of two `t ≤ T_MAX`.
+///
+/// The `LagrangeDelta` and `LagrangeDoubleDelta` bases of size `n`, those the
+/// prover commits with, only depend on the SRS, `n` and `T_MAX`, but building
+/// them takes `2·T_MAX - 1` group FFTs of size `n`: build them once, with
+/// [`Self::from_kzg`], and store them on disk, with [`Self::write`].
+/// Any other bases are built on first use and cached.
+#[derive(Clone, Debug)]
+pub struct ParamsFflonkKZG<E: Engine, const LOG2_T_MAX: u32> {
+    kzg: ParamsKZG<E>,
+    /// The bases of every [`Residue`] built so far.
+    residue_bases: ResidueBases<E::G1Affine>,
+}
 
 /// Residue `i` modulo `t`, identifying the bases for committing to `X^i f(X^t)`
 /// from the `n` values of `f`, the `i`-th part of `g(X) = Σ_i X^i f_i(X^t)`.
@@ -42,10 +68,9 @@ use crate::{
 ///   sums of the `LagrangeDelta` bases.
 ///
 /// Committing to every `f_i` on its own bases keeps the zeros of its values
-/// free. The bases are computed on first use, as the `Lagrange` ones take a
-/// group FFT of size `n`, and cached in `ParamsKZG`.
+/// free.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub(crate) struct Residue {
+struct Residue {
     /// The representation of the values of `f_i`.
     basis: PolynomialBasis,
     /// The modulus, a power of two.
@@ -56,14 +81,58 @@ pub(crate) struct Residue {
     i: usize,
 }
 
-/// The bases of every [`Residue`] committed to so far.
-pub(crate) type ResidueBases<C> = Arc<RwLock<HashMap<Residue, Arc<[C]>>>>;
+/// The bases of every [`Residue`] built so far.
+type ResidueBases<C> = Arc<RwLock<HashMap<Residue, Arc<[C]>>>>;
 
-impl<E> ParamsKZG<E>
+/// Costly: see [`ParamsFflonkKZG::from_kzg`].
+impl<E, const LOG2_T_MAX: u32> From<ParamsKZG<E>> for ParamsFflonkKZG<E, LOG2_T_MAX>
 where
-    E: Engine + Debug,
+    E: MultiMillerLoop + Debug,
     E::G1Affine: CurveAffine,
 {
+    fn from(kzg: ParamsKZG<E>) -> Self {
+        Self::from_kzg(kzg)
+    }
+}
+
+impl<E: Engine, const LOG2_T_MAX: u32> Borrow<ParamsKZG<E>> for ParamsFflonkKZG<E, LOG2_T_MAX> {
+    fn borrow(&self) -> &ParamsKZG<E> {
+        &self.kzg
+    }
+}
+
+impl<E, const LOG2_T_MAX: u32> ParamsFflonkKZG<E, LOG2_T_MAX>
+where
+    E: MultiMillerLoop + Debug,
+    E::G1Affine: CurveAffine,
+{
+    /// The pairs `(t, i)`, for every power of two `t ≤ T_MAX` and every
+    /// `i < t`.
+    fn residues() -> impl Iterator<Item = (usize, usize)> {
+        (0..=LOG2_T_MAX)
+            .map(|log2_t| 1 << log2_t)
+            .flat_map(|t| (0..t).map(move |i| (t, i)))
+    }
+
+    /// Builds the parameters from the KZG ones. This is costly: see
+    /// [`ParamsFflonkKZG`].
+    pub fn from_kzg(kzg: ParamsKZG<E>) -> Self {
+        let n = kzg.g.len() >> LOG2_T_MAX;
+        let params = Self {
+            kzg,
+            residue_bases: Default::default(),
+        };
+        for (t, i) in Self::residues() {
+            params.residue_bases::<LagrangeDoubleDeltaCoeff>(t, n, i);
+        }
+        params
+    }
+
+    /// The verifier parameters, those of the [`ParamsKZG`].
+    pub fn verifier_params(&self) -> ParamsVerifierKZG<E> {
+        self.kzg.verifier_params()
+    }
+
     /// The bases of the [`Residue`] `i` modulo `t`, for committing to
     /// `X^i f(X^t)` from the `n` values of `f` in the representation `B`.
     ///
@@ -72,7 +141,7 @@ where
     /// If `B` is the extended Lagrange basis, if `t·n` is larger than the SRS,
     /// or if `B` is Lagrange or one of its delta forms and `n` is not a power
     /// of two.
-    pub(crate) fn residue_bases<B: PolynomialRepresentation>(
+    fn residue_bases<B: PolynomialRepresentation>(
         &self,
         t: usize,
         n: usize,
@@ -92,10 +161,10 @@ where
         let bases: Arc<[_]> = match B::BASIS {
             PolynomialBasis::Coeff => {
                 assert!(
-                    t * n <= self.g.len(),
+                    t * n <= self.kzg.g.len(),
                     "no residue bases of size {n} modulo {t}"
                 );
-                self.g[i..].iter().step_by(t).take(n).copied().collect()
+                self.kzg.g[i..].iter().step_by(t).take(n).copied().collect()
             }
             PolynomialBasis::Lagrange => {
                 assert!(n.is_power_of_two(), "no Lagrange residue bases of size {n}");
@@ -112,12 +181,68 @@ where
         let mut cache = self.residue_bases.write().expect("residue bases lock poisoned");
         cache.entry(residue).or_insert(bases).clone()
     }
+
+    /// Writes the [`ParamsKZG`], as [`ParamsKZG::write`] does, then
+    /// `LOG2_T_MAX` and the `LagrangeDelta` and `LagrangeDoubleDelta` bases of
+    /// size `n`.
+    pub fn write<W>(&self, writer: &mut W, format: SerdeFormat) -> io::Result<()>
+    where
+        E::G1Affine: SerdeObject,
+        E::G2: ProcessedSerdeObject,
+        W: io::Write,
+    {
+        self.kzg.write(writer, format)?;
+        writer.write_all(&LOG2_T_MAX.to_le_bytes())?;
+        let n = self.kzg.g.len() >> LOG2_T_MAX;
+        for (t, i) in Self::residues() {
+            let delta = self.residue_bases::<LagrangeDeltaCoeff>(t, n, i);
+            write_points(&delta, writer, format)?;
+            let double_delta = self.residue_bases::<LagrangeDoubleDeltaCoeff>(t, n, i);
+            write_points(&double_delta, writer, format)?;
+        }
+        Ok(())
+    }
+
+    /// Reads parameters written by [`Self::write`].
+    pub fn read<R>(reader: &mut R, format: SerdeFormat) -> io::Result<Self>
+    where
+        E::G1Affine: SerdeObject,
+        E::G2: ProcessedSerdeObject,
+        R: io::Read,
+    {
+        let kzg = ParamsKZG::<E>::read(reader, format)?;
+        let mut log2_t_max = [0u8; 4];
+        reader.read_exact(&mut log2_t_max)?;
+        let log2_t_max = u32::from_le_bytes(log2_t_max);
+        if log2_t_max != LOG2_T_MAX {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("parameters for T_MAX = 2^{log2_t_max}, expected 2^{LOG2_T_MAX}"),
+            ));
+        }
+        let n = kzg.g.len() >> LOG2_T_MAX;
+        let mut residue_bases = HashMap::new();
+        for (t, i) in Self::residues() {
+            for basis in [
+                PolynomialBasis::LagrangeDelta,
+                PolynomialBasis::LagrangeDoubleDelta,
+            ] {
+                let bases = read_points(reader, format, n)?;
+                residue_bases.insert(Residue { basis, t, n, i }, bases.into());
+            }
+        }
+        Ok(Self {
+            kzg,
+            residue_bases: Arc::new(RwLock::new(residue_bases)),
+        })
+    }
 }
 
 impl<E: KZGEngine, const LOG2_T_MAX: u32> InterleavedCommit<E::Fr, LOG2_T_MAX>
     for KZGCommitmentScheme<E>
 {
-    type Parameters = ParamsKZG<E>;
+    /// Building them is costly: see [`ParamsFflonkKZG`].
+    type Parameters = ParamsFflonkKZG<E, LOG2_T_MAX>;
 
     fn commit_interleaved<B: PolynomialRepresentation>(
         params: &<Self as InterleavedCommit<E::Fr, LOG2_T_MAX>>::Parameters,
@@ -143,9 +268,12 @@ impl<E: KZGEngine, const LOG2_T_MAX: u32> InterleavedCommit<E::Fr, LOG2_T_MAX>
 
 /// Commitment to `Σ_i X^i f_i(X^t)`, for `chunk` the polynomials `f_i` and
 /// `t` the next power of two of their number.
-fn commit_chunk<E, B>(params: &ParamsKZG<E>, chunk: &[&Polynomial<E::Fr, B>]) -> E::G1
+fn commit_chunk<E, B, const LOG2_T_MAX: u32>(
+    params: &ParamsFflonkKZG<E, LOG2_T_MAX>,
+    chunk: &[&Polynomial<E::Fr, B>],
+) -> E::G1
 where
-    E: MultiMillerLoop,
+    E: MultiMillerLoop + Debug,
     E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
     B: PolynomialRepresentation,
 {

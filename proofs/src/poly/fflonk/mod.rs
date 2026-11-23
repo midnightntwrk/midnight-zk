@@ -308,12 +308,14 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::io;
+
     use blake2b_simd::State as Blake2bState;
     use ff::Field;
     use midnight_curves::{Bls12, Fq};
     use rand_core::{OsRng, RngCore};
 
-    use super::Fflonk;
+    use super::{Fflonk, params::ParamsFflonkKZG};
     use crate::{
         poly::{
             Error, EvaluationDomain, FftDomain, PolynomialLabel, ProverQuery, VerifierQuery,
@@ -321,7 +323,7 @@ mod tests {
             kzg::{KZGCommitmentScheme, params::ParamsKZG},
         },
         transcript::{CircuitTranscript, Transcript},
-        utils::arithmetic::eval_polynomial,
+        utils::{arithmetic::eval_polynomial, helpers::SerdeFormat},
     };
 
     type Kzg = KZGCommitmentScheme<Bls12>;
@@ -404,7 +406,7 @@ mod tests {
     /// Commits to `nb_polys` sparse polynomials of `2^k` rows, given in
     /// Lagrange form, in its delta forms and in coefficient form, and checks
     /// that the commitments agree.
-    fn assert_lagrange_matches_coeff(params: &ParamsKZG<Bls12>, k: u32, nb_polys: usize) {
+    fn assert_lagrange_matches_coeff(params: &ParamsFflonkKZG<Bls12, 2>, k: u32, nb_polys: usize) {
         #[allow(clippy::upper_case_acronyms)]
         type PCS = Fflonk<Kzg, 2>;
         let domain = EvaluationDomain::<Fq>::new(1, k);
@@ -450,5 +452,25 @@ mod tests {
         for nb_polys in 1..=9 {
             assert_lagrange_matches_coeff(&params, 4, nb_polys);
         }
+    }
+
+    #[test]
+    fn test_read_write_params() {
+        let format = SerdeFormat::RawBytesUnchecked;
+        let mut bytes = Vec::new();
+        ParamsFflonkKZG::<Bls12, 2>::from_kzg(ParamsKZG::unsafe_setup(6, OsRng))
+            .write(&mut bytes, format)
+            .unwrap();
+
+        let params = ParamsFflonkKZG::<Bls12, 2>::read(&mut &bytes[..], format).unwrap();
+        assert_eq!(
+            <Fflonk<Kzg, 2> as PolynomialCommitmentScheme<Fq>>::max_k(&params),
+            4
+        );
+        assert_lagrange_matches_coeff(&params, 4, 7);
+
+        // Parameters for another `T_MAX`.
+        let other = ParamsFflonkKZG::<Bls12, 1>::read(&mut &bytes[..], format);
+        assert_eq!(other.unwrap_err().kind(), io::ErrorKind::InvalidData);
     }
 }

@@ -9,7 +9,7 @@ use midnight_curves::{
 use rand_core::RngCore;
 
 use crate::{
-    poly::{PolynomialBasis, PolynomialRepresentation, fflonk::params::ResidueBases},
+    poly::{PolynomialBasis, PolynomialRepresentation},
     utils::{
         SerdeFormat,
         arithmetic::{CurveAffine, g_to_lagrange, parallelize},
@@ -34,8 +34,6 @@ pub struct ParamsKZG<E: Engine> {
     pub(crate) g_lagrange_double_delta: Vec<E::G1Affine>,
     pub(crate) g2: E::G2,
     pub(crate) s_g2: E::G2,
-    /// The bases of every [`Residue`] committed to so far.
-    pub(crate) residue_bases: ResidueBases<E::G1Affine>,
 }
 
 /// Builds the suffix-sum of an affine SRS: `out[i] = sum_{j=i}^{n-1} input[j]`.
@@ -59,7 +57,11 @@ pub(crate) fn suffix_sum<C: CurveAffine>(input: &[C]) -> Vec<C> {
 }
 
 /// Writes `points`: compressed if `format` is `Processed`, raw otherwise.
-fn write_points<C, W>(points: &[C], writer: &mut W, format: SerdeFormat) -> io::Result<()>
+pub(crate) fn write_points<C, W>(
+    points: &[C],
+    writer: &mut W,
+    format: SerdeFormat,
+) -> io::Result<()>
 where
     C: GroupEncoding + SerdeObject,
     W: io::Write,
@@ -75,7 +77,7 @@ where
 
 /// Reads `n` points written by [`write_points`] in `format`. Compressed points
 /// are decompressed in parallel.
-fn read_points<C, R>(reader: &mut R, format: SerdeFormat, n: usize) -> io::Result<Vec<C>>
+pub(crate) fn read_points<C, R>(reader: &mut R, format: SerdeFormat, n: usize) -> io::Result<Vec<C>>
 where
     C: GroupEncoding + SerdeObject + Clone + Send,
     R: io::Read,
@@ -141,7 +143,6 @@ where
         self.g_lagrange = g_to_lagrange(&self.g, new_k);
         self.g_lagrange_delta = suffix_sum(&self.g_lagrange);
         self.g_lagrange_double_delta = suffix_sum(&self.g_lagrange_delta);
-        self.residue_bases = Default::default();
     }
 
     /// Initializes parameters for the curve, draws toxic secret from given rng.
@@ -201,7 +202,6 @@ where
             g_lagrange_double_delta,
             g2,
             s_g2,
-            residue_bases: Default::default(),
         }
     }
 
@@ -234,7 +234,6 @@ where
             g_lagrange_double_delta,
             g2,
             s_g2,
-            residue_bases: Default::default(),
         }
     }
 
@@ -301,7 +300,6 @@ where
             g_lagrange_double_delta,
             g2,
             s_g2,
-            residue_bases: Default::default(),
         })
     }
 }
