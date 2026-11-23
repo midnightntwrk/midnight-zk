@@ -39,8 +39,8 @@ mod sealed {
 
 /// The catalog of polynomial commitment schemes supported by zk_stdlib:
 /// [`KZG`] and [`FflonkKZG`] with `LOG2_T_MAX` in `1..=4`. Their parameters
-/// are a KZG SRS over BLS12-381. The catalog is closed: other schemes cannot
-/// implement this trait.
+/// are built from a KZG SRS over BLS12-381. The catalog is closed: other
+/// schemes cannot implement this trait.
 pub trait MidnightPCS:
     sealed::Sealed
     + InCircuitPCS<
@@ -49,7 +49,7 @@ pub trait MidnightPCS:
         AssignedVerificationGuard = AssignedAccumulator<Bls12>,
     > + PolynomialCommitmentScheme<
         Fq,
-        Parameters = ParamsKZG<Bls12>,
+        Parameters: From<ParamsKZG<Bls12>>,
         VerifierParameters = ParamsVerifierKZG<Bls12>,
         Commitment = KZGMultiCommitment<Bls12>,
         VerificationGuard = DualMSM<Bls12>,

@@ -27,10 +27,7 @@ use midnight_proofs::{
     },
     poly::{
         commitment::Guard,
-        kzg::{
-            commitment::KZGMultiCommitment,
-            params::{ParamsKZG, ParamsVerifierKZG},
-        },
+        kzg::{commitment::KZGMultiCommitment, params::ParamsVerifierKZG},
     },
     transcript::{CircuitTranscript, Hashable, Transcript, TranscriptField, TranscriptHash},
     utils::SerdeFormat,
@@ -527,7 +524,7 @@ impl<R: Relation> Circuit<F> for MidnightCircuit<'_, R> {
 /// beforehand (see [optimal_k]). Otherwise, the circuit will use the full
 /// size of the SRS, which may be unnecessarily large.
 pub fn setup_vk<R: Relation, PCS: MidnightPCS>(
-    params: &ParamsKZG<Bls12>,
+    params: &PCS::Parameters,
     relation: &R,
 ) -> MidnightVK<PCS> {
     let k = PCS::max_k(params);
@@ -568,7 +565,7 @@ pub fn setup_pk<R: Relation, PCS: MidnightPCS>(
 /// Produces a proof of relation `R` for the given instance (using the given
 /// proving key and witness).
 pub fn prove<R, H, PCS>(
-    params: &ParamsKZG<Bls12>,
+    params: &PCS::Parameters,
     pk: &MidnightPK<R, PCS>,
     relation: &R,
     instance: &R::Instance,

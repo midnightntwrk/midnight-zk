@@ -259,11 +259,12 @@ pub enum SrsSource {
 
 /// Loads an SRS (over BLS12-381) for circuits of size `2^k` under the
 /// commitment scheme `PCS`.
-pub fn load_srs<PCS: MidnightPCS>(source: SrsSource, k: u32) -> ParamsKZG<Bls12> {
+pub fn load_srs<PCS: MidnightPCS>(source: SrsSource, k: u32) -> PCS::Parameters {
     match source {
         SrsSource::Filecoin => filecoin_srs::<PCS>(k),
         SrsSource::Midnight => midnight_srs::<PCS>(k),
     }
+    .into()
 }
 
 /// Loads Filecoin's production SRS (over BLS12-381) for the given relation.
