@@ -99,6 +99,52 @@ fn suffix_sum<C: CurveAffine>(input: &[C]) -> Vec<C> {
     acc_affine
 }
 
+/// Writes `points`: compressed if `format` is `Processed`, raw otherwise.
+fn write_points<C, W>(points: &[C], writer: &mut W, format: SerdeFormat) -> io::Result<()>
+where
+    C: GroupEncoding + SerdeObject,
+    W: io::Write,
+{
+    for el in points {
+        match format {
+            SerdeFormat::Processed => writer.write_all(el.to_bytes().as_ref())?,
+            _ => el.write_raw(writer)?,
+        }
+    }
+    Ok(())
+}
+
+/// Reads `n` points written by [`write_points`] in `format`. Compressed points
+/// are decompressed in parallel.
+fn read_points<C, R>(reader: &mut R, format: SerdeFormat, n: usize) -> io::Result<Vec<C>>
+where
+    C: GroupEncoding + SerdeObject + Clone + Send,
+    R: io::Read,
+{
+    match format {
+        SerdeFormat::Processed => {
+            let mut points_compressed = vec![C::Repr::default(); n];
+            for points_compressed in points_compressed.iter_mut() {
+                reader.read_exact((*points_compressed).as_mut())?;
+            }
+            let mut points = vec![Option::<C>::None; n];
+            parallelize(&mut points, |points, chunks| {
+                for (i, point) in points.iter_mut().enumerate() {
+                    *point = Option::from(C::from_bytes(&points_compressed[chunks + i]));
+                }
+            });
+            points
+                .into_iter()
+                .map(|p| p.ok_or_else(|| io::Error::other("invalid point encoding")))
+                .collect()
+        }
+        SerdeFormat::RawBytes => (0..n).map(|_| C::read_raw(reader)).collect(),
+        SerdeFormat::RawBytesUnchecked => {
+            Ok((0..n).map(|_| C::read_raw_unchecked(reader)).collect())
+        }
+    }
+}
+
 impl<E> ParamsKZG<E>
 where
     E: Engine + Debug,
@@ -305,18 +351,8 @@ where
         W: io::Write,
     {
         writer.write_all(&self.g.len().ilog2().to_le_bytes())?;
-        for el in self.g.iter() {
-            match format {
-                SerdeFormat::Processed => writer.write_all(el.to_bytes().as_ref())?,
-                _ => el.write_raw(writer)?,
-            }
-        }
-        for el in self.g_lagrange.iter() {
-            match format {
-                SerdeFormat::Processed => writer.write_all(el.to_bytes().as_ref())?,
-                _ => el.write_raw(writer)?,
-            }
-        }
+        write_points(&self.g, writer, format)?;
+        write_points(&self.g_lagrange, writer, format)?;
         self.g2.write(writer, format)?;
         self.s_g2.write(writer, format)?;
         Ok(())
@@ -340,47 +376,8 @@ where
         }
         let n = 1 << k;
 
-        let (g, g_lagrange) = match format {
-            SerdeFormat::Processed => {
-                let load_points_from_file_parallelly =
-                    |reader: &mut R| -> io::Result<Vec<E::G1Affine>> {
-                        let mut points_compressed =
-                            vec![<E::G1Affine as GroupEncoding>::Repr::default(); n];
-                        for points_compressed in points_compressed.iter_mut() {
-                            reader.read_exact((*points_compressed).as_mut())?;
-                        }
-                        let mut points = vec![Option::<E::G1Affine>::None; n];
-                        parallelize(&mut points, |points, chunks| {
-                            for (i, point) in points.iter_mut().enumerate() {
-                                *point = Option::from(E::G1Affine::from_bytes(
-                                    &points_compressed[chunks + i],
-                                ));
-                            }
-                        });
-                        points
-                            .into_iter()
-                            .map(|p| p.ok_or_else(|| io::Error::other("invalid point encoding")))
-                            .collect()
-                    };
-
-                let g = load_points_from_file_parallelly(reader)?;
-                let g_lagrange = load_points_from_file_parallelly(reader)?;
-                (g, g_lagrange)
-            }
-            SerdeFormat::RawBytes => {
-                let g =
-                    (0..n).map(|_| E::G1Affine::read_raw(reader)).collect::<Result<Vec<_>, _>>()?;
-                let g_lagrange =
-                    (0..n).map(|_| E::G1Affine::read_raw(reader)).collect::<Result<Vec<_>, _>>()?;
-                (g, g_lagrange)
-            }
-            SerdeFormat::RawBytesUnchecked => {
-                let g = (0..n).map(|_| E::G1Affine::read_raw_unchecked(reader)).collect::<Vec<_>>();
-                let g_lagrange =
-                    (0..n).map(|_| E::G1Affine::read_raw_unchecked(reader)).collect::<Vec<_>>();
-                (g, g_lagrange)
-            }
-        };
+        let g = read_points(reader, format, n)?;
+        let g_lagrange = read_points(reader, format, n)?;
 
         let g2 = E::G2::read(reader, format)?;
         let s_g2 = E::G2::read(reader, format)?;
