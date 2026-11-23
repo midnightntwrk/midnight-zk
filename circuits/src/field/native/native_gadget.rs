@@ -1028,6 +1028,15 @@ impl<F: CircuitField> AssertionInstructions<F, AssignedNative<F>> for NativeGadg
     ) -> Result<(), Error> {
         self.native_chip.assert_not_equal_to_fixed(layouter, x, constant)
     }
+
+    fn assert_not_equal_to_many_fixed(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &AssignedNative<F>,
+        constants: &[F],
+    ) -> Result<(), Error> {
+        self.native_chip.assert_not_equal_to_many_fixed(layouter, x, constants)
+    }
 }
 
 // Inherit Bit Assertion Instructions.

@@ -1647,11 +1647,7 @@ where
         let diff = native_gadget.linear_combination(layouter, &terms, F::ZERO)?;
 
         // We assert that `diff not in {0, m, -m}`.
-        // TODO: the following could be done more efficiently if we had dedicated
-        // instructions in the native gadget.
-        native_gadget.assert_non_zero(layouter, &diff)?;
-        native_gadget.assert_not_equal_to_fixed(layouter, &diff, m)?;
-        native_gadget.assert_not_equal_to_fixed(layouter, &diff, -m)
+        native_gadget.assert_not_equal_to_many_fixed(layouter, &diff, &[F::ZERO, m, -m])
     }
 
     /// Returns `n * p`, where `n` is a constant `u128`.

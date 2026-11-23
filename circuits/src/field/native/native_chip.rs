@@ -429,6 +429,36 @@ impl<F: CircuitField> NativeChip<F> {
         Ok(())
     }
 
+    /// Asserts that `x^2 * t + a * x + b != 0`, by exhibiting its inverse `s`
+    /// in one row of the quartic gate, with `(s, x, x, t, 1)` in the first
+    /// five columns.
+    fn assert_quartic_non_zero(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &AssignedNative<F>,
+        t: &AssignedNative<F>,
+        a: F,
+        b: F,
+    ) -> Result<(), Error> {
+        let one = self.assign_fixed(layouter, F::ONE)?;
+        layouter.assign_region(
+            || "assert quartic non-zero",
+            |mut region| {
+                // s * x * x * t + a * s * x + b * s = 1
+                let s_value = x
+                    .value()
+                    .zip(t.value())
+                    .map(|(x, t)| (*x * x * t + a * x + b).invert().unwrap_or(F::ZERO));
+                region.assign_advice(|| "s", self.config.value_cols[0], 0, || s_value)?;
+                self.copy_in_row(&mut region, x, &self.config.value_cols[1], 0)?;
+                self.copy_in_row(&mut region, x, &self.config.value_cols[2], 0)?;
+                self.copy_in_row(&mut region, t, &self.config.value_cols[3], 0)?;
+                self.copy_in_row(&mut region, &one, &self.config.value_cols[4], 0)?;
+                self.quartic(&mut region, a, b, 0)
+            },
+        )
+    }
+
     /// Assigns the given value into a variable `x`, and returns `(x, r)`, where
     /// `r` is such that `(x - shift) * r = 1`.
     ///
@@ -837,6 +867,30 @@ where
         // which we discard.
         let (y, _) = self.assign_with_shifted_inverse(layouter, x.value().copied(), constant)?;
         self.assert_equal(layouter, x, &y)
+    }
+
+    fn assert_not_equal_to_many_fixed(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &AssignedNative<F>,
+        constants: &[F],
+    ) -> Result<(), Error> {
+        // Three constants with zero sum take one row:
+        //   (x - c1)(x - c2)(x - c3) = x^3 + (c1c2 + c1c3 + c2c3) x - c1c2c3.
+        if let [c1, c2, c3] = constants
+            && F::is_zero_vartime(&(*c1 + c2 + c3))
+        {
+            let e2 = *c1 * c2 + *c1 * c3 + *c2 * c3;
+            return self.assert_quartic_non_zero(layouter, x, x, e2, -(*c1 * c2 * c3));
+        }
+        // Otherwise, every pair takes one row:
+        //   (x - c1)(x - c2) = x^2 - (c1 + c2) x + c1c2.
+        let one = self.assign_fixed(layouter, F::ONE)?;
+        constants.chunks(2).try_for_each(|chunk| match chunk {
+            [c1, c2] => self.assert_quartic_non_zero(layouter, x, &one, -(*c1 + c2), *c1 * c2),
+            [c] => self.assert_not_equal_to_fixed(layouter, x, *c),
+            _ => unreachable!(),
+        })
     }
 }
 

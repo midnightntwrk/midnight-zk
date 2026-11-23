@@ -8,6 +8,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 ### Added
+* `AssertionInstructions::assert_not_equal_to_many_fixed`, which asserts that an element differs from all the given constants; the native chip checks two constants per row, or three per row if they sum to zero, and the foreign Weierstrass chip uses it to compare x-coordinates [#682](https://github.com/midnightntwrk/midnight-zk/pull/682)
 * `Accumulator::is_collapsed_with` and `Msm::is_collapsed_with`, which check that an accumulator or MSM has the shape `assign_collapsed` assigns
 * `EccInstructions::point_from_coordinates_without_subgroup_check`, which creates a point from its coordinates without enforcing subgroup membership with constraints [#654](https://github.com/midnightntwrk/midnight-zk/pull/654)
 * `verifier::InCircuitKZGEngine`, the `KZGEngine`s whose KZG proofs can be verified in-circuit, bounding the KZG types of the in-circuit verifier [#644](https://github.com/midnightntwrk/midnight-zk/pull/644)
