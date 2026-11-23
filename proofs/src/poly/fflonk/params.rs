@@ -114,9 +114,13 @@ where
     }
 }
 
-impl<E: KZGEngine> InterleavedCommit<E::Fr> for KZGCommitmentScheme<E> {
+impl<E: KZGEngine, const LOG2_T_MAX: u32> InterleavedCommit<E::Fr, LOG2_T_MAX>
+    for KZGCommitmentScheme<E>
+{
+    type Parameters = ParamsKZG<E>;
+
     fn commit_interleaved<B: PolynomialRepresentation>(
-        params: &Self::Parameters,
+        params: &<Self as InterleavedCommit<E::Fr, LOG2_T_MAX>>::Parameters,
         chunks: &[&[&Polynomial<E::Fr, B>]],
         labels: &[PolynomialLabel],
     ) -> Self::Commitment {

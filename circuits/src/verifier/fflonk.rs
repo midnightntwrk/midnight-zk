@@ -48,7 +48,7 @@ use crate::{
 impl<F, PCS, const LOG2_T_MAX: u32> InCircuitPCS<F> for Fflonk<PCS, LOG2_T_MAX>
 where
     F: CircuitField,
-    PCS: InCircuitPCS<F> + InterleavedCommit<F>,
+    PCS: InCircuitPCS<F> + InterleavedCommit<F, LOG2_T_MAX>,
 {
     type CommitmentChip = PCS::CommitmentChip;
     type AssignedVerificationGuard = PCS::AssignedVerificationGuard;

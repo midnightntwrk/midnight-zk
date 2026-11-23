@@ -39,6 +39,7 @@ pub mod params;
 mod utils;
 
 use std::{
+    borrow::Borrow,
     collections::{BTreeMap, HashMap, HashSet, hash_map::Entry},
     hash::Hash,
     io::{self, Read},
@@ -87,23 +88,23 @@ impl<PCS, const LOG2_T_MAX: u32> Fflonk<PCS, LOG2_T_MAX> {
 impl<F, PCS, const LOG2_T_MAX: u32> PolynomialCommitmentScheme<F> for Fflonk<PCS, LOG2_T_MAX>
 where
     F: PrimeField,
-    PCS: InterleavedCommit<F>,
+    PCS: InterleavedCommit<F, LOG2_T_MAX>,
 {
-    type Parameters = PCS::Parameters;
+    type Parameters = <PCS as InterleavedCommit<F, LOG2_T_MAX>>::Parameters;
     type VerifierParameters = PCS::VerifierParameters;
     type Commitment = PCS::Commitment;
     type VerificationGuard = PCS::VerificationGuard;
 
     fn gen_params(k: u32) -> Self::Parameters {
-        PCS::gen_params(k + LOG2_T_MAX)
+        PCS::gen_params(k + LOG2_T_MAX).into()
     }
 
     fn max_k(params: &Self::Parameters) -> u32 {
-        PCS::max_k(params).saturating_sub(LOG2_T_MAX)
+        PCS::max_k(params.borrow()).saturating_sub(LOG2_T_MAX)
     }
 
     fn get_verifier_params(params: &Self::Parameters) -> Self::VerifierParameters {
-        PCS::get_verifier_params(params)
+        PCS::get_verifier_params(params.borrow())
     }
 
     fn commit_many<B: PolynomialRepresentation>(
@@ -223,7 +224,7 @@ where
             }
         }
 
-        PCS::multi_open(params, &inner_queries, transcript)
+        PCS::multi_open(params.borrow(), &inner_queries, transcript)
     }
 
     fn commitment_labels(commitment: &Self::Commitment) -> Vec<PolynomialLabel> {
