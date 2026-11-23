@@ -2163,12 +2163,25 @@ impl<F: Field> ConstraintSystem<F> {
         *[degree_without_lookup, degree].iter().max().unwrap()
     }
 
+    // (An upper bound on) the number of distinct queries a FFLONK batch is
+    // queried at.
+    //
+    // Because FFLONK combines polynomials with possibly different query
+    // points, it is taken as the union of every query, plus `prev`, `cur` and
+    // `next`, and one for the last-row-rotation in the permutation argument.
+    fn max_queries(&self) -> usize {
+        let rotations: std::collections::HashSet<Rotation> =
+            [Rotation::prev(), Rotation::cur(), Rotation::next()]
+                .into_iter()
+                .chain(self.advice_queries.iter().map(|&(_, r)| r))
+                .collect();
+        rotations.len() + 1
+    }
+
     /// Compute the number of blinding factors necessary to perfectly blind
     /// each of the prover's witness polynomials.
     pub fn blinding_factors(&self) -> usize {
-        // All of the prover's advice columns are evaluated at no more than
-        let factors = *self.num_advice_queries.iter().max().unwrap_or(&1);
-        // distinct points during gate checks.
+        let factors = self.max_queries();
 
         // - The permutation argument witness polynomials are evaluated at most 3 times.
         // - Each lookup argument has independent witness polynomials, and they are
@@ -2188,19 +2201,11 @@ impl<F: Field> ConstraintSystem<F> {
             factors + self.lookups.iter().map(|l| l.num_chunks(self.degree())).sum::<usize>();
 
         // Each polynomial is evaluated at most an additional time during
-        // multiopen (at x_3 to produce q_evals):
+        // multiopen (at x_3 to produce q_evals).
         let factors = factors + 1;
 
-        // h(x) is derived by the other evaluations so it does not reveal
-        // anything; in fact it does not even appear in the proof.
-
-        // Add an additional blinding factor as a slight defense against
-        // off-by-one errors.
-        let factors = factors + 1;
-
-        // Add an additional blinding factor as a security margin for opening
-        // the linearization polynomial in the multi-open argument
-        let factors = factors + 1;
+        // Add +1 as a defense against off-by-one errors, and +2 as a security margin.
+        let factors = factors + 3;
 
         if factors > i32::MAX as usize {
             panic!("Number of blinding factors overflowed max expected value");
