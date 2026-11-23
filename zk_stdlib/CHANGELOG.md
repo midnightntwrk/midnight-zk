@@ -24,6 +24,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Removed
 ### Fixed
+* Foreign Weierstrass incomplete addition asserts its preconditions, so the ECC chips (secp256k1, P-256 and BLS12-381) are sound on curve points outside the prime-order subgroup. This changes the verifying keys of circuits using them [#678](https://github.com/midnightntwrk/midnight-zk/pull/678)
 * `optimal_k` returns the smallest `k` for which the circuit, with its range-check table, fits in `2^k` rows, instead of a size computed with a smaller table [#631](https://github.com/midnightntwrk/midnight-zk/pull/631)
 
 ## [3.0.0-rc.1]
