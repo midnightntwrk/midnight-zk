@@ -1081,6 +1081,40 @@ where
         )
     }
 
+    fn pow(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &AssignedNative<F>,
+        n: u64,
+    ) -> Result<AssignedNative<F>, Error> {
+        if let Some(c) = self.as_constant(x) {
+            return self.assign_fixed(layouter, c.pow_vartime([n]));
+        }
+        if n == 0 {
+            return self.assign_fixed(layouter, F::ONE);
+        }
+
+        // Square-and-multiply in base 4: on the i-th iteration, tmp = x^(4^i), res
+        // is multiplied by tmp^d, for the i-th base-4 digit d of n, and tmp is
+        // raised to the 4th power, each in at most one row.
+        let mut n = n;
+        let mut tmp = x.clone();
+        let mut res: Option<AssignedNative<F>> = None;
+        while n > 0 {
+            let d = (n & 3) as usize;
+            if d > 0 {
+                let mut xs: Vec<_> = res.into_iter().collect();
+                xs.extend(std::iter::repeat_n(tmp.clone(), d));
+                res = Some(self.mul_many(layouter, &xs)?);
+            }
+            n >>= 2;
+            if n > 0 {
+                tmp = self.mul_many(layouter, &vec![tmp; 4])?;
+            }
+        }
+        Ok(res.unwrap())
+    }
+
     fn div(
         &self,
         layouter: &mut impl Layouter<F>,

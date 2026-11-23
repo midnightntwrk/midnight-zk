@@ -1099,6 +1099,15 @@ impl<F: CircuitField> ArithInstructions<F, AssignedNative<F>> for NativeGadget<F
         self.native_chip.mul(layouter, x, y, multiplying_constant)
     }
 
+    fn pow(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &AssignedNative<F>,
+        n: u64,
+    ) -> Result<AssignedNative<F>, Error> {
+        self.native_chip.pow(layouter, x, n)
+    }
+
     fn div(
         &self,
         layouter: &mut impl Layouter<F>,
