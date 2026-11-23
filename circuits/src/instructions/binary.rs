@@ -110,7 +110,7 @@ pub trait BinaryInstructions<F: CircuitField> {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use std::{cmp::min, marker::PhantomData};
+    use std::marker::PhantomData;
 
     use ff::FromUniformBytes;
     use midnight_proofs::{
@@ -176,17 +176,16 @@ pub(crate) mod tests {
         ) -> Result<(), Error> {
             let chip = BinaryChip::new_from_scratch(&config);
 
-            // b2 does not apply in tests of arity-1 functions.
-            let b2_idx = min(self.inputs.len() - 1, 1);
-            let b1 = chip.assign(&mut layouter, Value::known(self.inputs[0]))?;
-            let b2 = chip.assign(&mut layouter, Value::known(self.inputs[b2_idx]))?;
+            let bs = (self.inputs.iter())
+                .map(|b| chip.assign(&mut layouter, Value::known(*b)))
+                .collect::<Result<Vec<_>, _>>()?;
 
             cost_measure_start(&mut layouter);
             let res = match self.operation {
-                Operation::And => chip.and(&mut layouter, &[b1, b2]),
-                Operation::Or => chip.or(&mut layouter, &[b1, b2]),
-                Operation::Xor => chip.xor(&mut layouter, &[b1, b2]),
-                Operation::Not => chip.not(&mut layouter, &b1),
+                Operation::And => chip.and(&mut layouter, &bs),
+                Operation::Or => chip.or(&mut layouter, &bs),
+                Operation::Xor => chip.xor(&mut layouter, &bs),
+                Operation::Not => chip.not(&mut layouter, &bs[0]),
             }?;
             cost_measure_end(&mut layouter);
 
@@ -267,6 +266,12 @@ pub(crate) mod tests {
         test_binary_op::<F, BinaryChip>(&[0, 1], 0, Operation::And, false, "", "");
         test_binary_op::<F, BinaryChip>(&[1, 0], 0, Operation::And, false, "", "");
         test_binary_op::<F, BinaryChip>(&[1, 1], 1, Operation::And, false, "", "");
+        test_binary_op::<F, BinaryChip>(&[1, 1, 1], 1, Operation::And, false, "", "");
+        test_binary_op::<F, BinaryChip>(&[1, 0, 1], 0, Operation::And, false, "", "");
+        test_binary_op::<F, BinaryChip>(&[1, 1, 1, 1], 1, Operation::And, false, "", "");
+        test_binary_op::<F, BinaryChip>(&[1, 1, 0, 1], 0, Operation::And, false, "", "");
+        test_binary_op::<F, BinaryChip>(&[1, 1, 1, 1, 1, 1], 1, Operation::And, false, "", "");
+        test_binary_op::<F, BinaryChip>(&[1, 1, 1, 1, 1, 0], 0, Operation::And, false, "", "");
     }
 
     pub fn test_or<F, BinaryChip>(name: &str)

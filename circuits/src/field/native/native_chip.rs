@@ -429,6 +429,44 @@ impl<F: CircuitField> NativeChip<F> {
         Ok(())
     }
 
+    /// Returns the product of the given elements, up to four per row.
+    fn mul_many(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        xs: &[AssignedNative<F>],
+    ) -> Result<AssignedNative<F>, Error> {
+        let (first, rest) = xs.split_first().expect("cannot multiply an empty list of elements");
+        rest.chunks(3).try_fold(first.clone(), |acc, chunk| {
+            let one;
+            let ys = match chunk {
+                [y] => return self.mul(layouter, &acc, y, None),
+                [y1, y2] => {
+                    one = self.assign_fixed(layouter, F::ONE)?;
+                    [&acc, y1, y2, &one]
+                }
+                [y1, y2, y3] => [&acc, y1, y2, y3],
+                _ => unreachable!(),
+            };
+            let res_value = (ys.iter()).fold(Value::known(F::ONE), |p, y| p * y.value());
+            layouter.assign_region(
+                || "mul many",
+                |mut region| {
+                    for (y, col) in ys.iter().zip(self.config.value_cols.iter()) {
+                        self.copy_in_row(&mut region, y, col, 0)?;
+                    }
+                    let res = region.assign_native(
+                        || "res",
+                        self.config.value_cols[4],
+                        0,
+                        || res_value,
+                    )?;
+                    self.quartic(&mut region, F::ZERO, F::ZERO, 0)?;
+                    Ok(res)
+                },
+            )
+        })
+    }
+
     /// Asserts that `x^2 * t + a * x + b != 0`, by exhibiting its inverse `s`
     /// in one row of the quartic gate, with `(s, x, x, t, 1)` in the first
     /// five columns.
@@ -1310,11 +1348,8 @@ where
         layouter: &mut impl Layouter<F>,
         bits: &[AssignedBit<F>],
     ) -> Result<AssignedBit<F>, Error> {
-        let mut acc = bits.first().unwrap().0.clone();
-        for b in bits.iter().skip(1) {
-            acc = self.mul(layouter, &acc, &b.0, None)?;
-        }
-        Ok(AssignedBit(acc))
+        let xs: Vec<_> = bits.iter().map(|b| b.0.clone()).collect();
+        Ok(AssignedBit(self.mul_many(layouter, &xs)?))
     }
 
     fn or(
