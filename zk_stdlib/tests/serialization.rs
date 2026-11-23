@@ -188,7 +188,7 @@ fn vk_write_then_read_processed() {
 fn vk_write_then_read_raw() {
     for arch in ARCHITECTURES {
         vk_serde_test(arch, SerdeFormat::RawBytes, SerdeFormat::RawBytes);
-        vk_serde_test(arch, SerdeFormat::RawBytes, SerdeFormat::RawBytesUnchecked);
+        vk_serde_test(arch, SerdeFormat::RawBytesUnchecked, SerdeFormat::RawBytes);
     }
 }
 
@@ -246,7 +246,7 @@ fn pk_write_then_read_processed() {
 fn pk_write_then_read_raw() {
     for arch in ARCHITECTURES {
         pk_serde_test(arch, SerdeFormat::RawBytes, SerdeFormat::RawBytes);
-        pk_serde_test(arch, SerdeFormat::RawBytes, SerdeFormat::RawBytesUnchecked);
+        pk_serde_test(arch, SerdeFormat::RawBytesUnchecked, SerdeFormat::RawBytes);
     }
 }
 

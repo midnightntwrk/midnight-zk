@@ -5,13 +5,18 @@ use std::io::{self, Read, Write};
 /// Trait for converting raw bytes to/from the internal representation of a
 /// type. For example, field elements are represented in Montgomery form and
 /// serialized/deserialized without Montgomery reduction.
+///
+/// The checks made by each function depend on the type. On BLS12-381 points,
+/// the checked functions verify the encoding, the curve equation and the
+/// prime-order subgroup, and the unchecked ones only skip the subgroup check.
 pub trait SerdeObject: Sized {
-    /// The purpose of unchecked functions is to read the internal memory
-    /// representation of a type from bytes as quickly as possible. No
-    /// sanitization checks are performed to ensure the bytes represent a
-    /// valid object. As such this function should only be used internally
-    /// as an extension of machine memory. It should not be used to deserialize
-    /// externally provided data.
+    /// Reads the internal memory representation from bytes as quickly as
+    /// possible, skipping checks that [`from_raw_bytes`](Self::from_raw_bytes)
+    /// makes. Only use it on trusted data.
+    ///
+    /// # Panics
+    ///
+    /// May panic if the bytes have the wrong length or cannot be decoded.
     fn from_raw_bytes_unchecked(bytes: &[u8]) -> Self;
 
     /// Read the internal memory representation from bytes.
@@ -21,12 +26,13 @@ pub trait SerdeObject: Sized {
     /// Convert the internal memory representation to bytes.
     fn to_raw_bytes(&self) -> Vec<u8>;
 
-    /// The purpose of unchecked functions is to read the internal memory
-    /// representation of a type from disk as quickly as possible. No
-    /// sanitization checks are performed to ensure the bytes represent a
-    /// valid object. This function should only be used internally when some
-    /// machine state cannot be kept in memory (e.g., between runs)
-    /// and needs to be reloaded as quickly as possible.
+    /// Reads the internal memory representation from a reader as quickly as
+    /// possible, skipping checks that [`read_raw`](Self::read_raw) makes. Only
+    /// use it on trusted data.
+    ///
+    /// # Panics
+    ///
+    /// May panic if the reader fails or the bytes cannot be decoded.
     fn read_raw_unchecked<R: Read>(reader: &mut R) -> Self;
 
     /// Read the internal memory representation from a reader.

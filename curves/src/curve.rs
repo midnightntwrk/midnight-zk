@@ -106,17 +106,20 @@ pub trait CurveAffine:
 
     /// Gets the coordinates of this point.
     ///
-    /// Returns None if this is the identity.
+    /// The identity has no affine coordinates: the curves of this crate return
+    /// $(0, 0)$ for it, which is not on the curve.
     fn coordinates(&self) -> CtOption<Coordinates<Self>>;
 
-    /// Obtains a point given $(x, y)$, failing if it is not on the
-    /// curve.
+    /// Obtains a point given $(x, y)$, failing if it is not on the curve or,
+    /// on BLS12-381, not in the prime-order subgroup.
+    ///
+    /// The curves of this crate map $(0, 0)$ to the identity.
     fn from_xy(x: Self::Base, y: Self::Base) -> CtOption<Self>;
 
-    /// The point $(x, y)$, which the caller guarantees is on the curve and,
-    /// where [`from_xy`](Self::from_xy) also checks it, in the prime-order
-    /// subgroup (e.g. a sum of such points). Curves whose check is costly
-    /// skip it; the default checks.
+    /// The point $(x, y)$, which the caller guarantees is accepted by
+    /// [`from_xy`](Self::from_xy) (e.g. a sum of such points). An
+    /// implementation may skip every check of `from_xy`, including the curve
+    /// equation; the default checks.
     ///
     /// # Panics
     ///
@@ -153,8 +156,8 @@ pub struct Coordinates<C: CurveAffine> {
 }
 
 impl<C: CurveAffine> Coordinates<C> {
-    /// Obtains a `Coordinates` value given $(x, y)$, failing if it is not on
-    /// the curve.
+    /// Obtains a `Coordinates` value given $(x, y)$, failing if
+    /// [`CurveAffine::from_xy`] rejects it.
     pub fn from_xy(x: C::Base, y: C::Base) -> CtOption<Self> {
         // We use CurveAffine::from_xy to validate the coordinates.
         C::from_xy(x, y).map(|_| Coordinates { x, y })
