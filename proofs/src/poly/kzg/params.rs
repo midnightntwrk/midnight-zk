@@ -1,9 +1,4 @@
-use std::{
-    collections::HashMap,
-    fmt::Debug,
-    io,
-    sync::{Arc, RwLock},
-};
+use std::{fmt::Debug, io};
 
 use ff::{Field, PrimeField};
 use group::{Curve, Group, GroupEncoding, prime::PrimeCurveAffine};
@@ -14,7 +9,7 @@ use midnight_curves::{
 use rand_core::RngCore;
 
 use crate::{
-    poly::{Coeff, LagrangeCoeff, LagrangeDeltaCoeff, PolynomialBasis, PolynomialRepresentation},
+    poly::{PolynomialBasis, PolynomialRepresentation, fflonk::params::ResidueBases},
     utils::{
         SerdeFormat,
         arithmetic::{CurveAffine, g_to_lagrange, parallelize},
@@ -40,44 +35,8 @@ pub struct ParamsKZG<E: Engine> {
     pub(crate) g2: E::G2,
     pub(crate) s_g2: E::G2,
     /// The bases of every [`Residue`] committed to so far.
-    residue_bases: ResidueBases<E::G1Affine>,
+    pub(crate) residue_bases: ResidueBases<E::G1Affine>,
 }
-
-/// Residue `i` modulo `t`, identifying the bases for committing to `X^i f(X^t)`
-/// from the `n` values of `f`, the `i`-th part of `g(X) = Σ_i X^i f_i(X^t)`.
-/// These bases depend heavily on the representation `basis` of the values, as
-/// detailed below. The name comes from `X^i f(X^t)` being made of the monomials
-/// `X^e` with `e ≡ i (mod t)`.
-///
-/// - `Coeff`: the strided monomials `[s^(i + t·j)]`. For `f = Σ_j c_j X^j`,
-///   `X^i f(X^t) = Σ_j c_j X^(i + t·j)`.
-///
-/// - `Lagrange`: `[s^i L_j(s^t)]`, for `L_j` the Lagrange basis of the domain
-///   of size `n`: the Lagrange basis built from the strided monomials.
-///
-/// - `LagrangeDelta`: `[s^i Σ_{k ≥ j} L_k(s^t)]`, the suffix sums of the
-///   `Lagrange` bases, as `g_lagrange_delta` is of `g_lagrange`.
-///
-/// - `LagrangeDoubleDelta`: `[s^i Σ_{k ≥ j} (k - j + 1) L_k(s^t)]`, the suffix
-///   sums of the `LagrangeDelta` bases.
-///
-/// Committing to every `f_i` on its own bases keeps the zeros of its values
-/// free. The bases are computed on first use, as the `Lagrange` ones take a
-/// group FFT of size `n`, and cached in `ParamsKZG`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-struct Residue {
-    /// The representation of the values of `f_i`.
-    basis: PolynomialBasis,
-    /// The modulus, a power of two.
-    t: usize,
-    /// The number of values of `f_i`.
-    n: usize,
-    /// The residue, smaller than `t`.
-    i: usize,
-}
-
-/// The bases of every [`Residue`] committed to so far.
-type ResidueBases<C> = Arc<RwLock<HashMap<Residue, Arc<[C]>>>>;
 
 /// Builds the suffix-sum of an affine SRS: `out[i] = sum_{j=i}^{n-1} input[j]`.
 ///
@@ -87,7 +46,7 @@ type ResidueBases<C> = Arc<RwLock<HashMap<Residue, Arc<[C]>>>>;
 ///
 /// # Panics
 /// If input is empty
-fn suffix_sum<C: CurveAffine>(input: &[C]) -> Vec<C> {
+pub(crate) fn suffix_sum<C: CurveAffine>(input: &[C]) -> Vec<C> {
     let n = input.len();
     let mut acc_proj: Vec<C::Curve> = vec![C::Curve::identity(); n];
     acc_proj[n - 1] = input[n - 1].into();
@@ -161,55 +120,6 @@ where
                 unimplemented!("KZG does not support extended Lagrange bases")
             }
         }
-    }
-
-    /// The bases of the [`Residue`] `i` modulo `t`, for committing to
-    /// `X^i f(X^t)` from the `n` values of `f` in the representation `B`.
-    ///
-    /// # Panics
-    ///
-    /// If `B` is the extended Lagrange basis, if `t·n` is larger than the SRS,
-    /// or if `B` is Lagrange or one of its delta forms and `n` is not a power
-    /// of two.
-    pub(crate) fn residue_bases<B: PolynomialRepresentation>(
-        &self,
-        t: usize,
-        n: usize,
-        i: usize,
-    ) -> Arc<[E::G1Affine]> {
-        let residue = Residue {
-            basis: B::BASIS,
-            t,
-            n,
-            i,
-        };
-        if let Some(bases) =
-            self.residue_bases.read().expect("residue bases lock poisoned").get(&residue)
-        {
-            return bases.clone();
-        }
-        let bases: Arc<[_]> = match B::BASIS {
-            PolynomialBasis::Coeff => {
-                assert!(
-                    t * n <= self.g.len(),
-                    "no residue bases of size {n} modulo {t}"
-                );
-                self.g[i..].iter().step_by(t).take(n).copied().collect()
-            }
-            PolynomialBasis::Lagrange => {
-                assert!(n.is_power_of_two(), "no Lagrange residue bases of size {n}");
-                g_to_lagrange(&self.residue_bases::<Coeff>(t, n, i), n.ilog2()).into()
-            }
-            PolynomialBasis::LagrangeDelta => {
-                suffix_sum(&self.residue_bases::<LagrangeCoeff>(t, n, i)).into()
-            }
-            PolynomialBasis::LagrangeDoubleDelta => {
-                suffix_sum(&self.residue_bases::<LagrangeDeltaCoeff>(t, n, i)).into()
-            }
-            basis => panic!("no residue bases in the {basis:?} basis"),
-        };
-        let mut cache = self.residue_bases.write().expect("residue bases lock poisoned");
-        cache.entry(residue).or_insert(bases).clone()
     }
 
     /// Returns the size of the SRS, expressed as the exponent `k` such that it

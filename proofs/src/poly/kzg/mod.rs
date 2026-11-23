@@ -37,7 +37,7 @@ use rand_core::OsRng;
 use crate::{
     poly::{
         Coeff, Error, Polynomial, PolynomialRepresentation, ProverQuery,
-        commitment::{InterleavedCommit, PolynomialCommitmentScheme},
+        commitment::PolynomialCommitmentScheme,
         kzg::{
             commitment::NB_POLYS_PREFIX_BYTES,
             msm::DualMSM,
@@ -554,33 +554,10 @@ impl<E: KZGEngine> PolynomialCommitmentScheme<E::Fr> for KZGCommitmentScheme<E> 
     }
 }
 
-impl<E: KZGEngine> InterleavedCommit<E::Fr> for KZGCommitmentScheme<E> {
-    fn commit_interleaved<B: PolynomialRepresentation>(
-        params: &Self::Parameters,
-        chunks: &[&[&Polynomial<E::Fr, B>]],
-        labels: &[PolynomialLabel],
-    ) -> Self::Commitment {
-        assert_eq!(
-            chunks.len(),
-            labels.len(),
-            "chunks and labels must have the same length"
-        );
-        PolynomialLabel::assert_distinct(labels);
-
-        KZGMultiCommitment(
-            (chunks.iter().zip(labels))
-                .map(|(chunk, label)| {
-                    KZGCommitment::Simple(commit_chunk(params, chunk), label.clone())
-                })
-                .collect(),
-        )
-    }
-}
-
 /// The MSM behind every commitment: `Σ coeffs[i]·bases[i]`, by
 /// [`msm_pippenger`]. Test builds also compute it with the verifier's MSM
 /// ([`msm_specific`](msm::msm_specific)) and check that both agree.
-fn commit_msm<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
+pub(crate) fn commit_msm<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
     let res = msm_pippenger(coeffs, bases);
     #[cfg(test)]
     assert_eq!(
@@ -590,25 +567,6 @@ fn commit_msm<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
         coeffs.len()
     );
     res
-}
-
-/// Commitment to `Σ_i X^i f_i(X^t)`, for `chunk` the polynomials `f_i` and
-/// `t` the next power of two of their number.
-fn commit_chunk<E, B>(params: &ParamsKZG<E>, chunk: &[&Polynomial<E::Fr, B>]) -> E::G1
-where
-    E: MultiMillerLoop,
-    E::G1Affine: CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
-    B: PolynomialRepresentation,
-{
-    let t = chunk.len().next_power_of_two();
-    let n = chunk[0].len();
-    assert!(
-        chunk.iter().all(|poly| poly.len() == n),
-        "the polynomials of a chunk have different lengths"
-    );
-    (chunk.iter().enumerate())
-        .map(|(i, poly)| commit_msm(&poly.values, &params.residue_bases::<B>(t, n, i)))
-        .sum()
 }
 
 #[cfg(test)]

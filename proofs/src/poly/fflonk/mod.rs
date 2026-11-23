@@ -35,6 +35,7 @@
 //!   most `T_MAX` polynomials, of balanced sizes; see
 //!   [`balanced_chunks`](crate::poly::fflonk::balanced_chunks).
 
+pub mod params;
 mod utils;
 
 use std::{
