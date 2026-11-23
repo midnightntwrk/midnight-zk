@@ -33,6 +33,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * The in-circuit fflonk `multi_prepare` returns `Error::Synthesis` when a polynomial is queried twice at the same point, as the in-circuit KZG `multi_prepare` does, instead of keeping only the last evaluation
 * `NativeGadget` has no generic chips: it holds a `NativeChip` and a `RangeCheckChip`, which performs all of its range checks, decompositions included; its `FromScratch` configuration is the pair of their configurations. This changes the verifying keys of every circuit [#631](https://github.com/midnightntwrk/midnight-zk/pull/631)
 * BREAKING: the `configure` functions of `FieldChip`, `ForeignWeierstrassEccChip` and `ForeignEdwardsEccChip`, and the `bounds` of their gates, no longer take `nb_parallel_range_checks` and `max_bit_len`: the carry bounds are the next powers of two [#631](https://github.com/midnightntwrk/midnight-zk/pull/631)
+* The in-circuit `Fflonk<PCS, LOG2_T_MAX>` requires `PCS: InterleavedCommit<F, LOG2_T_MAX>`, as `InterleavedCommit` of `midnight-proofs` now takes `LOG2_T_MAX` [#677](https://github.com/midnightntwrk/midnight-zk/pull/677)
 ### Removed
 * The `decomposition` module: `P2RDecompositionChip`, `Pow2RangeChip`, `CoreDecompositionInstructions` and `Pow2RangeInstructions`, replaced by `RangeCheckChip` [#631](https://github.com/midnightntwrk/midnight-zk/pull/631)
 * BREAKING: `ForeignEdwardsEccChip::as_known_constant`. Use `AssignmentInstructions::as_constant` [#655](https://github.com/midnightntwrk/midnight-zk/pull/655)
