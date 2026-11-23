@@ -464,9 +464,7 @@ mod tests {
     fn test_load_params() {
         let mut srs = Vec::new();
         let format = SerdeFormat::RawBytesUnchecked;
-        ParamsKZG::<Bls12>::unsafe_setup(6, OsRng)
-            .write_custom(&mut srs, format)
-            .unwrap();
+        ParamsKZG::<Bls12>::unsafe_setup(6, OsRng).write(&mut srs, format).unwrap();
         let load_kzg =
             |k| <Kzg as PolynomialCommitmentScheme<Fq>>::load_params(&mut &srs[..], format, k);
         let load_fflonk = |k| {

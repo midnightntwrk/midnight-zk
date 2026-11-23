@@ -100,9 +100,7 @@ fn main() -> std::io::Result<()> {
     let params = ParamsKZG::<Bls12>::from_parts(K as u32, g1, Some(g1s), g2[0], g2[1]);
     let mut buf = Vec::new();
 
-    params
-        .write_custom(&mut buf, SerdeFormat::RawBytesUnchecked)
-        .expect("Failed to write");
+    params.write(&mut buf, SerdeFormat::RawBytesUnchecked).expect("Failed to write");
     let mut file =
         File::create(format!("{srs_dir}/bls_filecoin_2p19")).expect("Failed to create file");
 

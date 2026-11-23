@@ -346,7 +346,7 @@ or, if you don't trust the source, download it from IPFS and parse it (this migh
         let mut buf = Vec::new();
 
         params
-            .write_custom(&mut buf, SerdeFormat::RawBytesUnchecked)
+            .write(&mut buf, SerdeFormat::RawBytesUnchecked)
             .expect("Failed to write params");
         let mut file = File::create(srs_path).expect("Failed to create file");
 

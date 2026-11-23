@@ -114,7 +114,7 @@ impl<E: KZGEngine> PolynomialCommitmentScheme<E::Fr> for KZGCommitmentScheme<E> 
         format: SerdeFormat,
         k: u32,
     ) -> io::Result<Self::Parameters> {
-        let mut params = ParamsKZG::read_custom(reader, format)?;
+        let mut params = ParamsKZG::read(reader, format)?;
         if params.max_k() < k {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,

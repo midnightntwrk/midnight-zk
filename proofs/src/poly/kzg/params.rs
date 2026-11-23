@@ -298,7 +298,7 @@ where
     }
 
     /// Writes parameters to buffer
-    pub fn write_custom<W>(&self, writer: &mut W, format: SerdeFormat) -> io::Result<()>
+    pub fn write<W>(&self, writer: &mut W, format: SerdeFormat) -> io::Result<()>
     where
         E::G1Affine: SerdeObject,
         E::G2: ProcessedSerdeObject,
@@ -323,7 +323,7 @@ where
     }
 
     /// Reads params from a buffer.
-    pub fn read_custom<R>(reader: &mut R, format: SerdeFormat) -> io::Result<Self>
+    pub fn read<R>(reader: &mut R, format: SerdeFormat) -> io::Result<Self>
     where
         E::G1Affine: SerdeObject,
         E::G2: ProcessedSerdeObject,
@@ -583,10 +583,9 @@ mod test {
 
         let params0: ParamsKZG<Bls12> = ParamsKZG::unsafe_setup(K, OsRng);
         let mut data = vec![];
-        ParamsKZG::write_custom(&params0, &mut data, SerdeFormat::RawBytesUnchecked).unwrap();
+        ParamsKZG::write(&params0, &mut data, SerdeFormat::RawBytesUnchecked).unwrap();
         let params1 =
-            ParamsKZG::<Bls12>::read_custom::<_>(&mut &data[..], SerdeFormat::RawBytesUnchecked)
-                .unwrap();
+            ParamsKZG::<Bls12>::read::<_>(&mut &data[..], SerdeFormat::RawBytesUnchecked).unwrap();
 
         assert_eq!(params0.g.len(), params1.g.len());
         assert_eq!(params0.g_lagrange.len(), params1.g_lagrange.len());
@@ -598,7 +597,7 @@ mod test {
     }
 
     #[test]
-    fn test_read_custom_rejects_oversized_k() {
+    fn test_read_rejects_oversized_k() {
         use ff::PrimeField;
         use midnight_curves::{Bls12, Fq};
 
@@ -608,7 +607,7 @@ mod test {
             SerdeFormat::RawBytes,
             SerdeFormat::RawBytesUnchecked,
         ] {
-            let err = ParamsKZG::<Bls12>::read_custom::<_>(&mut &data[..], format).err().unwrap();
+            let err = ParamsKZG::<Bls12>::read::<_>(&mut &data[..], format).err().unwrap();
             assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
             assert!(err.to_string().contains("exceeds the maximum supported value"));
         }
