@@ -109,22 +109,6 @@ impl<E: KZGEngine> PolynomialCommitmentScheme<E::Fr> for KZGCommitmentScheme<E> 
         ParamsKZG::unsafe_setup(k, OsRng)
     }
 
-    fn load_params<R: io::Read>(
-        reader: &mut R,
-        format: SerdeFormat,
-        k: u32,
-    ) -> io::Result<Self::Parameters> {
-        let mut params = ParamsKZG::read(reader, format)?;
-        if params.max_k() < k {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!("SRS of size 2^{} is smaller than 2^{k}", params.max_k()),
-            ));
-        }
-        params.downsize(k);
-        Ok(params)
-    }
-
     fn max_k(params: &Self::Parameters) -> u32 {
         params.max_k()
     }

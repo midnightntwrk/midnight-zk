@@ -98,14 +98,6 @@ where
         PCS::gen_params(k + LOG2_T_MAX)
     }
 
-    fn load_params<R: io::Read>(
-        reader: &mut R,
-        format: SerdeFormat,
-        k: u32,
-    ) -> io::Result<Self::Parameters> {
-        PCS::load_params(reader, format, k + LOG2_T_MAX)
-    }
-
     fn max_k(params: &Self::Parameters) -> u32 {
         PCS::max_k(params).saturating_sub(LOG2_T_MAX)
     }
@@ -315,8 +307,6 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::io;
-
     use blake2b_simd::State as Blake2bState;
     use ff::Field;
     use midnight_curves::{Bls12, Fq};
@@ -330,7 +320,7 @@ mod tests {
             kzg::{KZGCommitmentScheme, params::ParamsKZG},
         },
         transcript::{CircuitTranscript, Transcript},
-        utils::{arithmetic::eval_polynomial, helpers::SerdeFormat},
+        utils::arithmetic::eval_polynomial,
     };
 
     type Kzg = KZGCommitmentScheme<Bls12>;
@@ -459,37 +449,5 @@ mod tests {
         for nb_polys in 1..=9 {
             assert_lagrange_matches_coeff(&params, 4, nb_polys);
         }
-    }
-
-    #[test]
-    fn test_load_params() {
-        let mut srs = Vec::new();
-        let format = SerdeFormat::RawBytesUnchecked;
-        ParamsKZG::<Bls12>::unsafe_setup(6, OsRng).write(&mut srs, format).unwrap();
-        let load_kzg =
-            |k| <Kzg as PolynomialCommitmentScheme<Fq>>::load_params(&mut &srs[..], format, k);
-        let load_fflonk = |k| {
-            <Fflonk<Kzg, 2> as PolynomialCommitmentScheme<Fq>>::load_params(
-                &mut &srs[..],
-                format,
-                k,
-            )
-        };
-
-        let params = load_kzg(5).unwrap();
-        assert_eq!(<Kzg as PolynomialCommitmentScheme<Fq>>::max_k(&params), 5);
-
-        let params = load_fflonk(4).unwrap();
-        assert_eq!(params.max_k(), 6);
-        assert_eq!(
-            <Fflonk<Kzg, 2> as PolynomialCommitmentScheme<Fq>>::max_k(&params),
-            4
-        );
-
-        assert_eq!(load_kzg(7).unwrap_err().kind(), io::ErrorKind::InvalidData);
-        assert_eq!(
-            load_fflonk(5).unwrap_err().kind(),
-            io::ErrorKind::InvalidData
-        );
     }
 }

@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `ParamsKZG::read_custom` and `ParamsKZG::write_custom` are renamed to `ParamsKZG::read` and `ParamsKZG::write`, as on `ParamsVerifierKZG` [#677](https://github.com/midnightntwrk/midnight-zk/pull/677)
 
 ### Removed
+* `PolynomialCommitmentScheme::load_params`, hence `Fflonk::load_params`: read a KZG SRS with `ParamsKZG::read`, and `downsize` it [#677](https://github.com/midnightntwrk/midnight-zk/pull/677)
 
 ## [0.9.0-rc.1]
 ### Added

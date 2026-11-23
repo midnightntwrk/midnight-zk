@@ -34,14 +34,6 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
     /// committing to polynomials of degree strictly less than `2^k`.
     fn gen_params(k: u32) -> Self::Parameters;
 
-    /// Reads the parameters of the polynomial commitment scheme from `reader`,
-    /// for committing to polynomials of degree strictly less than `2^k`.
-    fn load_params<R: io::Read>(
-        reader: &mut R,
-        format: SerdeFormat,
-        k: u32,
-    ) -> io::Result<Self::Parameters>;
-
     /// Returns the largest `k` such that `params` can commit to polynomials of
     /// degree strictly less than `2^k`.
     fn max_k(params: &Self::Parameters) -> u32;

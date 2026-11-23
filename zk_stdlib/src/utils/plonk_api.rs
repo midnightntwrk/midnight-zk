@@ -295,12 +295,13 @@ fn midnight_srs<PCS: MidnightPCS>(k: u32) -> ParamsKZG<Bls12> {
         )
     });
 
-    PCS::load_params(
+    let mut params = ParamsKZG::read(
         &mut BufReader::new(params_fs),
         SerdeFormat::RawBytesUnchecked,
-        k,
     )
-    .expect("Failed to read SRS params")
+    .expect("Failed to read SRS params");
+    params.downsize(j);
+    params
 }
 
 /// Loads Filecoin's production SRS (over BLS12-381) for circuits of size `2^k`
@@ -335,12 +336,12 @@ or, if you don't trust the source, download it from IPFS and parse it (this migh
             * Run the binary to parse it `cargo run --example parse_filecoin_srs --release`
         \n"));
 
-    let params = PCS::load_params(
+    let mut params = ParamsKZG::read(
         &mut BufReader::new(params_fs),
         SerdeFormat::RawBytesUnchecked,
-        k,
     )
     .expect("Failed to read params");
+    params.downsize(j);
 
     if downsize {
         let mut buf = Vec::new();
