@@ -103,6 +103,7 @@ const NB_PARALLEL_ADD_COLS: usize = 3;
 #[derive(Clone, Debug)]
 pub struct NativeConfig {
     q_arith: Selector,
+    q_quartic: Selector,
     q_12_minus_34: Selector,
     q_par_add: Selector,
     pub(crate) value_cols: Vec<Column<Advice>>,
@@ -205,6 +206,7 @@ impl<F: CircuitField> ComposableChip<F> for NativeChip<F> {
         let instance_col = shared_res.2[1];
 
         let q_arith = meta.selector();
+        let q_quartic = meta.selector();
         let q_12_minus_34 = meta.selector();
         let q_par_add = meta.selector();
         let q_next_col = fixed_columns[0];
@@ -252,6 +254,17 @@ impl<F: CircuitField> ComposableChip<F> for NativeChip<F> {
             Constraints::with_selector(q_arith, vec![id])
         });
 
+        // v4 = v0 * v1 * v2 * v3 + mul_ab * v0 * v1 + coeff_0 * v0
+        meta.create_gate("quartic_gate", |meta| {
+            let vs = (value_columns[..5].iter())
+                .map(|col| meta.query_advice(*col, Rotation::cur()))
+                .collect::<Vec<_>>();
+            let mul_ab = meta.query_fixed(mul_ab_col, Rotation::cur());
+            let coeff_0 = meta.query_fixed(coeff_cols[0], Rotation::cur());
+            let id = &vs[0] * (&vs[1] * (&vs[2] * &vs[3] + mul_ab) + coeff_0) - &vs[4];
+            Constraints::with_selector(q_quartic, vec![id])
+        });
+
         meta.create_gate("12_minus_34", |meta| {
             let v1 = meta.query_advice(value_columns[1], Rotation::cur());
             let v2 = meta.query_advice(value_columns[2], Rotation::cur());
@@ -277,6 +290,7 @@ impl<F: CircuitField> ComposableChip<F> for NativeChip<F> {
 
         NativeConfig {
             q_arith,
+            q_quartic,
             q_12_minus_34,
             q_par_add,
             value_cols: value_columns.clone(),
@@ -351,6 +365,22 @@ impl<F: CircuitField> NativeChip<F> {
             || Value::known(constant),
         )?;
 
+        Ok(())
+    }
+
+    /// Enables the quartic gate at the given offset, with coefficients `a`
+    /// and `b` in
+    ///
+    ///   `v4 = v0 * v1 * v2 * v3 + a * v0 * v1 + b * v0`.
+    ///
+    /// This function does not assign values, it assumes they have already
+    /// been assigned.
+    fn quartic(&self, region: &mut Region<'_, F>, a: F, b: F, offset: usize) -> Result<(), Error> {
+        self.config.q_quartic.enable(region, offset)?;
+        let mul_ab = self.config.mul_ab_col;
+        region.assign_fixed(|| "quartic a", mul_ab, offset, || Value::known(a))?;
+        let coeff_0 = self.config.coeff_cols[0];
+        region.assign_fixed(|| "quartic b", coeff_0, offset, || Value::known(b))?;
         Ok(())
     }
 
