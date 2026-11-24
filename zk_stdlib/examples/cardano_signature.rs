@@ -203,7 +203,7 @@ fn main() {
         20, 55, 27, 59, 125, 238, 4, 12, 14, 25, 231, 21, 12,
     ];
 
-    const K: u32 = 17;
+    const K: u32 = 16;
 
     let relation = CardanoSigExample;
     let srs = srs_for_test(&relation, Some(K));
