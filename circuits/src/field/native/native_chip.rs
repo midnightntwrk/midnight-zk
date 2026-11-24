@@ -1539,9 +1539,13 @@ where
         // We enforce
         //   (i)  (x - c) * aux = 1 - res,
         //   (ii) (x - c) * res = 0,
-        // in one row (x, res, aux, 0, v4), with the arithmetic and quartic
-        // identities both enabled. They share a (mul_ab) and b (coeffs[0]) = 0,
-        // and the zero in v3 cancels the quartic term:
+        // in one row:
+        //
+        //   v0   v1    v2    v3   v4   |  mul_ab   coeff_0
+        //   x    res   aux   0    v4   |    a         0
+        //
+        // with the arithmetic and quartic identities both enabled. The zero
+        // in v3 cancels the quartic term:
         //   quartic:    v4 = a * x * res
         //   arithmetic: r * res - c * aux + a * x * res + x * aux - 1 = 0
         // With v4 = res and (a, r) = (1/c, 0) if c != 0, or v4 = 0 and
