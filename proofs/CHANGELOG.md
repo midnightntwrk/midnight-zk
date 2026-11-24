@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `ProvingKey::read_with_max_k`, like `ProvingKey::read` but returning an error if the key's `k` exceeds an optional maximum, to avoid memory exhaustion on untrusted keys [#686](https://github.com/midnightntwrk/midnight-zk/issues/686)
 * `ParamsKZG::read_with_max_k` and `ParamsFflonkKZG::read_with_max_k`, like `read` but returning an error if `k` exceeds an optional maximum, before allocating the parameters
 ### Changed
+* Adjust blinding factors for FFLONK protocol [#680](https://github.com/midnightntwrk/midnight-zk/pull/680)
 * `InterleavedCommit` takes `LOG2_T_MAX` as a const generic, with an associated `Parameters` type, built `From` the parameters of the scheme and `Borrow`ing them; `commit_interleaved` takes it. `Fflonk`'s `Parameters` are its scheme's interleaved `Parameters` [#677](https://github.com/midnightntwrk/midnight-zk/pull/677)
 * BREAKING: `VerifyingKey::read`, `VerifyingKey::read_from_cs` and `ProvingKey::read` (and their `from_bytes`) return an error on `SerdeFormat::RawBytesUnchecked`, so the points of a key are always checked. Keys written with `RawBytesUnchecked` can be read with `RawBytes` [#675](https://github.com/midnightntwrk/midnight-zk/pull/675)
 * The docs of `SerdeFormat`, `ProcessedSerdeObject` and the key readers and writers describe the encodings and checks that are actually used [#675](https://github.com/midnightntwrk/midnight-zk/pull/675)
