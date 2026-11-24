@@ -28,6 +28,7 @@ use midnight_circuits::{
 use midnight_proofs::{
     circuit::{Layouter, Value},
     plonk::Error,
+    poly::commitment::PolynomialCommitmentScheme,
 };
 use midnight_zk_stdlib::{FflonkKZG, ZkStdLib, ZkStdLibArch};
 pub use prover::IvcProver;
@@ -37,6 +38,8 @@ pub use verifier::IvcVerifier;
 /// The commitment scheme of the IVC proofs, which the IVC circuit also
 /// verifies in-circuit.
 pub type PCS = FflonkKZG<3>;
+/// The parameters of [`PCS`].
+pub type IvcParams = <PCS as PolynomialCommitmentScheme<F>>::Parameters;
 pub(crate) type F = midnight_curves::Fq;
 pub(crate) type C = midnight_curves::G1Projective;
 pub(crate) type E = midnight_curves::Bls12;

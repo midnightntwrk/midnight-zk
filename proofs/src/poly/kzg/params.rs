@@ -1,9 +1,4 @@
-use std::{
-    collections::HashMap,
-    fmt::Debug,
-    io,
-    sync::{Arc, RwLock},
-};
+use std::{fmt::Debug, io};
 
 use ff::{Field, PrimeField};
 use group::{Curve, Group, GroupEncoding, prime::PrimeCurveAffine};
@@ -14,7 +9,7 @@ use midnight_curves::{
 use rand_core::RngCore;
 
 use crate::{
-    poly::{Coeff, LagrangeCoeff, LagrangeDeltaCoeff, PolynomialBasis, PolynomialRepresentation},
+    poly::{PolynomialBasis, PolynomialRepresentation},
     utils::{
         SerdeFormat,
         arithmetic::{CurveAffine, g_to_lagrange, parallelize},
@@ -39,45 +34,7 @@ pub struct ParamsKZG<E: Engine> {
     pub(crate) g_lagrange_double_delta: Vec<E::G1Affine>,
     pub(crate) g2: E::G2,
     pub(crate) s_g2: E::G2,
-    /// The bases of every [`Residue`] committed to so far.
-    residue_bases: ResidueBases<E::G1Affine>,
 }
-
-/// Residue `i` modulo `t`, identifying the bases for committing to `X^i f(X^t)`
-/// from the `n` values of `f`, the `i`-th part of `g(X) = Σ_i X^i f_i(X^t)`.
-/// These bases depend heavily on the representation `basis` of the values, as
-/// detailed below. The name comes from `X^i f(X^t)` being made of the monomials
-/// `X^e` with `e ≡ i (mod t)`.
-///
-/// - `Coeff`: the strided monomials `[s^(i + t·j)]`. For `f = Σ_j c_j X^j`,
-///   `X^i f(X^t) = Σ_j c_j X^(i + t·j)`.
-///
-/// - `Lagrange`: `[s^i L_j(s^t)]`, for `L_j` the Lagrange basis of the domain
-///   of size `n`: the Lagrange basis built from the strided monomials.
-///
-/// - `LagrangeDelta`: `[s^i Σ_{k ≥ j} L_k(s^t)]`, the suffix sums of the
-///   `Lagrange` bases, as `g_lagrange_delta` is of `g_lagrange`.
-///
-/// - `LagrangeDoubleDelta`: `[s^i Σ_{k ≥ j} (k - j + 1) L_k(s^t)]`, the suffix
-///   sums of the `LagrangeDelta` bases.
-///
-/// Committing to every `f_i` on its own bases keeps the zeros of its values
-/// free. The bases are computed on first use, as the `Lagrange` ones take a
-/// group FFT of size `n`, and cached in `ParamsKZG`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-struct Residue {
-    /// The representation of the values of `f_i`.
-    basis: PolynomialBasis,
-    /// The modulus, a power of two.
-    t: usize,
-    /// The number of values of `f_i`.
-    n: usize,
-    /// The residue, smaller than `t`.
-    i: usize,
-}
-
-/// The bases of every [`Residue`] committed to so far.
-type ResidueBases<C> = Arc<RwLock<HashMap<Residue, Arc<[C]>>>>;
 
 /// Builds the suffix-sum of an affine SRS: `out[i] = sum_{j=i}^{n-1} input[j]`.
 ///
@@ -87,7 +44,7 @@ type ResidueBases<C> = Arc<RwLock<HashMap<Residue, Arc<[C]>>>>;
 ///
 /// # Panics
 /// If input is empty
-fn suffix_sum<C: CurveAffine>(input: &[C]) -> Vec<C> {
+pub(crate) fn suffix_sum<C: CurveAffine>(input: &[C]) -> Vec<C> {
     let n = input.len();
     let mut acc_proj: Vec<C::Curve> = vec![C::Curve::identity(); n];
     acc_proj[n - 1] = input[n - 1].into();
@@ -97,6 +54,56 @@ fn suffix_sum<C: CurveAffine>(input: &[C]) -> Vec<C> {
     let mut acc_affine = vec![C::identity(); n];
     C::Curve::batch_normalize(&acc_proj, &mut acc_affine);
     acc_affine
+}
+
+/// Writes `points`: compressed if `format` is `Processed`, raw otherwise.
+pub(crate) fn write_points<C, W>(
+    points: &[C],
+    writer: &mut W,
+    format: SerdeFormat,
+) -> io::Result<()>
+where
+    C: GroupEncoding + SerdeObject,
+    W: io::Write,
+{
+    for el in points {
+        match format {
+            SerdeFormat::Processed => writer.write_all(el.to_bytes().as_ref())?,
+            _ => el.write_raw(writer)?,
+        }
+    }
+    Ok(())
+}
+
+/// Reads `n` points written by [`write_points`] in `format`. Compressed points
+/// are decompressed in parallel.
+pub(crate) fn read_points<C, R>(reader: &mut R, format: SerdeFormat, n: usize) -> io::Result<Vec<C>>
+where
+    C: GroupEncoding + SerdeObject + Clone + Send,
+    R: io::Read,
+{
+    match format {
+        SerdeFormat::Processed => {
+            let mut points_compressed = vec![C::Repr::default(); n];
+            for points_compressed in points_compressed.iter_mut() {
+                reader.read_exact((*points_compressed).as_mut())?;
+            }
+            let mut points = vec![Option::<C>::None; n];
+            parallelize(&mut points, |points, chunks| {
+                for (i, point) in points.iter_mut().enumerate() {
+                    *point = Option::from(C::from_bytes(&points_compressed[chunks + i]));
+                }
+            });
+            points
+                .into_iter()
+                .map(|p| p.ok_or_else(|| io::Error::other("invalid point encoding")))
+                .collect()
+        }
+        SerdeFormat::RawBytes => (0..n).map(|_| C::read_raw(reader)).collect(),
+        SerdeFormat::RawBytesUnchecked => {
+            Ok((0..n).map(|_| C::read_raw_unchecked(reader)).collect())
+        }
+    }
 }
 
 impl<E> ParamsKZG<E>
@@ -115,55 +122,6 @@ where
                 unimplemented!("KZG does not support extended Lagrange bases")
             }
         }
-    }
-
-    /// The bases of the [`Residue`] `i` modulo `t`, for committing to
-    /// `X^i f(X^t)` from the `n` values of `f` in the representation `B`.
-    ///
-    /// # Panics
-    ///
-    /// If `B` is the extended Lagrange basis, if `t·n` is larger than the SRS,
-    /// or if `B` is Lagrange or one of its delta forms and `n` is not a power
-    /// of two.
-    pub(crate) fn residue_bases<B: PolynomialRepresentation>(
-        &self,
-        t: usize,
-        n: usize,
-        i: usize,
-    ) -> Arc<[E::G1Affine]> {
-        let residue = Residue {
-            basis: B::BASIS,
-            t,
-            n,
-            i,
-        };
-        if let Some(bases) =
-            self.residue_bases.read().expect("residue bases lock poisoned").get(&residue)
-        {
-            return bases.clone();
-        }
-        let bases: Arc<[_]> = match B::BASIS {
-            PolynomialBasis::Coeff => {
-                assert!(
-                    t * n <= self.g.len(),
-                    "no residue bases of size {n} modulo {t}"
-                );
-                self.g[i..].iter().step_by(t).take(n).copied().collect()
-            }
-            PolynomialBasis::Lagrange => {
-                assert!(n.is_power_of_two(), "no Lagrange residue bases of size {n}");
-                g_to_lagrange(&self.residue_bases::<Coeff>(t, n, i), n.ilog2()).into()
-            }
-            PolynomialBasis::LagrangeDelta => {
-                suffix_sum(&self.residue_bases::<LagrangeCoeff>(t, n, i)).into()
-            }
-            PolynomialBasis::LagrangeDoubleDelta => {
-                suffix_sum(&self.residue_bases::<LagrangeDeltaCoeff>(t, n, i)).into()
-            }
-            basis => panic!("no residue bases in the {basis:?} basis"),
-        };
-        let mut cache = self.residue_bases.write().expect("residue bases lock poisoned");
-        cache.entry(residue).or_insert(bases).clone()
     }
 
     /// Returns the size of the SRS, expressed as the exponent `k` such that it
@@ -185,7 +143,6 @@ where
         self.g_lagrange = g_to_lagrange(&self.g, new_k);
         self.g_lagrange_delta = suffix_sum(&self.g_lagrange);
         self.g_lagrange_double_delta = suffix_sum(&self.g_lagrange_delta);
-        self.residue_bases = Default::default();
     }
 
     /// Initializes parameters for the curve, draws toxic secret from given rng.
@@ -245,7 +202,6 @@ where
             g_lagrange_double_delta,
             g2,
             s_g2,
-            residue_bases: Default::default(),
         }
     }
 
@@ -278,7 +234,6 @@ where
             g_lagrange_double_delta,
             g2,
             s_g2,
-            residue_bases: Default::default(),
         }
     }
 
@@ -298,32 +253,22 @@ where
     }
 
     /// Writes parameters to buffer
-    pub fn write_custom<W>(&self, writer: &mut W, format: SerdeFormat) -> io::Result<()>
+    pub fn write<W>(&self, writer: &mut W, format: SerdeFormat) -> io::Result<()>
     where
         E::G1Affine: SerdeObject,
         E::G2: ProcessedSerdeObject,
         W: io::Write,
     {
         writer.write_all(&self.g.len().ilog2().to_le_bytes())?;
-        for el in self.g.iter() {
-            match format {
-                SerdeFormat::Processed => writer.write_all(el.to_bytes().as_ref())?,
-                _ => el.write_raw(writer)?,
-            }
-        }
-        for el in self.g_lagrange.iter() {
-            match format {
-                SerdeFormat::Processed => writer.write_all(el.to_bytes().as_ref())?,
-                _ => el.write_raw(writer)?,
-            }
-        }
+        write_points(&self.g, writer, format)?;
+        write_points(&self.g_lagrange, writer, format)?;
         self.g2.write(writer, format)?;
         self.s_g2.write(writer, format)?;
         Ok(())
     }
 
     /// Reads params from a buffer.
-    pub fn read_custom<R>(reader: &mut R, format: SerdeFormat) -> io::Result<Self>
+    pub fn read<R>(reader: &mut R, format: SerdeFormat) -> io::Result<Self>
     where
         E::G1Affine: SerdeObject,
         E::G2: ProcessedSerdeObject,
@@ -340,47 +285,8 @@ where
         }
         let n = 1 << k;
 
-        let (g, g_lagrange) = match format {
-            SerdeFormat::Processed => {
-                let load_points_from_file_parallelly =
-                    |reader: &mut R| -> io::Result<Vec<E::G1Affine>> {
-                        let mut points_compressed =
-                            vec![<E::G1Affine as GroupEncoding>::Repr::default(); n];
-                        for points_compressed in points_compressed.iter_mut() {
-                            reader.read_exact((*points_compressed).as_mut())?;
-                        }
-                        let mut points = vec![Option::<E::G1Affine>::None; n];
-                        parallelize(&mut points, |points, chunks| {
-                            for (i, point) in points.iter_mut().enumerate() {
-                                *point = Option::from(E::G1Affine::from_bytes(
-                                    &points_compressed[chunks + i],
-                                ));
-                            }
-                        });
-                        points
-                            .into_iter()
-                            .map(|p| p.ok_or_else(|| io::Error::other("invalid point encoding")))
-                            .collect()
-                    };
-
-                let g = load_points_from_file_parallelly(reader)?;
-                let g_lagrange = load_points_from_file_parallelly(reader)?;
-                (g, g_lagrange)
-            }
-            SerdeFormat::RawBytes => {
-                let g =
-                    (0..n).map(|_| E::G1Affine::read_raw(reader)).collect::<Result<Vec<_>, _>>()?;
-                let g_lagrange =
-                    (0..n).map(|_| E::G1Affine::read_raw(reader)).collect::<Result<Vec<_>, _>>()?;
-                (g, g_lagrange)
-            }
-            SerdeFormat::RawBytesUnchecked => {
-                let g = (0..n).map(|_| E::G1Affine::read_raw_unchecked(reader)).collect::<Vec<_>>();
-                let g_lagrange =
-                    (0..n).map(|_| E::G1Affine::read_raw_unchecked(reader)).collect::<Vec<_>>();
-                (g, g_lagrange)
-            }
-        };
+        let g = read_points(reader, format, n)?;
+        let g_lagrange = read_points(reader, format, n)?;
 
         let g2 = E::G2::read(reader, format)?;
         let s_g2 = E::G2::read(reader, format)?;
@@ -394,7 +300,6 @@ where
             g_lagrange_double_delta,
             g2,
             s_g2,
-            residue_bases: Default::default(),
         })
     }
 }
@@ -583,10 +488,9 @@ mod test {
 
         let params0: ParamsKZG<Bls12> = ParamsKZG::unsafe_setup(K, OsRng);
         let mut data = vec![];
-        ParamsKZG::write_custom(&params0, &mut data, SerdeFormat::RawBytesUnchecked).unwrap();
+        ParamsKZG::write(&params0, &mut data, SerdeFormat::RawBytesUnchecked).unwrap();
         let params1 =
-            ParamsKZG::<Bls12>::read_custom::<_>(&mut &data[..], SerdeFormat::RawBytesUnchecked)
-                .unwrap();
+            ParamsKZG::<Bls12>::read::<_>(&mut &data[..], SerdeFormat::RawBytesUnchecked).unwrap();
 
         assert_eq!(params0.g.len(), params1.g.len());
         assert_eq!(params0.g_lagrange.len(), params1.g_lagrange.len());
@@ -598,7 +502,7 @@ mod test {
     }
 
     #[test]
-    fn test_read_custom_rejects_oversized_k() {
+    fn test_read_rejects_oversized_k() {
         use ff::PrimeField;
         use midnight_curves::{Bls12, Fq};
 
@@ -608,7 +512,7 @@ mod test {
             SerdeFormat::RawBytes,
             SerdeFormat::RawBytesUnchecked,
         ] {
-            let err = ParamsKZG::<Bls12>::read_custom::<_>(&mut &data[..], format).err().unwrap();
+            let err = ParamsKZG::<Bls12>::read::<_>(&mut &data[..], format).err().unwrap();
             assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
             assert!(err.to_string().contains("exceeds the maximum supported value"));
         }

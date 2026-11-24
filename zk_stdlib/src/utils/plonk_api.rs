@@ -259,11 +259,12 @@ pub enum SrsSource {
 
 /// Loads an SRS (over BLS12-381) for circuits of size `2^k` under the
 /// commitment scheme `PCS`.
-pub fn load_srs<PCS: MidnightPCS>(source: SrsSource, k: u32) -> ParamsKZG<Bls12> {
+pub fn load_srs<PCS: MidnightPCS>(source: SrsSource, k: u32) -> PCS::Parameters {
     match source {
         SrsSource::Filecoin => filecoin_srs::<PCS>(k),
         SrsSource::Midnight => midnight_srs::<PCS>(k),
     }
+    .into()
 }
 
 /// Loads Filecoin's production SRS (over BLS12-381) for the given relation.
@@ -295,12 +296,13 @@ fn midnight_srs<PCS: MidnightPCS>(k: u32) -> ParamsKZG<Bls12> {
         )
     });
 
-    PCS::load_params(
+    let mut params = ParamsKZG::read(
         &mut BufReader::new(params_fs),
         SerdeFormat::RawBytesUnchecked,
-        k,
     )
-    .expect("Failed to read SRS params")
+    .expect("Failed to read SRS params");
+    params.downsize(j);
+    params
 }
 
 /// Loads Filecoin's production SRS (over BLS12-381) for circuits of size `2^k`
@@ -335,18 +337,18 @@ or, if you don't trust the source, download it from IPFS and parse it (this migh
             * Run the binary to parse it `cargo run --example parse_filecoin_srs --release`
         \n"));
 
-    let params = PCS::load_params(
+    let mut params = ParamsKZG::read(
         &mut BufReader::new(params_fs),
         SerdeFormat::RawBytesUnchecked,
-        k,
     )
     .expect("Failed to read params");
+    params.downsize(j);
 
     if downsize {
         let mut buf = Vec::new();
 
         params
-            .write_custom(&mut buf, SerdeFormat::RawBytesUnchecked)
+            .write(&mut buf, SerdeFormat::RawBytesUnchecked)
             .expect("Failed to write params");
         let mut file = File::create(srs_path).expect("Failed to create file");
 

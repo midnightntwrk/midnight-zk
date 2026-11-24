@@ -3,11 +3,11 @@
 use midnight_circuits::verifier::{Accumulator, fixed_bases};
 use midnight_proofs::{
     plonk::ConstraintSystem,
-    poly::{EvaluationDomain, PolynomialLabel, kzg::params::ParamsKZG},
+    poly::{EvaluationDomain, PolynomialLabel},
 };
 use midnight_zk_stdlib::ZkStdLib;
 
-use super::{E, Ivc, IvcCircuit, IvcProver, IvcVerifier, PCS};
+use super::{E, Ivc, IvcCircuit, IvcParams, IvcProver, IvcVerifier, PCS};
 
 /// Sets up the IVC context: compiles the circuit, generates keys,
 /// and initializes the prover at the genesis state.
@@ -21,11 +21,7 @@ use super::{E, Ivc, IvcCircuit, IvcProver, IvcVerifier, PCS};
 /// The returned [`IvcVerifier`] holds the self-verifying key. A verifier only
 /// needs to run this function once; the resulting [`IvcVerifier`] can then be
 /// reused to check any [`super::IvcInstance`].
-pub fn setup<T: Ivc>(
-    params: ParamsKZG<E>,
-    k: u32,
-    ctx: T::Context,
-) -> (IvcProver<T>, IvcVerifier<T>) {
+pub fn setup<T: Ivc>(params: IvcParams, k: u32, ctx: T::Context) -> (IvcProver<T>, IvcVerifier<T>) {
     let mut cs = ConstraintSystem::default();
     let arch = IvcCircuit::<T>::arch();
     ZkStdLib::configure(&mut cs, (arch, arch.range_check_bit_len(k)));

@@ -1,5 +1,6 @@
 //! Trait for a commitment scheme
 use std::{
+    borrow::Borrow,
     fmt::Debug,
     hash::Hash,
     io::{self, Read},
@@ -33,14 +34,6 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
     /// Generates the parameters of the polynomial commitment scheme, for
     /// committing to polynomials of degree strictly less than `2^k`.
     fn gen_params(k: u32) -> Self::Parameters;
-
-    /// Reads the parameters of the polynomial commitment scheme from `reader`,
-    /// for committing to polynomials of degree strictly less than `2^k`.
-    fn load_params<R: io::Read>(
-        reader: &mut R,
-        format: SerdeFormat,
-        k: u32,
-    ) -> io::Result<Self::Parameters>;
 
     /// Returns the largest `k` such that `params` can commit to polynomials of
     /// degree strictly less than `2^k`.
@@ -190,8 +183,19 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
 }
 
 /// A [`PolynomialCommitmentScheme`] that commits to polynomials interleaved
-/// in chunks.
-pub trait InterleavedCommit<F: PrimeField>: PolynomialCommitmentScheme<F> {
+/// in chunks of up to `2^LOG2_T_MAX` polynomials.
+pub trait InterleavedCommit<F: PrimeField, const LOG2_T_MAX: u32>:
+    PolynomialCommitmentScheme<F>
+{
+    /// The parameters for committing interleaved: the parameters of the
+    /// scheme, with whatever committing interleaved precomputes from them.
+    /// Building them from the parameters of the scheme can be costly: see the
+    /// docs of the implementation.
+    type Parameters: From<<Self as PolynomialCommitmentScheme<F>>::Parameters>
+        + Borrow<<Self as PolynomialCommitmentScheme<F>>::Parameters>
+        + Send
+        + Sync;
+
     /// Commit to `g(X) = Σ_i X^i f_i(X^t)` for every chunk `f_0, ..., f_{k-1}`
     /// of `chunks`, with `t` the next power of two of `k`, tagging the `g` of
     /// each chunk with the corresponding label.
@@ -201,7 +205,7 @@ pub trait InterleavedCommit<F: PrimeField>: PolynomialCommitmentScheme<F> {
     /// Panics if `chunks` and `labels` have different lengths, if a label is
     /// repeated, or if the polynomials of a chunk have different lengths.
     fn commit_interleaved<B: PolynomialRepresentation>(
-        params: &Self::Parameters,
+        params: &<Self as InterleavedCommit<F, LOG2_T_MAX>>::Parameters,
         chunks: &[&[&Polynomial<F, B>]],
         labels: &[PolynomialLabel],
     ) -> Self::Commitment;

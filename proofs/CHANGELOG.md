@@ -10,7 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `kzg::KZGEngine`, the pairing engines over which KZG commitments can be made, bounding `KZGCommitmentScheme<E>` [#644](https://github.com/midnightntwrk/midnight-zk/pull/644)
 * `transcript::TranscriptField<H>` (`Hashable<H> + Sampleable<H>`) and `plonk::ProofField<H>` (`TranscriptField<H> + WithSmallOrderMulGroup<3> + FromUniformBytes<64> + Hash + Ord`), which the prover, verifier and commitment schemes are bounded by [#644](https://github.com/midnightntwrk/midnight-zk/pull/644)
 * `poly::FftDomain`, an `EvaluationDomain` with the twiddle factors of its FFTs. `ProvingKey` holds one, built from its `VerifyingKey`; it is not serialized
+* `fflonk::params::ParamsFflonkKZG<E, LOG2_T_MAX>`, the parameters of `Fflonk` over KZG: the `ParamsKZG` with the `LagrangeDelta` and `LagrangeDoubleDelta` bases of every residue `i < t`, for every power of two `t ≤ T_MAX`. `from_kzg`, or `From<ParamsKZG>`, builds them (costly: about `2·T_MAX` group FFTs), they `Borrow` their `ParamsKZG`, and `write`/`read` store and load them. The residue bases cache moves there from `ParamsKZG`, and the KZG `InterleavedCommit` impl to `fflonk::params` [#677](https://github.com/midnightntwrk/midnight-zk/pull/677)
 ### Changed
+* `InterleavedCommit` takes `LOG2_T_MAX` as a const generic, with an associated `Parameters` type, built `From` the parameters of the scheme and `Borrow`ing them; `commit_interleaved` takes it. `Fflonk`'s `Parameters` are its scheme's interleaved `Parameters` [#677](https://github.com/midnightntwrk/midnight-zk/pull/677)
 * BREAKING: `VerifyingKey::read`, `VerifyingKey::read_from_cs` and `ProvingKey::read` (and their `from_bytes`) return an error on `SerdeFormat::RawBytesUnchecked`, so the points of a key are always checked. Keys written with `RawBytesUnchecked` can be read with `RawBytes` [#675](https://github.com/midnightntwrk/midnight-zk/pull/675)
 * The docs of `SerdeFormat`, `ProcessedSerdeObject` and the key readers and writers describe the encodings and checks that are actually used [#675](https://github.com/midnightntwrk/midnight-zk/pull/675)
 * The FFTs `lagrange_to_coeff`, `coeff_to_lagrange`, `coeff_to_extended`, `extended_to_coeff` and `extended_to_lagrange` move from `EvaluationDomain` to `FftDomain`, and `PolynomialRepresentation::{coeff_to_self, self_to_coeff}` take an `FftDomain`. `EvaluationDomain`, hence `VerifyingKey`, no longer computes nor stores twiddle factors. Serialized keys and proofs are unchanged
@@ -22,8 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `commit_to_instances` takes the index of the instance column it commits to and labels the commitment with it. It used to label every commitment as column 0, so the verifier rejected proofs with more than one committed instance column [#671](https://github.com/midnightntwrk/midnight-zk/pull/671)
 * `Fflonk::multi_open` returns `Error::OpeningError` when a query's label is not among its group's labels, instead of panicking, and `Error::DuplicatedQuery` when a polynomial is queried twice at the same point, as `Fflonk::multi_prepare` does [#671](https://github.com/midnightntwrk/midnight-zk/pull/671)
 * The cost model with `COST_MEASURE_START`/`COST_MEASURE_END` markers reports the number of rows of the measured regions, which chips laying out constraints at load time may place apart, instead of their span [#631](https://github.com/midnightntwrk/midnight-zk/pull/631)
+* `ParamsKZG::read_custom` and `ParamsKZG::write_custom` are renamed to `ParamsKZG::read` and `ParamsKZG::write`, as on `ParamsVerifierKZG` [#677](https://github.com/midnightntwrk/midnight-zk/pull/677)
 
 ### Removed
+* `PolynomialCommitmentScheme::load_params`, hence `Fflonk::load_params`: read a KZG SRS with `ParamsKZG::read`, and `downsize` it [#677](https://github.com/midnightntwrk/midnight-zk/pull/677)
 
 ## [0.9.0-rc.1]
 ### Added

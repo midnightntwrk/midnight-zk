@@ -14,14 +14,14 @@ use midnight_circuits::{
 };
 use midnight_proofs::{
     plonk::{self},
-    poly::kzg::params::ParamsKZG,
     transcript::{CircuitTranscript, Transcript},
 };
 use midnight_zk_stdlib::MidnightPK;
 use rand::rngs::OsRng;
 
 use super::{
-    E, F, Ivc, IvcCircuit, IvcError, IvcInstance, IvcWitness, PCS, circuit::IvcExtendedInstance,
+    E, F, Ivc, IvcCircuit, IvcError, IvcInstance, IvcParams, IvcWitness, PCS,
+    circuit::IvcExtendedInstance,
 };
 
 /// Stateful IVC prover holding:
@@ -34,7 +34,7 @@ use super::{
 /// the state and [`IvcProver::instance`] to obtain the latest instance.
 #[derive(Debug)]
 pub struct IvcProver<T: Ivc> {
-    pub(crate) params: ParamsKZG<E>,
+    pub(crate) params: IvcParams,
     pub(crate) relation: IvcCircuit<T>,
     pub(crate) pk: MidnightPK<IvcCircuit<T>, PCS>,
     pub(crate) state: T::State,

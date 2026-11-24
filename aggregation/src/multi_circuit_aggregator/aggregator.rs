@@ -12,7 +12,6 @@
 //! The [`Verifier`] checks the final aggregation proof. After verification,
 //! the claims can be inspected via the instance's state.
 
-use midnight_proofs::poly::kzg::params::ParamsKZG;
 use midnight_zk_stdlib::{MidnightVK, ZkStdLibArch};
 
 use super::{
@@ -20,13 +19,13 @@ use super::{
     circuit::{InnerCircuitsContext, ProofAggregation},
     claims::{Claim, TypedStatement},
 };
-use crate::ivc::{self, E, IvcError, IvcInstance, PCS};
+use crate::ivc::{self, IvcError, IvcInstance, IvcParams, PCS};
 
 impl ProofAggregation {
     /// Sets up the proof aggregator, returning an [`Aggregator`] (at genesis)
     /// and a [`Verifier`].
     pub fn setup(
-        aggregator_srs: ParamsKZG<E>,
+        aggregator_srs: IvcParams,
         aggregator_k: u32,
         inner_ctx: InnerCircuitsContext,
     ) -> (Aggregator, Verifier) {

@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 ### Changed
 * The IVC example runs at `k = 15`, which the optimizations of the foreign-field chips of `midnight-circuits` make it fit in [#660](https://github.com/midnightntwrk/midnight-zk/pull/660)
 * The IVC and the multi-circuit aggregator configure `ZkStdLib` with `ZkStdLibArch::range_check_bit_len` and the range-check chip of `midnight-circuits` (`nb_range_check_groups`). The inner circuits of the multi-circuit aggregator must all share their `max_bit_len` [#631](https://github.com/midnightntwrk/midnight-zk/pull/631)
+* `ivc::setup` and `ProofAggregation::setup` take `ivc::IvcParams`, the parameters of `ivc::PCS`, instead of `ParamsKZG<Bls12>` [#677](https://github.com/midnightntwrk/midnight-zk/pull/677)
 * `IvcVerifier::verify` rejects instances whose public inputs do not have the length expected by the verifying key
 * The IVC and the multi-circuit aggregator, which prove with `FflonkKZG<3>`, get an error instead of a panic on a query whose label is not among its group's labels, and an error on a polynomial queried twice at the same point [#671](https://github.com/midnightntwrk/midnight-zk/pull/671)
 * Adapt to the removal of `SelfEmulation` from `midnight-circuits`: the circuits take the transcript and the accumulator chips from `ZkStdLib` [#638](https://github.com/midnightntwrk/midnight-zk/pull/638)

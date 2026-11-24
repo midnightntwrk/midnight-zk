@@ -35,9 +35,11 @@
 //!   most `T_MAX` polynomials, of balanced sizes; see
 //!   [`balanced_chunks`](crate::poly::fflonk::balanced_chunks).
 
+pub mod params;
 mod utils;
 
 use std::{
+    borrow::Borrow,
     collections::{BTreeMap, HashMap, HashSet, hash_map::Entry},
     hash::Hash,
     io::{self, Read},
@@ -86,31 +88,23 @@ impl<PCS, const LOG2_T_MAX: u32> Fflonk<PCS, LOG2_T_MAX> {
 impl<F, PCS, const LOG2_T_MAX: u32> PolynomialCommitmentScheme<F> for Fflonk<PCS, LOG2_T_MAX>
 where
     F: PrimeField,
-    PCS: InterleavedCommit<F>,
+    PCS: InterleavedCommit<F, LOG2_T_MAX>,
 {
-    type Parameters = PCS::Parameters;
+    type Parameters = <PCS as InterleavedCommit<F, LOG2_T_MAX>>::Parameters;
     type VerifierParameters = PCS::VerifierParameters;
     type Commitment = PCS::Commitment;
     type VerificationGuard = PCS::VerificationGuard;
 
     fn gen_params(k: u32) -> Self::Parameters {
-        PCS::gen_params(k + LOG2_T_MAX)
-    }
-
-    fn load_params<R: io::Read>(
-        reader: &mut R,
-        format: SerdeFormat,
-        k: u32,
-    ) -> io::Result<Self::Parameters> {
-        PCS::load_params(reader, format, k + LOG2_T_MAX)
+        PCS::gen_params(k + LOG2_T_MAX).into()
     }
 
     fn max_k(params: &Self::Parameters) -> u32 {
-        PCS::max_k(params).saturating_sub(LOG2_T_MAX)
+        PCS::max_k(params.borrow()).saturating_sub(LOG2_T_MAX)
     }
 
     fn get_verifier_params(params: &Self::Parameters) -> Self::VerifierParameters {
-        PCS::get_verifier_params(params)
+        PCS::get_verifier_params(params.borrow())
     }
 
     fn commit_many<B: PolynomialRepresentation>(
@@ -230,7 +224,7 @@ where
             }
         }
 
-        PCS::multi_open(params, &inner_queries, transcript)
+        PCS::multi_open(params.borrow(), &inner_queries, transcript)
     }
 
     fn commitment_labels(commitment: &Self::Commitment) -> Vec<PolynomialLabel> {
@@ -321,7 +315,7 @@ mod tests {
     use midnight_curves::{Bls12, Fq};
     use rand_core::{OsRng, RngCore};
 
-    use super::Fflonk;
+    use super::{Fflonk, params::ParamsFflonkKZG};
     use crate::{
         poly::{
             Error, EvaluationDomain, FftDomain, PolynomialLabel, ProverQuery, VerifierQuery,
@@ -412,7 +406,7 @@ mod tests {
     /// Commits to `nb_polys` sparse polynomials of `2^k` rows, given in
     /// Lagrange form, in its delta forms and in coefficient form, and checks
     /// that the commitments agree.
-    fn assert_lagrange_matches_coeff(params: &ParamsKZG<Bls12>, k: u32, nb_polys: usize) {
+    fn assert_lagrange_matches_coeff(params: &ParamsFflonkKZG<Bls12, 2>, k: u32, nb_polys: usize) {
         #[allow(clippy::upper_case_acronyms)]
         type PCS = Fflonk<Kzg, 2>;
         let domain = EvaluationDomain::<Fq>::new(1, k);
@@ -461,36 +455,22 @@ mod tests {
     }
 
     #[test]
-    fn test_load_params() {
-        let mut srs = Vec::new();
+    fn test_read_write_params() {
         let format = SerdeFormat::RawBytesUnchecked;
-        ParamsKZG::<Bls12>::unsafe_setup(6, OsRng)
-            .write_custom(&mut srs, format)
+        let mut bytes = Vec::new();
+        ParamsFflonkKZG::<Bls12, 2>::from_kzg(ParamsKZG::unsafe_setup(6, OsRng))
+            .write(&mut bytes, format)
             .unwrap();
-        let load_kzg =
-            |k| <Kzg as PolynomialCommitmentScheme<Fq>>::load_params(&mut &srs[..], format, k);
-        let load_fflonk = |k| {
-            <Fflonk<Kzg, 2> as PolynomialCommitmentScheme<Fq>>::load_params(
-                &mut &srs[..],
-                format,
-                k,
-            )
-        };
 
-        let params = load_kzg(5).unwrap();
-        assert_eq!(<Kzg as PolynomialCommitmentScheme<Fq>>::max_k(&params), 5);
-
-        let params = load_fflonk(4).unwrap();
-        assert_eq!(params.max_k(), 6);
+        let params = ParamsFflonkKZG::<Bls12, 2>::read(&mut &bytes[..], format).unwrap();
         assert_eq!(
             <Fflonk<Kzg, 2> as PolynomialCommitmentScheme<Fq>>::max_k(&params),
             4
         );
+        assert_lagrange_matches_coeff(&params, 4, 7);
 
-        assert_eq!(load_kzg(7).unwrap_err().kind(), io::ErrorKind::InvalidData);
-        assert_eq!(
-            load_fflonk(5).unwrap_err().kind(),
-            io::ErrorKind::InvalidData
-        );
+        // Parameters for another `T_MAX`.
+        let other = ParamsFflonkKZG::<Bls12, 1>::read(&mut &bytes[..], format);
+        assert_eq!(other.unwrap_err().kind(), io::ErrorKind::InvalidData);
     }
 }
