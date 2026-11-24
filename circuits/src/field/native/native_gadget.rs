@@ -1028,6 +1028,15 @@ impl<F: CircuitField> AssertionInstructions<F, AssignedNative<F>> for NativeGadg
     ) -> Result<(), Error> {
         self.native_chip.assert_not_equal_to_fixed(layouter, x, constant)
     }
+
+    fn assert_not_equal_to_many_fixed(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &AssignedNative<F>,
+        constants: &[F],
+    ) -> Result<(), Error> {
+        self.native_chip.assert_not_equal_to_many_fixed(layouter, x, constants)
+    }
 }
 
 // Inherit Bit Assertion Instructions.
@@ -1088,6 +1097,15 @@ impl<F: CircuitField> ArithInstructions<F, AssignedNative<F>> for NativeGadget<F
         multiplying_constant: Option<F>,
     ) -> Result<AssignedNative<F>, Error> {
         self.native_chip.mul(layouter, x, y, multiplying_constant)
+    }
+
+    fn pow(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &AssignedNative<F>,
+        n: u64,
+    ) -> Result<AssignedNative<F>, Error> {
+        self.native_chip.pow(layouter, x, n)
     }
 
     fn div(

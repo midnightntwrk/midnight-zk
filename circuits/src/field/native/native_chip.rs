@@ -103,6 +103,7 @@ const NB_PARALLEL_ADD_COLS: usize = 3;
 #[derive(Clone, Debug)]
 pub struct NativeConfig {
     q_arith: Selector,
+    q_quartic: Selector,
     q_12_minus_34: Selector,
     q_par_add: Selector,
     pub(crate) value_cols: Vec<Column<Advice>>,
@@ -205,6 +206,7 @@ impl<F: CircuitField> ComposableChip<F> for NativeChip<F> {
         let instance_col = shared_res.2[1];
 
         let q_arith = meta.selector();
+        let q_quartic = meta.selector();
         let q_12_minus_34 = meta.selector();
         let q_par_add = meta.selector();
         let q_next_col = fixed_columns[0];
@@ -252,6 +254,17 @@ impl<F: CircuitField> ComposableChip<F> for NativeChip<F> {
             Constraints::with_selector(q_arith, vec![id])
         });
 
+        // v4 = v0 * v1 * v2 * v3 + mul_ab * v0 * v1 + coeff_0 * v0
+        meta.create_gate("quartic_gate", |meta| {
+            let vs = (value_columns[..5].iter())
+                .map(|col| meta.query_advice(*col, Rotation::cur()))
+                .collect::<Vec<_>>();
+            let mul_ab = meta.query_fixed(mul_ab_col, Rotation::cur());
+            let coeff_0 = meta.query_fixed(coeff_cols[0], Rotation::cur());
+            let id = &vs[0] * (&vs[1] * (&vs[2] * &vs[3] + mul_ab) + coeff_0) - &vs[4];
+            Constraints::with_selector(q_quartic, vec![id])
+        });
+
         meta.create_gate("12_minus_34", |meta| {
             let v1 = meta.query_advice(value_columns[1], Rotation::cur());
             let v2 = meta.query_advice(value_columns[2], Rotation::cur());
@@ -277,6 +290,7 @@ impl<F: CircuitField> ComposableChip<F> for NativeChip<F> {
 
         NativeConfig {
             q_arith,
+            q_quartic,
             q_12_minus_34,
             q_par_add,
             value_cols: value_columns.clone(),
@@ -354,6 +368,22 @@ impl<F: CircuitField> NativeChip<F> {
         Ok(())
     }
 
+    /// Enables the quartic gate at the given offset, with coefficients `a`
+    /// and `b` in
+    ///
+    ///   `v4 = v0 * v1 * v2 * v3 + a * v0 * v1 + b * v0`.
+    ///
+    /// This function does not assign values, it assumes they have already
+    /// been assigned.
+    fn quartic(&self, region: &mut Region<'_, F>, a: F, b: F, offset: usize) -> Result<(), Error> {
+        self.config.q_quartic.enable(region, offset)?;
+        let mul_ab = self.config.mul_ab_col;
+        region.assign_fixed(|| "quartic a", mul_ab, offset, || Value::known(a))?;
+        let coeff_0 = self.config.coeff_cols[0];
+        region.assign_fixed(|| "quartic b", coeff_0, offset, || Value::known(b))?;
+        Ok(())
+    }
+
     /// Assigns the given elements that are not assigned to a cell yet in rows
     /// of their own.
     pub fn materialize(
@@ -397,6 +427,74 @@ impl<F: CircuitField> NativeChip<F> {
     ) -> Result<(), Error> {
         x.copy_advice(|| "arith copy_in_row", region, *column, offset)?;
         Ok(())
+    }
+
+    /// Returns the product of the given elements, up to four per row.
+    fn mul_many(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        xs: &[AssignedNative<F>],
+    ) -> Result<AssignedNative<F>, Error> {
+        let (first, rest) = xs.split_first().expect("cannot multiply an empty list of elements");
+        rest.chunks(3).try_fold(first.clone(), |acc, chunk| {
+            let one;
+            let ys = match chunk {
+                [y] => return self.mul(layouter, &acc, y, None),
+                [y1, y2] => {
+                    one = self.assign_fixed(layouter, F::ONE)?;
+                    [&acc, y1, y2, &one]
+                }
+                [y1, y2, y3] => [&acc, y1, y2, y3],
+                _ => unreachable!(),
+            };
+            let res_value = (ys.iter()).fold(Value::known(F::ONE), |p, y| p * y.value());
+            layouter.assign_region(
+                || "mul many",
+                |mut region| {
+                    for (y, col) in ys.iter().zip(self.config.value_cols.iter()) {
+                        self.copy_in_row(&mut region, y, col, 0)?;
+                    }
+                    let res = region.assign_native(
+                        || "res",
+                        self.config.value_cols[4],
+                        0,
+                        || res_value,
+                    )?;
+                    self.quartic(&mut region, F::ZERO, F::ZERO, 0)?;
+                    Ok(res)
+                },
+            )
+        })
+    }
+
+    /// Asserts that `x^2 * t + a * x + b != 0`, by exhibiting its inverse `s`
+    /// in one row of the quartic gate, with `(s, x, x, t, 1)` in the first
+    /// five columns.
+    fn assert_quartic_non_zero(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &AssignedNative<F>,
+        t: &AssignedNative<F>,
+        a: F,
+        b: F,
+    ) -> Result<(), Error> {
+        let one = self.assign_fixed(layouter, F::ONE)?;
+        layouter.assign_region(
+            || "assert quartic non-zero",
+            |mut region| {
+                // s * x * x * t + a * s * x + b * s = 1
+                let s_value = x
+                    .value()
+                    .zip(t.value())
+                    .map(|(x, t)| (*x * x * t + a * x + b).invert().unwrap_or(F::ZERO));
+                region.assign_advice(|| "s", self.config.value_cols[0], 0, || s_value)?;
+                self.copy_in_row(&mut region, x, &self.config.value_cols[1], 0)?;
+                self.copy_in_row(&mut region, x, &self.config.value_cols[2], 0)?;
+                self.copy_in_row(&mut region, t, &self.config.value_cols[3], 0)?;
+                self.copy_in_row(&mut region, &one, &self.config.value_cols[4], 0)?;
+                self.quartic(&mut region, a, b, 0)
+            },
+        )
     }
 
     /// Assigns the given value into a variable `x`, and returns `(x, r)`, where
@@ -808,6 +906,30 @@ where
         let (y, _) = self.assign_with_shifted_inverse(layouter, x.value().copied(), constant)?;
         self.assert_equal(layouter, x, &y)
     }
+
+    fn assert_not_equal_to_many_fixed(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &AssignedNative<F>,
+        constants: &[F],
+    ) -> Result<(), Error> {
+        // Three constants with zero sum take one row:
+        //   (x - c1)(x - c2)(x - c3) = x^3 + (c1c2 + c1c3 + c2c3) x - c1c2c3.
+        if let [c1, c2, c3] = constants
+            && F::is_zero_vartime(&(*c1 + c2 + c3))
+        {
+            let e2 = *c1 * c2 + *c1 * c3 + *c2 * c3;
+            return self.assert_quartic_non_zero(layouter, x, x, e2, -(*c1 * c2 * c3));
+        }
+        // Otherwise, every pair takes one row:
+        //   (x - c1)(x - c2) = x^2 - (c1 + c2) x + c1c2.
+        let one = self.assign_fixed(layouter, F::ONE)?;
+        constants.chunks(2).try_for_each(|chunk| match chunk {
+            [c1, c2] => self.assert_quartic_non_zero(layouter, x, &one, -(*c1 + c2), *c1 * c2),
+            [c] => self.assert_not_equal_to_fixed(layouter, x, *c),
+            _ => unreachable!(),
+        })
+    }
 }
 
 impl<F> AssertionInstructions<F, AssignedBit<F>> for NativeChip<F>
@@ -957,6 +1079,40 @@ where
             F::ZERO,
             m,
         )
+    }
+
+    fn pow(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &AssignedNative<F>,
+        n: u64,
+    ) -> Result<AssignedNative<F>, Error> {
+        if let Some(c) = self.as_constant(x) {
+            return self.assign_fixed(layouter, c.pow_vartime([n]));
+        }
+        if n == 0 {
+            return self.assign_fixed(layouter, F::ONE);
+        }
+
+        // Square-and-multiply in base 4: on the i-th iteration, tmp = x^(4^i), res
+        // is multiplied by tmp^d, for the i-th base-4 digit d of n, and tmp is
+        // raised to the 4th power, each in at most one row.
+        let mut n = n;
+        let mut tmp = x.clone();
+        let mut res: Option<AssignedNative<F>> = None;
+        while n > 0 {
+            let d = (n & 3) as usize;
+            if d > 0 {
+                let mut xs: Vec<_> = res.into_iter().collect();
+                xs.extend(std::iter::repeat_n(tmp.clone(), d));
+                res = Some(self.mul_many(layouter, &xs)?);
+            }
+            n >>= 2;
+            if n > 0 {
+                tmp = self.mul_many(layouter, &vec![tmp; 4])?;
+            }
+        }
+        Ok(res.unwrap())
     }
 
     fn div(
@@ -1226,11 +1382,8 @@ where
         layouter: &mut impl Layouter<F>,
         bits: &[AssignedBit<F>],
     ) -> Result<AssignedBit<F>, Error> {
-        let mut acc = bits.first().unwrap().0.clone();
-        for b in bits.iter().skip(1) {
-            acc = self.mul(layouter, &acc, &b.0, None)?;
-        }
-        Ok(AssignedBit(acc))
+        let xs: Vec<_> = bits.iter().map(|b| b.0.clone()).collect();
+        Ok(AssignedBit(self.mul_many(layouter, &xs)?))
     }
 
     fn or(
@@ -1383,43 +1536,51 @@ where
         x: &AssignedNative<F>,
         c: F,
     ) -> Result<AssignedBit<F>, Error> {
-        // We enforce (i) (x - c) * aux = 1 - res
-        // and       (ii) (x - c) * res = 0.
+        // We enforce
+        //   (i)  (x - c) * aux = 1 - res,
+        //   (ii) (x - c) * res = 0,
+        // in one row:
+        //
+        //   v0   v1    v2    v3   v4   |  mul_ab   coeff_0
+        //   x    res   aux   0    v4   |    a         0
+        //
+        // with the arithmetic and quartic identities both enabled. The zero
+        // in v3 cancels the quartic term:
+        //   quartic:    v4 = a * x * res
+        //   arithmetic: r * res - c * aux + a * x * res + x * aux - 1 = 0
+        // With v4 = res and (a, r) = (1/c, 0) if c != 0, or v4 = 0 and
+        // (a, r) = (1, 1) otherwise, the quartic identity is (ii) and, given
+        // (ii), the arithmetic one is (i).
         //  * If  x = c, (i)  implies res = 1; (ii) becomes trivial.
         //  * If x != c, (ii) implies res = 0; (i) can be relaxed with aux = (x - c)^-1.
+        // The two equations guarantee the bit-ness of `res`.
 
-        let value_cols = &self.config.value_cols;
+        let c_is_zero = F::is_zero_vartime(&c);
+        let (a, r) = match c.invert().into_option() {
+            Some(c_inv) => (c_inv, F::ZERO),
+            None => (F::ONE, F::ONE),
+        };
         let res_val = x.value().map(|x| F::from((*x == c) as u64));
         let aux_val = x.value().map(|x| (*x - c).invert().unwrap_or(F::ONE));
-
-        // (i) enforced as res - c * aux + aux * x - 1 = 0.
-        let res = layouter.assign_region(
-            || "is_equal (i)",
+        let zero = self.assign_fixed(layouter, F::ZERO)?;
+        let cols = &self.config.value_cols;
+        layouter.assign_region(
+            || "is_equal_to_fixed",
             |mut region| {
-                region.assign_advice(|| "aux", value_cols[0], 0, || aux_val)?;
-                self.copy_in_row(&mut region, x, &value_cols[1], 0)?;
-                let res = region.assign_native(|| "res", value_cols[4], 0, || res_val)?;
+                self.copy_in_row(&mut region, x, &cols[0], 0)?;
+                let res = region.assign_native(|| "res", cols[1], 0, || res_val)?;
+                region.assign_advice(|| "aux", cols[2], 0, || aux_val)?;
+                self.copy_in_row(&mut region, &zero, &cols[3], 0)?;
+                let v4 = if c_is_zero { &zero } else { &res };
+                self.copy_in_row(&mut region, v4, &cols[4], 0)?;
                 let mut coeffs = vec![F::ZERO; self.config.coeff_cols.len()];
-                coeffs[0] = -c; // coeff of aux
-                coeffs[4] = F::ONE; // coeff of res
-                self.custom(&mut region, &coeffs, F::ZERO, (F::ONE, F::ZERO), -F::ONE, 0)?;
-                Ok(res)
+                coeffs[1] = r; // coeff of res
+                coeffs[2] = -c; // coeff of aux
+                self.custom(&mut region, &coeffs, F::ZERO, (a, F::ONE), -F::ONE, 0)?;
+                self.config.q_quartic.enable(&mut region, 0)?;
+                Ok(AssignedBit(res))
             },
-        )?;
-
-        // (ii) enforced as -c * res + res * x = 0.
-        let must_be_zero = self.add_and_mul(
-            layouter,
-            (-c, &res),
-            (F::ZERO, x),
-            (F::ZERO, x),
-            F::ZERO,
-            F::ONE,
-        )?;
-        self.assert_zero(layouter, &must_be_zero)?;
-
-        // The two equations we have enforced guarantee the bit-ness of `res`.
-        Ok(AssignedBit(res))
+        )
     }
 
     fn is_not_equal_to_fixed(

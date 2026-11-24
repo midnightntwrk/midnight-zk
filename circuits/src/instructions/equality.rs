@@ -255,6 +255,7 @@ pub(crate) mod tests {
             (&zero, &zero, true),
             (&one, &one, true),
             (&zero, &one, false),
+            (&r, &zero, false),
         ]
         .iter()
         .for_each(|(x, y, equal)| {

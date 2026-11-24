@@ -8,6 +8,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 ### Added
+* `AssertionInstructions::assert_not_equal_to_many_fixed`, which asserts that an element differs from all the given constants; the native chip checks two constants per row, or three per row if they sum to zero, and the foreign Weierstrass chip uses it to compare x-coordinates [#682](https://github.com/midnightntwrk/midnight-zk/pull/682)
 * `Accumulator::is_collapsed_with` and `Msm::is_collapsed_with`, which check that an accumulator or MSM has the shape `assign_collapsed` assigns
 * `EccInstructions::point_from_coordinates_without_subgroup_check`, which creates a point from its coordinates without enforcing subgroup membership with constraints [#654](https://github.com/midnightntwrk/midnight-zk/pull/654)
 * `verifier::InCircuitKZGEngine`, the `KZGEngine`s whose KZG proofs can be verified in-circuit, bounding the KZG types of the in-circuit verifier [#644](https://github.com/midnightntwrk/midnight-zk/pull/644)
@@ -23,6 +24,10 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * `VectorInstructions::trim_beginning` with `n_elems > M` and the `AssignedVector` comparisons with a constant longer than `M` (`is_equal_to_fixed`, `assert_equal_to_fixed` and their negations) panic with a descriptive message instead of underflowing. [#662](https://github.com/midnightntwrk/midnight-zk/pull/662)
 ### Changed
 * `CircuitCurve::from_xy` for BLS12-381 and BN256 relies on the curve-equation check of `CurveAffine::from_xy` instead of repeating it [#675](https://github.com/midnightntwrk/midnight-zk/pull/675)
+* The native chip computes `is_equal_to_fixed` in one row, enabling the arithmetic and quartic gates together [#682](https://github.com/midnightntwrk/midnight-zk/pull/682)
+* The native chip computes `pow` in base 4 with the quartic gate, using at most two rows per two bits of the exponent [#682](https://github.com/midnightntwrk/midnight-zk/pull/682)
+* The native chip computes `and` over several bits with the quartic gate, multiplying up to three more bits per row [#682](https://github.com/midnightntwrk/midnight-zk/pull/682)
+* The native chip has a quartic gate, `v4 = v0 * v1 * v2 * v3 + a * v0 * v1 + b * v0` for fixed `a` and `b`, whose selector adds a fixed column to every circuit using the native chip, which changes their VKs [#682](https://github.com/midnightntwrk/midnight-zk/pull/682)
 * Foreign Weierstrass `point_from_coordinates` enforces membership in the prime-order subgroup on curves with a non-trivial cofactor (BLS12-381), as documented in `EccInstructions` [#654](https://github.com/midnightntwrk/midnight-zk/pull/654)
 * Document that `EccInstructions` (and the foreign Weierstrass chip) only guarantee completeness and soundness on the large prime-order subgroup component of a point, not on its torsion component, e.g. the GLV-based MSM [#659](https://github.com/midnightntwrk/midnight-zk/pull/659)
 * `AssignmentInstructions::as_constant`, the constant an assigned element is known to encode at circuit-construction time, if any [#655](https://github.com/midnightntwrk/midnight-zk/pull/655)

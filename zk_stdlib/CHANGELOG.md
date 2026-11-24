@@ -22,6 +22,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * The foreign Weierstrass ECC chips (secp256k1, P-256 and BLS12-381) are configured with the `max_bit_len` of the range-check chip, to split the carries of their unified identity that it does not take. This changes the verifying keys of circuits using them [#660](https://github.com/midnightntwrk/midnight-zk/pull/660)
 * The canonicity of foreign-field public inputs is asserted batch by batch on their packed limbs. This changes the verifying keys of circuits with foreign-field public inputs [#660](https://github.com/midnightntwrk/midnight-zk/pull/660)
 * The Cardano signature example runs at `k = 16`, which the optimizations of the foreign-field chips of `midnight-circuits` make it fit in [#660](https://github.com/midnightntwrk/midnight-zk/pull/660)
+* The native chip has a quartic gate, which adds a fixed column to every circuit. This changes the verifying keys of every circuit [#682](https://github.com/midnightntwrk/midnight-zk/pull/682)
 
 ### Removed
 ### Fixed

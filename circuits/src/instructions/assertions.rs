@@ -105,6 +105,17 @@ where
         x: &Assigned,
         constant: Assigned::Element,
     ) -> Result<(), Error>;
+
+    /// Ensures that the given assigned element is different from all the
+    /// given constants.
+    fn assert_not_equal_to_many_fixed(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &Assigned,
+        constants: &[Assigned::Element],
+    ) -> Result<(), Error> {
+        (constants.iter()).try_for_each(|c| self.assert_not_equal_to_fixed(layouter, x, c.clone()))
+    }
 }
 
 #[cfg(test)]
