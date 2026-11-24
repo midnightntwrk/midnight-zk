@@ -453,8 +453,7 @@ impl SerdeObject for G1Affine {
     }
 
     fn from_raw_bytes(bytes: &[u8]) -> Option<Self> {
-        debug_assert_eq!(bytes.len(), UNCOMPRESSED_SIZE);
-        let input: [u8; UNCOMPRESSED_SIZE] = bytes.try_into().unwrap();
+        let input: [u8; UNCOMPRESSED_SIZE] = bytes.try_into().ok()?;
         Self::from_uncompressed(&input).into()
     }
 
@@ -478,7 +477,7 @@ impl SerdeObject for G1Affine {
         } else {
             Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
-                "Invalid point. (Either not on curve, or not in subgroup.",
+                "Invalid point: bad encoding, not on the curve or not in the subgroup.",
             ))
         }
     }
@@ -949,11 +948,11 @@ impl CurveAffine for G1Affine {
 
     fn from_xy(x: Self::Base, y: Self::Base) -> CtOption<Self> {
         let p = Self::from_raw_unchecked(x, y, false);
-        CtOption::new(p, p.is_torsion_free())
+        CtOption::new(p, p.is_on_curve() & p.is_torsion_free())
     }
 
-    /// Skips `from_xy`'s subgroup check, which costs about a scalar
-    /// multiplication.
+    /// Skips the checks of `from_xy` (the subgroup one costs about a scalar
+    /// multiplication). Both are asserted in debug builds.
     fn from_xy_unchecked(x: Self::Base, y: Self::Base) -> Self {
         let p = Self::from_raw_unchecked(x, y, false);
         debug_assert!(bool::from(p.is_on_curve() & p.is_torsion_free()));
@@ -1603,6 +1602,41 @@ mod tests {
         assert!(bool::from(
             <G1Affine as UncompressedEncoding>::from_uncompressed(&enc).is_none()
         ));
+    }
+
+    // The checked raw readers reject input of the wrong length.
+    #[test]
+    fn test_g1_raw_bytes_wrong_length() {
+        let raw = G1Affine::generator().to_raw_bytes();
+        let truncated = &raw[..UNCOMPRESSED_SIZE - 1];
+        assert!(G1Affine::from_raw_bytes(truncated).is_none());
+        assert!(G1Affine::read_raw(&mut &truncated[..]).is_err());
+    }
+
+    #[test]
+    fn test_g1_from_xy_checks_curve_and_subgroup() {
+        let g = G1Affine::generator();
+        assert_eq!(G1Affine::from_xy(g.x(), g.y()).unwrap(), g);
+        assert_eq!(
+            G1Affine::from_xy(Fp::ZERO, Fp::ZERO).unwrap(),
+            G1Affine::identity()
+        );
+
+        // On the curve, outside the prime-order subgroup.
+        let p = g1_non_torsion_point();
+        assert!(bool::from(G1Affine::from_xy(p.x(), p.y()).is_none()));
+
+        // For a subgroup point `(x, y)`, `(u²x, u³y)` lies on `y² = x³ + 4u⁶`
+        // and still passes the subgroup test.
+        for u in [2u64, 3, 5] {
+            let u = Fp::from(u);
+            let (x, y) = (g.x() * u.square(), g.y() * u.square() * u);
+            let q = G1Affine::from_raw_unchecked(x, y, false);
+            assert_eq!(q.is_on_curve().unwrap_u8(), 0);
+            assert_eq!(q.is_torsion_free().unwrap_u8(), 1);
+            assert!(bool::from(G1Affine::from_xy(x, y).is_none()));
+            assert!(bool::from(Coordinates::<G1Affine>::from_xy(x, y).is_none()));
+        }
     }
 
     #[test]

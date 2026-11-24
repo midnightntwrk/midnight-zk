@@ -12,12 +12,16 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * `ZkStdLibArch::range_check_bit_len`, the bit size of the range-check lanes, by default `k - 1` (see `ZkStdLibArch::range_check_bit_len()`). The serialized architecture includes it, and its format version is 4 [#631](https://github.com/midnightntwrk/midnight-zk/pull/631)
 ### Changed
 * `MidnightPCS` requires `Parameters: From<ParamsKZG<Bls12>>` instead of `Parameters = ParamsKZG<Bls12>`; `setup_vk` and `prove` take `&PCS::Parameters`, and `load_srs::<PCS>` returns `PCS::Parameters`, built from the KZG SRS with `From` [#677](https://github.com/midnightntwrk/midnight-zk/pull/677)
+* BREAKING: `MidnightVK::read` and `MidnightPK::read` return an error on `SerdeFormat::RawBytesUnchecked`, so the points of a key are always checked. Keys written with `RawBytesUnchecked` can be read with `RawBytes` [#675](https://github.com/midnightntwrk/midnight-zk/pull/675)
 * Point `sha3-circuit` at a revision that requires `midnight-proofs` and `midnight-curves` by crates.io version instead of from the midnight-zk main branch, so that crates patching them to a midnight-zk tag get a single copy of each
 * The circuits assign native elements lazily, in the first cell that uses them, which saves rows. This changes the verifying keys of every circuit [#620](https://github.com/midnightntwrk/midnight-zk/pull/620)
 * Proving with `FflonkKZG` returns an error instead of panicking when a query's label is not among its group's labels, and rejects a polynomial queried twice at the same point [#671](https://github.com/midnightntwrk/midnight-zk/pull/671)
 * The JWT identity examples pass the committed instance column (0) to `commit_to_instances`, which now takes it [#671](https://github.com/midnightntwrk/midnight-zk/pull/671)
 * BREAKING: `ZkStdLibArch::nr_pow2range_cols` is replaced by `nb_range_check_groups`, the number of groups of the range-check chip, of 5 advice columns each, at the same position in the serialized architecture; `ZkStdLib::new` no longer takes `max_bit_len`, which the configuration carries. This changes the verifying keys of every circuit [#631](https://github.com/midnightntwrk/midnight-zk/pull/631)
 * The RSA example sets `range_check_bit_len` to 10, so that its range-check table fits in `k = 12`, and the examples run at their optimal `k` [#631](https://github.com/midnightntwrk/midnight-zk/pull/631)
+* The foreign Weierstrass ECC chips (secp256k1, P-256 and BLS12-381) are configured with the `max_bit_len` of the range-check chip, to split the carries of their unified identity that it does not take. This changes the verifying keys of circuits using them [#660](https://github.com/midnightntwrk/midnight-zk/pull/660)
+* The canonicity of foreign-field public inputs is asserted batch by batch on their packed limbs. This changes the verifying keys of circuits with foreign-field public inputs [#660](https://github.com/midnightntwrk/midnight-zk/pull/660)
+* The Cardano signature example runs at `k = 16`, which the optimizations of the foreign-field chips of `midnight-circuits` make it fit in [#660](https://github.com/midnightntwrk/midnight-zk/pull/660)
 
 ### Removed
 ### Fixed

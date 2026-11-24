@@ -103,8 +103,7 @@ impl<PCS: MidnightPCS> MidnightVK<PCS> {
     /// - `Processed`: Takes less space, but more time to read.
     /// - `RawBytes`: Takes more space, but faster to read.
     ///
-    /// Using `RawBytesUnchecked` will have the same effect as `RawBytes`,
-    /// but it is not recommended.
+    /// `RawBytesUnchecked` writes the same bytes as `RawBytes`.
     pub fn write<W: io::Write>(&self, writer: &mut W, format: SerdeFormat) -> io::Result<()> {
         writer.write_all(&[PCS::ID])?;
 
@@ -119,12 +118,10 @@ impl<PCS: MidnightPCS> MidnightVK<PCS> {
 
     /// Reads a verification key from a buffer.
     ///
-    /// The `format` must match the one that was used when writing the key.
-    /// If the key was written with `RawBytes`, it can be read with `RawBytes`
-    /// or `RawBytesUnchecked` (which is faster).
-    ///
-    /// # WARNING
-    /// Use `RawBytesUnchecked` only if you trust the party who wrote the key.
+    /// The `format` must be `Processed` or `RawBytes`, whichever the key was
+    /// written with (`RawBytes` also reads keys written with
+    /// `RawBytesUnchecked`). The points of a key are always checked, so
+    /// reading with `RawBytesUnchecked` gives an error.
     ///
     /// Fails if the key was written by another version of zk_stdlib, or under
     /// a commitment scheme other than `PCS`.
@@ -203,8 +200,7 @@ impl<Rel: Relation, PCS: MidnightPCS> MidnightPK<Rel, PCS> {
     /// - `Processed`: Takes less space, but more time to read.
     /// - `RawBytes`: Takes more space, but faster to read.
     ///
-    /// Using `RawBytesUnchecked` will have the same effect as `RawBytes`,
-    /// but it is not recommended.
+    /// `RawBytesUnchecked` writes the same bytes as `RawBytes`.
     pub fn write<W: io::Write>(&self, writer: &mut W, format: SerdeFormat) -> io::Result<()> {
         writer.write_all(&[PCS::ID])?;
 
@@ -217,12 +213,10 @@ impl<Rel: Relation, PCS: MidnightPCS> MidnightPK<Rel, PCS> {
 
     /// Reads a proving key from a buffer.
     ///
-    /// The `format` must match the one that was used when writing the key.
-    /// If the key was written with `RawBytes`, it can be read with `RawBytes`
-    /// or `RawBytesUnchecked` (which is faster).
-    ///
-    /// # WARNING
-    /// Use `RawBytesUnchecked` only if you trust the party who wrote the key.
+    /// The `format` must be `Processed` or `RawBytes`, whichever the key was
+    /// written with (`RawBytes` also reads keys written with
+    /// `RawBytesUnchecked`). The points of a key are always checked, so
+    /// reading with `RawBytesUnchecked` gives an error.
     ///
     /// Fails if the key was written under a commitment scheme other than
     /// `PCS`.

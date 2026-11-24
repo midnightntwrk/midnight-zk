@@ -113,11 +113,10 @@ where
     B: FieldEmulationParams<F, C::Base>,
 {
     // The scalar field is treated as a gadget. Here we only account for the columns
-    // that this chip requires for its own custom gates.
-    // The 2 in `2 + |moduli|` corresponds to `u_col` + `cond_col`.
-    // The outer `+ 1` corresponds to the advice column for the index of
+    // that this chip requires for its own custom gates: next to the limbs, the
+    // carries `u` and `vj`, `cond`, the high parts of the carries and the index of
     // `multi_select`.
-    B::NB_LIMBS as usize + max(B::NB_LIMBS as usize, 2 + B::moduli().len()) + 1
+    B::NB_LIMBS as usize + max(B::NB_LIMBS as usize, 3 + 2 * B::moduli().len()) + 1
 }
 
 /// Shared MSM randomness for the windowed double-and-add algorithm.
@@ -734,7 +733,7 @@ where
         q: &Self::Point,
     ) -> Result<Self::Point, Error> {
         let r_curve = p.value().zip(q.value()).map(|(p, q)| p + q);
-        let r = self.assign_point_unchecked(layouter, r_curve)?;
+        let r = self.assign_point_unchecked(layouter, r_curve, None)?;
 
         // Define some auxiliary variables.
         let p_or_q_or_r_are_id = self.native_gadget.or(
@@ -783,15 +782,16 @@ where
         p: &AssignedForeignPoint<F, C, B>,
     ) -> Result<AssignedForeignPoint<F, C, B>, Error> {
         let r_curve = p.value().map(|p| p + p);
-        let r = self.assign_point_unchecked(layouter, r_curve)?;
 
-        // (There are no points of order 2 by assumption.)
-        self.native_gadget.assert_equal(layouter, &p.is_id, &r.is_id)?;
+        // r = id <=> p = id, as the prime-order subgroup has no points of order 2.
+        // This is only needed for completeness: on a point of order 2 (p.y = 0),
+        // the tangent instance of [assert_double] is unsatisfiable.
+        let r = self.assign_point_unchecked(layouter, r_curve, Some(p.is_id.clone()))?;
 
         // If `p` is not the identity, make sure the double relation is satisfied.
         // Note that the following call to [assert_double] satisfies the required
-        // preconditions because we set cond := (p != id) and we have asserted that
-        // p = id <=> r = id, so both preconditions of [assert_double] are guaranteed.
+        // preconditions because we set cond := (p != id) and p = id <=> r = id,
+        // so both preconditions of [assert_double] are guaranteed.
         let cond = self.native_gadget.not(layouter, &p.is_id)?;
         self.assert_double(layouter, p, &r, &cond)?;
 
@@ -991,7 +991,7 @@ where
         layouter: &mut impl Layouter<F>,
         value: Value<C::CryptographicGroup>,
     ) -> Result<Self::Point, Error> {
-        let p = self.assign_point_unchecked(layouter, value)?;
+        let p = self.assign_point_unchecked(layouter, value, None)?;
         self.assert_on_curve(layouter, &p)?;
         Ok(p)
     }
@@ -1068,17 +1068,20 @@ where
         &self.scalar_field_chip
     }
 
-    /// Configures the foreign ECC chip
+    /// Configures the foreign ECC chip, for a range-check chip of the given
+    /// `max_bit_len`.
     pub fn configure(
         meta: &mut ConstraintSystem<F>,
         base_field_config: &FieldChipConfig,
         advice_columns: &[Column<Advice>],
         fixed_columns: &[Column<Fixed>],
+        max_bit_len: usize,
     ) -> ForeignWeierstrassEccConfig<C> {
-        // Assert that there is room for the cond_col in the existing columns of the
-        // field_chip configurations.
+        // The cond_col and the columns of the high parts of the carries follow the
+        // carries of the field_chip configuration.
         let cond_col_idx = base_field_config.x_cols.len() + base_field_config.v_cols.len() + 1;
-        assert!(advice_columns.len() > cond_col_idx);
+        let hi_cols =
+            &advice_columns[cond_col_idx + 1..cond_col_idx + 2 + base_field_config.v_cols.len()];
         let cond_col = advice_columns[cond_col_idx];
         meta.enable_equality(cond_col);
 
@@ -1101,7 +1104,9 @@ where
             base_field_config,
             &cond_col,
             fixed_columns[..NB_FOREIGN_WEIERSTRASS_FIXED_COLS].try_into().unwrap(),
+            hi_cols,
             &unified_coeff_bounds,
+            max_bit_len,
         );
 
         let (q_multi_select, idx_col_multi_select, tag_col_multi_select) =
@@ -1117,34 +1122,46 @@ where
         }
     }
 
-    /// Converts a curve point in C : WeierstrassCurve to AssignedForeignPoint.
-    /// Used for loading possibly secret points into the circuit.
-    /// The point is not asserted (with constraints) to be on the curve.
-    /// The point may be the identity.
+    /// Assigns the point `p`, which may be the identity, as its coordinates
+    /// `(x, y)` and its identity flag.
+    ///
+    /// The identity flag is `is_id` if given, and otherwise a new bit with the
+    /// value of whether `p` is the identity.
+    ///
+    /// No constraint ties them to each other or to the curve: `(x, y)` is not
+    /// asserted to be on the curve, and the identity flag is not asserted to
+    /// be 1 exactly when `p` is the identity. The caller must enforce both,
+    /// or guarantee them by construction.
     fn assign_point_unchecked(
         &self,
         layouter: &mut impl Layouter<F>,
         p: Value<C::CryptographicGroup>,
+        is_id: Option<AssignedBit<F>>,
     ) -> Result<AssignedForeignPoint<F, C, B>, Error> {
-        let values = p.map(|p| {
-            if C::CryptographicGroup::is_identity(&p).into() {
-                (C::Base::ZERO, C::Base::ZERO, true)
-            } else {
-                let coordinates =
-                    p.into().coordinates().expect("assign_point_unchecked: invalid point given");
-                (coordinates.0, coordinates.1, false)
+        let is_id = match is_id {
+            Some(is_id) => is_id,
+            None => {
+                let is_id = p.map(|p| C::CryptographicGroup::is_identity(&p).into());
+                self.native_gadget.assign(layouter, is_id)?
             }
-        });
-        let x = self.base_field_chip().assign(layouter, values.map(|v| v.0))?;
-        let y = self.base_field_chip().assign(layouter, values.map(|v| v.1))?;
-        let is_id = self.native_gadget.assign(layouter, values.map(|v| v.2))?;
-        let p = AssignedForeignPoint::<F, C, B> {
+        };
+        let (x, y) = p
+            .map(|p| {
+                if C::CryptographicGroup::is_identity(&p).into() {
+                    (C::Base::ZERO, C::Base::ZERO)
+                } else {
+                    p.into().coordinates().expect("assign_point_unchecked: invalid point given")
+                }
+            })
+            .unzip();
+        let x = self.base_field_chip().assign(layouter, x)?;
+        let y = self.base_field_chip().assign(layouter, y)?;
+        Ok(AssignedForeignPoint::<F, C, B> {
             point: p,
             is_id,
             x,
             y,
-        };
-        Ok(p)
+        })
     }
 
     /// Asserts that the given point satisfies the Weierstrass curve equation
@@ -1194,14 +1211,13 @@ where
         q: &AssignedForeignPoint<F, C, B>,
     ) -> Result<AssignedForeignPoint<F, C, B>, Error> {
         let r_curve = p.value().zip(q.value()).map(|(p, q)| p + q);
-        let r = self.assign_point_unchecked(layouter, r_curve)?;
 
-        // Assert that r is not the identity.
-        self.native_gadget.assert_equal(layouter, &p.is_id, &r.is_id)?;
+        // r is not the identity, by the preconditions.
+        let not_id = self.native_gadget.assign_fixed(layouter, false)?;
+        let r = self.assign_point_unchecked(layouter, r_curve, Some(not_id))?;
 
-        // The preconditions of [incomplete_add] (and the previous assertion
-        // that r != id) guarantee that the following call satisfies all the
-        // preconditions of [assert_add].
+        // The preconditions of [incomplete_add] (and r != id) guarantee that the
+        // following call satisfies all the preconditions of [assert_add].
         // Note that the following call to [assert_add] will make the circuit
         // unsatisfiable if `p = -q`, but that is the intended behavior of
         // [incomplete_add].
@@ -1246,12 +1262,10 @@ where
 
         // Assert tangent, λ² = 2px+rx, and slope(p,r,negate) in a single fused region.
         //
-        // The slope instance (between p and -r) only constrains r.y if p.x != r.x.
-        // This is guaranteed because r.x has been constrained to be correct by the
-        // λ-squared instance, based on a λ that has been constrained to be correct
-        // by the tangent instance. Given our assumption that there do not exist
-        // order-3 points (and our precondition that p != id) we have that 2p != ±p,
-        // thus r.x != p.x, as desired.
+        // The tangent instance constrains λ, and the λ-squared instance then
+        // constrains r.x. Given both, the slope instance (between p and -r) fixes
+        // r.y = λ(p.x - r.x) - p.y, the y-coordinate of 2p. Hence, when cond = 1,
+        // the region asserts r = 2p, with no assumption on the order of p.
         assert_double::assert_double::<F, C, B, N>(
             layouter,
             cond,
@@ -1685,8 +1699,9 @@ where
             //    res := None or Some(k p) with 0 < k < 2^i
             //    tmp := 2^i p
             //
-            // (1) & (2) hold because all non-identity points have Scalar.ORDER order by
-            //           assumption, and 2^i is smaller than ORDER on every iteration.
+            // (1) & (2) hold because all non-identity points of the prime-order
+            //           subgroup have order Scalar.ORDER, and 2^i is smaller than
+            //           ORDER on every iteration.
             // (3) holds because otherwise we would have k p = ± 2^i p with 0 < k < 2^i.
             //     Thus (k ∓ 2^i) p = id, which means that (k ∓ 2^i) is
             //     a multiple of ORDER, however this is not possible as:
@@ -2095,6 +2110,7 @@ where
             &base_field_config,
             &advice_columns[..nb_advice_cols],
             fixed_columns,
+            8,
         );
         ForeignEccTestConfig {
             native_gadget_config,
