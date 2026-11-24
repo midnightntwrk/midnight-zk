@@ -1191,19 +1191,18 @@ where
     /// (i.e. `p.x = q.x`).
     /// Consequently, this function will never return the identity point.
     ///
+    /// The assertion `p.x != q.x` is itself incomplete, see
+    /// [Self::incomplete_assert_different_x].
+    ///
     /// # Preconditions
     ///
     /// - `p != id`
     /// - `q != id`
-    /// - `p != q`
-    ///
-    /// It is the responsibility of the caller to guarantee that all
-    /// preconditions are met, this function *does not* necessarily become
-    /// unsatisfiable if they are violated.
+    /// - `p != ±q`
     ///
     /// # Unsatisfiable Circuit
     ///
-    /// If `p = -q`.
+    /// If any of the preconditions is violated.
     fn incomplete_add(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -1212,15 +1211,16 @@ where
     ) -> Result<AssignedForeignPoint<F, C, B>, Error> {
         let r_curve = p.value().zip(q.value()).map(|(p, q)| p + q);
 
+        self.assert_non_zero(layouter, p)?;
+        self.assert_non_zero(layouter, q)?;
+        self.incomplete_assert_different_x(layouter, p, q)?;
+
         // r is not the identity, by the preconditions.
         let not_id = self.native_gadget.assign_fixed(layouter, false)?;
         let r = self.assign_point_unchecked(layouter, r_curve, Some(not_id))?;
 
-        // The preconditions of [incomplete_add] (and r != id) guarantee that the
-        // following call satisfies all the preconditions of [assert_add].
-        // Note that the following call to [assert_add] will make the circuit
-        // unsatisfiable if `p = -q`, but that is the intended behavior of
-        // [incomplete_add].
+        // The above assertions (and r != id) guarantee the preconditions of
+        // [assert_add].
         let one = self.native_gadget.assign_fixed(layouter, true)?;
         self.assert_add(layouter, p, q, &r, &one)?;
 
@@ -1660,21 +1660,23 @@ where
     ///
     /// - `p != id`
     ///
-    /// It is the responsibility of the caller to meet the precondition.
-    /// This function neither panics nor makes the circuit unsatisfiable if the
-    /// precondition is violated.
+    /// # Unsatisfiable Circuit
+    ///
+    /// If the precondition is violated.
     fn mul_by_u128(
         &self,
         layouter: &mut impl Layouter<F>,
         n: u128,
         p: &AssignedForeignPoint<F, C, B>,
     ) -> Result<AssignedForeignPoint<F, C, B>, Error> {
+        self.assert_non_zero(layouter, p)?;
+
         if n == 0 {
             return self.assign_fixed(layouter, C::CryptographicGroup::identity());
         };
 
         // Assert that (n : u128) is smaller than ORDER / 2.
-        // This condition allows us to use incomplete addition in the loop below.
+        // This condition guarantees the completeness of incomplete addition below.
         assert!(129 < C::ScalarField::NUM_BITS);
 
         // Double-and-add (starting from the LSB)
@@ -1687,21 +1689,19 @@ where
         // We iterate over the bits of n.
         let mut n = n;
         while n > 0 {
-            // In order to safetly use [incomplete_add] here, we need to show
-            // that these three preconditions are met when res != None:
+            // [incomplete_add] asserts its preconditions. For completeness, we show
+            // that they hold when res != None, if p is in the prime-order subgroup:
             //   (1) res != id
             //   (2) tmp != id
             //   (3) res.x != tmp.x   (i.e. res != ±tmp)
             //
-            // Note that p != id holds by assumption.
-            // Also, note that on the i-th iteration (counting from i = 0),
+            // Note that on the i-th iteration (counting from i = 0),
             // at this point we have:
             //    res := None or Some(k p) with 0 < k < 2^i
             //    tmp := 2^i p
             //
-            // (1) & (2) hold because all non-identity points of the prime-order
-            //           subgroup have order Scalar.ORDER, and 2^i is smaller than
-            //           ORDER on every iteration.
+            // (1) & (2) hold because p has order ORDER, and 2^i is smaller than ORDER
+            //           on every iteration.
             // (3) holds because otherwise we would have k p = ± 2^i p with 0 < k < 2^i.
             //     Thus (k ∓ 2^i) p = id, which means that (k ∓ 2^i) is
             //     a multiple of ORDER, however this is not possible as:
@@ -1853,27 +1853,22 @@ where
         // Compute table, [-α, p-α, 2p-α, ..., (2^WS-1)p-α] for every p in bases.
         let mut tables = vec![];
         for (i, p) in bases.iter().enumerate() {
-            // Assert that α.x ≠ p.x (note that α and -α have the same x-coordinate).
-            self.incomplete_assert_different_x(layouter, &neg_alpha, p)?;
             let mut acc = neg_alpha.clone();
             let mut p_table = vec![acc.clone()];
             for _ in 1..(1usize << WS) {
-                // In order to safetly use [incomplete_add] here, we need to ensure that:
+                // [incomplete_add] asserts its preconditions. For completeness, we show
+                // that they hold, if the bases are in the prime-order subgroup:
                 //   (1) acc != id
                 //   (2) p != id
-                //   (3) acc != p
+                //   (3) acc != ±p
                 //
                 // (1) holds because acc is initially -α, which cannot be the identity,
                 //     because r is not and we have asserted 2^WS < Scalar::ORDER. Then,
                 //     acc is always the result of incomplete_add, which is guaranteed to
                 //     not produce the identity.
                 // (2) holds because all the bases were asserted to not be the identity.
-                // (3) holds because acc is initially -α, which has been asserted to not
-                //     share the x coordinate with p, so the first iteration is fine.
-                //     In other iterations, acc will be of the form kp-α for some
-                //     k = 1,...,(2^WS-2). Note that (k-1)p-α cannot be the identity as it is
-                //     the result of a previous call to [incomplete_add], thus kp-α != p, so
-                //     the third precondition of [incomplete_add] is met.
+                // (3) holds except with negligible probability (over the choice of α),
+                //     since acc is of the form kp-α for some k = 0,...,(2^WS-2).
                 Self::completeness_error_if(&acc.value().zip(p.value()), |(av, pv)| {
                     av == pv || *av == -(*pv)
                 })?;
@@ -1899,10 +1894,11 @@ where
                 let window = &padded_scalars[j][i];
                 let addend =
                     self.multi_select(layouter, window, &tables[j], F::from(tag_cnt + j as u64))?;
-                // In order to safetly use [incomplete_add] here, we need to ensure that:
+                // [incomplete_add] asserts its preconditions. For completeness, we show
+                // that they hold, if the bases are in the prime-order subgroup:
                 //   (1) acc != id
                 //   (2) addend != id
-                //   (3) acc != addend
+                //   (3) acc != ±addend
                 //
                 // (1) holds because acc is the result of doubling a non-identity point
                 //     (this is guaranteed because in the first iteration acc != id, and in
@@ -1910,13 +1906,11 @@ where
                 //     guaranteed to not produce the identity.)
                 // (2) holds because all the points in the tables are different from the
                 //     identity, as asserted above (in the construction of the tables).
-                // (3) is asserted here, this assertion will not hinder completeness except
-                //     with negligible probability (over the choice of α).
+                // (3) holds except with negligible probability (over the choice of α).
                 Self::completeness_error_if(&acc.value().zip(addend.value()), |(av, addv)| {
                     av == addv || *av == -(*addv)
                 })?;
 
-                self.incomplete_assert_different_x(layouter, &acc, &addend)?;
                 acc = self.incomplete_add(layouter, &acc, &addend)?;
             }
         }
