@@ -1,3 +1,7 @@
+// This file is part of MIDNIGHT-ZK.
+// Copyright (C) 2025 Midnight Foundation
+// SPDX-License-Identifier: Apache-2.0
+
 //! The parameters of [`Fflonk`](super::Fflonk) over KZG, and the commitments to
 //! interleaved polynomials made with them.
 
