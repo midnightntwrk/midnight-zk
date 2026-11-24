@@ -1,0 +1,38 @@
+start 12:12:17 sha ffa83b28
+tree ffa83b2
+cargo 1.90.0 (840b83a10 2025-07-30)
+== build 12:12:17
+	libcudart.so.13 => /opt/cuda/lib64/libcudart.so.13 (0x00007fbae6e00000)
+== built 12:13:07
+== k=16 prepare 12:13:07
+== k=16 cpu 12:13:13 timeout 540
+rc=0 rows=4
+== k=16 gpu 12:14:14 timeout 540
+rc=0 rows=4
+k16 gpu msm_calls per proof: 11 
+== k=14 prepare 12:14:19
+== k=14 cpu 12:14:20 timeout 540
+rc=0 rows=4
+== k=14 gpu 12:14:22 timeout 540
+rc=0 rows=4
+== k=18 prepare 12:14:24
+== k=18 cpu 12:14:45 timeout 540
+rc=0 rows=4
+== k=18 gpu 12:15:25 timeout 540
+rc=0 rows=4
+== k=20 prepare 12:16:14
+== k=20 cpu 12:17:41 timeout 1260
+rc=0 rows=4
+== k=20 gpu 12:19:33 timeout 1260
+rc=0 rows=4
+== k=21 prepare 12:21:51
+== k=21 cpu 12:24:45 timeout 2220
+rc=0 rows=4
+== k=21 gpu 12:28:38 timeout 2220
+rc=0 rows=4
+== seq k=16 gpu N=64 12:31:26
+rc=0 rows=65
+== seq k=16 cpu N=64 12:31:43
+rc=0 rows=65
+== end 12:33:10
+H2H-DONE

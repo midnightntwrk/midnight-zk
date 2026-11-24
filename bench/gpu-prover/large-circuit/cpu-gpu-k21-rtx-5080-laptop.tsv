@@ -1,0 +1,5 @@
+# Same k = 21 circuit, one machine with an RTX 5080 Laptop GPU, an earlier build of the same hooks (pre-port, midnight-proofs 0.8.3)
+# cpu: stock CPU code path of the same binary; gpu: every hook on the device; each row pools 5 warm proofs from three runs; warm = not the first proof of its process; no quiet-gate record for these runs
+path	n_warm	warm_median_s	warm_min_s	warm_max_s	phase1_advice_s	phase2_trace_s	phase3_quotient_s	phase4_finalise_s	msm_s_median	host_hwm_gib
+cpu	5	51.33	51.31	52.13	8.53	10.99	20.50	10.86	-	18.12
+gpu	5	13.44	13.14	14.53	4.94	3.28	0.37	4.59	1.67	17.82

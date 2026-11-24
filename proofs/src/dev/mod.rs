@@ -26,6 +26,8 @@ use crate::{
 
 pub mod metadata;
 use metadata::Column as ColumnMetadata;
+#[cfg(feature = "gpu")]
+mod redact;
 mod util;
 
 mod failure;
@@ -38,6 +40,9 @@ pub use gates::CircuitGates;
 
 mod tfp;
 pub use tfp::TracingFloorPlanner;
+
+#[cfg(test)]
+mod redact_tests;
 
 use crate::{plonk::VirtualCell, poly::Rotation, utils::rational::Rational};
 
@@ -84,7 +89,8 @@ impl Region {
 }
 
 /// The value of a particular cell within the circuit.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(not(feature = "gpu"), derive(Clone, Copy, Debug, PartialEq, Eq))]
+#[cfg_attr(feature = "gpu", derive(Clone, Copy, PartialEq, Eq))]
 pub enum CellValue<F: Field> {
     /// An unassigned cell.
     Unassigned,
@@ -94,11 +100,36 @@ pub enum CellValue<F: Field> {
     Poison(usize),
 }
 
+#[cfg(feature = "gpu")]
+impl<F: Field> std::fmt::Debug for CellValue<F> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Unassigned => write!(f, "Unassigned"),
+            Self::Assigned(_) => write!(f, "Assigned({})", redact::WITHHELD),
+            Self::Poison(index) => write!(f, "Poison({index})"),
+        }
+    }
+}
+
 /// A value within an expression.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Ord, PartialOrd)]
+#[cfg_attr(
+    not(feature = "gpu"),
+    derive(Clone, Copy, Debug, PartialEq, Eq, Ord, PartialOrd)
+)]
+#[cfg_attr(feature = "gpu", derive(Clone, Copy, PartialEq, Eq, Ord, PartialOrd))]
 enum Value<F: Field> {
     Real(F),
     Poison,
+}
+
+#[cfg(feature = "gpu")]
+impl<F: Field> std::fmt::Debug for Value<F> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Real(_) => write!(f, "Real({})", redact::WITHHELD),
+            Self::Poison => write!(f, "Poison"),
+        }
+    }
 }
 
 impl<F: Field> From<CellValue<F>> for Value<F> {
@@ -256,6 +287,11 @@ impl<F: Field> Mul<F> for Value<F> {
 /// let instance = vec![];
 ///
 /// let prover = MockProver::<Scalar>::run(&circuit, instance).unwrap();
+/// // With the `gpu` feature the assigned values are withheld.
+/// #[cfg(feature = "gpu")]
+/// let expected = ["<withheld>", "<withheld>", "<withheld>"];
+/// #[cfg(not(feature = "gpu"))]
+/// let expected = ["0x2", "0x4", "0x8"];
 /// assert_eq!(
 ///     prover.verify(),
 ///     Err(vec![VerifyFailure::ConstraintNotSatisfied {
@@ -265,9 +301,9 @@ impl<F: Field> Mul<F> for Value<F> {
 ///             offset: 0,
 ///         },
 ///         cell_values: vec![
-///             (((Any::Advice, 0).into(), 0).into(), "0x2".to_string()),
-///             (((Any::Advice, 1).into(), 0).into(), "0x4".to_string()),
-///             (((Any::Advice, 2).into(), 0).into(), "0x8".to_string()),
+///             (((Any::Advice, 0).into(), 0).into(), expected[0].to_string()),
+///             (((Any::Advice, 1).into(), 0).into(), expected[1].to_string()),
+///             (((Any::Advice, 2).into(), 0).into(), expected[2].to_string()),
 ///         ],
 ///     }])
 /// );
@@ -300,12 +336,23 @@ pub struct MockProver<F: Field> {
 }
 
 /// Instance Value
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(not(feature = "gpu"), derive(Debug, Clone, PartialEq, Eq))]
+#[cfg_attr(feature = "gpu", derive(Clone, PartialEq, Eq))]
 pub enum InstanceValue<F: Field> {
     /// Assigned instance value
     Assigned(F),
     /// Padding
     Padding,
+}
+
+#[cfg(feature = "gpu")]
+impl<F: Field> std::fmt::Debug for InstanceValue<F> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Assigned(_) => write!(f, "Assigned({})", redact::WITHHELD),
+            Self::Padding => write!(f, "Padding"),
+        }
+    }
 }
 
 impl<F: Field> InstanceValue<F> {
@@ -1390,10 +1437,12 @@ mod tests {
     use midnight_curves::Fq as Scalar;
 
     use super::{FailureLocation, MockProver, VerifyFailure};
+    #[cfg(not(feature = "gpu"))]
+    use crate::plonk::Fixed;
     use crate::{
         circuit::{Layouter, SimpleFloorPlanner, Value},
         plonk::{
-            Advice, Any, Circuit, Column, ConstraintSystem, Constraints, Error, Expression, Fixed,
+            Advice, Any, Circuit, Column, ConstraintSystem, Constraints, Error, Expression,
             Instance, Selector, TableColumn,
         },
         poly::Rotation,
@@ -1783,6 +1832,7 @@ mod tests {
         );
     }
 
+    #[cfg(not(feature = "gpu"))]
     #[test]
     fn contraint_unsatisfied() {
         #[derive(Clone)]

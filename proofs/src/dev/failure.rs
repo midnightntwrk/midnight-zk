@@ -257,7 +257,10 @@ impl fmt::Display for VerifyFailure {
 
                     (DebugVirtualCell::from((vc, ann_map.as_ref())), string)
                 }) {
+                    #[cfg(not(feature = "gpu"))]
                     writeln!(f, "- {dvc} = {value}")?;
+                    #[cfg(feature = "gpu")]
+                    writeln!(f, "- {dvc} = {}", super::redact::value_str(value))?;
                 }
                 Ok(())
             }
@@ -321,7 +324,10 @@ impl Debug for VerifyFailure {
                         .map(|(vc, value)| {
                             (
                                 DebugVirtualCell::from((vc, ann_map.as_ref())),
+                                #[cfg(not(feature = "gpu"))]
                                 value.clone(),
+                                #[cfg(feature = "gpu")]
+                                super::redact::value_str(value).to_string(),
                             )
                         })
                         .collect(),
@@ -458,7 +464,10 @@ fn render_constraint_not_satisfied<F: Field>(
     eprintln!();
     eprintln!("  Assigned cell values:");
     for (i, (_, value)) in cell_values.iter().enumerate() {
+        #[cfg(not(feature = "gpu"))]
         eprintln!("    x{i} = {value}");
+        #[cfg(feature = "gpu")]
+        eprintln!("    x{i} = {}", super::redact::value_str(value));
     }
 }
 
@@ -559,7 +568,10 @@ fn render_lookup<F: Field>(
             Some((
                 ((column_type, column_index).into(), rotation.0).into(),
                 match load(query) {
+                    #[cfg(not(feature = "gpu"))]
                     Value::Real(v) => util::format_value(v),
+                    #[cfg(feature = "gpu")]
+                    Value::Real(v) => super::redact::format_cell_value(v),
                     Value::Poison => unreachable!(),
                 },
             ))
@@ -642,7 +654,10 @@ fn render_lookup<F: Field>(
         eprintln!("    |");
         eprintln!("    | Assigned cell values:");
         for (i, (_, value)) in cell_values.iter().enumerate() {
+            #[cfg(not(feature = "gpu"))]
             eprintln!("    |   x{i} = {value}");
+            #[cfg(feature = "gpu")]
+            eprintln!("    |   x{i} = {}", super::redact::value_str(value));
         }
     }
 }

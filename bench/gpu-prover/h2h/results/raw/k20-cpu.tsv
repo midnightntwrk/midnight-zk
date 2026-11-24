@@ -1,0 +1,5 @@
+mode	rep	k	threads	start_load1	proof	state	prove_s	verify_s	verified	msm_calls	ntt_calls	quotient_calls	device_errors	fallbacks	declines	hook_declines	h2d_copies	h2d_bytes	d2h_copies	d2h_bytes	msm_d2h_copies	msm_d2h_bytes	stage	peak_device_bytes	gpu_model	device_total_bytes
+cpu	1	20	24	1.96	0	cold	8.548179393	0.002002385	true	0	0	0	0	0	[]	[]	0	0	0	0	0	0	[0,0,0,0,0,0,0,0]	0	NA	0
+cpu	1	20	24	1.96	1	warm	8.556481527	0.001523752	true	0	0	0	0	0	[]	[]	0	0	0	0	0	0	[0,0,0,0,0,0,0,0]	0	NA	0
+cpu	1	20	24	1.96	2	warm	8.583721230	0.001635675	true	0	0	0	0	0	[]	[]	0	0	0	0	0	0	[0,0,0,0,0,0,0,0]	0	NA	0
+cpu	1	20	24	1.96	3	warm	8.612011587	0.001425682	true	0	0	0	0	0	[]	[]	0	0	0	0	0	0	[0,0,0,0,0,0,0,0]	0	NA	0

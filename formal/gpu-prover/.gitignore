@@ -1,0 +1,5 @@
+lean/.lake/
+quint/traces/
+_apalache-out/
+**/_apalache-out/
+__pycache__/

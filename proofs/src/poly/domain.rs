@@ -5,10 +5,22 @@ use std::marker::PhantomData;
 
 use ff::{PrimeField, WithSmallOrderMulGroup};
 use group::ff::{BatchInvert, Field};
-use midnight_curves::fft::{best_fft_with_twiddles, compute_twiddles, fft_coeff_to_extended};
+#[cfg(not(feature = "gpu"))]
+use midnight_curves::fft::best_fft_with_twiddles;
+use midnight_curves::fft::{compute_twiddles, fft_coeff_to_extended};
 
 use super::{Coeff, ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial, Rotation};
 use crate::utils::{arithmetic::parallelize, rational::Rational};
+
+/// With the feature `gpu`, transforms over the BLS12-381 scalar field are
+/// offered to the installed hooks first (`crate::gpu`).
+#[cfg(feature = "gpu")]
+fn best_fft_with_twiddles<F: Field>(a: &mut [F], twiddles: &[F], log_n: u32) {
+    if crate::gpu::fft(a, twiddles, log_n) {
+        return;
+    }
+    midnight_curves::fft::best_fft_with_twiddles(a, twiddles, log_n)
+}
 
 /// An [`EvaluationDomain`] with the precomputed twiddle factors of its FFTs.
 /// Only the prover runs FFTs, so a `ProvingKey` holds one.
@@ -269,6 +281,7 @@ impl<F: PrimeField> FftDomain<F> {
             &self.omega_inv,
             self.domain.k,
             self.domain.ifft_divisor,
+            true,
         );
 
         Polynomial {
@@ -332,6 +345,7 @@ impl<F: PrimeField> FftDomain<F> {
             &self.extended_omega_inv,
             self.domain.extended_k,
             self.domain.extended_ifft_divisor,
+            false,
         );
 
         // Distribute powers to move from coset; opposite from the
@@ -357,6 +371,7 @@ impl<F: PrimeField> FftDomain<F> {
             &self.extended_omega_inv,
             self.domain.extended_k,
             self.domain.extended_ifft_divisor,
+            false,
         );
 
         a.values.truncate(self.domain.n as usize);
@@ -402,7 +417,19 @@ impl<F: PrimeField> EvaluationDomain<F> {
     ///
     /// `into_coset` should be set to `true` when moving into the coset,
     /// and `false` when moving out. This toggles the choice of `zeta`.
-    fn ifft(a: &mut [F], twiddles: &[F], log_n: u32, divisor: F) {
+    ///
+    /// `offer`: with the feature `gpu`, the transform is offered to the
+    /// installed hooks (base-domain transforms only: extended-domain values
+    /// stay on the device inside the quotient hook and never cross back).
+    #[cfg_attr(not(feature = "gpu"), allow(unused_variables))]
+    fn ifft(a: &mut [F], twiddles: &[F], log_n: u32, divisor: F, offer: bool) {
+        #[cfg(feature = "gpu")]
+        if offer && crate::gpu::ifft(a, twiddles, log_n, divisor) {
+            return;
+        }
+        #[cfg(feature = "gpu")]
+        midnight_curves::fft::best_fft_with_twiddles(a, twiddles, log_n);
+        #[cfg(not(feature = "gpu"))]
         best_fft_with_twiddles(a, twiddles, log_n);
         parallelize(a, |a, _| {
             for a in a {
@@ -427,6 +454,25 @@ impl<F: PrimeField> EvaluationDomain<F> {
                 index += 1;
             }
         });
+    }
+
+    /// The factors into the coset, `[g_coset, g_coset_inv]`.
+    #[cfg(feature = "gpu")]
+    pub(crate) fn coset_zetas(&self) -> [F; 2] {
+        [self.g_coset, self.g_coset_inv]
+    }
+
+    /// What `divide_by_vanishing_poly`, `extended_to_coeff` and the
+    /// truncation of the quotient use, for the quotient hook.
+    #[cfg(feature = "gpu")]
+    pub(crate) fn quotient_divide(&self) -> crate::gpu::QuotientDivide<F> {
+        crate::gpu::QuotientDivide {
+            t_inv: self.t_evaluations.clone(),
+            omega_inv: self.extended_omega.invert().unwrap(),
+            divisor: self.extended_ifft_divisor,
+            zeta_out: [self.g_coset_inv, self.g_coset],
+            len: (self.n - 1) as usize * self.get_quotient_poly_degree(),
+        }
     }
 
     /// Get the size of the domain

@@ -1,0 +1,55 @@
+name: GPU prover specification
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - "formal/gpu-prover/**"
+      - ".github/workflows/formal-gpu-prover.yml"
+  merge_group:
+  push:
+    branches:
+      - main
+      - next
+    paths:
+      - "formal/gpu-prover/**"
+
+permissions:
+  contents: read
+
+jobs:
+  oracle:
+    name: Lean oracle, golden vectors and requirements
+    runs-on: ubuntu-latest
+    env:
+      LEAN_ABORT_ON_PANIC: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Install elan (the toolchain is pinned in formal/gpu-prover/lean/lean-toolchain)
+        run: |
+          curl -sSf https://raw.githubusercontent.com/leanprover/elan/v4.3.0/elan-init.sh -o elan-init.sh
+          sh elan-init.sh -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Build the oracle (theorems, pins, axiom audit; a sorry fails)
+        working-directory: formal/gpu-prover/lean
+        run: lake build --wfail
+
+      - name: requirements.md matches requirements.json
+        working-directory: formal/gpu-prover
+        run: python3 -I scripts/gen_requirements_md.py --check
+
+      - name: Every oracle, Quint and vector name in requirements.json exists
+        working-directory: formal/gpu-prover
+        run: python3 -I scripts/check_refs.py
+
+      - name: The vector gate can fail (stale, hand-edited, missing and extra files)
+        working-directory: formal/gpu-prover
+        run: scripts/check_vectors.test.sh
+
+      - name: Regenerated vectors equal the checked-in bytes; codec checks
+        working-directory: formal/gpu-prover
+        run: scripts/check_vectors.sh

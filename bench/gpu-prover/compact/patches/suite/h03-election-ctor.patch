@@ -1,0 +1,13 @@
+--- a/election.compact
++++ b/election.compact
+@@ -30,6 +30,10 @@
+ ledger eligible_voters: MerkleTree<10, Bytes<32>>;
+ ledger committed: Set<Bytes<32>>;
+ ledger revealed: Set<Bytes<32>>;
++
++// Benchmark patch: election.compact has no constructor, so authority stays zero and no
++// call can pass setup. This constructor sets it; nothing else changes.
++constructor(a: Bytes<32>) { authority = disclose(a); }
+ 
+ witness private$secret_key(): Bytes<32>;
+ witness private$state(): PrivateState;

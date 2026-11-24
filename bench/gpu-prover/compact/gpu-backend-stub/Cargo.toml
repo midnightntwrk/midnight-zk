@@ -1,0 +1,13 @@
+[package]
+name = "compact-bench-gpu"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+description = """
+Interface of the GPU backend that compact-bench loads with its `gpu` feature. This stub
+installs no hooks; `scripts/build.sh hooked` replaces it with a real backend crate of the
+same name and API (see patches/README.md)
+"""
+publish = false
+
+[dependencies]

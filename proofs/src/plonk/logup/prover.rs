@@ -22,6 +22,7 @@
 
 use std::{hash::Hash, iter};
 
+#[cfg_attr(feature = "prover-par", allow(unused_imports))]
 use ff::{BatchInvert, FromUniformBytes, PrimeField};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
@@ -177,7 +178,10 @@ impl<F: PrimeField + Hash> ComputedMultiplicities<F> {
                 *input = beta + compressed_table_expression.values[i];
             }
         });
+        #[cfg(not(feature = "prover-par"))]
         table_denoms.iter_mut().batch_invert();
+        #[cfg(feature = "prover-par")]
+        crate::par::invert::parallel_batch_invert(&mut table_denoms);
 
         // F(X) = 1 / (f(X) + beta)
         // Invert each column independently in parallel, then sum across columns
@@ -189,7 +193,10 @@ impl<F: PrimeField + Hash> ComputedMultiplicities<F> {
                     .par_iter()
                     .map(|col| {
                         let mut denoms: Vec<F> = col.iter().map(|v| beta + v).collect();
+                        #[cfg(not(feature = "prover-par"))]
                         denoms.iter_mut().batch_invert();
+                        #[cfg(feature = "prover-par")]
+                        crate::par::invert::parallel_batch_invert(&mut denoms);
                         denoms
                     })
                     .collect();
@@ -238,6 +245,21 @@ impl<F: PrimeField + Hash> ComputedMultiplicities<F> {
             .collect::<Vec<_>>();
 
         let aggregator_poly = pk.vk.domain.lagrange_from_vec(aggregator_poly);
+
+        // With the feature `gpu` the same two checks fail without printing
+        // the running sum, a witness-derived value: these fire first.
+        #[cfg(all(debug_assertions, feature = "gpu"))]
+        {
+            let u = n - (blinding_factors + 1);
+            assert!(
+                aggregator_poly[0] == F::ZERO,
+                "the LogUp running sum is not zero at the first row (value withheld)"
+            );
+            assert!(
+                aggregator_poly[u] == F::ZERO,
+                "the LogUp running sum is not zero at the last active row (value withheld)"
+            );
+        }
 
         #[cfg(debug_assertions)]
         {
@@ -317,6 +339,12 @@ where
         );
         for row in (0..usable_rows).filter(|&row| !selector[row].is_zero_vartime()) {
             let tuple = tuple_at(input, row);
+            // With the feature `gpu` (a prover service) the failure text
+            // carries no witness value: this check fires first.
+            #[cfg(feature = "gpu")]
+            if !input_counts.contains_key(tuple.as_slice()) {
+                panic!("an input tuple was not found in the lookup table (values withheld)");
+            }
             *input_counts
                 .get_mut(tuple.as_slice())
                 .unwrap_or_else(|| panic!("input tuple {tuple:?} not found in lookup table")) += 1;
@@ -335,7 +363,10 @@ where
             }
         })
         .collect();
+    #[cfg(not(feature = "prover-par"))]
     table_count_inverses.iter_mut().batch_invert();
+    #[cfg(feature = "prover-par")]
+    crate::par::invert::parallel_batch_invert(&mut table_count_inverses);
 
     // Compute normalized multiplicities: input_count / table_count
     // Blinding rows get random values to ensure ZK.
@@ -444,6 +475,47 @@ mod tests {
             4,
             &[],
         );
+    }
+
+    /// With the feature `gpu`, the failure text of a missing input tuple
+    /// carries no witness value.
+    #[cfg(feature = "gpu")]
+    #[test]
+    fn missing_tuple_panic_withholds_the_value() {
+        let table = poly_from_vec(vec![
+            Fq::from(1u64),
+            Fq::from(2u64),
+            Fq::from(3u64),
+            Fq::from(4u64),
+        ]);
+        let secret = 0xdead_beef_cafe_u64;
+        let input = poly_from_vec(vec![
+            Fq::from(1u64),
+            Fq::from(2u64),
+            Fq::from(secret),
+            Fq::from(3u64),
+        ]);
+        let err = std::panic::catch_unwind(|| {
+            compute_multiplicities(
+                &poly_from_vec(vec![Fq::ONE; 4]),
+                &[std::slice::from_ref(&input)],
+                std::slice::from_ref(&table),
+                4,
+                &[],
+            )
+        })
+        .expect_err("a missing tuple panics");
+        let text = err
+            .downcast_ref::<String>()
+            .cloned()
+            .or_else(|| err.downcast_ref::<&str>().map(|s| s.to_string()))
+            .expect("a text payload");
+        assert_eq!(
+            text,
+            "an input tuple was not found in the lookup table (values withheld)"
+        );
+        assert!(!text.to_lowercase().contains("deadbeefcafe"));
+        assert!(!text.contains(&secret.to_string()));
     }
 
     #[test]

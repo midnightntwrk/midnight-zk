@@ -1,0 +1,6 @@
+# The proof-server 9.0.1 crates need a newer compiler than the root workspace
+# (midnight-storage-core requires sysinfo 0.39, which requires rustc 1.95).
+[toolchain]
+channel = "1.99.0"
+profile = "minimal"
+components = ["rustfmt", "clippy"]

@@ -122,7 +122,10 @@ fn cell_value<'a, F: Field, Q: Into<AnyQuery> + Copy>(
                 (
                     cell.clone().into(),
                     match load(query) {
+                        #[cfg(not(feature = "gpu"))]
                         Value::Real(v) => format_value(v),
+                        #[cfg(feature = "gpu")]
+                        Value::Real(v) => super::redact::format_cell_value(v),
                         Value::Poison => unreachable!(),
                     },
                 )

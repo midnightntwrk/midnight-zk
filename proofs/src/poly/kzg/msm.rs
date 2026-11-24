@@ -170,6 +170,13 @@ where
 /// `msm_best`.
 pub fn msm_specific<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
     assert_eq!(coeffs.len(), bases.len());
+    // With the feature `gpu`, a BLS12-381 G1 MSM is offered to the installed
+    // hooks first, on the caller's slices (the result is the same group
+    // element; zero scalars add nothing).
+    #[cfg(feature = "gpu")]
+    if let Some(r) = crate::gpu::msm::<C, C::Scalar, C::Curve>(coeffs, bases) {
+        return r;
+    }
     // We remove zeros (keep only non-zero coefficients).
     let (coeffs, bases): (Vec<C::Scalar>, Vec<C>) = coeffs
         .iter()

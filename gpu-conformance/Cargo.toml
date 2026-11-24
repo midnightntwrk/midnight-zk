@@ -1,0 +1,29 @@
+[package]
+name = "midnight-gpu-conformance"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+description = """
+Conformance tests of the GPU prover against the formal model in formal/gpu-prover: the golden vectors of the Lean oracle and the ITF traces of the Quint model, replayed through midnight-gpu
+"""
+license = "Apache-2.0"
+publish = false
+
+[lints]
+workspace = true
+
+# Test-only crate: the production crates appear as dev-dependencies only, so a
+# build of the workspace without tests compiles nothing from here. The tests
+# read formal/gpu-prover/vectors (or ORACLE_VECTOR_DIR) and fail when it is
+# missing.
+
+[dev-dependencies]
+ff = { workspace = true }
+group = { workspace = true }
+midnight-curves = { path = "../curves" }
+midnight-gpu = { path = "../gpu" }
+midnight-proofs = { path = "../proofs", features = ["gpu-test", "circuit-params", "test-fault"] }
+serde_json = { workspace = true }
+
+[target.'cfg(all(target_os = "linux", target_pointer_width = "64"))'.dev-dependencies]
+libc = "0.2"

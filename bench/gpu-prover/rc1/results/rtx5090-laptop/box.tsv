@@ -1,0 +1,4 @@
+box	RTX 5090 Laptop GPU (x86_64 laptop)
+gpu	NVIDIA GeForce RTX 5090 Laptop GPU
+driver	615.78.08
+cuda_arch	sm_120

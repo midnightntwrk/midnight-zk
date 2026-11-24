@@ -1,4 +1,5 @@
 use ff::PrimeField;
+#[cfg_attr(feature = "prover-par", allow(unused_imports))]
 use group::ff::BatchInvert;
 use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
@@ -78,7 +79,10 @@ impl Argument {
                 }
 
                 // Invert to obtain the denominator.
+                #[cfg(not(feature = "prover-par"))]
                 modified_values.batch_invert();
+                #[cfg(feature = "prover-par")]
+                crate::par::invert::parallel_batch_invert(&mut modified_values);
 
                 // Numerator: multiply all columns' contributions.
                 // delta power for first column of this set.
@@ -118,12 +122,17 @@ impl Argument {
             .zip(all_blindings.par_iter())
             .map(|(modified_values, blindings)| {
                 // Prefix product starting from 1.
+                #[cfg(not(feature = "prover-par"))]
                 let mut z = Vec::with_capacity(n);
+                #[cfg(not(feature = "prover-par"))]
                 z.push(F::ONE);
+                #[cfg(not(feature = "prover-par"))]
                 for row in 1..n {
                     let tmp = z[row - 1] * &modified_values[row - 1];
                     z.push(tmp);
                 }
+                #[cfg(feature = "prover-par")]
+                let z = crate::par::product::prefix_product_from_one(&modified_values, n);
                 let mut z = domain.lagrange_from_vec(z);
 
                 // Apply blinding factors.
