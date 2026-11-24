@@ -2166,12 +2166,12 @@ impl<F: Field> ConstraintSystem<F> {
         *[degree_without_lookup, degree].iter().max().unwrap()
     }
 
-    // (An upper bound on) the number of distinct queries a FFLONK batch is
+    // (An upper bound on) the number of distinct queries a polynomial is
     // queried at.
     //
-    // Because FFLONK combines polynomials with possibly different query
-    // points, it is taken as the union of every query, plus `prev`, `cur` and
-    // `next`, and one for the last-row-rotation in the permutation argument.
+    // Because the commitment scheme may combine polynomials with possibly different
+    // query points, it is taken as the union of every query, plus `prev`, `cur`
+    // and `next`, and one for the last-row-rotation in the permutation argument.
     fn max_queries(&self) -> usize {
         let rotations: std::collections::HashSet<Rotation> =
             [Rotation::prev(), Rotation::cur(), Rotation::next()]
@@ -2202,8 +2202,8 @@ impl<F: Field> ConstraintSystem<F> {
         // multiopen (at x_3 to produce q_evals).
         let factors = factors + 1;
 
-        // Add +1 as a defense against off-by-one errors, and +2 as a security margin.
-        let factors = factors + 3;
+        // Add +1 as a defense against off-by-one errors, and +1 as a security margin.
+        let factors = factors + 2;
 
         if factors > i32::MAX as usize {
             panic!("Number of blinding factors overflowed max expected value");

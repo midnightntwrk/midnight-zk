@@ -605,9 +605,7 @@ impl<F: CircuitField, PCS: InCircuitPCS<F>> VerifierGadget<F, PCS> {
 
         // h(X) is split into limbs of n - S coefficients, S = QUOTIENT_LIMB_BLINDERS,
         // so the splitting factor is x^{n-S} = x^n / x^S.
-        let x_pow_s = (1..QUOTIENT_LIMB_BLINDERS).try_fold(x.clone(), |acc, _| {
-            self.scalar_chip.mul(layouter, &acc, &x, None)
-        })?;
+        let x_pow_s = self.scalar_chip.pow(layouter, &x, QUOTIENT_LIMB_BLINDERS as u64)?;
         let splitting_factor = self.scalar_chip.div(layouter, &xn, &x_pow_s)?;
 
         // -nu(x): the identities batched with y by Horner's rule, negated.
