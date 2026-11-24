@@ -1536,43 +1536,47 @@ where
         x: &AssignedNative<F>,
         c: F,
     ) -> Result<AssignedBit<F>, Error> {
-        // We enforce (i) (x - c) * aux = 1 - res
-        // and       (ii) (x - c) * res = 0.
+        // We enforce
+        //   (i)  (x - c) * aux = 1 - res,
+        //   (ii) (x - c) * res = 0,
+        // in one row (x, res, aux, 0, v4), with the arithmetic and quartic
+        // identities both enabled. They share a (mul_ab) and b (coeffs[0]) = 0,
+        // and the zero in v3 cancels the quartic term:
+        //   quartic:    v4 = a * x * res
+        //   arithmetic: r * res - c * aux + a * x * res + x * aux - 1 = 0
+        // With v4 = res and (a, r) = (1/c, 0) if c != 0, or v4 = 0 and
+        // (a, r) = (1, 1) otherwise, the quartic identity is (ii) and, given
+        // (ii), the arithmetic one is (i).
         //  * If  x = c, (i)  implies res = 1; (ii) becomes trivial.
         //  * If x != c, (ii) implies res = 0; (i) can be relaxed with aux = (x - c)^-1.
+        // The two equations guarantee the bit-ness of `res`.
 
-        let value_cols = &self.config.value_cols;
+        let c_is_zero = F::is_zero_vartime(&c);
+        let (a, r) = match c.invert().into_option() {
+            Some(c_inv) => (c_inv, F::ZERO),
+            None => (F::ONE, F::ONE),
+        };
         let res_val = x.value().map(|x| F::from((*x == c) as u64));
         let aux_val = x.value().map(|x| (*x - c).invert().unwrap_or(F::ONE));
-
-        // (i) enforced as res - c * aux + aux * x - 1 = 0.
-        let res = layouter.assign_region(
-            || "is_equal (i)",
+        let zero = self.assign_fixed(layouter, F::ZERO)?;
+        let cols = &self.config.value_cols;
+        layouter.assign_region(
+            || "is_equal_to_fixed",
             |mut region| {
-                region.assign_advice(|| "aux", value_cols[0], 0, || aux_val)?;
-                self.copy_in_row(&mut region, x, &value_cols[1], 0)?;
-                let res = region.assign_native(|| "res", value_cols[4], 0, || res_val)?;
+                self.copy_in_row(&mut region, x, &cols[0], 0)?;
+                let res = region.assign_native(|| "res", cols[1], 0, || res_val)?;
+                region.assign_advice(|| "aux", cols[2], 0, || aux_val)?;
+                self.copy_in_row(&mut region, &zero, &cols[3], 0)?;
+                let v4 = if c_is_zero { &zero } else { &res };
+                self.copy_in_row(&mut region, v4, &cols[4], 0)?;
                 let mut coeffs = vec![F::ZERO; self.config.coeff_cols.len()];
-                coeffs[0] = -c; // coeff of aux
-                coeffs[4] = F::ONE; // coeff of res
-                self.custom(&mut region, &coeffs, F::ZERO, (F::ONE, F::ZERO), -F::ONE, 0)?;
-                Ok(res)
+                coeffs[1] = r; // coeff of res
+                coeffs[2] = -c; // coeff of aux
+                self.custom(&mut region, &coeffs, F::ZERO, (a, F::ONE), -F::ONE, 0)?;
+                self.config.q_quartic.enable(&mut region, 0)?;
+                Ok(AssignedBit(res))
             },
-        )?;
-
-        // (ii) enforced as -c * res + res * x = 0.
-        let must_be_zero = self.add_and_mul(
-            layouter,
-            (-c, &res),
-            (F::ZERO, x),
-            (F::ZERO, x),
-            F::ZERO,
-            F::ONE,
-        )?;
-        self.assert_zero(layouter, &must_be_zero)?;
-
-        // The two equations we have enforced guarantee the bit-ness of `res`.
-        Ok(AssignedBit(res))
+        )
     }
 
     fn is_not_equal_to_fixed(
