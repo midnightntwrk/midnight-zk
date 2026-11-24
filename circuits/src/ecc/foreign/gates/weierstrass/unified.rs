@@ -190,23 +190,22 @@ impl<C: WeierstrassCurve> UnifiedConfig<C> {
         // The carries `u, v_1, ...` are range-checked to their bounds `2^n`. A
         // carry whose bound the range-check chip does not take (see
         // `RangeCheckChip::is_supported_bound`) is split as `c = c_lo + 2^s c_hi`,
-        // where `s` is the largest multiple of `4T` below `n` such that the chip
-        // takes `2^(n - s)`, so that it takes both `c_lo < 2^s` and
-        // `c_hi < 2^(n - s)`. Its high part `c_hi` goes in a column of its own,
-        // `hi_col`, in the gate row, and the gate reads `c_lo + 2^s c_hi` for the
-        // carry, so the split takes no row of its own. A carry with no such `s`
-        // is not split, and is range-checked as a whole by `NativeGadget`, which
-        // splits it with a row of its own.
+        // where `s` is the largest value below `n` such that the chip takes both
+        // `c_lo < 2^s` and `c_hi < 2^(n - s)`. Its high part `c_hi` goes in a
+        // column of its own, `hi_col`, in the gate row, and the gate reads
+        // `c_lo + 2^s c_hi` for the carry, so the split takes no row of its own.
+        // A carry with no such `s` is not split, and is range-checked as a whole
+        // by `NativeGadget`, which splits it with a row of its own.
+        assert_eq!(hi_cols.len(), 1 + field_chip_config.v_cols.len());
         let t = max_bit_len;
         let cols = std::iter::once(field_chip_config.u_col).chain(field_chip_config.v_cols.clone());
         let bounds = std::iter::once(&u_max).chain(vs_bounds.iter().map(|(_, vj_max)| vj_max));
         let carries: Vec<_> = (cols.zip(bounds).zip(hi_cols))
             .map(|((col, max), &hi_col)| {
                 let n = (max.bits() - 1) as usize;
-                let split = (1..=n / (4 * t))
+                let split = (1..n)
                     .rev()
-                    .map(|j| 4 * t * j)
-                    .find(|&s| s < n && is_supported_bound(t, n - s))
+                    .find(|&s| is_supported_bound(t, s) && is_supported_bound(t, n - s))
                     .filter(|_| !is_supported_bound(t, n));
                 split.iter().for_each(|_| meta.enable_equality(hi_col));
                 (col, max.clone(), split.map(|s| (s, hi_col)))
@@ -216,8 +215,9 @@ impl<C: WeierstrassCurve> UnifiedConfig<C> {
         let alpha = curve_alpha::<C>();
         let q_unified = meta.selector();
 
-        // When `cond = 1`, the gate enforces the identity of the module
-        // documentation natively, and modulo every auxiliary modulus `m_j`:
+        // When `cond = 1`, the gate enforces the identity described in the
+        // module documentation, both natively and modulo every auxiliary
+        // modulus `m_j`:
         //
         //   P   + k·α   = (u + k_min)·m
         //   P_j + k·α_j = u·(m mod m_j) + (k_min·m mod m_j) + (v_j + l_j_min)·m_j

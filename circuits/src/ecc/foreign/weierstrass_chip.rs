@@ -783,7 +783,9 @@ where
     ) -> Result<AssignedForeignPoint<F, C, B>, Error> {
         let r_curve = p.value().map(|p| p + p);
 
-        // r = id <=> p = id, as there are no points of order 2 by assumption.
+        // r = id <=> p = id, as the prime-order subgroup has no points of order 2.
+        // This is only needed for completeness: on a point of order 2 (p.y = 0),
+        // the tangent instance of [assert_double] is unsatisfiable.
         let r = self.assign_point_unchecked(layouter, r_curve, Some(p.is_id.clone()))?;
 
         // If `p` is not the identity, make sure the double relation is satisfied.
@@ -1260,12 +1262,10 @@ where
 
         // Assert tangent, λ² = 2px+rx, and slope(p,r,negate) in a single fused region.
         //
-        // The slope instance (between p and -r) only constrains r.y if p.x != r.x.
-        // This is guaranteed because r.x has been constrained to be correct by the
-        // λ-squared instance, based on a λ that has been constrained to be correct
-        // by the tangent instance. Given our assumption that there do not exist
-        // order-3 points (and our precondition that p != id) we have that 2p != ±p,
-        // thus r.x != p.x, as desired.
+        // The tangent instance constrains λ, and the λ-squared instance then
+        // constrains r.x. Given both, the slope instance (between p and -r) fixes
+        // r.y = λ(p.x - r.x) - p.y, the y-coordinate of 2p. Hence, when cond = 1,
+        // the region asserts r = 2p, with no assumption on the order of p.
         assert_double::assert_double::<F, C, B, N>(
             layouter,
             cond,
@@ -1699,8 +1699,9 @@ where
             //    res := None or Some(k p) with 0 < k < 2^i
             //    tmp := 2^i p
             //
-            // (1) & (2) hold because all non-identity points have Scalar.ORDER order by
-            //           assumption, and 2^i is smaller than ORDER on every iteration.
+            // (1) & (2) hold because all non-identity points of the prime-order
+            //           subgroup have order Scalar.ORDER, and 2^i is smaller than
+            //           ORDER on every iteration.
             // (3) holds because otherwise we would have k p = ± 2^i p with 0 < k < 2^i.
             //     Thus (k ∓ 2^i) p = id, which means that (k ∓ 2^i) is
             //     a multiple of ORDER, however this is not possible as:
