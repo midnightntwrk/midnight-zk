@@ -1493,7 +1493,7 @@ where
                 ng.assign_fixed(layouter, false)?
             } else {
                 let value = (batch.value().zip(borrow.value()))
-                    .map(|(x, b)| x.to_biguint() + BigUint::from(b as u8) > m_i);
+                    .map(|(x, b)| (x.to_biguint() + BigUint::from(b as u8)) > m_i);
                 ng.assign(layouter, value)?
             };
             self.assert_sub_with_borrow(layouter, &m_i, batch, *size, &borrow, &borrow_out)?;
