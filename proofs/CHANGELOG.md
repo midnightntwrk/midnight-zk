@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `kzg::KZGEngine`, the pairing engines over which KZG commitments can be made, bounding `KZGCommitmentScheme<E>` [#644](https://github.com/midnightntwrk/midnight-zk/pull/644)
 * `transcript::TranscriptField<H>` (`Hashable<H> + Sampleable<H>`) and `plonk::ProofField<H>` (`TranscriptField<H> + WithSmallOrderMulGroup<3> + FromUniformBytes<64> + Hash + Ord`), which the prover, verifier and commitment schemes are bounded by [#644](https://github.com/midnightntwrk/midnight-zk/pull/644)
 * `poly::FftDomain`, an `EvaluationDomain` with the twiddle factors of its FFTs. `ProvingKey` holds one, built from its `VerifyingKey`; it is not serialized
+* `profiling` feature, which records the time the prover spends in MSMs, FFTs and polynomial evaluations during each of its phases, and the `profiling` module, a re-export of `midnight_curves::profiling` [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 ### Changed
 * The FFTs `lagrange_to_coeff`, `coeff_to_lagrange`, `coeff_to_extended`, `extended_to_coeff` and `extended_to_lagrange` move from `EvaluationDomain` to `FftDomain`, and `PolynomialRepresentation::{coeff_to_self, self_to_coeff}` take an `FftDomain`. `EvaluationDomain`, hence `VerifyingKey`, no longer computes nor stores twiddle factors. Serialized keys and proofs are unchanged
 * With feature `gpu`, the witness-dependent quotient buffers of the hook layer (the quotient read-back, the check-mode stock reference, the CPU numerator and divide references, and `h(X)` with its limbs up to the hand-over to the commitment) live in the fixed-capacity `gpu::erasing::ErasingVec`, which never reallocates and zeroes its whole allocation on drop. The quotient group commits from references (no copy of a limb) and its limbs are zeroed when the group is released, on every path; `gpu::QuotientJob::numerator_reference` and `divide_reference` return that type instead of `Vec`. Proof bytes are unchanged
@@ -26,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * The cost model with `COST_MEASURE_START`/`COST_MEASURE_END` markers reports the number of rows of the measured regions, which chips laying out constraints at load time may place apart, instead of their span [#631](https://github.com/midnightntwrk/midnight-zk/pull/631)
 
 ### Removed
+* `bench-internal` feature, the `plonk::bench` module it exposed and the `zswap_output` bench, superseded by the `midnight-benchmarks` crate [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
+
 ### Fixed
 * With feature `gpu`, the developer tools withhold assigned cell values (`<withheld>`): `MockProver` failure text and the `Debug` output of the prover and of its cell values, and the spans and events of `TracingFloorPlanner`. Gate, region, column and row information is unchanged, and so is all output without the feature
 

@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 ## [Unreleased]
 ### Added
 * `fewer-point-sets` feature [#281](https://github.com/midnightntwrk/midnight-zk/pull/281)
+* `ivc::setup_with_pcs`, which sets up the IVC under any commitment scheme of zk_stdlib. `IvcCircuit`, `IvcProver`, `IvcVerifier` and `IvcExtendedInstance` take the scheme as a type parameter that defaults to `ivc::PCS` [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 ### Changed
 * The IVC and the multi-circuit aggregator configure `ZkStdLib` with `ZkStdLibArch::range_check_bit_len` and the range-check chip of `midnight-circuits` (`nb_range_check_groups`). The inner circuits of the multi-circuit aggregator must all share their `max_bit_len` [#631](https://github.com/midnightntwrk/midnight-zk/pull/631)
 * `IvcVerifier::verify` rejects instances whose public inputs do not have the length expected by the verifying key

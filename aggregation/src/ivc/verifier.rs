@@ -14,7 +14,7 @@ use midnight_proofs::{
     poly::kzg::params::ParamsVerifierKZG,
     transcript::{CircuitTranscript, Transcript},
 };
-use midnight_zk_stdlib::{MidnightVK, Relation};
+use midnight_zk_stdlib::{MidnightPCS, MidnightVK, Relation};
 
 use super::{E, F, Ivc, IvcCircuit, IvcError, IvcInstance, PCS, circuit::IvcExtendedInstance};
 
@@ -25,15 +25,15 @@ use super::{E, F, Ivc, IvcCircuit, IvcError, IvcInstance, PCS, circuit::IvcExten
 ///
 /// Returned by [`super::setup()`].
 #[derive(Clone, Debug)]
-pub struct IvcVerifier<T: Ivc> {
+pub struct IvcVerifier<T: Ivc, P: MidnightPCS = PCS> {
     pub(crate) ctx: T::Context,
-    pub(crate) vk: MidnightVK<PCS>,
+    pub(crate) vk: MidnightVK<P>,
     pub(crate) params_verifier: ParamsVerifierKZG<E>,
 }
 
-impl<T: Ivc> IvcVerifier<T> {
+impl<T: Ivc, P: MidnightPCS> IvcVerifier<T, P> {
     /// The canonical verifying key of the IVC circuit.
-    pub fn vk(&self) -> &MidnightVK<PCS> {
+    pub fn vk(&self) -> &MidnightVK<P> {
         &self.vk
     }
 
@@ -59,7 +59,7 @@ impl<T: Ivc> IvcVerifier<T> {
             return Err(IvcError::DeciderFailed);
         }
 
-        let fixed_bases = midnight_circuits::verifier::fixed_bases::<E, PCS>(self.vk.vk());
+        let fixed_bases = midnight_circuits::verifier::fixed_bases::<E, P>(self.vk.vk());
 
         // Make sure that the received accumulator has the expected label structure.
         let labels = fixed_bases.keys().cloned().collect::<Vec<_>>();
@@ -67,7 +67,7 @@ impl<T: Ivc> IvcVerifier<T> {
             return Err(IvcError::InvalidInstance);
         }
 
-        let pi = IvcCircuit::<T>::format_instance(&IvcExtendedInstance::new(
+        let pi = IvcCircuit::<T, P>::format_instance(&IvcExtendedInstance::new(
             self.vk.vk(),
             instance.clone(),
         ))
@@ -78,7 +78,7 @@ impl<T: Ivc> IvcVerifier<T> {
         }
 
         let mut transcript = CircuitTranscript::<PoseidonState<F>>::init_from_bytes(proof);
-        let dual_msm = plonk::prepare::<F, PCS, CircuitTranscript<PoseidonState<F>>>(
+        let dual_msm = plonk::prepare::<F, P, CircuitTranscript<PoseidonState<F>>>(
             self.vk.vk(),
             &[],
             &[&[], &pi],

@@ -13,6 +13,7 @@ use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 use super::{KZGEngine, params::ParamsVerifierKZG};
 use crate::{
     poly::{Error, PolynomialLabel, commitment::Guard},
+    profiling::{self, Kernel},
     utils::arithmetic::MSM,
 };
 
@@ -170,6 +171,7 @@ where
 /// `msm_best`.
 pub fn msm_specific<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
     assert_eq!(coeffs.len(), bases.len());
+    let _span = profiling::span(Kernel::Msm, coeffs.len());
     // With the feature `gpu`, a BLS12-381 G1 MSM is offered to the installed
     // hooks first, on the caller's slices (the result is the same group
     // element; zero scalars add nothing).
@@ -177,6 +179,7 @@ pub fn msm_specific<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Cur
     if let Some(r) = crate::gpu::msm::<C, C::Scalar, C::Curve>(coeffs, bases) {
         return r;
     }
+
     // We remove zeros (keep only non-zero coefficients).
     let (coeffs, bases): (Vec<C::Scalar>, Vec<C>) = coeffs
         .iter()

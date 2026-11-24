@@ -31,11 +31,11 @@ use midnight_proofs::{
 };
 use midnight_zk_stdlib::{FflonkKZG, ZkStdLib, ZkStdLibArch};
 pub use prover::IvcProver;
-pub use setup::setup;
+pub use setup::{setup, setup_with_pcs};
 pub use verifier::IvcVerifier;
 
-/// The commitment scheme of the IVC proofs, which the IVC circuit also
-/// verifies in-circuit.
+/// The default commitment scheme of the IVC proofs, which the IVC circuit
+/// also verifies in-circuit. See [`setup_with_pcs`] for other schemes.
 pub type PCS = FflonkKZG<3>;
 pub(crate) type F = midnight_curves::Fq;
 pub(crate) type C = midnight_curves::G1Projective;

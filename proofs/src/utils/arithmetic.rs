@@ -15,6 +15,8 @@ use group::{
 use midnight_curves::fft::best_fft;
 pub use midnight_curves::{CurveAffine, CurveExt};
 
+use crate::profiling::{self, Kernel};
+
 /// This represents an element of a group with basic operations that can be
 /// performed. This allows an FFT implementation (for example) to operate
 /// generically over either a field or elliptic curve group.
@@ -64,6 +66,7 @@ pub fn eval_polynomial_seq<F: Field>(poly: &[F], point: F) -> F {
 /// Internally parallel — for batched evaluations prefer
 /// [`eval_polynomial_seq`] inside a `par_iter`.
 pub fn eval_polynomial<F: Field>(poly: &[F], point: F) -> F {
+    let _span = profiling::span(Kernel::PolyEval, poly.len());
     let n = poly.len();
     let num_threads = rayon::current_num_threads();
     if n * 2 < num_threads {
@@ -111,6 +114,7 @@ where
 {
     b = -b;
     let a = a.into_iter();
+    let _span = profiling::span(Kernel::PolyEval, a.len());
 
     let mut q = vec![F::ZERO; a.len() - 1];
 
@@ -166,6 +170,7 @@ pub fn eval_interpolant<F: Field>(points: &[F], evals: &[F], x: F) -> (F, F) {
 /// coefficients. That is cheaper when the product is sparse, as for the
 /// `t`-th roots of a point, whose product is `X^t - x`.
 pub fn divide_by_roots<F: Field>(poly: &[F], roots: &[F]) -> Vec<F> {
+    let _span = profiling::span(Kernel::PolyEval, poly.len());
     #[cfg(feature = "prover-par")]
     if poly.len() >= crate::par::DIVISION_MIN_LEN {
         return crate::par::open::divide_by_roots(poly, roots);

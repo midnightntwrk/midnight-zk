@@ -23,11 +23,6 @@ harness = false
 name = "plonk"
 harness = false
 
-[[bench]]
-name = "zswap_output"
-required-features = ["bench-internal"]
-harness = false
-
 [lints]
 workspace = true
 
@@ -43,7 +38,6 @@ itertools = "0.15"
 serde = { workspace = true }
 serde_derive = { workspace = true }
 rayon = { workspace = true }
-criterion = { version = "0.8", optional = true }
 rustc-hash = "2"
 
 # Developer tooling dependencies
@@ -54,9 +48,10 @@ num-bigint = { workspace = true }
 assert_matches = "1.5"
 proptest = "1"
 serde_json = { workspace = true }
+# Not used directly: these two enable the `circuit-params` feature in the test
+# builds of this crate, which the `RowSizer` doctest relies on.
 midnight-circuits = { path = "../circuits" }
 midnight-zk-stdlib = { path = "../zk_stdlib" }
-sha2 = { workspace = true }
 rand = { workspace = true }
 criterion = "0.8"
 
@@ -71,6 +66,9 @@ default = ["committed-instances"]
 circuit-params = []
 dev-curves = ["midnight-curves/dev-curves"]
 
+# Records the time the prover spends in MSMs, FFTs and polynomial evaluations.
+profiling = ["midnight-curves/profiling"]
+
 # This feature adds a new argument to prover and verifier functions, which
 # represents instances in committed form (e.g. in the form of a polynomial
 # commitment instead of a vector of scalars).
@@ -79,9 +77,6 @@ dev-curves = ["midnight-curves/dev-curves"]
 #
 # This feature is very powerful for proving statements on committed data.
 committed-instances = []
-
-# Feature to expose internal prover types and benchmarking utilities.
-bench-internal = ["criterion"]
 
 # Accelerator hooks (`midnight_proofs::gpu`): the prover offers its BLS12-381
 # MSMs, FFTs and quotient to functions a process installs. Without installed

@@ -21,3 +21,5 @@ pub mod transcript;
 
 pub mod dev;
 pub mod utils;
+
+pub use midnight_curves::profiling;

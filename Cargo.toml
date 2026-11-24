@@ -12,6 +12,7 @@ members = [
     "metal",
     "gpu-conformance",
     "bench/gpu-prover",
+    "benchmarks",
 ]
 
 [workspace.package]

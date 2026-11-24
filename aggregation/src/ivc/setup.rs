@@ -5,7 +5,7 @@ use midnight_proofs::{
     plonk::ConstraintSystem,
     poly::{EvaluationDomain, PolynomialLabel, kzg::params::ParamsKZG},
 };
-use midnight_zk_stdlib::ZkStdLib;
+use midnight_zk_stdlib::{MidnightPCS, ZkStdLib};
 
 use super::{E, Ivc, IvcCircuit, IvcProver, IvcVerifier, PCS};
 
@@ -26,11 +26,25 @@ pub fn setup<T: Ivc>(
     k: u32,
     ctx: T::Context,
 ) -> (IvcProver<T>, IvcVerifier<T>) {
+    setup_with_pcs::<T, PCS>(params, k, ctx)
+}
+
+/// Same as [`setup()`], with the IVC proofs committed under the scheme `P`
+/// instead of [`PCS`].
+///
+/// `params` must be the parameters of `P` for circuits of size `2^k`. The
+/// scheme changes the cost of the in-circuit verifier, so the smallest `k`
+/// that fits the IVC circuit depends on it.
+pub fn setup_with_pcs<T: Ivc, P: MidnightPCS>(
+    params: ParamsKZG<E>,
+    k: u32,
+    ctx: T::Context,
+) -> (IvcProver<T, P>, IvcVerifier<T, P>) {
     let mut cs = ConstraintSystem::default();
-    let arch = IvcCircuit::<T>::arch();
+    let arch = IvcCircuit::<T, P>::arch();
     ZkStdLib::configure(&mut cs, (arch, arch.range_check_bit_len(k)));
     let domain = EvaluationDomain::new(cs.degree() as u32, k);
-    let relation = IvcCircuit::<T>::new(domain, cs.into_finalized(), ctx.clone());
+    let relation = IvcCircuit::<T, P>::new(domain, cs.into_finalized(), ctx.clone());
 
     // Uncomment for visualizing the size of this IVC circuit.
     // dbg!(midnight_zk_stdlib::cost_model(&relation, Some(k), false));
@@ -39,7 +53,7 @@ pub fn setup<T: Ivc>(
     let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);
 
     let fixed_base_labels: Vec<PolynomialLabel> =
-        fixed_bases::<E, PCS>(vk.vk()).keys().cloned().collect();
+        fixed_bases::<E, P>(vk.vk()).keys().cloned().collect();
 
     let verifier = IvcVerifier {
         ctx: ctx.clone(),
