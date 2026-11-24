@@ -156,19 +156,19 @@ prints one matrix per case, taken from the last timed proof:
 
 ```
 zswap_output, kzg, k=13, 1 thread
-phase                          msm                fft          poly_eval             other         phase total
-----------------  ----------------  -----------------  -----------------  ----------------  ------------------
-preamble            0.00 ms (0.0%)     1.74 ms (0.3%)     0.00 ms (0.0%)    0.09 ms (0.0%)      1.83 ms (0.3%)
-synthesis           0.00 ms (0.0%)     0.00 ms (0.0%)     0.00 ms (0.0%)   42.93 ms (8.0%)     42.93 ms (8.0%)
-advice_commit      13.33 ms (2.5%)     0.00 ms (0.0%)     0.00 ms (0.0%)    0.56 ms (0.1%)     13.90 ms (2.6%)
-lookups             0.00 ms (0.0%)     0.00 ms (0.0%)     0.55 ms (0.1%)    7.29 ms (1.4%)      7.84 ms (1.5%)
-permutation         0.00 ms (0.0%)     0.00 ms (0.0%)     0.00 ms (0.0%)    9.39 ms (1.7%)      9.39 ms (1.7%)
-trash               0.00 ms (0.0%)     0.00 ms (0.0%)    29.24 ms (5.4%)    0.71 ms (0.1%)     29.95 ms (5.6%)
-arguments_commit   15.38 ms (2.9%)     0.00 ms (0.0%)     0.00 ms (0.0%)    1.29 ms (0.2%)     16.67 ms (3.1%)
-quotient           16.98 ms (3.2%)  100.42 ms (18.7%)  259.74 ms (48.4%)    0.69 ms (0.1%)   377.81 ms (70.4%)
-evals               0.00 ms (0.0%)     0.00 ms (0.0%)    17.71 ms (3.3%)    0.08 ms (0.0%)     17.79 ms (3.3%)
-multi_open          8.13 ms (1.5%)     0.00 ms (0.0%)     2.37 ms (0.4%)    8.08 ms (1.5%)     18.59 ms (3.5%)
-total             53.81 ms (10.0%)  102.16 ms (19.0%)  309.60 ms (57.7%)  71.12 ms (13.3%)  536.69 ms (100.0%)
+phase                           msm                fft          poly_eval            other         phase total
+----------------  -----------------  -----------------  -----------------  ---------------  ------------------
+preamble             0.00 ms (0.0%)     1.71 ms (0.2%)     0.00 ms (0.0%)   0.06 ms (0.0%)      1.77 ms (0.2%)
+synthesis            0.00 ms (0.0%)     0.00 ms (0.0%)     0.00 ms (0.0%)  11.83 ms (1.3%)     11.83 ms (1.3%)
+advice_commit     117.92 ms (12.9%)     0.00 ms (0.0%)     0.00 ms (0.0%)   0.53 ms (0.1%)   118.46 ms (13.0%)
+lookups              0.00 ms (0.0%)     0.00 ms (0.0%)     0.56 ms (0.1%)   7.31 ms (0.8%)      7.87 ms (0.9%)
+permutation          0.00 ms (0.0%)     0.00 ms (0.0%)     0.00 ms (0.0%)   9.19 ms (1.0%)      9.19 ms (1.0%)
+trash                0.00 ms (0.0%)     0.00 ms (0.0%)    29.03 ms (3.2%)   0.70 ms (0.1%)     29.73 ms (3.3%)
+arguments_commit  138.94 ms (15.2%)     0.00 ms (0.0%)     0.00 ms (0.0%)   1.26 ms (0.1%)   140.20 ms (15.3%)
+quotient          135.24 ms (14.8%)   98.30 ms (10.8%)  256.00 ms (28.0%)   0.62 ms (0.1%)   490.16 ms (53.6%)
+evals                0.00 ms (0.0%)     0.00 ms (0.0%)    17.68 ms (1.9%)   0.08 ms (0.0%)     17.76 ms (1.9%)
+multi_open          76.58 ms (8.4%)     0.00 ms (0.0%)     2.29 ms (0.3%)   7.91 ms (0.9%)     86.77 ms (9.5%)
+total             468.68 ms (51.3%)  100.01 ms (10.9%)  305.56 ms (33.4%)  39.49 ms (4.3%)  913.75 ms (100.0%)
 ```
 
 How to read it:
@@ -268,91 +268,91 @@ checkout. Set `AB_BUILD_ARGS="--features profiling"` to compare breakdowns.
 Plain build (no profiling), `release` profile, 1 warm-up proof and 5 samples
 per case.
 
-- Commit: `4bd101b2b18e`
+- Commit: `6053c710695e`
 - CPU: AMD Ryzen 9 9950X 16-Core Processor
 - Logical cores: 32
 - OS: linux x86_64
-- Date: 2026-11-12
+- Date: 2026-11-24
 
 ### 1 thread
 
-| workload     | pcs        |   k |    median |       min | ±MAD% |   verify | proof bytes |
-| ------------ | ---------- | --: | --------: | --------: | ----: | -------: | ----------: |
-| zswap_output | kzg        |  13 | 537.55 ms | 537.11 ms |   0.1 |  2.00 ms |        4516 |
-| zswap_output | fflonk-t2  |  13 | 555.44 ms | 549.23 ms |   0.6 |  1.88 ms |        4052 |
-| zswap_output | fflonk-t4  |  13 | 573.09 ms | 571.89 ms |   0.2 |  1.61 ms |        3828 |
-| zswap_output | fflonk-t8  |  13 | 612.73 ms | 604.92 ms |   0.3 |  1.68 ms |        3908 |
-| zswap_output | fflonk-t16 |  13 | 685.16 ms | 671.75 ms |   0.2 |  1.76 ms |        3940 |
-| poseidon     | kzg        |  14 | 683.46 ms | 680.15 ms |   0.3 |  1.72 ms |        2932 |
-| poseidon     | fflonk-t2  |  14 | 703.31 ms | 702.48 ms |   0.1 |  1.49 ms |        2628 |
-| poseidon     | fflonk-t4  |  14 | 747.51 ms | 738.14 ms |   0.2 |  1.32 ms |        2436 |
-| poseidon     | fflonk-t8  |  14 | 816.42 ms | 808.37 ms |   0.9 |  1.32 ms |        2452 |
-| poseidon     | fflonk-t16 |  14 | 922.26 ms | 916.91 ms |   0.6 |  1.42 ms |        2532 |
-| sha_preimage | kzg        |  13 | 336.29 ms | 331.99 ms |   0.3 |  2.02 ms |        4020 |
-| sha_preimage | fflonk-t2  |  13 | 348.31 ms | 346.04 ms |   0.3 |  1.63 ms |        3668 |
-| sha_preimage | fflonk-t4  |  13 | 370.37 ms | 366.99 ms |   0.7 |  1.64 ms |        3588 |
-| sha_preimage | fflonk-t8  |  13 | 401.49 ms | 398.36 ms |   0.7 |  1.43 ms |        3476 |
-| sha_preimage | fflonk-t16 |  13 | 466.12 ms | 465.06 ms |   0.2 |  1.63 ms |        3460 |
-| ecdsa        | kzg        |  15 |   2.942 s |   2.931 s |   0.4 |  2.78 ms |        6100 |
-| ecdsa        | fflonk-t2  |  15 |   3.000 s |   2.982 s |   0.1 |  2.19 ms |        5396 |
-| ecdsa        | fflonk-t4  |  15 |   3.097 s |   3.089 s |   0.1 |  2.03 ms |        5028 |
-| ecdsa        | fflonk-t8  |  15 |   3.238 s |   3.227 s |   0.3 |  1.81 ms |        5012 |
-| ecdsa        | fflonk-t16 |  15 |   3.537 s |   3.535 s |   0.0 |  2.35 ms |        6100 |
-| schnorr      | kzg        |  11 | 132.16 ms | 130.34 ms |   1.4 |  1.76 ms |        3316 |
-| schnorr      | fflonk-t2  |  11 | 134.72 ms | 132.74 ms |   1.5 |  1.49 ms |        2964 |
-| schnorr      | fflonk-t4  |  11 | 141.01 ms | 139.05 ms |   1.3 |  1.34 ms |        2756 |
-| schnorr      | fflonk-t8  |  11 | 151.22 ms | 149.79 ms |   0.3 |  1.37 ms |        2708 |
-| schnorr      | fflonk-t16 |  11 | 168.25 ms | 167.02 ms |   0.7 |  1.41 ms |        2852 |
-| jwt          | kzg        |  17 |  13.273 s |  13.119 s |   0.5 |  3.14 ms |        6788 |
-| jwt          | fflonk-t2  |  17 |  13.359 s |  13.336 s |   0.2 |  2.48 ms |        5828 |
-| jwt          | fflonk-t4  |  17 |  13.711 s |  13.658 s |   0.2 |  2.09 ms |        5348 |
-| aggregation  | kzg        |  17 |  13.209 s |  13.165 s |   0.0 |  2.76 ms |        5508 |
-| aggregation  | fflonk-t2  |  17 |  13.485 s |  13.453 s |   0.1 |  2.26 ms |        4852 |
-| aggregation  | fflonk-t4  |  17 |  13.731 s |  13.719 s |   0.1 |  2.08 ms |        4628 |
-| ivc_step     | kzg        |  18 |  28.290 s |  28.279 s |   0.0 | 11.12 ms |        5716 |
-| ivc_step     | fflonk-t2  |  17 |  14.252 s |  14.235 s |   0.0 |  7.52 ms |        5076 |
-| ivc_step     | fflonk-t4  |  17 |  14.288 s |  14.273 s |   0.1 |  6.22 ms |        4820 |
-| ivc_step     | fflonk-t8  |  16 |   7.630 s |   7.606 s |   0.2 |  4.47 ms |        4724 |
+| workload     | pcs        |   k |    median |       min | ±MAD% |  verify | proof bytes |
+| ------------ | ---------- | --: | --------: | --------: | ----: | ------: | ----------: |
+| zswap_output | kzg        |  13 | 915.41 ms | 914.97 ms |   0.0 | 2.20 ms |        4516 |
+| zswap_output | fflonk-t2  |  13 | 973.59 ms | 972.60 ms |   0.1 | 1.75 ms |        4052 |
+| zswap_output | fflonk-t4  |  13 |   1.081 s |   1.081 s |   0.1 | 1.64 ms |        3828 |
+| zswap_output | fflonk-t8  |  13 |   1.282 s |   1.280 s |   0.0 | 1.65 ms |        3908 |
+| zswap_output | fflonk-t16 |  13 |   1.710 s |   1.709 s |   0.0 | 1.71 ms |        3940 |
+| poseidon     | kzg        |  14 |   1.489 s |   1.487 s |   0.0 | 1.80 ms |        2932 |
+| poseidon     | fflonk-t2  |  14 |   1.597 s |   1.596 s |   0.0 | 1.57 ms |        2628 |
+| poseidon     | fflonk-t4  |  14 |   1.800 s |   1.798 s |   0.0 | 1.30 ms |        2436 |
+| poseidon     | fflonk-t8  |  14 |   2.205 s |   2.203 s |   0.1 | 1.28 ms |        2452 |
+| poseidon     | fflonk-t16 |  14 |   2.817 s |   2.814 s |   0.1 | 1.38 ms |        2532 |
+| sha_preimage | kzg        |  13 | 621.82 ms | 621.35 ms |   0.1 | 1.94 ms |        4020 |
+| sha_preimage | fflonk-t2  |  13 | 678.52 ms | 678.09 ms |   0.1 | 1.53 ms |        3668 |
+| sha_preimage | fflonk-t4  |  13 | 787.40 ms | 786.32 ms |   0.1 | 1.55 ms |        3588 |
+| sha_preimage | fflonk-t8  |  13 | 959.21 ms | 958.79 ms |   0.0 | 1.46 ms |        3476 |
+| sha_preimage | fflonk-t16 |  13 |   1.370 s |   1.370 s |   0.0 | 1.63 ms |        3460 |
+| ecdsa        | kzg        |  15 |   4.912 s |   4.891 s |   0.2 | 2.75 ms |        6100 |
+| ecdsa        | fflonk-t2  |  15 |   5.151 s |   5.131 s |   0.1 | 2.16 ms |        5396 |
+| ecdsa        | fflonk-t4  |  15 |   5.515 s |   5.511 s |   0.0 | 1.93 ms |        5028 |
+| ecdsa        | fflonk-t8  |  15 |   6.262 s |   6.259 s |   0.0 | 1.83 ms |        5012 |
+| ecdsa        | fflonk-t16 |  15 |   7.919 s |   7.911 s |   0.1 | 2.17 ms |        6100 |
+| schnorr      | kzg        |  11 | 216.35 ms | 216.20 ms |   0.1 | 1.69 ms |        3316 |
+| schnorr      | fflonk-t2  |  11 | 235.60 ms | 235.26 ms |   0.0 | 1.50 ms |        2964 |
+| schnorr      | fflonk-t4  |  11 | 273.23 ms | 273.15 ms |   0.0 | 1.34 ms |        2756 |
+| schnorr      | fflonk-t8  |  11 | 328.85 ms | 328.54 ms |   0.0 | 1.24 ms |        2708 |
+| schnorr      | fflonk-t16 |  11 | 433.41 ms | 433.09 ms |   0.0 | 1.41 ms |        2852 |
+| jwt          | kzg        |  17 |  19.981 s |  19.964 s |   0.1 | 3.01 ms |        6788 |
+| jwt          | fflonk-t2  |  17 |  20.910 s |  20.879 s |   0.1 | 2.45 ms |        5828 |
+| jwt          | fflonk-t4  |  17 |  22.338 s |  22.317 s |   0.1 | 1.82 ms |        5348 |
+| aggregation  | kzg        |  17 |  17.946 s |  17.917 s |   0.0 | 3.10 ms |        5508 |
+| aggregation  | fflonk-t2  |  17 |  18.796 s |  18.778 s |   0.0 | 2.40 ms |        4852 |
+| aggregation  | fflonk-t4  |  17 |  20.335 s |  20.330 s |   0.0 | 1.93 ms |        4628 |
+| ivc_step     | kzg        |  18 |  38.053 s |  38.042 s |   0.0 | 8.95 ms |        5716 |
+| ivc_step     | fflonk-t2  |  17 |  21.168 s |  21.159 s |   0.0 | 6.37 ms |        5076 |
+| ivc_step     | fflonk-t4  |  17 |  21.178 s |  21.150 s |   0.1 | 4.86 ms |        4820 |
+| ivc_step     | fflonk-t8  |  16 |  13.251 s |  13.227 s |   0.1 | 4.11 ms |        4724 |
 
 ### 32 threads
 
-| workload     | pcs        |   k |    median |       min | ±MAD% |   verify | proof bytes |
-| ------------ | ---------- | --: | --------: | --------: | ----: | -------: | ----------: |
-| zswap_output | kzg        |  13 | 141.37 ms | 137.77 ms |   1.1 |  1.99 ms |        4516 |
-| zswap_output | fflonk-t2  |  13 | 150.49 ms | 147.34 ms |   1.3 |  1.69 ms |        4052 |
-| zswap_output | fflonk-t4  |  13 | 173.99 ms | 169.44 ms |   1.0 |  1.65 ms |        3828 |
-| zswap_output | fflonk-t8  |  13 | 198.15 ms | 195.50 ms |   1.3 |  1.60 ms |        3908 |
-| zswap_output | fflonk-t16 |  13 | 257.30 ms | 244.97 ms |   1.5 |  1.71 ms |        3940 |
-| poseidon     | kzg        |  14 | 192.60 ms | 190.12 ms |   1.3 |  1.56 ms |        2932 |
-| poseidon     | fflonk-t2  |  14 | 209.11 ms | 207.56 ms |   0.1 |  1.46 ms |        2628 |
-| poseidon     | fflonk-t4  |  14 | 242.74 ms | 233.50 ms |   0.9 |  1.32 ms |        2436 |
-| poseidon     | fflonk-t8  |  14 | 296.13 ms | 291.02 ms |   1.6 |  1.31 ms |        2452 |
-| poseidon     | fflonk-t16 |  14 | 373.33 ms | 365.97 ms |   1.0 |  1.38 ms |        2532 |
-| sha_preimage | kzg        |  13 |  75.31 ms |  74.71 ms |   0.4 |  1.82 ms |        4020 |
-| sha_preimage | fflonk-t2  |  13 |  87.38 ms |  82.76 ms |   4.7 |  1.63 ms |        3668 |
-| sha_preimage | fflonk-t4  |  13 | 101.30 ms |  98.46 ms |   2.5 |  1.46 ms |        3588 |
-| sha_preimage | fflonk-t8  |  13 | 128.67 ms | 125.51 ms |   2.2 |  1.52 ms |        3476 |
-| sha_preimage | fflonk-t16 |  13 | 182.61 ms | 176.38 ms |   2.7 |  1.70 ms |        3460 |
-| ecdsa        | kzg        |  15 | 734.35 ms | 729.77 ms |   0.6 |  2.85 ms |        6100 |
-| ecdsa        | fflonk-t2  |  15 | 766.00 ms | 757.94 ms |   0.6 |  2.18 ms |        5396 |
-| ecdsa        | fflonk-t4  |  15 | 836.99 ms | 826.78 ms |   0.6 |  1.98 ms |        5028 |
-| ecdsa        | fflonk-t8  |  15 | 925.81 ms | 914.29 ms |   0.2 |  1.89 ms |        5012 |
-| ecdsa        | fflonk-t16 |  15 |   1.147 s |   1.141 s |   0.5 |  2.19 ms |        6100 |
-| schnorr      | kzg        |  11 |  67.60 ms |  66.64 ms |   0.9 |  1.75 ms |        3316 |
-| schnorr      | fflonk-t2  |  11 |  69.96 ms |  68.80 ms |   1.0 |  1.39 ms |        2964 |
-| schnorr      | fflonk-t4  |  11 |  75.44 ms |  72.97 ms |   1.2 |  1.26 ms |        2756 |
-| schnorr      | fflonk-t8  |  11 |  83.50 ms |  82.07 ms |   0.6 |  1.23 ms |        2708 |
-| schnorr      | fflonk-t16 |  11 |  98.21 ms |  97.00 ms |   1.2 |  1.39 ms |        2852 |
-| jwt          | kzg        |  17 |   2.154 s |   2.151 s |   0.1 |  3.23 ms |        6788 |
-| jwt          | fflonk-t2  |  17 |   2.286 s |   2.271 s |   0.2 |  2.55 ms |        5828 |
-| jwt          | fflonk-t4  |  17 |   2.523 s |   2.497 s |   0.4 |  1.86 ms |        5348 |
-| aggregation  | kzg        |  17 |   1.963 s |   1.939 s |   0.4 |  2.76 ms |        5508 |
-| aggregation  | fflonk-t2  |  17 |   2.074 s |   2.058 s |   0.5 |  2.19 ms |        4852 |
-| aggregation  | fflonk-t4  |  17 |   2.300 s |   2.297 s |   0.1 |  1.98 ms |        4628 |
-| ivc_step     | kzg        |  18 |   4.239 s |   4.230 s |   0.1 | 10.09 ms |        5716 |
-| ivc_step     | fflonk-t2  |  17 |   2.484 s |   2.444 s |   0.8 |  6.91 ms |        5076 |
-| ivc_step     | fflonk-t4  |  17 |   2.415 s |   2.379 s |   0.3 |  5.76 ms |        4820 |
-| ivc_step     | fflonk-t8  |  16 |   1.583 s |   1.578 s |   0.3 |  4.51 ms |        4724 |
+| workload     | pcs        |   k |    median |       min | ±MAD% |  verify | proof bytes |
+| ------------ | ---------- | --: | --------: | --------: | ----: | ------: | ----------: |
+| zswap_output | kzg        |  13 |  96.29 ms |  93.40 ms |   0.7 | 1.94 ms |        4516 |
+| zswap_output | fflonk-t2  |  13 | 106.00 ms | 103.63 ms |   2.2 | 1.71 ms |        4052 |
+| zswap_output | fflonk-t4  |  13 | 114.44 ms | 112.84 ms |   1.0 | 1.55 ms |        3828 |
+| zswap_output | fflonk-t8  |  13 | 132.78 ms | 131.89 ms |   0.7 | 1.62 ms |        3908 |
+| zswap_output | fflonk-t16 |  13 | 165.99 ms | 162.91 ms |   0.4 | 1.70 ms |        3940 |
+| poseidon     | kzg        |  14 | 157.61 ms | 155.24 ms |   0.5 | 1.58 ms |        2932 |
+| poseidon     | fflonk-t2  |  14 | 164.68 ms | 163.08 ms |   0.3 | 1.45 ms |        2628 |
+| poseidon     | fflonk-t4  |  14 | 189.80 ms | 181.41 ms |   0.6 | 1.26 ms |        2436 |
+| poseidon     | fflonk-t8  |  14 | 213.75 ms | 213.14 ms |   0.3 | 1.28 ms |        2452 |
+| poseidon     | fflonk-t16 |  14 | 272.18 ms | 264.38 ms |   1.7 | 1.36 ms |        2532 |
+| sha_preimage | kzg        |  13 |  66.12 ms |  65.76 ms |   0.4 | 1.78 ms |        4020 |
+| sha_preimage | fflonk-t2  |  13 |  71.96 ms |  69.78 ms |   1.5 | 1.50 ms |        3668 |
+| sha_preimage | fflonk-t4  |  13 |  80.21 ms |  79.69 ms |   0.6 | 1.46 ms |        3588 |
+| sha_preimage | fflonk-t8  |  13 |  98.42 ms |  95.52 ms |   0.6 | 1.46 ms |        3476 |
+| sha_preimage | fflonk-t16 |  13 | 130.03 ms | 128.82 ms |   0.9 | 1.62 ms |        3460 |
+| ecdsa        | kzg        |  15 | 657.69 ms | 652.28 ms |   0.5 | 2.73 ms |        6100 |
+| ecdsa        | fflonk-t2  |  15 | 685.01 ms | 679.39 ms |   0.5 | 2.11 ms |        5396 |
+| ecdsa        | fflonk-t4  |  15 | 725.74 ms | 715.65 ms |   0.2 | 1.94 ms |        5028 |
+| ecdsa        | fflonk-t8  |  15 | 785.02 ms | 777.46 ms |   0.7 | 1.80 ms |        5012 |
+| ecdsa        | fflonk-t16 |  15 | 916.91 ms | 914.46 ms |   0.3 | 2.23 ms |        6100 |
+| schnorr      | kzg        |  11 |  30.45 ms |  29.76 ms |   2.3 | 1.67 ms |        3316 |
+| schnorr      | fflonk-t2  |  11 |  33.91 ms |  32.47 ms |   3.4 | 1.41 ms |        2964 |
+| schnorr      | fflonk-t4  |  11 |  36.35 ms |  35.61 ms |   0.8 | 1.30 ms |        2756 |
+| schnorr      | fflonk-t8  |  11 |  42.86 ms |  41.71 ms |   2.7 | 1.24 ms |        2708 |
+| schnorr      | fflonk-t16 |  11 |  51.75 ms |  49.43 ms |   1.7 | 1.45 ms |        2852 |
+| jwt          | kzg        |  17 |   1.781 s |   1.774 s |   0.3 | 3.05 ms |        6788 |
+| jwt          | fflonk-t2  |  17 |   1.872 s |   1.865 s |   0.2 | 2.52 ms |        5828 |
+| jwt          | fflonk-t4  |  17 |   2.037 s |   2.002 s |   1.5 | 1.88 ms |        5348 |
+| aggregation  | kzg        |  17 |   1.722 s |   1.715 s |   0.4 | 2.69 ms |        5508 |
+| aggregation  | fflonk-t2  |  17 |   1.812 s |   1.802 s |   0.2 | 2.15 ms |        4852 |
+| aggregation  | fflonk-t4  |  17 |   1.943 s |   1.929 s |   0.4 | 1.96 ms |        4628 |
+| ivc_step     | kzg        |  18 |   3.717 s |   3.706 s |   0.1 | 7.93 ms |        5716 |
+| ivc_step     | fflonk-t2  |  17 |   2.135 s |   2.111 s |   0.6 | 6.15 ms |        5076 |
+| ivc_step     | fflonk-t4  |  17 |   2.052 s |   2.022 s |   0.5 | 4.96 ms |        4820 |
+| ivc_step     | fflonk-t8  |  16 |   1.281 s |   1.274 s |   0.6 | 4.28 ms |        4724 |
 
 ### Kernel shares
 
@@ -364,76 +364,76 @@ overlap, so a row is not guaranteed to add up to 100%.
 
 | workload     | pcs        | threads |     total | msm % | fft % | poly_eval % | other % | synthesis % |
 | ------------ | ---------- | ------: | --------: | ----: | ----: | ----------: | ------: | ----------: |
-| zswap_output | kzg        |       1 | 534.03 ms |  10.2 |  18.7 |        57.5 |    13.6 |         8.2 |
-| zswap_output | kzg        |      32 | 145.07 ms |  37.6 |   8.7 |        17.3 |    36.4 |        30.4 |
-| zswap_output | fflonk-t2  |       1 | 556.09 ms |  11.2 |  18.4 |        56.6 |    13.8 |         7.9 |
-| zswap_output | fflonk-t2  |      32 | 148.27 ms |  40.4 |   8.1 |        15.0 |    36.6 |        29.8 |
-| zswap_output | fflonk-t4  |       1 | 575.04 ms |  13.0 |  17.6 |        55.3 |    14.1 |         7.6 |
-| zswap_output | fflonk-t4  |      32 | 170.64 ms |  43.1 |   7.7 |        16.7 |    32.5 |        26.2 |
-| zswap_output | fflonk-t8  |       1 | 612.95 ms |  16.8 |  16.7 |        53.0 |    13.5 |         7.1 |
-| zswap_output | fflonk-t8  |      32 | 198.22 ms |  52.8 |   6.1 |        12.9 |    28.2 |        22.1 |
-| zswap_output | fflonk-t16 |       1 | 673.70 ms |  21.4 |  15.1 |        50.2 |    13.3 |         6.4 |
-| zswap_output | fflonk-t16 |      32 | 248.46 ms |  59.1 |   5.0 |        13.3 |    22.6 |        17.6 |
-| poseidon     | kzg        |       1 | 684.75 ms |  16.5 |  24.7 |        50.5 |     8.3 |         2.7 |
-| poseidon     | kzg        |      32 | 189.84 ms |  60.5 |  10.8 |        12.9 |    15.9 |         9.6 |
-| poseidon     | fflonk-t2  |       1 | 704.63 ms |  17.7 |  23.9 |        49.8 |     8.6 |         2.5 |
-| poseidon     | fflonk-t2  |      32 | 211.42 ms |  61.0 |  10.2 |        13.4 |    15.3 |         8.6 |
-| poseidon     | fflonk-t4  |       1 | 741.77 ms |  20.8 |  22.6 |        47.8 |     8.8 |         2.4 |
-| poseidon     | fflonk-t4  |      32 | 242.08 ms |  64.6 |   9.1 |        12.7 |    13.5 |         7.2 |
-| poseidon     | fflonk-t8  |       1 | 815.09 ms |  23.9 |  20.8 |        46.1 |     9.2 |         2.1 |
-| poseidon     | fflonk-t8  |      32 | 304.48 ms |  69.5 |   7.5 |        11.7 |    11.3 |         5.8 |
-| poseidon     | fflonk-t16 |       1 | 922.75 ms |  29.8 |  18.5 |        42.6 |     9.2 |         1.9 |
-| poseidon     | fflonk-t16 |      32 | 374.62 ms |  73.7 |   5.9 |        11.0 |     9.4 |         4.6 |
-| sha_preimage | kzg        |       1 | 335.23 ms |  11.9 |  26.2 |        52.8 |     9.1 |         1.3 |
-| sha_preimage | kzg        |      32 |  78.85 ms |  54.2 |  14.3 |        17.7 |    13.8 |         5.2 |
-| sha_preimage | fflonk-t2  |       1 | 344.56 ms |  13.1 |  25.2 |        52.2 |     9.5 |         1.1 |
-| sha_preimage | fflonk-t2  |      32 |  85.15 ms |  52.3 |  12.7 |        19.8 |    15.2 |         4.9 |
-| sha_preimage | fflonk-t4  |       1 | 372.11 ms |  16.5 |  23.6 |        50.3 |     9.6 |         1.1 |
-| sha_preimage | fflonk-t4  |      32 | 108.40 ms |  63.0 |   9.9 |        14.8 |    12.3 |         3.9 |
-| sha_preimage | fflonk-t8  |       1 | 401.45 ms |  21.1 |  21.8 |        47.4 |     9.7 |         1.0 |
-| sha_preimage | fflonk-t8  |      32 | 128.19 ms |  65.0 |   8.6 |        15.2 |    11.2 |         3.2 |
-| sha_preimage | fflonk-t16 |       1 | 466.21 ms |  28.2 |  18.6 |        43.4 |     9.8 |         0.9 |
-| sha_preimage | fflonk-t16 |      32 | 186.01 ms |  71.9 |   6.2 |        14.1 |     7.8 |         2.1 |
-| ecdsa        | kzg        |       1 |   2.948 s |   9.2 |  24.2 |        50.5 |    16.0 |         8.8 |
-| ecdsa        | kzg        |      32 | 734.94 ms |  37.5 |   8.5 |        13.7 |    40.4 |        35.4 |
-| ecdsa        | fflonk-t2  |       1 |   2.995 s |  10.0 |  23.9 |        49.6 |    16.6 |         8.9 |
-| ecdsa        | fflonk-t2  |      32 | 760.95 ms |  38.9 |   8.4 |        12.6 |    40.1 |        34.1 |
-| ecdsa        | fflonk-t4  |       1 |   3.076 s |  11.3 |  23.3 |        48.9 |    16.5 |         8.7 |
-| ecdsa        | fflonk-t4  |      32 | 830.40 ms |  42.9 |   7.4 |        12.5 |    37.2 |        31.2 |
-| ecdsa        | fflonk-t8  |       1 |   3.209 s |  13.4 |  22.2 |        48.5 |    15.9 |         8.0 |
-| ecdsa        | fflonk-t8  |      32 | 917.02 ms |  47.2 |   6.6 |        12.6 |    33.5 |        28.2 |
-| ecdsa        | fflonk-t16 |       1 |   3.528 s |  17.4 |  20.4 |        46.4 |    15.8 |         7.3 |
-| ecdsa        | fflonk-t16 |      32 |   1.151 s |  53.8 |   5.4 |        13.2 |    27.5 |        22.5 |
-| schnorr      | kzg        |       1 | 132.81 ms |  13.1 |  14.7 |        38.2 |    33.9 |        29.5 |
-| schnorr      | kzg        |      32 |  67.64 ms |  23.5 |   5.4 |         7.1 |    64.0 |        59.7 |
-| schnorr      | fflonk-t2  |       1 | 134.69 ms |  14.4 |  14.3 |        37.5 |    33.8 |        29.2 |
-| schnorr      | fflonk-t2  |      32 |  70.88 ms |  25.0 |   5.7 |         8.8 |    60.5 |        55.6 |
-| schnorr      | fflonk-t4  |       1 | 143.59 ms |  15.5 |  13.9 |        37.6 |    33.0 |        28.2 |
-| schnorr      | fflonk-t4  |      32 |  75.52 ms |  28.4 |   5.2 |         9.1 |    57.3 |        52.1 |
-| schnorr      | fflonk-t8  |       1 | 151.55 ms |  19.8 |  13.1 |        36.0 |    31.2 |        25.9 |
-| schnorr      | fflonk-t8  |      32 |  84.47 ms |  37.0 |   4.0 |         8.0 |    51.0 |        46.9 |
-| schnorr      | fflonk-t16 |       1 | 170.20 ms |  25.4 |  11.8 |        33.8 |    29.0 |        23.6 |
-| schnorr      | fflonk-t16 |      32 |  98.94 ms |  43.9 |   3.7 |         8.0 |    44.4 |        39.9 |
-| jwt          | kzg        |       1 |  13.254 s |   7.8 |  29.1 |        54.7 |     8.4 |         0.9 |
-| jwt          | kzg        |      32 |   2.161 s |  48.4 |  17.0 |        20.3 |    14.3 |         5.5 |
-| jwt          | fflonk-t2  |       1 |  13.723 s |   8.3 |  29.0 |        54.2 |     8.5 |         0.8 |
-| jwt          | fflonk-t2  |      32 |   2.267 s |  49.2 |  16.1 |        19.8 |    14.9 |         5.2 |
-| jwt          | fflonk-t4  |       1 |  13.773 s |   9.5 |  28.7 |        52.8 |     9.0 |         0.8 |
-| jwt          | fflonk-t4  |      32 |   2.515 s |  52.3 |  14.4 |        19.1 |    14.2 |         4.6 |
-| aggregation  | kzg        |       1 |  13.233 s |   5.1 |  20.9 |        66.9 |     7.1 |         1.9 |
-| aggregation  | kzg        |      32 |   1.973 s |  37.3 |  14.8 |        27.0 |    20.9 |        12.9 |
-| aggregation  | fflonk-t2  |       1 |  13.428 s |   6.0 |  20.5 |        66.1 |     7.4 |         1.9 |
-| aggregation  | fflonk-t2  |      32 |   2.100 s |  37.7 |  13.8 |        27.6 |    20.9 |        12.0 |
-| aggregation  | fflonk-t4  |       1 |  13.712 s |   7.0 |  20.1 |        65.3 |     7.6 |         1.8 |
-| aggregation  | fflonk-t4  |      32 |   2.297 s |  42.5 |  12.5 |        25.2 |    19.9 |        11.1 |
-| ivc_step     | kzg        |       1 |  28.355 s |   5.0 |  22.6 |        64.9 |     7.5 |         2.2 |
-| ivc_step     | kzg        |      32 |   4.213 s |  33.9 |  16.7 |        26.2 |    23.3 |        14.8 |
-| ivc_step     | fflonk-t2  |       1 |  14.290 s |   6.8 |  19.9 |        64.7 |     8.6 |         2.8 |
-| ivc_step     | fflonk-t2  |      32 |   2.514 s |  39.8 |  12.3 |        22.9 |    25.1 |        16.4 |
-| ivc_step     | fflonk-t4  |       1 |  14.299 s |   6.9 |  20.0 |        65.2 |     7.9 |         2.0 |
-| ivc_step     | fflonk-t4  |      32 |   2.416 s |  41.6 |  12.9 |        24.6 |    20.9 |        12.1 |
-| ivc_step     | fflonk-t8  |       1 |   7.634 s |  10.5 |  17.6 |        63.3 |     8.7 |         2.7 |
-| ivc_step     | fflonk-t8  |      32 |   1.582 s |  50.5 |   8.9 |        20.3 |    20.3 |        12.8 |
+| zswap_output | kzg        |       1 | 913.75 ms |  51.3 |  10.9 |        33.4 |     4.3 |         1.3 |
+| zswap_output | kzg        |      32 |  96.32 ms |  42.7 |  12.7 |        23.5 |    21.1 |        13.2 |
+| zswap_output | fflonk-t2  |       1 | 971.20 ms |  53.7 |  10.3 |        31.7 |     4.3 |         1.2 |
+| zswap_output | fflonk-t2  |      32 | 103.20 ms |  44.5 |  11.9 |        21.5 |    22.0 |        12.2 |
+| zswap_output | fflonk-t4  |       1 |   1.078 s |  57.6 |   9.2 |        29.1 |     4.1 |         1.1 |
+| zswap_output | fflonk-t4  |      32 | 120.84 ms |  46.1 |  10.3 |        24.2 |    19.4 |        10.6 |
+| zswap_output | fflonk-t8  |       1 |   1.280 s |  63.4 |   7.7 |        25.1 |     3.8 |         0.9 |
+| zswap_output | fflonk-t8  |      32 | 131.84 ms |  50.6 |   9.7 |        21.4 |    18.2 |         9.6 |
+| zswap_output | fflonk-t16 |       1 |   1.708 s |  71.2 |   5.8 |        19.7 |     3.2 |         0.7 |
+| zswap_output | fflonk-t16 |      32 | 169.31 ms |  59.8 |   7.2 |        18.0 |    15.0 |         7.5 |
+| poseidon     | kzg        |       1 |   1.486 s |  62.3 |  11.2 |        23.0 |     3.6 |         1.2 |
+| poseidon     | kzg        |      32 | 158.72 ms |  49.9 |  13.6 |        17.3 |    19.2 |        11.7 |
+| poseidon     | fflonk-t2  |       1 |   1.594 s |  64.3 |  10.4 |        21.7 |     3.6 |         1.1 |
+| poseidon     | fflonk-t2  |      32 | 170.89 ms |  52.2 |  12.5 |        17.0 |    18.3 |        10.8 |
+| poseidon     | fflonk-t4  |       1 |   1.795 s |  67.6 |   9.3 |        19.7 |     3.5 |         1.0 |
+| poseidon     | fflonk-t4  |      32 | 185.02 ms |  55.5 |  11.4 |        15.3 |    17.8 |         9.9 |
+| poseidon     | fflonk-t8  |       1 |   2.198 s |  72.5 |   7.5 |        16.8 |     3.2 |         0.8 |
+| poseidon     | fflonk-t8  |      32 | 214.33 ms |  58.9 |   9.8 |        15.6 |    15.7 |         8.5 |
+| poseidon     | fflonk-t16 |       1 |   2.811 s |  77.3 |   5.9 |        13.9 |     2.9 |         0.6 |
+| poseidon     | fflonk-t16 |      32 | 268.15 ms |  63.1 |   7.8 |        14.9 |    14.2 |         7.0 |
+| sha_preimage | kzg        |       1 | 620.07 ms |  53.3 |  13.9 |        28.3 |     4.5 |         0.6 |
+| sha_preimage | kzg        |      32 |  65.94 ms |  44.0 |  17.1 |        22.0 |    16.9 |         6.5 |
+| sha_preimage | fflonk-t2  |       1 | 679.50 ms |  56.4 |  12.8 |        26.3 |     4.5 |         0.6 |
+| sha_preimage | fflonk-t2  |      32 |  76.95 ms |  45.8 |  14.4 |        22.0 |    17.9 |         6.2 |
+| sha_preimage | fflonk-t4  |       1 | 786.37 ms |  61.5 |  10.9 |        23.4 |     4.1 |         0.5 |
+| sha_preimage | fflonk-t4  |      32 |  82.67 ms |  51.6 |  12.7 |        18.8 |    16.9 |         5.2 |
+| sha_preimage | fflonk-t8  |       1 | 963.79 ms |  67.7 |   9.0 |        19.6 |     3.7 |         0.4 |
+| sha_preimage | fflonk-t8  |      32 |  96.79 ms |  55.7 |  11.2 |        19.1 |    13.9 |         4.3 |
+| sha_preimage | fflonk-t16 |       1 |   1.373 s |  75.9 |   6.3 |        14.7 |     3.1 |         0.3 |
+| sha_preimage | fflonk-t16 |      32 | 133.16 ms |  61.5 |   8.4 |        18.9 |    11.2 |         3.1 |
+| ecdsa        | kzg        |       1 |   4.894 s |  44.8 |  14.6 |        31.0 |     9.6 |         5.3 |
+| ecdsa        | kzg        |      32 | 660.54 ms |  30.4 |   9.4 |        15.7 |    44.5 |        39.2 |
+| ecdsa        | fflonk-t2  |       1 |   5.115 s |  46.5 |  13.9 |        30.1 |     9.5 |         5.0 |
+| ecdsa        | fflonk-t2  |      32 | 678.77 ms |  30.8 |   9.1 |        14.9 |    45.2 |        38.8 |
+| ecdsa        | fflonk-t4  |       1 |   5.515 s |  50.5 |  13.0 |        27.5 |     9.1 |         4.7 |
+| ecdsa        | fflonk-t4  |      32 | 725.66 ms |  33.6 |   8.5 |        15.5 |    42.4 |        35.5 |
+| ecdsa        | fflonk-t8  |       1 |   6.261 s |  55.5 |  11.4 |        25.0 |     8.1 |         4.1 |
+| ecdsa        | fflonk-t8  |      32 | 780.95 ms |  37.3 |   7.9 |        14.9 |    40.0 |        33.0 |
+| ecdsa        | fflonk-t16 |       1 |   7.875 s |  63.1 |   9.1 |        20.9 |     7.0 |         3.3 |
+| ecdsa        | fflonk-t16 |      32 | 915.50 ms |  42.5 |   6.5 |        16.2 |    34.8 |        28.2 |
+| schnorr      | kzg        |       1 | 216.27 ms |  62.2 |   8.8 |        23.2 |     5.8 |         3.3 |
+| schnorr      | kzg        |      32 |  32.22 ms |  37.4 |  12.2 |        17.2 |    33.2 |        24.0 |
+| schnorr      | fflonk-t2  |       1 | 235.11 ms |  65.0 |   8.1 |        21.5 |     5.5 |         3.0 |
+| schnorr      | fflonk-t2  |      32 |  32.46 ms |  39.6 |  10.8 |        15.3 |    34.2 |        23.5 |
+| schnorr      | fflonk-t4  |       1 | 273.17 ms |  69.3 |   7.0 |        18.8 |     4.9 |         2.6 |
+| schnorr      | fflonk-t4  |      32 |  36.45 ms |  42.7 |  11.2 |        16.0 |    30.1 |        20.8 |
+| schnorr      | fflonk-t8  |       1 | 327.68 ms |  73.8 |   5.7 |        16.2 |     4.3 |         2.2 |
+| schnorr      | fflonk-t8  |      32 |  41.02 ms |  50.5 |   8.4 |        14.2 |    26.9 |        18.7 |
+| schnorr      | fflonk-t16 |       1 | 433.42 ms |  79.0 |   4.4 |        12.9 |     3.7 |         1.6 |
+| schnorr      | fflonk-t16 |      32 |  52.14 ms |  57.3 |   6.9 |        13.1 |    22.8 |        14.9 |
+| jwt          | kzg        |       1 |  20.020 s |  38.8 |  19.0 |        36.5 |     5.7 |         0.6 |
+| jwt          | kzg        |      32 |   1.771 s |  36.1 |  20.5 |        25.0 |    18.4 |         7.4 |
+| jwt          | fflonk-t2  |       1 |  20.657 s |  41.0 |  18.4 |        34.7 |     5.8 |         0.6 |
+| jwt          | fflonk-t2  |      32 |   1.899 s |  37.5 |  19.3 |        24.8 |    18.4 |         6.6 |
+| jwt          | fflonk-t4  |       1 |  22.257 s |  44.7 |  17.2 |        32.5 |     5.5 |         0.6 |
+| jwt          | fflonk-t4  |      32 |   2.023 s |  39.4 |  18.5 |        23.8 |    18.3 |         6.2 |
+| aggregation  | kzg        |       1 |  17.932 s |  30.3 |  15.3 |        49.1 |     5.2 |         1.4 |
+| aggregation  | kzg        |      32 |   1.721 s |  27.1 |  16.9 |        31.6 |    24.3 |        15.0 |
+| aggregation  | fflonk-t2  |       1 |  18.771 s |  32.7 |  14.9 |        47.2 |     5.2 |         1.4 |
+| aggregation  | fflonk-t2  |      32 |   1.824 s |  27.9 |  15.9 |        30.7 |    25.5 |        14.4 |
+| aggregation  | fflonk-t4  |       1 |  20.442 s |  37.3 |  13.9 |        43.7 |     5.1 |         1.2 |
+| aggregation  | fflonk-t4  |      32 |   1.939 s |  31.1 |  14.8 |        30.1 |    24.0 |        13.4 |
+| ivc_step     | kzg        |       1 |  38.144 s |  30.0 |  16.3 |        48.1 |     5.6 |         1.6 |
+| ivc_step     | kzg        |      32 |   3.732 s |  24.4 |  19.0 |        30.0 |    26.5 |        17.0 |
+| ivc_step     | fflonk-t2  |       1 |  21.132 s |  36.6 |  13.7 |        43.9 |     5.9 |         2.0 |
+| ivc_step     | fflonk-t2  |      32 |   2.150 s |  29.0 |  14.2 |        27.5 |    29.3 |        19.6 |
+| ivc_step     | fflonk-t4  |       1 |  21.206 s |  37.1 |  13.5 |        44.0 |     5.3 |         1.4 |
+| ivc_step     | fflonk-t4  |      32 |   2.014 s |  31.1 |  14.7 |        29.4 |    24.8 |        14.7 |
+| ivc_step     | fflonk-t8  |       1 |  13.296 s |  48.3 |  10.5 |        36.3 |     5.0 |         1.6 |
+| ivc_step     | fflonk-t8  |      32 |   1.281 s |  38.9 |  10.3 |        25.6 |    25.2 |        16.2 |
 
 ### Effect of the fflonk packing size
 
@@ -447,28 +447,29 @@ run:
   polynomials one by one.
 - The multi-open argument runs two MSMs whose size is `T` times the number of
   rows. Their time grows 1.7x to 2x each time `T` doubles: on `zswap_output`
-  from 8 ms under KZG to 30 ms at `T = 4` and 103 ms at `T = 16`. The
-  polynomial arithmetic of the opening grows at the same rate and is about a
-  tenth of the MSM time at 32 threads.
-- At 32 threads the proof of a fixed circuit takes 1.03x to 1.16x as long as
-  under KZG at `T = 2`, 1.12x to 1.35x at `T = 4` and 1.45x to 2.42x at
-  `T = 16`. At 1 thread the rest of the prover weighs more, and the overhead
-  is 1.01x to 1.04x, 1.03x to 1.10x and 1.20x to 1.39x.
+  at 32 threads from 5.5 ms under KZG to 18 ms at `T = 4` and 61 ms at
+  `T = 16`. The rest of the opening, mostly polynomial arithmetic, is about a
+  third of the MSM time at 32 threads and a tenth at 1 thread.
+- At 32 threads the proof of a fixed circuit takes 1.04x to 1.11x as long as
+  under KZG at `T = 2`, 1.10x to 1.21x at `T = 4` and 1.39x to 1.97x at
+  `T = 16`. At 1 thread the two MSMs weigh more, and the overhead is 1.05x to
+  1.09x, 1.12x to 1.27x and 1.61x to 2.20x.
 - Verification gets faster and the proof shorter up to `T = 4` or `T = 8`:
   the proof is 11% to 21% shorter at `T = 4`. Beyond that the gains flatten
   or reverse.
-- `ivc_step` goes the other way, because a larger `T` shrinks the circuit:
-  its in-circuit verifier takes 178,551 rows under KZG, 83,196 at `T = 4` and
-  62,223 at `T = 8`, so the circuit fits in 2^18, 2^17 and 2^16 rows. A step
-  takes 4.24 s under KZG, 2.42 s at `T = 4` and 1.58 s at `T = 8` at 32
+- `ivc_step` goes the other way, because a larger `T` shrinks the in-circuit
+  verifier: the circuit takes 178,311 rows under KZG, 82,988 at `T = 4` and
+  62,026 at `T = 8`, so it fits in 2^18, 2^17 and 2^16 rows. A step
+  takes 3.72 s under KZG, 2.05 s at `T = 4` and 1.28 s at `T = 8` at 32
   threads.
 
 ## Caveats
 
-- **The 1-thread configuration only limits the rayon pool.** G1 MSMs are
-  executed by blst's `multi_exp_affine`, which uses its own thread pool, so
-  MSM time does not shrink at 1 thread, and the "1 thread" numbers are not
-  those of a single-core machine. This is a known limitation.
+- **The 1-thread numbers are those of one core.** The commitments use the
+  Pippenger of `midnight-curves`, which runs on the rayon pool (#594), so a
+  proof at 1 thread keeps one core busy. Numbers taken before that change are
+  not comparable: the MSMs then ran on blst's own thread pool, whatever the
+  size of the rayon pool.
 - **The timed section of `ivc_step` is a full `IvcProver::prove_step`**,
   which also verifies the previous proof off-circuit.
 - **`aggregation` verifies `fflonk-t16` proofs in-circuit** under every outer
