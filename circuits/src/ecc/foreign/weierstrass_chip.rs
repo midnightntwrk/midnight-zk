@@ -896,6 +896,17 @@ where
         add_1bit_scalar_bases(layouter, self, scalar_chip, &bases_with_1bit_scalar, res)
     }
 
+    /// Unlike most operations of [`EccInstructions`], this one is exact on the
+    /// whole curve. In general, for an input `P = P_G + P_T` (with `P_G` in the
+    /// prime-order subgroup and `P_T` a torsion component), the trait only
+    /// guarantees the subgroup component of the output, here `scalar * P_G`;
+    /// the torsion component may be chosen by the prover. Here the output is
+    /// exactly `scalar * P`, with `scalar` taken as its integer representative
+    /// in `[0, q)`: its bits are fixed constants and every step is exact group
+    /// arithmetic on the whole curve.
+    ///
+    /// The subgroup checks of `assign` and `point_from_coordinates` rely on
+    /// this.
     fn mul_by_constant(
         &self,
         layouter: &mut impl Layouter<F>,
@@ -1301,11 +1312,6 @@ where
     /// # Unsatisfiable Circuit
     ///
     /// If `p = -q`.
-    ///
-    /// # Panics
-    ///
-    /// If `p.x = q.x` (the official prover panics, but do not assume this is
-    /// enforced with constraints.)
     fn assert_add(
         &self,
         layouter: &mut impl Layouter<F>,

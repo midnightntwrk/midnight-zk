@@ -466,6 +466,8 @@ impl<C: EdwardsCurve> ComposableChip<C::Base> for EccChip<C> {
         advice_cols: &Self::SharedResources,
     ) -> Self::Config {
         assert_eq!(C::A, -C::Base::ONE);
+        assert!(bool::from(C::A.sqrt().is_some()));
+        assert!(bool::from(C::D.sqrt().is_none()));
 
         // Only the first 7 need to be copy-enabled.
         for col in advice_cols.iter().take(7) {
@@ -774,6 +776,16 @@ impl<C: EdwardsCurve> EccInstructions<C::Base, C> for EccChip<C> {
         })
     }
 
+    /// Unlike most operations of [`EccInstructions`], this one is exact on the
+    /// whole curve. In general, for an input `P = P_G + P_T` (with `P_G` in the
+    /// prime-order subgroup and `P_T` a torsion component), the trait only
+    /// guarantees the subgroup component of the output, here `scalar * P_G`;
+    /// the torsion component may be chosen by the prover. Here the output is
+    /// exactly `scalar * P`, with `scalar` taken as its integer representative
+    /// in `[0, q)`: its bits are fixed constants and every step is exact group
+    /// arithmetic on the whole curve.
+    ///
+    /// The subgroup check of `assign` relies on this.
     fn mul_by_constant(
         &self,
         layouter: &mut impl Layouter<C::Base>,

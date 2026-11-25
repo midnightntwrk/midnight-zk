@@ -37,14 +37,18 @@ use crate::{
 /// (the torsion component of `P`) divides `h`. The guarantees of these
 /// instructions only concern the `G` component:
 ///
-/// - Completeness is only guaranteed when the all input points are in `G`.
+/// - Completeness is only guaranteed when all the input points are in `G`.
 /// - Soundness: the constraints only enforce that the `G` component of the
 ///   output is correct, not its torsion component. For example, when
-///   multiplying a point `P` of the form `P = T + G` (where `T` is a torsion
-///   point and `G` belongs to the prime-order subgroup) by a scalar `s`, the
-///   output is guaranteed to be a point `Q` of the form `Q = a * T + s * G`,
-///   for some `a`, which is not necessarily constrained to equal `s` modulo the
-///   cofactor.
+///   multiplying a point `P = P_G + P_T` by a scalar `s`, the output is
+///   guaranteed to be a point of the form `s * P_G + a * P_T`, for some `a`,
+///   which is not necessarily constrained to equal `s` modulo the cofactor.
+///
+/// Values derived from a point that are not points themselves (e.g. its
+/// coordinates, its public-input encoding, or the bit returned by `is_equal`)
+/// depend on the whole point, including its torsion component. Hence, on an
+/// output whose torsion component is not constrained, they may be chosen by
+/// the prover among several values.
 ///
 /// Points assigned with `assign` or [`Self::point_from_coordinates`] are
 /// constrained to be in `G`. Points obtained via
@@ -163,14 +167,12 @@ where
 
     /// Same as [Self::point_from_coordinates], but possibly skipping the
     /// subgroup-membership check: the coordinates are only guaranteed to
-    /// satisfy the curve equation. We enforce honest users to operate over
-    /// the prime-order subgroup, but allow the circuit to skip enforcing this
-    /// constraint where this guarantee is not required.
+    /// satisfy the curve equation. For curves with a non-trivial cofactor this
+    /// skips the expensive cofactor-based subgroup check.
     ///
-    /// For curves with a non-trivial cofactor this skips the expensive
-    /// cofactor-based subgroup check. Note that some operations (e.g.
-    /// multi-scalar multiplications) are only guaranteed to be correct on
-    /// points of the prime-order subgroup.
+    /// The returned point may have a torsion component, on which the other
+    /// instructions of this trait may misbehave (see the trait docs). Unless
+    /// your application tolerates this, use [Self::point_from_coordinates].
     ///
     /// The default implementation performs the subgroup check.
     fn point_from_coordinates_without_subgroup_check(
