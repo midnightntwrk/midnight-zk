@@ -86,18 +86,6 @@ struct Evals<'a, F: CircuitField> {
     instance: &'a [AssignedNative<F>],
 }
 
-impl<F: CircuitField> Evals<'_, F> {
-    /// The evaluation of the given leaf (a fixed, advice or instance query).
-    fn leaf(&self, expr: &Expression<F>) -> Option<&AssignedNative<F>> {
-        match expr {
-            Expression::Fixed(query) => Some(&self.fixed[query.index().unwrap()]),
-            Expression::Advice(query) => Some(&self.advice[query.index.unwrap()]),
-            Expression::Instance(query) => Some(&self.instance[query.index.unwrap()]),
-            _ => None,
-        }
-    }
-}
-
 /// Adds `coeff * expr` to the linear combination `sum terms + constant`.
 #[allow(clippy::too_many_arguments)]
 fn add_terms<F: CircuitField>(
@@ -131,7 +119,9 @@ fn add_terms<F: CircuitField>(
                 terms.push((scale, scalar_chip.mul_many(layouter, &factors)?));
             }
         }
-        leaf => terms.push((coeff, evals.leaf(leaf).unwrap().clone())),
+        Expression::Fixed(q) => terms.push((coeff, evals.fixed[q.index().unwrap()].clone())),
+        Expression::Advice(q) => terms.push((coeff, evals.advice[q.index.unwrap()].clone())),
+        Expression::Instance(q) => terms.push((coeff, evals.instance[q.index.unwrap()].clone())),
     }
     Ok(())
 }
@@ -179,7 +169,9 @@ fn add_factors<F: CircuitField>(
                 None => factors.push(sum),
             }
         }
-        leaf => factors.push(evals.leaf(leaf).unwrap().clone()),
+        Expression::Fixed(q) => factors.push(evals.fixed[q.index().unwrap()].clone()),
+        Expression::Advice(q) => factors.push(evals.advice[q.index.unwrap()].clone()),
+        Expression::Instance(q) => factors.push(evals.instance[q.index.unwrap()].clone()),
     }
     Ok(())
 }
