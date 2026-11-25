@@ -347,9 +347,9 @@ impl G1Affine {
             .and_then(|p| CtOption::new(p, p.is_torsion_free()))
     }
 
-    /// Attempts to deserialize an uncompressed element, not checking if the
-    /// element is on the curve and not checking if it is in the correct
-    /// subgroup.
+    /// Attempts to deserialize an uncompressed element. No check on the point
+    /// is guaranteed, although some may still be performed: blst verifies the
+    /// encoding and the curve equation, and the subgroup is not checked.
     ///
     /// **This is dangerous to call unless you trust the bytes you are reading;
     /// otherwise, API invariants may be broken.** Please consider using
@@ -371,8 +371,9 @@ impl G1Affine {
             .and_then(|p| CtOption::new(p, p.is_torsion_free()))
     }
 
-    /// Attempts to deserialize an uncompressed element, not checking if the
-    /// element is in the correct subgroup.
+    /// Attempts to deserialize a compressed element. No check on the point is
+    /// guaranteed, although some may still be performed: blst verifies the
+    /// encoding and the curve equation, and the subgroup is not checked.
     ///
     /// **This is dangerous to call unless you trust the bytes you are reading;
     /// otherwise, API invariants may be broken.** Please consider using
@@ -525,8 +526,9 @@ impl G1Projective {
         G1Affine::from_compressed(bytes).map(Into::into)
     }
 
-    /// Attempts to deserialize an uncompressed element, not checking if the
-    /// element is in the correct subgroup.
+    /// Attempts to deserialize a compressed element. No check on the point is
+    /// guaranteed, although some may still be performed: blst verifies the
+    /// encoding and the curve equation, and the subgroup is not checked.
     ///
     /// **This is dangerous to call unless you trust the bytes you are reading;
     /// otherwise, API invariants may be broken.** Please consider using

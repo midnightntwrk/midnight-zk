@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 * `FieldInto`: field arithmetic written into a destination (blst-style); every method has a default, and BLS12-381 `Fp` overrides them with direct blst calls [#594](https://github.com/midnightntwrk/midnight-zk/pull/594)
 * `CurveAffine::from_xy_unchecked`, a point from coordinates the caller vouches for (BLS12-381 G1 skips the curve and subgroup checks), and the hidden `CurveAffine::xy_ref`, which lets an MSM read a base's coordinates in place [#594](https://github.com/midnightntwrk/midnight-zk/pull/594)
 ### Changed
+* The docs of the `_unchecked` decoders and readers state that no check is guaranteed, although an implementation may still perform some [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 * The docs of `CurveAffine::coordinates`, `from_xy` and `from_xy_unchecked` (and `Coordinates::from_xy`) state the checks that are made and that `(0, 0)` stands for the identity [#675](https://github.com/midnightntwrk/midnight-zk/pull/675)
 * BREAKING: `CurveAffine::Base` requires `FieldInto`. A downstream `CurveAffine` implementation needs `impl FieldInto for <Base> {}` [#594](https://github.com/midnightntwrk/midnight-zk/pull/594)
 * BLS12-381 `Fp` overrides `is_zero_vartime` (an OR of the limbs) and inlines `is_zero`, `square` and `double` [#594](https://github.com/midnightntwrk/midnight-zk/pull/594)

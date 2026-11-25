@@ -109,8 +109,8 @@ where
     ///
     /// Curve elements are parsed according to `format` (see [`SerdeFormat`]).
     /// A key written with `RawBytes` can also be read with
-    /// `RawBytesUnchecked`, which skips checks: only use it on a key from a
-    /// trusted source.
+    /// `RawBytesUnchecked`, with which no check on its elements is guaranteed:
+    /// only use it on a key from a trusted source.
     pub fn read<R: io::Read, ConcreteCircuit: Circuit<F>>(
         reader: &mut R,
         format: SerdeFormat,
@@ -440,8 +440,12 @@ where
     ///
     /// Curve elements are parsed according to `format` (see [`SerdeFormat`]).
     /// A key written with `RawBytes` can also be read with
-    /// `RawBytesUnchecked`, which skips checks: only use it on a key from a
-    /// trusted source.
+    /// `RawBytesUnchecked`, with which no check on its elements is guaranteed:
+    /// only use it on a key from a trusted source.
+    ///
+    /// The field elements of the key are read in their internal representation
+    /// in every format, with the checks of their [`SerdeObject`]
+    /// implementation: BLS12-381 scalars are not checked to be reduced.
     pub fn read<R: io::Read, ConcreteCircuit: Circuit<F>>(
         reader: &mut R,
         format: SerdeFormat,

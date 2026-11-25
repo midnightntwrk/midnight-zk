@@ -19,8 +19,8 @@ use std::io::{self, Read, Write};
 /// on the field: the BN256 fields do, BLS12-381 `Fq` does not.
 pub trait SerdeObject: Sized {
     /// Reads the internal memory representation from bytes as quickly as
-    /// possible, skipping checks that [`from_raw_bytes`](Self::from_raw_bytes)
-    /// makes. Only use it on trusted data.
+    /// possible. No check is guaranteed, although an implementation may still
+    /// perform some. Only use it on trusted data.
     ///
     /// # Panics
     ///
@@ -35,8 +35,8 @@ pub trait SerdeObject: Sized {
     fn to_raw_bytes(&self) -> Vec<u8>;
 
     /// Reads the internal memory representation from a reader as quickly as
-    /// possible, skipping checks that [`read_raw`](Self::read_raw) makes. Only
-    /// use it on trusted data.
+    /// possible. No check is guaranteed, although an implementation may still
+    /// perform some. Only use it on trusted data.
     ///
     /// # Panics
     ///

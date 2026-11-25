@@ -870,15 +870,13 @@ impl SerdeObject for Fq {
         Fq(blst_fr { l: inner })
     }
 
+    // Only the length is checked: the limbs are not checked to be reduced
+    // modulo the field characteristic.
     fn from_raw_bytes(bytes: &[u8]) -> Option<Self> {
         if bytes.len() != SIZE {
             return None;
         }
         Some(Self::from_raw_bytes_unchecked(bytes))
-        // let out = Self::from_raw_bytes_unchecked(&bytes);
-        // Self::is_less_than_modulus(&out.0.l).then(|| out)
-        // Note: The [0, p-1] check is not performed, as it would require a
-        // Montgomery reduction.
     }
 
     fn to_raw_bytes(&self) -> Vec<u8> {

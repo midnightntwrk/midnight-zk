@@ -27,10 +27,10 @@ pub enum SerdeFormat {
     /// validated as in `Processed`.
     RawBytes,
     /// Same serialization as `RawBytes`. Curve elements are deserialized with
-    /// [`UncompressedEncoding::from_uncompressed_unchecked`], which skips
-    /// checks (on BLS12-381, the subgroup check), and field elements with
-    /// [`SerdeObject::read_raw_unchecked`], which may panic on truncated
-    /// input. Only use it on trusted data.
+    /// [`UncompressedEncoding::from_uncompressed_unchecked`] and field
+    /// elements with [`SerdeObject::read_raw_unchecked`]: no check on them is
+    /// guaranteed, although some may still be performed, and reading a field
+    /// element may panic on truncated input. Only use it on trusted data.
     RawBytesUnchecked,
 }
 
@@ -63,7 +63,8 @@ pub(crate) fn read_f<F: PrimeField + SerdeObject, R: io::Read>(
 
 /// Reads a curve point in uncompressed form. The point is validated if
 /// `checked`; otherwise it is decoded with
-/// [`UncompressedEncoding::from_uncompressed_unchecked`].
+/// [`UncompressedEncoding::from_uncompressed_unchecked`], which guarantees no
+/// check.
 pub(crate) fn read_uncompressed<C: UncompressedEncoding, R: io::Read>(
     reader: &mut R,
     checked: bool,
