@@ -531,6 +531,7 @@ mod test {
 
     #[test]
     fn test_read_rejects_malformed_points() {
+        use group::GroupEncoding;
         use midnight_curves::Bls12;
 
         let params: ParamsKZG<Bls12> = ParamsKZG::unsafe_setup(2, OsRng);
@@ -544,8 +545,17 @@ mod test {
 
         let truncated = &data[..4 + 50];
 
+        // The compressed encoding of the first point, in place of its
+        // uncompressed one.
+        let mut compressed = data.clone();
+        compressed[4..4 + 96].fill(0);
+        compressed[4..4 + 48].copy_from_slice(params.g[0].to_bytes().as_ref());
+
         for format in [SerdeFormat::RawBytes, SerdeFormat::RawBytesUnchecked] {
             let err = ParamsKZG::<Bls12>::read(&mut &off_curve[..], format).err().unwrap();
+            assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+
+            let err = ParamsKZG::<Bls12>::read(&mut &compressed[..], format).err().unwrap();
             assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
 
             let err = ParamsKZG::<Bls12>::read(&mut &truncated[..], format).err().unwrap();

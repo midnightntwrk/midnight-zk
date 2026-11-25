@@ -31,6 +31,8 @@ pub struct G1Affine(pub(crate) blst_p1_affine);
 
 const COMPRESSED_SIZE: usize = 48;
 const UNCOMPRESSED_SIZE: usize = 96;
+/// The bit of the first byte of an encoding that is set in compressed form.
+const COMPRESSION_FLAG: u8 = 0x80;
 
 pub const A: Fp = Fp::ZERO;
 pub const B: Fp = Fp(blst_fp {
@@ -353,9 +355,13 @@ impl G1Affine {
     /// otherwise, API invariants may be broken.** Please consider using
     /// `from_uncompressed()` instead.
     fn from_uncompressed_unchecked(bytes: &[u8; UNCOMPRESSED_SIZE]) -> CtOption<Self> {
+        // blst also reads a compressed encoding, from the first half of the
+        // input, so the compression flag has to be tested here.
+        let is_uncompressed = bytes[0] & COMPRESSION_FLAG == 0;
         let mut raw = blst_p1_affine::default();
-        let success =
+        let decoded =
             unsafe { blst_p1_deserialize(&mut raw, bytes.as_ptr()) == BLST_ERROR::BLST_SUCCESS };
+        let success = is_uncompressed & decoded;
         CtOption::new(G1Affine(raw), Choice::from(success as u8))
     }
 
@@ -1567,6 +1573,25 @@ mod tests {
         assert!(bool::from(
             <G1Affine as UncompressedEncoding>::from_uncompressed(&enc).is_none()
         ));
+    }
+
+    // The uncompressed decoders reject a compressed encoding, which blst would
+    // read from the first half of the input, ignoring the rest.
+    #[test]
+    fn test_g1_uncompressed_rejects_compressed_encoding() {
+        for p in [G1Affine::generator(), G1Affine::identity()] {
+            let mut padded = [0u8; UNCOMPRESSED_SIZE];
+            padded[..COMPRESSED_SIZE].copy_from_slice(&p.to_compressed());
+            assert!(bool::from(G1Affine::from_uncompressed(&padded).is_none()));
+            assert!(bool::from(
+                G1Affine::from_uncompressed_unchecked(&padded).is_none()
+            ));
+
+            // The uncompressed encoding of the same point is accepted.
+            let u = p.to_uncompressed();
+            assert_eq!(G1Affine::from_uncompressed(&u).unwrap(), p);
+            assert_eq!(G1Affine::from_uncompressed_unchecked(&u).unwrap(), p);
+        }
     }
 
     #[test]

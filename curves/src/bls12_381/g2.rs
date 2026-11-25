@@ -35,6 +35,8 @@ pub struct G2Affine(pub(crate) blst_p2_affine);
 
 const COMPRESSED_SIZE: usize = 96;
 const UNCOMPRESSED_SIZE: usize = 192;
+/// The bit of the first byte of an encoding that is set in compressed form.
+const COMPRESSION_FLAG: u8 = 0x80;
 
 impl fmt::Debug for G2Affine {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -367,9 +369,13 @@ impl G2Affine {
     /// otherwise, API invariants may be broken.** Please consider using
     /// `from_uncompressed()` instead.
     fn from_uncompressed_unchecked(bytes: &[u8; UNCOMPRESSED_SIZE]) -> CtOption<Self> {
+        // blst also reads a compressed encoding, from the first half of the
+        // input, so the compression flag has to be tested here.
+        let is_uncompressed = bytes[0] & COMPRESSION_FLAG == 0;
         let mut raw = blst_p2_affine::default();
-        let success =
+        let decoded =
             unsafe { blst_p2_deserialize(&mut raw, bytes.as_ptr()) == BLST_ERROR::BLST_SUCCESS };
+        let success = is_uncompressed & decoded;
         CtOption::new(G2Affine(raw), Choice::from(success as u8))
     }
 
@@ -1583,6 +1589,25 @@ mod tests {
         assert!(bool::from(
             <G2Affine as UncompressedEncoding>::from_uncompressed(&enc).is_none()
         ));
+    }
+
+    // The uncompressed decoders reject a compressed encoding, which blst would
+    // read from the first half of the input, ignoring the rest.
+    #[test]
+    fn test_g2_uncompressed_rejects_compressed_encoding() {
+        for p in [G2Affine::generator(), G2Affine::identity()] {
+            let mut padded = [0u8; UNCOMPRESSED_SIZE];
+            padded[..COMPRESSED_SIZE].copy_from_slice(&p.to_compressed());
+            assert!(bool::from(G2Affine::from_uncompressed(&padded).is_none()));
+            assert!(bool::from(
+                G2Affine::from_uncompressed_unchecked(&padded).is_none()
+            ));
+
+            // The uncompressed encoding of the same point is accepted.
+            let u = p.to_uncompressed();
+            assert_eq!(G2Affine::from_uncompressed(&u).unwrap(), p);
+            assert_eq!(G2Affine::from_uncompressed_unchecked(&u).unwrap(), p);
+        }
     }
 
     #[test]
