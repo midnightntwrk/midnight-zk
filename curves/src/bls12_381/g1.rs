@@ -848,22 +848,9 @@ impl Default for G1Projective {
 
 impl ConstantTimeEq for G1Projective {
     fn ct_eq(&self, other: &Self) -> Choice {
-        // Is (x, y, z) equal to (x', y, z') when converted to affine?
-        // => (x/z , y/z) equal to (x'/z' , y'/z')
-        // => (xz' == x'z) & (yz' == y'z)
-
-        let x1 = self.x() * other.z();
-        let y1 = self.y() * other.z();
-
-        let x2 = other.x() * self.z();
-        let y2 = other.y() * self.z();
-
-        let self_is_zero = self.is_identity();
-        let other_is_zero = other.is_identity();
-
-        (self_is_zero & other_is_zero) // Both point at infinity
-            | ((!self_is_zero) & (!other_is_zero) & x1.ct_eq(&x2) & y1.ct_eq(&y2))
-        // Neither point at infinity, coordinates are the same
+        // The coordinates are Jacobian: (x, y, z) stands for (x/z^2, y/z^3).
+        // blst compares them as such, identity included, without branching.
+        Choice::from(unsafe { blst_p1_is_equal(&self.0, &other.0) } as u8)
     }
 }
 
@@ -1047,6 +1034,41 @@ mod tests {
         assert_eq!(b, b);
         assert_ne!(a, b);
         assert_ne!(b, a);
+    }
+
+    // `ct_eq` agrees with `==`, whatever the representation of the points.
+    #[test]
+    fn test_projective_ct_eq() {
+        let mut rng = XorShiftRng::from_seed([
+            0x59, 0x62, 0xbe, 0x5d, 0x76, 0x3d, 0x31, 0x8d, 0x17, 0xdb, 0x37, 0x32, 0x54, 0x06,
+            0xbc, 0xe5,
+        ]);
+
+        for _ in 0..100 {
+            let a = G1Projective::random(&mut rng);
+            let b = G1Projective::random(&mut rng);
+            // The same point as `a`, with a different `z` coordinate.
+            let c = (a + b) - b;
+            assert_ne!(a.z(), c.z());
+            assert_eq!(a, c);
+
+            assert!(bool::from(a.ct_eq(&a)));
+            assert!(bool::from(a.ct_eq(&c)));
+            assert!(bool::from(c.ct_eq(&a)));
+            assert!(!bool::from(a.ct_eq(&b)));
+            assert!(!bool::from(c.ct_eq(&b)));
+            assert!(!bool::from(c.ct_eq(&-a)));
+        }
+
+        let a = G1Projective::generator();
+        let id = G1Projective::identity();
+        // The identity, with non-zero `x` and `y` coordinates.
+        let id2 = G1Projective::from_raw_unchecked(a.x(), a.y(), Fp::ZERO);
+        assert!(bool::from(id.ct_eq(&id)));
+        assert!(bool::from(id.ct_eq(&id2)));
+        assert!(bool::from(id2.ct_eq(&id)));
+        assert!(!bool::from(id.ct_eq(&a)));
+        assert!(!bool::from(a.ct_eq(&id2)));
     }
 
     #[test]
