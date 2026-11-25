@@ -15,10 +15,7 @@ use std::{
 
 use ff::{Field, PrimeField};
 use group::{Curve, Group};
-use midnight_curves::{
-    pairing::{Engine, MultiMillerLoop},
-    serde::SerdeObject,
-};
+use midnight_curves::pairing::{Engine, MultiMillerLoop};
 use rayon::prelude::*;
 
 use crate::{
@@ -248,7 +245,6 @@ where
     /// size `n`.
     pub fn write<W>(&self, writer: &mut W, format: SerdeFormat) -> io::Result<()>
     where
-        E::G1Affine: SerdeObject,
         E::G2: ProcessedSerdeObject,
         W: io::Write,
     {
@@ -268,7 +264,6 @@ where
     /// the adjacent differences of the `LagrangeDelta` ones.
     pub fn read<R>(reader: &mut R, format: SerdeFormat) -> io::Result<Self>
     where
-        E::G1Affine: SerdeObject,
         E::G2: ProcessedSerdeObject,
         R: io::Read,
     {
@@ -283,7 +278,6 @@ where
         max_k: Option<u32>,
     ) -> io::Result<Self>
     where
-        E::G1Affine: SerdeObject,
         E::G2: ProcessedSerdeObject,
         R: io::Read,
     {

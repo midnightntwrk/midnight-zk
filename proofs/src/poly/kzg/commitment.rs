@@ -176,7 +176,8 @@ where
     }
 
     fn read(buffer: &mut impl Read) -> io::Result<Self> {
-        Ok(Self::Simple(E::G1::read(buffer)?, PolynomialLabel::NoLabel))
+        let point = <E::G1 as Hashable<H>>::read(buffer)?;
+        Ok(Self::Simple(point, PolynomialLabel::NoLabel))
     }
 }
 

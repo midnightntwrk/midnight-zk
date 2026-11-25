@@ -1,11 +1,8 @@
 use std::{fmt::Debug, io};
 
 use ff::{Field, PrimeField};
-use group::{Curve, Group, GroupEncoding, prime::PrimeCurveAffine};
-use midnight_curves::{
-    pairing::{Engine, MultiMillerLoop},
-    serde::SerdeObject,
-};
+use group::{Curve, Group, GroupEncoding, UncompressedEncoding, prime::PrimeCurveAffine};
+use midnight_curves::pairing::{Engine, MultiMillerLoop};
 use rand_core::RngCore;
 
 use crate::{
@@ -13,7 +10,7 @@ use crate::{
     utils::{
         SerdeFormat,
         arithmetic::{CurveAffine, g_to_lagrange, parallelize},
-        helpers::ProcessedSerdeObject,
+        helpers::{ProcessedSerdeObject, read_uncompressed},
     },
 };
 
@@ -56,20 +53,21 @@ pub(crate) fn suffix_sum<C: CurveAffine>(input: &[C]) -> Vec<C> {
     acc_affine
 }
 
-/// Writes `points`: compressed if `format` is `Processed`, raw otherwise.
+/// Writes `points`: compressed if `format` is `Processed`, uncompressed
+/// otherwise.
 pub(crate) fn write_points<C, W>(
     points: &[C],
     writer: &mut W,
     format: SerdeFormat,
 ) -> io::Result<()>
 where
-    C: GroupEncoding + SerdeObject,
+    C: GroupEncoding + UncompressedEncoding,
     W: io::Write,
 {
     for el in points {
         match format {
             SerdeFormat::Processed => writer.write_all(el.to_bytes().as_ref())?,
-            _ => el.write_raw(writer)?,
+            _ => writer.write_all(el.to_uncompressed().as_ref())?,
         }
     }
     Ok(())
@@ -79,7 +77,7 @@ where
 /// are decompressed in parallel.
 pub(crate) fn read_points<C, R>(reader: &mut R, format: SerdeFormat, n: usize) -> io::Result<Vec<C>>
 where
-    C: GroupEncoding + SerdeObject + Clone + Send,
+    C: GroupEncoding + UncompressedEncoding + Clone + Send,
     R: io::Read,
 {
     match format {
@@ -99,9 +97,9 @@ where
                 .map(|p| p.ok_or_else(|| io::Error::other("invalid point encoding")))
                 .collect()
         }
-        SerdeFormat::RawBytes => (0..n).map(|_| C::read_raw(reader)).collect(),
+        SerdeFormat::RawBytes => (0..n).map(|_| read_uncompressed(reader, true)).collect(),
         SerdeFormat::RawBytesUnchecked => {
-            Ok((0..n).map(|_| C::read_raw_unchecked(reader)).collect())
+            (0..n).map(|_| read_uncompressed(reader, false)).collect()
         }
     }
 }
@@ -255,7 +253,6 @@ where
     /// Writes parameters to buffer
     pub fn write<W>(&self, writer: &mut W, format: SerdeFormat) -> io::Result<()>
     where
-        E::G1Affine: SerdeObject,
         E::G2: ProcessedSerdeObject,
         W: io::Write,
     {
@@ -270,7 +267,6 @@ where
     /// Reads params from a buffer.
     pub fn read<R>(reader: &mut R, format: SerdeFormat) -> io::Result<Self>
     where
-        E::G1Affine: SerdeObject,
         E::G2: ProcessedSerdeObject,
         R: io::Read,
     {
@@ -285,7 +281,6 @@ where
         max_k: Option<u32>,
     ) -> io::Result<Self>
     where
-        E::G1Affine: SerdeObject,
         E::G2: ProcessedSerdeObject,
         R: io::Read,
     {
@@ -531,6 +526,30 @@ mod test {
             let err = ParamsKZG::<Bls12>::read::<_>(&mut &data[..], format).err().unwrap();
             assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
             assert!(err.to_string().contains("exceeds the maximum supported value"));
+        }
+    }
+
+    #[test]
+    fn test_read_rejects_malformed_points() {
+        use midnight_curves::Bls12;
+
+        let params: ParamsKZG<Bls12> = ParamsKZG::unsafe_setup(2, OsRng);
+        let mut data = vec![];
+        params.write(&mut data, SerdeFormat::RawBytes).unwrap();
+
+        // The first point follows the 4 bytes of `k`. Flipping the lowest bit
+        // of its `y` coordinate takes it off the curve.
+        let mut off_curve = data.clone();
+        off_curve[4 + 95] ^= 1;
+
+        let truncated = &data[..4 + 50];
+
+        for format in [SerdeFormat::RawBytes, SerdeFormat::RawBytesUnchecked] {
+            let err = ParamsKZG::<Bls12>::read(&mut &off_curve[..], format).err().unwrap();
+            assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
+
+            let err = ParamsKZG::<Bls12>::read(&mut &truncated[..], format).err().unwrap();
+            assert_eq!(err.kind(), std::io::ErrorKind::UnexpectedEof);
         }
     }
 }
