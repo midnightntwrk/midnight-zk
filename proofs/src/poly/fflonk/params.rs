@@ -45,8 +45,9 @@ use crate::{
 /// [`Residue`]s modulo every power of two `t ≤ T_MAX`.
 ///
 /// The `Lagrange`, `LagrangeDelta` and `LagrangeDoubleDelta` bases of size
-/// `n` are built once, by [`Self::from_kzg`], and can be stored on disk with
-/// [`Self::write`]. Any other bases are built on first use and cached.
+/// `n` are built once, by [`Self::from_kzgs`] or [`Self::from_kzg`], and can be
+/// stored on disk with [`Self::write`]. Any other bases are built on first use
+/// and cached.
 #[derive(Clone, Debug)]
 pub struct ParamsFflonkKZG<E: Engine, const LOG2_T_MAX: u32> {
     kzg: ParamsKZG<E>,
@@ -127,6 +128,29 @@ where
         let smaller_lagrange = (0..LOG2_T_MAX)
             .into_par_iter()
             .map(|log2_t| g_to_lagrange(&kzg.g[..n << log2_t], n.ilog2() + log2_t))
+            .collect();
+        Self::with_lagrange(kzg, smaller_lagrange)
+    }
+
+    /// Builds the parameters from `srs`, the KZG SRSs of sizes `2^l·n` for
+    /// `l ≤ LOG2_T_MAX`, by increasing size, from the same ceremony. Unlike
+    /// [`Self::from_kzg`], it needs no FFT.
+    ///
+    /// # Panics
+    ///
+    /// If `srs` does not have `LOG2_T_MAX + 1` SRSs of these sizes, or if
+    /// they do not share the same `g`.
+    pub fn from_kzgs(mut srs: Vec<ParamsKZG<E>>) -> Self {
+        assert_eq!(srs.len(), LOG2_T_MAX as usize + 1, "expected one SRS per t");
+        let kzg = srs.pop().expect("at least one SRS");
+        let smaller_lagrange = (srs.into_iter())
+            .map(|smaller| {
+                assert!(
+                    kzg.g.starts_with(&smaller.g),
+                    "the SRSs come from different ceremonies"
+                );
+                smaller.g_lagrange
+            })
             .collect();
         Self::with_lagrange(kzg, smaller_lagrange)
     }
