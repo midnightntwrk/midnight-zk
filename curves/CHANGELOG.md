@@ -11,17 +11,16 @@ and this project adheres to [Semantic Versioning](https://book.async.rs/overview
 * `FieldInto`: field arithmetic written into a destination (blst-style); every method has a default, and BLS12-381 `Fp` overrides them with direct blst calls [#594](https://github.com/midnightntwrk/midnight-zk/pull/594)
 * `CurveAffine::from_xy_unchecked`, a point from coordinates the caller vouches for (BLS12-381 G1 skips the curve and subgroup checks), and the hidden `CurveAffine::xy_ref`, which lets an MSM read a base's coordinates in place [#594](https://github.com/midnightntwrk/midnight-zk/pull/594)
 ### Changed
-* The docs of the `_unchecked` decoders and readers state that no check is guaranteed, although an implementation may still perform some [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
+* The docs of the `_unchecked` decoders and readers state that no check is guaranteed, although an implementation may still perform some [#692](https://github.com/midnightntwrk/midnight-zk/pull/692)
 * The docs of `CurveAffine::coordinates`, `from_xy` and `from_xy_unchecked` (and `Coordinates::from_xy`) state the checks that are made and that `(0, 0)` stands for the identity [#675](https://github.com/midnightntwrk/midnight-zk/pull/675)
 * BREAKING: `CurveAffine::Base` requires `FieldInto`. A downstream `CurveAffine` implementation needs `impl FieldInto for <Base> {}` [#594](https://github.com/midnightntwrk/midnight-zk/pull/594)
 * BLS12-381 `Fp` overrides `is_zero_vartime` (an OR of the limbs) and inlines `is_zero`, `square` and `double` [#594](https://github.com/midnightntwrk/midnight-zk/pull/594)
 ### Fixed
-* The uncompressed decoders of BLS12-381 `G1Affine` and `G2Affine` reject a compressed encoding. They used to decode it and ignore the rest of the input [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
-* `ct_eq` on BLS12-381 `G1Projective` and `G2Projective` agrees with `==`: it was `false` for equal points with different `z` coordinates [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
+* The uncompressed decoders of BLS12-381 `G1Affine` and `G2Affine` reject a compressed encoding [#692](https://github.com/midnightntwrk/midnight-zk/pull/692)
+* `ct_eq` on BLS12-381 `G1Projective` and `G2Projective` agrees with `==` on every representation of a point [#692](https://github.com/midnightntwrk/midnight-zk/pull/692)
 * `CurveAffine::from_xy` (and `Coordinates::from_xy`) for BLS12-381 `G1Affine` and `G2Affine` checks both the curve equation and membership in the prime-order subgroup [#675](https://github.com/midnightntwrk/midnight-zk/pull/675)
 * `msm` bench: one generator per rayon job made 98% of its points and scalars repeats; each item is now seeded on its own [#594](https://github.com/midnightntwrk/midnight-zk/pull/594)
-### Removed
-* BREAKING: `SerdeObject` is no longer implemented for curve points (use `GroupEncoding` and `UncompressedEncoding` instead), nor for BLS12-381 `Fp`, Curve25519 `Fp` and BN256 `Fq2` [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
+* BREAKING: `SerdeObject` is no longer implemented for curve points (use `GroupEncoding` and `UncompressedEncoding` instead), nor for BLS12-381 `Fp`, Curve25519 `Fp` and BN256 `Fq2` [#692](https://github.com/midnightntwrk/midnight-zk/pull/692)
 
 ## 0.4.0-rc.1
 ### Added

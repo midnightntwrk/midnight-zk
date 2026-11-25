@@ -26,7 +26,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * The canonicity of foreign-field public inputs is asserted batch by batch on their packed limbs. This changes the verifying keys of circuits with foreign-field public inputs [#660](https://github.com/midnightntwrk/midnight-zk/pull/660)
 * The Cardano signature example runs at `k = 16`, which the optimizations of the foreign-field chips of `midnight-circuits` make it fit in [#660](https://github.com/midnightntwrk/midnight-zk/pull/660)
 * The native chip has a quartic gate, which adds a fixed column to every circuit. This changes the verifying keys of every circuit [#682](https://github.com/midnightntwrk/midnight-zk/pull/682)
-* The `parse_filecoin_srs` example decodes points with `UncompressedEncoding` instead of `SerdeObject` [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
+* The `parse_filecoin_srs` example decodes points with `UncompressedEncoding` [#692](https://github.com/midnightntwrk/midnight-zk/pull/692)
 
 ### Removed
 ### Fixed
