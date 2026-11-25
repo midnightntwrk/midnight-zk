@@ -723,12 +723,12 @@ impl<F: Field> Assignment<F> for RowSizer<F> {
     fn fill_from_row(
         &mut self,
         _: Column<Fixed>,
-        _: usize,
+        row: usize,
         _: circuit::Value<Rational<F>>,
     ) -> Result<(), Error> {
-        // fill_from_row fills up to usable_rows, which is determined by k.
-        // It doesn't add a new upper bound on row usage beyond what k determines,
-        // so we skip it here.
+        // fill_from_row fills from `row` up to the end of usable_rows, which is
+        // determined by k.
+        self.update_max_row(row);
         Ok(())
     }
 
