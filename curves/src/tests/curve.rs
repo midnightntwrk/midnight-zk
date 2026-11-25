@@ -282,36 +282,9 @@ macro_rules! curve_testing_suite {
             }
         }
 
-        // TODO Change name
-        macro_rules! random_serialization_test {
-            ($c: ident) => {
-                for _ in 0..100 {
-                    let projective_point = $c::random(OsRng);
-                    let affine_point: <$c as CurveExt>::AffineExt = projective_point.into();
-
-                    let projective_bytes = projective_point.to_raw_bytes();
-                    let projective_point_rec = $c::from_raw_bytes(&projective_bytes).unwrap();
-                    assert_eq!(projective_point, projective_point_rec);
-                    let mut buf = Vec::new();
-                    projective_point.write_raw(&mut buf).unwrap();
-                    let projective_point_rec = $c::read_raw(&mut &buf[..]).unwrap();
-                    assert_eq!(projective_point, projective_point_rec);
-
-                    let affine_bytes = affine_point.to_raw_bytes();
-                    let affine_point_rec = <$c as CurveExt>::AffineExt::from_raw_bytes(&affine_bytes).unwrap();
-                    assert_eq!(affine_point, affine_point_rec);
-                    let mut buf = Vec::new();
-                    affine_point.write_raw(&mut buf).unwrap();
-                    let affine_point_rec = <$c as CurveExt>::AffineExt::read_raw(&mut &buf[..]).unwrap();
-                    assert_eq!(affine_point, affine_point_rec);
-                }
-            }
-        }
-
         use ::ff::Field;
         use ::group::prime::PrimeCurveAffine;
         use group::GroupEncoding;
-        use $crate::serde::SerdeObject;
         use $crate::{CurveAffine, CurveExt};
         use rand_core::OsRng;
 
@@ -327,13 +300,6 @@ macro_rules! curve_testing_suite {
                 multiplication!($curve);
                 batch_normalize!($curve);
                 serdes!($curve);
-            )*
-        }
-
-        #[test]
-        fn test_serialization() {
-            $(
-                random_serialization_test!($curve);
             )*
         }
     };

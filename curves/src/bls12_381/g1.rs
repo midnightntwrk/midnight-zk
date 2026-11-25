@@ -7,7 +7,6 @@ use core::{
     iter::Sum,
     ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign},
 };
-use std::{convert::TryInto, io::Read};
 
 use blst::*;
 use ff::Field;
@@ -20,10 +19,7 @@ use rand_core::RngCore;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
 use super::{Bls12, Fq, G2Affine, Gt, fp::Fp};
-use crate::{
-    curve::{Coordinates, CurveAffine, CurveExt},
-    serde_traits::SerdeObject,
-};
+use crate::curve::{Coordinates, CurveAffine, CurveExt};
 
 /// This is an element of $\mathbb{G}_1$ represented in the affine coordinate
 /// space. It is ideal to keep elements in this representation to reduce memory
@@ -442,48 +438,6 @@ impl G1Affine {
         // Blst Pippenger MSM over affine points.
         let res = affine_slice.mult(scalar_bytes.as_slice(), 255);
         G1Projective(res)
-    }
-}
-
-impl SerdeObject for G1Affine {
-    fn from_raw_bytes_unchecked(bytes: &[u8]) -> Self {
-        debug_assert_eq!(bytes.len(), UNCOMPRESSED_SIZE);
-        let input: [u8; UNCOMPRESSED_SIZE] = bytes.try_into().unwrap();
-        Self::from_uncompressed_unchecked(&input).unwrap()
-    }
-
-    fn from_raw_bytes(bytes: &[u8]) -> Option<Self> {
-        let input: [u8; UNCOMPRESSED_SIZE] = bytes.try_into().ok()?;
-        Self::from_uncompressed(&input).into()
-    }
-
-    fn to_raw_bytes(&self) -> Vec<u8> {
-        self.to_uncompressed().into()
-    }
-
-    fn read_raw_unchecked<R: Read>(reader: &mut R) -> Self {
-        let mut buf = [0u8; UNCOMPRESSED_SIZE];
-        reader.read_exact(&mut buf).expect("Could not read from buffer.");
-        Self::from_uncompressed_unchecked(&buf)
-            .expect("from_uncompressed_unchecked should return a point.")
-    }
-
-    fn read_raw<R: Read>(reader: &mut R) -> std::io::Result<Self> {
-        let mut buf = [0u8; UNCOMPRESSED_SIZE];
-        reader.read_exact(&mut buf)?;
-        let res = Self::from_uncompressed(&buf);
-        if res.is_some().into() {
-            Ok(res.unwrap())
-        } else {
-            Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "Invalid point: bad encoding, not on the curve or not in the subgroup.",
-            ))
-        }
-    }
-
-    fn write_raw<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        writer.write_all(&self.to_uncompressed())
     }
 }
 
@@ -1533,10 +1487,6 @@ mod tests {
             assert_eq!(G1Affine::from_bytes(&c).unwrap(), el);
             assert_eq!(G1Affine::from_bytes_unchecked(&c).unwrap(), el);
 
-            let c = el.to_raw_bytes();
-            assert_eq!(G1Affine::from_raw_bytes(&c).unwrap(), el);
-            assert_eq!(G1Affine::from_raw_bytes_unchecked(&c), el);
-
             // Projective
             let el = G1Projective::random(&mut rng);
             let c = el.to_compressed();
@@ -1590,27 +1540,11 @@ mod tests {
         assert!(bool::from(G1Affine::from_compressed(&c).is_none()));
         assert_eq!(G1Affine::from_compressed_unchecked(&c).unwrap(), p);
 
-        // SerdeObject raw-bytes paths route through `from_uncompressed`, so they
-        // must reject too; the `_unchecked` counterpart accepts.
-        let raw = p.to_raw_bytes();
-        assert!(G1Affine::from_raw_bytes(&raw).is_none());
-        assert_eq!(G1Affine::from_raw_bytes_unchecked(&raw), p);
-        assert!(G1Affine::read_raw(&mut raw.as_slice()).is_err());
-
         // The `UncompressedEncoding` forwarder is the same checked path.
         let enc = <G1Affine as UncompressedEncoding>::to_uncompressed(&p);
         assert!(bool::from(
             <G1Affine as UncompressedEncoding>::from_uncompressed(&enc).is_none()
         ));
-    }
-
-    // The checked raw readers reject input of the wrong length.
-    #[test]
-    fn test_g1_raw_bytes_wrong_length() {
-        let raw = G1Affine::generator().to_raw_bytes();
-        let truncated = &raw[..UNCOMPRESSED_SIZE - 1];
-        assert!(G1Affine::from_raw_bytes(truncated).is_none());
-        assert!(G1Affine::read_raw(&mut &truncated[..]).is_err());
     }
 
     #[test]

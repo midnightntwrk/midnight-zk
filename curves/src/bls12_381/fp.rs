@@ -14,7 +14,6 @@ use rand_core::RngCore;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
 use super::fp2::Fp2;
-use crate::serde_traits::SerdeObject;
 
 // Little-endian non-Montgomery form.
 const MODULUS: [u64; NUM_LIMBS] = [
@@ -539,22 +538,9 @@ fn is_valid_u64(le_bytes: &[u64; 6]) -> bool {
     false
 }
 
-fn u64s_from_bytes(bytes: &[u8; 48]) -> [u64; 6] {
-    [
-        u64::from_le_bytes(bytes[0..8].try_into().unwrap()),
-        u64::from_le_bytes(bytes[8..16].try_into().unwrap()),
-        u64::from_le_bytes(bytes[16..24].try_into().unwrap()),
-        u64::from_le_bytes(bytes[24..32].try_into().unwrap()),
-        u64::from_le_bytes(bytes[32..40].try_into().unwrap()),
-        u64::from_le_bytes(bytes[40..].try_into().unwrap()),
-    ]
-}
-
 const NUM_BITS: u32 = 381;
 // Number of 64-bit limbs.
 const NUM_LIMBS: usize = 6;
-// Size in bytes.
-const SIZE: usize = 48;
 /// The number of bits we should "shave" from a randomly sampled reputation.
 const REPR_SHAVE_BITS: usize = 384 - NUM_BITS as usize;
 
@@ -889,61 +875,6 @@ impl PrimeFieldBits for Fp {
         let bits = ff::FieldBits::new(MODULUS_32);
 
         bits
-    }
-}
-
-impl SerdeObject for Fp {
-    // Don't call this method with untrusted input. No checks performed before
-    // unsafe block.
-    fn from_raw_bytes_unchecked(bytes: &[u8]) -> Self {
-        debug_assert_eq!(bytes.len(), SIZE);
-        let bytes: [u8; SIZE] = bytes.try_into().unwrap();
-        let inner = u64s_from_bytes(&bytes);
-        Fp(blst_fp { l: inner })
-    }
-
-    fn from_raw_bytes(bytes: &[u8]) -> Option<Self> {
-        if bytes.len() != SIZE {
-            return None;
-        }
-        Some(Self::from_raw_bytes_unchecked(bytes))
-    }
-
-    fn to_raw_bytes(&self) -> Vec<u8> {
-        let mut res = Vec::with_capacity(NUM_LIMBS * 8);
-        for limb in self.0.l.iter() {
-            res.extend_from_slice(&limb.to_le_bytes());
-        }
-        res
-    }
-
-    // Don't call this method with untrusted input. No checks performed before
-    // unsafe block.
-    fn read_raw_unchecked<R: std::io::Read>(reader: &mut R) -> Self {
-        let mut bytes = [0u8; SIZE];
-        reader
-            .read_exact(&mut bytes)
-            .unwrap_or_else(|_| panic!("Expected {} bytes.", SIZE));
-        Self::from_raw_bytes_unchecked(&bytes)
-    }
-
-    fn read_raw<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
-        use std::io::{Error, ErrorKind};
-        let mut bytes = [0u8; SIZE];
-        reader.read_exact(&mut bytes)?;
-        let out = Self::from_raw_bytes(&bytes);
-        if let Some(out) = out {
-            Ok(out)
-        } else {
-            Err(Error::new(ErrorKind::InvalidData, "Invalid data."))
-        }
-    }
-
-    fn write_raw<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        for limb in self.0.l.iter() {
-            writer.write_all(&limb.to_le_bytes())?;
-        }
-        Ok(())
     }
 }
 
@@ -1703,7 +1634,6 @@ mod tests {
     crate::field_testing_suite!(Fp, "conversion");
     crate::field_testing_suite!(Fp, "quadratic_residue");
     crate::field_testing_suite!(Fp, "bits");
-    crate::field_testing_suite!(Fp, "serdeobject");
     crate::field_testing_suite!(Fp, "constants");
     crate::field_testing_suite!(Fp, "sqrt");
     crate::field_testing_suite!(Fp, "zeta");

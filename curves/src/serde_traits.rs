@@ -1,14 +1,22 @@
-//! Serialization traits for curve elements and field elements.
+//! Raw serialization of field elements.
 
 use std::io::{self, Read, Write};
 
-/// Trait for converting raw bytes to/from the internal representation of a
-/// type. For example, field elements are represented in Montgomery form and
-/// serialized/deserialized without Montgomery reduction.
+/// Trait for converting a field element to and from the bytes of its internal
+/// representation (Montgomery form), without the Montgomery conversion that the
+/// canonical encoding of [`ff::PrimeField`] needs.
 ///
-/// The checks made by each function depend on the type. On BLS12-381 points,
-/// the checked functions verify the encoding, the curve equation and the
-/// prime-order subgroup, and the unchecked ones only skip the subgroup check.
+/// It is meant for the scalar fields that circuits are defined over, and it is
+/// implemented for BLS12-381 `Fq` and for the BN256 fields (under
+/// `dev-curves`).
+///
+/// It is not meant for curve points, which are serialized with
+/// [`group::GroupEncoding`] (compressed) and [`group::UncompressedEncoding`]
+/// (uncompressed).
+///
+/// The checked functions verify the length of the input. Whether they also
+/// reject a value that is not reduced modulo the field characteristic depends
+/// on the field: the BN256 fields do, BLS12-381 `Fq` does not.
 pub trait SerdeObject: Sized {
     /// Reads the internal memory representation from bytes as quickly as
     /// possible, skipping checks that [`from_raw_bytes`](Self::from_raw_bytes)
@@ -16,7 +24,7 @@ pub trait SerdeObject: Sized {
     ///
     /// # Panics
     ///
-    /// May panic if the bytes have the wrong length or cannot be decoded.
+    /// May panic if the bytes have the wrong length.
     fn from_raw_bytes_unchecked(bytes: &[u8]) -> Self;
 
     /// Read the internal memory representation from bytes.
@@ -32,7 +40,7 @@ pub trait SerdeObject: Sized {
     ///
     /// # Panics
     ///
-    /// May panic if the reader fails or the bytes cannot be decoded.
+    /// May panic if the reader fails.
     fn read_raw_unchecked<R: Read>(reader: &mut R) -> Self;
 
     /// Read the internal memory representation from a reader.
