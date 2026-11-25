@@ -13,10 +13,13 @@ use std::{
     sync::{Arc, RwLock},
 };
 
+use ff::{Field, PrimeField};
+use group::{Curve, Group};
 use midnight_curves::{
     pairing::{Engine, MultiMillerLoop},
     serde::SerdeObject,
 };
+use rayon::prelude::*;
 
 use crate::{
     poly::{
@@ -41,11 +44,9 @@ use crate::{
 /// being the size of the SRS: the [`ParamsKZG`], with the bases of the
 /// [`Residue`]s modulo every power of two `t ≤ T_MAX`.
 ///
-/// The `LagrangeDelta` and `LagrangeDoubleDelta` bases of size `n`, those the
-/// prover commits with, only depend on the SRS, `n` and `T_MAX`, but building
-/// them takes `2·T_MAX - 1` group FFTs of size `n`: build them once, with
-/// [`Self::from_kzg`], and store them on disk, with [`Self::write`].
-/// Any other bases are built on first use and cached.
+/// The `Lagrange`, `LagrangeDelta` and `LagrangeDoubleDelta` bases of size
+/// `n` are built once, by [`Self::from_kzg`], and can be stored on disk with
+/// [`Self::write`]. Any other bases are built on first use and cached.
 #[derive(Clone, Debug)]
 pub struct ParamsFflonkKZG<E: Engine, const LOG2_T_MAX: u32> {
     kzg: ParamsKZG<E>,
@@ -118,18 +119,50 @@ where
             .flat_map(|t| (0..t).map(move |i| (t, i)))
     }
 
-    /// Builds the parameters from the KZG ones. This is costly: see
-    /// [`ParamsFflonkKZG`].
+    /// Builds the parameters from the KZG ones. The residues modulo `t` need
+    /// the Lagrange SRS of size `t·n`: for `t < T_MAX`, it is computed with a
+    /// group FFT, which is costly.
     pub fn from_kzg(kzg: ParamsKZG<E>) -> Self {
         let n = kzg.g.len() >> LOG2_T_MAX;
-        let params = Self {
+        let smaller_lagrange = (0..LOG2_T_MAX)
+            .into_par_iter()
+            .map(|log2_t| g_to_lagrange(&kzg.g[..n << log2_t], n.ilog2() + log2_t))
+            .collect();
+        Self::with_lagrange(kzg, smaller_lagrange)
+    }
+
+    /// Builds the parameters from the KZG ones and `smaller_lagrange`, the
+    /// Lagrange SRS of size `2^l·n` for every `l < LOG2_T_MAX`.
+    fn with_lagrange(kzg: ParamsKZG<E>, smaller_lagrange: Vec<Vec<E::G1Affine>>) -> Self {
+        let n = kzg.g.len() >> LOG2_T_MAX;
+        let lagrange = (smaller_lagrange.iter())
+            .chain([&kzg.g_lagrange])
+            .enumerate()
+            .flat_map(|(log2_t, g_lagrange)| {
+                let t = 1 << log2_t;
+                assert_eq!(g_lagrange.len(), t * n, "no Lagrange SRS of size {t}·{n}");
+                lagrange_residues(g_lagrange, t)
+                    .into_iter()
+                    .enumerate()
+                    .map(move |(i, bases)| (t, i, bases))
+            })
+            .collect::<Vec<_>>();
+        let residue_bases = (lagrange.into_par_iter())
+            .flat_map_iter(|(t, i, lagrange)| {
+                let delta = suffix_sum(&lagrange);
+                let double_delta = suffix_sum(&delta);
+                [
+                    (PolynomialBasis::Lagrange, lagrange),
+                    (PolynomialBasis::LagrangeDelta, delta),
+                    (PolynomialBasis::LagrangeDoubleDelta, double_delta),
+                ]
+                .map(|(basis, bases)| (Residue { basis, t, n, i }, Arc::from(bases)))
+            })
+            .collect();
+        Self {
             kzg,
-            residue_bases: Default::default(),
-        };
-        for (t, i) in Self::residues() {
-            params.residue_bases::<LagrangeDoubleDeltaCoeff>(t, n, i);
+            residue_bases: Arc::new(RwLock::new(residue_bases)),
         }
-        params
     }
 
     /// The verifier parameters, those of the [`ParamsKZG`].
@@ -268,6 +301,62 @@ impl<E: KZGEngine, const LOG2_T_MAX: u32> InterleavedCommit<E::Fr, LOG2_T_MAX>
                 .collect(),
         )
     }
+}
+
+/// The `Lagrange` bases of the residues modulo `t` of size `n`, from the
+/// Lagrange SRS `g_lagrange` of size `t·n`, of domain generator `ω`:
+/// `B_i[j] = ω^(ij) \sum_r ω^(nri) g_lagrange[j + n r]`, a `t`-point DFT per
+/// `j`.
+fn lagrange_residues<C: CurveAffine>(g_lagrange: &[C], t: usize) -> Vec<Vec<C>> {
+    let n = g_lagrange.len() / t;
+    let log2_t = t.ilog2();
+    let mut omega = C::ScalarExt::ROOT_OF_UNITY;
+    for _ in g_lagrange.len().ilog2()..C::ScalarExt::S {
+        omega = omega.square();
+    }
+    let omega_t = omega.pow_vartime([n as u64]);
+    let twiddles: Vec<_> = (0..t / 2).map(|k| omega_t.pow_vartime([k as u64])).collect();
+
+    // `residues[j·t + i] = B_i[j]`.
+    let mut residues = vec![C::CurveExt::identity(); t * n];
+    residues.par_chunks_mut(t).enumerate().for_each(|(j, y)| {
+        // Radix-2 DIT, from the inputs in bit-reversed order.
+        for (r, y) in y.iter_mut().enumerate() {
+            let r = r.reverse_bits().checked_shr(usize::BITS - log2_t).unwrap_or(0);
+            *y = g_lagrange[j + n * r].into();
+        }
+        let mut h = 1;
+        while h < t {
+            for block in y.chunks_mut(2 * h) {
+                let (lo, hi) = block.split_at_mut(h);
+                for (k, (a, b)) in lo.iter_mut().zip(hi).enumerate() {
+                    if k > 0 {
+                        *b *= twiddles[k * t / (2 * h)];
+                    }
+                    let a0 = *a;
+                    *a += *b;
+                    *b = a0 - *b;
+                }
+            }
+            h *= 2;
+        }
+        let omega_j = omega.pow_vartime([j as u64]);
+        let mut twist = omega_j;
+        for y in y.iter_mut().skip(1) {
+            *y *= twist;
+            twist *= omega_j;
+        }
+    });
+
+    (0..t)
+        .into_par_iter()
+        .map(|i| {
+            let column: Vec<_> = residues.iter().skip(i).step_by(t).copied().collect();
+            let mut bases = vec![C::identity(); n];
+            C::CurveExt::batch_normalize(&column, &mut bases);
+            bases
+        })
+        .collect()
 }
 
 /// Commitment to `Σ_i X^i f_i(X^t)`, for `chunk` the polynomials `f_i` and
