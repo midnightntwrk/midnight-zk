@@ -28,7 +28,8 @@ use crate::{
     CircuitField,
     field::AssignedNative,
     instructions::{
-        ArithInstructions, PublicInputInstructions, assignments::AssignmentInstructions,
+        ArithInstructions, AssertionInstructions, ComparisonInstructions, PublicInputInstructions,
+        assignments::AssignmentInstructions,
     },
     verifier::{
         AssignedEvaluationDomain, AssignedVk, ScalarChip, VerifyingKey, argument,
@@ -381,9 +382,8 @@ impl<F: CircuitField, PCS: InCircuitPCS<F>> VerifierGadget<F, PCS> {
 
         let omega = &assigned_vk.domain.omega;
         let omega_inv = &assigned_vk.domain.omega_inv;
-        // `n = 2^k` is larger than the rotation bounds computed below, and than the
-        // length of any instance column: rotations are compile-time constants of the
-        // verified circuit's `cs`, and its instance rows must fit in its own domain.
+        // `n = 2^k` is larger than the rotation bounds computed below: rotations are
+        // compile-time constants of the verified circuit's `cs`.
         let n = &assigned_vk.domain.n;
         let xn = square_k_times(layouter, &self.scalar_chip, &x, k)?;
         // Shared by all calls to `evaluate_lagrange_polynomials` below.
@@ -396,6 +396,19 @@ impl<F: CircuitField, PCS: InCircuitPCS<F>> VerifierGadget<F, PCS> {
 
             let max_instance_len =
                 assigned_instances.iter().map(|instance| instance.len()).max().unwrap_or(0);
+
+            // The instances must fit in the domain, as checked by the out-of-circuit
+            // verifier: `max_instance_len <= n - (blinding_factors + 1)`.
+            if max_instance_len > 0 {
+                let min_n = (max_instance_len + cs.blinding_factors() + 1) as u64;
+                if min_n > 1 << F::S {
+                    return Err(Error::InstanceTooLarge);
+                }
+                // `n` is a power of two in `[1, 2^F::S]` by construction.
+                let n = self.scalar_chip.bounded_of_element(layouter, F::S as usize + 1, n)?;
+                let fits = self.scalar_chip.geq_fixed(layouter, &n, F::from(min_n))?;
+                self.scalar_chip.assert_equal_to_fixed(layouter, &fits, true)?;
+            }
 
             let l_i_s = evaluate_lagrange_polynomials(
                 layouter,

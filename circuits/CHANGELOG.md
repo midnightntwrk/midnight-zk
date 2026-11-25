@@ -13,6 +13,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * `EccInstructions::point_from_coordinates_without_subgroup_check`, which creates a point from its coordinates without enforcing subgroup membership with constraints [#654](https://github.com/midnightntwrk/midnight-zk/pull/654)
 * `verifier::InCircuitKZGEngine`, the `KZGEngine`s whose KZG proofs can be verified in-circuit, bounding the KZG types of the in-circuit verifier [#644](https://github.com/midnightntwrk/midnight-zk/pull/644)
 ### Fixed
+* The in-circuit verifier asserts that the instances fit in the domain of the verified circuit, as the out-of-circuit verifier does; this changes the VKs of circuits that verify proofs in-circuit [#689](https://github.com/midnightntwrk/midnight-zk/pull/689)
 * `NativeGadget::leq_fixed` and `greater_than_fixed` return the correct result when the bound is the largest field element `p - 1`, where `bound + 1` used to wrap around to 0 [#689](https://github.com/midnightntwrk/midnight-zk/pull/689)
 * `BigUintGadget::assign_biguint` panics with a descriptive message on `nb_bits = 0` instead of underflowing [#689](https://github.com/midnightntwrk/midnight-zk/pull/689)
 * Foreign Weierstrass incomplete point addition asserts that its operands are not the identity and have different x-coordinates, so the chip is sound on curve points outside the prime-order subgroup; this changes the VKs of circuits that use the chip [#678](https://github.com/midnightntwrk/midnight-zk/pull/678)
