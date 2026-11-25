@@ -274,13 +274,29 @@ where
         E::G2: ProcessedSerdeObject,
         R: io::Read,
     {
+        Self::read_with_max_k(reader, format, None)
+    }
+
+    /// Like [`Self::read`], but fails if `k` exceeds `max_k`, before
+    /// allocating anything of that size.
+    pub fn read_with_max_k<R>(
+        reader: &mut R,
+        format: SerdeFormat,
+        max_k: Option<u32>,
+    ) -> io::Result<Self>
+    where
+        E::G1Affine: SerdeObject,
+        E::G2: ProcessedSerdeObject,
+        R: io::Read,
+    {
         let mut k = [0u8; 4];
         reader.read_exact(&mut k[..])?;
         let k = u32::from_le_bytes(k);
-        if k > E::Fr::S {
+        let max_k = max_k.map_or(E::Fr::S, |max_k| max_k.min(E::Fr::S));
+        if k > max_k {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                format!("k = {k} exceeds the maximum supported value {}", E::Fr::S),
+                format!("k = {k} exceeds the maximum supported value {max_k}"),
             ));
         }
         let n = 1 << k;

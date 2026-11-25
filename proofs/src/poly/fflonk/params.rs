@@ -214,7 +214,22 @@ where
         E::G2: ProcessedSerdeObject,
         R: io::Read,
     {
-        let kzg = ParamsKZG::<E>::read(reader, format)?;
+        Self::read_with_max_k(reader, format, None)
+    }
+
+    /// Like [`Self::read`], but fails if `k` exceeds `max_k`, before
+    /// allocating anything of that size.
+    pub fn read_with_max_k<R>(
+        reader: &mut R,
+        format: SerdeFormat,
+        max_k: Option<u32>,
+    ) -> io::Result<Self>
+    where
+        E::G1Affine: SerdeObject,
+        E::G2: ProcessedSerdeObject,
+        R: io::Read,
+    {
+        let kzg = ParamsKZG::<E>::read_with_max_k(reader, format, max_k)?;
         let mut log2_t_max = [0u8; 4];
         reader.read_exact(&mut log2_t_max)?;
         let log2_t_max = u32::from_le_bytes(log2_t_max);

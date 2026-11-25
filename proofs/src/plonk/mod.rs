@@ -443,12 +443,39 @@ where
         format: SerdeFormat,
         #[cfg(feature = "circuit-params")] params: ConcreteCircuit::Params,
     ) -> io::Result<Self> {
+        Self::read_with_max_k::<R, ConcreteCircuit>(
+            reader,
+            format,
+            None,
+            #[cfg(feature = "circuit-params")]
+            params,
+        )
+    }
+
+    /// Like [`Self::read`], but fails if the key's `k` exceeds `max_k`,
+    /// before allocating anything of that size.
+    pub fn read_with_max_k<R: io::Read, ConcreteCircuit: Circuit<F>>(
+        reader: &mut R,
+        format: SerdeFormat,
+        max_k: Option<u32>,
+        #[cfg(feature = "circuit-params")] params: ConcreteCircuit::Params,
+    ) -> io::Result<Self> {
         let vk = VerifyingKey::<F, PCS>::read::<R, ConcreteCircuit>(
             reader,
             format,
             #[cfg(feature = "circuit-params")]
             params,
         )?;
+        let k = vk.domain.k();
+        if max_k.is_some_and(|max_k| k > max_k) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "circuit size value (k): {k} exceeds the maximum {}",
+                    max_k.unwrap()
+                ),
+            ));
+        }
         let fft_domain = FftDomain::new(&vk.domain);
         let [l0, l_last, l_active_row] = compute_lagrange_polys(&vk, &fft_domain, &vk.cs);
         let fixed_values: Vec<_> = read_polynomial_vec(reader, format)?;
