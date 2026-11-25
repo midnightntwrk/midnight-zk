@@ -264,7 +264,8 @@ where
         Ok(())
     }
 
-    /// Reads parameters written by [`Self::write`].
+    /// Reads parameters written by [`Self::write`]. The `Lagrange` bases are
+    /// the adjacent differences of the `LagrangeDelta` ones.
     pub fn read<R>(reader: &mut R, format: SerdeFormat) -> io::Result<Self>
     where
         E::G1Affine: SerdeObject,
@@ -284,13 +285,14 @@ where
         let n = kzg.g.len() >> LOG2_T_MAX;
         let mut residue_bases = HashMap::new();
         for (t, i) in Self::residues() {
-            for basis in [
-                PolynomialBasis::LagrangeDelta,
-                PolynomialBasis::LagrangeDoubleDelta,
-            ] {
-                let bases = read_points(reader, format, n)?;
-                residue_bases.insert(Residue { basis, t, n, i }, bases.into());
-            }
+            let delta: Vec<E::G1Affine> = read_points(reader, format, n)?;
+            let double_delta: Vec<E::G1Affine> = read_points(reader, format, n)?;
+            let mut insert = |basis, bases: Vec<_>| {
+                residue_bases.insert(Residue { basis, t, n, i }, Arc::from(bases));
+            };
+            insert(PolynomialBasis::Lagrange, adjacent_differences(&delta));
+            insert(PolynomialBasis::LagrangeDelta, delta);
+            insert(PolynomialBasis::LagrangeDoubleDelta, double_delta);
         }
         Ok(Self {
             kzg,
@@ -381,6 +383,21 @@ fn lagrange_residues<C: CurveAffine>(g_lagrange: &[C], t: usize) -> Vec<Vec<C>> 
             bases
         })
         .collect()
+}
+
+/// The inverse of [`suffix_sum`]: `out[j] = input[j] - input[j + 1]`, and
+/// `out[n - 1] = input[n - 1]`.
+fn adjacent_differences<C: CurveAffine>(input: &[C]) -> Vec<C> {
+    let differences: Vec<C::CurveExt> = (0..input.len())
+        .into_par_iter()
+        .map(|j| match input.get(j + 1) {
+            Some(next) => input[j].to_curve() - next,
+            None => input[j].into(),
+        })
+        .collect();
+    let mut out = vec![C::identity(); input.len()];
+    C::CurveExt::batch_normalize(&differences, &mut out);
+    out
 }
 
 /// Commitment to `Σ_i X^i f_i(X^t)`, for `chunk` the polynomials `f_i` and
