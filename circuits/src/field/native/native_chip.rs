@@ -430,7 +430,7 @@ impl<F: CircuitField> NativeChip<F> {
     }
 
     /// Returns the product of the given elements, up to four per row.
-    fn mul_many(
+    pub(crate) fn mul_many(
         &self,
         layouter: &mut impl Layouter<F>,
         xs: &[AssignedNative<F>],

@@ -89,6 +89,15 @@ impl<F: CircuitField> NativeGadget<F> {
     fn bound(&self, x: &AssignedNative<F>) -> Option<BigUint> {
         self.constrained_cells.borrow().get(x).cloned()
     }
+
+    /// Returns the product of the given elements, up to four per row.
+    pub(crate) fn mul_many(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        xs: &[AssignedNative<F>],
+    ) -> Result<AssignedNative<F>, Error> {
+        self.native_chip.mul_many(layouter, xs)
+    }
 }
 
 impl<F: CircuitField> Instantiable<F> for AssignedByte<F> {
