@@ -23,6 +23,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * `CircuitCurve::from_xy` for Jubjub checks the curve equation on both coordinates. [#654](https://github.com/midnightntwrk/midnight-zk/pull/654)
 * `VectorInstructions::trim_beginning` with `n_elems > M` and the `AssignedVector` comparisons with a constant longer than `M` (`is_equal_to_fixed`, `assert_equal_to_fixed` and their negations) panic with a descriptive message instead of underflowing. [#662](https://github.com/midnightntwrk/midnight-zk/pull/662)
 ### Changed
+* The native chip computes `add_and_double_mul` with a constant `x` as a linear combination of `y` and `z`, which changes the VKs of circuits where this happens [#865](https://github.com/midnightntwrk/midnight-zk/pull/865)
 * `CircuitCurve::from_xy` for BLS12-381 and BN256 relies on the curve-equation check of `CurveAffine::from_xy` instead of repeating it [#675](https://github.com/midnightntwrk/midnight-zk/pull/675)
 * The in-circuit verifier evaluates every sum in the verified circuit's expressions as a single linear combination, with constants folded into its coefficients, and multiplies up to four factors per row with the quartic gate, which changes the VKs of circuits that verify proofs in-circuit [#683](https://github.com/midnightntwrk/midnight-zk/pull/683)
 * The native chip computes `is_equal_to_fixed` in one row, enabling the arithmetic and quartic gates together [#682](https://github.com/midnightntwrk/midnight-zk/pull/682)

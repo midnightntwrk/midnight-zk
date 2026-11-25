@@ -1173,6 +1173,10 @@ where
         k: F,
         (m1, m2): (F, F),
     ) -> Result<AssignedNative<F>, Error> {
+        if let Some(cx) = self.as_constant(x) {
+            let terms = [(b + m1 * cx, y.clone()), (c + m2 * cx, z.clone())];
+            return self.linear_combination(layouter, &terms, k + a * cx);
+        }
         let res_value = x
             .value()
             .zip(y.value())
