@@ -374,7 +374,10 @@ where
             )?,
         ];
         let r = products.iter().map(points).collect::<Result<Vec<_>, _>>()?.concat();
-        let a = [&acc.phase1, &acc.phase2].map(points).into_iter().collect::<Result<Vec<_>, _>>()?;
+        let a = [&acc.phase1, &acc.phase2]
+            .map(points)
+            .into_iter()
+            .collect::<Result<Vec<_>, _>>()?;
         let f = [&fresh.phase1, &fresh.phase2]
             .map(points)
             .into_iter()
@@ -403,7 +406,10 @@ where
                 scalars.extend([(k1, half), (k2, half), (rho.scalar, rho_bits)]);
                 bases.extend([e1, e2, r.clone()]);
             }
-            folded.push(AssignedKZGCommitment::simple(curve.add(layouter, a, r)?, label.clone()));
+            folded.push(AssignedKZGCommitment::simple(
+                curve.add(layouter, a, r)?,
+                label.clone(),
+            ));
         }
         // The MSM covers all terms but `R_1` (`ρ_1 = 1`): it must equal `−R_1`.
         let mut lhs = curve.msm_by_bounded_scalars(layouter, &scalars, &bases)?;
@@ -415,7 +421,10 @@ where
 
         let split = self.shape.phase1_labels.len();
         let phase2 = folded.split_off(split);
-        Ok((AssignedKZGMultiCommitment(folded), AssignedKZGMultiCommitment(phase2)))
+        Ok((
+            AssignedKZGMultiCommitment(folded),
+            AssignedKZGMultiCommitment(phase2),
+        ))
     }
 
     /// `a + x·(b − a)` for every pair.

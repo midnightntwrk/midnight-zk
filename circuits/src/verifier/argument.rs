@@ -154,9 +154,7 @@ pub(crate) fn phase1_labels<F: ff::Field>(cs: &ConstraintSystem<F>) -> Vec<Polyn
 /// The labels of the phase-2 group: the permutation accumulators, the logup
 /// helpers and aggregators, and the trash polynomials. Mirrors
 /// `VerifyingKey::phase2_labels`.
-pub(crate) fn phase2_labels<F: ff::Field>(
-    cs: &ConstraintSystem<F>,
-) -> Vec<PolynomialLabel> {
+pub(crate) fn phase2_labels<F: ff::Field>(cs: &ConstraintSystem<F>) -> Vec<PolynomialLabel> {
     let mut labels = cs.permutation().accumulator_labels(cs.degree());
     for (argument_index, logup) in cs.lookups().iter().enumerate() {
         for j in 0..logup.chunk_by_degree(cs.lookup_chunk_bound()).num_chunks() {

@@ -3,7 +3,9 @@ use std::{borrow::Cow, sync::OnceLock};
 use ff::PrimeField;
 use group::ff::Field;
 use rayon::{
-    iter::{IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator},
+    iter::{
+        IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
+    },
     slice::ParallelSliceMut,
 };
 
@@ -1358,7 +1360,10 @@ impl<F: PrimeField> GraphEvaluator<F> {
             .map(|(j, expr)| (ValueSource::TrashPow(m - 1 - j), graph.add_expression(expr)))
             .collect();
 
-        graph.add_calculation(Calculation::LinearCombination(ValueSource::Constant(0), terms));
+        graph.add_calculation(Calculation::LinearCombination(
+            ValueSource::Constant(0),
+            terms,
+        ));
         graph
     }
 
@@ -1789,9 +1794,21 @@ mod tests {
         let q = |col, rot| {
             let (index, column_index, rotation) = (Some(col), col, Rotation(rot));
             (
-                Expression::<Fq>::Fixed(FixedQuery { index, column_index, rotation }),
-                Expression::<Fq>::Advice(AdviceQuery { index, column_index, rotation }),
-                Expression::<Fq>::Instance(InstanceQuery { index, column_index, rotation }),
+                Expression::<Fq>::Fixed(FixedQuery {
+                    index,
+                    column_index,
+                    rotation,
+                }),
+                Expression::<Fq>::Advice(AdviceQuery {
+                    index,
+                    column_index,
+                    rotation,
+                }),
+                Expression::<Fq>::Instance(InstanceQuery {
+                    index,
+                    column_index,
+                    rotation,
+                }),
             )
         };
         let (f0, a0, i0) = q(0, 0);
@@ -1818,9 +1835,8 @@ mod tests {
 
         let flat = GraphEvaluator::for_trash(&trash).flatten();
         let powers = trash::trash_powers(c, trash.constraint_expressions().len());
-        let got = trash::prover::compute_trash_poly(
-            &flat, &domain, &powers, &advice, &fixed, &instance,
-        );
+        let got =
+            trash::prover::compute_trash_poly(&flat, &domain, &powers, &advice, &fixed, &instance);
         assert_eq!(expected.values, got.values);
     }
 }

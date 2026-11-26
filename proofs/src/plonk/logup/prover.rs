@@ -544,9 +544,9 @@ mod tests {
             );
             for row in (0..usable_rows).filter(|&row| !selector[row].is_zero_vartime()) {
                 let tuple = tuple_at(input, row);
-                *input_counts
-                    .get_mut(tuple.as_slice())
-                    .unwrap_or_else(|| panic!("input tuple {tuple:?} not found in lookup table")) += 1;
+                *input_counts.get_mut(tuple.as_slice()).unwrap_or_else(|| {
+                    panic!("input tuple {tuple:?} not found in lookup table")
+                }) += 1;
             }
         }
 
@@ -592,7 +592,9 @@ mod tests {
         let table: Vec<_> = (0..width)
             .map(|c| {
                 poly_from_vec(
-                    (0..n).map(|r| Fq::from((r % 11) as u64 + (c as u64) * (r % 3 == 0) as u64)).collect(),
+                    (0..n)
+                        .map(|r| Fq::from((r % 11) as u64 + (c as u64) * (r % 3 == 0) as u64))
+                        .collect(),
                 )
             })
             .collect();
@@ -607,9 +609,8 @@ mod tests {
                     .collect()
             })
             .collect();
-        let selector = poly_from_vec(
-            (0..n).map(|_| Fq::from((rng.next_u32() % 2) as u64)).collect(),
-        );
+        let selector =
+            poly_from_vec((0..n).map(|_| Fq::from((rng.next_u32() % 2) as u64)).collect());
         let blinding: Vec<_> = (0..n - usable_rows).map(|_| Fq::random(&mut rng)).collect();
         let values: Vec<&[_]> = inputs.iter().map(Vec::as_slice).collect();
 
@@ -625,11 +626,13 @@ mod tests {
     fn test_multiplicities_cache_reuse() {
         use midnight_curves::Bls12;
 
-        use crate::plonk::{
-            commit_phases_tests::{K, SquareCircuit, TABLE_SIZE},
-            keygen_pk, keygen_vk_with_k,
+        use crate::{
+            plonk::{
+                commit_phases_tests::{K, SquareCircuit, TABLE_SIZE},
+                keygen_pk, keygen_vk_with_k,
+            },
+            poly::kzg::KZGCommitmentScheme,
         };
-        use crate::poly::kzg::KZGCommitmentScheme;
 
         type CS = KZGCommitmentScheme<Bls12>;
         let params = <CS as PolynomialCommitmentScheme<Fq>>::gen_params(K);
@@ -638,7 +641,10 @@ mod tests {
 
         let n = 1usize << K;
         let a = (0..n as u64).map(|row| Fq::from(row % TABLE_SIZE + 1)).collect();
-        let advice = [pk.vk.domain.lagrange_from_vec(a), pk.vk.domain.empty_lagrange()];
+        let advice = [
+            pk.vk.domain.lagrange_from_vec(a),
+            pk.vk.domain.empty_lagrange(),
+        ];
         let blinding = vec![Fq::from(7u64); pk.vk.cs.blinding_factors() + 1];
         let arg = pk.vk.cs.lookups[0].chunk_by_degree(pk.vk.cs.degree());
 

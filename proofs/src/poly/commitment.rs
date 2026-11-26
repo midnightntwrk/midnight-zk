@@ -172,11 +172,11 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
         gamma: F,
     ) -> Self::Commitment;
 
-    /// The product `gamma·(fresh − acc)` of [`fold_commitments`](Self::fold_commitments),
-    /// as a commitment with the labels of `acc`. The folded commitment is
-    /// `acc + product`. The products are the γ-scaled commitment differences
-    /// the folding proof carries so a verifier can check them with a batched
-    /// equation.
+    /// The product `gamma·(fresh − acc)` of
+    /// [`fold_commitments`](Self::fold_commitments), as a commitment with
+    /// the labels of `acc`. The folded commitment is `acc + product`. The
+    /// products are the γ-scaled commitment differences the folding proof
+    /// carries so a verifier can check them with a batched equation.
     fn fold_products(
         acc: &Self::Commitment,
         fresh: &Self::Commitment,

@@ -1901,8 +1901,9 @@ impl<F: Field> ConstraintSystem<F> {
     /// Sets the degree bound used to pack lookup input tuples into helper
     /// columns, in place of `degree()`. A smaller bound gives more helper
     /// columns of lower degree (e.g. 3 packs two degree-1 tuples per helper),
-    /// which lowers the folding degree. Prover, verifier and in-circuit verifier
-    /// all read it from the constraint system, so it must be set in `configure`.
+    /// which lowers the folding degree. Prover, verifier and in-circuit
+    /// verifier all read it from the constraint system, so it must be set
+    /// in `configure`.
     pub fn set_lookup_chunk_bound(&mut self, bound: usize) {
         self.lookup_chunk_bound = Some(bound);
     }
@@ -2251,8 +2252,12 @@ impl<F: Field> ConstraintSystem<F> {
         // To account for this, we can increase the number of blinding factors of
         // witness columns. One blinding factor per helper is enough as each helper is
         // evaluated only once.
-        let factors =
-            factors + self.lookups.iter().map(|l| l.num_chunks(self.lookup_chunk_bound())).sum::<usize>();
+        let factors = factors
+            + self
+                .lookups
+                .iter()
+                .map(|l| l.num_chunks(self.lookup_chunk_bound()))
+                .sum::<usize>();
 
         // Each polynomial is evaluated at most an additional time during
         // multiopen (at x_3 to produce q_evals).
