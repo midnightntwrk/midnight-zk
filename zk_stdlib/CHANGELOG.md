@@ -14,6 +14,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * `MidnightPK::read_with_max_k`, like `MidnightPK::read` but returning an error if the key's `k` exceeds an optional maximum, to avoid memory exhaustion on untrusted keys [#686](https://github.com/midnightntwrk/midnight-zk/issues/686)
 ### Changed
 * `load_srs::<FflonkKZG<LOG2_T_MAX>>(source, k)` reads the SRSs of every size from `2^k` to `2^(k + LOG2_T_MAX)`, and builds the fflonk parameters without FFT [#684](https://github.com/midnightntwrk/midnight-zk/pull/684)
+* Adjust blinding factors for FFLONK protocol [#680](https://github.com/midnightntwrk/midnight-zk/pull/680)
 * `MidnightPCS` requires `Parameters: From<ParamsKZG<Bls12>>` instead of `Parameters = ParamsKZG<Bls12>`; `setup_vk` and `prove` take `&PCS::Parameters`, and `load_srs::<PCS>` returns `PCS::Parameters`, built from the KZG SRS with `From` [#677](https://github.com/midnightntwrk/midnight-zk/pull/677)
 * BREAKING: `MidnightVK::read` and `MidnightPK::read` return an error on `SerdeFormat::RawBytesUnchecked`, so the points of a key are always checked. Keys written with `RawBytesUnchecked` can be read with `RawBytes` [#675](https://github.com/midnightntwrk/midnight-zk/pull/675)
 * Point `sha3-circuit` at a revision that requires `midnight-proofs` and `midnight-curves` by crates.io version instead of from the midnight-zk main branch, so that crates patching them to a midnight-zk tag get a single copy of each

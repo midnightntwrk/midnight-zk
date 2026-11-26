@@ -5,7 +5,7 @@ use std::{
 
 use ff::FromUniformBytes;
 
-use super::{Error, VerifyingKey};
+use super::{Error, QUOTIENT_LIMB_BLINDERS, VerifyingKey};
 use crate::{
     plonk::{ProofField, argument, evaluate_identities, traces::VerifierTrace},
     poly::{PolynomialLabel, Rotation, VerifierQuery, commitment::PolynomialCommitmentScheme},
@@ -138,8 +138,9 @@ where
     // satisfied with high probability.
     let x: F = PCS::squeeze_evaluation_point(transcript);
 
-    let splitting_factor = x.pow_vartime([vk.n() - 2]);
-    let xn = splitting_factor * x.square();
+    let s = QUOTIENT_LIMB_BLINDERS as u64;
+    let splitting_factor = x.pow_vartime([vk.n() - s]);
+    let xn = splitting_factor * x.pow_vartime([s]);
 
     let instance_evals: Vec<F> = {
         let (min_rotation, max_rotation) =
@@ -218,7 +219,7 @@ where
     );
 
     // h_0(x) is derived from nu(x) = (x^n - 1) h(x), for
-    // h(x) = h_0(x) + x^{n-2} h_1(x) + ..., so that opening h_0 at it checks
+    // h(x) = h_0(x) + x^{n-S} h_1(x) + ..., so that opening h_0 at it checks
     // the identities.
     let higher_limbs = (quotient_evaluated.evals_map.values().skip(1).rev())
         .fold(F::ZERO, |acc, evals| {
