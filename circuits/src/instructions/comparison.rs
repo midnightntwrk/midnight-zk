@@ -22,7 +22,7 @@
 //! at most 2^{F::NUM_BITS/2 - 1} to avoid breaking "natural" properties of
 //! comparison
 
-use std::{fmt::Debug, ops::Add};
+use std::fmt::Debug;
 
 use midnight_proofs::{circuit::Layouter, plonk::Error};
 
@@ -38,7 +38,6 @@ pub trait ComparisonInstructions<F, Assigned>: Clone + Debug + BinaryInstruction
 where
     F: CircuitField,
     Assigned: InnerValue,
-    Assigned::Element: From<u64> + Add<Output = Assigned::Element>,
 {
     /// All numbers involved in comparisons should be in the range [0,
     /// 2^{MAX_BOUND_IN_BITS}) and no comparison should be allowed for some
@@ -84,16 +83,14 @@ where
         self.not(layouter, &b)
     }
 
-    /// Returns `true1` iff the given assigned element is lower than or equal to
+    /// Returns `true` iff the given assigned element is lower than or equal to
     /// the given bound.
     fn leq_fixed(
         &self,
         layouter: &mut impl Layouter<F>,
         x: &AssignedBounded<F>,
         bound: Assigned::Element,
-    ) -> Result<AssignedBit<F>, Error> {
-        self.lower_than_fixed(layouter, x, bound + Assigned::Element::from(1))
-    }
+    ) -> Result<AssignedBit<F>, Error>;
 
     /// Returns `true` iff the given assigned element is greater than or equal
     /// to the given bound.

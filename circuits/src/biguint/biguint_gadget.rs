@@ -273,12 +273,17 @@ where
     N: NativeInstructions<F>,
 {
     /// Assigns a BigUint (of at most `nb_bits` bits) as a private input.
+    ///
+    /// # Panics
+    ///
+    /// If `nb_bits` is 0.
     pub fn assign_biguint(
         &self,
         layouter: &mut impl Layouter<F>,
         value: Value<BigUint>,
         nb_bits: u32,
     ) -> Result<AssignedBigUint<F>, Error> {
+        assert!(nb_bits > 0, "nb_bits must be positive");
         self.assign_bounded(layouter, value, nb_bits)
     }
 
