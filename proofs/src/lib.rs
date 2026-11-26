@@ -8,6 +8,8 @@
 #![deny(missing_docs)]
 #![deny(unsafe_code)]
 
+#[cfg(feature = "accel")]
+pub mod accel;
 pub mod circuit;
 pub mod plonk;
 pub mod poly;

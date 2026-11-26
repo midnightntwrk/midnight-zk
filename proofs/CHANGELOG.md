@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `ParamsFflonkKZG::from_kzgs`, which builds the fflonk parameters without FFT from the KZG SRSs of sizes `t·n` for every `t ≤ T_MAX`, from one ceremony [#684](https://github.com/midnightntwrk/midnight-zk/pull/684)
 * `ProvingKey::read_with_max_k`, like `ProvingKey::read` but returning an error if the key's `k` exceeds an optional maximum, to avoid memory exhaustion on untrusted keys [#686](https://github.com/midnightntwrk/midnight-zk/issues/686)
 * `ParamsKZG::read_with_max_k` and `ParamsFflonkKZG::read_with_max_k`, like `read` but returning an error if `k` exceeds an optional maximum, before allocating the parameters
+* Feature `accel`: an optional `accel::Accelerator` is offered the prover's G1 MSMs, batches of same-length KZG commitments, the base-domain FFT and inverse FFT, and the quotient `h(X)`. Each call returns the stock value or declines; without the feature the prover is unchanged
 ### Changed
 * `ParamsFflonkKZG::from_kzg` derives the residue bases from the Lagrange SRS of size `t·n`, which needs FFTs for `t < T_MAX` only, and `ParamsFflonkKZG::read` restores the `Lagrange` bases [#684](https://github.com/midnightntwrk/midnight-zk/pull/684)
 * Adjust blinding factors for FFLONK protocol [#680](https://github.com/midnightntwrk/midnight-zk/pull/680)

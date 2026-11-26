@@ -130,16 +130,22 @@ impl<E: KZGEngine> PolynomialCommitmentScheme<E::Fr> for KZGCommitmentScheme<E> 
         PolynomialLabel::assert_distinct(labels);
 
         let bases = params.bases::<B>();
-        KZGMultiCommitment(
-            (polynomials.iter().zip(labels))
-                .map(|(polynomial, label)| {
+        let stock = || {
+            (polynomials.iter())
+                .map(|polynomial| {
                     let size = polynomial.values.len();
                     assert!(bases.len() >= size);
-                    KZGCommitment::Simple(
-                        commit_msm::<E::G1Affine>(&polynomial.values, &bases[..size]),
-                        label.clone(),
-                    )
+                    commit_msm::<E::G1Affine>(&polynomial.values, &bases[..size])
                 })
+                .collect::<Vec<E::G1>>()
+        };
+        #[cfg(feature = "accel")]
+        let points = commit_batch::<E::G1Affine>(polynomials, bases).unwrap_or_else(stock);
+        #[cfg(not(feature = "accel"))]
+        let points = stock();
+        KZGMultiCommitment(
+            (points.into_iter().zip(labels))
+                .map(|(point, label)| KZGCommitment::Simple(point, label.clone()))
                 .collect(),
         )
     }
@@ -542,6 +548,9 @@ impl<E: KZGEngine> PolynomialCommitmentScheme<E::Fr> for KZGCommitmentScheme<E> 
 /// [`msm_pippenger`]. Test builds also compute it with the verifier's MSM
 /// ([`msm_specific`](msm::msm_specific)) and check that both agree.
 pub(crate) fn commit_msm<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
+    #[cfg(feature = "accel")]
+    let res = crate::accel::msm(coeffs, bases).unwrap_or_else(|| msm_pippenger(coeffs, bases));
+    #[cfg(not(feature = "accel"))]
     let res = msm_pippenger(coeffs, bases);
     #[cfg(test)]
     assert_eq!(
@@ -551,6 +560,33 @@ pub(crate) fn commit_msm<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C
         coeffs.len()
     );
     res
+}
+
+/// The commitments of several polynomials of one length at once, if the
+/// installed accelerator serves them as a batch.
+#[cfg(feature = "accel")]
+fn commit_batch<C: CurveAffine>(
+    polynomials: &[&Polynomial<C::Scalar, impl PolynomialRepresentation>],
+    bases: &[C],
+) -> Option<Vec<C::Curve>> {
+    let size = polynomials.first()?.values.len();
+    if polynomials.len() < 2
+        || bases.len() < size
+        || polynomials.iter().any(|p| p.values.len() != size)
+    {
+        return None;
+    }
+    let scalars: Vec<&[C::Scalar]> = polynomials.iter().map(|p| &p.values[..]).collect();
+    let res = crate::accel::msm_batch(&scalars, &bases[..size])?;
+    #[cfg(test)]
+    for (s, r) in scalars.iter().zip(&res) {
+        assert_eq!(
+            *r,
+            msm::msm_specific(s, &bases[..size]),
+            "batched MSM disagrees"
+        );
+    }
+    Some(res)
 }
 
 #[cfg(test)]

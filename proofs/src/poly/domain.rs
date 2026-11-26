@@ -263,13 +263,25 @@ impl<F: PrimeField> FftDomain<F> {
     pub fn lagrange_to_coeff(&self, mut a: Polynomial<F, LagrangeCoeff>) -> Polynomial<F, Coeff> {
         assert_eq!(a.values.len(), 1 << self.domain.k);
 
-        // Perform inverse FFT using cached twiddle factors.
-        EvaluationDomain::ifft(
+        #[cfg(feature = "accel")]
+        let served = crate::accel::ifft(
             &mut a.values,
-            &self.omega_inv,
+            self.domain.omega_inv,
             self.domain.k,
             self.domain.ifft_divisor,
         );
+        #[cfg(not(feature = "accel"))]
+        let served = false;
+
+        // Perform inverse FFT using cached twiddle factors.
+        if !served {
+            EvaluationDomain::ifft(
+                &mut a.values,
+                &self.omega_inv,
+                self.domain.k,
+                self.domain.ifft_divisor,
+            );
+        }
 
         Polynomial {
             values: a.values,
@@ -282,7 +294,14 @@ impl<F: PrimeField> FftDomain<F> {
     pub fn coeff_to_lagrange(&self, mut a: Polynomial<F, Coeff>) -> Polynomial<F, LagrangeCoeff> {
         assert_eq!(a.values.len(), 1 << self.domain.k);
 
-        best_fft_with_twiddles(&mut a.values, &self.omega, self.domain.k);
+        #[cfg(feature = "accel")]
+        let served = crate::accel::fft(&mut a.values, self.domain.omega, self.domain.k);
+        #[cfg(not(feature = "accel"))]
+        let served = false;
+
+        if !served {
+            best_fft_with_twiddles(&mut a.values, &self.omega, self.domain.k);
+        }
 
         Polynomial {
             values: a.values,
@@ -427,6 +446,25 @@ impl<F: PrimeField> EvaluationDomain<F> {
                 index += 1;
             }
         });
+    }
+
+    /// The factors into the coset, `[g_coset, g_coset_inv]`.
+    #[cfg(feature = "accel")]
+    pub(crate) fn coset_zetas(&self) -> [F; 2] {
+        [self.g_coset, self.g_coset_inv]
+    }
+
+    /// What `divide_by_vanishing_poly`, `extended_to_coeff` and the
+    /// truncation of the quotient use, for the quotient job.
+    #[cfg(feature = "accel")]
+    pub(crate) fn quotient_divide(&self) -> crate::accel::QuotientDivide<F> {
+        crate::accel::QuotientDivide {
+            t_inv: self.t_evaluations.clone(),
+            omega_inv: self.extended_omega.invert().unwrap(),
+            divisor: self.extended_ifft_divisor,
+            zeta_out: [self.g_coset_inv, self.g_coset],
+            len: (self.n - 1) as usize * self.get_quotient_poly_degree(),
+        }
     }
 
     /// Get the size of the domain
