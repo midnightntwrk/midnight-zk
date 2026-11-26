@@ -10,7 +10,7 @@ use ff::PrimeField;
 
 use crate::{
     poly::{
-        Error, Polynomial, PolynomialRepresentation, ProverQuery, VerifierQuery,
+        CommitPolynomial, Error, Polynomial, PolynomialRepresentation, ProverQuery, VerifierQuery,
         query::PolynomialLabel,
     },
     transcript::{Hashable, Sampleable, Transcript, TranscriptField},
@@ -42,8 +42,9 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
     /// Extract the `VerifierParameters` from `Parameters`
     fn get_verifier_params(params: &Self::Parameters) -> Self::VerifierParameters;
 
-    /// Commit to several polynomials, tagging the result with the
-    /// corresponding labels for identification during multi-open accumulation.
+    /// Commit to several polynomials, each in its own basis, tagging the result
+    /// with the corresponding labels for identification during multi-open
+    /// accumulation.
     ///
     /// The polynomials are committed to in the order given, which must be the
     /// order in which [`read_commitment`](Self::read_commitment) and
@@ -59,21 +60,24 @@ pub trait PolynomialCommitmentScheme<F: PrimeField>: Clone + Debug {
     ///
     /// Panics if `polynomials` and `labels` have different lengths, or if a
     /// label is repeated.
-    fn commit_many<B: PolynomialRepresentation>(
+    fn commit_many(
         params: &Self::Parameters,
-        polynomials: &[&Polynomial<F, B>],
+        polynomials: &[CommitPolynomial<F>],
         labels: &[PolynomialLabel],
     ) -> Self::Commitment;
 
-    /// Commit to a single polynomial in coefficient form, tagging the result
-    /// with `label`. Convenience wrapper around
-    /// [`commit_many`](Self::commit_many).
+    /// Commit to a single polynomial, tagging the result with `label`.
+    /// Convenience wrapper around [`commit_many`](Self::commit_many).
     fn commit<B: PolynomialRepresentation>(
         params: &Self::Parameters,
         polynomial: &Polynomial<F, B>,
         label: PolynomialLabel,
     ) -> Self::Commitment {
-        Self::commit_many(params, &[polynomial], &[label])
+        Self::commit_many(
+            params,
+            &[CommitPolynomial::new(polynomial.clone())],
+            &[label],
+        )
     }
 
     /// Read a commitment to `labels.len()` polynomials from the proof
@@ -204,9 +208,9 @@ pub trait InterleavedCommit<F: PrimeField, const LOG2_T_MAX: u32>:
     ///
     /// Panics if `chunks` and `labels` have different lengths, if a label is
     /// repeated, or if the polynomials of a chunk have different lengths.
-    fn commit_interleaved<B: PolynomialRepresentation>(
+    fn commit_interleaved(
         params: &<Self as InterleavedCommit<F, LOG2_T_MAX>>::Parameters,
-        chunks: &[&[&Polynomial<F, B>]],
+        chunks: &[&[CommitPolynomial<F>]],
         labels: &[PolynomialLabel],
     ) -> Self::Commitment;
 }

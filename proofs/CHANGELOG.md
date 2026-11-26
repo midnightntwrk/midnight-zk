@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * `Fflonk::multi_open` returns `Error::OpeningError` when a query's label is not among its group's labels, instead of panicking, and `Error::DuplicatedQuery` when a polynomial is queried twice at the same point, as `Fflonk::multi_prepare` does [#671](https://github.com/midnightntwrk/midnight-zk/pull/671)
 * The cost model with `COST_MEASURE_START`/`COST_MEASURE_END` markers reports the number of rows of the measured regions, which chips laying out constraints at load time may place apart, instead of their span [#631](https://github.com/midnightntwrk/midnight-zk/pull/631)
 * `ParamsKZG::read_custom` and `ParamsKZG::write_custom` are renamed to `ParamsKZG::read` and `ParamsKZG::write`, as on `ParamsVerifierKZG` [#677](https://github.com/midnightntwrk/midnight-zk/pull/677)
+* Commits to several bases within one batched commit, by introducing `poly::CommitPolynomial` [#639](https://github.com/midnightntwrk/midnight-zk/pull/639)
 
 ### Removed
 * `PolynomialCommitmentScheme::load_params`, hence `Fflonk::load_params`: read a KZG SRS with `ParamsKZG::read`, and `downsize` it [#677](https://github.com/midnightntwrk/midnight-zk/pull/677)
