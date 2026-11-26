@@ -1,6 +1,6 @@
 CircuitModel {
     k: 10,
-    rows: 857,
+    rows: 855,
     table_rows: 931,
     nb_unusable_rows: 8,
     max_deg: 5,

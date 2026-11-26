@@ -48,6 +48,10 @@ pub(crate) fn eval_at<'a, F: CircuitField>(
 }
 
 /// Function to evaluate expressions in-circuit.
+///
+/// Every sum (including its negations and scalings) is computed as a single
+/// linear combination, whose terms are the leaves and products of the sum.
+/// Constants are folded into the coefficients.
 pub(crate) fn eval_expression<F: CircuitField>(
     layouter: &mut impl Layouter<F>,
     scalar_chip: &ScalarChip<F>,
@@ -56,33 +60,120 @@ pub(crate) fn eval_expression<F: CircuitField>(
     instance: &[AssignedNative<F>], // instance evals
     expr: &Expression<F>,
 ) -> Result<AssignedNative<F>, Error> {
+    let evals = Evals {
+        advice,
+        fixed,
+        instance,
+    };
+    let mut terms = vec![];
+    let mut constant = F::ZERO;
+    add_terms(
+        layouter,
+        scalar_chip,
+        &evals,
+        expr,
+        F::ONE,
+        &mut terms,
+        &mut constant,
+    )?;
+    scalar_chip.linear_combination(layouter, &terms, constant)
+}
+
+/// The advice, fixed and instance evaluations that expressions refer to.
+struct Evals<'a, F: CircuitField> {
+    advice: &'a [AssignedNative<F>],
+    fixed: &'a [AssignedNative<F>],
+    instance: &'a [AssignedNative<F>],
+}
+
+/// Adds `coeff * expr` to the linear combination `sum terms + constant`.
+#[allow(clippy::too_many_arguments)]
+fn add_terms<F: CircuitField>(
+    layouter: &mut impl Layouter<F>,
+    scalar_chip: &ScalarChip<F>,
+    evals: &Evals<F>,
+    expr: &Expression<F>,
+    coeff: F,
+    terms: &mut Vec<(F, AssignedNative<F>)>,
+    constant: &mut F,
+) -> Result<(), Error> {
+    let mut add = |e, c, terms: &mut _, constant: &mut _| {
+        add_terms(layouter, scalar_chip, evals, e, c, terms, constant)
+    };
     match expr {
-        Expression::Constant(k) => scalar_chip.assign_fixed(layouter, *k),
-        Expression::Selector(_) => {
-            panic!("Virtual selector are removed during optimisation")
-        }
-        Expression::Fixed(query) => Ok(fixed[query.index().unwrap()].clone()),
-        Expression::Advice(query) => Ok(advice[query.index.unwrap()].clone()),
-        Expression::Instance(query) => Ok(instance[query.index.unwrap()].clone()),
-        Expression::Negated(e) => {
-            let val = eval_expression::<F>(layouter, scalar_chip, advice, fixed, instance, e)?;
-            scalar_chip.neg(layouter, &val)
-        }
+        Expression::Selector(_) => panic!("Virtual selector are removed during optimisation"),
+        Expression::Constant(k) => *constant += coeff * k,
+        Expression::Negated(e) => add(e, -coeff, terms, constant)?,
+        Expression::Scaled(e, k) => add(e, coeff * k, terms, constant)?,
         Expression::Sum(e1, e2) => {
-            let e1 = eval_expression::<F>(layouter, scalar_chip, advice, fixed, instance, e1)?;
-            let e2 = eval_expression::<F>(layouter, scalar_chip, advice, fixed, instance, e2)?;
-            scalar_chip.add(layouter, &e1, &e2)
+            add(e1, coeff, terms, constant)?;
+            add(e2, coeff, terms, constant)?;
         }
-        Expression::Product(e1, e2) => {
-            let val1 = eval_expression::<F>(layouter, scalar_chip, advice, fixed, instance, e1)?;
-            let val2 = eval_expression::<F>(layouter, scalar_chip, advice, fixed, instance, e2)?;
-            scalar_chip.mul(layouter, &val1, &val2, None)
+        Expression::Product(..) => {
+            let mut scale = coeff;
+            let mut factors = vec![];
+            add_factors(layouter, scalar_chip, evals, expr, &mut scale, &mut factors)?;
+            if factors.is_empty() {
+                *constant += scale
+            } else {
+                terms.push((scale, scalar_chip.mul_many(layouter, &factors)?));
+            }
+        }
+        Expression::Fixed(q) => terms.push((coeff, evals.fixed[q.index().unwrap()].clone())),
+        Expression::Advice(q) => terms.push((coeff, evals.advice[q.index.unwrap()].clone())),
+        Expression::Instance(q) => terms.push((coeff, evals.instance[q.index.unwrap()].clone())),
+    }
+    Ok(())
+}
+
+/// Splits the product `expr` into its factors, so that `expr` equals the
+/// product of the given `scale`, every constant factor and every non-constant
+/// factor. The constant factors (including the constants of `Scaled` and
+/// `Negated`, and the sums that evaluate to a constant) are multiplied into
+/// `scale`, and the non-constant ones are pushed to `factors`. Sums are not
+/// expanded: each of them is evaluated (as a linear combination) into a
+/// single factor.
+fn add_factors<F: CircuitField>(
+    layouter: &mut impl Layouter<F>,
+    scalar_chip: &ScalarChip<F>,
+    evals: &Evals<F>,
+    expr: &Expression<F>,
+    scale: &mut F,
+    factors: &mut Vec<AssignedNative<F>>,
+) -> Result<(), Error> {
+    match expr {
+        Expression::Constant(k) => *scale *= k,
+        Expression::Negated(e) => {
+            *scale = -*scale;
+            add_factors(layouter, scalar_chip, evals, e, scale, factors)?
         }
         Expression::Scaled(e, k) => {
-            let val = eval_expression::<F>(layouter, scalar_chip, advice, fixed, instance, e)?;
-            scalar_chip.mul_by_constant(layouter, &val, *k)
+            *scale *= k;
+            add_factors(layouter, scalar_chip, evals, e, scale, factors)?
         }
+        Expression::Product(e1, e2) => {
+            add_factors(layouter, scalar_chip, evals, e1, scale, factors)?;
+            add_factors(layouter, scalar_chip, evals, e2, scale, factors)?;
+        }
+        Expression::Sum(..) | Expression::Selector(_) => {
+            let sum = eval_expression(
+                layouter,
+                scalar_chip,
+                evals.advice,
+                evals.fixed,
+                evals.instance,
+                expr,
+            )?;
+            match scalar_chip.as_constant(&sum) {
+                Some(k) => *scale *= k,
+                None => factors.push(sum),
+            }
+        }
+        Expression::Fixed(q) => factors.push(evals.fixed[q.index().unwrap()].clone()),
+        Expression::Advice(q) => factors.push(evals.advice[q.index.unwrap()].clone()),
+        Expression::Instance(q) => factors.push(evals.instance[q.index.unwrap()].clone()),
     }
+    Ok(())
 }
 
 pub(crate) fn compress_expressions<F: CircuitField>(

@@ -13,6 +13,9 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * `EccInstructions::point_from_coordinates_without_subgroup_check`, which creates a point from its coordinates without enforcing subgroup membership with constraints [#654](https://github.com/midnightntwrk/midnight-zk/pull/654)
 * `verifier::InCircuitKZGEngine`, the `KZGEngine`s whose KZG proofs can be verified in-circuit, bounding the KZG types of the in-circuit verifier [#644](https://github.com/midnightntwrk/midnight-zk/pull/644)
 ### Fixed
+* The in-circuit verifier asserts that the instances fit in the domain of the verified circuit, as the out-of-circuit verifier does; this changes the VKs of circuits that verify proofs in-circuit [#689](https://github.com/midnightntwrk/midnight-zk/pull/689)
+* `NativeGadget::leq_fixed` and `greater_than_fixed` return the correct result when the bound is the largest field element `p - 1`, where `bound + 1` used to wrap around to 0 [#689](https://github.com/midnightntwrk/midnight-zk/pull/689)
+* `BigUintGadget::assign_biguint` panics with a descriptive message on `nb_bits = 0` instead of underflowing [#689](https://github.com/midnightntwrk/midnight-zk/pull/689)
 * Foreign Weierstrass incomplete point addition asserts that its operands are not the identity and have different x-coordinates, so the chip is sound on curve points outside the prime-order subgroup; this changes the VKs of circuits that use the chip [#678](https://github.com/midnightntwrk/midnight-zk/pull/678)
 * Foreign Weierstrass `k_out_of_n_points` normalizes the table coordinates, so the selected points are well-formed [#668](https://github.com/midnightntwrk/midnight-zk/pull/668)
 * The foreign Weierstrass and Edwards ECC chips keep the dynamic-lookup tag counter in their config, so chips built with separate `new()` calls on the same config no longer reuse table tags [#658](https://github.com/midnightntwrk/midnight-zk/pull/658)
@@ -23,7 +26,9 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * `CircuitCurve::from_xy` for Jubjub checks the curve equation on both coordinates. [#654](https://github.com/midnightntwrk/midnight-zk/pull/654)
 * `VectorInstructions::trim_beginning` with `n_elems > M` and the `AssignedVector` comparisons with a constant longer than `M` (`is_equal_to_fixed`, `assert_equal_to_fixed` and their negations) panic with a descriptive message instead of underflowing. [#662](https://github.com/midnightntwrk/midnight-zk/pull/662)
 ### Changed
+* The native chip computes `add_and_double_mul` with a constant `x` as a linear combination of `y` and `z`, which changes the VKs of circuits where this happens [#865](https://github.com/midnightntwrk/midnight-zk/pull/865)
 * `CircuitCurve::from_xy` for BLS12-381 and BN256 relies on the curve-equation check of `CurveAffine::from_xy` instead of repeating it [#675](https://github.com/midnightntwrk/midnight-zk/pull/675)
+* The in-circuit verifier evaluates every sum in the verified circuit's expressions as a single linear combination, with constants folded into its coefficients, and multiplies up to four factors per row with the quartic gate, which changes the VKs of circuits that verify proofs in-circuit [#683](https://github.com/midnightntwrk/midnight-zk/pull/683)
 * The native chip computes `is_equal_to_fixed` in one row, enabling the arithmetic and quartic gates together [#682](https://github.com/midnightntwrk/midnight-zk/pull/682)
 * The native chip computes `pow` in base 4 with the quartic gate, using at most two rows per two bits of the exponent [#682](https://github.com/midnightntwrk/midnight-zk/pull/682)
 * The native chip computes `and` over several bits with the quartic gate, multiplying up to three more bits per row [#682](https://github.com/midnightntwrk/midnight-zk/pull/682)
@@ -44,6 +49,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * The in-circuit `Fflonk<PCS, LOG2_T_MAX>` requires `PCS: InterleavedCommit<F, LOG2_T_MAX>`, as `InterleavedCommit` of `midnight-proofs` now takes `LOG2_T_MAX` [#677](https://github.com/midnightntwrk/midnight-zk/pull/677)
 * BREAKING: `ForeignWeierstrassEccChip::configure` takes the `max_bit_len` of the range-check chip: the carries of the unified identity whose size the chip does not take are split as `c_lo + 2^s·c_hi`, with `c_hi` in a column after `cond`, and `nb_foreign_ecc_chip_columns` accounts for those columns. This changes the verifying keys of circuits using the chip [#660](https://github.com/midnightntwrk/midnight-zk/pull/660)
 * `FieldChip::as_public_input` asserts canonicity by comparing its packed limbs (the batches of the public input) with `m - 1` lexicographically, batch by batch, instead of comparing the bits of `x` with `m`. This changes the verifying keys of circuits with foreign-field public inputs [#660](https://github.com/midnightntwrk/midnight-zk/pull/660)
+* BREAKING: `ComparisonInstructions::leq_fixed` has no default implementation, as it cannot handle the wrap-around of `bound + 1` generically [#689](https://github.com/midnightntwrk/midnight-zk/pull/689)
 ### Removed
 * The `decomposition` module: `P2RDecompositionChip`, `Pow2RangeChip`, `CoreDecompositionInstructions` and `Pow2RangeInstructions`, replaced by `RangeCheckChip` [#631](https://github.com/midnightntwrk/midnight-zk/pull/631)
 * BREAKING: `ForeignEdwardsEccChip::as_known_constant`. Use `AssignmentInstructions::as_constant` [#655](https://github.com/midnightntwrk/midnight-zk/pull/655)

@@ -221,6 +221,16 @@ impl<Rel: Relation, PCS: MidnightPCS> MidnightPK<Rel, PCS> {
     /// Fails if the key was written under a commitment scheme other than
     /// `PCS`.
     pub fn read<R: io::Read>(reader: &mut R, format: SerdeFormat) -> io::Result<Self> {
+        Self::read_with_max_k(reader, format, None)
+    }
+
+    /// Like [`Self::read`], but fails if the key's `k` exceeds `max_k`. Use
+    /// it on untrusted input, as a large `k` can exhaust memory.
+    pub fn read_with_max_k<R: io::Read>(
+        reader: &mut R,
+        format: SerdeFormat,
+        max_k: Option<u32>,
+    ) -> io::Result<Self> {
         let mut byte = [0u8; 1];
         reader.read_exact(&mut byte)?;
         if byte[0] != PCS::ID {
@@ -233,9 +243,10 @@ impl<Rel: Relation, PCS: MidnightPCS> MidnightPK<Rel, PCS> {
 
         let relation = Rel::read_relation(reader)?;
 
-        let pk = ProvingKey::read::<R, MidnightCircuit<Rel>>(
+        let pk = ProvingKey::read_with_max_k::<R, MidnightCircuit<Rel>>(
             reader,
             format,
+            max_k,
             MidnightCircuit::new(
                 &relation,
                 Value::unknown(),

@@ -89,6 +89,15 @@ impl<F: CircuitField> NativeGadget<F> {
     fn bound(&self, x: &AssignedNative<F>) -> Option<BigUint> {
         self.constrained_cells.borrow().get(x).cloned()
     }
+
+    /// Returns the product of the given elements, up to four per row.
+    pub(crate) fn mul_many(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        xs: &[AssignedNative<F>],
+    ) -> Result<AssignedNative<F>, Error> {
+        self.native_chip.mul_many(layouter, xs)
+    }
 }
 
 impl<F: CircuitField> Instantiable<F> for AssignedByte<F> {
@@ -312,6 +321,20 @@ impl<F: CircuitField> ComparisonInstructions<F, AssignedNative<F>> for NativeGad
         bounded: &AssignedBounded<F>,
     ) -> Result<AssignedNative<F>, Error> {
         Ok(bounded.value.clone())
+    }
+
+    fn leq_fixed(
+        &self,
+        layouter: &mut impl Layouter<F>,
+        x: &AssignedBounded<F>,
+        bound: F,
+    ) -> Result<AssignedBit<F>, Error> {
+        // `bound + 1` would wrap around to 0 for `bound = p - 1`, and every `x` is at
+        // most `p - 1`.
+        if bound == -F::ONE {
+            return self.assign_fixed(layouter, true);
+        }
+        self.lower_than_fixed(layouter, x, bound + F::ONE)
     }
 
     /// Returns `true` iff the given assigned element is strictly lower than the
