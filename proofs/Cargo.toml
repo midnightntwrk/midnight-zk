@@ -83,5 +83,11 @@ committed-instances = []
 # Feature to expose internal prover types and benchmarking utilities.
 bench-internal = ["criterion"]
 
+# Accelerator hooks (`midnight_proofs::accel`): the prover offers its
+# BLS12-381 commitment MSMs, base-domain FFTs and quotient to an accelerator a
+# process installs. With none installed, the prover runs only the stock code
+# and proofs are byte-identical to a build without the feature.
+accel = []
+
 [lib]
 bench = false

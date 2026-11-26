@@ -316,12 +316,16 @@ where
     #[cfg(not(feature = "committed-instances"))]
     let nb_committed_instances: usize = 0;
 
-    let nu_poly = compute_nu_poly(pk, &trace);
-
-    // Construct the quotient polynomial h(X) = nu(X)/(X^n-1), split it into limbs,
-    // and commit to the limbs as one group
+    // Construct the quotient polynomial h(X) = nu(X)/(X^n-1) (an installed
+    // accelerator may compute it), split it into limbs, and commit to the limbs
+    // as one group
+    let stock = || quotient_coeffs(&pk.fft_domain, compute_nu_poly(pk, &trace));
+    #[cfg(feature = "accel")]
+    let h_coeffs = crate::accel::quotient(pk, &trace).unwrap_or_else(stock);
+    #[cfg(not(feature = "accel"))]
+    let h_coeffs = stock();
     let quotient_committed =
-        compute_h_poly::<F, PCS, T>(params, &pk.fft_domain, nu_poly, transcript)?;
+        commit_quotient::<F, PCS, T>(params, pk.fft_domain.domain(), h_coeffs, transcript)?;
 
     let ProverTrace {
         instance_polys,
@@ -404,6 +408,8 @@ where
     T: Transcript,
     ConcreteCircuit: Circuit<F>,
 {
+    #[cfg(feature = "accel")]
+    let _proof = crate::accel::ProofScope::begin();
     let trace = compute_trace(
         params,
         pk,
@@ -552,7 +558,7 @@ where
     Ok(advice_polys)
 }
 
-pub(super) fn compute_nu_poly<F: PrimeField, PCS: PolynomialCommitmentScheme<F>>(
+pub(crate) fn compute_nu_poly<F: PrimeField, PCS: PolynomialCommitmentScheme<F>>(
     pk: &ProvingKey<F, PCS>,
     trace: &ProverTrace<'_, F>,
 ) -> Polynomial<F, ExtendedLagrangeCoeff> {
@@ -615,6 +621,7 @@ pub(super) fn compute_nu_poly<F: PrimeField, PCS: PolynomialCommitmentScheme<F>>
 /// # Panics
 ///
 /// If `n < d(S - 1) + S`, as the limbs could not hold `h(X)`.
+#[cfg_attr(not(feature = "bench-internal"), allow(dead_code))]
 pub(crate) fn compute_h_poly<F, PCS, T>(
     params: &PCS::Parameters,
     fft_domain: &FftDomain<F>,
@@ -627,13 +634,41 @@ where
     PCS::Commitment: Hashable<T::Hash>,
     T: Transcript,
 {
-    let domain = fft_domain.domain();
+    commit_quotient::<F, PCS, T>(
+        params,
+        fft_domain.domain(),
+        quotient_coeffs(fft_domain, nu_poly),
+        transcript,
+    )
+}
+
+/// The coefficients of the quotient `h(X) = nu(X) / (X^n - 1)`, from its
+/// numerator on the extended coset.
+pub(crate) fn quotient_coeffs<F: PrimeField>(
+    fft_domain: &FftDomain<F>,
+    nu_poly: Polynomial<F, ExtendedLagrangeCoeff>,
+) -> Vec<F> {
     // Construct quotient polynomial h(X) = nu(X) / (X^n - 1) in evaluation form
-    let h_poly = domain.divide_by_vanishing_poly(nu_poly);
+    let h_poly = fft_domain.domain().divide_by_vanishing_poly(nu_poly);
 
     // Convert h(X) to coefficient form
-    let mut h_poly = fft_domain.extended_to_coeff(h_poly);
+    fft_domain.extended_to_coeff(h_poly)
+}
 
+/// Splits the coefficients of `h(X)` into blinded limbs and commits to them,
+/// as described in [`compute_h_poly`].
+fn commit_quotient<F, PCS, T>(
+    params: &PCS::Parameters,
+    domain: &EvaluationDomain<F>,
+    mut h_poly: Vec<F>,
+    transcript: &mut T,
+) -> Result<argument::prover::Committed<F, Coeff>, Error>
+where
+    F: PrimeField + Hashable<T::Hash>,
+    PCS: PolynomialCommitmentScheme<F>,
+    PCS::Commitment: Hashable<T::Hash>,
+    T: Transcript,
+{
     // Let n  := size of the evaluation domain.
     // Let cs := constrain system degree.
     // Let d  := quotient poly degree = cs - 1.
