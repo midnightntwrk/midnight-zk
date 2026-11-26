@@ -21,6 +21,9 @@ use crate::{
     utils::rational::Rational,
 };
 
+/// The number of random coefficients for each quotient limb.
+pub const QUOTIENT_LIMB_BLINDERS: usize = 3;
+
 /// A column type
 pub trait ColumnType:
     'static + Sized + Copy + std::fmt::Debug + PartialEq + Eq + Into<Any>
@@ -2163,17 +2166,25 @@ impl<F: Field> ConstraintSystem<F> {
         *[degree_without_lookup, degree].iter().max().unwrap()
     }
 
+    // (An upper bound on) the number of distinct queries a polynomial is
+    // queried at.
+    //
+    // Because the commitment scheme may combine polynomials with possibly different
+    // query points, it is taken as the union of every query, plus `prev`, `cur`
+    // and `next`, and one for the last-row-rotation in the permutation argument.
+    fn max_queries(&self) -> usize {
+        let rotations: std::collections::HashSet<Rotation> =
+            [Rotation::prev(), Rotation::cur(), Rotation::next()]
+                .into_iter()
+                .chain(self.advice_queries.iter().map(|&(_, r)| r))
+                .collect();
+        rotations.len() + 1
+    }
+
     /// Compute the number of blinding factors necessary to perfectly blind
     /// each of the prover's witness polynomials.
     pub fn blinding_factors(&self) -> usize {
-        // All of the prover's advice columns are evaluated at no more than
-        let factors = *self.num_advice_queries.iter().max().unwrap_or(&1);
-        // distinct points during gate checks.
-
-        // - The permutation argument witness polynomials are evaluated at most 3 times.
-        // - Each lookup argument has independent witness polynomials, and they are
-        //   evaluated at most 2 times.
-        let factors = std::cmp::max(3, factors);
+        let factors = self.max_queries();
 
         // Each trash argument gives away 1 evaluation of a linear combination of some
         // witness polynomials (the evaluation of the trash column).
@@ -2188,19 +2199,11 @@ impl<F: Field> ConstraintSystem<F> {
             factors + self.lookups.iter().map(|l| l.num_chunks(self.degree())).sum::<usize>();
 
         // Each polynomial is evaluated at most an additional time during
-        // multiopen (at x_3 to produce q_evals):
+        // multiopen (at x_3 to produce q_evals).
         let factors = factors + 1;
 
-        // h(x) is derived by the other evaluations so it does not reveal
-        // anything; in fact it does not even appear in the proof.
-
-        // Add an additional blinding factor as a slight defense against
-        // off-by-one errors.
-        let factors = factors + 1;
-
-        // Add an additional blinding factor as a security margin for opening
-        // the linearization polynomial in the multi-open argument
-        let factors = factors + 1;
+        // Add +1 as a defense against off-by-one errors, and +1 as a security margin.
+        let factors = factors + 2;
 
         if factors > i32::MAX as usize {
             panic!("Number of blinding factors overflowed max expected value");
@@ -2211,13 +2214,24 @@ impl<F: Field> ConstraintSystem<F> {
     /// Returns the minimum necessary rows that need to exist in order to
     /// account for e.g. blinding factors.
     pub fn minimum_rows(&self) -> usize {
-        self.blinding_factors() // m blinding factors
+        let rows = self.blinding_factors() // m blinding factors
             + 1 // for l_{-(m + 1)} (l_last)
             + 1 // for l_0 (just for extra breathing room for the permutation
                 // argument, to essentially force a separation in the
                 // permutation polynomial between the roles of l_last, l_0
                 // and the interstitial values.)
-            + 1 // for at least one row
+            + 1; // for at least one row
+
+        // The quotient h(X) has d(n - 1) coefficients, where d = degree - 1,
+        // and is split into d + 1 limbs of n - S coefficients each, with
+        // S = QUOTIENT_LIMB_BLINDERS. The limbs can hold all of h(X) iff
+        // (d + 1)(n - S) >= d(n - 1),
+        // that is, iff
+        // n >= d(S - 1) + S.
+        let d = self.degree() - 1;
+        let quotient_rows = d * (QUOTIENT_LIMB_BLINDERS - 1) + QUOTIENT_LIMB_BLINDERS;
+
+        rows.max(quotient_rows)
     }
 
     /// Returns number of fixed columns

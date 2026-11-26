@@ -15,7 +15,7 @@ use super::{
     Error, ProvingKey,
     circuit::{
         Advice, Any, Assignment, Circuit, Column, ConstraintSystem, Fixed, FloorPlanner, Instance,
-        Selector,
+        QUOTIENT_LIMB_BLINDERS, Selector,
     },
     logup,
 };
@@ -605,15 +605,16 @@ pub(super) fn compute_nu_poly<F: PrimeField, PCS: PolynomialCommitmentScheme<F>>
 /// Computes the quotient polynomial `h(X) = nu(X) / (X^n - 1)` and commits to
 /// it, writing the commitment to the transcript.
 ///
-/// `h(X)` is split into `quotient_poly_degree + 1` limbs `h_k(X)` of `n-2`
-/// coefficients, with `h(X) = Σ_k X^{k(n-2)} h_k(X)`, so that each can be
-/// committed with an SRS of size `n` after 2 terms for blinding. The blinded
-/// limbs are committed to as one group, labeled `QuotientPiece(0)`,
-/// `QuotientPiece(1)`, ..., which is returned in coefficient form.
+/// `h(X)` is split into `d + 1` limbs `h_k(X)` of `n - S` coefficients, with
+/// `d = quotient_poly_degree`, `S = QUOTIENT_LIMB_BLINDERS` and
+/// `h(X) = Σ_k X^{k(n-S)} h_k(X)`, so that each can be committed with an SRS of
+/// size `n` after `S` terms for blinding. The blinded limbs are committed to as
+/// one group, labeled `QuotientPiece(0)`, `QuotientPiece(1)`, ..., which is
+/// returned in coefficient form.
 ///
 /// # Panics
 ///
-/// If `n < quotient_poly_degree + 2`, as the limbs could not hold `h(X)`.
+/// If `n < d(S - 1) + S`, as the limbs could not hold `h(X)`.
 pub(crate) fn compute_h_poly<F, PCS, T>(
     params: &PCS::Parameters,
     fft_domain: &FftDomain<F>,
@@ -633,16 +634,17 @@ where
     // Convert h(X) to coefficient form
     let mut h_poly = fft_domain.extended_to_coeff(h_poly);
 
-    // Let n := size of evaluation domain
-    // Let d := degree of constraint system
-    // Hence, the degree of the quotient poly is: d*(n-1) - n = (d-1)*(n-1) - 1,
-    // and a domain of size (d-1)*(n-1) suffices to correctly represent it
+    // Let n  := size of the evaluation domain.
+    // Let cs := constrain system degree.
+    // Let d  := quotient poly degree = cs - 1.
+    // Hence, the degree of the quotient poly h(X) is cs*(n-1) - n = d*(n-1) - 1,
+    // and a domain of size d*(n-1) suffices to correctly represent it.
     h_poly.truncate((domain.n - 1) as usize * domain.get_quotient_poly_degree());
 
     // Split h(X) up into limbs and add inter-limb blinding so that
     // individual limb commitments and evaluations do not leak information
     // about h(X).
-    let limb_len = (domain.n - 2) as usize;
+    let limb_len = domain.n as usize - QUOTIENT_LIMB_BLINDERS;
     let nb_limbs = domain.get_quotient_poly_degree() + 1;
     assert!(
         nb_limbs * limb_len >= h_poly.len(),
@@ -666,22 +668,25 @@ where
     argument::prover::Committed::commit::<PCS, T, _>(params, h_limbs, Polynomial::clone, transcript)
 }
 
-/// Blinds the limbs `h_k(X)` of `h(X) = Σ_k X^{k(n-2)} h_k(X)`, of `n-2`
-/// coefficients each, without changing `h(X)`: each boundary between two limbs
-/// gets two random `t`, `t'`, added as `t X^{n-2} + t' X^{n-1}` to the lower
-/// limb and subtracted as `t + t' X` from the upper one.
+/// Blinds the limbs `h_k(X)` of `h(X) = Σ_k X^{k(n-S)} h_k(X)`, of `n - S`
+/// coefficients each, `S = QUOTIENT_LIMB_BLINDERS`, without changing `h(X)`:
+/// each boundary between two limbs gets `S` random `t_0, ..., t_{S-1}`, added
+/// as `Σ_i t_i X^{n-S+i}` to the lower limb and subtracted as `Σ_i t_i X^i`
+/// from the upper one. The last limb is padded with `S` zeros.
 fn blind_quotient_limbs<F: PrimeField>(quotient_limbs: &mut [Vec<F>]) {
+    const S: usize = QUOTIENT_LIMB_BLINDERS;
     let nr_limbs = quotient_limbs.len();
     assert!(nr_limbs >= 2);
 
     for i in 1..nr_limbs {
-        let (t, t_prime) = (F::random(OsRng), F::random(OsRng));
-        quotient_limbs[i - 1].extend([t, t_prime]);
-        quotient_limbs[i][0] -= t;
-        quotient_limbs[i][1] -= t_prime;
+        let ts: [F; S] = std::array::from_fn(|_| F::random(OsRng));
+        quotient_limbs[i - 1].extend(ts);
+        for (coeff, t) in quotient_limbs[i].iter_mut().zip(ts) {
+            *coeff -= t;
+        }
     }
 
-    quotient_limbs[nr_limbs - 1].extend([F::ZERO; 2]);
+    quotient_limbs[nr_limbs - 1].extend([F::ZERO; S]);
 }
 
 pub(super) fn write_instance_evals_to_transcript<F, PCS, T>(
