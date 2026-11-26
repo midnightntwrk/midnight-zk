@@ -66,7 +66,8 @@ pub struct ParamsFflonkKZG<E: Engine, const LOG2_T_MAX: u32> {
 ///   of size `n`: the Lagrange basis built from the strided monomials.
 ///
 /// - `LagrangeDelta`: `[s^i Σ_{k ≥ j} L_k(s^t)]`, the suffix sums of the
-///   `Lagrange` bases, as `g_lagrange_delta` is of `g_lagrange`.
+///   `Lagrange` bases, as the `LagrangeDelta` bases of [`ParamsKZG`] are of its
+///   Lagrange SRS.
 ///
 /// - `LagrangeDoubleDelta`: `[s^i Σ_{k ≥ j} (k - j + 1) L_k(s^t)]`, the suffix
 ///   sums of the `LagrangeDelta` bases.

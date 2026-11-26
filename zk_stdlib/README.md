@@ -115,7 +115,9 @@ let relation = ShaPreImageCircuit;
 // `optimal_k` derives the smallest `k` that fits the circuit.
 let k = midnight_zk_stdlib::optimal_k(&relation);
 
-// Load an SRS for the given circuit size.
+// Load an SRS for the given circuit size. The first proof builds the delta
+// bases of the SRS, unless `precompute_delta_bases` stored them next to it:
+// `load_srs` reads them from there.
 let srs = load_srs::<KZG>(SrsSource::Filecoin, k);
 let vk = midnight_zk_stdlib::setup_vk::<_, KZG>(&srs, &relation);
 let pk = midnight_zk_stdlib::setup_pk(&relation, &vk);

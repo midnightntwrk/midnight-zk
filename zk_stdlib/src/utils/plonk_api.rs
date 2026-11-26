@@ -16,14 +16,15 @@
 #[cfg(test)]
 use std::time::Instant;
 use std::{
-    env,
+    env, fs,
     fs::File,
-    io::{BufReader, Read, Write},
+    io,
+    io::{BufReader, BufWriter, Read, Write},
     marker::PhantomData,
     path::Path,
 };
 
-use midnight_curves::Bls12;
+use midnight_curves::{Bls12, G1Affine};
 use midnight_proofs::{
     plonk::{
         Circuit, Error, ProvingKey, VerifyingKey, create_proof, keygen_pk, keygen_vk, prepare,
@@ -259,12 +260,125 @@ pub enum SrsSource {
 
 /// Loads an SRS (over BLS12-381) for circuits of size `2^k` under the
 /// commitment scheme `PCS`.
+///
+/// Under [`KZG`], the prover commits with the delta bases of the SRS. They are
+/// read from `<SRS file>.delta-bases` if [`precompute_delta_bases`] stored
+/// them there. Otherwise, the first proof builds them, and a hint on how to
+/// store them is printed.
+///
+/// # Panics
+///
+/// If the stored delta bases are not those of the SRS.
 pub fn load_srs<PCS: MidnightPCS>(source: SrsSource, k: u32) -> PCS::Parameters {
-    match source {
+    let mut params = match source {
         SrsSource::Filecoin => filecoin_srs::<PCS>(k),
         SrsSource::Midnight => midnight_srs::<PCS>(k),
+    };
+    if PCS::USES_SRS_DELTA_BASES {
+        let j = PCS::srs_k(k);
+        let path = delta_bases_file(&source, j);
+        let stored = read_delta_bases(&mut params, &path).unwrap_or_else(|e| {
+            panic!(
+                "\nFailed to read the delta bases stored at {path}: {e}. Delete that file, or \
+                 store them again with `precompute_delta_bases`.\n"
+            )
+        });
+        if !stored {
+            eprintln!(
+                "hint: the delta bases of the SRS are not stored at {path}, so the first proof \
+                 will build them. To make later runs faster, store them once with \
+                 `precompute_delta_bases` (make sure you are under the directory `zk_stdlib/` \
+                 first):\n\n    \
+                 cargo run --release --example precompute_delta_bases -- {} {j}\n",
+                source.name()
+            );
+        }
     }
-    .into()
+    params.into()
+}
+
+/// Builds the delta bases of the SRS (over BLS12-381) for circuits of size
+/// `2^k` under [`KZG`], and stores them next to the SRS, at
+/// `<SRS file>.delta-bases`. From then on, [`load_srs`] reads them instead of
+/// having the first proof build them.
+///
+/// The stored bases are trusted as much as the SRS itself. Returns the path
+/// of the file they are stored at.
+pub fn precompute_delta_bases(source: SrsSource, k: u32) -> String {
+    let params = match source {
+        SrsSource::Filecoin => filecoin_srs::<KZG>(k),
+        SrsSource::Midnight => midnight_srs::<KZG>(k),
+    };
+    let path = delta_bases_file(&source, k);
+    write_delta_bases(&params, &path)
+        .unwrap_or_else(|e| panic!("Failed to store the delta bases at {path}: {e}"));
+    path
+}
+
+impl SrsSource {
+    /// The name of the source, as the `precompute_delta_bases` example takes
+    /// it.
+    fn name(&self) -> &'static str {
+        match self {
+            SrsSource::Filecoin => "filecoin",
+            SrsSource::Midnight => "midnight",
+        }
+    }
+}
+
+/// The file of the SRS of size `2^j` from `source`, in `$SRS_DIR`.
+fn srs_file(source: &SrsSource, j: u32) -> String {
+    let srs_dir = env::var("SRS_DIR").unwrap_or("./examples/assets".into());
+    match source {
+        SrsSource::Filecoin => format!("{srs_dir}/bls_filecoin_2p{j}"),
+        SrsSource::Midnight => format!("{srs_dir}/midnight-srs-2p{j}"),
+    }
+}
+
+/// The file of the delta bases of the SRS of size `2^j` from `source`, next to
+/// the file of the SRS.
+fn delta_bases_file(source: &SrsSource, j: u32) -> String {
+    format!("{}.delta-bases", srs_file(source, j))
+}
+
+/// Reads the delta bases of `params` from `path`, if that file exists. Returns
+/// whether it does.
+fn read_delta_bases(params: &mut ParamsKZG<Bls12>, path: &str) -> io::Result<bool> {
+    if !Path::new(path).exists() {
+        return Ok(false);
+    }
+    let file = File::open(path)?;
+
+    // Reading with `RawBytesUnchecked` panics on a truncated file, so its size
+    // is checked first: `k`, then two bases of `2^k` uncompressed points.
+    let expected_len = 4 + (2 << params.max_k()) * G1Affine::uncompressed_size() as u64;
+    let len = file.metadata()?.len();
+    if len != expected_len {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("the file has {len} bytes, expected {expected_len}"),
+        ));
+    }
+
+    params.read_delta_bases(&mut BufReader::new(file), SerdeFormat::RawBytesUnchecked)?;
+    Ok(true)
+}
+
+/// Writes the delta bases of `params` to `path`, building them if they are
+/// missing.
+fn write_delta_bases(params: &ParamsKZG<Bls12>, path: &str) -> io::Result<()> {
+    // The bases are written to a temporary file first, so that `path` never
+    // holds half-written bases.
+    let tmp_path = format!("{path}.{}.tmp", std::process::id());
+    let write = || {
+        let mut writer = BufWriter::new(File::create(&tmp_path)?);
+        params.write_delta_bases(&mut writer, SerdeFormat::RawBytesUnchecked)?;
+        writer.flush()?;
+        fs::rename(&tmp_path, path)
+    };
+    write().inspect_err(|_| {
+        let _ = fs::remove_file(&tmp_path);
+    })
 }
 
 /// Loads Filecoin's production SRS (over BLS12-381) for the given relation.
@@ -285,8 +399,7 @@ pub fn srs_for_test<R: Relation>(relation: &R, k: Option<u32>) -> ParamsKZG<Bls1
 /// <https://github.com/midnightntwrk/midnight-trusted-setup>
 fn midnight_srs<PCS: MidnightPCS>(k: u32) -> ParamsKZG<Bls12> {
     let j = PCS::srs_k(k);
-    let srs_dir = env::var("SRS_DIR").unwrap_or("./examples/assets".into());
-    let srs_path = format!("{srs_dir}/midnight-srs-2p{j}");
+    let srs_path = srs_file(&SrsSource::Midnight, j);
 
     let params_fs = File::open(Path::new(&srs_path)).unwrap_or_else(|_| {
         panic!(
@@ -317,13 +430,13 @@ fn filecoin_srs<PCS: MidnightPCS>(k: u32) -> ParamsKZG<Bls12> {
 
     let srs_dir = env::var("SRS_DIR").unwrap_or("./examples/assets".into());
 
-    let srs_path = format!("{srs_dir}/bls_filecoin_2p{j:?}");
+    let srs_path = srs_file(&SrsSource::Filecoin, j);
     let mut fetching_path = srs_path.clone();
 
     let downsize = !Path::new(fetching_path.as_str()).exists();
 
     if downsize {
-        fetching_path = format!("{srs_dir}/bls_filecoin_2p19")
+        fetching_path = srs_file(&SrsSource::Filecoin, 19)
     }
 
     let params_fs = File::open(Path::new(&fetching_path))
@@ -356,4 +469,69 @@ or, if you don't trust the source, download it from IPFS and parse it (this migh
     }
 
     params
+}
+
+#[cfg(test)]
+mod tests {
+    use midnight_curves::Fq;
+    use midnight_proofs::poly::{
+        EvaluationDomain, PolynomialLabel, commitment::PolynomialCommitmentScheme,
+    };
+    use rand::rngs::OsRng;
+
+    use super::*;
+
+    #[test]
+    fn test_stored_delta_bases() {
+        const K: u32 = 4;
+
+        let dir = env::temp_dir().join(format!("midnight-zk-delta-bases-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("srs.delta-bases").to_str().unwrap().to_string();
+
+        // The SRS, as read from its file: without its delta bases.
+        let params = ParamsKZG::<Bls12>::unsafe_setup(K, OsRng);
+        let mut srs = Vec::new();
+        params.write(&mut srs, SerdeFormat::RawBytesUnchecked).unwrap();
+        let read_srs =
+            || ParamsKZG::<Bls12>::read(&mut &srs[..], SerdeFormat::RawBytesUnchecked).unwrap();
+
+        // Nothing is read while the file is missing.
+        let mut loaded = read_srs();
+        assert!(!read_delta_bases(&mut loaded, &path).unwrap());
+        assert!(!loaded.has_delta_bases());
+
+        // Once stored, the bases are read, and they are those built on the
+        // fly: both commit to the same point.
+        write_delta_bases(&params, &path).unwrap();
+        assert_eq!(fs::read_dir(&dir).unwrap().count(), 1);
+        assert!(read_delta_bases(&mut loaded, &path).unwrap());
+        assert!(loaded.has_delta_bases());
+
+        let mut poly = EvaluationDomain::<Fq>::new(1, K).empty_lagrange();
+        poly.iter_mut().enumerate().for_each(|(i, v)| *v = Fq::from((i * i) as u64));
+        let commit = |params: &ParamsKZG<Bls12>| {
+            (
+                KZG::commit(params, &poly.to_delta(), PolynomialLabel::NoLabel),
+                KZG::commit(params, &poly.to_double_delta(), PolynomialLabel::NoLabel),
+            )
+        };
+        assert_eq!(commit(&loaded), commit(&read_srs()));
+
+        // The bases of another SRS are rejected.
+        let mut other = ParamsKZG::<Bls12>::unsafe_setup(K, OsRng);
+        let err = read_delta_bases(&mut other, &path).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert!(!other.has_delta_bases());
+
+        // A truncated file is an error, not a panic.
+        let bytes = fs::read(&path).unwrap();
+        fs::write(&path, &bytes[..bytes.len() - 1]).unwrap();
+        let mut loaded = read_srs();
+        let err = read_delta_bases(&mut loaded, &path).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+        assert!(!loaded.has_delta_bases());
+
+        fs::remove_dir_all(&dir).unwrap();
+    }
 }
