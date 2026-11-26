@@ -1,4 +1,4 @@
-use std::{fmt::Debug, io};
+use std::{fmt::Debug, io, sync::OnceLock};
 
 use ff::{Field, PrimeField};
 use group::{Curve, Group, GroupEncoding, prime::PrimeCurveAffine};
@@ -18,22 +18,47 @@ use crate::{
 };
 
 /// These are the public parameters for the polynomial commitment scheme.
+///
+/// The bases of the `LagrangeDelta` and `LagrangeDoubleDelta` representations
+/// only depend on the Lagrange SRS, and are not part of the parameters written
+/// by [`Self::write`]. They are built by the first commitment in one of these
+/// representations, or ahead of it by [`Self::precompute_delta_bases`].
 #[derive(Debug, Clone)]
 pub struct ParamsKZG<E: Engine> {
     pub(crate) g: Vec<E::G1Affine>,
     pub(crate) g_lagrange: Vec<E::G1Affine>,
-    /// Suffix-sum of `g_lagrange`:
-    /// `g_lagrange_delta[i] = sum_{j=i}^{n-1} g_lagrange[j]`.
-    pub(crate) g_lagrange_delta: Vec<E::G1Affine>,
-    /// Suffix-sum of `g_lagrange_delta`:
-    /// `g_lagrange_double_delta[i] = sum_{j=i}^{n-1} g_lagrange_delta[j]`.
-    /// Used as the SRS for the `LagrangeDoubleDelta` basis. Same derivation
-    /// as `g_lagrange_delta`, applied a second time:
-    /// `sum_j a_j · L_j = sum_i c_i · g_lagrange_double_delta[i]`,
-    /// where `c_i = b_i - b_{i-1}` and `b_i = a_i - a_{i-1}`.
-    pub(crate) g_lagrange_double_delta: Vec<E::G1Affine>,
+    /// The bases of the `LagrangeDelta` and `LagrangeDoubleDelta`
+    /// representations, derived from `g_lagrange`. Empty until they are built.
+    pub(crate) delta_bases: OnceLock<DeltaBases<E::G1Affine>>,
     pub(crate) g2: E::G2,
     pub(crate) s_g2: E::G2,
+}
+
+/// The bases of the commit-only delta representations of a Lagrange SRS.
+#[derive(Debug, Clone)]
+pub(crate) struct DeltaBases<C> {
+    /// Suffix-sum of the Lagrange SRS:
+    /// `delta[i] = sum_{j=i}^{n-1} g_lagrange[j]`.
+    delta: Vec<C>,
+    /// Suffix-sum of `delta`:
+    /// `double_delta[i] = sum_{j=i}^{n-1} delta[j]`.
+    /// Used as the SRS for the `LagrangeDoubleDelta` basis. Same derivation
+    /// as `delta`, applied a second time:
+    /// `sum_j a_j · L_j = sum_i c_i · double_delta[i]`,
+    /// where `c_i = b_i - b_{i-1}` and `b_i = a_i - a_{i-1}`.
+    double_delta: Vec<C>,
+}
+
+impl<C: CurveAffine> DeltaBases<C> {
+    /// Builds the delta bases of the Lagrange SRS `g_lagrange`.
+    fn new(g_lagrange: &[C]) -> Self {
+        let delta = suffix_sum(g_lagrange);
+        let double_delta = suffix_sum(&delta);
+        Self {
+            delta,
+            double_delta,
+        }
+    }
 }
 
 /// Builds the suffix-sum of an affine SRS: `out[i] = sum_{j=i}^{n-1} input[j]`.
@@ -112,16 +137,37 @@ where
     E::G1Affine: CurveAffine,
 {
     /// Return the SRS bases corresponding to the polynomial representation `B`.
+    ///
+    /// The `LagrangeDelta` and `LagrangeDoubleDelta` bases are built here if
+    /// they are missing: see [`ParamsKZG`].
     pub fn bases<B: PolynomialRepresentation>(&self) -> &[E::G1Affine] {
         match B::BASIS {
             PolynomialBasis::Coeff => &self.g,
             PolynomialBasis::Lagrange => &self.g_lagrange,
-            PolynomialBasis::LagrangeDelta => &self.g_lagrange_delta,
-            PolynomialBasis::LagrangeDoubleDelta => &self.g_lagrange_double_delta,
+            PolynomialBasis::LagrangeDelta => &self.delta_bases().delta,
+            PolynomialBasis::LagrangeDoubleDelta => &self.delta_bases().double_delta,
             PolynomialBasis::ExtendedLagrange => {
                 unimplemented!("KZG does not support extended Lagrange bases")
             }
         }
+    }
+
+    /// The delta bases, built if they are missing.
+    fn delta_bases(&self) -> &DeltaBases<E::G1Affine> {
+        self.delta_bases.get_or_init(|| DeltaBases::new(&self.g_lagrange))
+    }
+
+    /// Builds the `LagrangeDelta` and `LagrangeDoubleDelta` bases, unless they
+    /// are there already. Otherwise, the first commitment in one of these
+    /// representations builds them.
+    pub fn precompute_delta_bases(&self) {
+        self.delta_bases();
+    }
+
+    /// Whether the `LagrangeDelta` and `LagrangeDoubleDelta` bases have been
+    /// built already.
+    pub fn has_delta_bases(&self) -> bool {
+        self.delta_bases.get().is_some()
     }
 
     /// Returns the size of the SRS, expressed as the exponent `k` such that it
@@ -131,7 +177,8 @@ where
         self.g_lagrange.len().ilog2()
     }
 
-    /// Downsize the current parameters to match a smaller `k`.
+    /// Downsize the current parameters to match a smaller `k`. The delta bases
+    /// depend on the size, so they are dropped, to be built again on first use.
     pub fn downsize(&mut self, new_k: u32) {
         if self.max_k() == new_k {
             return;
@@ -141,8 +188,7 @@ where
         assert!(n < self.g_lagrange.len());
         self.g.truncate(n);
         self.g_lagrange = g_to_lagrange(&self.g, new_k);
-        self.g_lagrange_delta = suffix_sum(&self.g_lagrange);
-        self.g_lagrange_double_delta = suffix_sum(&self.g_lagrange_delta);
+        self.delta_bases = OnceLock::new();
     }
 
     /// Initializes parameters for the curve, draws toxic secret from given rng.
@@ -189,17 +235,13 @@ where
         let mut g_lagrange_affine = vec![E::G1Affine::identity(); n as usize];
         E::G1::batch_normalize(&g_lagrange, &mut g_lagrange_affine);
 
-        let g_lagrange_delta = suffix_sum(&g_lagrange_affine);
-        let g_lagrange_double_delta = suffix_sum(&g_lagrange_delta);
-
         let g2 = E::G2::generator();
         let s_g2 = g2 * s;
 
         Self {
             g: g_affine,
             g_lagrange: g_lagrange_affine,
-            g_lagrange_delta,
-            g_lagrange_double_delta,
+            delta_bases: OnceLock::new(),
             g2,
             s_g2,
         }
@@ -225,13 +267,10 @@ where
             }
             None => g_to_lagrange(&g_affine, k),
         };
-        let g_lagrange_delta = suffix_sum(&g_lagrange_affine);
-        let g_lagrange_double_delta = suffix_sum(&g_lagrange_delta);
         Self {
             g: g_affine,
             g_lagrange: g_lagrange_affine,
-            g_lagrange_delta,
-            g_lagrange_double_delta,
+            delta_bases: OnceLock::new(),
             g2,
             s_g2,
         }
@@ -307,13 +346,10 @@ where
         let g2 = E::G2::read(reader, format)?;
         let s_g2 = E::G2::read(reader, format)?;
 
-        let g_lagrange_delta = suffix_sum(&g_lagrange);
-        let g_lagrange_double_delta = suffix_sum(&g_lagrange_delta);
         Ok(Self {
             g,
             g_lagrange,
-            g_lagrange_delta,
-            g_lagrange_double_delta,
+            delta_bases: OnceLock::new(),
             g2,
             s_g2,
         })
@@ -515,6 +551,50 @@ mod test {
         assert_eq!(params0.g_lagrange, params1.g_lagrange);
         assert_eq!(params0.g2, params1.g2);
         assert_eq!(params0.s_g2, params1.s_g2);
+    }
+
+    #[test]
+    fn test_delta_bases_are_built_on_first_use() {
+        const K: u32 = 6;
+
+        use midnight_curves::{Bls12, Fq};
+
+        use crate::poly::EvaluationDomain;
+
+        let commit_in_all_bases = |params: &ParamsKZG<Bls12>, k: u32| {
+            let mut a = EvaluationDomain::new(1, k).empty_lagrange();
+            for (i, a) in a.iter_mut().enumerate() {
+                *a = Fq::from((i * i) as u64);
+            }
+            let label = PolynomialLabel::NoLabel;
+            let lagrange = KZGCommitmentScheme::commit(params, &a, label.clone());
+            assert!(!params.has_delta_bases());
+            let delta = KZGCommitmentScheme::commit(params, &a.to_delta(), label.clone());
+            assert!(params.has_delta_bases());
+            let double_delta = KZGCommitmentScheme::commit(params, &a.to_double_delta(), label);
+            assert_eq!(lagrange, delta);
+            assert_eq!(lagrange, double_delta);
+        };
+
+        // Neither the setup nor a commitment in the Lagrange basis builds the
+        // delta bases: the first commitment in a delta basis does.
+        let mut params: ParamsKZG<Bls12> = ParamsKZG::unsafe_setup(K, OsRng);
+        assert!(!params.has_delta_bases());
+        commit_in_all_bases(&params, K);
+
+        // Downsizing drops them, and those of the smaller SRS are built next.
+        params.downsize(K - 1);
+        assert!(!params.has_delta_bases());
+        commit_in_all_bases(&params, K - 1);
+
+        // Downsizing to the same size keeps them.
+        params.downsize(K - 1);
+        assert!(params.has_delta_bases());
+
+        // They can be built ahead of the first commitment.
+        let params: ParamsKZG<Bls12> = ParamsKZG::unsafe_setup(K, OsRng);
+        params.precompute_delta_bases();
+        assert!(params.has_delta_bases());
     }
 
     #[test]

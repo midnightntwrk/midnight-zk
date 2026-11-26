@@ -276,7 +276,8 @@ impl PolynomialRepresentation for LagrangeDeltaCoeff {
 /// `c_0 = a_0`, `c_1 = a_1 - 2·a_0`, `c_i = a_i - 2·a_{i-1} + a_{i-2}` for
 /// `i >= 2`, where `(a_i)` are the original Lagrange coefficients.
 /// Equivalentto applying the `LagrangeDelta` transform twice.
-/// The corresponding SRS bases are the suffix sums of `g_lagrange_delta`.
+/// The corresponding SRS bases are the suffix sums of the `LagrangeDelta`
+/// ones.
 ///
 /// Like `LagrangeDeltaCoeff`, this is a commit-only basis: it turns linearly
 /// varying runs in `a` (constant first differences) into zeros in `c`, which
