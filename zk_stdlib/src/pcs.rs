@@ -59,6 +59,12 @@ pub trait MidnightPCS:
     /// `LOG2_T_MAX` for [`FflonkKZG`].
     const ID: u8;
 
+    /// Whether the prover commits with the delta bases of the KZG SRS, those
+    /// that [`load_srs`](crate::utils::plonk_api::load_srs) reads from disk
+    /// when they are stored there. [`FflonkKZG`] commits with bases of its
+    /// own.
+    const USES_SRS_DELTA_BASES: bool;
+
     /// The size of the SRS for circuits of size `2^k`, as the exponent `j`
     /// such that the SRS has `2^j` points. It is the inverse of
     /// [`PolynomialCommitmentScheme::max_k`].
@@ -73,6 +79,7 @@ impl sealed::Sealed for FflonkKZG<4> {}
 
 impl MidnightPCS for KZG {
     const ID: u8 = 0;
+    const USES_SRS_DELTA_BASES: bool = true;
 
     fn srs_k(k: u32) -> u32 {
         k
@@ -84,6 +91,7 @@ where
     Self: sealed::Sealed,
 {
     const ID: u8 = LOG2_T_MAX as u8;
+    const USES_SRS_DELTA_BASES: bool = false;
 
     fn srs_k(k: u32) -> u32 {
         k + LOG2_T_MAX
