@@ -7,6 +7,8 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * PATCH: Incremented on minor changes and bug fixes that do not alter the VKs
 
 ## [Unreleased]
+
+## [8.0.0-rc.2]
 ### Added
 * `AssertionInstructions::assert_not_equal_to_many_fixed`, which asserts that an element differs from all the given constants; the native chip checks two constants per row, or three per row if they sum to zero, and the foreign Weierstrass chip uses it to compare x-coordinates [#682](https://github.com/midnightntwrk/midnight-zk/pull/682)
 * `Accumulator::is_collapsed_with` and `Msm::is_collapsed_with`, which check that an accumulator or MSM has the shape `assign_collapsed` assigns

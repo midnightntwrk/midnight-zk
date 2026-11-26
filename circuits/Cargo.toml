@@ -1,6 +1,6 @@
 [package]
 name = "midnight-circuits"
-version = "8.0.0-rc.1"
+version = "8.0.0-rc.2"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -16,8 +16,8 @@ group = { workspace = true }
 ff = { workspace = true }
 rustc-hash = "2"
 indexmap = "2"
-midnight-curves = "0.4.0-rc.1"
-midnight-proofs = { version = "0.9.0-rc.1", default-features = false, features = [
+midnight-curves = "0.4.0-rc.2"
+midnight-proofs = { version = "0.9.0-rc.2", default-features = false, features = [
     "circuit-params",
     "committed-instances",
 ] }
@@ -47,7 +47,7 @@ itertools = "0.15"
 dhat = "0.3"
 
 [target.'cfg(ci_build)'.dependencies]
-midnight-curves = { version = "0.4.0-rc.1", features = ["portable"] }
+midnight-curves = { version = "0.4.0-rc.2", features = ["portable"] }
 
 [features]
 default = []

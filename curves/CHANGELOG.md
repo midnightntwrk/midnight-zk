@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://book.async.rs/overview/stability-guarantees.html).
 
 ## [Unreleased]
+
+## 0.4.0-rc.2
 ### Added
 * `msm::msm_pippenger`, the MSM used for polynomial commitments: a Pippenger over blst-style tiles of windows × chunks of the terms, with batched affine buckets (gnark's) from window 7 and XYZZ buckets below, and per-arch window tables (x86-64, aarch64); a sparse input (more zero scalars than non-zero) is compacted first [#594](https://github.com/midnightntwrk/midnight-zk/pull/594)
 * `FieldInto`: field arithmetic written into a destination (blst-style); every method has a default, and BLS12-381 `Fp` overrides them with direct blst calls [#594](https://github.com/midnightntwrk/midnight-zk/pull/594)

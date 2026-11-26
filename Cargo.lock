@@ -1109,7 +1109,7 @@ dependencies = [
 
 [[package]]
 name = "midnight-circuits"
-version = "8.0.0-rc.1"
+version = "8.0.0-rc.2"
 dependencies = [
  "base64",
  "criterion",
@@ -1137,7 +1137,7 @@ dependencies = [
 
 [[package]]
 name = "midnight-curves"
-version = "0.4.0-rc.1"
+version = "0.4.0-rc.2"
 dependencies = [
  "ark-std",
  "bitvec",
@@ -1167,7 +1167,7 @@ dependencies = [
 
 [[package]]
 name = "midnight-proofs"
-version = "0.9.0-rc.1"
+version = "0.9.0-rc.2"
 dependencies = [
  "assert_matches",
  "blake2b_simd",
@@ -1196,7 +1196,7 @@ dependencies = [
 
 [[package]]
 name = "midnight-zk-stdlib"
-version = "3.0.0-rc.1"
+version = "3.0.0-rc.2"
 dependencies = [
  "base64",
  "bellman",
