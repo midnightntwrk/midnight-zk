@@ -9,7 +9,6 @@ use core::{
 };
 use std::{
     convert::TryInto,
-    io::Read,
     ops::{Deref, DerefMut},
 };
 
@@ -24,10 +23,7 @@ use rand_core::RngCore;
 use subtle::{Choice, ConditionallySelectable, ConstantTimeEq, CtOption};
 
 use super::{Bls12, Fq, G1Affine, Gt, fp::Fp, fp2::Fp2};
-use crate::{
-    curve::{Coordinates, CurveAffine, CurveExt},
-    serde_traits::SerdeObject,
-};
+use crate::curve::{Coordinates, CurveAffine, CurveExt};
 
 /// This is an element of $\mathbb{G}_2$ represented in the affine coordinate
 /// space. It is ideal to keep elements in this representation to reduce memory
@@ -39,6 +35,8 @@ pub struct G2Affine(pub(crate) blst_p2_affine);
 
 const COMPRESSED_SIZE: usize = 96;
 const UNCOMPRESSED_SIZE: usize = 192;
+/// The bit of the first byte of an encoding that is set in compressed form.
+const COMPRESSION_FLAG: u8 = 0x80;
 
 impl fmt::Debug for G2Affine {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -363,17 +361,21 @@ impl G2Affine {
             .and_then(|p| CtOption::new(p, p.is_torsion_free()))
     }
 
-    /// Attempts to deserialize an uncompressed element, not checking if the
-    /// element is on the curve and not checking if it is in the correct
-    /// subgroup.
+    /// Attempts to deserialize an uncompressed element. No check on the point
+    /// is guaranteed, although some may still be performed: blst verifies the
+    /// encoding and the curve equation, and the subgroup is not checked.
     ///
     /// **This is dangerous to call unless you trust the bytes you are reading;
     /// otherwise, API invariants may be broken.** Please consider using
     /// `from_uncompressed()` instead.
     fn from_uncompressed_unchecked(bytes: &[u8; UNCOMPRESSED_SIZE]) -> CtOption<Self> {
+        // blst also reads a compressed encoding, from the first half of the
+        // input, so the compression flag has to be tested here.
+        let is_uncompressed = bytes[0] & COMPRESSION_FLAG == 0;
         let mut raw = blst_p2_affine::default();
-        let success =
+        let decoded =
             unsafe { blst_p2_deserialize(&mut raw, bytes.as_ptr()) == BLST_ERROR::BLST_SUCCESS };
+        let success = is_uncompressed & decoded;
         CtOption::new(G2Affine(raw), Choice::from(success as u8))
     }
 
@@ -383,8 +385,9 @@ impl G2Affine {
             .and_then(|p| CtOption::new(p, p.is_torsion_free()))
     }
 
-    /// Attempts to deserialize an uncompressed element, not checking if the
-    /// element is in the correct subgroup.
+    /// Attempts to deserialize a compressed element. No check on the point is
+    /// guaranteed, although some may still be performed: blst verifies the
+    /// encoding and the curve equation, and the subgroup is not checked.
     ///
     /// **This is dangerous to call unless you trust the bytes you are reading;
     /// otherwise, API invariants may be broken.** Please consider using
@@ -427,48 +430,6 @@ impl G2Affine {
     fn from_raw_unchecked(x: Fp2, y: Fp2, _infinity: bool) -> Self {
         let raw = blst_p2_affine { x: x.0, y: y.0 };
         G2Affine(raw)
-    }
-}
-
-impl SerdeObject for G2Affine {
-    fn from_raw_bytes_unchecked(bytes: &[u8]) -> Self {
-        debug_assert_eq!(bytes.len(), UNCOMPRESSED_SIZE);
-        let input: [u8; UNCOMPRESSED_SIZE] = bytes.try_into().unwrap();
-        Self::from_uncompressed_unchecked(&input).unwrap()
-    }
-
-    fn from_raw_bytes(bytes: &[u8]) -> Option<Self> {
-        let input: [u8; UNCOMPRESSED_SIZE] = bytes.try_into().ok()?;
-        Self::from_uncompressed(&input).into()
-    }
-
-    fn to_raw_bytes(&self) -> Vec<u8> {
-        self.to_uncompressed().into()
-    }
-
-    fn read_raw_unchecked<R: Read>(reader: &mut R) -> Self {
-        let mut buf = [0u8; UNCOMPRESSED_SIZE];
-        reader.read_exact(&mut buf).expect("Could not read from buffer.");
-        Self::from_uncompressed_unchecked(&buf)
-            .expect("from_uncompressed_unchecked should return a point.")
-    }
-
-    fn read_raw<R: Read>(reader: &mut R) -> std::io::Result<Self> {
-        let mut buf = [0u8; UNCOMPRESSED_SIZE];
-        reader.read_exact(&mut buf)?;
-        let res = Self::from_uncompressed(&buf);
-        if res.is_some().into() {
-            Ok(res.unwrap())
-        } else {
-            Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "Invalid point: bad encoding, not on the curve or not in the subgroup.",
-            ))
-        }
-    }
-
-    fn write_raw<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
-        writer.write_all(&self.to_uncompressed())
     }
 }
 
@@ -550,8 +511,9 @@ impl G2Projective {
         G2Affine::from_compressed(bytes).map(Into::into)
     }
 
-    /// Attempts to deserialize an uncompressed element, not checking if the
-    /// element is in the correct subgroup.
+    /// Attempts to deserialize a compressed element. No check on the point is
+    /// guaranteed, although some may still be performed: blst verifies the
+    /// encoding and the curve equation, and the subgroup is not checked.
     ///
     /// **This is dangerous to call unless you trust the bytes you are reading;
     /// otherwise, API invariants may be broken.** Please consider using
@@ -857,22 +819,9 @@ impl ConstantTimeEq for G2Affine {
 
 impl ConstantTimeEq for G2Projective {
     fn ct_eq(&self, other: &Self) -> Choice {
-        // Is (x, y, z) equal to (x', y, z') when converted to affine?
-        // => (x/z , y/z) equal to (x'/z' , y'/z')
-        // => (xz' == x'z) & (yz' == y'z)
-
-        let x1 = self.x() * other.z();
-        let y1 = self.y() * other.z();
-
-        let x2 = other.x() * self.z();
-        let y2 = other.y() * self.z();
-
-        let self_is_zero = self.is_identity();
-        let other_is_zero = other.is_identity();
-
-        (self_is_zero & other_is_zero) // Both point at infinity
-            | ((!self_is_zero) & (!other_is_zero) & x1.ct_eq(&x2) & y1.ct_eq(&y2))
-        // Neither point at infinity, coordinates are the same
+        // The coordinates are Jacobian: (x, y, z) stands for (x/z^2, y/z^3).
+        // blst compares them as such, identity included, without branching.
+        Choice::from(unsafe { blst_p2_is_equal(&self.0, &other.0) } as u8)
     }
 }
 
@@ -1504,6 +1453,41 @@ mod tests {
         assert_ne!(b, a);
     }
 
+    // `ct_eq` agrees with `==`, whatever the representation of the points.
+    #[test]
+    fn test_projective_ct_eq() {
+        let mut rng = XorShiftRng::from_seed([
+            0x59, 0x62, 0xbe, 0x5d, 0x76, 0x3d, 0x31, 0x8d, 0x17, 0xdb, 0x37, 0x32, 0x54, 0x06,
+            0xbc, 0xe5,
+        ]);
+
+        for _ in 0..100 {
+            let a = G2Projective::random(&mut rng);
+            let b = G2Projective::random(&mut rng);
+            // The same point as `a`, with a different `z` coordinate.
+            let c = (a + b) - b;
+            assert_ne!(a.z(), c.z());
+            assert_eq!(a, c);
+
+            assert!(bool::from(a.ct_eq(&a)));
+            assert!(bool::from(a.ct_eq(&c)));
+            assert!(bool::from(c.ct_eq(&a)));
+            assert!(!bool::from(a.ct_eq(&b)));
+            assert!(!bool::from(c.ct_eq(&b)));
+            assert!(!bool::from(c.ct_eq(&-a)));
+        }
+
+        let a = G2Projective::generator();
+        let id = G2Projective::identity();
+        // The identity, with non-zero `x` and `y` coordinates.
+        let id2 = G2Projective::from_raw_unchecked(a.x(), a.y(), Fp2::ZERO);
+        assert!(bool::from(id.ct_eq(&id)));
+        assert!(bool::from(id.ct_eq(&id2)));
+        assert!(bool::from(id2.ct_eq(&id)));
+        assert!(!bool::from(id.ct_eq(&a)));
+        assert!(!bool::from(a.ct_eq(&id2)));
+    }
+
     #[test]
     fn test_projective_point_equality() {
         let a = G2Projective::generator();
@@ -1602,13 +1586,6 @@ mod tests {
         assert!(bool::from(G2Affine::from_compressed(&c).is_none()));
         assert_eq!(G2Affine::from_compressed_unchecked(&c).unwrap(), p);
 
-        // SerdeObject raw-bytes paths route through `from_uncompressed`, so they
-        // must reject too; the `_unchecked` counterpart accepts.
-        let raw = p.to_raw_bytes();
-        assert!(G2Affine::from_raw_bytes(&raw).is_none());
-        assert_eq!(G2Affine::from_raw_bytes_unchecked(&raw), p);
-        assert!(G2Affine::read_raw(&mut raw.as_slice()).is_err());
-
         // The `UncompressedEncoding` forwarder is the same checked path.
         let enc = <G2Affine as UncompressedEncoding>::to_uncompressed(&p);
         assert!(bool::from(
@@ -1616,13 +1593,23 @@ mod tests {
         ));
     }
 
-    // The checked raw readers reject input of the wrong length.
+    // The uncompressed decoders reject a compressed encoding, which blst would
+    // read from the first half of the input, ignoring the rest.
     #[test]
-    fn test_g2_raw_bytes_wrong_length() {
-        let raw = G2Affine::generator().to_raw_bytes();
-        let truncated = &raw[..UNCOMPRESSED_SIZE - 1];
-        assert!(G2Affine::from_raw_bytes(truncated).is_none());
-        assert!(G2Affine::read_raw(&mut &truncated[..]).is_err());
+    fn test_g2_uncompressed_rejects_compressed_encoding() {
+        for p in [G2Affine::generator(), G2Affine::identity()] {
+            let mut padded = [0u8; UNCOMPRESSED_SIZE];
+            padded[..COMPRESSED_SIZE].copy_from_slice(&p.to_compressed());
+            assert!(bool::from(G2Affine::from_uncompressed(&padded).is_none()));
+            assert!(bool::from(
+                G2Affine::from_uncompressed_unchecked(&padded).is_none()
+            ));
+
+            // The uncompressed encoding of the same point is accepted.
+            let u = p.to_uncompressed();
+            assert_eq!(G2Affine::from_uncompressed(&u).unwrap(), p);
+            assert_eq!(G2Affine::from_uncompressed_unchecked(&u).unwrap(), p);
+        }
     }
 
     #[test]

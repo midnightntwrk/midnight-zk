@@ -118,10 +118,11 @@ impl<PCS: MidnightPCS> MidnightVK<PCS> {
 
     /// Reads a verification key from a buffer.
     ///
-    /// The `format` must be `Processed` or `RawBytes`, whichever the key was
-    /// written with (`RawBytes` also reads keys written with
-    /// `RawBytesUnchecked`). The points of a key are always checked, so
-    /// reading with `RawBytesUnchecked` gives an error.
+    /// The `format` must match the one the key was written with. A key
+    /// written with `RawBytes` or `RawBytesUnchecked` can be read with either
+    /// of them. With `RawBytesUnchecked`, no check on the elements of the key
+    /// is guaranteed (see [`SerdeFormat`]): only use it if you trust the party
+    /// who wrote the key.
     ///
     /// Fails if the key was written by another version of zk_stdlib, or under
     /// a commitment scheme other than `PCS`.
@@ -213,10 +214,14 @@ impl<Rel: Relation, PCS: MidnightPCS> MidnightPK<Rel, PCS> {
 
     /// Reads a proving key from a buffer.
     ///
-    /// The `format` must be `Processed` or `RawBytes`, whichever the key was
-    /// written with (`RawBytes` also reads keys written with
-    /// `RawBytesUnchecked`). The points of a key are always checked, so
-    /// reading with `RawBytesUnchecked` gives an error.
+    /// The `format` must match the one the key was written with. A key
+    /// written with `RawBytes` or `RawBytesUnchecked` can be read with either
+    /// of them. With `RawBytesUnchecked`, no check on the elements of the key
+    /// is guaranteed (see [`SerdeFormat`]): only use it if you trust the party
+    /// who wrote the key.
+    ///
+    /// In every format, the field elements of the key are not checked to be
+    /// reduced.
     ///
     /// Fails if the key was written under a commitment scheme other than
     /// `PCS`.

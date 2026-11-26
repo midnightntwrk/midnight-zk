@@ -16,7 +16,6 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * `load_srs::<FflonkKZG<LOG2_T_MAX>>(source, k)` reads the SRSs of every size from `2^k` to `2^(k + LOG2_T_MAX)`, and builds the fflonk parameters without FFT [#684](https://github.com/midnightntwrk/midnight-zk/pull/684)
 * Adjust blinding factors for FFLONK protocol [#680](https://github.com/midnightntwrk/midnight-zk/pull/680)
 * `MidnightPCS` requires `Parameters: From<ParamsKZG<Bls12>>` instead of `Parameters = ParamsKZG<Bls12>`; `setup_vk` and `prove` take `&PCS::Parameters`, and `load_srs::<PCS>` returns `PCS::Parameters`, built from the KZG SRS with `From` [#677](https://github.com/midnightntwrk/midnight-zk/pull/677)
-* BREAKING: `MidnightVK::read` and `MidnightPK::read` return an error on `SerdeFormat::RawBytesUnchecked`, so the points of a key are always checked. Keys written with `RawBytesUnchecked` can be read with `RawBytes` [#675](https://github.com/midnightntwrk/midnight-zk/pull/675)
 * Point `sha3-circuit` at a revision that requires `midnight-proofs` and `midnight-curves` by crates.io version instead of from the midnight-zk main branch, so that crates patching them to a midnight-zk tag get a single copy of each
 * The circuits assign native elements lazily, in the first cell that uses them, which saves rows. This changes the verifying keys of every circuit [#620](https://github.com/midnightntwrk/midnight-zk/pull/620)
 * Proving with `FflonkKZG` returns an error instead of panicking when a query's label is not among its group's labels, and rejects a polynomial queried twice at the same point [#671](https://github.com/midnightntwrk/midnight-zk/pull/671)
@@ -27,6 +26,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * The canonicity of foreign-field public inputs is asserted batch by batch on their packed limbs. This changes the verifying keys of circuits with foreign-field public inputs [#660](https://github.com/midnightntwrk/midnight-zk/pull/660)
 * The Cardano signature example runs at `k = 16`, which the optimizations of the foreign-field chips of `midnight-circuits` make it fit in [#660](https://github.com/midnightntwrk/midnight-zk/pull/660)
 * The native chip has a quartic gate, which adds a fixed column to every circuit. This changes the verifying keys of every circuit [#682](https://github.com/midnightntwrk/midnight-zk/pull/682)
+* The `parse_filecoin_srs` example decodes points with `UncompressedEncoding` [#692](https://github.com/midnightntwrk/midnight-zk/pull/692)
 
 ### Removed
 ### Fixed

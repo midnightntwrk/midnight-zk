@@ -6,7 +6,7 @@ use std::{
 };
 
 use ff::PrimeField;
-use group::{Curve, GroupEncoding};
+use group::{Curve, GroupEncoding, UncompressedEncoding};
 use midnight_curves::serde::SerdeObject;
 
 use crate::poly::Polynomial;
@@ -14,30 +14,30 @@ use crate::poly::Polynomial;
 /// This enum specifies how curve elements are serialized and deserialized.
 ///
 /// Field elements are serialized in their internal (Montgomery) representation
-/// in every format. The checks made when reading them depend on the field:
-/// BLS12-381 scalars are not checked to be reduced.
+/// in every format, through [`SerdeObject`]. The checks made when reading them
+/// depend on the field: BLS12-381 scalars are not checked to be reduced.
 #[derive(Clone, Copy, Debug)]
 pub enum SerdeFormat {
-    /// Curve elements are serialized in compressed form. When deserializing,
-    /// they are validated (on BLS12-381: on the curve and in the prime-order
-    /// subgroup).
+    /// Curve elements are serialized in compressed form, as given by their
+    /// [`GroupEncoding`] implementation. When deserializing, they are
+    /// validated (on BLS12-381: on the curve and in the prime-order subgroup).
     Processed,
     /// Curve elements are serialized in uncompressed form, as given by their
-    /// [`SerdeObject`] implementation. When deserializing, they are validated
-    /// as in `Processed`.
+    /// [`UncompressedEncoding`] implementation. When deserializing, they are
+    /// validated as in `Processed`.
     RawBytes,
-    /// Same serialization as `RawBytes`. Elements are deserialized with
-    /// [`SerdeObject::read_raw_unchecked`], which skips checks (on BLS12-381
-    /// points, the subgroup check) and may panic on truncated or malformed
-    /// input. Only use it on trusted data: it is rejected when reading keys.
+    /// Same serialization as `RawBytes`. Curve elements are deserialized with
+    /// [`UncompressedEncoding::from_uncompressed_unchecked`] and field
+    /// elements with [`SerdeObject::read_raw_unchecked`]: no check on them is
+    /// guaranteed, although some may still be performed, and reading a field
+    /// element may panic on truncated input. Only use it on trusted data.
     RawBytesUnchecked,
 }
 
 /// Interface for Serde objects that can be represented in compressed form.
 pub trait ProcessedSerdeObject: Sized {
     /// Reads an element from the buffer and parses it according to the
-    /// `format` (see [`SerdeFormat`]). With `RawBytesUnchecked`, it may panic
-    /// on truncated or malformed input.
+    /// `format` (see [`SerdeFormat`]).
     fn read<R: io::Read>(reader: &mut R, format: SerdeFormat) -> io::Result<Self>;
 
     /// Writes an element according to `format`:
@@ -61,27 +61,45 @@ pub(crate) fn read_f<F: PrimeField + SerdeObject, R: io::Read>(
     }
 }
 
-/// Trait for serialising SerdeObjects
+/// Reads a curve point in uncompressed form. The point is validated if
+/// `checked`; otherwise it is decoded with
+/// [`UncompressedEncoding::from_uncompressed_unchecked`], which guarantees no
+/// check.
+pub(crate) fn read_uncompressed<C: UncompressedEncoding, R: io::Read>(
+    reader: &mut R,
+    checked: bool,
+) -> io::Result<C> {
+    let mut bytes = C::Uncompressed::default();
+    reader.read_exact(bytes.as_mut())?;
+    let point = if checked {
+        C::from_uncompressed(&bytes)
+    } else {
+        C::from_uncompressed_unchecked(&bytes)
+    };
+    Option::from(point)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "invalid point encoding"))
+}
+
+/// Curve points are serialized through their affine representation: compressed
+/// with [`GroupEncoding`], uncompressed with [`UncompressedEncoding`].
 impl<C> ProcessedSerdeObject for C
 where
     C: Curve + GroupEncoding + From<C::AffineRepr>,
-    C::AffineRepr: SerdeObject,
+    C::AffineRepr: UncompressedEncoding,
 {
     fn read<R: Read>(reader: &mut R, format: SerdeFormat) -> io::Result<Self> {
-        {
-            match format {
-                SerdeFormat::Processed => {
-                    let mut compressed = <Self as GroupEncoding>::Repr::default();
-                    reader.read_exact(compressed.as_mut())?;
-                    Option::from(Self::from_bytes(&compressed))
-                        .ok_or_else(|| io::Error::other("Invalid point encoding in proof"))
-                }
-                SerdeFormat::RawBytes => {
-                    <Self as Curve>::AffineRepr::read_raw(reader).map(|p| p.into())
-                }
-                SerdeFormat::RawBytesUnchecked => {
-                    Ok(<Self as Curve>::AffineRepr::read_raw_unchecked(reader).into())
-                }
+        match format {
+            SerdeFormat::Processed => {
+                let mut compressed = <Self as GroupEncoding>::Repr::default();
+                reader.read_exact(compressed.as_mut())?;
+                Option::from(Self::from_bytes(&compressed))
+                    .ok_or_else(|| io::Error::other("Invalid point encoding in proof"))
+            }
+            SerdeFormat::RawBytes => {
+                read_uncompressed::<C::AffineRepr, _>(reader, true).map(C::from)
+            }
+            SerdeFormat::RawBytesUnchecked => {
+                read_uncompressed::<C::AffineRepr, _>(reader, false).map(C::from)
             }
         }
     }
@@ -89,14 +107,14 @@ where
     fn write<W: Write>(&self, writer: &mut W, format: SerdeFormat) -> io::Result<()> {
         match format {
             SerdeFormat::Processed => writer.write_all(self.to_bytes().as_ref()),
-            _ => self.to_affine().write_raw(writer),
+            _ => writer.write_all(self.to_affine().to_uncompressed().as_ref()),
         }
     }
 
     fn byte_length(&self, format: SerdeFormat) -> usize {
         match format {
             SerdeFormat::Processed => C::Repr::default().as_ref().len(),
-            _ => C::Repr::default().as_ref().len() * 2,
+            _ => <C::AffineRepr as UncompressedEncoding>::Uncompressed::default().as_ref().len(),
         }
     }
 }

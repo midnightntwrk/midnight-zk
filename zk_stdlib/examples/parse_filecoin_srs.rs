@@ -9,7 +9,8 @@ use bellman::{
     domain::{EvaluationDomain, Group},
     multicore::Worker,
 };
-use midnight_curves::{Bls12, CurveAffine, G1Affine, G2Affine, serde::SerdeObject};
+use group::UncompressedEncoding;
+use midnight_curves::{Bls12, CurveAffine, G1Affine, G2Affine};
 use midnight_proofs::{poly::kzg::params::ParamsKZG, utils::SerdeFormat};
 
 const G1_SIZE: usize = 96;
@@ -50,21 +51,23 @@ fn read_points() -> std::io::Result<(Vec<WrapperPoint<G1Affine>>, Vec<WrapperPoi
 
     let mut g1_points = vec![];
     for _ in 0..TAU_POWERS_LENGTH {
-        let mut bytes = [0u8; G1_SIZE];
-        fd.read_exact(&mut bytes)?;
+        let mut bytes = <G1Affine as UncompressedEncoding>::Uncompressed::default();
+        fd.read_exact(bytes.as_mut())?;
 
         g1_points.push(WrapperPoint(
-            G1Affine::from_raw_bytes(&bytes).expect("Failed to deserialise G1 point"),
+            <G1Affine as UncompressedEncoding>::from_uncompressed(&bytes)
+                .expect("Failed to deserialise G1 point"),
         ));
     }
 
     let mut g2_points = vec![];
     for _ in 0..TAU_POWERS_LENGTH {
-        let mut bytes = [0u8; G2_SIZE];
-        fd.read_exact(&mut bytes)?;
+        let mut bytes = <G2Affine as UncompressedEncoding>::Uncompressed::default();
+        fd.read_exact(bytes.as_mut())?;
 
         g2_points.push(WrapperPoint(
-            G2Affine::from_raw_bytes(&bytes).expect("Failed to deserialise g2 point"),
+            <G2Affine as UncompressedEncoding>::from_uncompressed(&bytes)
+                .expect("Failed to deserialise g2 point"),
         ));
     }
 

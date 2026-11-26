@@ -31,7 +31,7 @@ use std::{fmt::Debug, hash::Hash};
 use commitment::{KZGCommitment, KZGMultiCommitment};
 use ff::Field;
 use group::Group;
-use midnight_curves::{msm::msm_pippenger, pairing::MultiMillerLoop, serde::SerdeObject};
+use midnight_curves::{msm::msm_pippenger, pairing::MultiMillerLoop};
 use rand_core::OsRng;
 
 use crate::{
@@ -78,7 +78,7 @@ pub fn point_set_order(sets: &[(usize, usize)]) -> Vec<usize> {
 pub trait KZGEngine:
     MultiMillerLoop<
         G1: Default + CurveExt<ScalarExt = Self::Fr> + ProcessedSerdeObject,
-        G1Affine: Default + CurveAffine<ScalarExt = Self::Fr, CurveExt = Self::G1> + SerdeObject,
+        G1Affine: Default + CurveAffine<ScalarExt = Self::Fr, CurveExt = Self::G1>,
         G2: ProcessedSerdeObject,
     >
 {
@@ -87,7 +87,7 @@ pub trait KZGEngine:
 impl<E> KZGEngine for E where
     E: MultiMillerLoop<
             G1: Default + CurveExt<ScalarExt = E::Fr> + ProcessedSerdeObject,
-            G1Affine: Default + CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1> + SerdeObject,
+            G1Affine: Default + CurveAffine<ScalarExt = E::Fr, CurveExt = E::G1>,
             G2: ProcessedSerdeObject,
         >
 {

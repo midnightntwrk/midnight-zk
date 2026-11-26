@@ -41,7 +41,6 @@ use core::{
     fmt,
     iter::{Product, Sum},
 };
-use std::io;
 
 use ff::{Field, FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
 use rand_core::RngCore;
@@ -51,7 +50,7 @@ use crate::{
     arithmetic::{adc, mac, sbb},
     ff_ext::{inverse::BYInverter, jacobi::jacobi},
     serde::{
-        Repr, SerdeObject,
+        Repr,
         endian::{Endian, EndianRepr},
     },
 };
@@ -520,64 +519,6 @@ impl PrimeField for Fp {
     }
 }
 
-impl SerdeObject for Fp {
-    fn from_raw_bytes_unchecked(bytes: &[u8]) -> Self {
-        assert_eq!(bytes.len(), 32);
-        let inner = (0..4)
-            .map(|off| u64::from_le_bytes(bytes[off * 8..(off + 1) * 8].try_into().unwrap()))
-            .collect::<Vec<_>>();
-        Self(inner.try_into().unwrap())
-    }
-
-    fn from_raw_bytes(bytes: &[u8]) -> Option<Self> {
-        if bytes.len() != 32 {
-            return None;
-        }
-        let elt = Self::from_raw_bytes_unchecked(bytes);
-        Self::is_less_than_modulus(&elt.0).then_some(elt)
-    }
-
-    fn to_raw_bytes(&self) -> Vec<u8> {
-        let mut res = Vec::with_capacity(Self::SIZE);
-        for limb in self.0.iter() {
-            res.extend_from_slice(&limb.to_le_bytes());
-        }
-        res
-    }
-
-    fn read_raw_unchecked<R: io::Read>(reader: &mut R) -> Self {
-        let inner = [(); 4].map(|_| {
-            let mut buf = [0; 8];
-            reader.read_exact(&mut buf).unwrap();
-            u64::from_le_bytes(buf)
-        });
-        Self(inner)
-    }
-
-    fn read_raw<R: io::Read>(reader: &mut R) -> io::Result<Self> {
-        let mut inner = [0u64; 4];
-        for limb in inner.iter_mut() {
-            let mut buf = [0; 8];
-            reader.read_exact(&mut buf)?;
-            *limb = u64::from_le_bytes(buf);
-        }
-        let elt = Self(inner);
-        Self::is_less_than_modulus(&elt.0).then_some(elt).ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::InvalidData,
-                "input number is not less than field modulus",
-            )
-        })
-    }
-
-    fn write_raw<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
-        for limb in self.0.iter() {
-            writer.write_all(&limb.to_le_bytes())?;
-        }
-        Ok(())
-    }
-}
-
 impl Fp {
     fn from_uniform_bytes_inner(bytes: &[u8]) -> Self {
         let mut wide = [0u8; Self::SIZE * 2];
@@ -633,7 +574,6 @@ mod test {
     use super::*;
     crate::field_testing_suite!(Fp, "field_arithmetic");
     crate::field_testing_suite!(Fp, "conversion");
-    crate::field_testing_suite!(Fp, "serdeobject");
     crate::field_testing_suite!(Fp, "quadratic_residue");
     crate::field_testing_suite!(Fp, "bits");
     crate::field_testing_suite!(Fp, "constants");

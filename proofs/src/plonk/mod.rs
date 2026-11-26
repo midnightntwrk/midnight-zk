@@ -107,8 +107,10 @@ where
 
     /// Reads a verification key from a buffer for the associated [Circuit].
     ///
-    /// Curve elements are parsed according to `format` (see [`SerdeFormat`]),
-    /// which must be a checked one: `RawBytesUnchecked` gives an error.
+    /// Curve elements are parsed according to `format` (see [`SerdeFormat`]).
+    /// A key written with `RawBytes` can also be read with
+    /// `RawBytesUnchecked`, with which no check on its elements is guaranteed:
+    /// only use it on a key from a trusted source.
     pub fn read<R: io::Read, ConcreteCircuit: Circuit<F>>(
         reader: &mut R,
         format: SerdeFormat,
@@ -436,8 +438,14 @@ where
     /// Does so by reading verification key first, and then deserializing the
     /// rest of the file into the remaining proving key data.
     ///
-    /// Curve elements are parsed according to `format` (see [`SerdeFormat`]),
-    /// which must be a checked one: `RawBytesUnchecked` gives an error.
+    /// Curve elements are parsed according to `format` (see [`SerdeFormat`]).
+    /// A key written with `RawBytes` can also be read with
+    /// `RawBytesUnchecked`, with which no check on its elements is guaranteed:
+    /// only use it on a key from a trusted source.
+    ///
+    /// The field elements of the key are read in their internal representation
+    /// in every format, with the checks of their [`SerdeObject`]
+    /// implementation: BLS12-381 scalars are not checked to be reduced.
     pub fn read<R: io::Read, ConcreteCircuit: Circuit<F>>(
         reader: &mut R,
         format: SerdeFormat,

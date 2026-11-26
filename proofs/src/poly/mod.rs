@@ -543,7 +543,8 @@ impl<F, B> Polynomial<F, B> {
 }
 
 impl<F: PrimeField + SerdeObject, B> Polynomial<F, B> {
-    /// Reads polynomial from buffer using `SerdePrimeField::read`.
+    /// Reads a polynomial from a buffer, each coefficient in its raw form (see
+    /// [`SerdeObject`]).
     pub(crate) fn read<R: io::Read>(reader: &mut R, format: SerdeFormat) -> io::Result<Self> {
         let mut poly_len = [0u8; 4];
         reader.read_exact(&mut poly_len)?;
@@ -558,7 +559,8 @@ impl<F: PrimeField + SerdeObject, B> Polynomial<F, B> {
             })
     }
 
-    /// Writes polynomial to buffer using `SerdePrimeField::write`.
+    /// Writes a polynomial to a buffer, each coefficient with
+    /// [`SerdeObject::write_raw`].
     pub(crate) fn write<W: io::Write>(&self, writer: &mut W) -> io::Result<()> {
         writer.write_all(&(self.values.len() as u32).to_be_bytes())?;
         for value in self.values.iter() {
