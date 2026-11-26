@@ -34,6 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 * `PolynomialCommitmentScheme::load_params`, hence `Fflonk::load_params`: read a KZG SRS with `ParamsKZG::read`, and `downsize` it [#677](https://github.com/midnightntwrk/midnight-zk/pull/677)
 
+### Fixed
+* `MockProver::verify` checks the constraints declared with `Constraints::with_additive_selector`, as the verifier does: it reports `ConstraintNotSatisfied` (or `ConstraintPoisoned`) when one of them does not vanish on a row where its selector is enabled. It used to ignore them, so the Poseidon partial-round constraints were not checked [#691](https://github.com/midnightntwrk/midnight-zk/pull/691)
+
 ## [0.9.0-rc.1]
 ### Added
 * `Fflonk::T_MAX` is public, and `Fflonk::chunk_labels` gives the labels of the chunks of a group [#634](https://github.com/midnightntwrk/midnight-zk/pull/634)

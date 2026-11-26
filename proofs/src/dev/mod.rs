@@ -1056,6 +1056,66 @@ impl<F: FromUniformBytes<64> + Ord> MockProver<F> {
             )
         };
 
+        // Check the additive-selector ("trash") constraints. The verifier enforces
+        // `sum_i c_i * tau^i = (1 - q) * trash` for a random `tau`, where `trash` is a
+        // free witness: on a row where the selector `q` is 1 every constraint `c_i` of
+        // the argument must vanish (and nothing is enforced on the other rows).
+        // Failures are reported against the gate that declared the constraints.
+        let trash_errors = (self.cs.gates.iter().enumerate())
+            .filter_map(|(gate_index, gate)| {
+                let trash = &self.cs.trashcans[gate.trash_index()?];
+                Some((gate_index, gate, trash))
+            })
+            .flat_map(|(gate_index, gate, trash)| {
+                let load = &load;
+                (gate_row_ids.clone().into_par_iter())
+                    .filter(move |row| load(trash.selector(), *row) == Value::Real(F::ONE))
+                    .flat_map(move |row| {
+                        let constraint = move |poly_index| {
+                            (
+                                (gate_index, gate.name()).into(),
+                                poly_index,
+                                gate.constraint_name(poly_index),
+                            )
+                                .into()
+                        };
+                        let row_n = row as i32 + n;
+                        trash
+                            .constraint_expressions()
+                            .iter()
+                            .enumerate()
+                            .filter_map(move |(poly_index, poly)| match load(poly, row) {
+                                Value::Real(x) if x.is_zero_vartime() => None,
+                                Value::Real(_) => Some(VerifyFailure::ConstraintNotSatisfied {
+                                    constraint: constraint(poly_index),
+                                    location: FailureLocation::find_expressions(
+                                        &self.cs,
+                                        &self.regions,
+                                        row,
+                                        Some(poly).into_iter(),
+                                    ),
+                                    cell_values: util::cell_values(
+                                        gate,
+                                        poly,
+                                        util::load(n, row_n, &self.cs.fixed_queries, &self.fixed),
+                                        util::load(n, row_n, &self.cs.advice_queries, &self.advice),
+                                        util::load_instance(
+                                            n,
+                                            row_n,
+                                            &self.cs.instance_queries,
+                                            &self.instance,
+                                        ),
+                                    ),
+                                }),
+                                Value::Poison => Some(VerifyFailure::ConstraintPoisoned {
+                                    constraint: constraint(poly_index),
+                                }),
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                    .collect::<Vec<_>>()
+            });
+
         let mut cached_table = Vec::new();
         let mut cached_table_identifier = Vec::new();
         // Check that all lookups exist in their respective tables.
@@ -1215,6 +1275,7 @@ impl<F: FromUniformBytes<64> + Ord> MockProver<F> {
         let mut errors: Vec<_> = iter::empty()
             .chain(selector_errors)
             .chain(gate_errors)
+            .chain(trash_errors)
             .chain(lookup_errors)
             .chain(perm_errors)
             .collect();
@@ -1923,5 +1984,104 @@ mod tests {
                 ],
             },])
         )
+    }
+
+    #[test]
+    fn additive_selector_constraint_unsatisfied() {
+        #[derive(Clone)]
+        struct FaultyCircuitConfig {
+            a: Column<Advice>,
+            q: Selector,
+        }
+
+        struct FaultyCircuit {
+            a: Scalar,
+        }
+
+        impl Circuit<Scalar> for FaultyCircuit {
+            type Config = FaultyCircuitConfig;
+            type FloorPlanner = SimpleFloorPlanner;
+            #[cfg(feature = "circuit-params")]
+            type Params = ();
+
+            fn configure(meta: &mut ConstraintSystem<Scalar>) -> Self::Config {
+                let a = meta.advice_column();
+                let q = meta.complex_selector();
+                let unused = meta.selector();
+
+                // A gate before the additive one, so that the additive gate (index 1)
+                // and its trash argument (index 0) have different indices.
+                meta.create_gate("unused", |cells| {
+                    let a = cells.query_advice(a, Rotation::cur());
+                    Constraints::with_selector(unused, vec![a])
+                });
+
+                meta.create_gate("a = 1", |cells| {
+                    let a = cells.query_advice(a, Rotation::cur());
+                    Constraints::with_additive_selector(
+                        q,
+                        vec![("a is one", a - Expression::Constant(Scalar::ONE))],
+                    )
+                });
+
+                FaultyCircuitConfig { a, q }
+            }
+
+            fn without_witnesses(&self) -> Self {
+                Self { a: Scalar::ZERO }
+            }
+
+            fn synthesize(
+                &self,
+                config: Self::Config,
+                mut layouter: impl Layouter<Scalar>,
+            ) -> Result<(), Error> {
+                layouter.assign_region(
+                    || "Additive selector",
+                    |mut region| {
+                        // Enable the constraint on row 0 only.
+                        config.q.enable(&mut region, 0)?;
+                        region.assign_advice(|| "a", config.a, 0, || Value::known(self.a))?;
+                        // Nothing is enforced where the selector is off.
+                        region.assign_advice(
+                            || "a",
+                            config.a,
+                            1,
+                            || Value::known(Scalar::from(5u64)),
+                        )?;
+                        Ok(())
+                    },
+                )
+            }
+        }
+
+        let prover = MockProver::run(&FaultyCircuit { a: Scalar::ONE }, vec![]).unwrap();
+        assert_eq!(prover.verify(), Ok(()));
+
+        let prover = MockProver::run(
+            &FaultyCircuit {
+                a: Scalar::from(5u64),
+            },
+            vec![],
+        )
+        .unwrap();
+        assert_eq!(
+            prover.verify(),
+            Err(vec![VerifyFailure::ConstraintNotSatisfied {
+                constraint: ((1, "a = 1").into(), 0, "a is one").into(),
+                location: FailureLocation::InRegion {
+                    region: (0, "Additive selector").into(),
+                    offset: 0,
+                },
+                cell_values: vec![(((Any::Advice, 0).into(), 0).into(), "0x5".to_string())],
+            }])
+        );
+
+        // Printing the failure must not panic (other than the final assertion).
+        let panic = std::panic::catch_unwind(|| prover.assert_satisfied()).unwrap_err();
+        assert_eq!(
+            panic.downcast_ref::<&str>(),
+            Some(&"circuit was not satisfied")
+        );
     }
 }

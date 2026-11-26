@@ -398,6 +398,19 @@ fn render_cell_not_assigned<F: Field>(
     );
 }
 
+/// The polynomial of `constraint`. The constraints of a gate declared with an
+/// additive selector are held by its trash argument, not by the gate.
+fn constraint_polynomial<'a, F: Field>(
+    cs: &'a ConstraintSystem<F>,
+    constraint: &metadata::Constraint,
+) -> &'a Expression<F> {
+    let gate = &cs.gates[constraint.gate.index];
+    match gate.trash_index() {
+        Some(trash_index) => &cs.trashcans[trash_index].constraint_expressions()[constraint.index],
+        None => &gate.polynomials()[constraint.index],
+    }
+}
+
 /// Renders `VerifyFailure::ConstraintNotSatisfied`.
 ///
 /// ```text
@@ -416,7 +429,7 @@ fn render_cell_not_assigned<F: Field>(
 ///     x1 = 0x5
 /// ```
 fn render_constraint_not_satisfied<F: Field>(
-    gates: &[Gate<F>],
+    cs: &ConstraintSystem<F>,
     constraint: &metadata::Constraint,
     location: &FailureLocation,
     cell_values: &[(metadata::VirtualCell, String)],
@@ -448,10 +461,7 @@ fn render_constraint_not_satisfied<F: Field>(
     eprintln!("  Constraint '{}':", constraint.name);
     eprintln!(
         "    {} = 0",
-        emitter::expression_to_string(
-            &gates[constraint.gate.index].polynomials()[constraint.index],
-            &layout
-        )
+        emitter::expression_to_string(constraint_polynomial(cs, constraint), &layout)
     );
 
     // Print the map from local variables to assigned values.
@@ -669,9 +679,7 @@ impl VerifyFailure {
                 constraint,
                 location,
                 cell_values,
-            } => {
-                render_constraint_not_satisfied(&prover.cs.gates, constraint, location, cell_values)
-            }
+            } => render_constraint_not_satisfied(&prover.cs, constraint, location, cell_values),
             Self::Lookup {
                 name,
                 lookup_index,

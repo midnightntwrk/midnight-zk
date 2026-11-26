@@ -1485,6 +1485,11 @@ pub struct Gate<F: Field> {
     /// use them to trigger debug checks on gates.
     queried_selectors: Vec<Selector>,
     queried_cells: Vec<VirtualCell>,
+    /// The index of the trash argument holding the constraints of this gate,
+    /// if they are declared with an additive selector. Such a gate has no
+    /// polynomials, and its constraint names refer to the trash argument's
+    /// constraint expressions.
+    trash_index: Option<usize>,
 }
 
 impl<F: Field> Gate<F> {
@@ -1506,6 +1511,12 @@ impl<F: Field> Gate<F> {
     /// Returns the queried selectors of this gate.
     pub fn queried_selectors(&self) -> &[Selector] {
         &self.queried_selectors
+    }
+
+    /// Returns the index of the trash argument holding the constraints of this
+    /// gate, if they are declared with an additive selector.
+    pub(crate) fn trash_index(&self) -> Option<usize> {
+        self.trash_index
     }
 
     pub(crate) fn queried_cells(&self) -> &[VirtualCell] {
@@ -1912,14 +1923,18 @@ impl<F: Field> ConstraintSystem<F> {
             "Gates must contain at least one constraint."
         );
 
-        let (constraint_names, polys): (_, Vec<_>) = cells
+        let constraint_names = constraints.constraints.iter().map(|c| c.name.clone()).collect();
+        let trash_index = matches!(constraints.selector, SelectorType::Additive(_))
+            .then_some(cells.meta.trashcans.len());
+
+        let polys = cells
             .apply_selector_to_constraints(constraints)
             .into_iter()
             .map(|mut c: Constraint<F>| {
                 c.poly.query_cells(&mut cells);
-                (c.name, c.poly)
+                c.poly
             })
-            .unzip();
+            .collect();
 
         let queried_selectors = cells.queried_selectors;
         let queried_cells = cells.queried_cells;
@@ -1930,6 +1945,7 @@ impl<F: Field> ConstraintSystem<F> {
             polys,
             queried_selectors,
             queried_cells,
+            trash_index,
         });
     }
 
