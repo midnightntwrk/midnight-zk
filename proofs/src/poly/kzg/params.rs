@@ -22,13 +22,16 @@ use crate::{
 /// The bases of the `LagrangeDelta` and `LagrangeDoubleDelta` representations
 /// only depend on the Lagrange SRS, and are not part of the parameters written
 /// by [`Self::write`]. They are built by the first commitment in one of these
-/// representations, or ahead of it by [`Self::precompute_delta_bases`].
+/// representations, or ahead of it by [`Self::precompute_delta_bases`]. To
+/// skip building them on every run, store them with
+/// [`Self::write_delta_bases`] and load them with [`Self::read_delta_bases`].
 #[derive(Debug, Clone)]
 pub struct ParamsKZG<E: Engine> {
     pub(crate) g: Vec<E::G1Affine>,
     pub(crate) g_lagrange: Vec<E::G1Affine>,
     /// The bases of the `LagrangeDelta` and `LagrangeDoubleDelta`
-    /// representations, derived from `g_lagrange`. Empty until they are built.
+    /// representations, derived from `g_lagrange`. Empty until they are built
+    /// or read.
     pub(crate) delta_bases: OnceLock<DeltaBases<E::G1Affine>>,
     pub(crate) g2: E::G2,
     pub(crate) s_g2: E::G2,
@@ -58,6 +61,30 @@ impl<C: CurveAffine> DeltaBases<C> {
             delta,
             double_delta,
         }
+    }
+
+    /// Whether the bases have the size of `g_lagrange` and satisfy the suffix
+    /// sum relations with it at the last position and at a few others.
+    ///
+    /// The bases of another SRS fail at every position, so this tells apart
+    /// the bases of `g_lagrange` from those of another SRS or of another
+    /// size. It does not validate every point.
+    fn matches(&self, g_lagrange: &[C]) -> bool {
+        let n = g_lagrange.len();
+        if n == 0 || self.delta.len() != n || self.double_delta.len() != n {
+            return false;
+        }
+        let is_sum = |sum: &C, a: &C, b: &C| (a.to_curve() + *b).to_affine() == *sum;
+        self.delta[n - 1] == g_lagrange[n - 1]
+            && self.double_delta[n - 1] == self.delta[n - 1]
+            && [0, n / 2, n.saturating_sub(2)].into_iter().filter(|i| i + 1 < n).all(|i| {
+                is_sum(&self.delta[i], &self.delta[i + 1], &g_lagrange[i])
+                    && is_sum(
+                        &self.double_delta[i],
+                        &self.double_delta[i + 1],
+                        &self.delta[i],
+                    )
+            })
     }
 }
 
@@ -152,20 +179,29 @@ where
         }
     }
 
-    /// The delta bases, built if they are missing.
+    /// The delta bases. If they are missing, they are built on the fly, with a
+    /// warning on how to avoid it.
     fn delta_bases(&self) -> &DeltaBases<E::G1Affine> {
-        self.delta_bases.get_or_init(|| DeltaBases::new(&self.g_lagrange))
+        self.delta_bases.get_or_init(|| {
+            tracing::warn!(
+                k = self.max_k(),
+                "Building the delta bases of the KZG parameters on the fly. Store them once \
+                 with `ParamsKZG::write_delta_bases` and load them with \
+                 `ParamsKZG::read_delta_bases` to make later runs faster."
+            );
+            DeltaBases::new(&self.g_lagrange)
+        })
     }
 
     /// Builds the `LagrangeDelta` and `LagrangeDoubleDelta` bases, unless they
     /// are there already. Otherwise, the first commitment in one of these
     /// representations builds them.
     pub fn precompute_delta_bases(&self) {
-        self.delta_bases();
+        self.delta_bases.get_or_init(|| DeltaBases::new(&self.g_lagrange));
     }
 
     /// Whether the `LagrangeDelta` and `LagrangeDoubleDelta` bases have been
-    /// built already.
+    /// built or read already.
     pub fn has_delta_bases(&self) -> bool {
         self.delta_bases.get().is_some()
     }
@@ -353,6 +389,65 @@ where
             g2,
             s_g2,
         })
+    }
+
+    /// Writes the `LagrangeDelta` and `LagrangeDoubleDelta` bases, building
+    /// them if they are missing: `k`, then the points of both bases, written
+    /// as [`Self::write`] writes those of the SRS.
+    ///
+    /// Only with `SerdeFormat::RawBytesUnchecked` is reading them back faster
+    /// than building them: validating the points costs more than building the
+    /// bases.
+    pub fn write_delta_bases<W>(&self, writer: &mut W, format: SerdeFormat) -> io::Result<()>
+    where
+        E::G1Affine: SerdeObject,
+        W: io::Write,
+    {
+        let bases = self.delta_bases.get_or_init(|| DeltaBases::new(&self.g_lagrange));
+        writer.write_all(&self.max_k().to_le_bytes())?;
+        write_points(&bases.delta, writer, format)?;
+        write_points(&bases.double_delta, writer, format)
+    }
+
+    /// Reads the `LagrangeDelta` and `LagrangeDoubleDelta` bases written by
+    /// [`Self::write_delta_bases`], in place of building them.
+    ///
+    /// The bases must be those of these parameters: it fails, leaving the
+    /// parameters unchanged, if they are for another `k`, or if they do not
+    /// match the Lagrange SRS at the few positions that are checked. This
+    /// catches the bases of another SRS, but it does not validate every point:
+    /// the bases must be as trusted as the SRS itself.
+    ///
+    /// With `SerdeFormat::RawBytesUnchecked`, it may panic on truncated or
+    /// malformed input.
+    pub fn read_delta_bases<R>(&mut self, reader: &mut R, format: SerdeFormat) -> io::Result<()>
+    where
+        E::G1Affine: SerdeObject,
+        R: io::Read,
+    {
+        let mut k = [0u8; 4];
+        reader.read_exact(&mut k[..])?;
+        let k = u32::from_le_bytes(k);
+        if k != self.max_k() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("delta bases for k = {k}, expected k = {}", self.max_k()),
+            ));
+        }
+        let n = self.g_lagrange.len();
+
+        let bases = DeltaBases {
+            delta: read_points(reader, format, n)?,
+            double_delta: read_points(reader, format, n)?,
+        };
+        if !bases.matches(&self.g_lagrange) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "the delta bases are not those of this SRS",
+            ));
+        }
+        self.delta_bases = OnceLock::from(bases);
+        Ok(())
     }
 }
 
@@ -594,6 +689,92 @@ mod test {
         // They can be built ahead of the first commitment.
         let params: ParamsKZG<Bls12> = ParamsKZG::unsafe_setup(K, OsRng);
         params.precompute_delta_bases();
+        assert!(params.has_delta_bases());
+    }
+
+    #[test]
+    fn test_delta_bases_serialisation_roundtrip() {
+        use midnight_curves::Bls12;
+
+        for k in [0, 1, 4] {
+            let params0: ParamsKZG<Bls12> = ParamsKZG::unsafe_setup(k, OsRng);
+            params0.precompute_delta_bases();
+            let bases0 = params0.delta_bases.get().unwrap();
+
+            for format in [
+                SerdeFormat::Processed,
+                SerdeFormat::RawBytes,
+                SerdeFormat::RawBytesUnchecked,
+            ] {
+                // Reading the SRS does not build the delta bases.
+                let mut srs = vec![];
+                params0.write(&mut srs, format).unwrap();
+                let mut params1 = ParamsKZG::<Bls12>::read(&mut &srs[..], format).unwrap();
+                assert!(!params1.has_delta_bases());
+
+                let mut data = vec![];
+                params0.write_delta_bases(&mut data, format).unwrap();
+                params1.read_delta_bases(&mut &data[..], format).unwrap();
+                let bases1 = params1.delta_bases.get().unwrap();
+                assert_eq!(bases0.delta, bases1.delta);
+                assert_eq!(bases0.double_delta, bases1.double_delta);
+
+                // Writing the delta bases builds them if they are missing.
+                let params2 = ParamsKZG::<Bls12>::read(&mut &srs[..], format).unwrap();
+                let mut data2 = vec![];
+                params2.write_delta_bases(&mut data2, format).unwrap();
+                assert!(params2.has_delta_bases());
+                assert_eq!(data, data2);
+            }
+        }
+    }
+
+    #[test]
+    fn test_read_delta_bases_rejects_other_parameters() {
+        const K: u32 = 4;
+
+        use std::io::ErrorKind::InvalidData;
+
+        use midnight_curves::Bls12;
+
+        let format = SerdeFormat::RawBytesUnchecked;
+        let mut params: ParamsKZG<Bls12> = ParamsKZG::unsafe_setup(K, OsRng);
+
+        // The delta bases of another SRS of the same size.
+        let other: ParamsKZG<Bls12> = ParamsKZG::unsafe_setup(K, OsRng);
+        let mut other_srs = vec![];
+        other.write_delta_bases(&mut other_srs, format).unwrap();
+
+        // The delta bases of the same SRS, downsized.
+        let mut smaller = params.clone();
+        smaller.downsize(K - 1);
+        let mut other_size = vec![];
+        smaller.write_delta_bases(&mut other_size, format).unwrap();
+
+        // The SRS itself, in place of its delta bases.
+        let mut srs = vec![];
+        params.write(&mut srs, format).unwrap();
+
+        // The delta bases with one point of the first one replaced.
+        let mut one_point_off = vec![];
+        params.clone().write_delta_bases(&mut one_point_off, format).unwrap();
+        let point_len = (one_point_off.len() - 4) / (2 << K);
+        one_point_off.copy_within(4 + point_len..4 + 2 * point_len, 4);
+
+        // They are all rejected, with the delta bases left as they were.
+        let check_rejected = |params: &mut ParamsKZG<Bls12>| {
+            let before = params.delta_bases.get().map(|bases| bases.delta.clone());
+            for data in [&other_srs, &other_size, &srs, &one_point_off] {
+                let err = params.read_delta_bases(&mut &data[..], format).unwrap_err();
+                assert_eq!(err.kind(), InvalidData);
+                let after = params.delta_bases.get().map(|bases| bases.delta.clone());
+                assert_eq!(before, after);
+            }
+        };
+        check_rejected(&mut params);
+        assert!(!params.has_delta_bases());
+        params.precompute_delta_bases();
+        check_rejected(&mut params);
         assert!(params.has_delta_bases());
     }
 
