@@ -7,6 +7,8 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * PATCH: Incremented on minor changes and bug fixes that do not alter the VKs
 
 ## [Unreleased]
+
+## [3.0.0-rc.2]
 ### Added
 * `MidnightVK::nb_public_inputs`, the number of public inputs expected by the key
 * `ZkStdLibArch::range_check_bit_len`, the bit size of the range-check lanes, by default `k - 1` (see `ZkStdLibArch::range_check_bit_len()`). The serialized architecture includes it, and its format version is 4 [#631](https://github.com/midnightntwrk/midnight-zk/pull/631)
