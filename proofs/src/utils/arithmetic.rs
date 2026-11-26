@@ -12,8 +12,9 @@ use group::{
     ff::{BatchInvert, PrimeField},
     prime::PrimeCurveAffine,
 };
-use midnight_curves::fft::best_fft;
+use midnight_curves::fft::compute_twiddles;
 pub use midnight_curves::{CurveAffine, CurveExt};
+use rayon::prelude::*;
 
 /// This represents an element of a group with basic operations that can be
 /// performed. This allows an FFT implementation (for example) to operate
@@ -41,7 +42,7 @@ pub fn g_to_lagrange<C: CurveAffine>(g_affine: &[C], k: u32) -> Vec<C> {
     // The FFT operates in projective coordinates (G1Affine is not closed
     // under addition), so convert on entry and normalize back on exit.
     let mut g_proj: Vec<C::CurveExt> = g_affine.iter().map(|p| (*p).into()).collect();
-    best_fft(&mut g_proj, omega_inv, k);
+    group_fft(&mut g_proj, omega_inv, k);
     parallelize(&mut g_proj, |g, _| {
         for g in g.iter_mut() {
             *g *= n_inv;
@@ -51,6 +52,43 @@ pub fn g_to_lagrange<C: CurveAffine>(g_affine: &[C], k: u32) -> Vec<C> {
     let mut g_lagrange = vec![C::identity(); g_proj.len()];
     C::CurveExt::batch_normalize(&g_proj, &mut g_lagrange);
     g_lagrange
+}
+
+/// [`best_fft`](midnight_curves::fft::best_fft) over group elements, whose
+/// butterflies each cost a scalar multiplication: the butterflies of every
+/// layer run in parallel.
+fn group_fft<G: CurveExt>(a: &mut [G], omega: G::ScalarExt, log_n: u32) {
+    let twiddles = compute_twiddles(&omega, log_n);
+    for k in 0..a.len() {
+        let rk = k.reverse_bits().checked_shr(usize::BITS - log_n).unwrap_or(0);
+        if k < rk {
+            a.swap(rk, k);
+        }
+    }
+    group_butterflies(a, 1, &twiddles);
+}
+
+/// The Cooley-Tukey butterflies of [`group_fft`], on inputs in bit-reversed
+/// order.
+fn group_butterflies<G: CurveExt>(a: &mut [G], twiddle_chunk: usize, twiddles: &[G::ScalarExt]) {
+    if a.len() == 1 {
+        return;
+    }
+    let (left, right) = a.split_at_mut(a.len() / 2);
+    rayon::join(
+        || group_butterflies(left, twiddle_chunk * 2, twiddles),
+        || group_butterflies(right, twiddle_chunk * 2, twiddles),
+    );
+    (left.par_iter_mut().zip(right.par_iter_mut()).enumerate())
+        .with_min_len(64)
+        .for_each(|(i, (a, b))| {
+            let mut t = *b;
+            if i > 0 {
+                t *= twiddles[i * twiddle_chunk];
+            }
+            *b = *a - t;
+            *a += t;
+        });
 }
 
 /// Sequential Horner evaluation. Use inside `par_iter` batches where

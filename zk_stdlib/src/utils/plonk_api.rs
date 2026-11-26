@@ -257,14 +257,14 @@ pub enum SrsSource {
     Midnight,
 }
 
-/// Loads an SRS (over BLS12-381) for circuits of size `2^k` under the
-/// commitment scheme `PCS`.
+/// Loads the parameters (over BLS12-381) for circuits of size `2^k` under the
+/// commitment scheme `PCS`, from the SRSs it needs (see
+/// [`MidnightPCS::params_from_srs`]).
 pub fn load_srs<PCS: MidnightPCS>(source: SrsSource, k: u32) -> PCS::Parameters {
-    match source {
-        SrsSource::Filecoin => filecoin_srs::<PCS>(k),
-        SrsSource::Midnight => midnight_srs::<PCS>(k),
-    }
-    .into()
+    PCS::params_from_srs(k, |j| match source {
+        SrsSource::Filecoin => filecoin_srs(j),
+        SrsSource::Midnight => midnight_srs(j),
+    })
 }
 
 /// Loads Filecoin's production SRS (over BLS12-381) for the given relation.
@@ -274,17 +274,13 @@ pub fn srs_for_test<R: Relation>(relation: &R, k: Option<u32>) -> ParamsKZG<Bls1
     load_srs::<KZG>(SrsSource::Filecoin, k)
 }
 
-/// Loads Midnight's production SRS (over BLS12-381) for circuits of size `2^k`
-/// under the commitment scheme `PCS`.
-///
-/// The SRS files are expected at `$SRS_DIR/midnight-srs-2p<j>`, for
-/// `j = PCS::srs_k(k)`.
+/// Loads Midnight's production SRS (over BLS12-381) of size `2^j`, expected at
+/// `$SRS_DIR/midnight-srs-2p<j>`.
 ///
 /// For checksums and extra validation steps, see `MIDNIGHT_SRS_CATALOG.md` in
 /// the official repository of the Midnight trusted ceremony:
 /// <https://github.com/midnightntwrk/midnight-trusted-setup>
-fn midnight_srs<PCS: MidnightPCS>(k: u32) -> ParamsKZG<Bls12> {
-    let j = PCS::srs_k(k);
+fn midnight_srs(j: u32) -> ParamsKZG<Bls12> {
     let srs_dir = env::var("SRS_DIR").unwrap_or("./examples/assets".into());
     let srs_path = format!("{srs_dir}/midnight-srs-2p{j}");
 
@@ -305,14 +301,10 @@ fn midnight_srs<PCS: MidnightPCS>(k: u32) -> ParamsKZG<Bls12> {
     params
 }
 
-/// Loads Filecoin's production SRS (over BLS12-381) for circuits of size `2^k`
-/// under the commitment scheme `PCS`.
-///
-/// The SRS is read from `$SRS_DIR/bls_filecoin_2p<j>`, for `j = PCS::srs_k(k)`.
-/// If that file is missing, it is downsized from `bls_filecoin_2p19` and
-/// written there.
-fn filecoin_srs<PCS: MidnightPCS>(k: u32) -> ParamsKZG<Bls12> {
-    let j = PCS::srs_k(k);
+/// Loads Filecoin's production SRS (over BLS12-381) of size `2^j`, read from
+/// `$SRS_DIR/bls_filecoin_2p<j>`. If that file is missing, it is downsized from
+/// `bls_filecoin_2p19` and written there.
+fn filecoin_srs(j: u32) -> ParamsKZG<Bls12> {
     assert!(j <= 19, "We don't have an SRS of size 2^{j}");
 
     let srs_dir = env::var("SRS_DIR").unwrap_or("./examples/assets".into());

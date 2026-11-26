@@ -170,7 +170,9 @@ fn main() {
     const N: usize = 50; // Number of Poseidon iteration per IVC step.
     const STEPS: usize = 3; // Number of IVC steps to run.
 
+    let start = Instant::now();
     let srs = load_srs::<PCS>(SrsSource::Midnight, K);
+    println!("load_srs completed in {:.2?}", start.elapsed());
 
     let start = Instant::now();
     let (mut prover, verifier) = ivc::setup::<PoseidonChain<N>>(srs, K, ());

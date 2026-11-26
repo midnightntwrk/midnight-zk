@@ -17,7 +17,7 @@ use midnight_circuits::verifier::{AssignedAccumulator, CurveChip, InCircuitPCS};
 use midnight_curves::{Bls12, Fq};
 use midnight_proofs::poly::{
     commitment::PolynomialCommitmentScheme,
-    fflonk::Fflonk,
+    fflonk::{Fflonk, params::ParamsFflonkKZG},
     kzg::{
         KZGCommitmentScheme,
         commitment::KZGMultiCommitment,
@@ -63,6 +63,12 @@ pub trait MidnightPCS:
     /// such that the SRS has `2^j` points. It is the inverse of
     /// [`PolynomialCommitmentScheme::max_k`].
     fn srs_k(k: u32) -> u32;
+
+    /// The parameters for circuits of size `2^k`, built from `srs(j)`, the
+    /// SRS of size `2^j`.
+    fn params_from_srs(k: u32, mut srs: impl FnMut(u32) -> ParamsKZG<Bls12>) -> Self::Parameters {
+        srs(Self::srs_k(k)).into()
+    }
 }
 
 impl sealed::Sealed for KZG {}
@@ -87,5 +93,11 @@ where
 
     fn srs_k(k: u32) -> u32 {
         k + LOG2_T_MAX
+    }
+
+    /// Reads the SRSs of every size from `2^k` to `2^(k + LOG2_T_MAX)`, to
+    /// build the parameters without FFT.
+    fn params_from_srs(k: u32, srs: impl FnMut(u32) -> ParamsKZG<Bls12>) -> Self::Parameters {
+        ParamsFflonkKZG::from_kzgs((k..=Self::srs_k(k)).map(srs).collect())
     }
 }
