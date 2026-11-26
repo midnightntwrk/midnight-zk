@@ -11,8 +11,8 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * `MidnightVK::nb_public_inputs`, the number of public inputs expected by the key
 * `ZkStdLibArch::range_check_bit_len`, the bit size of the range-check lanes, by default `k - 1` (see `ZkStdLibArch::range_check_bit_len()`). The serialized architecture includes it, and its format version is 4 [#631](https://github.com/midnightntwrk/midnight-zk/pull/631)
 * `MidnightPK::read_with_max_k`, like `MidnightPK::read` but returning an error if the key's `k` exceeds an optional maximum, to avoid memory exhaustion on untrusted keys [#686](https://github.com/midnightntwrk/midnight-zk/issues/686)
-* `utils::plonk_api::precompute_delta_bases` and the `precompute_delta_bases` example store the delta bases of an SRS next to it, at `<SRS file>.delta-bases` [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
-* `MidnightPCS::USES_SRS_DELTA_BASES`, whether the prover commits with the delta bases of the KZG SRS: true for `KZG` only [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
+* `utils::plonk_api::precompute_delta_bases` and the `precompute_delta_bases` example store the delta bases of an SRS next to it, at `<SRS file>.delta-bases` [#694](https://github.com/midnightntwrk/midnight-zk/pull/694)
+* `MidnightPCS::USES_SRS_DELTA_BASES`, whether the prover commits with the delta bases of the KZG SRS: true for `KZG` only [#694](https://github.com/midnightntwrk/midnight-zk/pull/694)
 ### Changed
 * `load_srs::<KZG>` reads the delta bases of the SRS from `<SRS file>.delta-bases` if they are stored there; otherwise it prints a hint on how to store them, and the first proof builds them [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 * Adjust blinding factors for FFLONK protocol [#680](https://github.com/midnightntwrk/midnight-zk/pull/680)
@@ -174,7 +174,7 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 * Update `prove` to accept `impl RngCore + CryptoRng` by value [#307](https://github.com/midnightntwrk/midnight-zk/pull/307)
 
-## [1.0.0] 
+## [1.0.0]
 ### Added
 - Initial release of zk_stdlib extracted from circuits crate
 
