@@ -66,6 +66,9 @@ default = ["committed-instances"]
 circuit-params = []
 dev-curves = ["midnight-curves/dev-curves"]
 
+# Records the time the prover spends in MSMs, FFTs and polynomial evaluations.
+profiling = ["midnight-curves/profiling"]
+
 # This feature adds a new argument to prover and verifier functions, which
 # represents instances in committed form (e.g. in the form of a polynomial
 # commitment instead of a vector of scalars).

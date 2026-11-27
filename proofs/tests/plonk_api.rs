@@ -7,6 +7,8 @@ use assert_matches::assert_matches;
 use blake2b_simd::State;
 use ff::{FromUniformBytes, WithSmallOrderMulGroup};
 use midnight_curves::serde::SerdeObject;
+#[cfg(feature = "profiling")]
+use midnight_proofs::profiling;
 use midnight_proofs::{
     circuit::{Cell, Layouter, SimpleFloorPlanner, Value},
     dev::MockProver,
@@ -474,6 +476,8 @@ fn plonk_api() {
 
         let mut transcript = T::init();
 
+        #[cfg(feature = "profiling")]
+        profiling::reset();
         create_plonk_proof::<F, Scheme, _, _>(
             params,
             pk,
@@ -485,6 +489,8 @@ fn plonk_api() {
             rng,
         )
         .expect("proof generation should not fail");
+        #[cfg(feature = "profiling")]
+        check_profile(&profiling::take_report());
 
         // Check this circuit is satisfied.
         let prover = match MockProver::run(&circuit, vec![vec![instance]]) {
@@ -494,6 +500,66 @@ fn plonk_api() {
         assert_eq!(prover.verify(), Ok(()));
 
         transcript.finalize()
+    }
+
+    /// Checks the breakdown of the time of one proof of `MyCircuit`.
+    #[cfg(feature = "profiling")]
+    fn check_profile(report: &profiling::Report) {
+        use profiling::{Kernel, Phase};
+
+        // The circuit has no trash argument, so that phase is never entered.
+        let phases: Vec<_> = report.phases.iter().map(|p| p.phase).collect();
+        assert_eq!(
+            phases,
+            [
+                Phase::Preamble,
+                Phase::Synthesis,
+                Phase::AdviceCommit,
+                Phase::Lookups,
+                Phase::Permutation,
+                Phase::ArgumentsCommit,
+                Phase::Quotient,
+                Phase::Evals,
+                Phase::MultiOpen,
+            ]
+        );
+
+        assert!(!report.total.is_zero());
+        let walls: std::time::Duration = report.phases.iter().map(|p| p.wall).sum();
+        assert_eq!(walls, report.total);
+
+        for phase in &report.phases {
+            assert!(phase.covered <= phase.wall, "{phase:?}");
+            let kernel_walls: std::time::Duration = phase.kernels.iter().map(|k| k.wall).sum();
+            assert!(phase.covered <= kernel_walls, "{phase:?}");
+            for kernel in &phase.kernels {
+                assert!(kernel.wall <= phase.covered, "{phase:?}");
+                assert!(kernel.wall <= kernel.busy, "{phase:?}");
+                assert_eq!(kernel.calls == 0, kernel.busy.is_zero(), "{phase:?}");
+            }
+        }
+
+        let calls = |phase: Phase, kernel: Kernel| {
+            let phase = report.phases.iter().find(|p| p.phase == phase).unwrap();
+            let kernel = Kernel::ALL.iter().position(|k| *k == kernel).unwrap();
+            phase.kernels[kernel].calls
+        };
+        for kernel in Kernel::ALL {
+            assert_eq!(calls(Phase::Synthesis, kernel), 0);
+        }
+        assert!(calls(Phase::Lookups, Kernel::PolyEval) > 0);
+        for phase in [Phase::AdviceCommit, Phase::ArgumentsCommit] {
+            assert!(calls(phase, Kernel::Msm) > 0);
+            assert_eq!(calls(phase, Kernel::Fft), 0);
+        }
+        for kernel in Kernel::ALL {
+            assert!(calls(Phase::Quotient, kernel) > 0);
+        }
+        assert!(calls(Phase::Evals, Kernel::PolyEval) > 0);
+        assert_eq!(calls(Phase::Evals, Kernel::Msm), 0);
+        assert!(calls(Phase::MultiOpen, Kernel::PolyEval) > 0);
+        assert!(calls(Phase::MultiOpen, Kernel::Msm) > 0);
+        assert_eq!(calls(Phase::MultiOpen, Kernel::Fft), 0);
     }
 
     fn verify_proof<F, Scheme, T>(

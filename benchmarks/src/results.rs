@@ -14,6 +14,7 @@
 //! The records the runner produces, which are also the JSON schema of the
 //! result files.
 
+use midnight_proofs::profiling;
 use serde::{Deserialize, Serialize};
 
 use crate::workload::Pcs;
@@ -44,6 +45,11 @@ pub struct Environment {
     pub logical_cores: usize,
     /// The operating system and architecture.
     pub os: String,
+    /// Whether the build records the kernel breakdown. Timings of such builds
+    /// are not reference numbers. Absent from files of builds without the
+    /// `profiling` feature.
+    #[serde(default)]
+    pub profiling: bool,
 }
 
 /// The measurements of one workload under one scheme and thread count.
@@ -66,4 +72,90 @@ pub struct CaseResult {
     /// The wall time of each verification of the last proof in nanoseconds.
     /// It is empty if verification was skipped.
     pub verify_ns: Vec<u64>,
+    /// The breakdown of the last sample, in builds with profiling.
+    #[serde(default)]
+    pub breakdown: Option<Breakdown>,
+}
+
+/// The time of one proof by phase and kernel, in nanoseconds.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Breakdown {
+    /// The wall time of the proof.
+    pub total_ns: u64,
+    /// One entry per phase the prover entered, in order.
+    pub phases: Vec<PhaseBreakdown>,
+}
+
+/// The time of one phase.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PhaseBreakdown {
+    /// The name of the phase.
+    pub phase: String,
+    /// The wall time of the phase.
+    pub wall_ns: u64,
+    /// The wall time during which some kernel was running.
+    pub covered_ns: u64,
+    /// One entry per kernel.
+    pub kernels: Vec<KernelBreakdown>,
+}
+
+/// The time of one kernel during one phase.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct KernelBreakdown {
+    /// The name of the kernel.
+    pub kernel: String,
+    /// The wall time during which the kernel was running.
+    pub wall_ns: u64,
+    /// The sum of the durations of all its calls.
+    pub busy_ns: u64,
+    /// The number of calls.
+    pub calls: u64,
+}
+
+impl From<&profiling::Report> for Breakdown {
+    fn from(report: &profiling::Report) -> Self {
+        let phases = report
+            .phases
+            .iter()
+            .map(|p| PhaseBreakdown {
+                phase: p.phase.name().to_owned(),
+                wall_ns: p.wall.as_nanos() as u64,
+                covered_ns: p.covered.as_nanos() as u64,
+                kernels: profiling::Kernel::ALL
+                    .iter()
+                    .zip(&p.kernels)
+                    .map(|(kernel, stats)| KernelBreakdown {
+                        kernel: kernel.name().to_owned(),
+                        wall_ns: stats.wall.as_nanos() as u64,
+                        busy_ns: stats.busy.as_nanos() as u64,
+                        calls: stats.calls,
+                    })
+                    .collect(),
+            })
+            .collect();
+        Breakdown {
+            total_ns: report.total.as_nanos() as u64,
+            phases,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn files_without_profiling_fields_parse() {
+        let json = r#"{
+            "schema_version": 1,
+            "environment": {"commit": null, "cpu": null, "logical_cores": 4, "os": "linux x86_64"},
+            "cases": [{
+                "workload": "poseidon", "pcs": "kzg", "threads": 4, "k": 14,
+                "vk_hash": "00", "proof_bytes": 1, "samples_ns": [1], "verify_ns": []
+            }]
+        }"#;
+        let result: RunResult = serde_json::from_str(json).unwrap();
+        assert!(!result.environment.profiling);
+        assert_eq!(result.cases[0].breakdown, None);
+    }
 }

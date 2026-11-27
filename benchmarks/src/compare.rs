@@ -40,8 +40,15 @@
 //! # Warnings
 //!
 //! The comparison warns when the two files do not describe like-for-like
-//! measurements: a different verifying key, `k` or proof size for a case, or
-//! a different machine.
+//! measurements: a different verifying key, `k` or proof size for a case, a
+//! build with profiling, or a different machine.
+//!
+//! # Kernel breakdown
+//!
+//! When both sides of a case carry a breakdown, the time of each kernel is
+//! summed over the phases and compared, together with the time outside any
+//! kernel. A breakdown describes a single proof, so these differences are
+//! indicative and are not tested for significance.
 
 use std::{
     collections::{HashMap, hash_map::Entry},
@@ -50,7 +57,7 @@ use std::{
 };
 
 use crate::{
-    results::{CaseResult, Environment, RunResult, SCHEMA_VERSION},
+    results::{Breakdown, CaseResult, Environment, RunResult, SCHEMA_VERSION},
     workload::Pcs,
 };
 
@@ -61,6 +68,12 @@ pub const DEFAULT_THRESHOLD_PERCENT: f64 = 2.0;
 /// The number of samples per side from which the noise is estimated with the
 /// median absolute deviation instead of the sample ranges.
 pub const MIN_SAMPLES_FOR_MAD: usize = 5;
+
+/// The name under which the breakdown reports the time outside any kernel.
+pub const OTHER_KERNEL: &str = "other";
+
+/// The name under which the breakdown reports the wall time of the proof.
+pub const TOTAL_KERNEL: &str = "total";
 
 // Scales a median absolute deviation into an estimate of the standard
 // deviation of normally distributed data.
@@ -162,6 +175,30 @@ pub struct Timing {
     pub noise_rule: NoiseRule,
 }
 
+/// The change of the time of one kernel, summed over the phases of a proof.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct KernelDelta {
+    /// The name of the kernel, [`OTHER_KERNEL`] or [`TOTAL_KERNEL`].
+    pub kernel: String,
+    /// The wall time in the base, in nanoseconds.
+    pub base_ns: u64,
+    /// The wall time in the head, in nanoseconds.
+    pub head_ns: u64,
+}
+
+impl KernelDelta {
+    /// The change from base to head in milliseconds.
+    pub fn delta_ms(&self) -> f64 {
+        (self.head_ns as f64 - self.base_ns as f64) / 1e6
+    }
+
+    /// The change from base to head in percent of the base, or `None` if the
+    /// base is zero.
+    pub fn delta_percent(&self) -> Option<f64> {
+        (self.base_ns != 0).then(|| self.delta_ms() * 1e8 / self.base_ns as f64)
+    }
+}
+
 /// The comparison of one case present in both files.
 #[derive(Clone, Debug, PartialEq)]
 pub struct CaseComparison {
@@ -179,6 +216,8 @@ pub struct CaseComparison {
     pub timing: Option<Timing>,
     /// The classification of the change.
     pub verdict: Verdict,
+    /// The per-kernel changes, if both sides have a breakdown.
+    pub breakdown: Option<Vec<KernelDelta>>,
 }
 
 impl CaseComparison {
@@ -304,6 +343,50 @@ fn classify(base: &[u64], head: &[u64], threshold_percent: f64) -> (Option<Timin
     (Some(timing), verdict)
 }
 
+/// The time of each kernel summed over the phases, in order of appearance,
+/// followed by the time outside any kernel and by the total.
+fn kernel_totals(breakdown: &Breakdown) -> Vec<(String, u64)> {
+    let mut totals: Vec<(String, u64)> = Vec::new();
+    let mut other = 0u64;
+    for phase in &breakdown.phases {
+        other += phase.wall_ns.saturating_sub(phase.covered_ns);
+        for kernel in &phase.kernels {
+            match totals.iter_mut().find(|(name, _)| *name == kernel.kernel) {
+                Some((_, total)) => *total += kernel.wall_ns,
+                None => totals.push((kernel.kernel.clone(), kernel.wall_ns)),
+            }
+        }
+    }
+    totals.push((OTHER_KERNEL.to_owned(), other));
+    totals.push((TOTAL_KERNEL.to_owned(), breakdown.total_ns));
+    totals
+}
+
+fn breakdown_deltas(base: &Breakdown, head: &Breakdown) -> Vec<KernelDelta> {
+    let base = kernel_totals(base);
+    let head = kernel_totals(head);
+    let lookup = |totals: &[(String, u64)], name: &str| {
+        totals.iter().find(|(n, _)| n == name).map_or(0, |(_, ns)| *ns)
+    };
+    // The synthetic rows go last even if a kernel exists on one side only.
+    let synthetic = |name: &str| name == OTHER_KERNEL || name == TOTAL_KERNEL;
+    let mut names: Vec<&str> = Vec::new();
+    for (name, _) in base.iter().chain(&head) {
+        if !synthetic(name) && !names.contains(&name.as_str()) {
+            names.push(name);
+        }
+    }
+    names.extend([OTHER_KERNEL, TOTAL_KERNEL]);
+    names
+        .into_iter()
+        .map(|name| KernelDelta {
+            kernel: name.to_owned(),
+            base_ns: lookup(&base, name),
+            head_ns: lookup(&head, name),
+        })
+        .collect()
+}
+
 fn index<'a>(
     run: &'a RunResult,
     side: &str,
@@ -325,6 +408,18 @@ fn index<'a>(
 }
 
 fn environment_warnings(base: &Environment, head: &Environment, warnings: &mut Vec<String>) {
+    let sides = match (base.profiling, head.profiling) {
+        (true, true) => Some("both builds have"),
+        (true, false) => Some("the base build has"),
+        (false, true) => Some("the head build has"),
+        (false, false) => None,
+    };
+    if let Some(sides) = sides {
+        warnings.push(format!(
+            "PROFILING BUILD: {sides} profiling enabled; its instrumentation perturbs the \
+             timings, so these are not reference numbers"
+        ));
+    }
     if base.cpu != head.cpu {
         let name = |cpu: &Option<String>| cpu.clone().unwrap_or_else(|| "unknown".to_owned());
         warnings.push(format!(
@@ -409,6 +504,10 @@ pub fn compare_with_threshold(
             )),
             Some(_) => {}
         }
+        let breakdown = match (&b.breakdown, &h.breakdown) {
+            (Some(b), Some(h)) => Some(breakdown_deltas(b, h)),
+            _ => None,
+        };
         cases.push(CaseComparison {
             key,
             k: (b.k, h.k),
@@ -417,6 +516,7 @@ pub fn compare_with_threshold(
             samples: (b.samples_ns.len(), h.samples_ns.len()),
             timing,
             verdict,
+            breakdown,
         });
     }
 
@@ -502,11 +602,12 @@ fn format_time(ns: f64) -> String {
 
 fn describe_environment(env: &Environment) -> String {
     format!(
-        "{} ({}, {} logical cores, {})",
+        "{} ({}, {} logical cores, {}{})",
         env.commit.as_deref().unwrap_or("unknown commit"),
         env.cpu.as_deref().unwrap_or("unknown CPU"),
         env.logical_cores,
-        env.os
+        env.os,
+        if env.profiling { ", profiling" } else { "" }
     )
 }
 
@@ -578,6 +679,28 @@ fn cases_table(comparison: &Comparison) -> Table {
     }
 }
 
+fn breakdown_table(deltas: &[KernelDelta]) -> Table {
+    let rows = deltas.iter().map(|d| {
+        vec![
+            d.kernel.clone(),
+            format!("{:.2}", d.base_ns as f64 / 1e6),
+            format!("{:.2}", d.head_ns as f64 / 1e6),
+            format!("{:+.2}", d.delta_ms()),
+            d.delta_percent().map_or_else(|| "n/a".to_owned(), |p| format!("{p:+.2}%")),
+        ]
+    });
+    Table {
+        columns: vec![
+            ("kernel", false),
+            ("base ms", true),
+            ("head ms", true),
+            ("delta ms", true),
+            ("delta", true),
+        ],
+        rows: rows.collect(),
+    }
+}
+
 fn rule_text(threshold_percent: f64) -> String {
     format!(
         "delta is the head median relative to the base median; negative is faster. A change is \
@@ -589,6 +712,11 @@ fn rule_text(threshold_percent: f64) -> String {
          threshold alone decides."
     )
 }
+
+const BREAKDOWN_TEXT: &str = "Wall time of each kernel summed over the prover phases, from the \
+                              last proof of each side. `other` is the time outside any kernel. \
+                              Kernels may overlap, so the rows need not add up to `total`. A \
+                              single proof per side: indicative, not tested for significance.";
 
 /// Renders a comparison as an aligned plain-text table, or as GitHub-flavoured
 /// markdown if `markdown` is set.
@@ -650,6 +778,28 @@ pub fn render(comparison: &Comparison, markdown: bool) -> String {
         for key in keys {
             let bullet = if markdown { "-" } else { "  -" };
             out.push_str(&format!("{bullet} {key}\n"));
+        }
+    }
+
+    let mut breakdowns = c
+        .cases
+        .iter()
+        .filter_map(|case| Some((&case.key, case.breakdown.as_ref()?)))
+        .peekable();
+    if breakdowns.peek().is_some() {
+        if markdown {
+            out.push_str(&format!("\n#### Kernel breakdown\n\n{BREAKDOWN_TEXT}\n"));
+        } else {
+            out.push_str(&format!("\nKernel breakdown. {BREAKDOWN_TEXT}\n"));
+        }
+    }
+    for (key, deltas) in breakdowns {
+        if markdown {
+            out.push_str(&format!("\n**{key}**\n\n"));
+            breakdown_table(deltas).render(true, "", &mut out);
+        } else {
+            out.push_str(&format!("\n  {key}\n"));
+            breakdown_table(deltas).render(false, "    ", &mut out);
         }
     }
 
@@ -788,6 +938,7 @@ pub fn run(args: &[String]) -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::results::{KernelBreakdown, PhaseBreakdown};
 
     const MS: u64 = 1_000_000;
 
@@ -797,6 +948,7 @@ mod tests {
             cpu: Some("Test CPU".to_owned()),
             logical_cores: 16,
             os: "linux x86_64".to_owned(),
+            profiling: false,
         }
     }
 
@@ -810,6 +962,7 @@ mod tests {
             proof_bytes: 4000,
             samples_ns: samples_ms.iter().map(|s| s * MS).collect(),
             verify_ns: vec![],
+            breakdown: None,
         }
     }
 
@@ -818,6 +971,30 @@ mod tests {
             schema_version: SCHEMA_VERSION,
             environment: environment(),
             cases,
+        }
+    }
+
+    // One phase with the three kernels and 10 ms outside them.
+    fn breakdown(msm_ms: u64, fft_ms: u64, poly_ms: u64) -> Breakdown {
+        let kernel = |name: &str, ms: u64| KernelBreakdown {
+            kernel: name.to_owned(),
+            wall_ns: ms * MS,
+            busy_ns: ms * MS,
+            calls: 1,
+        };
+        let phase = |name: &str, share: u64| PhaseBreakdown {
+            phase: name.to_owned(),
+            wall_ns: (msm_ms + fft_ms + poly_ms) / share * MS + 5 * MS,
+            covered_ns: (msm_ms + fft_ms + poly_ms) / share * MS,
+            kernels: vec![
+                kernel("msm", msm_ms / share),
+                kernel("fft", fft_ms / share),
+                kernel("poly_eval", poly_ms / share),
+            ],
+        };
+        Breakdown {
+            total_ns: (msm_ms + fft_ms + poly_ms + 10) * MS,
+            phases: vec![phase("advice_commit", 2), phase("quotient", 2)],
         }
     }
 
@@ -994,6 +1171,20 @@ mod tests {
     }
 
     #[test]
+    fn profiling_is_flagged() {
+        let base = run_of(vec![case("poseidon", Pcs::Kzg, 8, &STEADY)]);
+        let mut head = base.clone();
+        head.environment.profiling = true;
+        let comparison = compare(&base, &head);
+        assert_eq!(comparison.warnings.len(), 1);
+        assert!(comparison.warnings[0].contains("PROFILING BUILD: the head build"));
+        assert!(render(&comparison, false).contains("WARNING: PROFILING BUILD"));
+
+        let both = compare(&head, &head);
+        assert!(both.warnings[0].contains("PROFILING BUILD: both builds"));
+    }
+
+    #[test]
     fn machine_differences_are_flagged() {
         let base = run_of(vec![case("poseidon", Pcs::Kzg, 8, &STEADY)]);
         let mut head = base.clone();
@@ -1002,6 +1193,55 @@ mod tests {
         let warnings = compare(&base, &head).warnings.join("\n");
         assert!(warnings.contains("DIFFERENT CPU: base ran on `Test CPU`, head on `Other CPU`"));
         assert!(warnings.contains("DIFFERENT CORE COUNT: base ran with 16 logical cores"));
+    }
+
+    #[test]
+    fn breakdown_deltas_are_summed_over_phases() {
+        let mut base = run_of(vec![case("poseidon", Pcs::Kzg, 8, &STEADY)]);
+        let mut head = base.clone();
+        base.cases[0].breakdown = Some(breakdown(400, 200, 100));
+        head.cases[0].breakdown = Some(breakdown(300, 200, 120));
+        let comparison = compare(&base, &head);
+        let deltas = comparison.cases[0].breakdown.as_ref().unwrap();
+        let names: Vec<&str> = deltas.iter().map(|d| d.kernel.as_str()).collect();
+        assert_eq!(names, ["msm", "fft", "poly_eval", "other", "total"]);
+
+        assert_eq!((deltas[0].base_ns, deltas[0].head_ns), (400 * MS, 300 * MS));
+        assert_eq!(deltas[0].delta_ms(), -100.0);
+        assert_eq!(deltas[0].delta_percent(), Some(-25.0));
+        assert_eq!(deltas[1].delta_ms(), 0.0);
+        assert_eq!(deltas[2].delta_percent(), Some(20.0));
+        assert_eq!((deltas[3].base_ns, deltas[3].head_ns), (10 * MS, 10 * MS));
+        assert_eq!(deltas[4].delta_ms(), -80.0);
+
+        let plain = render(&comparison, false);
+        assert!(plain.contains("Kernel breakdown"));
+        assert!(plain.contains("msm         400.00   300.00   -100.00  -25.00%"));
+        let markdown = render(&comparison, true);
+        assert!(markdown.contains("#### Kernel breakdown"));
+        assert!(markdown.contains("| poly_eval |  100.00 |  120.00 |   +20.00 | +20.00% |"));
+
+        // A breakdown on one side only cannot be compared.
+        head.cases[0].breakdown = None;
+        let comparison = compare(&base, &head);
+        assert!(comparison.cases[0].breakdown.is_none());
+        assert!(!render(&comparison, false).contains("Kernel breakdown"));
+    }
+
+    #[test]
+    fn breakdown_handles_kernels_of_one_side() {
+        let mut head = breakdown(300, 200, 100);
+        head.phases[0].kernels.push(KernelBreakdown {
+            kernel: "hash".to_owned(),
+            wall_ns: 7 * MS,
+            busy_ns: 7 * MS,
+            calls: 3,
+        });
+        let deltas = breakdown_deltas(&breakdown(300, 200, 100), &head);
+        let names: Vec<&str> = deltas.iter().map(|d| d.kernel.as_str()).collect();
+        assert_eq!(names, ["msm", "fft", "poly_eval", "hash", "other", "total"]);
+        assert_eq!((deltas[3].base_ns, deltas[3].head_ns), (0, 7 * MS));
+        assert_eq!(deltas[3].delta_percent(), None);
     }
 
     #[test]

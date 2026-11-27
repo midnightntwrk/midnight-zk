@@ -20,6 +20,7 @@ mod curve;
 pub mod ff_ext;
 pub mod fft;
 pub mod msm;
+pub mod profiling;
 pub mod serde;
 pub mod serde_traits;
 

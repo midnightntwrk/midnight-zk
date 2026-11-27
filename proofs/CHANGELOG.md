@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+* `profiling` feature, which records the time the prover spends in MSMs, FFTs and polynomial evaluations during each of its phases, and the `profiling` module, a re-export of `midnight_curves::profiling` [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 ### Removed
 * BREAKING: `bench-internal` feature, the `plonk::bench` module it exposed and the `zswap_output` criterion bench, replaced by the `midnight-benchmarks` crate [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 

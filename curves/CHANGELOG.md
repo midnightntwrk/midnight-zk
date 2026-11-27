@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://book.async.rs/overview/stability-guarantees.html).
 
 ## [Unreleased]
+### Added
+* `profiling` module, which accounts the wall time of kernels (MSMs, FFTs and polynomial evaluations) by prover phase, and the `profiling` feature that enables the recording. Without the feature its functions are empty [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 
 ## 0.4.0-rc.2
 ### Added

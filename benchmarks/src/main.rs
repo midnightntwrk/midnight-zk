@@ -135,6 +135,7 @@ fn run(args: RunArgs) -> ExitCode {
     };
 
     println!("{}", report::render_summary(&result));
+    print!("{}", report::render_breakdowns(&result));
 
     let mut outputs = Vec::new();
     if let Some(path) = args.json {

@@ -39,7 +39,7 @@ Environment:
                  <head-dir>/zk_stdlib/examples/assets, or that of <base-dir>
                  if only the base checkout has the files)
   AB_BUILD_ARGS  extra arguments of `cargo build`, split on whitespace,
-                 for example "--locked"
+                 for example "--features profiling"
 
 Output in DIR:
   base-<round>.json, head-<round>.json   the samples of each round
@@ -254,8 +254,8 @@ for round in $(seq 1 "$rounds"); do
     fi
 done
 
-# Keeps the first round's metadata and case order and appends the samples of
-# the later rounds.
+# Keeps the first round's metadata and case order, appends the samples of the
+# later rounds, and keeps the breakdown of the last round that has one.
 merge_filter='
 . as $rounds
 | $rounds[0]
@@ -265,6 +265,7 @@ merge_filter='
        | index(true)) as $i
       | if $i == null then . + [$c]
         else .[$i].samples_ns += $c.samples_ns
+           | .[$i].breakdown = ($c.breakdown // .[$i].breakdown)
         end))'
 
 merge() {

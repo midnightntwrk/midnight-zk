@@ -6,6 +6,7 @@ use super::{ConstraintSystem, Expression};
 use crate::{
     plonk::{Any, argument},
     poly::{Coeff, FftDomain, Polynomial, PolynomialLabel, PolynomialRepresentation, Rotation},
+    profiling::{self, Kernel},
     utils::arithmetic::parallelize,
 };
 
@@ -851,11 +852,15 @@ impl<F: PrimeField> Evaluator<F> {
         // out-of-order pipeline.
         let flat = &self.custom_gates_flat;
         let template = flat.new_values_buffer(&beta, &theta, &trash_challenge, &y);
+        // The spans of this function cover the passes over the rows only: the
+        // FFTs in between are accounted for by the domain.
+        let span = profiling::span(Kernel::PolyEval, values.len());
         parallelize(&mut values, |values, start| {
             flat.evaluate_chunk::<4, B>(
                 &template, values, start, fixed, advice, instance, log_scale, log_n,
             );
         });
+        drop(span);
 
         // Permutations
         if !cs.permutation().columns.is_empty() {
@@ -881,6 +886,7 @@ impl<F: PrimeField> Evaluator<F> {
             let last_set_permutation_product_coset = permutation_product_cosets.last().unwrap();
 
             // Permutation constraints
+            let _span = profiling::span(Kernel::PolyEval, values.len());
             parallelize(&mut values, |values, start| {
                 let mut beta_term = omega.pow_vartime([start as u64, 0, 0, 0]);
                 for (i, value) in values.iter_mut().enumerate() {
@@ -1035,6 +1041,7 @@ impl<F: PrimeField> Evaluator<F> {
 
         // Fused lookup + trash constraint evaluation in a single pass
         // over `values`, using flattened evaluators for reduced dispatch.
+        let span = profiling::span(Kernel::PolyEval, values.len());
         parallelize(&mut values, |values, start| {
             // Per-thread flat values buffers for all lookups.
             let mut all_lookup_bufs: Vec<Vec<Vec<F>>> = self
@@ -1145,6 +1152,7 @@ impl<F: PrimeField> Evaluator<F> {
                 }
             }
         });
+        drop(span);
 
         values
     }
@@ -1317,6 +1325,7 @@ pub fn evaluate<F: Field, B: PolynomialRepresentation>(
     advice: &[Polynomial<F, B>],
     instance: &[Polynomial<F, B>],
 ) -> Vec<F> {
+    let _span = profiling::span(Kernel::PolyEval, size);
     let mut values = vec![F::ZERO; size];
     let log_n = size.ilog2();
     parallelize(&mut values, |values, start| {

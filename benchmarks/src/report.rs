@@ -16,9 +16,17 @@
 use std::fmt::Write;
 
 use crate::{
-    results::{CaseResult, RunResult},
+    results::{Breakdown, CaseResult, RunResult},
     stats::Stats,
 };
+
+/// The warning attached to results of builds with profiling.
+const PROFILING_WARNING: &str =
+    "built with the `profiling` feature: these timings are not reference numbers";
+
+/// The caveat on reading the kernel columns of a breakdown.
+const OVERLAP_NOTE: &str = "Kernel columns are wall times and kernels can run concurrently, so \
+                            they may add up to more than the phase total minus `other`.";
 
 /// A table of text cells.
 struct Table {
@@ -158,14 +166,122 @@ fn summary_table<'a>(cases: impl Iterator<Item = &'a CaseResult>, with_threads: 
     table
 }
 
+/// The names of the kernels of `breakdown`, in order of first appearance.
+fn kernel_names(breakdown: &Breakdown) -> Vec<&str> {
+    let mut names = Vec::new();
+    for kernel in breakdown.phases.iter().flat_map(|p| &p.kernels) {
+        if !names.contains(&kernel.kernel.as_str()) {
+            names.push(kernel.kernel.as_str());
+        }
+    }
+    names
+}
+
+/// The table of a breakdown: a row per phase and a column per kernel, each
+/// cell with its share of the wall time of the proof.
+fn breakdown_table(breakdown: &Breakdown) -> Table {
+    let kernels = kernel_names(breakdown);
+    let cell = |ns: u64| {
+        let percent = match breakdown.total_ns {
+            0 => 0.0,
+            total => 100.0 * ns as f64 / total as f64,
+        };
+        format!("{:.2} ms ({percent:.1}%)", ns as f64 / 1e6)
+    };
+
+    let mut columns = vec![("phase", false)];
+    columns.extend(kernels.iter().map(|name| (*name, true)));
+    columns.extend([("other", true), ("phase total", true)]);
+    let mut table = Table::new(&columns);
+
+    let mut kernel_totals = vec![0u64; kernels.len()];
+    let mut covered_total = 0u64;
+    for phase in &breakdown.phases {
+        let mut row = vec![phase.phase.clone()];
+        for (name, total) in kernels.iter().zip(&mut kernel_totals) {
+            let wall: u64 =
+                phase.kernels.iter().filter(|k| k.kernel == *name).map(|k| k.wall_ns).sum();
+            *total += wall;
+            row.push(cell(wall));
+        }
+        covered_total += phase.covered_ns;
+        row.push(cell(phase.wall_ns.saturating_sub(phase.covered_ns)));
+        row.push(cell(phase.wall_ns));
+        table.rows.push(row);
+    }
+
+    let mut row = vec!["total".to_owned()];
+    row.extend(kernel_totals.into_iter().map(cell));
+    row.push(cell(breakdown.total_ns.saturating_sub(covered_total)));
+    row.push(cell(breakdown.total_ns));
+    table.rows.push(row);
+    table
+}
+
+/// For each kernel that ran, the ratio of the time summed over its calls to
+/// its wall time, which tells how many calls ran at once. It says nothing of
+/// the threads a single call uses.
+fn parallelism_hint(breakdown: &Breakdown) -> Option<String> {
+    let hints: Vec<String> = kernel_names(breakdown)
+        .into_iter()
+        .filter_map(|name| {
+            let calls = || breakdown.phases.iter().flat_map(|p| &p.kernels);
+            let calls = || calls().filter(|k| k.kernel == name);
+            let wall: u64 = calls().map(|k| k.wall_ns).sum();
+            let busy: u64 = calls().map(|k| k.busy_ns).sum();
+            (wall > 0).then(|| format!("{name} {:.1}x", busy as f64 / wall as f64))
+        })
+        .collect();
+    (!hints.is_empty()).then(|| format!("Concurrent calls (busy/wall): {}.", hints.join(", ")))
+}
+
+fn case_title(case: &CaseResult) -> String {
+    format!(
+        "{}, {}, k={}, {}",
+        case.workload,
+        case.pcs,
+        case.k,
+        threads_label(case.threads)
+    )
+}
+
 /// The summary of `result` for a terminal: a row per case with the median
 /// and spread of its samples.
 pub fn render_summary(result: &RunResult) -> String {
-    summary_table(result.cases.iter(), true).render_text()
+    let mut out = String::new();
+    if result.environment.profiling {
+        writeln!(out, "warning: {PROFILING_WARNING}\n").unwrap();
+    }
+    out += &summary_table(result.cases.iter(), true).render_text();
+    out
+}
+
+/// The breakdowns of the cases of `result` that have one, for a terminal. It
+/// is empty if no case does.
+pub fn render_breakdowns(result: &RunResult) -> String {
+    let mut out = String::new();
+    for case in &result.cases {
+        let Some(breakdown) = &case.breakdown else {
+            continue;
+        };
+        if !out.is_empty() {
+            out.push('\n');
+        }
+        writeln!(out, "{}", case_title(case)).unwrap();
+        out += &breakdown_table(breakdown).render_text();
+        if let Some(hint) = parallelism_hint(breakdown) {
+            writeln!(out, "{hint}").unwrap();
+        }
+    }
+    if !out.is_empty() {
+        writeln!(out, "\n{OVERLAP_NOTE}").unwrap();
+    }
+    out
 }
 
 /// The reference tables of `result` in markdown: the environment, a summary
-/// table per thread count. `date` is the day of the run.
+/// table per thread count and the breakdowns, if any. `date` is the day of
+/// the run.
 pub fn render_markdown(result: &RunResult, date: &str) -> String {
     let env = &result.environment;
     let mut out = String::from("# Prover benchmarks\n\n");
@@ -176,6 +292,9 @@ pub fn render_markdown(result: &RunResult, date: &str) -> String {
     writeln!(out, "- Logical cores: {}", env.logical_cores).unwrap();
     writeln!(out, "- OS: {}", env.os).unwrap();
     writeln!(out, "- Date: {date}").unwrap();
+    if env.profiling {
+        writeln!(out, "\n**Warning**: {PROFILING_WARNING}.").unwrap();
+    }
 
     let mut thread_counts = Vec::new();
     for case in &result.cases {
@@ -189,6 +308,27 @@ pub fn render_markdown(result: &RunResult, date: &str) -> String {
         out += &summary_table(cases, false).render_markdown();
     }
 
+    let mut breakdowns = result
+        .cases
+        .iter()
+        .filter_map(|case| Some((case, case.breakdown.as_ref()?)))
+        .peekable();
+    if breakdowns.peek().is_some() {
+        writeln!(out, "\n## Breakdown\n").unwrap();
+        writeln!(
+            out,
+            "Time of the last proof of each case by prover phase and kernel, with its share of \
+             the wall time of the proof. {OVERLAP_NOTE}"
+        )
+        .unwrap();
+    }
+    for (case, breakdown) in breakdowns {
+        writeln!(out, "\n### {}\n", case_title(case)).unwrap();
+        out += &breakdown_table(breakdown).render_markdown();
+        if let Some(hint) = parallelism_hint(breakdown) {
+            writeln!(out, "\n{hint}").unwrap();
+        }
+    }
     out
 }
 
@@ -216,11 +356,54 @@ pub fn utc_date(unix_seconds: u64) -> String {
 mod tests {
     use super::*;
     use crate::{
-        results::{Environment, SCHEMA_VERSION},
+        results::{Environment, KernelBreakdown, PhaseBreakdown, SCHEMA_VERSION},
         workload::Pcs,
     };
 
-    fn case(workload: &str, pcs: Pcs, threads: usize, samples_ns: &[u64]) -> CaseResult {
+    fn kernel(kernel: &str, wall_ns: u64, busy_ns: u64) -> KernelBreakdown {
+        KernelBreakdown {
+            kernel: kernel.to_owned(),
+            wall_ns,
+            busy_ns,
+            calls: 1,
+        }
+    }
+
+    fn breakdown() -> Breakdown {
+        Breakdown {
+            total_ns: 200_000_000,
+            phases: vec![
+                PhaseBreakdown {
+                    phase: "synthesis".into(),
+                    wall_ns: 50_000_000,
+                    covered_ns: 0,
+                    kernels: vec![
+                        kernel("msm", 0, 0),
+                        kernel("fft", 0, 0),
+                        kernel("poly_eval", 0, 0),
+                    ],
+                },
+                PhaseBreakdown {
+                    phase: "quotient".into(),
+                    wall_ns: 140_000_000,
+                    covered_ns: 120_000_000,
+                    kernels: vec![
+                        kernel("msm", 40_000_000, 60_000_000),
+                        kernel("fft", 60_000_000, 240_000_000),
+                        kernel("poly_eval", 30_000_000, 30_000_000),
+                    ],
+                },
+            ],
+        }
+    }
+
+    fn case(
+        workload: &str,
+        pcs: Pcs,
+        threads: usize,
+        samples_ns: &[u64],
+        breakdown: Option<Breakdown>,
+    ) -> CaseResult {
         CaseResult {
             workload: workload.to_owned(),
             pcs,
@@ -230,10 +413,12 @@ mod tests {
             proof_bytes: 4_512,
             samples_ns: samples_ns.to_vec(),
             verify_ns: vec![2_000_000, 4_000_000, 3_000_000],
+            breakdown,
         }
     }
 
-    fn fixture() -> RunResult {
+    fn fixture(profiling: bool) -> RunResult {
+        let breakdown = || profiling.then(breakdown);
         RunResult {
             schema_version: SCHEMA_VERSION,
             environment: Environment {
@@ -241,6 +426,7 @@ mod tests {
                 cpu: Some("Some CPU 9000".into()),
                 logical_cores: 32,
                 os: "linux x86_64".into(),
+                profiling,
             },
             cases: vec![
                 case(
@@ -248,9 +434,10 @@ mod tests {
                     Pcs::Kzg,
                     1,
                     &[1_500_000_000, 1_600_000_000, 1_400_000_000],
+                    breakdown(),
                 ),
-                case("poseidon", Pcs::Kzg, 32, &[200_000_000, 220_000_000]),
-                case("sha_preimage", Pcs::FflonkT4, 1, &[900_000]),
+                case("poseidon", Pcs::Kzg, 32, &[200_000_000, 220_000_000], None),
+                case("sha_preimage", Pcs::FflonkT4, 1, &[900_000], breakdown()),
             ],
         }
     }
@@ -283,7 +470,42 @@ poseidon      kzg        14        1    1.500 s    1.400 s    6.7  3.00 ms      
 poseidon      kzg        14       32  210.00 ms  200.00 ms    4.8  3.00 ms         4512
 sha_preimage  fflonk-t4  14        1   900.0 µs   900.0 µs    0.0  3.00 ms         4512
 ";
-        assert_eq!(render_summary(&fixture()), expected);
+        assert_eq!(render_summary(&fixture(false)), expected);
+        assert_eq!(render_breakdowns(&fixture(false)), "");
+
+        let with_profiling = render_summary(&fixture(true));
+        assert!(with_profiling.starts_with("warning: built with the `profiling` feature"));
+        assert!(with_profiling.ends_with(expected));
+    }
+
+    #[test]
+    fn breakdowns() {
+        let expected_table = "\
+phase                   msm               fft         poly_eval             other         phase total
+---------  ----------------  ----------------  ----------------  ----------------  ------------------
+synthesis    0.00 ms (0.0%)    0.00 ms (0.0%)    0.00 ms (0.0%)  50.00 ms (25.0%)    50.00 ms (25.0%)
+quotient   40.00 ms (20.0%)  60.00 ms (30.0%)  30.00 ms (15.0%)  20.00 ms (10.0%)   140.00 ms (70.0%)
+total      40.00 ms (20.0%)  60.00 ms (30.0%)  30.00 ms (15.0%)  80.00 ms (40.0%)  200.00 ms (100.0%)
+Concurrent calls (busy/wall): msm 1.5x, fft 4.0x, poly_eval 1.0x.
+";
+        let rendered = render_breakdowns(&fixture(true));
+        let expected = format!(
+            "poseidon, kzg, k=14, 1 thread\n{expected_table}\nsha_preimage, fflonk-t4, k=14, 1 \
+             thread\n{expected_table}\n{OVERLAP_NOTE}\n"
+        );
+        assert_eq!(rendered, expected);
+    }
+
+    #[test]
+    fn empty_breakdown() {
+        let empty = Breakdown {
+            total_ns: 0,
+            phases: vec![],
+        };
+        let rendered = breakdown_table(&empty).render_text();
+        assert_eq!(rendered.lines().count(), 3);
+        assert!(rendered.ends_with("total  0.00 ms (0.0%)  0.00 ms (0.0%)\n"));
+        assert_eq!(parallelism_hint(&empty), None);
     }
 
     #[test]
@@ -310,12 +532,39 @@ sha_preimage  fflonk-t4  14        1   900.0 µs   900.0 µs    0.0  3.00 ms    
 | -------- | --- | --: | --------: | --------: | ----: | ------: | ----------: |
 | poseidon | kzg |  14 | 210.00 ms | 200.00 ms |   4.8 | 3.00 ms |        4512 |
 ";
-        assert_eq!(render_markdown(&fixture(), "2026-01-02"), expected);
+        assert_eq!(render_markdown(&fixture(false), "2026-01-02"), expected);
+    }
+
+    #[test]
+    fn markdown_with_breakdown() {
+        let rendered = render_markdown(&fixture(true), "2026-01-02");
+        assert!(rendered.contains("\n**Warning**: built with the `profiling` feature"));
+        assert!(rendered.contains("\n## Breakdown\n"));
+        assert!(rendered.contains("\n### poseidon, kzg, k=14, 1 thread\n"));
+        assert!(rendered.contains("\n### sha_preimage, fflonk-t4, k=14, 1 thread\n"));
+        assert!(!rendered.contains("### poseidon, kzg, k=14, 32 threads"));
+        let rows = [
+            "| phase     |              msm |              fft |        poly_eval |            \
+             other |        phase total |",
+            "| --------- | ---------------: | ---------------: | ---------------: | \
+             ---------------: | -----------------: |",
+            "| quotient  | 40.00 ms (20.0%) | 60.00 ms (30.0%) | 30.00 ms (15.0%) | 20.00 ms \
+             (10.0%) |  140.00 ms (70.0%) |",
+            "| total     | 40.00 ms (20.0%) | 60.00 ms (30.0%) | 30.00 ms (15.0%) | 80.00 ms \
+             (40.0%) | 200.00 ms (100.0%) |",
+        ];
+        for row in rows {
+            assert!(rendered.contains(row), "missing row: {row}");
+        }
+        assert!(
+            rendered
+                .contains("\nConcurrent calls (busy/wall): msm 1.5x, fft 4.0x, poly_eval 1.0x.")
+        );
     }
 
     #[test]
     fn unknown_environment() {
-        let mut result = fixture();
+        let mut result = fixture(false);
         result.environment.commit = None;
         result.environment.cpu = None;
         let rendered = render_markdown(&result, "2026-01-02");

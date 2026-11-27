@@ -198,6 +198,10 @@ jobs:
         with:
           package: midnight-proofs
           args: --release
+      - uses: ./.github/actions/cargo-test
+        with:
+          package: midnight-proofs
+          args: --release --features profiling --test plonk_api
 
   test-aggregation:
     if: github.event.pull_request.draft == false

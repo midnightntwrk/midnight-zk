@@ -9,6 +9,8 @@ provides:
 - a runner that times them under KZG and fflonk with several packing sizes,
   single-threaded and multi-threaded, and writes the results as a table, JSON
   or markdown;
+- with the `profiling` feature, a breakdown of each proof by prover phase and
+  kernel (MSM, FFT, polynomial evaluation);
 - a comparison of two result files, and a script that measures two commits
   alternately and compares them.
 
@@ -109,6 +111,79 @@ A workload implements `Workload` (see `src/workload.rs`) and is listed in
 `workloads::registry()`. Most of them are a `Relation` of the standard
 library, wrapped with `relation_workload`.
 
+## Profiling
+
+Built with the `profiling` feature, the runner also reports where the time of
+each proof went:
+
+```sh
+cargo run -p midnight-benchmarks --release --features profiling -- run --filter zswap --pcs kzg
+```
+
+The feature enables `midnight_proofs::profiling` (a re-export of
+`midnight_curves::profiling`), which records a span around every MSM, FFT and
+polynomial evaluation, and the prover announces each of its phases. The runner
+prints one matrix per case, taken from the last timed proof:
+
+```
+zswap_output, kzg, k=13, 1 thread
+phase                           msm                fft          poly_eval            other         phase total
+----------------  -----------------  -----------------  -----------------  ---------------  ------------------
+preamble             0.00 ms (0.0%)     1.71 ms (0.2%)     0.00 ms (0.0%)   0.06 ms (0.0%)      1.77 ms (0.2%)
+synthesis            0.00 ms (0.0%)     0.00 ms (0.0%)     0.00 ms (0.0%)  12.90 ms (1.4%)     12.90 ms (1.4%)
+advice_commit     117.26 ms (12.6%)     0.00 ms (0.0%)     0.00 ms (0.0%)   0.85 ms (0.1%)   118.11 ms (12.7%)
+lookups              0.00 ms (0.0%)     0.00 ms (0.0%)     0.77 ms (0.1%)   9.49 ms (1.0%)     10.26 ms (1.1%)
+permutation          0.00 ms (0.0%)     0.00 ms (0.0%)     0.00 ms (0.0%)   9.28 ms (1.0%)      9.28 ms (1.0%)
+trash                0.00 ms (0.0%)     0.00 ms (0.0%)    29.05 ms (3.1%)   0.70 ms (0.1%)     29.75 ms (3.2%)
+arguments_commit  126.69 ms (13.6%)     0.00 ms (0.0%)     0.00 ms (0.0%)   1.26 ms (0.1%)   127.95 ms (13.8%)
+quotient          135.31 ms (14.6%)   98.77 ms (10.6%)  278.39 ms (30.0%)   1.02 ms (0.1%)   513.49 ms (55.3%)
+evals                0.00 ms (0.0%)     0.00 ms (0.0%)    17.66 ms (1.9%)   0.08 ms (0.0%)     17.74 ms (1.9%)
+multi_open          76.58 ms (8.2%)     0.00 ms (0.0%)     2.28 ms (0.2%)   8.25 ms (0.9%)     87.11 ms (9.4%)
+total             455.85 ms (49.1%)  100.48 ms (10.8%)  328.15 ms (35.3%)  43.88 ms (4.7%)  928.36 ms (100.0%)
+Concurrent calls (busy/wall): msm 1.0x, fft 1.0x, poly_eval 1.0x.
+```
+
+How to read it:
+
+- A row is a phase of the prover. `phase total` is the wall time of the
+  phase, and the percentages are relative to the wall time of the whole
+  proof.
+- A kernel column is the wall time during which at least one span of that
+  kernel was open: the union of the intervals of its spans, not their sum. A
+  kernel that runs on 32 threads for 10 ms counts 10 ms.
+- `other` is the wall time of the phase during which no span of any kernel was
+  open.
+- Spans of different kernels can overlap when they run concurrently, in which
+  case the kernel columns of a row add up to more than the phase total minus
+  `other`. The four columns therefore do not always add up to 100%.
+- `poly_eval` includes the polynomial divisions of the multi-open argument.
+- Within a thread, time is charged to the innermost open span. Work that is
+  not in a span but runs under one is charged to that span, which includes a
+  task that a rayon thread steals while its span waits on the pool.
+- The `Concurrent calls` line under a table is the time summed over the calls
+  of a kernel divided by its wall time. It tells how many calls ran at once,
+  not how many threads a call used.
+
+What lands in `other` is the prover work that is not one of the three kernels:
+witness synthesis (the whole `synthesis` row), batch inversions, the
+permutation products, the division by the vanishing polynomial, the linear
+combinations of polynomials in the multi-open argument, and transcript
+hashing.
+
+On `zswap_output` and `ecdsa` under KZG, 21 interleaved samples per side
+showed no difference between a profiling and a plain build beyond the noise
+(under 0.6%). The runner still warns that a profiling build does not produce
+reference numbers, and `compare` warns when one of its inputs comes from such
+a build. Without the feature, every function of the profiling module is empty
+and the prover is unchanged.
+
+With `--json`, the breakdown of each case is stored under `breakdown`, in
+nanoseconds: per phase `wall_ns` and `covered_ns` (the time inside any
+kernel), and per kernel `wall_ns`, `busy_ns` (the sum of the durations of its
+spans, which exceeds `wall_ns` when they run concurrently) and `calls`. Files
+written without the feature have no `breakdown` and no `environment.profiling`,
+and are read as builds without profiling.
+
 ## Comparing two commits
 
 `compare` takes two result files and reports, for every case present in both,
@@ -139,7 +214,10 @@ The comparison is only meaningful if both sides prove the same circuit.
 `compare` checks the digest of the verifying key of each case and prints
 `VK HASH MISMATCH` when the two builds disagree, which happens when the change
 under test alters the constraint system or the keys. It also warns about a
-different `k`, a different proof size, or a different machine.
+different `k`, a different proof size, a profiling build, or a different
+machine. When both files carry a breakdown, it shows the change of each
+kernel, without testing it for significance, since a breakdown describes a
+single proof.
 
 Two runs taken minutes apart on the same machine can differ by more than the
 change under test. `scripts/ab.sh` measures two checkouts alternately instead,
@@ -156,8 +234,9 @@ side with `jq`, and runs `compare` on the result. It also writes the
 comparison as markdown to `comparison.md`. Arguments after `--` go to `run` on
 both sides. The result files are kept in `./ab-results/<timestamp>` or in the
 `--out` directory. Both checkouts must contain this crate, and both read the
-SRS from `SRS_DIR`, which defaults to the assets of the head checkout.
-`ab.sh --help` has the details.
+SRS from `SRS_DIR`, which defaults to the assets of the head checkout. Set
+`AB_BUILD_ARGS="--features profiling"` to compare breakdowns. `ab.sh --help`
+has the details.
 
 ## Measuring a change for a pull request
 
@@ -198,6 +277,7 @@ the pull request.
   in-circuit. The example needs an SRS larger than the 2^19 one available.
 - **`zswap_output` runs at k = 13**, its optimal size. The criterion bench it
   replaces used k = 14, so the numbers of the two are not comparable.
+- The breakdown of a case describes its last proof only.
 - **The witnesses of `ivc_step` and `aggregation` differ across runs.** The
   prover draws some blinding factors from the operating system, so the proofs
   these two workloads verify in-circuit are not reproducible. Their circuits

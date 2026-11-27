@@ -14,7 +14,9 @@
 //! Standard prover benchmarks for midnight-zk.
 //!
 //! [`workloads::registry`] lists the circuits, [`runner`] times their prover
-//! and verifier, and [`compare`] compares two runs.
+//! and verifier, and [`compare`] compares two runs. With the `profiling`
+//! feature, the runner also breaks the time of each proof down by prover
+//! phase and kernel.
 
 pub mod compare;
 pub mod report;
