@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://book.async.rs/overview/stability-guarantees.html).
 
 ## [Unreleased]
+### Changed
+* BLS12-381 `Fq::from(u64)` converts the value to Montgomery form directly, instead of encoding it in 32 bytes and decoding them with a range check [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 
 ## 0.4.0-rc.2
 ### Added
