@@ -36,7 +36,6 @@ use crate::{
 /// This structure holds the multiplicity counts, together with the evaluations
 /// of the input and table expressions they were counted from, which are
 /// compressed with `theta` once it is known.
-#[cfg_attr(feature = "bench-internal", derive(Clone))]
 #[derive(Debug)]
 pub(crate) struct ComputedMultiplicities<F: PrimeField> {
     pub(crate) argument_index: usize,

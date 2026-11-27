@@ -1,9 +1,23 @@
-//! Bechmarks for the prover and verifier performance on the Zswap-output
-//! circuit from the zswap protocol.
+// This file is part of MIDNIGHT-ZK.
+// Copyright (C) Midnight Foundation
+// SPDX-License-Identifier: Apache-2.0
+// Licensed under the Apache License, Version 2.0 (the "License");
+// You may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+// http://www.apache.org/licenses/LICENSE-2.0
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+//! The `zswap_output` workload: the output circuit of the Zswap protocol,
+//! which opens a coin commitment (SHA-256) and a value commitment (a Jubjub
+//! MSM over a hash-to-curve base).
 //!
 //! For more details, visit:
-//! https://github.com/midnightntwrk/midnight-ledger-prototype/blob/main/zswap/zswap.compact
-use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
+//! <https://github.com/midnightntwrk/midnight-ledger-prototype/blob/main/zswap/zswap.compact>
+
 use ff::Field;
 use group::Group;
 use midnight_circuits::{
@@ -15,35 +29,36 @@ use midnight_circuits::{
     },
     types::{AssignedBit, AssignedByte, AssignedNative, AssignedNativePoint, Instantiable},
 };
-use midnight_curves::{Bls12, Fr as JubjubScalar, JubjubExtended as Jubjub, JubjubSubgroup};
+use midnight_curves::{Fr as JubjubScalar, JubjubExtended as Jubjub, JubjubSubgroup};
 use midnight_proofs::{
     circuit::{Layouter, Value},
-    plonk::{
-        Error, bench::prover::benchmark_create_proof, keygen_pk, keygen_vk_with_k, parse_trace,
-        verify_algebraic_constraints,
-    },
-    poly::{
-        commitment::Guard,
-        kzg::{KZGCommitmentScheme, params::ParamsKZG},
-    },
-    transcript::{CircuitTranscript, Transcript},
+    plonk::Error,
 };
-use midnight_zk_stdlib::{MidnightCircuit, Relation, ZkStdLib, ZkStdLibArch};
-use rand::{Rng, SeedableRng, rngs::OsRng};
+use midnight_zk_stdlib::{Relation, ZkStdLib, ZkStdLibArch};
+use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use sha2::Digest;
+
+use crate::workload::{RelationCase, Workload, relation_workload};
 
 type F = midnight_curves::Fq;
 
 type CoinCom = [u8; 32];
 type ValueCom = JubjubSubgroup;
 
+/// The domain separator of coin commitments.
+const DOMAIN_SEP: &str = "mdn:cc";
+
+/// The recipient of a coin.
 #[derive(Clone, Copy, Debug)]
 pub enum PK {
+    /// The public key of a user.
     ZSwapCoinPublicKey([u8; 32]),
+    /// The address of a contract.
     ContractAddress([u8; 32]),
 }
 
+/// A coin.
 #[derive(Clone, Copy, Debug)]
 pub struct CoinInfo {
     color: F,
@@ -67,6 +82,8 @@ struct AssignedCoinInfo {
     value: AssignedNative<F>,
 }
 
+/// Knowledge of a coin, its recipient and a randomness that open the public
+/// coin and value commitments.
 #[derive(Clone, Default)]
 pub struct ZSwapOutputCircuit;
 
@@ -93,7 +110,7 @@ impl Relation for ZSwapOutputCircuit {
     ) -> Result<(), Error> {
         let pk = assign_pk(std_lib, layouter, witness.as_ref().map(|w| w.0))?;
         let coin = assign_coin(std_lib, layouter, witness.as_ref().map(|w| w.1))?;
-        let domain_sep = assign_fixed_domain_sep(std_lib, layouter, "mdn:cc")?;
+        let domain_sep = std_lib.assign_many_fixed(layouter, DOMAIN_SEP.as_bytes())?;
 
         let coin_com = {
             std_lib.sha2_256(
@@ -189,22 +206,15 @@ fn assign_coin(
     })
 }
 
-fn assign_fixed_domain_sep(
-    std_lib: &ZkStdLib,
-    layouter: &mut impl Layouter<F>,
-    domain_sep: &str,
-) -> Result<Vec<AssignedByte<F>>, Error> {
-    std_lib.assign_many_fixed(layouter, domain_sep.as_bytes())
-}
+/// The output of a coin of value 1000 to a pseudo-random recipient.
+fn build() -> RelationCase<ZSwapOutputCircuit> {
+    let mut rng = ChaCha8Rng::seed_from_u64(0x25a9);
 
-fn sample_zswap_inputs() -> (Vec<F>, MidnightCircuit<'static, ZSwapOutputCircuit>) {
-    let mut rng = ChaCha8Rng::from_entropy();
-
-    let zswap_pk_bytes = core::array::from_fn(|_| rng.r#gen());
-    let zswap_pk_is_contract: bool = rng.r#gen();
-    let zswap_pk = match zswap_pk_is_contract {
-        false => PK::ZSwapCoinPublicKey(zswap_pk_bytes),
-        true => PK::ContractAddress(zswap_pk_bytes),
+    let pk_bytes: [u8; 32] = core::array::from_fn(|_| rng.r#gen());
+    let is_contract: bool = rng.r#gen();
+    let pk = match is_contract {
+        false => PK::ZSwapCoinPublicKey(pk_bytes),
+        true => PK::ContractAddress(pk_bytes),
     };
 
     let coin = CoinInfo {
@@ -213,115 +223,73 @@ fn sample_zswap_inputs() -> (Vec<F>, MidnightCircuit<'static, ZSwapOutputCircuit
         value: 1000,
     };
 
-    let coin_com: [u8; 32] = {
+    let coin_com: CoinCom = {
         let mut preimage = coin.color.to_bytes_le().to_vec();
-        preimage.extend(coin.nonce.to_bytes_le().to_vec());
-        preimage.extend(coin.value.to_le_bytes().to_vec());
-        preimage.push(zswap_pk_is_contract as u8);
-        preimage.extend(zswap_pk_bytes.map(|b| b).to_vec());
-        preimage.extend("mdn:cc".as_bytes());
+        preimage.extend(coin.nonce.to_bytes_le());
+        preimage.extend(coin.value.to_le_bytes());
+        preimage.push(is_contract as u8);
+        preimage.extend(pk_bytes);
+        preimage.extend(DOMAIN_SEP.as_bytes());
         sha2::Sha256::digest(preimage).into()
     };
 
-    let rc = JubjubScalar::random(rng);
+    let rc = JubjubScalar::random(&mut rng);
     let value_com = {
-        let coin_base = <HashToCurveGadget<
+        let color_base = <HashToCurveGadget<
             F,
             Jubjub,
             AssignedNative<F>,
             PoseidonChip<F>,
             EccChip<Jubjub>,
         > as HashToCurveCPU<Jubjub, F>>::hash_to_curve(&[coin.color]);
-        JubjubSubgroup::generator() * rc + coin_base * JubjubScalar::from(coin.value)
+        JubjubSubgroup::generator() * rc + color_base * JubjubScalar::from(coin.value)
     };
 
-    let witness = (zswap_pk, coin, rc);
-    let instance = (coin_com, value_com);
-
-    let circuit = MidnightCircuit::new(
-        &ZSwapOutputCircuit,
-        Value::known(instance),
-        Value::known(witness),
-        None,
-    );
-
-    (
-        ZSwapOutputCircuit::format_instance(&instance).unwrap(),
-        circuit,
-    )
+    RelationCase {
+        relation: ZSwapOutputCircuit,
+        instance: (coin_com, value_com),
+        witness: (pk, coin, rc),
+        k: None,
+    }
 }
 
-fn bench_zswap_output(c: &mut Criterion) {
-    const K: u32 = 14;
-    let srs = ParamsKZG::unsafe_setup(K, OsRng);
-
-    let circuit = MidnightCircuit::from_relation(&ZSwapOutputCircuit, Some(K));
-    let vk = keygen_vk_with_k::<_, KZGCommitmentScheme<Bls12>, _>(&srs, &circuit, K)
-        .expect("Failed to generate VK");
-    let pk = keygen_pk(vk, &circuit).expect("Failed to generate PK");
-    let (instance, circuit) = sample_zswap_inputs();
-
-    let mut group = c.benchmark_group("ZSwap Prover");
-    let mut transcript = CircuitTranscript::<blake2b_simd::State>::init();
-    benchmark_create_proof(
-        &srs,
-        &pk,
-        &circuit,
-        0,
-        &[&[], &instance],
-        &mut transcript,
-        &mut OsRng,
-        &mut group,
-    )
-    .expect("Failed to generate proof");
-
-    group.finish();
-
-    let mut group = c.benchmark_group("ZSwap Verifier");
-    let transcript =
-        CircuitTranscript::<blake2b_simd::State>::init_from_bytes(&transcript.finalize());
-    group.bench_function("Parse trace", |b| {
-        b.iter_batched(
-            || transcript.clone(),
-            |mut t| parse_trace(pk.get_vk(), &[], &[&[], &instance], &mut t).unwrap(),
-            BatchSize::SmallInput,
-        )
-    });
-
-    group.bench_function("Verify algebraic constraints", |b| {
-        b.iter_batched(
-            || {
-                let mut t = transcript.clone();
-                (
-                    parse_trace(pk.get_vk(), &[], &[&[], &instance], &mut t).unwrap(),
-                    t,
-                )
-            },
-            |(trace, mut t)| {
-                verify_algebraic_constraints(pk.get_vk(), trace, &[], &[&[], &instance], &mut t)
-            },
-            BatchSize::SmallInput,
-        )
-    });
-
-    group.bench_function("Finalize proof verification", |b| {
-        b.iter_batched(
-            || {
-                let mut t = transcript.clone();
-                let trace = parse_trace(pk.get_vk(), &[], &[&[], &instance], &mut t).unwrap();
-
-                verify_algebraic_constraints(pk.get_vk(), trace, &[], &[&[], &instance], &mut t)
-                    .unwrap()
-            },
-            |guard| guard.verify(&srs.verifier_params()).unwrap(),
-            BatchSize::SmallInput,
-        )
-    });
+/// The workloads defined in this module.
+pub fn workloads() -> Vec<Box<dyn Workload>> {
+    vec![relation_workload("zswap_output", build)]
 }
 
-criterion_group!(
-    name = benches;
-    config = Criterion::default().sample_size(200);
-    targets = bench_zswap_output
-);
-criterion_main!(benches);
+#[cfg(test)]
+mod tests {
+    use crate::workload::Pcs;
+
+    /// Proves and verifies every workload under `pcs`, and checks that
+    /// building it again gives the same circuit.
+    fn check(pcs: Pcs) {
+        for workload in super::workloads() {
+            let name = workload.name();
+            assert!(
+                workload.supported_pcs().contains(&pcs),
+                "{name} under {pcs}"
+            );
+            let mut prepared = workload.setup(pcs);
+            let proof = prepared.prove();
+            assert!(prepared.verify(&proof), "{name} under {pcs}");
+            assert_eq!(
+                prepared.vk_hash(),
+                workload.setup(pcs).vk_hash(),
+                "{name} under {pcs}"
+            );
+        }
+    }
+
+    #[test]
+    fn kzg() {
+        check(Pcs::Kzg);
+    }
+
+    #[test]
+    fn fflonk() {
+        check(Pcs::FflonkT4);
+        check(Pcs::FflonkT16);
+    }
+}
