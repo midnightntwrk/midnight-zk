@@ -14,6 +14,7 @@ This repository implements the proof system used in **Midnight**, along with too
 - `circuits`: Tooling for constructing ZK circuits.
 - `aggregator`: Toolkit for proof aggregation of midnight-proofs.
 - `zk_stdlib`: A high-level abstraction for building zero-knowledge circuits using `proofs` and `circuits`.
+- `benchmarks`: Standard prover benchmarks, see [`benchmarks/README.md`](benchmarks/README.md).
 
 ## Acknowledgments
 

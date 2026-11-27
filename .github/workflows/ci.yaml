@@ -148,6 +148,33 @@ jobs:
             echo "No changes in goldenfiles/examples"
           fi
 
+  # Checks that the benchmark workloads prove and verify. It does not time
+  # them: shared runners are too noisy for that.
+  test-benchmarks:
+    needs: download-srs
+    if: github.event.pull_request.draft == false
+    name: Test benchmarks
+    runs-on: ubuntu-latest-16-core-x64
+
+    env:
+      RUST_BACKTRACE: full
+      RUSTFLAGS: --cfg ci_build
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Restore SRS from cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: zk_stdlib/examples/assets/bls_filecoin_2p19
+          key: fixed-srs-cache
+
+      - uses: ./.github/actions/cargo-test
+        with:
+          package: midnight-benchmarks
+          args: --release
+
   test-proofs:
     if: github.event.pull_request.draft == false
     name: Test proofs
