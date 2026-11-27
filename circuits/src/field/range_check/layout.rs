@@ -71,10 +71,11 @@ impl<F: CircuitField> RangeCheckChip<F> {
             }
         }
 
+        let base = Value::known(pow2::<F>(t));
         for (n, xs) in single_lane {
             for chunk in xs.chunks(4) {
                 let out = chunk.iter().rev().fold(Value::known(F::ZERO), |acc, x| {
-                    acc * Value::known(pow2::<F>(t)) + x.value().copied()
+                    acc * base + x.value().copied()
                 });
                 groups.entry((n, n, t)).or_default().push(Group {
                     lanes: std::array::from_fn(|j| chunk.get(j).unwrap_or(zero).clone()),
@@ -87,9 +88,10 @@ impl<F: CircuitField> RangeCheckChip<F> {
         for d in &pending.decompositions {
             let (x, limbs, size) = (&d.x, &d.limbs, d.size);
             let span = limbs.len().div_ceil(4);
+            let base = Value::known(pow2::<F>(size));
             for i in 0..span {
                 let rest = limbs[4 * i..].iter().rev().fold(Value::known(F::ZERO), |acc, l| {
-                    acc * Value::known(pow2::<F>(size)) + l.value().copied()
+                    acc * base + l.value().copied()
                 });
                 groups.entry((size, size, size)).or_default().push(Group {
                     lanes: std::array::from_fn(|j| limbs.get(4 * i + j).unwrap_or(zero).clone()),

@@ -34,9 +34,7 @@ pub fn qnr<F: CircuitField>() -> F {
 }
 
 pub fn big_to_fe<F: CircuitField>(e: BigUint) -> F {
-    let modulus = F::modulus();
-    let e = e % modulus;
-    F::from_str_vartime(&e.to_str_radix(10)[..]).unwrap()
+    from_u64_le_digits(&e.to_u64_digits())
 }
 
 /// Panics if the conversion is not possible.

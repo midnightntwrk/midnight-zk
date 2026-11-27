@@ -7,6 +7,8 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * PATCH: Incremented on minor changes and bug fixes that do not alter the VKs
 
 ## [Unreleased]
+### Changed
+* `utils::util::big_to_fe` builds the field element from the 64-bit digits of the integer instead of its decimal representation, and the range-check chip computes the base of a decomposition once instead of once per limb of each partial sum. Witness generation is faster and no circuit changes [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 
 ## [8.0.0-rc.2]
 ### Added
