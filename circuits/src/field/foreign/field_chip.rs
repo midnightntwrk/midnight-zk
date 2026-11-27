@@ -43,7 +43,7 @@ use super::gates::{
 use crate::{
     CircuitField,
     field::foreign::{
-        params::{FieldEmulationParams, check_params},
+        params::{EmulationConstants, FieldEmulationParams, check_params},
         util::{bi_from_limbs, bi_to_limbs},
     },
     instructions::{
@@ -293,6 +293,9 @@ where
 pub struct FieldChipConfig {
     mul_config: mul::MulConfig,
     norm_config: norm::NormConfig,
+    /// The constants of the emulation, shared by the gates of this chip and
+    /// of the curve chips built on it.
+    pub constants: std::rc::Rc<EmulationConstants>,
     /// Column for input x
     pub x_cols: Vec<Column<Advice>>,
     /// Column for input y
@@ -1381,6 +1384,7 @@ where
         FieldChipConfig {
             mul_config,
             norm_config,
+            constants: std::rc::Rc::new(EmulationConstants::new::<F, K, P>()),
             x_cols,
             y_cols,
             z_cols,
@@ -1453,6 +1457,7 @@ where
             &y,
             r,
             &self.config.mul_config,
+            &self.config.constants,
             &self.native_gadget,
         )?;
 
@@ -1675,6 +1680,7 @@ where
             layouter,
             x,
             &self.config.norm_config,
+            &self.config.constants,
             &self.native_gadget,
         )?;
         let z = AssignedField::<F, K, P> {

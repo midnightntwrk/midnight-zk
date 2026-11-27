@@ -7,6 +7,8 @@ We use [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 * PATCH: Incremented on minor changes and bug fixes that do not alter the VKs
 
 ## [Unreleased]
+### Changed
+* The constants of a field emulation (the emulated modulus, the powers of the base and their remainders modulo the auxiliary moduli) are computed once when the field chip is configured, and the witness generation of the foreign-field and foreign-curve gates reads them from its configuration instead of recomputing them on every call. No circuit changes [#XXX](https://github.com/midnightntwrk/midnight-zk/pull/XXX)
 
 ## [8.0.0-rc.2]
 ### Added

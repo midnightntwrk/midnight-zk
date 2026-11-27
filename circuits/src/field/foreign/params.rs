@@ -91,6 +91,61 @@ pub trait FieldEmulationParams<F: CircuitField, K: CircuitField>:
     const RC_LIMB_SIZE: u32;
 }
 
+/// An auxiliary modulus of a field emulation, with the powers of the base
+/// reduced modulo it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AuxiliaryModulus {
+    /// The auxiliary modulus.
+    pub modulus: BI,
+    /// [`FieldEmulationParams::base_powers`] modulo `modulus`.
+    pub base_powers: Vec<BI>,
+    /// [`FieldEmulationParams::double_base_powers`] modulo `modulus`.
+    pub double_base_powers: Vec<BI>,
+}
+
+/// The constants of the identities that emulate a field `K` with parameters
+/// `P`. They only depend on `K` and `P`, so a field chip computes them once
+/// and its gates share them.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EmulationConstants {
+    /// The emulated modulus.
+    pub modulus: BI,
+    /// [`FieldEmulationParams::base_powers`].
+    pub base_powers: Vec<BI>,
+    /// [`FieldEmulationParams::double_base_powers`].
+    pub double_base_powers: Vec<BI>,
+    /// [`FieldEmulationParams::moduli`], with the powers modulo each of them.
+    pub auxiliary: Vec<AuxiliaryModulus>,
+}
+
+impl EmulationConstants {
+    /// Computes the constants of the emulation of `K` over `F` with
+    /// parameters `P`.
+    pub fn new<F, K, P>() -> Self
+    where
+        F: CircuitField,
+        K: CircuitField,
+        P: FieldEmulationParams<F, K>,
+    {
+        let base_powers = P::base_powers();
+        let double_base_powers = P::double_base_powers();
+        let reduce = |powers: &[BI], mj: &BI| powers.iter().map(|b| b.rem(mj)).collect();
+        let auxiliary = (P::moduli().into_iter())
+            .map(|mj| AuxiliaryModulus {
+                base_powers: reduce(&base_powers, &mj),
+                double_base_powers: reduce(&double_base_powers, &mj),
+                modulus: mj,
+            })
+            .collect();
+        EmulationConstants {
+            modulus: K::modulus().to_bigint().unwrap(),
+            base_powers,
+            double_base_powers,
+            auxiliary,
+        }
+    }
+}
+
 /// Sanity checks on the parameters for the FieldChip to be sound.
 pub(crate) fn check_params<F, K, P>()
 where
