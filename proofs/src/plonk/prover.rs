@@ -385,9 +385,6 @@ where
 /// parameters `params` and the proving key [`ProvingKey`] that was
 /// generated previously for the same circuit. The provided `instances`
 /// are zero-padded internally.
-//
-// NOTE: Any change here must be mirrored in src/plonk/bench/prover.rs
-// to ensure the benchmarks remain aligned with the real prover.
 pub fn create_proof<F, PCS, T, ConcreteCircuit>(
     params: &PCS::Parameters,
     pk: &ProvingKey<F, PCS>,
@@ -424,7 +421,7 @@ where
     )
 }
 
-pub(super) fn compute_instances<F, PCS, T>(
+fn compute_instances<F, PCS, T>(
     params: &PCS::Parameters,
     pk: &ProvingKey<F, PCS>,
     instances: &[&[F]],
@@ -485,7 +482,7 @@ where
     })
 }
 
-pub(super) fn parse_advices<F, PCS, ConcreteCircuit>(
+fn parse_advices<F, PCS, ConcreteCircuit>(
     pk: &ProvingKey<F, PCS>,
     circuit: &ConcreteCircuit,
     instances: &[&[F]],
@@ -552,7 +549,7 @@ where
     Ok(advice_polys)
 }
 
-pub(super) fn compute_nu_poly<F: PrimeField, PCS: PolynomialCommitmentScheme<F>>(
+fn compute_nu_poly<F: PrimeField, PCS: PolynomialCommitmentScheme<F>>(
     pk: &ProvingKey<F, PCS>,
     trace: &ProverTrace<'_, F>,
 ) -> Polynomial<F, ExtendedLagrangeCoeff> {
@@ -615,7 +612,7 @@ pub(super) fn compute_nu_poly<F: PrimeField, PCS: PolynomialCommitmentScheme<F>>
 /// # Panics
 ///
 /// If `n < d(S - 1) + S`, as the limbs could not hold `h(X)`.
-pub(crate) fn compute_h_poly<F, PCS, T>(
+fn compute_h_poly<F, PCS, T>(
     params: &PCS::Parameters,
     fft_domain: &FftDomain<F>,
     nu_poly: Polynomial<F, ExtendedLagrangeCoeff>,
@@ -689,7 +686,7 @@ fn blind_quotient_limbs<F: PrimeField>(quotient_limbs: &mut [Vec<F>]) {
     quotient_limbs[nr_limbs - 1].extend([F::ZERO; S]);
 }
 
-pub(super) fn write_instance_evals_to_transcript<F, PCS, T>(
+fn write_instance_evals_to_transcript<F, PCS, T>(
     pk: &ProvingKey<F, PCS>,
     nb_committed_instances: usize,
     instance_polys: &[Polynomial<F, Coeff>],
@@ -723,7 +720,7 @@ where
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn compute_queries<'a, F: PrimeField, PCS: PolynomialCommitmentScheme<F>>(
+fn compute_queries<'a, F: PrimeField, PCS: PolynomialCommitmentScheme<F>>(
     pk: &'a ProvingKey<F, PCS>,
     instance_labels: &'a [[PolynomialLabel; 1]],
     instance_polys: &'a [Polynomial<F, Coeff>],
