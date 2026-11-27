@@ -101,8 +101,13 @@ impl<T: Ivc> FoldingIvcCircuit<T> {
     pub fn arch() -> ZkStdLibArch {
         // Two degree-1 lookup tuples per helper (bound 3) instead of four:
         // folding degree 7 instead of 10, for more helper columns.
+        // At most two range-check groups (5 advice columns each): with three,
+        // they need 15 advice columns, one more than the BLS12-381 ECC chip,
+        // so phase 1 no longer fits one fflonk chunk of 16 and every step
+        // folds a third commitment.
         ZkStdLibArch {
             lookup_chunk_bound: Some(3),
+            nb_range_check_groups: IvcCircuit::<T>::arch().nb_range_check_groups.min(2),
             ..IvcCircuit::<T>::arch()
         }
     }
