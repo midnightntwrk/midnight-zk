@@ -34,9 +34,13 @@ pub fn qnr<F: CircuitField>() -> F {
 }
 
 pub fn big_to_fe<F: CircuitField>(e: BigUint) -> F {
-    let modulus = F::modulus();
-    let e = e % modulus;
-    F::from_str_vartime(&e.to_str_radix(10)[..]).unwrap()
+    // Values shorter than the modulus need no reduction.
+    let e = if e.bits() < F::NUM_BITS as u64 {
+        e
+    } else {
+        e % F::modulus()
+    };
+    F::from_biguint(&e).expect("reduced modulo the field modulus")
 }
 
 /// Panics if the conversion is not possible.
@@ -209,4 +213,41 @@ pub trait FromScratch<F: CircuitField> {
     ) -> Self::Config;
 
     fn load_from_scratch(&self, layouter: &mut impl Layouter<F>) -> Result<(), Error>;
+}
+
+#[cfg(test)]
+mod tests {
+    use num_bigint::BigUint;
+
+    use super::big_to_fe;
+    use crate::CircuitField;
+
+    fn check_big_to_fe<F: CircuitField>() {
+        let m = F::modulus();
+        let one = BigUint::from(1u8);
+        let values = [
+            BigUint::ZERO,
+            one.clone(),
+            BigUint::from(u64::MAX),
+            (&one << (F::NUM_BITS - 1)) - 1u8,
+            &m - 1u8,
+            m.clone(),
+            &m + 1u8,
+            (&one << F::NUM_BITS) - 1u8,
+            &m * 3u8 + 12345u32,
+            (&one << 700) + 7u8,
+        ];
+        for e in values {
+            let reference = F::from_str_vartime(&(&e % &m).to_str_radix(10)).unwrap();
+            assert_eq!(big_to_fe::<F>(e.clone()), reference, "big_to_fe({e})");
+        }
+    }
+
+    #[test]
+    fn test_big_to_fe() {
+        check_big_to_fe::<midnight_curves::Fq>();
+        check_big_to_fe::<midnight_curves::Fp>();
+        check_big_to_fe::<midnight_curves::k256::Fp>();
+        check_big_to_fe::<midnight_curves::p256::Fq>();
+    }
 }
