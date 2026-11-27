@@ -215,9 +215,10 @@ impl From<blst_fr> for Fq {
 
 impl From<u64> for Fq {
     fn from(val: u64) -> Fq {
-        let mut repr = [0u8; 32];
-        repr[..8].copy_from_slice(&val.to_le_bytes());
-        Fq::from_bytes_le(&repr).unwrap()
+        let mut out = blst_fr::default();
+        // A 64-bit value is below the modulus, so it needs no range check.
+        unsafe { blst_fr_from_uint64(&mut out, [val, 0, 0, 0].as_ptr()) };
+        Fq(out)
     }
 }
 
