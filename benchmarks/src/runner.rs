@@ -15,9 +15,11 @@
 
 use std::{fmt, process::Command, thread, time::Instant};
 
+use midnight_proofs::profiling;
+
 use crate::{
     report::format_duration,
-    results::{CaseResult, Environment, RunResult, SCHEMA_VERSION},
+    results::{Breakdown, CaseResult, Environment, RunResult, SCHEMA_VERSION},
     stats::Stats,
     workload::{Pcs, Prepared, Workload},
 };
@@ -168,6 +170,13 @@ pub fn run(config: &Config, workloads: Vec<Box<dyn Workload>>) -> Result<RunResu
         return Err(Error::NothingToRun);
     }
 
+    if profiling::ENABLED {
+        eprintln!(
+            "warning: this build records the kernel breakdown, which slows the prover down; \
+             its timings are not reference numbers"
+        );
+    }
+
     let mut cases = Vec::with_capacity(nb_cases);
     for (workload, pcs_list) in selected {
         for pcs in pcs_list {
@@ -203,6 +212,7 @@ pub fn run(config: &Config, workloads: Vec<Box<dyn Workload>>) -> Result<RunResu
                     proof_bytes: measured.proof_bytes,
                     samples_ns: measured.samples_ns,
                     verify_ns: measured.verify_ns,
+                    breakdown: measured.breakdown,
                 });
             }
         }
@@ -220,6 +230,7 @@ struct Measured {
     samples_ns: Vec<u64>,
     verify_ns: Vec<u64>,
     proof_bytes: usize,
+    breakdown: Option<Breakdown>,
 }
 
 /// Proves `config.warmup + config.samples` times in a pool of `threads`
@@ -243,13 +254,20 @@ fn measure(
         }
         let mut samples_ns = Vec::with_capacity(config.samples);
         let mut proof = Vec::new();
+        let mut breakdown = None;
         for _ in 0..config.samples {
+            profiling::reset();
             let start = Instant::now();
             let new_proof = prepared.prove();
-            samples_ns.push(start.elapsed().as_nanos() as u64);
+            let elapsed = start.elapsed();
+            let report = profiling::take_report();
+            samples_ns.push(elapsed.as_nanos() as u64);
             // Assigned after the clock stops so that freeing the previous
             // proof is not measured.
             proof = new_proof;
+            if profiling::ENABLED {
+                breakdown = Some(Breakdown::from(&report));
+            }
         }
         let mut verify_ns = Vec::new();
         if config.verify {
@@ -266,6 +284,7 @@ fn measure(
             samples_ns,
             verify_ns,
             proof_bytes: proof.len(),
+            breakdown,
         })
     }))
 }
@@ -277,6 +296,7 @@ pub fn environment() -> Environment {
         cpu: std::fs::read_to_string("/proc/cpuinfo").ok().and_then(|s| cpu_model(&s)),
         logical_cores: max_threads(),
         os: format!("{} {}", std::env::consts::OS, std::env::consts::ARCH),
+        profiling: profiling::ENABLED,
     }
 }
 
@@ -419,6 +439,7 @@ mod tests {
         let result = run(&config(&[1, 2, 1]), workloads).unwrap();
 
         assert_eq!(result.schema_version, SCHEMA_VERSION);
+        assert_eq!(result.environment.profiling, profiling::ENABLED);
         assert_eq!(result.environment.logical_cores, max_threads());
         assert!(result.environment.os.contains(std::env::consts::ARCH));
 
@@ -444,6 +465,7 @@ mod tests {
             );
             assert_eq!(case.samples_ns.len(), 2);
             assert!(case.samples_ns.iter().all(|&ns| ns >= 1_000_000));
+            assert_eq!(case.breakdown.is_some(), profiling::ENABLED);
         }
 
         // One setup per workload and scheme, then for each pool one warmup
@@ -467,6 +489,7 @@ mod tests {
         }
         assert!(markdown.contains("## 1 thread\n"));
         assert!(markdown.contains("## 2 threads\n"));
+        assert_eq!(markdown.contains("## Breakdown"), profiling::ENABLED);
     }
 
     #[test]

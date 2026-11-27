@@ -13,6 +13,7 @@ use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 use super::{KZGEngine, params::ParamsVerifierKZG};
 use crate::{
     poly::{Error, PolynomialLabel, commitment::Guard},
+    profiling::{self, Kernel},
     utils::arithmetic::MSM,
 };
 
@@ -170,6 +171,8 @@ where
 /// `msm_best`.
 pub fn msm_specific<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
     assert_eq!(coeffs.len(), bases.len());
+    let _span = profiling::span(Kernel::Msm, coeffs.len());
+
     // We remove zeros (keep only non-zero coefficients).
     let (coeffs, bases): (Vec<C::Scalar>, Vec<C>) = coeffs
         .iter()

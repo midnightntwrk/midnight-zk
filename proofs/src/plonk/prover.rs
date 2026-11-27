@@ -27,6 +27,7 @@ use crate::{
         PolynomialLabel, ProverQuery, Rotation, batch_invert_rational,
         commitment::PolynomialCommitmentScheme,
     },
+    profiling::{self, Kernel, Phase},
     transcript::{Hashable, Transcript},
     utils::{
         arithmetic::{eval_polynomial, eval_polynomial_seq},
@@ -104,6 +105,7 @@ where
 
     let instance = compute_instances(params, pk, instances, nb_committed_instances, transcript)?;
 
+    profiling::set_phase(Phase::Synthesis);
     let advice_polys = parse_advices(pk, circuit, instances, &mut rng)?;
 
     // Helper: sample `num_sets` blinding vectors, each of length `inner_len`.
@@ -115,6 +117,7 @@ where
             .collect()
     };
 
+    profiling::set_phase(Phase::Lookups);
     let num_lookups = pk.vk.cs.lookups.len();
     let mult_blinding_count = pk.vk.cs.blinding_factors() + 1;
     let mult_blindings: Vec<Vec<F>> = sample_blindings(num_lookups, mult_blinding_count);
@@ -141,6 +144,7 @@ where
             .collect::<Result<Vec<_>, Error>>()?
     };
 
+    profiling::set_phase(Phase::AdviceCommit);
     let logup_multiplicities_len = logup_multiplicities.len();
     // The advice columns and the multiplicities form the phase1 group.
     // TODO: Check the multiplicities clone - see if we can remove it.
@@ -180,6 +184,7 @@ where
     // Sample the trash challenge after the advices have been committed to
     let trash_challenge: F = transcript.squeeze_challenge();
 
+    profiling::set_phase(Phase::Permutation);
     let blinding_factors = pk.vk.cs.blinding_factors();
     let num_perm_sets = pk.vk.cs.permutation.num_sets(pk.vk.cs_degree);
     let perm_blindings: Vec<Vec<F>> = sample_blindings(num_perm_sets, blinding_factors);
@@ -207,6 +212,7 @@ where
         }
     }
 
+    profiling::set_phase(Phase::Lookups);
     let logup_polys_maps = logup_multiplicities
         .into_par_iter()
         .zip(logup_blindings.into_par_iter())
@@ -244,6 +250,9 @@ where
         }
     }
 
+    if !pk.vk.cs.trashcans.is_empty() {
+        profiling::set_phase(Phase::Trash);
+    }
     for (i, trash) in pk.vk.cs.trashcans.iter().enumerate() {
         let p = trash.compute_trash_poly(
             domain,
@@ -258,6 +267,7 @@ where
         }
     }
 
+    profiling::set_phase(Phase::ArgumentsCommit);
     let phase2_committed = argument::prover::Committed::commit::<PCS, T, _>(
         params,
         phase2_polys_map,
@@ -275,6 +285,8 @@ where
 
     let fft_domain = &pk.fft_domain;
 
+    // The quotient is computed from the coefficient form of the polynomials.
+    profiling::set_phase(Phase::Quotient);
     let phase1_committed = phase1_committed.into_coeff(fft_domain);
     let phase2_committed = phase2_committed.into_coeff(fft_domain);
 
@@ -316,6 +328,7 @@ where
     #[cfg(not(feature = "committed-instances"))]
     let nb_committed_instances: usize = 0;
 
+    profiling::set_phase(Phase::Quotient);
     let nu_poly = compute_nu_poly(pk, &trace);
 
     // Construct the quotient polynomial h(X) = nu(X)/(X^n-1), split it into limbs,
@@ -331,6 +344,7 @@ where
         ..
     } = trace;
 
+    profiling::set_phase(Phase::Evals);
     let x: F = PCS::squeeze_evaluation_point(transcript);
     let domain = pk.vk.get_domain();
     let cs = pk.vk.cs();
@@ -364,6 +378,7 @@ where
     );
     quotient_evaluated.insert(h0, x, h0_eval);
 
+    profiling::set_phase(Phase::MultiOpen);
     let instance_labels: Vec<_> = (0..nb_committed_instances)
         .map(|i| [PolynomialLabel::CommittedInstance(i)])
         .collect();
@@ -703,11 +718,13 @@ where
     // Batch-evaluate all polynomials with outer parallelism and sequential
     // Horner per task, avoiding the per-call rayon::scope overhead of the
     // internally-parallel eval_polynomial.
+    let span = profiling::span(Kernel::PolyEval, meta.instance_queries.len());
     let instance_evals: Vec<F> = meta
         .instance_queries
         .par_iter()
         .map(|&(column, at)| eval_polynomial_seq(&instance_polys[column.index()], x_rotations[&at]))
         .collect();
+    drop(span);
 
     // Write evaluations to transcript in the canonical order.
     for (eval, &(column, _)) in instance_evals.iter().zip(meta.instance_queries.iter()) {
