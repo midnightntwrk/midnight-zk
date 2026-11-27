@@ -26,7 +26,7 @@ use crate::{
     field::{
         AssignNative,
         foreign::{
-            params::FieldEmulationParams,
+            params::{EmulationConstants, FieldEmulationParams},
             util::{
                 compute_u, compute_vj, get_advice_vec, get_identity_auxiliary_bounds,
                 karatsuba_bilinear_sum, pair_wise_prod, sum_bigints, sum_exprs, urem,
@@ -191,6 +191,7 @@ pub fn assert_mul<F, K, P, RangeGadget>(
     y: &AssignedField<F, K, P>,
     z: &AssignedField<F, K, P>,
     mul_config: &MulConfig,
+    constants: &EmulationConstants,
     range_gadget: &RangeGadget,
 ) -> Result<(), Error>
 where
@@ -204,10 +205,9 @@ where
         |mut region| {
             let mut offset = 0;
 
-            let m = &K::modulus().to_bigint().unwrap();
-            let moduli = P::moduli();
-            let base_powers = P::base_powers();
-            let double_base_powers = P::double_base_powers();
+            let m = &constants.modulus;
+            let base_powers = &constants.base_powers;
+            let double_base_powers = &constants.double_base_powers;
 
             let xs = x.bigint_limbs();
             let ys = y.bigint_limbs();
@@ -216,23 +216,23 @@ where
             let xys = xs.clone().zip(ys.clone()).map(|(xs, ys)| pair_wise_prod(&xs, &ys));
             let (k_min, u_max) = mul_config.u_bounds.clone();
 
-            let expr = xys.clone().map(|v| sum_bigints(&double_base_powers, &v))
-                + xs.clone().map(|v| sum_bigints(&base_powers, &v))
-                + ys.clone().map(|v| sum_bigints(&base_powers, &v))
-                - zs.clone().map(|v| sum_bigints(&base_powers, &v));
+            let expr = xys.clone().map(|v| sum_bigints(double_base_powers, &v))
+                + xs.clone().map(|v| sum_bigints(base_powers, &v))
+                + ys.clone().map(|v| sum_bigints(base_powers, &v))
+                - zs.clone().map(|v| sum_bigints(base_powers, &v));
             let u = expr.map(|e| compute_u(m, &e, (&k_min, &u_max), Value::known(true)));
 
-            let vs_values =
-                moduli.iter().zip(mul_config.vs_bounds.iter()).map(|(mj, vj_bounds)| {
-                    let base_powers_mj = base_powers.iter().map(|b| b.rem(mj)).collect::<Vec<_>>();
-                    let double_base_powers_mj =
-                        double_base_powers.iter().map(|b| b.rem(mj)).collect::<Vec<_>>();
+            let vs_values = constants.auxiliary.iter().zip(mul_config.vs_bounds.iter()).map(
+                |(aux, vj_bounds)| {
+                    let mj = &aux.modulus;
+                    let base_powers_mj = &aux.base_powers;
+                    let double_base_powers_mj = &aux.double_base_powers;
                     let (lj_min, vj_max) = vj_bounds.clone();
 
-                    let expr_mj = xys.clone().map(|v| sum_bigints(&double_base_powers_mj, &v))
-                        + xs.clone().map(|v| sum_bigints(&base_powers_mj, &v))
-                        + ys.clone().map(|v| sum_bigints(&base_powers_mj, &v))
-                        - zs.clone().map(|v| sum_bigints(&base_powers_mj, &v));
+                    let expr_mj = xys.clone().map(|v| sum_bigints(double_base_powers_mj, &v))
+                        + xs.clone().map(|v| sum_bigints(base_powers_mj, &v))
+                        + ys.clone().map(|v| sum_bigints(base_powers_mj, &v))
+                        - zs.clone().map(|v| sum_bigints(base_powers_mj, &v));
                     expr_mj.zip(u.clone()).map(|(e, u)| {
                         compute_vj(
                             m,
@@ -244,7 +244,8 @@ where
                             Value::known(true),
                         )
                     })
-                });
+                },
+            );
 
             mul_config.q_mul.enable(&mut region, offset)?;
 

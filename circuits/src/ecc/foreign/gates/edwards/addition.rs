@@ -28,7 +28,7 @@ use crate::{
         AssignNative,
         foreign::{
             FieldChip, FieldChipConfig,
-            params::FieldEmulationParams,
+            params::{EmulationConstants, FieldEmulationParams},
             util::{
                 compute_u, compute_vj, get_advice_vec, get_identity_auxiliary_bounds,
                 pair_wise_prod, sum_bigints, sum_exprs, urem,
@@ -267,11 +267,13 @@ where
     P: FieldEmulationParams<F, C::Base>,
     N: NativeInstructions<F>,
 {
-    let m = &C::Base::modulus().to_bigint().unwrap();
-    let moduli = P::moduli();
-    let bs = P::base_powers();
-    let bs_sqrd = P::double_base_powers();
     let field_chip_config = base_chip.config();
+    let EmulationConstants {
+        modulus: m,
+        base_powers: bs,
+        double_base_powers: bs_sqrd,
+        auxiliary,
+    } = &*field_chip_config.constants;
 
     let x_norm = &base_chip.normalize(layouter, x)?;
     let y_norm = &base_chip.normalize(layouter, y)?;
@@ -295,28 +297,28 @@ where
 
             // (1 + s) * sum_x + s * (sum_w + sum_xw) - sum_y - sum_z + (s-1)
             //   = (u + k_min) * m
-            let w_term = ws_val.clone().map(|v| sum_bigints(&bs, &v))
-                + xw_val.clone().map(|v| sum_bigints(&bs_sqrd, &v));
-            let expr = xs_val.clone().map(|v| &sx_coeff * sum_bigints(&bs, &v))
+            let w_term = ws_val.clone().map(|v| sum_bigints(bs, &v))
+                + xw_val.clone().map(|v| sum_bigints(bs_sqrd, &v));
+            let expr = xs_val.clone().map(|v| &sx_coeff * sum_bigints(bs, &v))
                 + w_term.map(|v| &sign * v)
-                - ys_val.clone().map(|v| sum_bigints(&bs, &v))
-                - zs_val.clone().map(|v| sum_bigints(&bs, &v))
+                - ys_val.clone().map(|v| sum_bigints(bs, &v))
+                - zs_val.clone().map(|v| sum_bigints(bs, &v))
                 + Value::known(const_offset.clone());
 
             let u = expr.map(|e| compute_u(m, &e, (&k_min, &u_max), Value::unknown()));
 
             let vs_values =
-                moduli.iter().zip(addition_config.vs_bounds.iter()).map(|(mj, vj_bounds)| {
-                    let bs_mj = bs.iter().map(|b| b.rem(mj)).collect::<Vec<_>>();
-                    let bs_sqrd_mj = bs_sqrd.iter().map(|b| b.rem(mj)).collect::<Vec<_>>();
+                auxiliary.iter().zip(addition_config.vs_bounds.iter()).map(|(aux, vj_bounds)| {
+                    let (mj, bs_mj, bs_sqrd_mj) =
+                        (&aux.modulus, &aux.base_powers, &aux.double_base_powers);
                     let (lj_min, vj_max) = vj_bounds.clone();
 
-                    let w_term_mj = ws_val.clone().map(|v| sum_bigints(&bs_mj, &v))
-                        + xw_val.clone().map(|v| sum_bigints(&bs_sqrd_mj, &v));
-                    let expr_mj = xs_val.clone().map(|v| &sx_coeff * sum_bigints(&bs_mj, &v))
+                    let w_term_mj = ws_val.clone().map(|v| sum_bigints(bs_mj, &v))
+                        + xw_val.clone().map(|v| sum_bigints(bs_sqrd_mj, &v));
+                    let expr_mj = xs_val.clone().map(|v| &sx_coeff * sum_bigints(bs_mj, &v))
                         + w_term_mj.map(|v| &sign * v)
-                        - ys_val.clone().map(|v| sum_bigints(&bs_mj, &v))
-                        - zs_val.clone().map(|v| sum_bigints(&bs_mj, &v))
+                        - ys_val.clone().map(|v| sum_bigints(bs_mj, &v))
+                        - zs_val.clone().map(|v| sum_bigints(bs_mj, &v))
                         + Value::known(const_offset.clone());
 
                     expr_mj.zip(u.clone()).map(|(e, u)| {
